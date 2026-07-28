@@ -1,0 +1,8 @@
+packages:
+  - docs
+
+onlyBuiltDependencies:
+  - esbuild
+
+overrides:
+  webpack: 5.104.1

@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@aspect_bazel_lib//lib:copy_directory.bzl", "copy_directory")
+load("@aspect_rules_js//js:defs.bzl", "js_run_devserver")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@npm//docs:@docusaurus/core/package_json.bzl", docusaurus_bin = "bin")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+npm_link_all_packages()
+
+copy_file(
+    name = "checks_data",
+    src = "//catalog/cmd/healthdump:checks",
+    out = "static/data/checks.json",
+)
+
+copy_file(
+    name = "schema_data",
+    src = "//catalog/health:schema",
+    out = "static/data/schema.json",
+)
+
+copy_directory(
+    name = "check_pages",
+    src = "//catalog/cmd/gencheckpages:pages",
+    out = "docs/reference/checks",
+)
+
+filegroup(
+    name = "src",
+    srcs = glob(
+        [
+            "src/**/*.*",
+            "static/**/*.*",
+            "docs/**/*.*",
+            "plugins/**/*.*",
+        ],
+        allow_empty = True,
+    ) + [
+        ":check_pages",
+        ":checks_data",
+        ":schema_data",
+    ],
+)
+
+DOCUSAURUS_SRCS = [
+    "docusaurus.config.ts",
+    "package.json",
+    "sidebars.ts",
+    "tsconfig.json",
+    ":node_modules",
+    ":src",
+]
+
+docusaurus_bin.docusaurus(
+    name = "build",
+    srcs = DOCUSAURUS_SRCS,
+    args = ["build"],
+    chdir = package_name(),
+    out_dirs = ["build"],
+    visibility = ["//visibility:public"],
+)
+
+build_test(
+    name = "test",
+    targets = [":build"],
+)
+
+docusaurus_bin.docusaurus_binary(
+    name = "docusaurus_bin",
+)
+
+sh_binary(
+    name = "publish",
+    srcs = ["publish.sh"],
+    args = ["$(location :build)"],
+    data = [":build"],
+)
+
+js_run_devserver(
+    name = "serve",
+    args = ["start"],
+    chdir = package_name(),
+    data = DOCUSAURUS_SRCS,
+    tool = ":docusaurus_bin",
+)

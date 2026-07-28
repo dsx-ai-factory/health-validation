@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+--- a/go/private/actions/link.bzl
++++ b/go/private/actions/link.bzl
+@@ -100,6 +100,11 @@
+
+     if go.mode.static:
+         extldflags.append("-static")
++    if go.mode.linkmode == LINKMODE_NORMAL:
++        # Prevent the C compiler from defaulting to PIE when Go is in normal
++        # (non-PIE) link mode. Go's compiler emits non-PIC object code in
++        # normal mode, which strict linkers like lld reject in PIE context.
++        extldflags.append("-no-pie")
+     if go.mode.linkmode != LINKMODE_NORMAL:
+         builder_args.add("-buildmode", go.mode.linkmode)
+     if go.mode.linkmode == LINKMODE_PLUGIN:

@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# gazelle:prefix github.com/NVIDIA/health-validation/toolkit
+
+go_library(
+    name = "toolkit",
+    srcs = [
+        "accumulator.go",
+        "actuator.go",
+        "collect.go",
+        "doc.go",
+        "gpu_backend.go",
+        "gpu_sensor.go",
+        "lazy_backend.go",
+        "node_backend.go",
+        "node_sensor.go",
+        "nvlink_backend.go",
+        "nvlink_sensor.go",
+        "sensor.go",
+        "xid_backend.go",
+        "xid_parse.go",
+        "xid_sensor.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/toolkit",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//catalog",
+        "//catalog/gpu",
+        "//catalog/health",
+        "//catalog/node",
+        "//catalog/nvlink",
+        "//catalog/xid",
+    ],
+)
+
+go_test(
+    name = "toolkit_test",
+    srcs = [
+        "collect_test.go",
+        "example_test.go",
+        "gpu_sensor_test.go",
+        "lazy_backend_test.go",
+        "node_sensor_test.go",
+        "xid_backend_internal_test.go",
+        "xid_parse_test.go",
+        "xid_sensor_test.go",
+    ],
+    embed = [":toolkit"],
+    deps = [
+        "//catalog",
+        "//catalog/gpu",
+        "//catalog/health",
+        "//catalog/node",
+        "//catalog/nvlink",
+        "//catalog/xid",
+    ],
+)

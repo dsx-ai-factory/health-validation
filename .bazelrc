@@ -1,0 +1,16 @@
+common --registry=https://bcr.bazel.build
+
+
+build --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+
+
+import %workspace%/.bazel/ci.bazelrc
+import %workspace%/.bazel/convenience.bazelrc
+import %workspace%/.bazel/correctness.bazelrc
+import %workspace%/.bazel/golang.bazelrc
+import %workspace%/.bazel/performance.bazelrc
+import %workspace%/.bazel/protobuf.bazelrc
+import %workspace%/.bazel/release.bazelrc
+import %workspace%/.bazel/remote.bazelrc
+
+try-import %workspace%/.bazelrc.user

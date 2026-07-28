@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+--- a/internal/bzlmod/go_mod.bzl
++++ b/internal/bzlmod/go_mod.bzl
+@@ -128,4 +128,7 @@
+     major, minor = go.split(".")[:2]
+
++    # Strip pre-release suffixes before int() — "27rc2".split("rc")[0] → "27".
++    minor = minor.split("rc")[0].split("beta")[0].split("alpha")[0]
++
+     return struct(
+         module = module,

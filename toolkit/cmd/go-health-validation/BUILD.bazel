@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@rules_go//go:def.bzl", "go_library")
+load("//build/rules/go:defs.bzl", "go_binary")
+
+go_library(
+    name = "go-health-validation_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/NVIDIA/health-validation/toolkit/cmd/go-health-validation",
+    visibility = ["//visibility:private"],
+    deps = ["//toolkit/app"],
+)
+
+go_binary(
+    name = "go-health-validation",
+    embed = [":go-health-validation_lib"],
+    # Package the CLI into a multi-arch (linux/amd64 + linux/arm64) OCI image
+    # with /go-health-validation as the entrypoint, so `docker run <image> run` mirrors
+    # `go-health-validation run`. Creates //toolkit/cmd/go-health-validation:go-health-validation.image.* targets,
+    # including .image.push (the canonical repository below; CI overrides the
+    # destination with --repository and supplies --tag). The Ubuntu base is
+    # required: go-health-validation is a cgo binary that dlopen()s libnvidia-ml.so.1 from
+    # the host driver at runtime, so it needs a glibc userland (not scratch /
+    # static-distroless). The driver itself is injected by the NVIDIA Container
+    # Toolkit at run time, not baked into the image.
+    oci = True,
+    repository = "nvcr.io/nvidia/health-validation",
+    # The Xid checks shell out to `journalctl` to read the host's systemd
+    # journal; the minimal Ubuntu base ships no systemd, so bake in the
+    # `systemd` package (which provides /usr/bin/journalctl) and its transitive
+    # deps as a flattened layer. Resolved from the Ubuntu archive via
+    # rules_distroless — see //third_party:apt.MODULE.bazel. Without this layer
+    # journalctl is absent and every gpu_xid_* check reports UNKNOWN (the
+    # backend's journal-liveness probe refuses to emit a false PASS).
+    tars = ["@journalctl//:flat"],
+    visibility = ["//visibility:public"],
+    # Stamped only under --config=release (see .bazel/release.bazelrc); plain
+    # builds leave the internal/version defaults ("dev"). The {STABLE_*} keys
+    # are produced by the --workspace_status_command set in .bazel/release.bazelrc.
+    x_defs = {
+        "github.com/NVIDIA/health-validation/toolkit/internal/version.version": "{STABLE_GO_HEALTH_VALIDATION_VERSION}",
+        "github.com/NVIDIA/health-validation/toolkit/internal/version.commit": "{STABLE_GIT_COMMIT}",
+        "github.com/NVIDIA/health-validation/toolkit/internal/version.date": "{STABLE_BUILD_DATE}",
+    },
+)

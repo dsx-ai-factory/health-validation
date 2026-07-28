@@ -1,0 +1,9 @@
+# CI-specific Bazel configuration. Use with: --config=ci
+common:ci --announce_rc
+common:ci --color=yes
+common:ci --curses=no
+common:ci --progress_in_terminal_title=no
+common:ci --remote_upload_local_results=true
+test:ci --verbose_failures
+# Optional: add --bes_backend and --bes_results_url here if you set up a public
+# build event service (e.g. BuildBuddy free tier) for CI observability.

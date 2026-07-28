@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
+load("@rules_go//go:def.bzl", "go_library")
+load("//build/rules/go:defs.bzl", "go_binary")
+
+go_library(
+    name = "healthdump_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/NVIDIA/health-validation/catalog/cmd/healthdump",
+    visibility = ["//visibility:private"],
+    deps = ["//catalog"],
+)
+
+go_binary(
+    name = "healthdump",
+    embed = [":healthdump_lib"],
+    visibility = ["//visibility:public"],
+)
+
+run_binary(
+    name = "checks",
+    outs = ["checks.json"],
+    args = ["-out=$(location checks.json)"],
+    tool = ":healthdump",
+    visibility = ["//visibility:public"],
+)

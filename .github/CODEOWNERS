@@ -1,0 +1,11 @@
+# CODEOWNERS — auto-requests review from the listed team/person when a PR touches the matching path.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything not matched below
+* @nvidia/health-validation-maintainers
+
+# Check catalog — requires domain expert review
+/catalog/ @nvidia/health-validation-maintainers
+
+# Operator CLI and NVML backend
+/toolkit/ @nvidia/health-validation-maintainers

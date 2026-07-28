@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# APT package layers baked into container images.
+#
+# The go-health-validation image needs `journalctl` at runtime: the Xid checks
+# shell out to it to read the host's systemd journal. The Ubuntu base
+# (see oci.MODULE.bazel) is minimal and ships no systemd, so we resolve the
+# `systemd` package (which provides /usr/bin/journalctl) plus its transitive
+# dependencies from the Ubuntu archive and add the flattened result as an
+# image layer (@journalctl//:flat).
+#
+# Regenerating the lock (required whenever journalctl.yaml changes):
+#
+#     bazel run @journalctl//:lock
+#
+# Lock generation fetches the Ubuntu package indices over the network; the
+# resolved, sha256-pinned lock is committed so builds stay hermetic.
+apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
+apt.install(
+    name = "journalctl",
+    lock = "//third_party/apt:journalctl.lock.json",
+    manifest = "//third_party/apt:journalctl.yaml",
+    # The base is merged-usr (/lib -> usr/lib). Some debs still ship legacy /lib
+    # paths, and extracting a real ./lib/ over that symlink makes the runtime
+    # replace it with a directory. Hoist those paths under /usr instead.
+    mergedusr = True,
+)
+use_repo(apt, "journalctl")

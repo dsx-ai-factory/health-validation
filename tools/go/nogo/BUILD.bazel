@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@rules_go//go:def.bzl", "nogo")
+
+# Discovered by
+# bazel query @org_golang_x_tools//go/analysis/passes/... | grep go_default | grep -v test
+X_TOOLS_ANALYZERS = [
+    "@org_golang_x_tools//go/analysis/passes/appends:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/asmdecl:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/assign:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/atomic:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/atomicalign:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/bools:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/buildssa:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/buildtag:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/composite:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/copylock:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/ctrlflow:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/deepequalerrors:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/defers:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/directive:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/errorsas:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/fieldalignment:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/findcall:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/framepointer:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/gofix:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/hostport:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/httpmux:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/httpresponse:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/ifaceassert:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/inspect:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/loopclosure:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/lostcancel:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/nilfunc:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/nilness:go_default_library",
+    # NOTE(G3): pkgfact causes cgo preprocessor issues
+    # "@org_golang_x_tools//go/analysis/passes/pkgfact:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/printf:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/reflectvaluecompare:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/shadow:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/shift:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/sigchanyzer:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/slog:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/sortslice:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/stdmethods:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/stdversion:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/stringintconv:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/structtag:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/timeformat:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/unmarshal:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/unreachable:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/unsafeptr:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/unusedresult:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/unusedwrite:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/usesgenerics:go_default_library",
+    "@org_golang_x_tools//go/analysis/passes/waitgroup:go_default_library",
+]
+
+nogo(
+    name = "nogo",
+    visibility = ["//visibility:public"],
+    deps = X_TOOLS_ANALYZERS,
+)

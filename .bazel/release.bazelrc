@@ -1,0 +1,22 @@
+# Release / pre-release builds: stamp the version into the binary.
+#
+# Enables Bazel stamping. Set --workspace_status_command to a script that emits
+# STABLE_GO_HEALTH_VALIDATION_VERSION, STABLE_GIT_COMMIT, and STABLE_BUILD_DATE
+# to feed the x_defs on //toolkit/cmd/go-health-validation (see toolkit/internal/version).
+# Plain builds stay unstamped and report the "dev" default.
+common:release --stamp
+# common:release --workspace_status_command=<path/to/your/workspace_status_script>
+
+# Linux release/pre-release artifacts — use this instead of stacking
+# `--config=ci --config=release` by hand:
+#   bazel build --config=release-ci --platforms=//build/platforms:linux_amd64 //toolkit/cmd/go-health-validation:go-health-validation
+#
+# Both `ci` and `release` set --workspace_status_command, and Bazel resolves
+# repeated scalar flags last-wins by position. The order must be ci-then-release
+# so release's STABLE_*-emitting script wins. The reverse
+# (`--config=release --config=ci`) silently hands the command back to ci's
+# metadata script, which emits no STABLE_* keys — yet --stamp is still active, so
+# rules_go injects empty `-X` values and the binary reports a blank version.
+# This alias pins the correct order so a caller can't invert it.
+common:release-ci --config=ci
+common:release-ci --config=release

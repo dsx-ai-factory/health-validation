@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "nvlink",
+    srcs = [
+        "measurement.go",
+        "nvlink_active.go",
+        "nvlink_bandwidth_count_speed.go",
+        "nvlink_capabilities.go",
+        "nvlink_fabric.go",
+        "nvlink_fabric_health.go",
+        "nvlink_p2p.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/catalog/nvlink",
+    visibility = ["//visibility:public"],
+    deps = ["//catalog/health"],
+)
+
+go_test(
+    name = "nvlink_test",
+    srcs = [
+        "nvlink_active_test.go",
+        "nvlink_bandwidth_count_speed_test.go",
+        "nvlink_capabilities_test.go",
+        "nvlink_fabric_health_test.go",
+        "nvlink_fabric_test.go",
+        "nvlink_p2p_test.go",
+    ],
+    deps = [
+        ":nvlink",
+        "//catalog",
+        "//catalog/health",
+    ],
+)
