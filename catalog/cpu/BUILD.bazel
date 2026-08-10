@@ -1,0 +1,28 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "cpu",
+    srcs = [
+        "cpu_count.go",
+        "doc.go",
+        "measurement.go",
+        "numa_node_count.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/catalog/cpu",
+    visibility = ["//visibility:public"],
+    deps = ["//catalog/health"],
+)
+
+go_test(
+    name = "cpu_test",
+    srcs = [
+        "cpu_count_test.go",
+        "measurement_test.go",
+        "numa_node_count_test.go",
+    ],
+    deps = [
+        ":cpu",
+        "//catalog",
+        "//catalog/health",
+    ],
+)

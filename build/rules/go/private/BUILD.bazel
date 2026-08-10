@@ -1,0 +1,2 @@
+# This package is intentionally empty. It exists to make .bzl files in
+# this directory loadable.

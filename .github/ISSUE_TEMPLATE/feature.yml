@@ -1,0 +1,51 @@
+name: Feature Request
+description: Propose a new health check, a new signal, or a behavioral improvement.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, check [existing issues](../issues) and [discussions](../discussions) to avoid duplicates.
+        For new GPU health checks, please describe the failure mode the check would detect.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What hardware failure, operational gap, or usability friction does this address?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        For new checks: what signal/measurement would be collected, what thresholds make sense,
+        and what severity should it produce?
+        For other features: describe the desired behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you think about? Why did you prefer this one?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - New health check
+        - New signal / measurement
+        - Threshold / severity change
+        - CLI / configuration
+        - Output format
+        - Documentation
+        - Other
+    validations:
+      required: true

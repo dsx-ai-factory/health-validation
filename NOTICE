@@ -1,0 +1,145 @@
+NVIDIA Health Validation
+Copyright 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+This product includes software developed by NVIDIA CORPORATION & AFFILIATES
+(https://www.nvidia.com).
+
+---
+
+Go module dependencies:
+
+  cel.dev/expr  v0.25.1
+  License:  Apache-2.0
+  URL:      https://cel.dev/expr
+
+  github.com/BurntSushi/toml  v1.4.1-0.20240526193622-a339e1f7089c
+  License:  MIT
+  URL:      https://github.com/BurntSushi/toml
+
+  github.com/NVIDIA/go-nvml  v0.13.0-1
+  License:  Apache-2.0
+  URL:      https://github.com/NVIDIA/go-nvml
+
+  github.com/antlr4-go/antlr/v4  v4.13.1
+  License:  BSD-2-Clause
+  URL:      https://github.com/antlr4-go/antlr/v4
+
+  github.com/davecgh/go-spew  v1.1.1
+  License:  ISC
+  URL:      https://github.com/davecgh/go-spew
+
+  github.com/golang/protobuf  v1.5.0
+  License:  BSD-3-Clause
+  URL:      https://github.com/golang/protobuf
+
+  github.com/google/cel-go  v0.28.0
+  License:  Apache-2.0
+  URL:      https://github.com/google/cel-go
+
+  github.com/google/go-cmp  v0.7.0
+  License:  BSD-3-Clause
+  URL:      https://github.com/google/go-cmp
+
+  github.com/google/uuid  v1.6.0
+  License:  BSD-3-Clause
+  URL:      https://github.com/google/uuid
+
+  github.com/pmezard/go-difflib  v1.0.0
+  License:  BSD-2-Clause
+  URL:      https://github.com/pmezard/go-difflib
+
+  github.com/stretchr/testify  v1.10.0
+  License:  MIT
+  URL:      https://github.com/stretchr/testify
+
+  github.com/yuin/goldmark  v1.4.13
+  License:  MIT
+  URL:      https://github.com/yuin/goldmark
+
+  go.yaml.in/yaml/v3  v3.0.4
+  License:  Apache-2.0
+  URL:      https://go.yaml.in/yaml/v3
+
+  golang.org/x/exp  v0.0.0-20240823005443-9b4947da3948
+  License:  BSD-3-Clause
+  URL:      https://golang.org/x/exp
+
+  golang.org/x/exp/typeparams  v0.0.0-20231108232855-2478ac86f678
+  License:  BSD-3-Clause
+  URL:      https://golang.org/x/exp/typeparams
+
+  golang.org/x/mod  v0.37.0
+  License:  BSD-3-Clause
+  URL:      https://golang.org/x/mod
+
+  golang.org/x/net  v0.56.0
+  License:  BSD-3-Clause
+  URL:      https://golang.org/x/net
+
+  golang.org/x/sync  v0.21.0
+  License:  BSD-3-Clause
+  URL:      https://golang.org/x/sync
+
+  golang.org/x/sys  v0.46.0
+  License:  BSD-3-Clause
+  URL:      https://golang.org/x/sys
+
+  golang.org/x/telemetry  v0.0.0-20260610154732-fb80ec83bdd9
+  License:  BSD-3-Clause
+  URL:      https://golang.org/x/telemetry
+
+  golang.org/x/text  v0.22.0
+  License:  BSD-3-Clause
+  URL:      https://golang.org/x/text
+
+  golang.org/x/tools  v0.46.0
+  License:  BSD-3-Clause
+  URL:      https://golang.org/x/tools
+
+  golang.org/x/tools/go/expect  v0.1.1-deprecated
+  License:  BSD-3-Clause
+  URL:      https://golang.org/x/tools/go/expect
+
+  google.golang.org/genproto/googleapis/api  v0.0.0-20240826202546-f6391c0de4c7
+  License:  Apache-2.0
+  URL:      https://google.golang.org/genproto/googleapis/api
+
+  google.golang.org/genproto/googleapis/rpc  v0.0.0-20240826202546-f6391c0de4c7
+  License:  Apache-2.0
+  URL:      https://google.golang.org/genproto/googleapis/rpc
+
+  google.golang.org/grpc  v1.65.0
+  License:  Apache-2.0
+  URL:      https://google.golang.org/grpc
+
+  google.golang.org/protobuf  v1.36.10
+  License:  BSD-3-Clause
+  URL:      https://google.golang.org/protobuf
+
+  gopkg.in/check.v1  v0.0.0-20161208181325-20d25e280405
+  License:  BSD-2-Clause
+  URL:      https://gopkg.in/check.v1
+
+  gopkg.in/yaml.v3  v3.0.1
+  License:  Apache-2.0
+  URL:      https://gopkg.in/yaml.v3
+
+  honnef.co/go/tools  v0.6.1
+  License:  MIT
+  URL:      https://honnef.co/go/tools
+
+---
+
+Bundled source modifications (NVIDIA-authored):
+
+  third_party/rules_go/0001-no-pie-in-normal-linkmode.patch
+  Upstream: bazelbuild/rules_go
+  Upstream URL: https://github.com/bazelbuild/rules_go
+  Upstream license: Apache-2.0
+  Description: Prevents C compiler from defaulting to PIE in Go normal link mode
+
+  third_party/gazelle/0001-parse-go-prerelease-version.patch
+  Upstream: bazel-contrib/bazel-gazelle
+  Upstream URL: https://github.com/bazel-contrib/bazel-gazelle
+  Upstream license: Apache-2.0
+  Description: Strips Go prerelease suffixes before Gazelle parses the Go minor version

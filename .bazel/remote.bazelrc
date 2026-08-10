@@ -1,0 +1,9 @@
+# Remote cache / executor configuration.
+# Configure a public remote cache here if you want OSS contributors to benefit
+# from shared caching. Without it the build falls back to local execution.
+#
+# Example (BuildBuddy free tier):
+#   build:rbe --remote_cache=grpcs://remote.buildbuddy.io
+#   build:rbe --remote_header=x-buildbuddy-api-key=<api-key>
+#
+# See https://bazel.build/remote/caching for options.

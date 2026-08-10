@@ -1,0 +1,89 @@
+{
+    "$schema": "https://raw.githubusercontent.com/theoremlp/rules_multitool/main/lockfile.schema.json",
+    "kind": {
+        "binaries": [
+            {
+                "kind": "file",
+                "url": "https://github.com/kubernetes-sigs/kind/releases/download/v0.31.0/kind-linux-arm64",
+                "sha256": "8e1014e87c34901cc422a1445866835d1e666f2a61301c27e722bdeab5a1f7e4",
+                "os": "linux",
+                "cpu": "arm64"
+            },
+            {
+                "kind": "file",
+                "url": "https://github.com/kubernetes-sigs/kind/releases/download/v0.31.0/kind-linux-amd64",
+                "sha256": "eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa",
+                "os": "linux",
+                "cpu": "x86_64"
+            },
+            {
+                "kind": "file",
+                "url": "https://github.com/kubernetes-sigs/kind/releases/download/v0.31.0/kind-darwin-arm64",
+                "sha256": "88bf554fe9da6311c9f8c2d082613c002911a476f6b5090e9420b35d84e70c5c",
+                "os": "macos",
+                "cpu": "arm64"
+            }
+        ]
+    },
+    "skaffold": {
+        "binaries": [
+            {
+                "kind": "file",
+                "url": "https://github.com/GoogleContainerTools/skaffold/releases/download/v2.17.2/skaffold-linux-arm64",
+                "sha256": "9112deec9d4176027c74b915187857840861ee47b9a866eac5c0cb6f4f547891",
+                "os": "linux",
+                "cpu": "arm64"
+            },
+            {
+                "kind": "file",
+                "url": "https://github.com/GoogleContainerTools/skaffold/releases/download/v2.17.2/skaffold-linux-amd64",
+                "sha256": "5ad1198a63a9972d5c4651cd0afc53be6eef8600b14a25d36c7d2dfe2358d0aa",
+                "os": "linux",
+                "cpu": "x86_64"
+            },
+            {
+                "kind": "file",
+                "url": "https://github.com/GoogleContainerTools/skaffold/releases/download/v2.17.2/skaffold-darwin-arm64",
+                "sha256": "de5b6771d85ae92c5a526d406ccc8810293275156299b30ce9c3deec9e3fbdfe",
+                "os": "macos",
+                "cpu": "arm64"
+            }
+        ]
+    },
+    "ruff": {
+        "binaries": [
+            {
+                "kind": "archive",
+                "url": "https://github.com/astral-sh/ruff/releases/download/0.14.14/ruff-aarch64-apple-darwin.tar.gz",
+                "sha256": "76a9b0ebe57d0eee56940dbe0b62462578d1369cca8314ed0d2a6f2102292d4f",
+                "os": "macos",
+                "cpu": "arm64",
+                "file": "ruff-aarch64-apple-darwin/ruff"
+            },
+            {
+                "kind": "archive",
+                "url": "https://github.com/astral-sh/ruff/releases/download/0.14.14/ruff-x86_64-apple-darwin.tar.gz",
+                "sha256": "749396c675c6f07205be6c4ef89e2e95123d790062d681059a355030e9d7d119",
+                "os": "macos",
+                "cpu": "x86_64",
+                "file": "ruff-x86_64-apple-darwin/ruff"
+            },
+            {
+                "kind": "archive",
+                "url": "https://github.com/astral-sh/ruff/releases/download/0.14.14/ruff-x86_64-unknown-linux-gnu.tar.gz",
+                "sha256": "9876634f799d933bdaa1de864f47d26f898b2e20aa8f4f85d63235c3a231068d",
+                "os": "linux",
+                "cpu": "x86_64",
+                "file": "ruff-x86_64-unknown-linux-gnu/ruff"
+            },
+            {
+                "kind": "archive",
+                "url": "https://github.com/astral-sh/ruff/releases/download/0.14.14/ruff-aarch64-unknown-linux-gnu.tar.gz",
+                "sha256": "1eee1ce3467fb5f348738bb5e4598859b55816a79c3cd6a26ca0dae03d7e2672",
+                "os": "linux",
+                "cpu": "arm64",
+                "file": "ruff-aarch64-unknown-linux-gnu/ruff"
+            }
+        ]
+    }
+}

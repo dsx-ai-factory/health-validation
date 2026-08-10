@@ -1,0 +1,19 @@
+load("@gazelle//:def.bzl", "DEFAULT_LANGUAGES", "gazelle", "gazelle_binary")
+
+gazelle_binary(
+    name = "gazelle_binary",
+    languages = DEFAULT_LANGUAGES,
+)
+
+gazelle(
+    name = "gazelle",
+    gazelle = ":gazelle_binary",
+)
+
+gazelle(
+    name = "ci",
+    command = "fix",
+    extra_args = ["--mode=diff"],
+    gazelle = ":gazelle_binary",
+    tags = ["test"],
+)

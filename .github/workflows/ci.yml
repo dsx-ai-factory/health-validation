@@ -1,0 +1,169 @@
+name: CI
+
+# Triggered on pushes to main and to pull-request/* branches.
+#
+# pull-request/<number> branches are created by copy-pr-bot when a pull request
+# is opened against this repository. This approach is required because NVIDIA
+# self-hosted runners live inside CorpNet and must not be triggered directly by
+# pull_request events, which can originate from untrusted forks.
+# See: https://docs.gha-runners.nvidia.com/apps/copy-pr-bot/
+on:
+  push:
+    branches:
+      - main
+      - "pull-request/[0-9]+"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel in-progress runs on pull-request branches; never cancel main.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+
+  lint:
+    # Guard: only run on the canonical repository, not forks.
+    if: github.repository == 'NVIDIA/health-validation'
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Format check
+        run: bazel test //tools/format:test
+
+      - name: Gazelle check
+        run: bazel run //tools/gazelle:ci
+
+      - name: Go mod tidy check (catalog)
+        run: cd catalog && bazel run //tools/go -- mod tidy -diff
+
+      - name: Go mod tidy check (toolkit)
+        run: cd toolkit && bazel run //tools/go -- mod tidy -diff
+
+  test:
+    if: github.repository == 'NVIDIA/health-validation'
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Test
+        run: bazel test --config=ci //...
+
+  build-amd64:
+    if: github.repository == 'NVIDIA/health-validation'
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Build (linux/amd64)
+        run: bazel build --config=ci --platforms=//build/platforms:linux_amd64 //toolkit/cmd/health-validation:health-validation
+
+  build-arm64:
+    if: github.repository == 'NVIDIA/health-validation'
+    # Run natively on an arm64 runner — no cross-compilation needed.
+    runs-on: linux-arm64-cpu4
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Build (linux/arm64)
+        run: bazel build --config=ci --platforms=//build/platforms:linux_arm64 //toolkit/cmd/health-validation:health-validation
+
+  # Scan the packaged image for known CVEs. The shared action inspects the local
+  # Docker daemon and never pulls, so the image must be loaded first — a sibling
+  # repo skipped that, silently scanned nothing, and reported green for weeks.
+  # The explicit `docker image inspect` and the status check below make that
+  # failure mode loud. amd64 only: the apt lock resolves one version per package
+  # for both arches, so arm64 reports the same CVEs.
+  scan:
+    if: github.repository == 'NVIDIA/health-validation'
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Build and load the image
+        run: |
+          bazel build --config=ci --platforms=//build/platforms:linux_amd64 \
+            //toolkit/cmd/health-validation:health-validation.image.tar
+          docker load -i \
+            bazel-bin/toolkit/cmd/health-validation/health-validation.image.local_load/tarball.tar
+          docker image inspect health-validation:latest > /dev/null
+
+      # Emits the SBOM, JSON/SARIF/table reports, and a step summary. SARIF goes
+      # to the Security tab, which is the advisory channel here — every High is
+      # visible there without failing the build.
+      - name: Grype vulnerability scan
+        id: scan
+        uses: NVIDIA/dsx-github-actions/.github/actions/security-container-scan@aa4e470cc53f3886545c7d72a984eb81f1d203e2 # v1.16.2
+        with:
+          image: health-validation:latest
+          fail-on: critical
+          fail-build: 'false'
+          generate-sbom: 'true'
+          upload-sarif: 'true'
+          sarif-category: grype-health-validation
+
+      # `ok` and `high_or_error` are the two statuses that mean Grype actually
+      # ran. Anything else (image_not_found, sbom_failed, pull_failed) means the
+      # scan produced no verdict, which must not pass as a clean result.
+      - name: Verify the scan ran
+        if: steps.scan.outputs.status != 'ok' && steps.scan.outputs.status != 'high_or_error'
+        run: |
+          echo "::error::scan did not run: ${{ steps.scan.outputs.status }} — ${{ steps.scan.outputs.detail }}"
+          exit 1
+
+      # The action has no --only-fixed, so the fixable-only gate is applied here.
+      # An unfixable Critical cannot be cleared from this repo and would wedge
+      # CI; a fixable one means bump the apt snapshot timestamp and relock, or
+      # raise the Go version for stdlib findings.
+      - name: Block on Criticals with a fix available
+        run: >
+          jq -e
+          '[.matches[] | select(.vulnerability.severity == "Critical" and .vulnerability.fix.state == "fixed")] | length == 0'
+          "${{ steps.scan.outputs.report_json }}"

@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "evaluation",
+    srcs = [
+        "evaluate.go",
+        "signals.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/catalog/internal/evaluation",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//catalog/health",
+        "//catalog/internal/celeval",
+    ],
+)

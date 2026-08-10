@@ -1,0 +1,19 @@
+build --@rules_go//go/config:linkmode=pie
+
+# `-z lazy` is an ELF-only linker flag; macOS's Mach-O linker (ld64.lld) rejects
+# `-z`, which breaks every native darwin link — including `bazel run
+# //tools/gazelle` — because PIE linkmode routes even pure-Go tool binaries
+# through the external C linker. Scope it to linux builds instead of applying it
+# globally:
+#   build:ci    — the path every linux build takes, including darwin->linux RBE
+#                 cross-builds (`--config=ci --platforms=//build/platforms:linux_*`).
+#   build:linux — native linux hosts (auto-applied by
+#                 --enable_platform_specific_config) that build without --config=ci.
+# Native darwin builds match neither, so gazelle and other host tools link clean.
+#
+# Why the flag exists at all: the hermetic LLVM toolchain hardcodes `-z relro,-z
+# now`; a trailing `-z lazy` (lld's last-wins rule for -z now/lazy) restores
+# BIND_LAZY so the NVML cgo binary still loads on GPU-less hosts (e.g. CI) where
+# libnvidia-ml.so.1 is absent. `-z relro` (Partial RELRO) is unaffected.
+build:ci --linkopt=-Wl,-z,lazy
+build:linux --linkopt=-Wl,-z,lazy

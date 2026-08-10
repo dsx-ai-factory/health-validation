@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NVIDIA/health-validation/-/raw/main/catalog/health/node-verdict.schema.json",
+  "title": "NodeVerdict",
+  "description": "The JSON a health-validation run emits: one node-level health verdict aggregating per-check results. This file documents schema_version 0.3; keep it in sync with health.NodeVerdictSchemaVersion.",
+  "$comment": "Describes NodeVerdict schema_version 0.3 (health.NodeVerdictSchemaVersion). MAJOR bumps on breaking shape changes; MINOR on additive fields/enum values.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "severity_by_domain",
+    "check_results",
+    "completion_ratio",
+    "overall_severity"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "MAJOR.MINOR contract version. Consumers must check this before acting on a verdict; an unrecognised or missing value is untrusted output.",
+      "const": "0.3"
+    },
+    "timestamp": {
+      "description": "When the node verdict was aggregated (RFC 3339).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "node_id": {
+      "description": "Opaque identifier for the node under test. Omitted when unset.",
+      "type": "string"
+    },
+    "overall_severity": {
+      "description": "Worst severity across all non-skipped checks. The authoritative health signal (the process exit code is only a coarse projection of it).",
+      "$ref": "#/$defs/severity"
+    },
+    "completion_ratio": {
+      "description": "Fraction of evaluated checks that completed (non-skipped / total). Below a configured completion threshold the overall severity becomes UNKNOWN.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "severity_by_domain": {
+      "description": "Worst severity per hardware domain among non-skipped checks. Keys are category names; may be empty.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/category" },
+      "additionalProperties": { "$ref": "#/$defs/severity" }
+    },
+    "recommended_action": {
+      "description": "Node-level remediation, chosen from the checks tied at overall_severity. Omitted when no action is recommended (operational_state none).",
+      "$ref": "#/$defs/recommendedAction"
+    },
+    "affected_components": {
+      "description": "One entry per domain with a non-PASS result. Omitted when all domains pass.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/affectedComponent" }
+    },
+    "check_results": {
+      "description": "Verdicts for every check that ran (was not skipped). May be null when no check ran.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/checkVerdict" }
+    },
+    "skipped_checks": {
+      "description": "Verdicts for checks that did not run. Excluded from overall_severity. Omitted when none were skipped.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/checkVerdict" }
+    }
+  },
+  "$defs": {
+    "checkVerdict": {
+      "type": "object",
+      "description": "The outcome of evaluating a single check.",
+      "required": [
+        "timestamp",
+        "check_id",
+        "severity",
+        "category",
+        "maturity_level",
+        "skipped",
+        "nvidia_endorsed"
+      ],
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "check_id": { "type": "string" },
+        "severity": { "$ref": "#/$defs/severity" },
+        "category": { "$ref": "#/$defs/category" },
+        "maturity_level": { "$ref": "#/$defs/maturityLevel" },
+        "skipped": {
+          "description": "True when the check did not run. A separate state from severity, not a severity level.",
+          "type": "boolean"
+        },
+        "nvidia_endorsed": {
+          "description": "True when the check definition is NVIDIA-authored.",
+          "type": "boolean"
+        },
+        "skip_reason": {
+          "description": "Machine-readable reason the check was skipped. Present only when skipped.",
+          "$ref": "#/$defs/skipReason"
+        },
+        "skip_detail": {
+          "description": "Human-readable detail for a skip. Present only when skipped.",
+          "type": "string"
+        },
+        "messages": {
+          "description": "One entry per matching rule, describing the detected condition.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "recommended_action": {
+          "description": "Remediation for this check. Omitted when none (operational_state none).",
+          "$ref": "#/$defs/recommendedAction"
+        },
+        "affected_entities": {
+          "description": "The specific entities (e.g. GPU UUIDs) this verdict implicates.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "observed_values": {
+          "description": "The signal values the rule was evaluated against, keyed by signal name.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "thresholds": {
+          "description": "The thresholds the rule resolved to, keyed by threshold name.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/resolvedThreshold" }
+        }
+      }
+    },
+    "resolvedThreshold": {
+      "type": "object",
+      "description": "A threshold value after applying any operator override.",
+      "required": ["value", "original_value", "category", "overridden"],
+      "properties": {
+        "value": {
+          "description": "The effective threshold value used in evaluation (any JSON type — the check's declared Go type).",
+          "type": ["number", "string", "boolean", "array", "object", "null"]
+        },
+        "original_value": {
+          "description": "The catalog default before any override.",
+          "type": ["number", "string", "boolean", "array", "object", "null"]
+        },
+        "category": { "$ref": "#/$defs/thresholdCategory" },
+        "overridden": {
+          "description": "True when an operator override replaced the catalog default.",
+          "type": "boolean"
+        }
+      }
+    },
+    "recommendedAction": {
+      "type": "object",
+      "description": "A remediation recommendation. diagnostic_action is present only when operational_state is drain.",
+      "required": ["operational_state"],
+      "properties": {
+        "operational_state": { "$ref": "#/$defs/operationalState" },
+        "diagnostic_action": { "$ref": "#/$defs/diagnosticAction" }
+      }
+    },
+    "affectedComponent": {
+      "type": "object",
+      "description": "Summary of one domain with non-PASS results.",
+      "required": ["check_ids", "category", "max_severity"],
+      "properties": {
+        "check_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "category": { "$ref": "#/$defs/category" },
+        "max_severity": { "$ref": "#/$defs/severity" },
+        "entities": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "severity": {
+      "description": "Graduated health severity. Ordered PASS < INFO < WARNING < CRITICAL; UNKNOWN means the check could not complete.",
+      "type": "string",
+      "enum": ["PASS", "INFO", "WARNING", "CRITICAL", "UNKNOWN"]
+    },
+    "category": {
+      "description": "Hardware/interconnect domain a check monitors.",
+      "type": "string",
+      "enum": ["gpu", "nvlink", "pcie", "infiniband", "storage", "node", "xid", "cpu"]
+    },
+    "skipReason": {
+      "description": "Machine-readable code for why a check did not run.",
+      "type": "string",
+      "enum": [
+        "NOT_SKIPPED",
+        "SIGNAL_UNAVAILABLE_ARCHITECTURE",
+        "SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL",
+        "CHECK_DISABLED",
+        "DEPENDENCY_SKIPPED",
+        "INSUFFICIENT_HISTORY",
+        "THRESHOLD_UNCONFIGURED",
+        "NO_APPLICABLE_MEASUREMENT"
+      ]
+    },
+    "maturityLevel": {
+      "description": "How production-ready a check is.",
+      "type": "string",
+      "enum": ["stable", "experimental"]
+    },
+    "thresholdCategory": {
+      "description": "Whether operators may override a threshold.",
+      "type": "string",
+      "enum": ["DEFAULT", "FIXED", "ADJUSTABLE"]
+    },
+    "operationalState": {
+      "description": "What to do with the node.",
+      "type": "string",
+      "enum": ["none", "monitor", "drain"]
+    },
+    "diagnosticAction": {
+      "description": "Diagnostic/remediation step. Emitted only alongside a drain operational_state.",
+      "type": "string",
+      "enum": [
+        "contact_support",
+        "reboot",
+        "reset_gpu",
+        "restart_app",
+        "restart_bm",
+        "restart_vm",
+        "update_swfw",
+        "check_mechanicals",
+        "check_uvm",
+        "workflow_xid_45",
+        "workflow_xid_48",
+        "workflow_nvlink_err",
+        "workflow_nvlink5_err",
+        "xid_154",
+        "retest_hardware",
+        "retry_collection",
+        "check_collection"
+      ]
+    }
+  }
+}

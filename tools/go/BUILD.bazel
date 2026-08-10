@@ -1,0 +1,4 @@
+alias(
+    name = "go",
+    actual = "@rules_go//go",
+)

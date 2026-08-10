@@ -1,0 +1,7 @@
+# Manifest and lockfile for the @journalctl apt layer (see
+# //third_party:apt.MODULE.bazel). Exported so the apt extension can read them
+# by label.
+exports_files([
+    "journalctl.yaml",
+    "journalctl.lock.json",
+])

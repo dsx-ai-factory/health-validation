@@ -1,0 +1,1531 @@
+{
+	"packages": [
+		{
+			"arch": "amd64",
+			"dependencies": [
+				{
+					"key": "mount_2.39.3-9ubuntu6.5_amd64",
+					"name": "mount",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "libsmartcols1_2.39.3-9ubuntu6.5_amd64",
+					"name": "libsmartcols1",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "libc6_2.39-0ubuntu8.8_amd64",
+					"name": "libc6",
+					"version": "2.39-0ubuntu8.8"
+				},
+				{
+					"key": "libgcc-s1_14.2.0-4ubuntu2_24.04.1_amd64",
+					"name": "libgcc-s1",
+					"version": "14.2.0-4ubuntu2~24.04.1"
+				},
+				{
+					"key": "gcc-14-base_14.2.0-4ubuntu2_24.04.1_amd64",
+					"name": "gcc-14-base",
+					"version": "14.2.0-4ubuntu2~24.04.1"
+				},
+				{
+					"key": "libselinux1_3.5-2ubuntu2.1_amd64",
+					"name": "libselinux1",
+					"version": "3.5-2ubuntu2.1"
+				},
+				{
+					"key": "libpcre2-8-0_10.42-4ubuntu2.1_amd64",
+					"name": "libpcre2-8-0",
+					"version": "10.42-4ubuntu2.1"
+				},
+				{
+					"key": "libmount1_2.39.3-9ubuntu6.5_amd64",
+					"name": "libmount1",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "libblkid1_2.39.3-9ubuntu6.5_amd64",
+					"name": "libblkid1",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "systemd-dev_255.4-1ubuntu8.16_amd64",
+					"name": "systemd-dev",
+					"version": "255.4-1ubuntu8.16"
+				},
+				{
+					"key": "libsystemd0_255.4-1ubuntu8.16_amd64",
+					"name": "libsystemd0",
+					"version": "255.4-1ubuntu8.16"
+				},
+				{
+					"key": "libzstd1_1.5.5-p-dfsg2-2build1.1_amd64",
+					"name": "libzstd1",
+					"version": "1.5.5+dfsg2-2build1.1"
+				},
+				{
+					"key": "liblzma5_5.6.1-p-really5.4.5-1ubuntu0.3_amd64",
+					"name": "liblzma5",
+					"version": "5.6.1+really5.4.5-1ubuntu0.3"
+				},
+				{
+					"key": "liblz4-1_1.9.4-1build1.1_amd64",
+					"name": "liblz4-1",
+					"version": "1.9.4-1build1.1"
+				},
+				{
+					"key": "libgcrypt20_1.10.3-2ubuntu0.1_amd64",
+					"name": "libgcrypt20",
+					"version": "1.10.3-2ubuntu0.1"
+				},
+				{
+					"key": "libgpg-error0_1.47-3build2.1_amd64",
+					"name": "libgpg-error0",
+					"version": "1.47-3build2.1"
+				},
+				{
+					"key": "libcap2_1-2.66-5ubuntu2.4_amd64",
+					"name": "libcap2",
+					"version": "1:2.66-5ubuntu2.4"
+				},
+				{
+					"key": "libsystemd-shared_255.4-1ubuntu8.16_amd64",
+					"name": "libsystemd-shared",
+					"version": "255.4-1ubuntu8.16"
+				},
+				{
+					"key": "libssl3t64_3.0.13-0ubuntu3.12_amd64",
+					"name": "libssl3t64",
+					"version": "3.0.13-0ubuntu3.12"
+				},
+				{
+					"key": "libseccomp2_2.5.5-1ubuntu3.1_amd64",
+					"name": "libseccomp2",
+					"version": "2.5.5-1ubuntu3.1"
+				},
+				{
+					"key": "libpam0g_1.5.3-5ubuntu5.6_amd64",
+					"name": "libpam0g",
+					"version": "1.5.3-5ubuntu5.6"
+				},
+				{
+					"key": "debconf_1.5.86ubuntu1_amd64",
+					"name": "debconf",
+					"version": "1.5.86ubuntu1"
+				},
+				{
+					"key": "libaudit1_1-3.1.2-2.1build1.1_amd64",
+					"name": "libaudit1",
+					"version": "1:3.1.2-2.1build1.1"
+				},
+				{
+					"key": "libcap-ng0_0.8.4-2build2_amd64",
+					"name": "libcap-ng0",
+					"version": "0.8.4-2build2"
+				},
+				{
+					"key": "libaudit-common_1-3.1.2-2.1build1.1_amd64",
+					"name": "libaudit-common",
+					"version": "1:3.1.2-2.1build1.1"
+				},
+				{
+					"key": "libkmod2_31-p-20240202-2ubuntu7.2_amd64",
+					"name": "libkmod2",
+					"version": "31+20240202-2ubuntu7.2"
+				},
+				{
+					"key": "libcrypt1_1-4.4.36-4build1_amd64",
+					"name": "libcrypt1",
+					"version": "1:4.4.36-4build1"
+				},
+				{
+					"key": "libapparmor1_4.0.1really4.0.1-0ubuntu0.24.04.7_amd64",
+					"name": "libapparmor1",
+					"version": "4.0.1really4.0.1-0ubuntu0.24.04.7"
+				},
+				{
+					"key": "libacl1_2.3.2-1build1.1_amd64",
+					"name": "libacl1",
+					"version": "2.3.2-1build1.1"
+				},
+				{
+					"key": "libfdisk1_2.39.3-9ubuntu6.5_amd64",
+					"name": "libfdisk1",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "libuuid1_2.39.3-9ubuntu6.5_amd64",
+					"name": "libuuid1",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "libcryptsetup12_2-2.7.0-1ubuntu4.2_amd64",
+					"name": "libcryptsetup12",
+					"version": "2:2.7.0-1ubuntu4.2"
+				},
+				{
+					"key": "libjson-c5_0.17-1build1_amd64",
+					"name": "libjson-c5",
+					"version": "0.17-1build1"
+				},
+				{
+					"key": "libdevmapper1.02.1_2-1.02.185-3ubuntu3.2_amd64",
+					"name": "libdevmapper1.02.1",
+					"version": "2:1.02.185-3ubuntu3.2"
+				},
+				{
+					"key": "libudev1_255.4-1ubuntu8.16_amd64",
+					"name": "libudev1",
+					"version": "255.4-1ubuntu8.16"
+				},
+				{
+					"key": "libargon2-1_0_20190702-p-dfsg-4build1_amd64",
+					"name": "libargon2-1",
+					"version": "0~20190702+dfsg-4build1"
+				}
+			],
+			"key": "systemd_255.4-1ubuntu8.16_amd64",
+			"name": "systemd",
+			"sha256": "07556c25437a2a33a08d1b85f7c4cd6f0f8db4e6a0f871ff960e981c20b1324f",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/systemd_255.4-1ubuntu8.16_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/systemd_255.4-1ubuntu8.16_amd64.deb"
+			],
+			"version": "255.4-1ubuntu8.16"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "mount_2.39.3-9ubuntu6.5_amd64",
+			"name": "mount",
+			"sha256": "84d1eeed7c94f51165c1fe9e19aa6bafdc0629d35337efd92827c260c2a7be02",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/mount_2.39.3-9ubuntu6.5_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/mount_2.39.3-9ubuntu6.5_amd64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libsmartcols1_2.39.3-9ubuntu6.5_amd64",
+			"name": "libsmartcols1",
+			"sha256": "c0ab7426300c645ac84d195134143866bd0d6bd33831df3d63d5ab29994984ca",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libsmartcols1_2.39.3-9ubuntu6.5_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/libsmartcols1_2.39.3-9ubuntu6.5_amd64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libc6_2.39-0ubuntu8.8_amd64",
+			"name": "libc6",
+			"sha256": "3b8d5391b6b484a4c81fd000b6064885ad967ec3cb966bc57603f3fb3ebf0ed5",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/g/glibc/libc6_2.39-0ubuntu8.8_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/g/glibc/libc6_2.39-0ubuntu8.8_amd64.deb"
+			],
+			"version": "2.39-0ubuntu8.8"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libgcc-s1_14.2.0-4ubuntu2_24.04.1_amd64",
+			"name": "libgcc-s1",
+			"sha256": "aa7fadbe33b78bcf99885318040601c550c208929565b179891d9a3cc2aa68cd",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/libgcc-s1_14.2.0-4ubuntu2~24.04.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/g/gcc-14/libgcc-s1_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+			],
+			"version": "14.2.0-4ubuntu2~24.04.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "gcc-14-base_14.2.0-4ubuntu2_24.04.1_amd64",
+			"name": "gcc-14-base",
+			"sha256": "b95c172411a7fdae70307cf33a9f5320ba5e056b556454543dd5b679d5ce1c4f",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/gcc-14-base_14.2.0-4ubuntu2~24.04.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/g/gcc-14/gcc-14-base_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+			],
+			"version": "14.2.0-4ubuntu2~24.04.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libselinux1_3.5-2ubuntu2.1_amd64",
+			"name": "libselinux1",
+			"sha256": "6abaa6c26f46ef17764c4a753e0e84de1cdadde5634fd2987621fdc617988d19",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libs/libselinux/libselinux1_3.5-2ubuntu2.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libs/libselinux/libselinux1_3.5-2ubuntu2.1_amd64.deb"
+			],
+			"version": "3.5-2ubuntu2.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libpcre2-8-0_10.42-4ubuntu2.1_amd64",
+			"name": "libpcre2-8-0",
+			"sha256": "110a797a57673d3ee497a141cf988199258058c57525799c63194d81822529a0",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/p/pcre2/libpcre2-8-0_10.42-4ubuntu2.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/p/pcre2/libpcre2-8-0_10.42-4ubuntu2.1_amd64.deb"
+			],
+			"version": "10.42-4ubuntu2.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libmount1_2.39.3-9ubuntu6.5_amd64",
+			"name": "libmount1",
+			"sha256": "7ca31424fbfc96fbf245e6fe232fd2d2ec74169ca1add968e1987bece5bc0d1f",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libmount1_2.39.3-9ubuntu6.5_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/libmount1_2.39.3-9ubuntu6.5_amd64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libblkid1_2.39.3-9ubuntu6.5_amd64",
+			"name": "libblkid1",
+			"sha256": "2307a9ed92642a69de0284ac63e233e45ac5a2c3831f04399f7d212379487e82",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libblkid1_2.39.3-9ubuntu6.5_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/libblkid1_2.39.3-9ubuntu6.5_amd64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "systemd-dev_255.4-1ubuntu8.16_amd64",
+			"name": "systemd-dev",
+			"sha256": "5101b12b0ac1a29ae213335138627530fa2c0b4f554f68f1b84fdb7a57ba540f",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/systemd-dev_255.4-1ubuntu8.16_all.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/systemd-dev_255.4-1ubuntu8.16_all.deb"
+			],
+			"version": "255.4-1ubuntu8.16"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libsystemd0_255.4-1ubuntu8.16_amd64",
+			"name": "libsystemd0",
+			"sha256": "4e0725897956758878bba967502f22fcc7662636ca1d7e63f61af210e770f928",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/libsystemd0_255.4-1ubuntu8.16_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/libsystemd0_255.4-1ubuntu8.16_amd64.deb"
+			],
+			"version": "255.4-1ubuntu8.16"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libzstd1_1.5.5-p-dfsg2-2build1.1_amd64",
+			"name": "libzstd1",
+			"sha256": "dfcf25061e07aad7efd3f4f880ba5ad4d4d09ebe7fc8cc77ab6b8a161d6d4727",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libz/libzstd/libzstd1_1.5.5+dfsg2-2build1.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libz/libzstd/libzstd1_1.5.5+dfsg2-2build1.1_amd64.deb"
+			],
+			"version": "1.5.5+dfsg2-2build1.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "liblzma5_5.6.1-p-really5.4.5-1ubuntu0.3_amd64",
+			"name": "liblzma5",
+			"sha256": "d2eabd41ca77d2c2dd9d5d4ef478cccb64ffde6279c47cf4699a857d46785a52",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/x/xz-utils/liblzma5_5.6.1+really5.4.5-1ubuntu0.3_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/x/xz-utils/liblzma5_5.6.1+really5.4.5-1ubuntu0.3_amd64.deb"
+			],
+			"version": "5.6.1+really5.4.5-1ubuntu0.3"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "liblz4-1_1.9.4-1build1.1_amd64",
+			"name": "liblz4-1",
+			"sha256": "319331270d5cc52d5ebffe51c941d7b01b432bc402c2924b557209a64d4ecbad",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/l/lz4/liblz4-1_1.9.4-1build1.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/l/lz4/liblz4-1_1.9.4-1build1.1_amd64.deb"
+			],
+			"version": "1.9.4-1build1.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libgcrypt20_1.10.3-2ubuntu0.1_amd64",
+			"name": "libgcrypt20",
+			"sha256": "69569eb6b4ab1de6dad556d06cabb236b9a8b07145edf18197256a0dedfaabc9",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libg/libgcrypt20/libgcrypt20_1.10.3-2ubuntu0.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libg/libgcrypt20/libgcrypt20_1.10.3-2ubuntu0.1_amd64.deb"
+			],
+			"version": "1.10.3-2ubuntu0.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libgpg-error0_1.47-3build2.1_amd64",
+			"name": "libgpg-error0",
+			"sha256": "93654ee8180a73a0363f25c51dc673d67cbabcbecd164187b8a2deb54d007aef",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libg/libgpg-error/libgpg-error0_1.47-3build2.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libg/libgpg-error/libgpg-error0_1.47-3build2.1_amd64.deb"
+			],
+			"version": "1.47-3build2.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libcap2_1-2.66-5ubuntu2.4_amd64",
+			"name": "libcap2",
+			"sha256": "23c627c77c66552a658e62852f244f4946dc543898e0ec5428d5dc6bffde2d6a",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libc/libcap2/libcap2_2.66-5ubuntu2.4_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libc/libcap2/libcap2_2.66-5ubuntu2.4_amd64.deb"
+			],
+			"version": "1:2.66-5ubuntu2.4"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libsystemd-shared_255.4-1ubuntu8.16_amd64",
+			"name": "libsystemd-shared",
+			"sha256": "85e90811691fb98fdf0deee5796c086911763bcf7136623dbfa1a32770ea24ce",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/libsystemd-shared_255.4-1ubuntu8.16_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/libsystemd-shared_255.4-1ubuntu8.16_amd64.deb"
+			],
+			"version": "255.4-1ubuntu8.16"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libssl3t64_3.0.13-0ubuntu3.12_amd64",
+			"name": "libssl3t64",
+			"sha256": "6a963adb1106fca567d24d4a1e5da0bad25de79ac2564cd1ba846e677e1c951b",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.12_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.12_amd64.deb"
+			],
+			"version": "3.0.13-0ubuntu3.12"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libseccomp2_2.5.5-1ubuntu3.1_amd64",
+			"name": "libseccomp2",
+			"sha256": "33fc96f1e008d27c042a3db9bcd16f7f4d49e866f7a3141b758a799328dbdc3f",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libs/libseccomp/libseccomp2_2.5.5-1ubuntu3.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libs/libseccomp/libseccomp2_2.5.5-1ubuntu3.1_amd64.deb"
+			],
+			"version": "2.5.5-1ubuntu3.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libpam0g_1.5.3-5ubuntu5.6_amd64",
+			"name": "libpam0g",
+			"sha256": "d803be0d019a4d76e11c040d589c58acb50cf39496b7af20540ead4ae1d6a4d4",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.6_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.6_amd64.deb"
+			],
+			"version": "1.5.3-5ubuntu5.6"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "debconf_1.5.86ubuntu1_amd64",
+			"name": "debconf",
+			"sha256": "bb390da466a7461bfc87aa3e6b7cd145dae84af3e26bf437f2c0c218ba226294",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/d/debconf/debconf_1.5.86ubuntu1_all.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/d/debconf/debconf_1.5.86ubuntu1_all.deb"
+			],
+			"version": "1.5.86ubuntu1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libaudit1_1-3.1.2-2.1build1.1_amd64",
+			"name": "libaudit1",
+			"sha256": "408457f91745dd33746d24d063986df96a81166d6a59431583073398cefa1301",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/a/audit/libaudit1_3.1.2-2.1build1.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/a/audit/libaudit1_3.1.2-2.1build1.1_amd64.deb"
+			],
+			"version": "1:3.1.2-2.1build1.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libcap-ng0_0.8.4-2build2_amd64",
+			"name": "libcap-ng0",
+			"sha256": "cf1e9437ac7ddf6539dbe87b68858cbdef84d78c6aac243ab3b6e564a52ed930",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libc/libcap-ng/libcap-ng0_0.8.4-2build2_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libc/libcap-ng/libcap-ng0_0.8.4-2build2_amd64.deb"
+			],
+			"version": "0.8.4-2build2"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libaudit-common_1-3.1.2-2.1build1.1_amd64",
+			"name": "libaudit-common",
+			"sha256": "c8ab5bed96f9781daab7c36fcbe4b12c3f3247a37256c0e341dc827db1e9a010",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/a/audit/libaudit-common_3.1.2-2.1build1.1_all.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/a/audit/libaudit-common_3.1.2-2.1build1.1_all.deb"
+			],
+			"version": "1:3.1.2-2.1build1.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libkmod2_31-p-20240202-2ubuntu7.2_amd64",
+			"name": "libkmod2",
+			"sha256": "a9cbdc424bc0a5c8af3d6445488a48de76df5ff4d76b7dab8aaf88f712358bbc",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/k/kmod/libkmod2_31+20240202-2ubuntu7.2_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/k/kmod/libkmod2_31+20240202-2ubuntu7.2_amd64.deb"
+			],
+			"version": "31+20240202-2ubuntu7.2"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libcrypt1_1-4.4.36-4build1_amd64",
+			"name": "libcrypt1",
+			"sha256": "9474785cd6f398512bf8c305c3901dbb111569dccb6f5832002373c0a8ac5832",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libx/libxcrypt/libcrypt1_4.4.36-4build1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libx/libxcrypt/libcrypt1_4.4.36-4build1_amd64.deb"
+			],
+			"version": "1:4.4.36-4build1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libapparmor1_4.0.1really4.0.1-0ubuntu0.24.04.7_amd64",
+			"name": "libapparmor1",
+			"sha256": "4205351c37f4e813f1ca81b6d59a00071f0f70869e652f4ab9e5ba7e5e895d34",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/a/apparmor/libapparmor1_4.0.1really4.0.1-0ubuntu0.24.04.7_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/a/apparmor/libapparmor1_4.0.1really4.0.1-0ubuntu0.24.04.7_amd64.deb"
+			],
+			"version": "4.0.1really4.0.1-0ubuntu0.24.04.7"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libacl1_2.3.2-1build1.1_amd64",
+			"name": "libacl1",
+			"sha256": "f2bfd3f8f00413d5f1f04fc723063803c56ac0f1e0efae3bc41f2d7276972ec3",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/a/acl/libacl1_2.3.2-1build1.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/a/acl/libacl1_2.3.2-1build1.1_amd64.deb"
+			],
+			"version": "2.3.2-1build1.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libfdisk1_2.39.3-9ubuntu6.5_amd64",
+			"name": "libfdisk1",
+			"sha256": "a67f2ed8b8a0323ab3c1e33a8caf81b9bf8ceb1d3586ec5600f40e1406c48f6a",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libfdisk1_2.39.3-9ubuntu6.5_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/libfdisk1_2.39.3-9ubuntu6.5_amd64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libuuid1_2.39.3-9ubuntu6.5_amd64",
+			"name": "libuuid1",
+			"sha256": "2f801582b5f0e7cb0c2d3d3651193e69f4540ee3b7dcb6079a3562f0880b9edf",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libuuid1_2.39.3-9ubuntu6.5_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/libuuid1_2.39.3-9ubuntu6.5_amd64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libcryptsetup12_2-2.7.0-1ubuntu4.2_amd64",
+			"name": "libcryptsetup12",
+			"sha256": "f6f6a7f35104da711997b52c92ab91ce1f47dd039d276d5beb797d713447c9f2",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/c/cryptsetup/libcryptsetup12_2.7.0-1ubuntu4.2_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/c/cryptsetup/libcryptsetup12_2.7.0-1ubuntu4.2_amd64.deb"
+			],
+			"version": "2:2.7.0-1ubuntu4.2"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libjson-c5_0.17-1build1_amd64",
+			"name": "libjson-c5",
+			"sha256": "3ac608d78e9e981e14ba7ceb141a46e3dd3ae8d6dbb3a7ecafd2698fe9930584",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/j/json-c/libjson-c5_0.17-1build1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/j/json-c/libjson-c5_0.17-1build1_amd64.deb"
+			],
+			"version": "0.17-1build1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libdevmapper1.02.1_2-1.02.185-3ubuntu3.2_amd64",
+			"name": "libdevmapper1.02.1",
+			"sha256": "0d43a02b9030a50edbc49c9580f88f01eef2b043baad1c6200672c39643c0efe",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/l/lvm2/libdevmapper1.02.1_1.02.185-3ubuntu3.2_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/l/lvm2/libdevmapper1.02.1_1.02.185-3ubuntu3.2_amd64.deb"
+			],
+			"version": "2:1.02.185-3ubuntu3.2"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libudev1_255.4-1ubuntu8.16_amd64",
+			"name": "libudev1",
+			"sha256": "daab71b9b009bc72bddccecc1c2399ad0ef8151eb0421452fe03f39c23fb1412",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/libudev1_255.4-1ubuntu8.16_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/libudev1_255.4-1ubuntu8.16_amd64.deb"
+			],
+			"version": "255.4-1ubuntu8.16"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libargon2-1_0_20190702-p-dfsg-4build1_amd64",
+			"name": "libargon2-1",
+			"sha256": "e2c50cb5c50ca598585397f4d4ce43e6f0b5e3ddc212c23b30bdb34ca4a61f66",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/a/argon2/libargon2-1_0~20190702+dfsg-4build1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/a/argon2/libargon2-1_0~20190702+dfsg-4build1_amd64.deb"
+			],
+			"version": "0~20190702+dfsg-4build1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [
+				{
+					"key": "dpkg_1.22.6ubuntu6.6_amd64",
+					"name": "dpkg",
+					"version": "1.22.6ubuntu6.6"
+				},
+				{
+					"key": "tar_1.35-p-dfsg-3ubuntu0.4_amd64",
+					"name": "tar",
+					"version": "1.35+dfsg-3ubuntu0.4"
+				},
+				{
+					"key": "libselinux1_3.5-2ubuntu2.1_amd64",
+					"name": "libselinux1",
+					"version": "3.5-2ubuntu2.1"
+				},
+				{
+					"key": "libpcre2-8-0_10.42-4ubuntu2.1_amd64",
+					"name": "libpcre2-8-0",
+					"version": "10.42-4ubuntu2.1"
+				},
+				{
+					"key": "libc6_2.39-0ubuntu8.8_amd64",
+					"name": "libc6",
+					"version": "2.39-0ubuntu8.8"
+				},
+				{
+					"key": "libgcc-s1_14.2.0-4ubuntu2_24.04.1_amd64",
+					"name": "libgcc-s1",
+					"version": "14.2.0-4ubuntu2~24.04.1"
+				},
+				{
+					"key": "gcc-14-base_14.2.0-4ubuntu2_24.04.1_amd64",
+					"name": "gcc-14-base",
+					"version": "14.2.0-4ubuntu2~24.04.1"
+				},
+				{
+					"key": "libacl1_2.3.2-1build1.1_amd64",
+					"name": "libacl1",
+					"version": "2.3.2-1build1.1"
+				},
+				{
+					"key": "zlib1g_1-1.3.dfsg-3.1ubuntu2.1_amd64",
+					"name": "zlib1g",
+					"version": "1:1.3.dfsg-3.1ubuntu2.1"
+				},
+				{
+					"key": "libzstd1_1.5.5-p-dfsg2-2build1.1_amd64",
+					"name": "libzstd1",
+					"version": "1.5.5+dfsg2-2build1.1"
+				},
+				{
+					"key": "libmd0_1.1.0-2build1.1_amd64",
+					"name": "libmd0",
+					"version": "1.1.0-2build1.1"
+				},
+				{
+					"key": "liblzma5_5.6.1-p-really5.4.5-1ubuntu0.3_amd64",
+					"name": "liblzma5",
+					"version": "5.6.1+really5.4.5-1ubuntu0.3"
+				},
+				{
+					"key": "libbz2-1.0_1.0.8-5.1build0.1_amd64",
+					"name": "libbz2-1.0",
+					"version": "1.0.8-5.1build0.1"
+				}
+			],
+			"key": "gzip_1.12-1ubuntu3.2_amd64",
+			"name": "gzip",
+			"sha256": "4067522fbffe22672e4cf683bfc32e4a304bc872cf76f10049ab36d1a9eedb91",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/g/gzip/gzip_1.12-1ubuntu3.2_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/g/gzip/gzip_1.12-1ubuntu3.2_amd64.deb"
+			],
+			"version": "1.12-1ubuntu3.2"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "dpkg_1.22.6ubuntu6.6_amd64",
+			"name": "dpkg",
+			"sha256": "ceb6aa4da59fbcb8a3b0549b4280c60b7d849b519859797c8668bdfbe378fb3b",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/d/dpkg/dpkg_1.22.6ubuntu6.6_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/d/dpkg/dpkg_1.22.6ubuntu6.6_amd64.deb"
+			],
+			"version": "1.22.6ubuntu6.6"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "tar_1.35-p-dfsg-3ubuntu0.4_amd64",
+			"name": "tar",
+			"sha256": "fdf41a87936824e50c8ac11b0b22d1395aeb0754feef2dae5575b5d5a93793ec",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/t/tar/tar_1.35+dfsg-3ubuntu0.4_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/t/tar/tar_1.35+dfsg-3ubuntu0.4_amd64.deb"
+			],
+			"version": "1.35+dfsg-3ubuntu0.4"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "zlib1g_1-1.3.dfsg-3.1ubuntu2.1_amd64",
+			"name": "zlib1g",
+			"sha256": "7074b6a2f6367a10d280c00a1cb02e74277709180bab4f2491a2f355ab2d6c20",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_amd64.deb"
+			],
+			"version": "1:1.3.dfsg-3.1ubuntu2.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libmd0_1.1.0-2build1.1_amd64",
+			"name": "libmd0",
+			"sha256": "e5ba01d3c41f256aaf57ec59aa0554857162e3e7f97cdfbff1ed2c0e8d720ee7",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libm/libmd/libmd0_1.1.0-2build1.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libm/libmd/libmd0_1.1.0-2build1.1_amd64.deb"
+			],
+			"version": "1.1.0-2build1.1"
+		},
+		{
+			"arch": "amd64",
+			"dependencies": [],
+			"key": "libbz2-1.0_1.0.8-5.1build0.1_amd64",
+			"name": "libbz2-1.0",
+			"sha256": "d557ab12b42ab370249142099fae3cbb979948934e4dfa58c2ab59bf5bbbda73",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/b/bzip2/libbz2-1.0_1.0.8-5.1build0.1_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/b/bzip2/libbz2-1.0_1.0.8-5.1build0.1_amd64.deb"
+			],
+			"version": "1.0.8-5.1build0.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [
+				{
+					"key": "mount_2.39.3-9ubuntu6.5_arm64",
+					"name": "mount",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "libsmartcols1_2.39.3-9ubuntu6.5_arm64",
+					"name": "libsmartcols1",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "libc6_2.39-0ubuntu8.8_arm64",
+					"name": "libc6",
+					"version": "2.39-0ubuntu8.8"
+				},
+				{
+					"key": "libgcc-s1_14.2.0-4ubuntu2_24.04.1_arm64",
+					"name": "libgcc-s1",
+					"version": "14.2.0-4ubuntu2~24.04.1"
+				},
+				{
+					"key": "gcc-14-base_14.2.0-4ubuntu2_24.04.1_arm64",
+					"name": "gcc-14-base",
+					"version": "14.2.0-4ubuntu2~24.04.1"
+				},
+				{
+					"key": "libselinux1_3.5-2ubuntu2.1_arm64",
+					"name": "libselinux1",
+					"version": "3.5-2ubuntu2.1"
+				},
+				{
+					"key": "libpcre2-8-0_10.42-4ubuntu2.1_arm64",
+					"name": "libpcre2-8-0",
+					"version": "10.42-4ubuntu2.1"
+				},
+				{
+					"key": "libmount1_2.39.3-9ubuntu6.5_arm64",
+					"name": "libmount1",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "libblkid1_2.39.3-9ubuntu6.5_arm64",
+					"name": "libblkid1",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "systemd-dev_255.4-1ubuntu8.16_arm64",
+					"name": "systemd-dev",
+					"version": "255.4-1ubuntu8.16"
+				},
+				{
+					"key": "libsystemd0_255.4-1ubuntu8.16_arm64",
+					"name": "libsystemd0",
+					"version": "255.4-1ubuntu8.16"
+				},
+				{
+					"key": "libzstd1_1.5.5-p-dfsg2-2build1.1_arm64",
+					"name": "libzstd1",
+					"version": "1.5.5+dfsg2-2build1.1"
+				},
+				{
+					"key": "liblzma5_5.6.1-p-really5.4.5-1ubuntu0.3_arm64",
+					"name": "liblzma5",
+					"version": "5.6.1+really5.4.5-1ubuntu0.3"
+				},
+				{
+					"key": "liblz4-1_1.9.4-1build1.1_arm64",
+					"name": "liblz4-1",
+					"version": "1.9.4-1build1.1"
+				},
+				{
+					"key": "libgcrypt20_1.10.3-2ubuntu0.1_arm64",
+					"name": "libgcrypt20",
+					"version": "1.10.3-2ubuntu0.1"
+				},
+				{
+					"key": "libgpg-error0_1.47-3build2.1_arm64",
+					"name": "libgpg-error0",
+					"version": "1.47-3build2.1"
+				},
+				{
+					"key": "libcap2_1-2.66-5ubuntu2.4_arm64",
+					"name": "libcap2",
+					"version": "1:2.66-5ubuntu2.4"
+				},
+				{
+					"key": "libsystemd-shared_255.4-1ubuntu8.16_arm64",
+					"name": "libsystemd-shared",
+					"version": "255.4-1ubuntu8.16"
+				},
+				{
+					"key": "libssl3t64_3.0.13-0ubuntu3.12_arm64",
+					"name": "libssl3t64",
+					"version": "3.0.13-0ubuntu3.12"
+				},
+				{
+					"key": "libseccomp2_2.5.5-1ubuntu3.1_arm64",
+					"name": "libseccomp2",
+					"version": "2.5.5-1ubuntu3.1"
+				},
+				{
+					"key": "libpam0g_1.5.3-5ubuntu5.6_arm64",
+					"name": "libpam0g",
+					"version": "1.5.3-5ubuntu5.6"
+				},
+				{
+					"key": "debconf_1.5.86ubuntu1_arm64",
+					"name": "debconf",
+					"version": "1.5.86ubuntu1"
+				},
+				{
+					"key": "libaudit1_1-3.1.2-2.1build1.1_arm64",
+					"name": "libaudit1",
+					"version": "1:3.1.2-2.1build1.1"
+				},
+				{
+					"key": "libcap-ng0_0.8.4-2build2_arm64",
+					"name": "libcap-ng0",
+					"version": "0.8.4-2build2"
+				},
+				{
+					"key": "libaudit-common_1-3.1.2-2.1build1.1_arm64",
+					"name": "libaudit-common",
+					"version": "1:3.1.2-2.1build1.1"
+				},
+				{
+					"key": "libkmod2_31-p-20240202-2ubuntu7.2_arm64",
+					"name": "libkmod2",
+					"version": "31+20240202-2ubuntu7.2"
+				},
+				{
+					"key": "libcrypt1_1-4.4.36-4build1_arm64",
+					"name": "libcrypt1",
+					"version": "1:4.4.36-4build1"
+				},
+				{
+					"key": "libapparmor1_4.0.1really4.0.1-0ubuntu0.24.04.7_arm64",
+					"name": "libapparmor1",
+					"version": "4.0.1really4.0.1-0ubuntu0.24.04.7"
+				},
+				{
+					"key": "libacl1_2.3.2-1build1.1_arm64",
+					"name": "libacl1",
+					"version": "2.3.2-1build1.1"
+				},
+				{
+					"key": "libfdisk1_2.39.3-9ubuntu6.5_arm64",
+					"name": "libfdisk1",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "libuuid1_2.39.3-9ubuntu6.5_arm64",
+					"name": "libuuid1",
+					"version": "2.39.3-9ubuntu6.5"
+				},
+				{
+					"key": "libcryptsetup12_2-2.7.0-1ubuntu4.2_arm64",
+					"name": "libcryptsetup12",
+					"version": "2:2.7.0-1ubuntu4.2"
+				},
+				{
+					"key": "libjson-c5_0.17-1build1_arm64",
+					"name": "libjson-c5",
+					"version": "0.17-1build1"
+				},
+				{
+					"key": "libdevmapper1.02.1_2-1.02.185-3ubuntu3.2_arm64",
+					"name": "libdevmapper1.02.1",
+					"version": "2:1.02.185-3ubuntu3.2"
+				},
+				{
+					"key": "libudev1_255.4-1ubuntu8.16_arm64",
+					"name": "libudev1",
+					"version": "255.4-1ubuntu8.16"
+				},
+				{
+					"key": "libargon2-1_0_20190702-p-dfsg-4build1_arm64",
+					"name": "libargon2-1",
+					"version": "0~20190702+dfsg-4build1"
+				}
+			],
+			"key": "systemd_255.4-1ubuntu8.16_arm64",
+			"name": "systemd",
+			"sha256": "37f1261b595eb485464e29ced7182110cec8eb5f47c88cbe6b0fd6b50b5f0550",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/systemd_255.4-1ubuntu8.16_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/systemd_255.4-1ubuntu8.16_arm64.deb"
+			],
+			"version": "255.4-1ubuntu8.16"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "mount_2.39.3-9ubuntu6.5_arm64",
+			"name": "mount",
+			"sha256": "e713e8d2bcb6ea1a08a36456754698d0932d0d02d38135becb1c25f80307abfa",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/mount_2.39.3-9ubuntu6.5_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/mount_2.39.3-9ubuntu6.5_arm64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libsmartcols1_2.39.3-9ubuntu6.5_arm64",
+			"name": "libsmartcols1",
+			"sha256": "f99cddae09c2e37b5c16dcc5ab47a67196d5be1d5cce875578728f8e9bbd6d3d",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libsmartcols1_2.39.3-9ubuntu6.5_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/libsmartcols1_2.39.3-9ubuntu6.5_arm64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libc6_2.39-0ubuntu8.8_arm64",
+			"name": "libc6",
+			"sha256": "2c6010da71b668e210aedaaac2b71fca3eef810e331710dd7c02b8c40ea16de8",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/g/glibc/libc6_2.39-0ubuntu8.8_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/g/glibc/libc6_2.39-0ubuntu8.8_arm64.deb"
+			],
+			"version": "2.39-0ubuntu8.8"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libgcc-s1_14.2.0-4ubuntu2_24.04.1_arm64",
+			"name": "libgcc-s1",
+			"sha256": "5b191f79ad985a9a653dbba45214619f729f9178a9bdf92f7c68db06c50d070b",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/libgcc-s1_14.2.0-4ubuntu2~24.04.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/g/gcc-14/libgcc-s1_14.2.0-4ubuntu2~24.04.1_arm64.deb"
+			],
+			"version": "14.2.0-4ubuntu2~24.04.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "gcc-14-base_14.2.0-4ubuntu2_24.04.1_arm64",
+			"name": "gcc-14-base",
+			"sha256": "bddbe21061fdc73a23e7de79ece91693bf61aa22d634d1c69c5048385c114968",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/gcc-14-base_14.2.0-4ubuntu2~24.04.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/g/gcc-14/gcc-14-base_14.2.0-4ubuntu2~24.04.1_arm64.deb"
+			],
+			"version": "14.2.0-4ubuntu2~24.04.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libselinux1_3.5-2ubuntu2.1_arm64",
+			"name": "libselinux1",
+			"sha256": "56630c4f009754e76808bf755072e634f8785a4dfbc8b1445213149e682f1502",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libs/libselinux/libselinux1_3.5-2ubuntu2.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libs/libselinux/libselinux1_3.5-2ubuntu2.1_arm64.deb"
+			],
+			"version": "3.5-2ubuntu2.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libpcre2-8-0_10.42-4ubuntu2.1_arm64",
+			"name": "libpcre2-8-0",
+			"sha256": "7581764969752953aa1f991ce143bea594d2c5d0c36c2cc98c3c614c172aba93",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/p/pcre2/libpcre2-8-0_10.42-4ubuntu2.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/p/pcre2/libpcre2-8-0_10.42-4ubuntu2.1_arm64.deb"
+			],
+			"version": "10.42-4ubuntu2.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libmount1_2.39.3-9ubuntu6.5_arm64",
+			"name": "libmount1",
+			"sha256": "13f0e4cd6c28071a5350d605d00a49c20c1b2f3d17cd3c0c277ab93cc12e5507",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libmount1_2.39.3-9ubuntu6.5_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/libmount1_2.39.3-9ubuntu6.5_arm64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libblkid1_2.39.3-9ubuntu6.5_arm64",
+			"name": "libblkid1",
+			"sha256": "23415b36b03986f5babdae894254b125420da66e59b6fefe12d7766dea21085d",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libblkid1_2.39.3-9ubuntu6.5_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/libblkid1_2.39.3-9ubuntu6.5_arm64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "systemd-dev_255.4-1ubuntu8.16_arm64",
+			"name": "systemd-dev",
+			"sha256": "5101b12b0ac1a29ae213335138627530fa2c0b4f554f68f1b84fdb7a57ba540f",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/systemd-dev_255.4-1ubuntu8.16_all.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/systemd-dev_255.4-1ubuntu8.16_all.deb"
+			],
+			"version": "255.4-1ubuntu8.16"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libsystemd0_255.4-1ubuntu8.16_arm64",
+			"name": "libsystemd0",
+			"sha256": "4a4705570bbfcc279dc7a82419b412e3594f53697903ad8c72c4bcee1b4c2033",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/libsystemd0_255.4-1ubuntu8.16_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/libsystemd0_255.4-1ubuntu8.16_arm64.deb"
+			],
+			"version": "255.4-1ubuntu8.16"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libzstd1_1.5.5-p-dfsg2-2build1.1_arm64",
+			"name": "libzstd1",
+			"sha256": "ea7d6e9fde577ea14dbf07fdfb74d6287eb09c6cba4a9d63abdcb87b0ec54bcc",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libz/libzstd/libzstd1_1.5.5+dfsg2-2build1.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libz/libzstd/libzstd1_1.5.5+dfsg2-2build1.1_arm64.deb"
+			],
+			"version": "1.5.5+dfsg2-2build1.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "liblzma5_5.6.1-p-really5.4.5-1ubuntu0.3_arm64",
+			"name": "liblzma5",
+			"sha256": "2f58fd7de725efd0dbebe9d4442049fdacd7c2e8242f4288a13a688d50507245",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/x/xz-utils/liblzma5_5.6.1+really5.4.5-1ubuntu0.3_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/x/xz-utils/liblzma5_5.6.1+really5.4.5-1ubuntu0.3_arm64.deb"
+			],
+			"version": "5.6.1+really5.4.5-1ubuntu0.3"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "liblz4-1_1.9.4-1build1.1_arm64",
+			"name": "liblz4-1",
+			"sha256": "65ab8cfe4aeb8205ef4f980500d2c8cb397cb49901ef12efad59f4ed7685cbe0",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/l/lz4/liblz4-1_1.9.4-1build1.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/l/lz4/liblz4-1_1.9.4-1build1.1_arm64.deb"
+			],
+			"version": "1.9.4-1build1.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libgcrypt20_1.10.3-2ubuntu0.1_arm64",
+			"name": "libgcrypt20",
+			"sha256": "81ca7c907a2d35f00a9bf0514e1b484821a125f8cd1c8503f1a808d143e4c87f",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libg/libgcrypt20/libgcrypt20_1.10.3-2ubuntu0.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libg/libgcrypt20/libgcrypt20_1.10.3-2ubuntu0.1_arm64.deb"
+			],
+			"version": "1.10.3-2ubuntu0.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libgpg-error0_1.47-3build2.1_arm64",
+			"name": "libgpg-error0",
+			"sha256": "cb14ae76d098421ee58c0b6796ce836a9fd386fa4824894a029089062b485b09",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libg/libgpg-error/libgpg-error0_1.47-3build2.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libg/libgpg-error/libgpg-error0_1.47-3build2.1_arm64.deb"
+			],
+			"version": "1.47-3build2.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libcap2_1-2.66-5ubuntu2.4_arm64",
+			"name": "libcap2",
+			"sha256": "3c4459762b9ee61c773209bc45db1ca7cf34e1254cc047260d309a8db11b3490",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libc/libcap2/libcap2_2.66-5ubuntu2.4_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libc/libcap2/libcap2_2.66-5ubuntu2.4_arm64.deb"
+			],
+			"version": "1:2.66-5ubuntu2.4"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libsystemd-shared_255.4-1ubuntu8.16_arm64",
+			"name": "libsystemd-shared",
+			"sha256": "72eb297686d15700977b181d52218c4ed56c858a7bd49a79ca6b32de9fba6c68",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/libsystemd-shared_255.4-1ubuntu8.16_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/libsystemd-shared_255.4-1ubuntu8.16_arm64.deb"
+			],
+			"version": "255.4-1ubuntu8.16"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libssl3t64_3.0.13-0ubuntu3.12_arm64",
+			"name": "libssl3t64",
+			"sha256": "ddc4806326140bd9553858a2b0f69caec0f3499d56d1238a2028e3a96f36ae78",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.12_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.12_arm64.deb"
+			],
+			"version": "3.0.13-0ubuntu3.12"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libseccomp2_2.5.5-1ubuntu3.1_arm64",
+			"name": "libseccomp2",
+			"sha256": "2feac77a129e336960734586ccdb16eefb040adfe7b662369549e41b82ba0a1b",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libs/libseccomp/libseccomp2_2.5.5-1ubuntu3.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libs/libseccomp/libseccomp2_2.5.5-1ubuntu3.1_arm64.deb"
+			],
+			"version": "2.5.5-1ubuntu3.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libpam0g_1.5.3-5ubuntu5.6_arm64",
+			"name": "libpam0g",
+			"sha256": "15f820a81b3ed444eb9eab9069817b629b66bb6af036cb9b15b7d2838b3f514c",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.6_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.6_arm64.deb"
+			],
+			"version": "1.5.3-5ubuntu5.6"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "debconf_1.5.86ubuntu1_arm64",
+			"name": "debconf",
+			"sha256": "bb390da466a7461bfc87aa3e6b7cd145dae84af3e26bf437f2c0c218ba226294",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/d/debconf/debconf_1.5.86ubuntu1_all.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/d/debconf/debconf_1.5.86ubuntu1_all.deb"
+			],
+			"version": "1.5.86ubuntu1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libaudit1_1-3.1.2-2.1build1.1_arm64",
+			"name": "libaudit1",
+			"sha256": "6cca04d5483a634ff2ed78a31897bad1941226b8b6fc13030d8bb1d688ef2583",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/a/audit/libaudit1_3.1.2-2.1build1.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/a/audit/libaudit1_3.1.2-2.1build1.1_arm64.deb"
+			],
+			"version": "1:3.1.2-2.1build1.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libcap-ng0_0.8.4-2build2_arm64",
+			"name": "libcap-ng0",
+			"sha256": "ffaaedcfab1d1cc48997f09e88b6664f2cc7cba1c7e15bf1078084f512697d4d",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libc/libcap-ng/libcap-ng0_0.8.4-2build2_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libc/libcap-ng/libcap-ng0_0.8.4-2build2_arm64.deb"
+			],
+			"version": "0.8.4-2build2"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libaudit-common_1-3.1.2-2.1build1.1_arm64",
+			"name": "libaudit-common",
+			"sha256": "c8ab5bed96f9781daab7c36fcbe4b12c3f3247a37256c0e341dc827db1e9a010",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/a/audit/libaudit-common_3.1.2-2.1build1.1_all.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/a/audit/libaudit-common_3.1.2-2.1build1.1_all.deb"
+			],
+			"version": "1:3.1.2-2.1build1.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libkmod2_31-p-20240202-2ubuntu7.2_arm64",
+			"name": "libkmod2",
+			"sha256": "c7d5bb0969bb3ddbdf7a169657378d13fb6fef91f2f17bc219f36ba63cef1bbd",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/k/kmod/libkmod2_31+20240202-2ubuntu7.2_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/k/kmod/libkmod2_31+20240202-2ubuntu7.2_arm64.deb"
+			],
+			"version": "31+20240202-2ubuntu7.2"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libcrypt1_1-4.4.36-4build1_arm64",
+			"name": "libcrypt1",
+			"sha256": "5cd73ba112507dabd8e43b528ca9f530719a370e014b8e3e797770e6e940cccf",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libx/libxcrypt/libcrypt1_4.4.36-4build1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libx/libxcrypt/libcrypt1_4.4.36-4build1_arm64.deb"
+			],
+			"version": "1:4.4.36-4build1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libapparmor1_4.0.1really4.0.1-0ubuntu0.24.04.7_arm64",
+			"name": "libapparmor1",
+			"sha256": "9ef26597509d4fa1d446c84a8a7639e7a6f3a6c471795d72df169fecbb835147",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/a/apparmor/libapparmor1_4.0.1really4.0.1-0ubuntu0.24.04.7_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/a/apparmor/libapparmor1_4.0.1really4.0.1-0ubuntu0.24.04.7_arm64.deb"
+			],
+			"version": "4.0.1really4.0.1-0ubuntu0.24.04.7"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libacl1_2.3.2-1build1.1_arm64",
+			"name": "libacl1",
+			"sha256": "ebc53ded654fcf4449df250cb563ff05f10d851e904e638f698dc7e921ffa47b",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/a/acl/libacl1_2.3.2-1build1.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/a/acl/libacl1_2.3.2-1build1.1_arm64.deb"
+			],
+			"version": "2.3.2-1build1.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libfdisk1_2.39.3-9ubuntu6.5_arm64",
+			"name": "libfdisk1",
+			"sha256": "6b22d5206008740e96057c9394b7d8af990730fe616a33adb020bffc339db8c4",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libfdisk1_2.39.3-9ubuntu6.5_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/libfdisk1_2.39.3-9ubuntu6.5_arm64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libuuid1_2.39.3-9ubuntu6.5_arm64",
+			"name": "libuuid1",
+			"sha256": "4456b14c7573a8f3fd3b068d08edd7459d16968bfcc0cb39e154ac8afe431c7b",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libuuid1_2.39.3-9ubuntu6.5_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/u/util-linux/libuuid1_2.39.3-9ubuntu6.5_arm64.deb"
+			],
+			"version": "2.39.3-9ubuntu6.5"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libcryptsetup12_2-2.7.0-1ubuntu4.2_arm64",
+			"name": "libcryptsetup12",
+			"sha256": "b54d9a76910dbe14699ec2b351e676437b9632fb801e11eea52ee8089b90fac2",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/c/cryptsetup/libcryptsetup12_2.7.0-1ubuntu4.2_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/c/cryptsetup/libcryptsetup12_2.7.0-1ubuntu4.2_arm64.deb"
+			],
+			"version": "2:2.7.0-1ubuntu4.2"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libjson-c5_0.17-1build1_arm64",
+			"name": "libjson-c5",
+			"sha256": "959fbcbc05817cdf9191b73d8d78ac0b8919559c4c3b4e9d0bbf157b39716652",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/j/json-c/libjson-c5_0.17-1build1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/j/json-c/libjson-c5_0.17-1build1_arm64.deb"
+			],
+			"version": "0.17-1build1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libdevmapper1.02.1_2-1.02.185-3ubuntu3.2_arm64",
+			"name": "libdevmapper1.02.1",
+			"sha256": "fb2c1c7f78fac39eb3191cfd30093d57a8ce2ae6b0942972f117706877f17d92",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/l/lvm2/libdevmapper1.02.1_1.02.185-3ubuntu3.2_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/l/lvm2/libdevmapper1.02.1_1.02.185-3ubuntu3.2_arm64.deb"
+			],
+			"version": "2:1.02.185-3ubuntu3.2"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libudev1_255.4-1ubuntu8.16_arm64",
+			"name": "libudev1",
+			"sha256": "c1dde76354c2b4553e7342801a2ccad4fd9b3af1c41d040f0df93eeee277567b",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/libudev1_255.4-1ubuntu8.16_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/libudev1_255.4-1ubuntu8.16_arm64.deb"
+			],
+			"version": "255.4-1ubuntu8.16"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libargon2-1_0_20190702-p-dfsg-4build1_arm64",
+			"name": "libargon2-1",
+			"sha256": "3914bb94008149aae3874d14185f9a2e0e3a87cdb284702a85818fd6c33b8685",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/a/argon2/libargon2-1_0~20190702+dfsg-4build1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/a/argon2/libargon2-1_0~20190702+dfsg-4build1_arm64.deb"
+			],
+			"version": "0~20190702+dfsg-4build1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [
+				{
+					"key": "dpkg_1.22.6ubuntu6.6_arm64",
+					"name": "dpkg",
+					"version": "1.22.6ubuntu6.6"
+				},
+				{
+					"key": "tar_1.35-p-dfsg-3ubuntu0.4_arm64",
+					"name": "tar",
+					"version": "1.35+dfsg-3ubuntu0.4"
+				},
+				{
+					"key": "libselinux1_3.5-2ubuntu2.1_arm64",
+					"name": "libselinux1",
+					"version": "3.5-2ubuntu2.1"
+				},
+				{
+					"key": "libpcre2-8-0_10.42-4ubuntu2.1_arm64",
+					"name": "libpcre2-8-0",
+					"version": "10.42-4ubuntu2.1"
+				},
+				{
+					"key": "libc6_2.39-0ubuntu8.8_arm64",
+					"name": "libc6",
+					"version": "2.39-0ubuntu8.8"
+				},
+				{
+					"key": "libgcc-s1_14.2.0-4ubuntu2_24.04.1_arm64",
+					"name": "libgcc-s1",
+					"version": "14.2.0-4ubuntu2~24.04.1"
+				},
+				{
+					"key": "gcc-14-base_14.2.0-4ubuntu2_24.04.1_arm64",
+					"name": "gcc-14-base",
+					"version": "14.2.0-4ubuntu2~24.04.1"
+				},
+				{
+					"key": "libacl1_2.3.2-1build1.1_arm64",
+					"name": "libacl1",
+					"version": "2.3.2-1build1.1"
+				},
+				{
+					"key": "zlib1g_1-1.3.dfsg-3.1ubuntu2.1_arm64",
+					"name": "zlib1g",
+					"version": "1:1.3.dfsg-3.1ubuntu2.1"
+				},
+				{
+					"key": "libzstd1_1.5.5-p-dfsg2-2build1.1_arm64",
+					"name": "libzstd1",
+					"version": "1.5.5+dfsg2-2build1.1"
+				},
+				{
+					"key": "libmd0_1.1.0-2build1.1_arm64",
+					"name": "libmd0",
+					"version": "1.1.0-2build1.1"
+				},
+				{
+					"key": "liblzma5_5.6.1-p-really5.4.5-1ubuntu0.3_arm64",
+					"name": "liblzma5",
+					"version": "5.6.1+really5.4.5-1ubuntu0.3"
+				},
+				{
+					"key": "libbz2-1.0_1.0.8-5.1build0.1_arm64",
+					"name": "libbz2-1.0",
+					"version": "1.0.8-5.1build0.1"
+				}
+			],
+			"key": "gzip_1.12-1ubuntu3.2_arm64",
+			"name": "gzip",
+			"sha256": "2b9d72b48c5fb2bf266295a87a73cf69646b34f24f0249c04d051ee765a6b72b",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/g/gzip/gzip_1.12-1ubuntu3.2_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/g/gzip/gzip_1.12-1ubuntu3.2_arm64.deb"
+			],
+			"version": "1.12-1ubuntu3.2"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "dpkg_1.22.6ubuntu6.6_arm64",
+			"name": "dpkg",
+			"sha256": "c34117a1f62fe8a2026cfba7bde0ec3fedd5d39abad7515bdd45fffcec764288",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/d/dpkg/dpkg_1.22.6ubuntu6.6_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/d/dpkg/dpkg_1.22.6ubuntu6.6_arm64.deb"
+			],
+			"version": "1.22.6ubuntu6.6"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "tar_1.35-p-dfsg-3ubuntu0.4_arm64",
+			"name": "tar",
+			"sha256": "3302932e6125f1be306a9be67cf58a81f94911d92a99c9eeb0aff59c2c457fd7",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/t/tar/tar_1.35+dfsg-3ubuntu0.4_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/t/tar/tar_1.35+dfsg-3ubuntu0.4_arm64.deb"
+			],
+			"version": "1.35+dfsg-3ubuntu0.4"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "zlib1g_1-1.3.dfsg-3.1ubuntu2.1_arm64",
+			"name": "zlib1g",
+			"sha256": "cbe3d39ec32d3cc27c021ae4af11e7c67bdf9d700d573207e0941d4038056278",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_arm64.deb"
+			],
+			"version": "1:1.3.dfsg-3.1ubuntu2.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libmd0_1.1.0-2build1.1_arm64",
+			"name": "libmd0",
+			"sha256": "c28583825f7191cdc8b6b71c6150e2cbfc29616d6570680e5284fabc19765ea5",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/libm/libmd/libmd0_1.1.0-2build1.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/libm/libmd/libmd0_1.1.0-2build1.1_arm64.deb"
+			],
+			"version": "1.1.0-2build1.1"
+		},
+		{
+			"arch": "arm64",
+			"dependencies": [],
+			"key": "libbz2-1.0_1.0.8-5.1build0.1_arm64",
+			"name": "libbz2-1.0",
+			"sha256": "889ffccfe565e1011f215581a81a2770a04b021313157e75066a3613b1569041",
+			"urls": [
+				"https://archive.ubuntu.com/ubuntu/pool/main/b/bzip2/libbz2-1.0_1.0.8-5.1build0.1_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/b/bzip2/libbz2-1.0_1.0.8-5.1build0.1_arm64.deb"
+			],
+			"version": "1.0.8-5.1build0.1"
+		}
+	],
+	"version": 1
+}

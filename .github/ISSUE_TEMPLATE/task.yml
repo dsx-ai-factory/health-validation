@@ -1,0 +1,25 @@
+name: Task / Question
+description: General question, documentation gap, or a task that is neither a bug nor a feature.
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For general usage questions and discussion, [GitHub Discussions](../discussions) is preferred over issues.
+        Use this template for concrete tasks (e.g. "update docs for X") or specific technical questions.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What do you need, or what should be done?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / background
+      description: Any relevant context, links, or prior discussion.
+    validations:
+      required: false

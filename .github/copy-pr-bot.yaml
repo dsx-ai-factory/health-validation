@@ -1,0 +1,11 @@
+# Configuration for the copy-pr-bot GitHub App.
+# https://docs.gha-runners.nvidia.com/apps/copy-pr-bot/
+#
+# copy-pr-bot copies pull request code to a pull-request/<number> branch in
+# this repository so that GitHub Actions workflows can run on NVIDIA self-hosted
+# runners. This is required because self-hosted runners are inside CorpNet and
+# may only be triggered by trusted code — not directly by pull_request events
+# from forks.
+
+enabled: true
+auto_sync_draft: false

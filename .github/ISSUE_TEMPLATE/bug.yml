@@ -1,0 +1,67 @@
+name: Bug Report
+description: Report incorrect behavior, wrong verdicts, or crashes.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as you can.
+        For **security vulnerabilities**, use [GitHub Security Advisories](../security/advisories/new) instead.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug. What did you expect vs. what did you observe?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps or command to reproduce the issue.
+      placeholder: |
+        1. Run `health-validation run --config ...`
+        2. Observe output / exit code
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Full JSON output or error message
+      description: Paste the complete output of `health-validation run` (or the error).
+      render: json
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU model
+      placeholder: "e.g. NVIDIA H100 SXM5 80GB"
+    validations:
+      required: false
+
+  - type: input
+    id: driver
+    attributes:
+      label: Driver version
+      placeholder: "nvidia-smi --query-gpu=driver_version --format=csv,noheader"
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / kernel
+      placeholder: "uname -a"
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: health-validation version or commit
+      placeholder: "git describe --tags --always"
+    validations:
+      required: false

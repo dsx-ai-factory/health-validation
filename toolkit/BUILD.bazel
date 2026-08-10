@@ -1,0 +1,70 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# gazelle:prefix github.com/NVIDIA/health-validation/toolkit
+
+go_library(
+    name = "toolkit",
+    srcs = [
+        "collect.go",
+        "cpu_backend.go",
+        "cpu_sensor.go",
+        "doc.go",
+        "gpu_backend.go",
+        "gpu_sensor.go",
+        "ib_backend.go",
+        "ib_host_backend.go",
+        "ib_sensor.go",
+        "lazy_backend.go",
+        "node_backend.go",
+        "node_sensor.go",
+        "nvlink_backend.go",
+        "nvlink_sensor.go",
+        "sensor.go",
+        "sysfs_cpu_backend.go",
+        "sysfs_list.go",
+        "xid_backend.go",
+        "xid_parse.go",
+        "xid_sensor.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/toolkit",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//catalog",
+        "//catalog/cpu",
+        "//catalog/gpu",
+        "//catalog/health",
+        "//catalog/infiniband",
+        "//catalog/node",
+        "//catalog/nvlink",
+        "//catalog/xid",
+    ],
+)
+
+go_test(
+    name = "toolkit_test",
+    srcs = [
+        "collect_test.go",
+        "cpu_sensor_test.go",
+        "example_test.go",
+        "gpu_sensor_test.go",
+        "ib_host_backend_test.go",
+        "lazy_backend_test.go",
+        "node_sensor_test.go",
+        "sysfs_cpu_backend_internal_test.go",
+        "sysfs_list_test.go",
+        "xid_backend_internal_test.go",
+        "xid_parse_test.go",
+        "xid_sensor_test.go",
+    ],
+    embed = [":toolkit"],
+    deps = [
+        "//catalog",
+        "//catalog/cpu",
+        "//catalog/gpu",
+        "//catalog/health",
+        "//catalog/infiniband",
+        "//catalog/node",
+        "//catalog/nvlink",
+        "//catalog/xid",
+    ],
+)

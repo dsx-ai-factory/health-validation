@@ -1,0 +1,8 @@
+# Configuration for the DCO bot.
+# https://github.com/probot/dco
+#
+# Require all commits to be signed off EXCEPT for NVIDIA organization members,
+# who are covered by their employment agreement.
+
+require:
+  members: false

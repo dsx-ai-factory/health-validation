@@ -1,0 +1,46 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "app",
+    srcs = [
+        "app.go",
+        "backend_linux.go",
+        "backend_other.go",
+        "config.go",
+        "version.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/toolkit/app",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//catalog",
+        "//catalog/health",
+        "//toolkit",
+        "//toolkit/internal/version",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+    ] + select({
+        "@rules_go//go/platform:linux": [
+            "//toolkit/nvml",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_test(
+    name = "app_test",
+    srcs = [
+        "app_test.go",
+        "config_test.go",
+        "version_test.go",
+    ],
+    embed = [":app"],
+    deps = [
+        "//catalog",
+        "//catalog/cpu",
+        "//catalog/gpu",
+        "//catalog/health",
+        "//catalog/infiniband",
+        "//catalog/node",
+        "//catalog/nvlink",
+        "//toolkit",
+    ],
+)

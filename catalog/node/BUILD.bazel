@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "node",
+    srcs = [
+        "gpu_count.go",
+        "measurement.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/catalog/node",
+    visibility = ["//visibility:public"],
+    deps = ["//catalog/health"],
+)
+
+go_test(
+    name = "node_test",
+    srcs = ["gpu_count_test.go"],
+    deps = [
+        ":node",
+        "//catalog",
+        "//catalog/health",
+    ],
+)

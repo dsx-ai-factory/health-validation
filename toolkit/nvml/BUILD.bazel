@@ -1,0 +1,52 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "nvml",
+    srcs = [
+        "doc.go",
+        "errors.go",
+        "nvml_backend.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/toolkit/nvml",
+    visibility = ["//visibility:public"],
+    deps = select({
+        "@rules_go//go/platform:linux": [
+            "//catalog/gpu",
+            "//catalog/health",
+            "//catalog/node",
+            "//catalog/nvlink",
+            "@com_github_nvidia_go_nvml//pkg/nvml",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_test(
+    name = "nvml_test",
+    srcs = [
+        "nvml_backend_active_test.go",
+        "nvml_backend_arch_test.go",
+        "nvml_backend_capabilities_test.go",
+        "nvml_backend_fabric_test.go",
+        "nvml_backend_internal_test.go",
+        "nvml_backend_links_test.go",
+        "nvml_backend_node_test.go",
+        "nvml_backend_p2p_test.go",
+        "nvml_backend_pstate_test.go",
+        "nvml_backend_test.go",
+        "prober_test.go",
+    ],
+    embed = [":nvml"],
+    deps = select({
+        "@rules_go//go/platform:linux": [
+            "//catalog",
+            "//catalog/gpu",
+            "//catalog/health",
+            "//catalog/node",
+            "//catalog/nvlink",
+            "@com_github_nvidia_go_nvml//pkg/nvml",
+            "@com_github_nvidia_go_nvml//pkg/nvml/mock",
+        ],
+        "//conditions:default": [],
+    }),
+)

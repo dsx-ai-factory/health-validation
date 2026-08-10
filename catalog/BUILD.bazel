@@ -1,0 +1,48 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# gazelle:prefix github.com/NVIDIA/health-validation/catalog
+
+go_library(
+    name = "catalog",
+    srcs = [
+        "catalog.go",
+        "checks.go",
+        "doc.go",
+        "filter.go",
+        "override.go",
+        "signals.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/catalog",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//catalog/cpu",
+        "//catalog/gpu",
+        "//catalog/health",
+        "//catalog/infiniband",
+        "//catalog/internal/evaluation",
+        "//catalog/node",
+        "//catalog/nvlink",
+        "//catalog/xid",
+    ],
+)
+
+go_test(
+    name = "catalog_test",
+    srcs = [
+        "catalog_test.go",
+        "checks_test.go",
+        "evaluate_test.go",
+        "override_test.go",
+        "signals_test.go",
+    ],
+    embed = [":catalog"],
+    deps = [
+        "//catalog/cpu",
+        "//catalog/gpu",
+        "//catalog/health",
+        "//catalog/infiniband",
+        "//catalog/node",
+        "//catalog/nvlink",
+        "//catalog/xid",
+    ],
+)

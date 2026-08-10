@@ -1,0 +1,38 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//catalog/cmd/healthschema:health_schema.bzl", "health_schema")
+
+go_library(
+    name = "health",
+    srcs = [
+        "action.go",
+        "check.go",
+        "classification.go",
+        "doc.go",
+        "enum.go",
+        "errors.go",
+        "measurement.go",
+        "threshold.go",
+        "verdict.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/catalog/health",
+    visibility = ["//visibility:public"],
+)
+
+health_schema(
+    name = "schema",
+    src = ":health",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "health_test",
+    srcs = [
+        "classification_test.go",
+        "severity_test.go",
+        "threshold_test.go",
+        "verdict_schema_test.go",
+        "verdict_test.go",
+    ],
+    embed = [":health"],
+    embedsrcs = ["node-verdict.schema.json"],
+)

@@ -1,0 +1,25 @@
+load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
+load("@rules_go//go:def.bzl", "go_library")
+load("//build/rules/go:defs.bzl", "go_binary")
+
+go_library(
+    name = "healthdump_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/NVIDIA/health-validation/catalog/cmd/healthdump",
+    visibility = ["//visibility:private"],
+    deps = ["//catalog"],
+)
+
+go_binary(
+    name = "healthdump",
+    embed = [":healthdump_lib"],
+    visibility = ["//visibility:public"],
+)
+
+run_binary(
+    name = "checks",
+    outs = ["checks.json"],
+    args = ["-out=$(location checks.json)"],
+    tool = ":healthdump",
+    visibility = ["//visibility:public"],
+)

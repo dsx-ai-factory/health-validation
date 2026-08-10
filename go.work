@@ -1,0 +1,6 @@
+go 1.27rc2
+
+use (
+	./catalog
+	./toolkit
+)

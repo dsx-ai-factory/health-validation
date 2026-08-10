@@ -1,0 +1,12 @@
+packages:
+  - docs
+
+onlyBuiltDependencies:
+  - esbuild
+
+overrides:
+  webpack: 5.104.1
+  # serialize-javascript 6.x is flagged with no patch past 6.0.2; force the
+  # patched 7.x line. It is a build-time-only transitive dep (copy-webpack-plugin,
+  # css-minimizer-webpack-plugin) and requires Node >=20 (see docs/package.json).
+  serialize-javascript: 7.0.7

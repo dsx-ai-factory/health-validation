@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "infiniband",
+    srcs = [
+        "ib_device_inventory.go",
+        "measurement.go",
+    ],
+    importpath = "github.com/NVIDIA/health-validation/catalog/infiniband",
+    visibility = ["//visibility:public"],
+    deps = ["//catalog/health"],
+)
+
+go_test(
+    name = "infiniband_test",
+    srcs = ["ib_device_inventory_test.go"],
+    deps = [
+        ":infiniband",
+        "//catalog",
+        "//catalog/health",
+    ],
+)

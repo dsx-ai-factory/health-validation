@@ -1,0 +1,39 @@
+# Package set for the journalctl image layer. `systemd` provides
+# /usr/bin/journalctl; the resolver pulls in its transitive dependencies.
+#
+# The single source lists both the primary Ubuntu mirror (amd64/i386) and the
+# ports mirror (arm64 and other non-x86 arches). rules_distroless tries each
+# URL in order per architecture and falls through on a 404, so amd64 resolves
+# from archive.ubuntu.com and arm64 falls through to ports.ubuntu.com.
+#
+# Regenerate the lock after any change here:
+#
+#     bazel run @journalctl//:lock
+version: 1
+
+# The release pocket is frozen at 24.04 GA. Without -security/-updates the
+# resolver picks GA builds that are older than the base image's own packages,
+# silently downgrading the 33 packages this layer overwrites.
+sources:
+  - channel: noble main universe
+    urls:
+      - https://archive.ubuntu.com/ubuntu
+      - https://ports.ubuntu.com/ubuntu-ports
+  - channel: noble-security main universe
+    urls:
+      - https://archive.ubuntu.com/ubuntu
+      - https://ports.ubuntu.com/ubuntu-ports
+  - channel: noble-updates main universe
+    urls:
+      - https://archive.ubuntu.com/ubuntu
+      - https://ports.ubuntu.com/ubuntu-ports
+
+archs:
+  - "amd64"
+  - "arm64"
+
+packages:
+  - "systemd"
+  # Unused at runtime; overwrites the base's gzip, which is stuck at
+  # 1.12-1ubuntu3.1 (CVE-2026-41992). Drop once the base ships 1.12-1ubuntu3.2.
+  - "gzip"

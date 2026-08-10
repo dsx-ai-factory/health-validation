@@ -1,0 +1,16 @@
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci", dev_dependency = True)
+oci.pull(
+    name = "ubuntu_noble",
+    digest = "sha256:57a7daab5579d4b4cfbe25b59dc9d22d0c4cec24e5608523e77fd5f12e9da51a",
+    image = "nvcr.io/nvidia/base/ubuntu",
+    platforms = [
+        "linux/arm64",
+        "linux/amd64",
+    ],
+)
+use_repo(
+    oci,
+    "ubuntu_noble",
+    "ubuntu_noble_linux_amd64",
+    "ubuntu_noble_linux_arm64",
+)

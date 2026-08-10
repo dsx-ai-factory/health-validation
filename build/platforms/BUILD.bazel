@@ -1,0 +1,5 @@
+load(":platforms.bzl", "register_platforms")
+
+package(default_visibility = ["//visibility:public"])
+
+register_platforms()

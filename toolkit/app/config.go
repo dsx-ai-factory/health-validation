@@ -1,0 +1,208 @@
+package app
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"math"
+	"os"
+	"slices"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/NVIDIA/health-validation/catalog"
+	"github.com/NVIDIA/health-validation/catalog/health"
+	"github.com/NVIDIA/health-validation/toolkit"
+)
+
+// Config is the operator-supplied configuration for `health-validation run`.
+//
+// Each entry under Checks maps a check ID to a set of threshold
+// name/value pairs that override the catalog defaults for that check.
+// CollectionTimeoutSeconds optionally bounds each sensor's collection
+// (0 = use the built-in default):
+//
+//	collection_timeout_seconds: 60
+//	checks:
+//	  gpu_count:
+//	    expected_gpu_count: 4
+//	  ib_device_inventory:
+//	    expected_devices: [mlx5_0, mlx5_1]
+//	  nvlink_active:
+//	    max_inactive_nvlinks: 0
+type Config struct {
+	Checks                   map[string]map[string]any `yaml:"checks"`
+	CollectionTimeoutSeconds int                       `yaml:"collection_timeout_seconds"`
+}
+
+// maxCollectionTimeoutSeconds is the largest collection_timeout_seconds
+// that does not overflow a time.Duration (int64 nanoseconds) when scaled
+// to seconds; larger values would wrap to a negative, already-expired
+// timeout.
+const maxCollectionTimeoutSeconds = int(math.MaxInt64 / int64(time.Second))
+
+// LoadConfig reads and parses the YAML config at path.
+func LoadConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config %s: %w", path, err)
+	}
+
+	var cfg Config
+	// KnownFields(true) rejects unrecognized keys so a typo like `check:`
+	// (instead of `checks:`) is reported instead of silently yielding a
+	// nil Checks map and an empty override set.
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	// Decode returns io.EOF for an empty document; treat that as a valid
+	// "no overrides" config rather than an error (Unmarshal's old behavior).
+	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	if cfg.CollectionTimeoutSeconds < 0 || cfg.CollectionTimeoutSeconds > maxCollectionTimeoutSeconds {
+		return nil, fmt.Errorf("config %s: collection_timeout_seconds must be between 0 and %d, got %d",
+			path, maxCollectionTimeoutSeconds, cfg.CollectionTimeoutSeconds)
+	}
+	return &cfg, nil
+}
+
+// CollectionTimeout returns the per-sensor collection timeout to apply.
+// A non-positive CollectionTimeoutSeconds (the default when the operator
+// did not set one) falls back to the toolkit default.
+func (cfg *Config) CollectionTimeout() time.Duration {
+	if cfg.CollectionTimeoutSeconds > 0 {
+		return time.Duration(cfg.CollectionTimeoutSeconds) * time.Second
+	}
+	return toolkit.DefaultSensorTimeout
+}
+
+// Overrides validates the config against the catalog's check definitions
+// and returns the corresponding [catalog.OverrideSet].
+//
+// It rejects:
+//   - a check ID with no matching registered check,
+//   - a parameter that is not a threshold on that check,
+//   - a parameter whose threshold is Fixed (non-overridable), and
+//   - a value that cannot be coerced to the threshold's declared type.
+//
+// Checks and parameters are validated in sorted order so the first error
+// is deterministic.
+func (cfg *Config) Overrides(cat *catalog.Catalog) (catalog.OverrideSet, error) {
+	var overrides []catalog.Override
+
+	for _, checkID := range sortedKeys(cfg.Checks) {
+		cd, err := cat.Get(checkID)
+		if err != nil {
+			return catalog.OverrideSet{}, fmt.Errorf("config: unknown check %q", checkID)
+		}
+
+		params := cfg.Checks[checkID]
+		for _, name := range sortedKeys(params) {
+			spec, ok := cd.Thresholds[name]
+			if !ok {
+				return catalog.OverrideSet{}, fmt.Errorf(
+					"config: check %q has no parameter %q", checkID, name)
+			}
+			if spec.Category == health.FixedThreshold {
+				return catalog.OverrideSet{}, fmt.Errorf(
+					"config: parameter %q on check %q is fixed and cannot be overridden",
+					name, checkID)
+			}
+
+			value, err := coerce(params[name], spec.Value)
+			if err != nil {
+				return catalog.OverrideSet{}, fmt.Errorf(
+					"config: check %q parameter %q: %w", checkID, name, err)
+			}
+
+			overrides = append(overrides, catalog.Override{
+				CheckID:       checkID,
+				ThresholdName: name,
+				Value:         value,
+			})
+		}
+	}
+
+	return catalog.NewOverrideSet(overrides...), nil
+}
+
+// coerce converts a value decoded from the config file to the Go type of
+// the threshold's declared default (ref). YAML decodes integers as int
+// and decimals as float64, but thresholds carry concrete types (e.g.
+// int64) and CEL comparisons are type-sensitive, so an override must
+// match the declared type to evaluate correctly.
+func coerce(val, ref any) (any, error) {
+	switch ref.(type) {
+	case int64:
+		switch v := val.(type) {
+		case int:
+			return int64(v), nil
+		case int64:
+			return v, nil
+		case float64:
+			if v != math.Trunc(v) {
+				return nil, fmt.Errorf("expected an integer, got %v", v)
+			}
+			return int64(v), nil
+		default:
+			return nil, fmt.Errorf("expected an integer, got %T", val)
+		}
+	case float64:
+		switch v := val.(type) {
+		case int:
+			return float64(v), nil
+		case int64:
+			return float64(v), nil
+		case float64:
+			return v, nil
+		default:
+			return nil, fmt.Errorf("expected a number, got %T", val)
+		}
+	case bool:
+		if v, ok := val.(bool); ok {
+			return v, nil
+		}
+		return nil, fmt.Errorf("expected a boolean, got %T", val)
+	case string:
+		if v, ok := val.(string); ok {
+			return v, nil
+		}
+		return nil, fmt.Errorf("expected a string, got %T", val)
+	case []string:
+		items, ok := val.([]any)
+		if !ok {
+			return nil, fmt.Errorf("expected a list of strings, got %T", val)
+		}
+		out := make([]string, len(items))
+		for i, item := range items {
+			value, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("expected a list of strings, item %d is %T", i, item)
+			}
+			value = strings.TrimSpace(value)
+			if value == "" {
+				return nil, fmt.Errorf("expected a list of non-empty strings, item %d is empty", i)
+			}
+			out[i] = value
+		}
+		return out, nil
+	default:
+		// Unknown threshold type: pass the value through unchanged and
+		// let evaluation surface any mismatch.
+		return val, nil
+	}
+}
+
+// sortedKeys returns the keys of m in sorted order for deterministic
+// iteration.
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}

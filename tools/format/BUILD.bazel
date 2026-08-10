@@ -1,0 +1,20 @@
+load("@aspect_rules_lint//format:defs.bzl", "format_multirun", "format_test")
+
+format_multirun(
+    name = "format",
+    go = "@multitool//tools/gofumpt",
+    python = "@multitool//tools/ruff",
+    shell = "@aspect_rules_lint//format:shfmt",
+    starlark = "@buildifier_prebuilt//:buildifier",
+)
+
+format_test(
+    name = "test",
+    size = "small",
+    go = "@multitool//tools/gofumpt",
+    no_sandbox = True,  # Enables formatting the entire workspace
+    python = "@multitool//tools/ruff",
+    shell = "@aspect_rules_lint//format:shfmt",
+    #starlark = "@buildifier_prebuilt//:buildifier",
+    workspace = "//:MODULE.bazel",
+)
