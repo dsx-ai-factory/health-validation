@@ -341,4 +341,4 @@ Use of this software is governed by the NVIDIA Software and Model Evaluation Lic
 
 ## Reporting issues
 
-File an issue at <https://github.com/NVIDIA/health-validation/issues> with the check ID, observed behavior, hardware platform, driver version, and NVML version.
+File an issue at <https://github.com/dsx-ai-factory/health-validation/issues> with the check ID, observed behavior, hardware platform, driver version, and NVML version.
