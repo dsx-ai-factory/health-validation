@@ -3,10 +3,8 @@ name: CI
 # Triggered on pushes to main and to pull-request/* branches.
 #
 # pull-request/<number> branches are created by copy-pr-bot when a pull request
-# is opened against this repository. This approach is required because NVIDIA
-# self-hosted runners live inside CorpNet and must not be triggered directly by
-# pull_request events, which can originate from untrusted forks.
-# See: https://docs.gha-runners.nvidia.com/apps/copy-pr-bot/
+# is opened against this repository, so self-hosted runners are not triggered
+# directly by pull_request events, which can originate from untrusted forks.
 on:
   push:
     branches:
@@ -29,6 +27,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Install Bazelisk
+        run: |
+          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/bazel" \
+            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
+          chmod +x "$HOME/.local/bin/bazel"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
         with:
@@ -57,6 +64,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install Bazelisk
+        run: |
+          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/bazel" \
+            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
+          chmod +x "$HOME/.local/bin/bazel"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
         with:
           bazelisk-cache: true
@@ -74,6 +90,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Install Bazelisk
+        run: |
+          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/bazel" \
+            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
+          chmod +x "$HOME/.local/bin/bazel"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
         with:
@@ -93,6 +118,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Install Bazelisk
+        run: |
+          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/bazel" \
+            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
+          chmod +x "$HOME/.local/bin/bazel"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
         with:
@@ -120,6 +154,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Install Bazelisk
+        run: |
+          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/bazel" \
+            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
+          chmod +x "$HOME/.local/bin/bazel"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
         with:
