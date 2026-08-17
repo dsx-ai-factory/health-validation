@@ -6,6 +6,5 @@ module(
 include("//third_party:bazel.MODULE.bazel")
 include("//third_party:go.MODULE.bazel")
 include("//third_party:oci.MODULE.bazel")
-include("//third_party:apt.MODULE.bazel")
 include("//third_party:toolchains.MODULE.bazel")
 include("//third_party:js.MODULE.bazel")

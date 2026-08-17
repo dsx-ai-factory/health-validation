@@ -36,23 +36,33 @@ Two forms ship; pick by how your nodes run workloads.
 
 ### Container image (Kubernetes, containerized runners)
 
-Pull the multi-arch image (host arch is selected automatically):
+Build the image with Bazel and publish it through your organization’s registry,
+then pull it on the target node (the registry selects the host architecture):
 
 ```shell
-docker pull nvcr.io/<org>/<team>/health-validation:<tag>
+docker pull <registry>/health-validation:<tag>
 ```
 
-The image publishes to NVIDIA's NGC registry (NVCR, `nvcr.io`). Image tags drop
-the release tag's `toolkit/` prefix and leading `v` (release git tag
-`toolkit/v1.2.3` → image `:1.2.3`); `latest` floats to the newest `main`. See
-[`docs/DEVELOPER.md`](DEVELOPER.md#pulling-a-published-image) for auth and how to
-pull a specific tag or architecture.
+See [`docs/DEVELOPER.md`](DEVELOPER.md#build-a-linux-image-from-macos) for a
+local Linux/amd64 image build that produces a loadable tarball.
 
-The image carries the CLI and `journalctl` on an Ubuntu base — **not** the
-NVIDIA driver. Different check domains need different host resources mounted in;
+The image carries the CLI on an Ubuntu base — **not** the NVIDIA driver or
+`journalctl`. Different check domains need different host resources mounted in;
 running with the wrong flags makes the affected checks report an **error
 verdict** (CRITICAL/UNKNOWN), so a misconfigured run is loud, never silently
 wrong:
+
+Use the provided wrapper, which bind-mounts the host's `journalctl` binary and
+its shared-library dependencies as well as the journal resources:
+
+```shell
+scripts/health-validation-run.sh <registry>/health-validation:<tag> \
+  --node-id "$NODE_NAME"
+```
+
+This requires the host and container base OS to have compatible glibc ABIs.
+For a uniform fleet that is normally the case. Its equivalent `docker run`
+invocation is:
 
 ```shell
 docker run --rm \
@@ -61,7 +71,9 @@ docker run --rm \
   -v /run/log/journal:/run/log/journal:ro \
   -v /var/log/journal:/var/log/journal:ro \
   -v /etc/machine-id:/etc/machine-id:ro \
-  nvcr.io/<org>/<team>/health-validation:<tag> \
+  -v /usr/bin/journalctl:/usr/bin/journalctl:ro \
+  -v <journalctl ldd dependencies, one -v per .so, excluding libc/libpthread/libm> \
+  <registry>/health-validation:<tag> \
   run --node-id "$NODE_NAME"
 ```
 
@@ -69,12 +81,12 @@ docker run --rm \
   `libnvidia-ml.so.1` it needs — required for `gpu_count` and `nvlink_*`. Keep
   it `all` (a scoped subset makes `gpu_count` fire CRITICAL on visibility, not
   health).
-- The journal + machine-id mounts are required for `gpu_xid_*`; without them
-  those checks report **UNKNOWN** rather than a false PASS.
+- The journal, machine-id, `journalctl`, and its shared-library mounts are
+  required for `gpu_xid_*`; without them those checks report **UNKNOWN** rather
+  than a false PASS.
 
-[`docs/DEVELOPER.md`](DEVELOPER.md#running-on-a-gpu-node) has the exhaustive
-per-domain mount table and the container limitations (notably: `gpu_xid_*`
-needs a systemd journal).
+The wrapper includes the complete mount set for containerized Xid checks;
+`gpu_xid_*` needs a systemd journal on the host.
 
 ### Static binary (bare metal, Slurm)
 

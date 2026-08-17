@@ -142,4 +142,4 @@ go build -o health-validation ./toolkit/cmd/health-validation
 go test ./catalog/...
 ```
 
-The repo uses Bazel exclusively in CI. `go build` and `go test` work for local iteration but do not run all CI checks (nogo, link-mode validation). Use `bazel test --config=ci --platforms=//build/platforms:linux_amd64 //...` to reproduce CI results on darwin. See [DEVELOPER.md](DEVELOPER.md) for the full build, CI, and container workflow.
+The repo uses Bazel exclusively in CI. `go build` and `go test` work for local iteration but do not run all CI checks (nogo, link-mode validation). On macOS, run `bazel test --config=ci --platforms=//build/platforms:linux_amd64 //...` from a Linux VM or container to reproduce the Linux CI build. See [DEVELOPER.md](DEVELOPER.md#build-a-linux-image-from-macos) for the container workflow.
