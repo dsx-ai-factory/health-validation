@@ -3,10 +3,8 @@ name: CI
 # Triggered on pushes to main and to pull-request/* branches.
 #
 # pull-request/<number> branches are created by copy-pr-bot when a pull request
-# is opened against this repository. This approach is required because NVIDIA
-# self-hosted runners live inside CorpNet and must not be triggered directly by
-# pull_request events, which can originate from untrusted forks.
-# See: https://docs.gha-runners.nvidia.com/apps/copy-pr-bot/
+# is opened against this repository, so self-hosted runners are not triggered
+# directly by pull_request events, which can originate from untrusted forks.
 on:
   push:
     branches:
