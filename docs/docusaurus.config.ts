@@ -7,8 +7,8 @@ const config: Config = {
   tagline: "Go Health Documentation",
   favicon: "img/favicon.ico",
 
-  url: "https://nvidia.github.io/health-validation",
-  baseUrl: "/",
+  url: "https://dsx-ai-factory.github.io",
+  baseUrl: "/health-validation/",
 
   onBrokenLinks: "throw",
 
