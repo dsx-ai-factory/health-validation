@@ -82,11 +82,11 @@ docker run --rm \
   it `all` (a scoped subset makes `gpu_count` fire CRITICAL on visibility, not
   health).
 - The journal, machine-id, `journalctl`, and its shared-library mounts are
-  required for `gpu_xid_*`; without them those checks report **UNKNOWN** rather
-  than a false PASS.
+  required for both `gpu_xid_*` and `rdma_linkflap_fatal`; without them the
+  journal-backed checks report a collection failure rather than a false PASS.
 
-The wrapper includes the complete mount set for containerized Xid checks;
-`gpu_xid_*` needs a systemd journal on the host.
+The wrapper includes the complete mount set for journal-backed checks;
+`gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host.
 
 ### Static binary (bare metal, Slurm)
 
@@ -146,13 +146,157 @@ rather than trusting the exit code alone.
 There is no Helm chart or operator yet; you assemble it from the image:
 
 - **Pre-flight per node:** a `Job` (pinned to a node via `nodeSelector`/affinity)
-  that runs the image with the mounts above; a non-zero exit fails the Job, which
-  your admission/gating flow reads.
+  that runs the image with one of the journal access arrangements below; a
+  non-zero exit fails the Job, which your admission/gating flow reads.
 - **Periodic:** a `DaemonSet` (or per-node `CronJob`) that runs on a timer and
   writes the verdict to stdout, where your cluster logging picks it up. Reflect
   a bad verdict onto the node with a taint or a `NodeCondition` via your own
   controller/`node-problem-detector` custom plugin — health-validation reports;
   acting on the report is your controller's job.
+
+The NVIDIA device-plugin allocation must expose all node GPUs to the pod for
+`gpu_count` and `nvlink_*`. Journal-backed checks (`gpu_xid_*` and
+`rdma_linkflap_fatal`) need one of these arrangements:
+
+1. **Explicit read-only hostPaths (least host exposure).** Mount the host's
+   journal directories, `/etc/machine-id`, `journalctl`, and every non-glibc
+   dependency reported by `ldd $(command -v journalctl)` at the same paths in
+   the container. This is the Kubernetes equivalent of
+   `scripts/health-validation-run.sh`; it requires no change to the image.
+2. **Read-only host root plus a `journalctl` chroot shim (simpler operations).**
+   Mount the host root at `/host` read-only. Put an executable named
+   `journalctl` ahead of `/usr/bin` in the container's `PATH` that contains:
+
+   ```sh
+   #!/bin/sh
+   exec /usr/sbin/chroot /host /usr/bin/journalctl "$@"
+   ```
+
+   The health-validation binary continues to run in the container; only its
+   `journalctl` child processes use the host filesystem. The shim must be
+   supplied by a small image overlay or another executable volume: the stock
+   image deliberately does not include `journalctl`. Run this pod as UID 0
+   with `SYS_CHROOT`; it does not need `hostPID`, `nsenter`, or `privileged`.
+
+Both options use `hostPath`, which Kubernetes Pod Security Baseline and
+Restricted policies prohibit. Keep every hostPath read-only, place this
+workload only in an operator-approved namespace, and grant no broader host
+access than needed. The chroot option exposes the whole host filesystem
+read-only, so prefer explicit mounts where that policy boundary matters.
+
+#### Security context and check coverage
+
+An operator-approved namespace here means one allowed to use `hostPath`; it
+does **not** mean the pod needs `privileged: true`. The intended profiles are:
+
+| Profile | Host access and security context | Checks with complete coverage |
+| --- | --- | --- |
+| Docker wrapper | Read-only journal, machine-id, `journalctl`, and its `ldd` dependencies; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; no `--privileged`, host PID namespace, or extra capabilities. | All stock CLI checks, provided the container sees all node GPUs. |
+| Kubernetes explicit mounts | The same read-only paths as the wrapper. `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities, `privileged`, host PID namespace, or host networking. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
+| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, host PID namespace, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
+| GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | GPU/NVLink and CPU/NUMA checks can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
+
+The image runs as root by default. An explicitly non-root Docker user or pod
+may be viable only when its host-mapped UID/GID has journal-read permission;
+that setup is deployment-specific and should be validated before relying on
+journal-backed checks. CPU/NUMA checks need no elevated privilege, but observe
+the sysfs view supplied by the container runtime.
+
+The following is a complete chroot-profile example. Replace the image, target
+node, and GPU count with values for your fleet. The GPU limit must equal the
+node's full GPU count: a smaller allocation intentionally makes `gpu_count`
+report CRITICAL.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: health-validation-journalctl-shim
+data:
+  journalctl: |
+    #!/bin/sh
+    exec /usr/sbin/chroot /host /usr/bin/journalctl "$@"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: health-validation-preflight
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      nodeName: <target-node-name>
+      restartPolicy: Never
+      containers:
+        - name: health-validation
+          image: <registry>/health-validation:<tag>
+          args: ["run", "--node-id=$(NODE_NAME)"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: PATH
+              value: /opt/host-journalctl:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          resources:
+            limits:
+              nvidia.com/gpu: <all-gpus-on-node>
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["SYS_CHROOT"]
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+              readOnly: true
+            - name: journalctl-shim
+              mountPath: /opt/host-journalctl
+              readOnly: true
+      volumes:
+        - name: host-root
+          hostPath:
+            path: /
+            type: Directory
+        - name: journalctl-shim
+          configMap:
+            name: health-validation-journalctl-shim
+            defaultMode: 0555
+```
+
+For periodic operation, use the same container, security context, environment,
+and volumes in a `DaemonSet`, replace `nodeName` with a fleet `nodeSelector` or
+affinity rule, and run the one-shot command in a loop:
+
+```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: health-validation
+spec:
+  selector:
+    matchLabels:
+      app: health-validation
+  template:
+    metadata:
+      labels:
+        app: health-validation
+    spec:
+      containers:
+        - name: health-validation
+          image: <registry>/health-validation:<tag>
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                /health-validation run --node-id "$NODE_NAME"
+                sleep 15m
+              done
+          # Copy env, resources, securityContext, and volumeMounts from the Job.
+      # Copy volumes from the Job, then add nodeSelector/affinity and tolerations
+      # appropriate for the nodes being validated.
+```
 
 ### Standalone / timer
 

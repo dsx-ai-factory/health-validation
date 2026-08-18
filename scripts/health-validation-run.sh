@@ -24,6 +24,11 @@ ldd_output="$(ldd "$journalctl_bin")" || {
 	echo "error: could not inspect shared libraries for $journalctl_bin" >&2
 	exit 1
 }
+if grep -Eq '=>[[:space:]]+not found([[:space:]]|$)' <<<"$ldd_output"; then
+	echo "error: journalctl has unresolved shared libraries:" >&2
+	grep -E '=>[[:space:]]+not found([[:space:]]|$)' <<<"$ldd_output" >&2
+	exit 1
+fi
 while read -r lib; do
 	mounts+=(-v "$lib:$lib:ro")
 done < <(awk '$3 ~ /^\// && $1 !~ /^(libc\.so|libpthread\.so|libm\.so)/ {print $3}' <<<"$ldd_output")
