@@ -476,7 +476,7 @@ var deviceFabricInfo = func(dev gonvml.Device) (gonvml.GpuFabricInfo_v3, gonvml.
 //   - fabric_registration_incomplete ← State != COMPLETED
 //   - fabric_registration_failed     ← State == COMPLETED but Status != SUCCESS
 //
-// The check is scoped to GB200, where every GPU must join the NVLink
+// The check is scoped to GB200/GB300, where every GPU must join the NVLink
 // fabric, so a GPU reporting NOT_SUPPORTED — whether as a SUCCESS query
 // with State NOT_SUPPORTED or an ERROR_NOT_SUPPORTED return — is flagged
 // as registration incomplete while its health-mask signals stay neutral.
@@ -508,7 +508,7 @@ func measureDeviceFabric(dev gonvml.Device, m *nvlink.NVLinkMeasurement) {
 		m.FabricRegistrationFailed = info.State == gonvml.GPU_FABRIC_STATE_COMPLETED &&
 			gonvml.Return(info.Status) != gonvml.SUCCESS
 	case gonvml.ERROR_NOT_SUPPORTED:
-		// On GB200 fabric registration is mandatory, so a not-supported
+		// On GB200/GB300 fabric registration is mandatory, so a not-supported
 		// result is flagged as unregistered rather than skipped.
 		m.FabricRegistrationIncomplete = true
 		slog.Debug("nvml: fabric info not supported on this device", "gpu", m.GPUID)

@@ -209,6 +209,8 @@ Each check definition carries:
 - `provenance`: `nvidia` for all built-in checks
 - `maturity_level`: stable or experimental
 
+> **GB300 support.** Most checks in the catalog declare support for both GB200 and GB300 in their `Architectures` field. GB200 support has been validated; GB300 support has not yet completed the same validation pass. Treat GB300 results as directionally correct but experimental and subject to change until this note is removed.
+
 ## Prerequisites
 
 - go 1.27rc2
