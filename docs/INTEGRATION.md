@@ -162,7 +162,9 @@ The NVIDIA device-plugin allocation must expose all node GPUs to the pod for
    journal directories, `/etc/machine-id`, `journalctl`, and every non-glibc
    dependency reported by `ldd $(command -v journalctl)` at the same paths in
    the container. This is the Kubernetes equivalent of
-   `scripts/health-validation-run.sh`; it requires no change to the image.
+   `scripts/health-validation-run.sh`; it requires no change to the image. The
+   dependency paths are host-specific, so this profile is described rather
+   than represented by a portable manifest below.
 2. **Read-only host root plus a `journalctl` chroot shim (simpler operations).**
    Mount the host root at `/host` read-only. Put an executable named
    `journalctl` ahead of `/usr/bin` in the container's `PATH` that contains:
@@ -238,6 +240,8 @@ spec:
                   fieldPath: spec.nodeName
             - name: PATH
               value: /opt/host-journalctl:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: utility
           resources:
             limits:
               nvidia.com/gpu: <all-gpus-on-node>
