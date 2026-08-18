@@ -31,7 +31,7 @@ if grep -Eq '=>[[:space:]]+not found([[:space:]]|$)' <<<"$ldd_output"; then
 fi
 while read -r lib; do
 	mounts+=(-v "$lib:$lib:ro")
-done < <(awk '$3 ~ /^\// && $1 !~ /^(libc\.so|libpthread\.so|libm\.so)/ {print $3}' <<<"$ldd_output")
+done < <(awk '$3 ~ /^\// && $1 !~ /^(lib(c|pthread|dl|rt|m)\.so)/ {print $3}' <<<"$ldd_output")
 
 exec docker run --rm \
 	--gpus all \
