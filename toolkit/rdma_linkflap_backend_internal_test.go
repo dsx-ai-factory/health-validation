@@ -130,11 +130,11 @@ func TestJournalctlRDMALinkFlap_Options(t *testing.T) {
 // to hand to journalctl: Measure must fail before touching the journal.
 func TestRDMALinkFlapBackend_InvalidOptions(t *testing.T) {
 	tests := []struct {
-		name string
 		opt  RDMALinkFlapOption
+		name string
 	}{
-		{"negative lookback", WithLinkFlapLookback(-time.Minute)},
-		{"negative boot offset", WithLinkFlapBootOffset(-time.Second)},
+		{opt: WithLinkFlapLookback(-time.Minute), name: "negative lookback"},
+		{opt: WithLinkFlapBootOffset(-time.Second), name: "negative boot offset"},
 	}
 
 	for _, tt := range tests {
