@@ -21,6 +21,7 @@ func powerLimitDevice(current, enforced uint32) *mock.Device {
 		GetPerformanceStateFunc: func() (gonvml.Pstates, gonvml.Return) {
 			return gonvml.PSTATE_0, gonvml.SUCCESS
 		},
+		GetFieldValuesFunc: averagePowerFieldValues(220_000),
 		GetPowerManagementLimitFunc: func() (uint32, gonvml.Return) {
 			return current, gonvml.SUCCESS
 		},

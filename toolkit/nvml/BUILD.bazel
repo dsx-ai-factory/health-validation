@@ -26,6 +26,7 @@ go_test(
     srcs = [
         "nvml_backend_active_test.go",
         "nvml_backend_arch_test.go",
+        "nvml_backend_average_power_draw_test.go",
         "nvml_backend_capabilities_test.go",
         "nvml_backend_fabric_test.go",
         "nvml_backend_internal_test.go",

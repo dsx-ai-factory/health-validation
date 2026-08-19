@@ -32,6 +32,7 @@ This file provides guidance to AI coding agents when working with code in this r
 |---|---|---|---|
 | `cpu_count` | cpu | Any kernel-possible logical CPU is not online | None |
 | `numa_node_count` | cpu | Online NUMA node count ≠ `expected_numa_node_count` | None |
+| `gpu_average_power_draw` | gpu | One-second average power draw is outside the configured range | None |
 | `gpu_power_limit` | gpu | Current or enforced power limit ≠ expected (arch default or override) | None |
 | `gpu_power_state` | gpu | GPU pstate ≠ `expected_gpu_pstate` | None |
 | `gpu_count` | node | GPU count ≠ `expected_gpu_count` | None |

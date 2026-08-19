@@ -8,6 +8,7 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 const (
 	SignalGPUID                = "gpu_id"
 	SignalGPUPstate            = "gpu_pstate"
+	SignalAveragePowerDrawMW   = "average_power_draw_mw"
 	SignalPowerLimitMW         = "power_limit_mw"
 	SignalEnforcedPowerLimitMW = "enforced_power_limit_mw"
 )
@@ -19,6 +20,7 @@ const (
 var MeasurementSignals = []string{
 	SignalGPUID,
 	SignalGPUPstate,
+	SignalAveragePowerDrawMW,
 	SignalPowerLimitMW,
 	SignalEnforcedPowerLimitMW,
 }
@@ -39,6 +41,7 @@ var MeasurementSignals = []string{
 type GPUMeasurement struct {
 	GPUID                string `json:"gpu_id"`
 	errors               []health.ErroredMeasurement
+	AveragePowerDrawMW   int64 `json:"average_power_draw_mw"`
 	PowerLimitMW         int64 `json:"power_limit_mw"`
 	EnforcedPowerLimitMW int64 `json:"enforced_power_limit_mw"`
 	// GPUPstate is the GPU's current performance state as the numeric

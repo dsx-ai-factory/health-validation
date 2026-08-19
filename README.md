@@ -188,6 +188,7 @@ The catalog includes these check families:
 |---|---|---|---|
 | `cpu_count` | cpu | Whether every kernel-possible logical CPU is online | None |
 | `numa_node_count` | cpu | Whether the node brought online the expected number of NUMA nodes | `expected_numa_node_count` |
+| `gpu_average_power_draw` | gpu | Whether each GPU's one-second average power draw is within the configured range | `min_power_mw`, `max_power_mw` |
 | `gpu_power_limit` | gpu | Whether each GPU's power limit matches the expected value | `expected_power_limit_mw` |
 | `gpu_power_state` | gpu | Whether each GPU is in the expected power state | `expected_gpu_pstate` |
 | `gpu_count` | node | Number of GPUs present on the node | `expected_gpu_count` |

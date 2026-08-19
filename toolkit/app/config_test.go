@@ -34,6 +34,25 @@ func TestOverridesCoercesToThresholdType(t *testing.T) {
 	}
 }
 
+func TestOverridesCoercesAveragePowerDrawBounds(t *testing.T) {
+	cfg := &Config{Checks: map[string]map[string]any{
+		"gpu_average_power_draw": {
+			"min_power_mw": 65_000,
+			"max_power_mw": 1_500_000,
+		},
+	}}
+
+	os, err := cfg.Overrides(catalog.New())
+	if err != nil {
+		t.Fatalf("Overrides: %v", err)
+	}
+
+	got := os.ForCheck("gpu_average_power_draw")
+	if got["min_power_mw"] != int64(65_000) || got["max_power_mw"] != int64(1_500_000) {
+		t.Fatalf("average power bounds = %#v, want min=65000 and max=1500000 as int64", got)
+	}
+}
+
 // coerce handles []string thresholds (whitespace-trimmed, rejecting
 // non-lists, non-string items, and empties). Exercised directly on the
 // coercion helper since no built-in check currently declares a []string
@@ -275,6 +294,7 @@ func TestEvaluatePassingNode(t *testing.T) {
 		toolkit.NewGPUSensor(toolkit.MockGPU(
 			gpu.GPUMeasurement{
 				GPUID:                "GPU-0",
+				AveragePowerDrawMW:   220_000,
 				PowerLimitMW:         1_200_000,
 				EnforcedPowerLimitMW: 1_200_000,
 			},

@@ -298,6 +298,7 @@ type gpuProbe struct{}
 func (gpuProbe) Measure(pc ProbeContext) health.Measurement {
 	m := gpu.GPUMeasurement{GPUID: pc.Self.UUID}
 	measureDevicePstate(pc.Self.Device, &m)
+	measureDeviceAveragePowerDraw(pc.Self.Device, &m)
 	measureDevicePowerLimits(pc.Self.Device, &m)
 	return m
 }
@@ -321,6 +322,38 @@ func measureDevicePstate(dev gonvml.Device, m *gpu.GPUMeasurement) {
 		return
 	}
 	m.GPUPstate = int64(state)
+}
+
+// measureDeviceAveragePowerDraw sets the GPU's one-second average power
+// draw on m, in milliwatts, from NVML's FI_DEV_POWER_AVERAGE field.
+//
+// The field API returns a per-field NvmlReturn independent of the call's
+// own return, and reports the value as an untyped 8-byte union, so a
+// SUCCESS call can still carry a failed field or an unexpected ValueType;
+// both are treated as collection failures alongside the call itself.
+func measureDeviceAveragePowerDraw(dev gonvml.Device, m *gpu.GPUMeasurement) {
+	values := []gonvml.FieldValue{{
+		FieldId: gonvml.FI_DEV_POWER_AVERAGE,
+		ScopeId: 0,
+	}}
+	if ret := dev.GetFieldValues(values); ret != gonvml.SUCCESS {
+		m.AddError(&Error{Op: "DeviceGetFieldValues(POWER_AVERAGE)", Return: ret},
+			gpu.SignalAveragePowerDrawMW)
+		return
+	}
+
+	value := values[0]
+	if ret := gonvml.Return(value.NvmlReturn); ret != gonvml.SUCCESS {
+		m.AddError(&Error{Op: "DeviceGetFieldValues(POWER_AVERAGE)", Return: ret},
+			gpu.SignalAveragePowerDrawMW)
+		return
+	}
+	if gonvml.ValueType(value.ValueType) != gonvml.VALUE_TYPE_UNSIGNED_INT {
+		m.AddError(fmt.Errorf("nvml DeviceGetFieldValues(POWER_AVERAGE): unexpected ValueType %d, want UNSIGNED_INT", value.ValueType),
+			gpu.SignalAveragePowerDrawMW)
+		return
+	}
+	m.AveragePowerDrawMW = int64(binary.LittleEndian.Uint32(value.Value[:4]))
 }
 
 func measureDevicePowerLimits(dev gonvml.Device, m *gpu.GPUMeasurement) {

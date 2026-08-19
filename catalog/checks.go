@@ -16,6 +16,7 @@ func builtinChecks() []health.CheckDefinition {
 	checks := []health.CheckDefinition{
 		cpu.CPUCount(),
 		cpu.NUMANodeCount(),
+		gpu.GPUAveragePowerDraw(),
 		gpu.GPUPowerLimit(),
 		gpu.GPUPowerState(),
 		node.GPUCount(),
