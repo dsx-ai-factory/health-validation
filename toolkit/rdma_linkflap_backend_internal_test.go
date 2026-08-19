@@ -125,3 +125,36 @@ func TestJournalctlRDMALinkFlap_Options(t *testing.T) {
 		t.Errorf("options not applied: lookback=%v bootOffset=%v", b2.lookback, b2.bootOffset)
 	}
 }
+
+// A negative lookback or boot offset is a configuration error, not a value
+// to hand to journalctl: Measure must fail before touching the journal.
+func TestRDMALinkFlapBackend_InvalidOptions(t *testing.T) {
+	tests := []struct {
+		name string
+		opt  RDMALinkFlapOption
+	}{
+		{"negative lookback", WithLinkFlapLookback(-time.Minute)},
+		{"negative boot offset", WithLinkFlapBootOffset(-time.Second)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := JournalctlRDMALinkFlap(tt.opt).(*rdmaLinkFlapBackend)
+			b.run = func(_ context.Context, args ...string) ([]byte, error) {
+				t.Fatal("journalctl must not run with an invalid option")
+				return nil, nil
+			}
+
+			ms, err := b.Measure(context.Background())
+			if err != nil {
+				t.Fatalf("Measure: %v", err)
+			}
+			if len(ms) != 1 {
+				t.Fatalf("got %d measurements, want 1", len(ms))
+			}
+			if len(ms[0].Errors()) == 0 {
+				t.Error("want an errored measurement for an invalid option")
+			}
+		})
+	}
+}

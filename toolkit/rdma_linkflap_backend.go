@@ -2,6 +2,7 @@ package toolkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -49,7 +50,13 @@ type RDMALinkFlapOption func(*rdmaLinkFlapBackend)
 // the window count, so a flap from early in a long-lived boot does not
 // perpetually fail the check.
 func WithLinkFlapLookback(d time.Duration) RDMALinkFlapOption {
-	return func(b *rdmaLinkFlapBackend) { b.lookback = d }
+	return func(b *rdmaLinkFlapBackend) {
+		if d < 0 {
+			b.configErr = errors.Join(b.configErr, fmt.Errorf("link-flap lookback must be non-negative, got %s", d))
+			return
+		}
+		b.lookback = d
+	}
 }
 
 // WithLinkFlapBootOffset ignores link events logged within d of boot,
@@ -57,7 +64,13 @@ func WithLinkFlapLookback(d time.Duration) RDMALinkFlapOption {
 // boot and the flaps it logs then are not actionable, so the effective start
 // of the window is pushed forward by d. Default 0 (no offset).
 func WithLinkFlapBootOffset(d time.Duration) RDMALinkFlapOption {
-	return func(b *rdmaLinkFlapBackend) { b.bootOffset = d }
+	return func(b *rdmaLinkFlapBackend) {
+		if d < 0 {
+			b.configErr = errors.Join(b.configErr, fmt.Errorf("link-flap boot offset must be non-negative, got %s", d))
+			return
+		}
+		b.bootOffset = d
+	}
 }
 
 // JournalctlRDMALinkFlap returns a backend that collects mlx5 RDMA link
@@ -95,6 +108,10 @@ type rdmaLinkFlapBackend struct {
 	uptime     func() (time.Duration, error)
 	lookback   time.Duration
 	bootOffset time.Duration
+	// configErr accumulates invalid-option errors (e.g. a negative lookback
+	// or boot offset) recorded at construction time; Measure surfaces it
+	// without touching the journal.
+	configErr error
 }
 
 // Measure reads mlx5 link transitions in the lookback window. --output=short-full
@@ -102,6 +119,12 @@ type rdmaLinkFlapBackend struct {
 // timestamp to measure outage duration. See [readJournal] for the clean-boot
 // vs unreadable-journal handling.
 func (b *rdmaLinkFlapBackend) Measure(ctx context.Context) ([]health.Measurement, error) {
+	if b.configErr != nil {
+		return []health.Measurement{
+			infiniband.ErroredLinkFlap(sinceBoot, b.configErr, infiniband.MeasurementSignals...),
+		}, nil
+	}
+
 	since := b.lookback
 	if b.bootOffset > 0 {
 		// Honoring the offset needs the boot time; without it the window would
