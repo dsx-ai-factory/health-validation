@@ -103,15 +103,15 @@ func JournalctlRDMALinkFlap(opts ...RDMALinkFlapOption) RDMALinkFlapBackend {
 // rdmaLinkFlapBackend reads link lines from the journal. run, now, and uptime
 // are seams so tests can drive the window and parsing without a host journal.
 type rdmaLinkFlapBackend struct {
+	// configErr accumulates invalid-option errors (e.g. a negative lookback
+	// or boot offset) recorded at construction time; Measure surfaces it
+	// without touching the journal.
+	configErr  error
 	run        runFunc
 	now        func() time.Time
 	uptime     func() (time.Duration, error)
 	lookback   time.Duration
 	bootOffset time.Duration
-	// configErr accumulates invalid-option errors (e.g. a negative lookback
-	// or boot offset) recorded at construction time; Measure surfaces it
-	// without touching the journal.
-	configErr error
 }
 
 // Measure reads mlx5 link transitions in the lookback window. --output=short-full
