@@ -5,14 +5,13 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // GPUPowerLimit returns the check definition that verifies each GPU's
 // current and enforced power limits.
 //
-// Operator thresholds are configured in watts (expected_power_limit_w).
-// Observed signals are NVML milliwatts (power_*_mw); CEL compares
-// signal == watts*1000. Limits must match expected_power_limit_w, which
+// Both the threshold and the observed signals (power_*_mw) are milliwatts,
+// so CEL compares them directly with no unit conversion — this also keeps
+// readings exact, since a mW→W rounding could hide an anomalous
+// fractional-watt limit. Limits must match expected_power_limit_mw, which
 // defaults per architecture (operators may override). The catalog Value is
 // a placeholder (GB200's 1200 W) used only when architecture filtering is
-// off; declared arches resolve via PerArchitecture. Readings are compared
-// exactly in milliwatts so anomalous fractional-watt values do not round
-// into a pass.
+// off; declared arches resolve via PerArchitecture.
 func GPUPowerLimit() health.CheckDefinition {
 	return health.CheckDefinition{
 		ID:          "gpu_power_limit",
@@ -36,33 +35,31 @@ func GPUPowerLimit() health.CheckDefinition {
 		RecommendedAction: health.Drain(health.DiagnosticActionCheckMechanicals),
 
 		Thresholds: map[string]health.ThresholdSpec{
-			"expected_power_limit_w": {
+			"expected_power_limit_mw": {
 				// Placeholder when architecture filtering is off. Declared
 				// arches resolve via PerArchitecture (GB200 1200 W).
-				Value: int64(1200),
+				Value: int64(1_200_000),
 				PerArchitecture: map[string]any{
-					"GB200": int64(1200),
-					"GB300": int64(1400),
-					"H100":  int64(700),
+					"GB200": int64(1_200_000),
+					"GB300": int64(1_400_000),
+					"H100":  int64(700_000),
 				},
 				Category:    health.DefaultThreshold,
 				Description: "Current and enforced power limit expected for every GPU.",
-				Unit:        "W",
+				Unit:        "mW",
 			},
 		},
 
-		// Thresholds are watts; signals are NVML milliwatts. Compare exactly
-		// via watts*1000 — rounding mW→W could hide anomalous fractional limits.
 		Rules: []health.Rule{
 			{
-				Expression: "power_limit_mw != expected_power_limit_w * 1000",
+				Expression: "power_limit_mw != expected_power_limit_mw",
 				Severity:   health.Critical,
-				Message:    "GPU ${gpu_id}: current power limit ${power_limit_mw} mW, expected ${expected_power_limit_w} W.",
+				Message:    "GPU ${gpu_id}: current power limit ${power_limit_mw} mW, expected ${expected_power_limit_mw} mW.",
 			},
 			{
-				Expression: "enforced_power_limit_mw != expected_power_limit_w * 1000",
+				Expression: "enforced_power_limit_mw != expected_power_limit_mw",
 				Severity:   health.Critical,
-				Message:    "GPU ${gpu_id}: enforced power limit ${enforced_power_limit_mw} mW, expected ${expected_power_limit_w} W.",
+				Message:    "GPU ${gpu_id}: enforced power limit ${enforced_power_limit_mw} mW, expected ${expected_power_limit_mw} mW.",
 			},
 		},
 	}
