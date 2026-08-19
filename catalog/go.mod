@@ -4,6 +4,7 @@ go 1.27rc2
 
 require (
 	github.com/google/cel-go v0.28.0
+	github.com/google/uuid v1.6.0
 	honnef.co/go/tools v0.6.1
 )
 

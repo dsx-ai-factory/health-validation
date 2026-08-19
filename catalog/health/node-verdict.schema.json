@@ -7,6 +7,7 @@
   "type": "object",
   "required": [
     "schema_version",
+    "trace_id",
     "timestamp",
     "severity_by_domain",
     "check_results",
@@ -25,6 +26,10 @@
     },
     "node_id": {
       "description": "Opaque identifier for the node under test. Omitted when unset.",
+      "type": "string"
+    },
+    "trace_id": {
+      "description": "Unique identifier for this run, shared by every check it fired and echoed on each check result. Lets downstream systems distinguish co-fired checks from different runs.",
       "type": "string"
     },
     "overall_severity": {
@@ -70,6 +75,8 @@
       "required": [
         "timestamp",
         "check_id",
+        "span_id",
+        "trace_id",
         "severity",
         "category",
         "maturity_level",
@@ -79,6 +86,14 @@
       "properties": {
         "timestamp": { "type": "string", "format": "date-time" },
         "check_id": { "type": "string" },
+        "span_id": {
+          "description": "Unique identifier for this check invocation, distinct from every other check in the run.",
+          "type": "string"
+        },
+        "trace_id": {
+          "description": "The run's trace_id, echoed here so this check result is self-correlating when consumed on its own.",
+          "type": "string"
+        },
         "severity": { "$ref": "#/$defs/severity" },
         "category": { "$ref": "#/$defs/category" },
         "maturity_level": { "$ref": "#/$defs/maturityLevel" },
