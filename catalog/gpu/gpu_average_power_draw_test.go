@@ -12,24 +12,24 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
 
-func averagePowerMeasurement(powerMW int64) gpu.GPUMeasurement {
+func averagePowerMeasurement(powerW float64) gpu.GPUMeasurement {
 	return gpu.GPUMeasurement{
-		GPUID:              "GPU-0",
-		AveragePowerDrawMW: powerMW,
+		GPUID:             "GPU-0",
+		AveragePowerDrawW: powerW,
 	}
 }
 
-func averagePowerOverrides(minMW, maxMW int64) catalog.Option {
+func averagePowerOverrides(minW, maxW float64) catalog.Option {
 	return catalog.WithOverrides(catalog.NewOverrideSet(
 		catalog.Override{
 			CheckID:       "gpu_average_power_draw",
-			ThresholdName: "min_power_mw",
-			Value:         minMW,
+			ThresholdName: "min_power_w",
+			Value:         minW,
 		},
 		catalog.Override{
 			CheckID:       "gpu_average_power_draw",
-			ThresholdName: "max_power_mw",
-			Value:         maxMW,
+			ThresholdName: "max_power_w",
+			Value:         maxW,
 		},
 	))
 }
@@ -42,10 +42,10 @@ func TestGPUAveragePowerDraw_Definition(t *testing.T) {
 	if definition.SchedulingCadence != health.Continuous {
 		t.Errorf("SchedulingCadence = %v, want CONTINUOUS", definition.SchedulingCadence)
 	}
-	for name, want := range map[string]int64{"min_power_mw": 65_000, "max_power_mw": 1_500_000} {
+	for name, want := range map[string]float64{"min_power_w": 65, "max_power_w": 1500} {
 		spec := definition.Thresholds[name]
 		if spec.Value != want {
-			t.Errorf("%s default = %v, want %d", name, spec.Value, want)
+			t.Errorf("%s default = %v, want %g", name, spec.Value, want)
 		}
 		if len(spec.PerArchitecture) != 0 {
 			t.Errorf("%s PerArchitecture = %v, want empty for shared GB200/GB300 defaults", name, spec.PerArchitecture)
@@ -60,20 +60,20 @@ func TestGPUAveragePowerDraw_UsesSupportedArchitectureDefaults(t *testing.T) {
 				catalog.WithArchitecture(architecture),
 				catalog.WithExecutionContext(health.OperatorInfra),
 			)
-			for _, powerMW := range []int64{65_000, 220_000, 1_500_000} {
-				t.Run(strconv.FormatInt(powerMW, 10), func(t *testing.T) {
-					v, err := cat.Evaluate("gpu_average_power_draw", averagePowerMeasurement(powerMW))
+			for _, powerW := range []float64{65, 220, 1500} {
+				t.Run(strconv.FormatFloat(powerW, 'f', -1, 64), func(t *testing.T) {
+					v, err := cat.Evaluate("gpu_average_power_draw", averagePowerMeasurement(powerW))
 					if err != nil {
 						t.Fatalf("Evaluate: %v", err)
 					}
 					if v.Severity != health.Pass {
-						t.Errorf("Severity = %v, want PASS at %d mW", v.Severity, powerMW)
+						t.Errorf("Severity = %v, want PASS at %g W", v.Severity, powerW)
 					}
-					if got := v.Thresholds["min_power_mw"].Value; got != int64(65_000) {
-						t.Errorf("min_power_mw = %v, want %s default 65000", got, architecture)
+					if got := v.Thresholds["min_power_w"].Value; got != float64(65) {
+						t.Errorf("min_power_w = %v, want %s default 65", got, architecture)
 					}
-					if got := v.Thresholds["max_power_mw"].Value; got != int64(1_500_000) {
-						t.Errorf("max_power_mw = %v, want %s default 1500000", got, architecture)
+					if got := v.Thresholds["max_power_w"].Value; got != float64(1500) {
+						t.Errorf("max_power_w = %v, want %s default 1500", got, architecture)
 					}
 				})
 			}
@@ -85,15 +85,15 @@ func TestGPUAveragePowerDraw_OutOfRange(t *testing.T) {
 	tests := []struct {
 		name        string
 		messagePart string
-		powerMW     int64
+		powerW      float64
 	}{
-		{name: "below minimum", powerMW: 64_999, messagePart: "below minimum 65000 mW"},
-		{name: "above maximum", powerMW: 1_500_001, messagePart: "above maximum 1500000 mW"},
+		{name: "below minimum", powerW: 64.999, messagePart: "below minimum 65 W"},
+		{name: "above maximum", powerW: 1500.001, messagePart: "above maximum 1500 W"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			v, err := newCatalog().Evaluate("gpu_average_power_draw", averagePowerMeasurement(tt.powerMW))
+			v, err := newCatalog().Evaluate("gpu_average_power_draw", averagePowerMeasurement(tt.powerW))
 			if err != nil {
 				t.Fatalf("Evaluate: %v", err)
 			}
@@ -115,15 +115,15 @@ func TestGPUAveragePowerDraw_OutOfRange(t *testing.T) {
 
 func TestGPUAveragePowerDraw_OverridesBounds(t *testing.T) {
 	// 2000 W is outside the default (65-1500 W) but within this override.
-	cat := newCatalog(averagePowerOverrides(1_800_000, 2_500_000))
-	v, err := cat.Evaluate("gpu_average_power_draw", averagePowerMeasurement(2_000_000))
+	cat := newCatalog(averagePowerOverrides(1800, 2500))
+	v, err := cat.Evaluate("gpu_average_power_draw", averagePowerMeasurement(2000))
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
 	if v.Severity != health.Pass {
 		t.Errorf("Severity = %v, want PASS with 1800-2500 W override", v.Severity)
 	}
-	for _, name := range []string{"min_power_mw", "max_power_mw"} {
+	for _, name := range []string{"min_power_w", "max_power_w"} {
 		if !v.Thresholds[name].Overridden {
 			t.Errorf("%s = %+v, want operator override", name, v.Thresholds[name])
 		}
@@ -135,7 +135,7 @@ func TestGPUAveragePowerDraw_SkipsOnWrongArchitecture(t *testing.T) {
 		catalog.WithArchitecture("H100"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
-	v, err := cat.Evaluate("gpu_average_power_draw", averagePowerMeasurement(220_000))
+	v, err := cat.Evaluate("gpu_average_power_draw", averagePowerMeasurement(220))
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestGPUAveragePowerDraw_SkipsOnWrongArchitecture(t *testing.T) {
 
 func TestGPUAveragePowerDraw_ErroredSignal(t *testing.T) {
 	m := averagePowerMeasurement(0)
-	m.AddError(errors.New("nvml average power query failed"), gpu.SignalAveragePowerDrawMW)
+	m.AddError(errors.New("nvml average power query failed"), gpu.SignalAveragePowerDrawW)
 	v, err := newCatalog().Evaluate("gpu_average_power_draw", m)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)

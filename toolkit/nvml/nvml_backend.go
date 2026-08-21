@@ -324,8 +324,10 @@ func measureDevicePstate(dev gonvml.Device, m *gpu.GPUMeasurement) {
 	m.GPUPstate = int64(state)
 }
 
+const milliwattsPerWatt = 1000
+
 // measureDeviceAveragePowerDraw sets the GPU's one-second average power
-// draw on m, in milliwatts, from NVML's FI_DEV_POWER_AVERAGE field.
+// draw on m, in watts, from NVML's milliwatt FI_DEV_POWER_AVERAGE field.
 //
 // The field API returns a per-field NvmlReturn independent of the call's
 // own return, and reports the value as an untyped 8-byte union, so a
@@ -338,39 +340,39 @@ func measureDeviceAveragePowerDraw(dev gonvml.Device, m *gpu.GPUMeasurement) {
 	}}
 	if ret := dev.GetFieldValues(values); ret != gonvml.SUCCESS {
 		m.AddError(&Error{Op: "DeviceGetFieldValues(POWER_AVERAGE)", Return: ret},
-			gpu.SignalAveragePowerDrawMW)
+			gpu.SignalAveragePowerDrawW)
 		return
 	}
 
 	value := values[0]
 	if ret := gonvml.Return(value.NvmlReturn); ret != gonvml.SUCCESS {
 		m.AddError(&Error{Op: "DeviceGetFieldValues(POWER_AVERAGE)", Return: ret},
-			gpu.SignalAveragePowerDrawMW)
+			gpu.SignalAveragePowerDrawW)
 		return
 	}
 	if gonvml.ValueType(value.ValueType) != gonvml.VALUE_TYPE_UNSIGNED_INT {
 		m.AddError(fmt.Errorf("nvml DeviceGetFieldValues(POWER_AVERAGE): unexpected ValueType %d, want UNSIGNED_INT", value.ValueType),
-			gpu.SignalAveragePowerDrawMW)
+			gpu.SignalAveragePowerDrawW)
 		return
 	}
-	m.AveragePowerDrawMW = int64(binary.LittleEndian.Uint32(value.Value[:4]))
+	m.AveragePowerDrawW = float64(binary.LittleEndian.Uint32(value.Value[:4])) / milliwattsPerWatt
 }
 
 func measureDevicePowerLimits(dev gonvml.Device, m *gpu.GPUMeasurement) {
 	limit, ret := dev.GetPowerManagementLimit()
 	if ret != gonvml.SUCCESS {
 		m.AddError(&Error{Op: "DeviceGetPowerManagementLimit", Return: ret},
-			gpu.SignalPowerLimitMW)
+			gpu.SignalPowerLimitW)
 	} else {
-		m.PowerLimitMW = int64(limit)
+		m.PowerLimitW = float64(limit) / milliwattsPerWatt
 	}
 
 	enforced, ret := dev.GetEnforcedPowerLimit()
 	if ret != gonvml.SUCCESS {
 		m.AddError(&Error{Op: "DeviceGetEnforcedPowerLimit", Return: ret},
-			gpu.SignalEnforcedPowerLimitMW)
+			gpu.SignalEnforcedPowerLimitW)
 	} else {
-		m.EnforcedPowerLimitMW = int64(enforced)
+		m.EnforcedPowerLimitW = float64(enforced) / milliwattsPerWatt
 	}
 }
 

@@ -26,7 +26,7 @@ func averagePowerFieldValues(powerMW uint32) func([]gonvml.FieldValue) gonvml.Re
 	}
 }
 
-func TestMeasureGPUs_AveragePowerDrawPreservesMilliwatts(t *testing.T) {
+func TestMeasureGPUs_AveragePowerDrawPreservesFractionalWatts(t *testing.T) {
 	dev := powerLimitDevice(1_200_000, 1_200_000)
 	dev.GetFieldValuesFunc = averagePowerFieldValues(221_850)
 	b := nvml.NewWithLibrary(pstateLib(dev))
@@ -37,8 +37,8 @@ func TestMeasureGPUs_AveragePowerDrawPreservesMilliwatts(t *testing.T) {
 		t.Fatalf("MeasureGPUs: %v", err)
 	}
 	m := expectGPUMeasurement(t, ms, 0)
-	if m.AveragePowerDrawMW != 221_850 {
-		t.Errorf("AveragePowerDrawMW = %d, want 221850", m.AveragePowerDrawMW)
+	if m.AveragePowerDrawW != 221.85 {
+		t.Errorf("AveragePowerDrawW = %g, want 221.85", m.AveragePowerDrawW)
 	}
 	if errs := m.Errors(); len(errs) != 0 {
 		t.Errorf("Errors() = %v, want empty", errs)
@@ -94,7 +94,7 @@ func TestMeasureGPUs_AveragePowerDrawFailures(t *testing.T) {
 			if len(errs) != 1 {
 				t.Fatalf("Errors() = %v, want 1 entry", errs)
 			}
-			if want := []string{gpu.SignalAveragePowerDrawMW}; !slices.Equal(errs[0].FailedSignals(), want) {
+			if want := []string{gpu.SignalAveragePowerDrawW}; !slices.Equal(errs[0].FailedSignals(), want) {
 				t.Errorf("FailedSignals = %v, want %v", errs[0].FailedSignals(), want)
 			}
 			if tt.wantNVMLError {

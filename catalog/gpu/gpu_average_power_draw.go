@@ -13,7 +13,7 @@ func GPUAveragePowerDraw() health.CheckDefinition {
 
 		RequiredSignals: []string{
 			SignalGPUID,
-			SignalAveragePowerDrawMW,
+			SignalAveragePowerDrawW,
 		},
 
 		ExecutionClass:    health.Passive,
@@ -26,30 +26,30 @@ func GPUAveragePowerDraw() health.CheckDefinition {
 		RecommendedAction: health.Drain(health.DiagnosticActionCheckMechanicals),
 
 		Thresholds: map[string]health.ThresholdSpec{
-			"min_power_mw": {
-				Value:       int64(65_000),
+			"min_power_w": {
+				Value:       float64(65),
 				Category:    health.DefaultThreshold,
 				Description: "Minimum expected one-second average power draw per GPU. Override per fleet.",
-				Unit:        "mW",
+				Unit:        "W",
 			},
-			"max_power_mw": {
-				Value:       int64(1_500_000),
+			"max_power_w": {
+				Value:       float64(1500),
 				Category:    health.DefaultThreshold,
 				Description: "Maximum expected one-second average power draw per GPU. Override per fleet.",
-				Unit:        "mW",
+				Unit:        "W",
 			},
 		},
 
 		Rules: []health.Rule{
 			{
-				Expression: "average_power_draw_mw < min_power_mw",
+				Expression: "average_power_draw_w < min_power_w",
 				Severity:   health.Critical,
-				Message:    "GPU ${gpu_id}: average power draw ${average_power_draw_mw} mW is below minimum ${min_power_mw} mW.",
+				Message:    "GPU ${gpu_id}: average power draw ${average_power_draw_w} W is below minimum ${min_power_w} W.",
 			},
 			{
-				Expression: "average_power_draw_mw > max_power_mw",
+				Expression: "average_power_draw_w > max_power_w",
 				Severity:   health.Critical,
-				Message:    "GPU ${gpu_id}: average power draw ${average_power_draw_mw} mW is above maximum ${max_power_mw} mW.",
+				Message:    "GPU ${gpu_id}: average power draw ${average_power_draw_w} W is above maximum ${max_power_w} W.",
 			},
 		},
 	}
