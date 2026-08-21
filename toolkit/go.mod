@@ -1,6 +1,6 @@
 module github.com/dsx-ai-factory/health-validation/toolkit
 
-go 1.27rc2
+go 1.27.0
 
 require (
 	github.com/NVIDIA/go-nvml v0.13.0-1
