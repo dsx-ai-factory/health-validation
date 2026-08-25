@@ -9,8 +9,14 @@ import (
 )
 
 const (
-	modulePath       = "github.com/dsx-ai-factory/health-validation/catalog"
-	development      = "dev"
+	// modulePath is this module's import path, matched against the entries in
+	// a binary's module graph.
+	modulePath = "github.com/dsx-ai-factory/health-validation/catalog"
+	// development is reported when no source yields a release version. It
+	// doubles as the sentinel marking the default as unstamped.
+	development = "dev"
+	// shortRevisionLen bounds the commit SHA appended to a development
+	// version.
 	shortRevisionLen = 12
 )
 
@@ -29,6 +35,8 @@ func Version() string {
 	return resolvedVersion()
 }
 
+// resolve applies the three sources in descending order of trustworthiness:
+// the link-time stamp, the module graph, then a development identifier.
 func resolve(stamped string, bi *debug.BuildInfo) string {
 	if v := strings.TrimSpace(stamped); v != "" && v != development {
 		return v
