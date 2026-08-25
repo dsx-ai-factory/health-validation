@@ -611,7 +611,7 @@ func TestEvaluateExitCodes(t *testing.T) {
 
 func TestWriteVerdictNodeID(t *testing.T) {
 	t.Run("stamps a value copy", func(t *testing.T) {
-		input := health.NodeVerdict{NodeID: "upstream"}
+		input := health.NodeVerdict{NodeID: "upstream", CatalogVersion: "upstream"}
 		var stdout, stderr bytes.Buffer
 		if code := writeVerdict(input, "test", "  node-123  ", &stdout, &stderr); code != exitOK {
 			t.Fatalf("writeVerdict exit = %d, want %d; stderr = %q", code, exitOK, stderr.String())
@@ -624,8 +624,14 @@ func TestWriteVerdictNodeID(t *testing.T) {
 		if output.NodeID != testNodeID {
 			t.Errorf("output NodeID = %q, want %q", output.NodeID, testNodeID)
 		}
+		if got, want := output.CatalogVersion, "upstream"; got != want {
+			t.Errorf("output CatalogVersion = %q, want %q", got, want)
+		}
 		if input.NodeID != "upstream" {
 			t.Errorf("input NodeID = %q, want the original value", input.NodeID)
+		}
+		if input.CatalogVersion != "upstream" {
+			t.Errorf("input CatalogVersion = %q, want the original value", input.CatalogVersion)
 		}
 	})
 

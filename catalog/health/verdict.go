@@ -3,6 +3,7 @@ package health
 import (
 	"time"
 
+	"github.com/dsx-ai-factory/health-validation/catalog/version"
 	"github.com/google/uuid"
 )
 
@@ -53,6 +54,7 @@ const NodeVerdictSchemaVersion = "0.1"
 // health assessment.
 type NodeVerdict struct {
 	SchemaVersion      string                `json:"schema_version"`
+	CatalogVersion     string                `json:"catalog_version"` // Catalog module version compiled into the producer.
 	Timestamp          time.Time             `json:"timestamp"`
 	NodeID             string                `json:"node_id,omitempty"` // Opaque identifier for the node under test.
 	TraceID            string                `json:"trace_id"`          // Shared by all checks in this run; echoed on each CheckVerdict.
@@ -121,6 +123,7 @@ func AggregateNodeVerdict(verdicts []CheckVerdict, completionThreshold float64) 
 	traceID := newID()
 	nv := NodeVerdict{
 		SchemaVersion:    NodeVerdictSchemaVersion,
+		CatalogVersion:   version.Version(),
 		TraceID:          traceID,
 		OverallSeverity:  Pass,
 		SeverityByDomain: make(map[Category]Severity),

@@ -7,6 +7,7 @@
   "type": "object",
   "required": [
     "schema_version",
+    "catalog_version",
     "trace_id",
     "timestamp",
     "severity_by_domain",
@@ -18,6 +19,11 @@
     "schema_version": {
       "description": "MAJOR.MINOR contract version. Consumers must check this before acting on a verdict; an unrecognised or missing value is untrusted output.",
       "const": "0.1"
+    },
+    "catalog_version": {
+      "description": "Catalog module version that produced this verdict: a Go module version such as v0.1.0 on release builds, dev or dev+<commit> otherwise. Overrides and custom checks do not change it.",
+      "type": "string",
+      "minLength": 1
     },
     "timestamp": {
       "description": "When the node verdict was aggregated (RFC 3339).",

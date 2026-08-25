@@ -171,6 +171,59 @@ func TestNodeVerdictJSON_NodeID(t *testing.T) {
 	})
 }
 
+func TestNodeVerdictJSON_CatalogVersion(t *testing.T) {
+	t.Run("populated", func(t *testing.T) {
+		data, err := json.Marshal(NodeVerdict{CatalogVersion: "v1.2.3"})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			t.Fatal(err)
+		}
+		if got := string(fields["catalog_version"]); got != `"v1.2.3"` {
+			t.Errorf("catalog_version = %s, want %q", got, "v1.2.3")
+		}
+	})
+
+	t.Run("aggregated verdict", func(t *testing.T) {
+		nv := AggregateNodeVerdict(nil, 0)
+		if nv.CatalogVersion == "" {
+			t.Fatal("CatalogVersion is empty")
+		}
+
+		data, err := json.Marshal(nv)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			t.Fatal(err)
+		}
+		if got := string(fields["catalog_version"]); got == "" || got == `""` {
+			t.Errorf("catalog_version = %s, want a non-empty value", got)
+		}
+	})
+
+	t.Run("round trip", func(t *testing.T) {
+		want := NodeVerdict{CatalogVersion: "v1.2.3"}
+		data, err := json.Marshal(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var got NodeVerdict
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.CatalogVersion != want.CatalogVersion {
+			t.Errorf("CatalogVersion = %q, want %q", got.CatalogVersion, want.CatalogVersion)
+		}
+	})
+}
+
 func TestAggregateNodeVerdict_Basic(t *testing.T) {
 	now := time.Now()
 	verdicts := []CheckVerdict{

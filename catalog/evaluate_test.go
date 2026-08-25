@@ -709,6 +709,20 @@ func TestEvaluateAll_NodeVerdict(t *testing.T) {
 	}
 }
 
+// Every verdict the catalog aggregates must name the catalog that produced
+// it, so a consumer can tell whether a threshold or rule fix was in effect.
+func TestEvaluateAll_StampsCatalogVersion(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+
+	nv, err := cat.EvaluateAll(node.NodeMeasurement{GPUCount: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nv.CatalogVersion == "" {
+		t.Error("CatalogVersion is empty; every catalog-produced verdict must carry one")
+	}
+}
+
 // Operator overrides supplied via WithOverrides must be honored by the
 // batch evaluation path (EvaluateAll/Collect), not just the single-check
 // Evaluate path. Regression test for overrides being dropped because the
