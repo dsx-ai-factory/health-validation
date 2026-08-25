@@ -302,30 +302,20 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 
 	if !anyMatched {
 		// No rule matched; check passes.
-		return health.CheckVerdict{
-			CheckID:        cd.ID,
-			Severity:       health.Pass,
-			Category:       cd.Category,
-			Thresholds:     resolved,
-			ObservedValues: signals,
-			MaturityLevel:  cd.MaturityLevel,
-			NVIDIAEndorsed: cd.Provenance == health.NVIDIA,
-			Timestamp:      now,
-		}, nil
+		v := verdictFor(cd, now)
+		v.Severity = health.Pass
+		v.Thresholds = resolved
+		v.ObservedValues = signals
+		return v, nil
 	}
 
-	return health.CheckVerdict{
-		CheckID:           cd.ID,
-		Severity:          severity,
-		Messages:          messages,
-		Category:          cd.Category,
-		Thresholds:        resolved,
-		ObservedValues:    signals,
-		RecommendedAction: action,
-		MaturityLevel:     cd.MaturityLevel,
-		NVIDIAEndorsed:    cd.Provenance == health.NVIDIA,
-		Timestamp:         now,
-	}, nil
+	v := verdictFor(cd, now)
+	v.Severity = severity
+	v.Messages = messages
+	v.Thresholds = resolved
+	v.ObservedValues = signals
+	v.RecommendedAction = action
+	return v, nil
 }
 
 // matchingError inspects the error entries whose FailedSignals overlap the
@@ -382,36 +372,45 @@ func requiredThresholds(specs map[string]health.ThresholdSpec) []string {
 	return names
 }
 
-func skippedVerdict(cd *health.CheckDefinition, ts time.Time, reason health.SkipReason, detail string) health.CheckVerdict {
+// verdictFor seeds the fields every verdict copies from its check definition.
+// The pass, matched, skipped, and errored paths all build from it, so a field
+// added here cannot land on results but not skips.
+func verdictFor(cd *health.CheckDefinition, ts time.Time) health.CheckVerdict {
 	return health.CheckVerdict{
 		CheckID:        cd.ID,
-		Skipped:        true,
-		SkipReason:     reason,
-		SkipDetail:     detail,
 		Category:       cd.Category,
+		ConditionScope: cd.ConditionScope,
 		MaturityLevel:  cd.MaturityLevel,
 		NVIDIAEndorsed: cd.Provenance == health.NVIDIA,
 		Timestamp:      ts,
 	}
 }
 
+func skippedVerdict(cd *health.CheckDefinition, ts time.Time, reason health.SkipReason, detail string) health.CheckVerdict {
+	v := verdictFor(cd, ts)
+	v.Skipped = true
+	v.SkipReason = reason
+	v.SkipDetail = detail
+	return v
+}
+
 // ErroredVerdict builds a Critical CheckVerdict for a check whose input
 // measurement could not be observed — the engine emits one when a sensor's
 // errored measurement satisfies the check's schema (architecture, context,
 // RequiredSignals) but the data is unavailable. action is the
-// collection-failure remediation; it is never the check's fault default,
-// which applies only when a rule actually matched.
+// collection-failure remediation and the scope is [health.NodeScope]; neither
+// is the check's declared value, which applies only when a rule actually
+// matched.
 func ErroredVerdict(cd *health.CheckDefinition, ts time.Time, detail string, action health.RecommendedAction) health.CheckVerdict {
-	return health.CheckVerdict{
-		CheckID:           cd.ID,
-		Severity:          health.Critical,
-		Messages:          []string{fmt.Sprintf("measurement unavailable: %s", detail)},
-		Category:          cd.Category,
-		MaturityLevel:     cd.MaturityLevel,
-		NVIDIAEndorsed:    cd.Provenance == health.NVIDIA,
-		RecommendedAction: action,
-		Timestamp:         ts,
-	}
+	v := verdictFor(cd, ts)
+	v.Severity = health.Critical
+	v.Messages = []string{fmt.Sprintf("measurement unavailable: %s", detail)}
+	v.RecommendedAction = action
+	// The rules never ran, so nothing beyond this node was observed. Like the
+	// action above, the scope reports the local sensor failure that happened,
+	// not the blast radius this check carries when it detects a real condition.
+	v.ConditionScope = health.NodeScope
+	return v
 }
 
 func interpolateMessage(template string, vars map[string]any) string {

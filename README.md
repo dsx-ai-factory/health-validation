@@ -31,6 +31,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "check_id": "gpu_count",
       "severity": "PASS",
       "category": "node",
+      "condition_scope": "NODE",
       "skipped": false,
       "skip_reason": "NOT_SKIPPED",
       "maturity_level": "stable",
@@ -94,6 +95,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       ],
       "severity": "CRITICAL",
       "category": "node",
+      "condition_scope": "NODE",
       "skipped": false,
       "nvidia_endorsed": true
     },
@@ -115,6 +117,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "check_id": "nvlink_active",
       "severity": "PASS",
       "category": "nvlink",
+      "condition_scope": "NODE",
       "skipped": false,
       "nvidia_endorsed": true
     },
@@ -136,6 +139,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       ],
       "severity": "CRITICAL",
       "category": "xid",
+      "condition_scope": "NODE",
       "skipped": false,
       "nvidia_endorsed": true
     }
@@ -212,6 +216,7 @@ Each check definition carries:
 - `category`: the hardware domain (cpu, gpu, node, nvlink, pcie, infiniband, storage, xid)
 - `provenance`: `nvidia` for all built-in checks
 - `maturity_level`: stable or experimental
+- `condition_scope`: how far the condition reaches (NODE, DOMAIN, CLUSTER)
 
 > **GB300 support.** Most checks in the catalog declare support for both GB200 and GB300 in their `Architectures` field. GB200 support has been validated; GB300 support has not yet completed the same validation pass. Treat GB300 results as directionally correct but experimental and subject to change until this note is removed.
 

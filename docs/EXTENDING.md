@@ -94,6 +94,11 @@ Fields worth knowing:
   supplies a value.
 - **`Provenance`**, `MaturityLevel`, and the other classification fields are
   passed through untouched. Use `health.Private`.
+- **`ConditionScope`** records how far the detected condition reaches: `NodeScope`,
+  `DomainScope`, or `ClusterScope`. It is `NodeScope` when omitted, so an existing
+  check keeps its current meaning without change. Unlike the fields above it is
+  not passed through untouched: a collection-failure verdict reports
+  `NodeScope` whatever the check declares.
 
 ## Routing: how a measurement reaches your check
 

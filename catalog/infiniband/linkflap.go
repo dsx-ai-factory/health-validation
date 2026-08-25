@@ -28,6 +28,7 @@ func RDMALinkFlapFatal() health.CheckDefinition {
 		SchedulingCadence: health.Continuous,
 		Architectures:     []string{"GB200", "GB300"},
 
+		ConditionScope:    health.ClusterScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
 		RecommendedAction: health.Drain(health.DiagnosticActionCheckNetwork),

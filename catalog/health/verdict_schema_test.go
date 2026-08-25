@@ -51,6 +51,7 @@ func TestNodeVerdictSchema_InSyncWithContract(t *testing.T) {
 	}{
 		{"severity", wireValues(severityNames)},
 		{"category", wireValues(categoryNames)},
+		{"conditionScope", wireValues(conditionScopeNames)},
 		{"skipReason", wireValues(skipReasonNames)},
 		{"maturityLevel", wireValues(maturityLevelNames)},
 		{"thresholdCategory", wireValues(thresholdCategoryNames)},
@@ -76,4 +77,23 @@ func wireValues[K comparable](m map[K]string) []string {
 		out = append(out, v)
 	}
 	return out
+}
+
+// The enum table above pins conditionScope's wire values but not that anything
+// uses them, so the property can vanish from checkVerdict while the $def stays
+// and every other test passes.
+func TestNodeVerdictSchema_CheckVerdictDeclaresConditionScope(t *testing.T) {
+	var doc struct {
+		Defs struct {
+			CheckVerdict struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+			} `json:"checkVerdict"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(nodeVerdictSchema, &doc); err != nil {
+		t.Fatalf("parse node-verdict.schema.json: %v", err)
+	}
+	if _, ok := doc.Defs.CheckVerdict.Properties["condition_scope"]; !ok {
+		t.Error("$defs.checkVerdict.properties.condition_scope missing; the schema must describe every field CheckVerdict emits")
+	}
 }

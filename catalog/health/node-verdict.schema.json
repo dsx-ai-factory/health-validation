@@ -102,6 +102,10 @@
         },
         "severity": { "$ref": "#/$defs/severity" },
         "category": { "$ref": "#/$defs/category" },
+        "condition_scope": {
+          "description": "How far the condition this check detects reaches: the smallest boundary that must be inspected to explain it. A collection-failure verdict reports NODE, since the rules never ran and nothing beyond this node was observed; a skipped verdict keeps the check's declared value. Independent of recommended_action, which is always node-local.",
+          "$ref": "#/$defs/conditionScope"
+        },
         "maturity_level": { "$ref": "#/$defs/maturityLevel" },
         "skipped": {
           "description": "True when the check did not run. A separate state from severity, not a severity level.",
@@ -200,6 +204,11 @@
       "description": "Hardware/interconnect domain a check monitors.",
       "type": "string",
       "enum": ["gpu", "nvlink", "pcie", "infiniband", "storage", "node", "xid", "cpu"]
+    },
+    "conditionScope": {
+      "description": "Blast radius of a detected condition. NODE: this node's own hardware explains it. DOMAIN: explaining it requires the NVLink domain shared with peer nodes. CLUSTER: explaining it requires the cluster network fabric beyond the node.",
+      "type": "string",
+      "enum": ["NODE", "DOMAIN", "CLUSTER"]
     },
     "skipReason": {
       "description": "Machine-readable code for why a check did not run.",

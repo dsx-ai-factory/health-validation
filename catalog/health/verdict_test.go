@@ -224,6 +224,28 @@ func TestNodeVerdictJSON_CatalogVersion(t *testing.T) {
 	})
 }
 
+// condition_scope is always emitted. NodeScope is the zero value, so an omitted
+// key would be indistinguishable from a node-scoped condition.
+func TestCheckVerdictJSON_ConditionScope(t *testing.T) {
+	assertScope := func(v CheckVerdict, want string) {
+		t.Helper()
+		data, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("Marshal: %v", err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatalf("Unmarshal: %v", err)
+		}
+		if got["condition_scope"] != want {
+			t.Errorf("condition_scope = %v, want %q; json = %s", got["condition_scope"], want, data)
+		}
+	}
+
+	assertScope(CheckVerdict{ConditionScope: DomainScope}, "DOMAIN")
+	assertScope(CheckVerdict{}, "NODE")
+}
+
 func TestAggregateNodeVerdict_Basic(t *testing.T) {
 	now := time.Now()
 	verdicts := []CheckVerdict{

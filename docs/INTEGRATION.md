@@ -345,6 +345,13 @@ validate against the published
   re-parsing every result.
 - **`check_results`** — per-check `severity`, `messages`, `observed_values`, and
   the resolved `thresholds` (with `overridden`), for the human-readable why.
+- **`condition_scope`** (on each check result) — how far the detected condition
+  reaches: `NODE`, `DOMAIN` (the NVLink domain shared with peer nodes), or
+  `CLUSTER` (the network fabric beyond the node). Route escalation on this
+  instead of inferring it from the check ID. A result whose measurement could
+  not be collected reports `NODE`, so it never sends you off-node on no evidence.
+  Entries in `skipped_checks` carry the declared value, so gate on `skipped`
+  first.
 - **`skipped_checks`** — checks that did **not** run, with a `skip_reason`
   (`THRESHOLD_UNCONFIGURED`, `CHECK_DISABLED`, `NO_APPLICABLE_MEASUREMENT`, …).
   A PASS with many skips is **partial coverage**, not a clean bill of health —

@@ -907,3 +907,109 @@ func TestEvaluate_RunsConfiguredRequiredThreshold(t *testing.T) {
 		t.Errorf("severity = %v, want PASS", v.Severity)
 	}
 }
+
+// scopedCheck is a synthetic DomainScope check. The table below drives it down
+// all four paths that build a verdict from a definition: pass, matched,
+// skipped, and errored.
+func scopedCheck() health.CheckDefinition {
+	return health.CheckDefinition{
+		ID:                "scoped_check",
+		Category:          health.Node,
+		ConditionScope:    health.DomainScope,
+		RequiredSignals:   []string{"first"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "first < 0", Severity: health.Critical, Message: "negative"},
+		},
+	}
+}
+
+// TestEvaluate_ConditionScope drives scopedCheck down all four paths that
+// build a verdict from a definition and asserts each one's severity, skip
+// state, and ConditionScope.
+func TestEvaluate_ConditionScope(t *testing.T) {
+	tests := []struct {
+		// measurement precedes name because fieldalignment scores pointer-scan
+		// bytes, not padding: an 8-byte func ahead of a 16-byte string keeps the
+		// scanned span at 16.
+		measurement        func() twoSignalMeasurement
+		name               string
+		wantSeverity       health.Severity
+		wantSkipReason     health.SkipReason
+		wantConditionScope health.ConditionScope
+		disableCheck       bool
+		wantSkipped        bool
+	}{
+		{
+			name:               "pass",
+			measurement:        func() twoSignalMeasurement { return twoSignalMeasurement{First: 1} },
+			wantSeverity:       health.Pass,
+			wantConditionScope: health.DomainScope,
+		},
+		{
+			// ConditionScope describes the check, not the observation, so a
+			// skipped verdict still reports what that check would have
+			// implicated. RecommendedAction cannot do this: a skipped verdict
+			// carries none.
+			name:               "disabled and skipped",
+			disableCheck:       true,
+			measurement:        func() twoSignalMeasurement { return twoSignalMeasurement{First: 1} },
+			wantSkipped:        true,
+			wantSkipReason:     health.CheckDisabled,
+			wantConditionScope: health.DomainScope,
+		},
+		{
+			// A failure to observe is node-local whatever the check would have
+			// implicated: the rules never ran, so nothing off-node was seen.
+			// Reporting the check's declared scope here would route a local
+			// sensor failure to the fabric owner, the same mistake the
+			// collection-failure action already avoids.
+			name: "collection failure",
+			measurement: func() twoSignalMeasurement {
+				m := twoSignalMeasurement{First: 1}
+				m.AddError(errors.New("sensor unavailable"), "first")
+				return m
+			},
+			wantSeverity:       health.Critical,
+			wantConditionScope: health.NodeScope,
+		},
+		{
+			// A matched rule is a real detected condition, so it carries the
+			// check's declared scope. This is the path where blast radius
+			// drives triage.
+			name:               "matched rule",
+			measurement:        func() twoSignalMeasurement { return twoSignalMeasurement{First: -1} },
+			wantSeverity:       health.Critical,
+			wantConditionScope: health.DomainScope,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := []catalog.Option{
+				catalog.WithArchitecture(catalogtest.DummyArchitecture),
+				catalog.WithExecutionContext(health.OperatorInfra),
+			}
+			if tt.disableCheck {
+				opts = append(opts, catalog.WithDisabledChecks("scoped_check"))
+			}
+			cat := catalog.NewEmpty(opts...)
+			cat.MustRegister(scopedCheck())
+
+			v, err := cat.Evaluate("scoped_check", tt.measurement())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Skipped != tt.wantSkipped || v.SkipReason != tt.wantSkipReason {
+				t.Fatalf("skipped=%v reason=%v, want skipped=%v reason=%v", v.Skipped, v.SkipReason, tt.wantSkipped, tt.wantSkipReason)
+			}
+			if !tt.wantSkipped && v.Severity != tt.wantSeverity {
+				t.Fatalf("severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if v.ConditionScope != tt.wantConditionScope {
+				t.Errorf("ConditionScope = %v, want %v", v.ConditionScope, tt.wantConditionScope)
+			}
+		})
+	}
+}

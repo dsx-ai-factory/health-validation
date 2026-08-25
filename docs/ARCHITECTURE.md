@@ -90,6 +90,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | CheckID | string | `check_id` | Stable check identifier. |
 | Severity | Severity | `severity` | PASS, INFO, WARNING, CRITICAL, or UNKNOWN. |
 | Category | Category | `category` | Hardware domain: cpu, gpu, node, nvlink, pcie, infiniband, storage, xid. |
+| ConditionScope | ConditionScope | `condition_scope` | Blast radius of the condition: `NODE` (this node's own hardware explains it), `DOMAIN` (explaining it requires the NVLink domain shared with peer nodes), `CLUSTER` (explaining it requires the cluster network fabric beyond the node). A collection-failure verdict reports `NODE`; a skipped verdict keeps the check's declared value. Independent of `recommended_action`, which is always node-local. |
 | Skipped | bool | `skipped` | True if the check did not run. |
 | SkipReason | SkipReason | `skip_reason` | Machine-readable skip code (see below). |
 | SkipDetail | string | `skip_detail` | Human-readable skip explanation. |
