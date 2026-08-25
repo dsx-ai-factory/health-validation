@@ -32,7 +32,10 @@ func xidPresenceCheck() health.CheckDefinition {
 }
 
 func xidCatalog() *catalog.Catalog {
-	cat := catalog.NewEmpty(catalog.WithExecutionContext(health.OperatorInfra))
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalog.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
 	cat.MustRegister(xidPresenceCheck())
 	return cat
 }

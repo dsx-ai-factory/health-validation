@@ -8,9 +8,8 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // The threshold and observed signals are watts, including fractional values
 // converted from NVML's milliwatt readings. Limits must match
 // expected_power_limit_w, which defaults per architecture (operators may
-// override). The catalog Value is a placeholder (GB200's 1200 W) used only
-// when architecture filtering is off; declared arches resolve via
-// PerArchitecture.
+// override). There is no architecture-agnostic Value; Evaluate requires
+// WithArchitecture.
 func GPUPowerLimit() health.CheckDefinition {
 	return health.CheckDefinition{
 		ID:          "gpu_power_limit",
@@ -35,9 +34,6 @@ func GPUPowerLimit() health.CheckDefinition {
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_power_limit_w": {
-				// Placeholder when architecture filtering is off. Declared
-				// arches resolve via PerArchitecture (GB200 1200 W).
-				Value: float64(1200),
 				PerArchitecture: map[string]any{
 					"GB200": float64(1200),
 					"GB300": float64(1400),

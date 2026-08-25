@@ -13,7 +13,10 @@ import (
 )
 
 func cpuCatalog() *catalog.Catalog {
-	return catalog.New(catalog.WithExecutionContext(health.OperatorInfra))
+	return catalog.New(
+		catalog.WithArchitecture(catalog.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
 }
 
 func TestCPUCountDefinition(t *testing.T) {

@@ -114,18 +114,14 @@ func TestNVLinkCapabilities_ErroredGPU(t *testing.T) {
 	}
 }
 
-// Architecture gating applies only when the caller supplies one. A direct
-// catalog caller may omit it, so a healthy capability measurement must not
-// false-fire in that mode.
-func TestNVLinkCapabilities_NoArchitectureHealthyNotCritical(t *testing.T) {
+// Evaluate requires WithArchitecture; omitting it is an error, not a
+// filter-off pass against the base threshold Value.
+func TestNVLinkCapabilities_NoArchitectureErrors(t *testing.T) {
 	cat := catalog.New(catalog.WithExecutionContext(health.OperatorInfra))
 
-	v, err := cat.Evaluate("nvlink_capabilities", healthyCapabilities())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity == health.Critical {
-		t.Error("severity = CRITICAL, want non-Critical (healthy capabilities, no architecture set)")
+	_, err := cat.Evaluate("nvlink_capabilities", healthyCapabilities())
+	if !errors.Is(err, catalog.ErrArchitectureUnset) {
+		t.Fatalf("Evaluate error = %v, want ErrArchitectureUnset", err)
 	}
 }
 

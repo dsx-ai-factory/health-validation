@@ -90,9 +90,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 
 // TestBuildCatalogAppliesArchitecture confirms a detected architecture is
 // wired into the catalog: a check skips on an architecture it does not cover
-// (A100 here) instead of running with the wrong thresholds. With an empty
-// architecture the filter stays off, which the other buildCatalog tests
-// exercise.
+// (A100 here) instead of running with the wrong thresholds.
 func TestBuildCatalogAppliesArchitecture(t *testing.T) {
 	cat, _, err := buildCatalog("", nil, "A100")
 	if err != nil {
@@ -160,6 +158,10 @@ func (x xidSpyBackend) Measure(context.Context) ([]health.Measurement, error) {
 // (no NVML, no cgo). One spy backs all three per-domain accessors, mirroring
 // the real host where a single NVML backend does. Installed by overwriting
 // App.host.
+//
+// architecture reports GB200: runCommand Evaluates the full builtin catalog,
+// so this must be a real generation. DummyArchitecture would skip scoped
+// checks (see TestNUMANodeCountReachesVerdict). Empty is a discovery failure.
 type fakeHost struct {
 	b spyBackend
 }
@@ -167,7 +169,7 @@ type fakeHost struct {
 func (h fakeHost) gpuBackend() toolkit.GPUBackend       { return h.b }
 func (h fakeHost) nodeBackend() toolkit.NodeBackend     { return h.b }
 func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
-func (fakeHost) architecture() (string, error)          { return "", nil }
+func (fakeHost) architecture() (string, error)          { return "GB200", nil }
 func (fakeHost) close() error                           { return nil }
 
 // panicHost ensures invalid input returns before touching the host backend.
@@ -558,7 +560,7 @@ func TestExitCodeForVerdict(t *testing.T) {
 // which is CRITICAL when gpu_count > 8.
 func nodeCatalog(t *testing.T) *catalog.Catalog {
 	t.Helper()
-	cat := catalog.NewEmpty()
+	cat := catalog.NewEmpty(catalog.WithArchitecture(catalog.DummyArchitecture))
 	if err := cat.Register(customCheck()); err != nil {
 		t.Fatalf("register custom check: %v", err)
 	}

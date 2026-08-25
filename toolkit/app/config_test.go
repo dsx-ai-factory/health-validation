@@ -333,7 +333,7 @@ func TestBuildCatalogAppliesConfigOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, _, err := buildCatalog(path, nil, "")
+	cat, _, err := buildCatalog(path, nil, "GB200")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, timeout, err := buildCatalog(path, nil, "")
+	cat, timeout, err := buildCatalog(path, nil, "GB200")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -430,7 +430,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 // a produced CRITICAL verdict is an out-of-service outcome. The full
 // severity still lives in the JSON verdict written to stdout.
 func TestEvaluateGPUCountMismatch(t *testing.T) {
-	cat := catalog.New()
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
 	sensors := []toolkit.Sensor{
 		toolkit.NewNodeSensor(toolkit.MockNode(
 			node.NodeMeasurement{GPUCount: 3},

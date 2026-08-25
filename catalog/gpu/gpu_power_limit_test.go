@@ -51,6 +51,13 @@ func requirePowerLimitCritical(t *testing.T, cat *catalog.Catalog, m gpu.GPUMeas
 	}
 }
 
+func TestGPUPowerLimit_OmitsBaseValue(t *testing.T) {
+	spec := gpu.GPUPowerLimit().Thresholds["expected_power_limit_w"]
+	if spec.Value != nil {
+		t.Errorf("Value = %v, want nil (PerArchitecture covers every declared architecture)", spec.Value)
+	}
+}
+
 // Evaluates matching watt signals with no overrides and expects PASS
 // against each architecture's catalog default.
 func TestGPUPowerLimit_UsesArchitectureDefault(t *testing.T) {

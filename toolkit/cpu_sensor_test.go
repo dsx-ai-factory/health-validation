@@ -42,7 +42,10 @@ func cpuAvailabilityCheck() health.CheckDefinition {
 }
 
 func cpuCatalog() *catalog.Catalog {
-	cat := catalog.NewEmpty(catalog.WithExecutionContext(health.OperatorInfra))
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalog.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
 	cat.MustRegister(cpuAvailabilityCheck())
 	return cat
 }
