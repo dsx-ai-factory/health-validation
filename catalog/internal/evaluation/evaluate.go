@@ -75,30 +75,27 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 // unconfigured threshold, dependency) are decided once per check, not
 // once per measurement.
 //
-// A check whose Category is absent from measurements entirely produces
-// no verdict at all: the domain simply was not part of this evaluation,
-// so it is neither a result nor a skip. This keeps a partial measurement
-// set (these methods are a public entry point; callers may evaluate one
-// domain at a time) from emitting NoApplicableMeasurement skips for every
-// other domain's checks. NoApplicableMeasurement is reserved for the
-// sharper case: the domain was collected but this check's measurement
-// shape was not among what the sensor produced.
+// A check whose Category supplied no measurement at all skips
+// [health.SensorMissing]. Registering a check is what declares the
+// expectation: if the catalog holds a GPU check, this run means to assess
+// GPUs, so a GPU sensor that is absent, unconfigured, or never constructed
+// is a hole in the assessment rather than a domain that was out of scope.
+// Every registered check therefore yields a verdict — a result or a skip —
+// and none can vanish. NoApplicableMeasurement remains the sharper case:
+// the domain was collected but this check's measurement shape was not
+// among what the sensor produced.
 //
-// expected names the categories the caller intended to cover. A category
-// that is expected but absent from measurements is not a partial
-// evaluation but a hole: its sensor is missing, unconfigured, or its
-// backend was never constructed. Those checks skip
-// [health.SensorMissing] rather than vanishing, so a node missing a whole
-// sensor no longer looks like a catalog that never had those checks. The
-// measurement-independent skips are decided first, so an operator's
-// [health.CheckDisabled] still outranks SensorMissing: the intentional
-// reason wins over the accidental one. Passing no expected categories
-// preserves the silent behavior above.
+// The skip is a report, not a failure: skipped checks are excluded from
+// OverallSeverity, so a missing sensor never turns a node CRITICAL on its
+// own. It does lower CompletionRatio, which is the point — the node was
+// not fully assessed. The measurement-independent skips are decided
+// first, so an operator's [health.CheckDisabled] outranks SensorMissing:
+// a check turned off on purpose never reads as a sensor hole.
 //
 // paramsFor supplies the per-check evaluation context; the engine asks
 // for fresh Params per check so overrides and disabled state stay
 // per-check, matching the single-check EvaluateCheck path.
-func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefinition, measurements []health.Measurement, expected []health.Category, paramsFor func(checkID string) Params) ([]health.CheckVerdict, error) {
+func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefinition, measurements []health.Measurement, paramsFor func(checkID string) Params) ([]health.CheckVerdict, error) {
 	now := time.Now()
 
 	// Extract each measurement's signals once; every check reuses them.
@@ -115,26 +112,12 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 		presentCategories[cat] = true
 	}
 
-	expectedCategories := make(map[health.Category]bool, len(expected))
-	for _, cat := range expected {
-		expectedCategories[cat] = true
-	}
-
 	order := TopologicalOrder(checks)
 	verdicts := make([]health.CheckVerdict, 0, len(order))
 	skipped := make(map[string]bool, len(order))
 
 	for _, id := range order {
 		cd := checks[id]
-
-		// A check whose whole domain was neither collected nor expected is
-		// out of scope for this batch: emit nothing rather than a skip. An
-		// expected-but-absent category falls through to the SensorMissing
-		// skip below, after the measurement-independent reasons have had
-		// their say.
-		if !presentCategories[cd.Category] && !expectedCategories[cd.Category] {
-			continue
-		}
 
 		if dep, ok := skippedDependency(cd, skipped); ok {
 			verdicts = append(verdicts, skippedVerdict(cd, now, health.DependencySkipped,
@@ -150,9 +133,8 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 			continue
 		}
 
-		// The category was expected but nothing of it arrived: the sensor is
-		// missing rather than the domain being out of scope. Record the hole
-		// so the check is visibly absent — and so CompletionRatio counts it —
+		// Nothing of this check's domain arrived. Record the hole so the
+		// check is visibly unassessed — and so CompletionRatio counts it —
 		// instead of silently producing no verdict.
 		if !presentCategories[cd.Category] {
 			verdicts = append(verdicts, skippedVerdict(cd, now, health.SensorMissing,

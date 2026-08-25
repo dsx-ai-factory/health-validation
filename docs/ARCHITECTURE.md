@@ -122,7 +122,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | INSUFFICIENT_HISTORY | Time-window data not yet accumulated. Applies only to checks that evaluate over a window; not used by any currently registered check. |
 | THRESHOLD_UNCONFIGURED | A threshold the operator must supply was not configured. |
 | NO_APPLICABLE_MEASUREMENT | The category was collected, but no measurement in it carries the check's required signals. |
-| SENSOR_MISSING | The category was expected but supplied no measurement at all — sensor absent, unconfigured, or never constructed. |
+| SENSOR_MISSING | The check's category supplied no measurement at all — sensor absent, unconfigured, or never constructed. Registering a check declares that its sensor is expected, so every registered check reports either a result or a skip. |
 
 ## Adding a check
 

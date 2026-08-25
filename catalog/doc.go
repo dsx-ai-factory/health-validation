@@ -26,12 +26,12 @@
 // CheckVerdict is produced per (measurement, matching check) pair, and
 // [health.AggregateNodeVerdict] rolls them into the node verdict.
 //
-// EvaluateAll assumes nothing about the domains a caller left out, so a
-// category with no measurement simply produces no verdict. A whole-node
-// run — one that means to cover every domain the catalog can check —
-// should instead call [Catalog.EvaluateAllExpecting] with
-// [Catalog.Categories], which turns a domain that reported nothing into
-// visible [health.SensorMissing] skips rather than absent checks.
+// Registering a check is what declares that its sensor is expected, so
+// every registered check yields a verdict — a result or a skip — and none
+// can silently vanish. A category that supplies no measurement at all is
+// skipped [health.SensorMissing]. Supply measurements for every category
+// in [Catalog.Categories] for full coverage, or register only the checks
+// you intend to feed.
 //
 // # Architectures
 //

@@ -160,12 +160,9 @@ func (c *Catalog) List(f Filter) []*health.CheckDefinition {
 }
 
 // Categories returns the distinct categories of the registered checks,
-// sorted for deterministic output.
-//
-// Pass it to [Catalog.EvaluateAllExpecting] for a whole-node run: every
-// domain the catalog knows how to check is then expected to report, so a
-// domain that supplies no measurement at all surfaces as
-// [health.SensorMissing] instead of silently dropping its checks.
+// sorted for deterministic output — the set of domains this catalog
+// expects to be able to assess, and so the set of sensors a caller must
+// supply for full coverage.
 func (c *Catalog) Categories() []health.Category {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -249,21 +246,15 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 //
 // Each measurement is matched to checks by Category: GPU measurements
 // only run GPU checks, NVLink measurements only run NVLink checks, etc.
-func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVerdict, error) {
-	return c.EvaluateAllExpecting(nil, measurements...)
-}
-
-// EvaluateAllExpecting is [Catalog.EvaluateAll] for a run that knows which
-// domains it meant to cover.
 //
-// A category listed in expected but absent from measurements skips
-// [health.SensorMissing] rather than producing no verdict — see
-// [Catalog.EvaluateAllRawExpecting]. Because those skips count toward the
-// verdict's total, a node missing a whole sensor lowers CompletionRatio
-// and, under a configured completion threshold, can push OverallSeverity
-// to Unknown. That is the intent: the node was not fully assessed.
-func (c *Catalog) EvaluateAllExpecting(expected []health.Category, measurements ...health.Measurement) (health.NodeVerdict, error) {
-	verdicts, err := c.EvaluateAllRawExpecting(expected, measurements...)
+// Every registered check produces a verdict, a result or a skip. A check
+// whose category supplied no measurement is skipped
+// [health.SensorMissing] — see [Catalog.EvaluateAllRaw] — which lowers
+// CompletionRatio and, under a configured completion threshold, can push
+// OverallSeverity to Unknown. Supply the measurements for every category
+// in [Catalog.Categories], or register only the checks you intend to feed.
+func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVerdict, error) {
+	verdicts, err := c.EvaluateAllRaw(measurements...)
 	if err != nil {
 		return health.NodeVerdict{}, err
 	}
@@ -284,27 +275,20 @@ func (c *Catalog) EvaluateAllExpecting(expected []health.Category, measurements 
 // detail; it never reaches checks whose required signals its schema does
 // not carry.
 //
-// Checks whose category is absent from measurements entirely produce no
-// verdict: a partial measurement set (this is a public entry point, so
-// callers may evaluate a single domain) does not raise skips for every
-// other domain's checks. Use [Catalog.EvaluateAllRawExpecting] when the
-// caller does know which domains should have reported.
-func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.CheckVerdict, error) {
-	return c.EvaluateAllRawExpecting(nil, measurements...)
-}
-
-// EvaluateAllRawExpecting is [Catalog.EvaluateAllRaw] with an explicit set
-// of categories the caller intended to cover.
-//
-// An expected category that supplies no measurement is a missing sensor,
-// not a narrowed evaluation: its checks skip [health.SensorMissing] with
-// the category named in SkipDetail, and dependents cascade to
-// DependencySkipped. The measurement-independent reasons are decided
+// A check whose category supplied no measurement at all is skipped
+// [health.SensorMissing], with the category named in SkipDetail and
+// dependents cascading to DependencySkipped. Registering a check is what
+// declares the expectation that its sensor exists, so this needs no
+// configuration: a domain that reports nothing is reported as unassessed
+// rather than dropped. The measurement-independent reasons are decided
 // first, so an operator's CHECK_DISABLED still wins — a check turned off
-// on purpose does not report as a sensor hole. Categories outside
-// expected behave exactly as in EvaluateAllRaw. Pass
-// [Catalog.Categories] for a whole-node run.
-func (c *Catalog) EvaluateAllRawExpecting(expected []health.Category, measurements ...health.Measurement) ([]health.CheckVerdict, error) {
+// on purpose does not read as a sensor hole.
+//
+// A caller evaluating a single domain therefore receives SensorMissing
+// skips for the others. That is a report, not a failure: skips do not
+// affect OverallSeverity. Register only the checks you intend to feed if
+// you want a narrower verdict.
+func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.CheckVerdict, error) {
 	c.mu.RLock()
 	checks := make(map[string]*health.CheckDefinition, len(c.checks))
 	for k, v := range c.checks {
@@ -318,7 +302,7 @@ func (c *Catalog) EvaluateAllRawExpecting(expected []health.Category, measuremen
 	}
 	c.mu.RUnlock()
 
-	return c.evaluationEngine.EvaluateBatch(checks, measurements, expected, snap.forCheck)
+	return c.evaluationEngine.EvaluateBatch(checks, measurements, snap.forCheck)
 }
 
 // CompletionThreshold returns the configured minimum fraction of

@@ -140,12 +140,13 @@ func TestEvaluateAll_RoutesByRequiredSignals_NoCrossMeasurementSkips(t *testing.
 	}
 }
 
-// A partial measurement set — one domain out of many — must not raise
-// NoApplicableMeasurement skips for every other domain's checks. Checks
-// whose category was not collected at all produce no verdict; only the
-// collected domain's checks appear. These methods are a public entry
-// point, so single-domain evaluation is a supported call.
-func TestEvaluateAll_AbsentCategoryChecksAreSilent(t *testing.T) {
+// Registering a check declares that its sensor is expected, so a category
+// that supplies no measurement is a hole in the assessment rather than a
+// domain that was out of scope. Every registered check must yield a
+// verdict: the collected domain's checks evaluate, and every other
+// domain's checks are visible as SENSOR_MISSING skips instead of
+// vanishing from the output.
+func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 	// Xid 79 is CRITICAL; the measurement carries all xid signals. The full
 	// catalog also holds gpu/node/nvlink/cpu checks in other categories.
 	m := xid.XidMeasurement{
@@ -164,83 +165,44 @@ func TestEvaluateAll_AbsentCategoryChecksAreSilent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateAllRaw: %v", err)
 	}
-	if len(verdicts) == 0 {
-		t.Fatal("no verdicts produced")
-	}
-	// Only Xid-category checks may appear; a check in any other category
-	// would mean an absent domain leaked a verdict or a skip.
+
+	seen := make(map[string]bool, len(verdicts))
 	for _, v := range verdicts {
-		if v.Category != health.Xid {
-			t.Errorf("CheckID %q is category %v; only the collected Xid domain should appear (skipped=%v reason=%v)",
-				v.CheckID, v.Category, v.Skipped, v.SkipReason)
-		}
-	}
-}
-
-// A category the caller expected but that supplied no measurement is a
-// missing sensor, not a narrowed evaluation: its checks must be visible as
-// SENSOR_MISSING skips rather than absent. Categories outside the expected
-// set keep the silent behavior above.
-func TestEvaluateAllExpecting_MissingCategorySkipsSensorMissing(t *testing.T) {
-	m := xid.XidMeasurement{
-		XidCounts:  map[int64]int64{79: 1},
-		EventCount: 1,
-		Since:      "boot",
-		Events:     []xid.XidEvent{{XidCode: 79}},
-	}
-
-	cat := catalog.New(
-		catalog.WithArchitecture("GB200"),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-
-	// Expect the Xid domain (collected) and the Node domain (not), but say
-	// nothing about GPU, NVLink or CPU.
-	verdicts, err := cat.EvaluateAllRawExpecting([]health.Category{health.Xid, health.Node}, m)
-	if err != nil {
-		t.Fatalf("EvaluateAllRawExpecting: %v", err)
-	}
-
-	nodeCategory := health.Node
-	nodeChecks := len(cat.List(catalog.Filter{Category: &nodeCategory}))
-	if nodeChecks == 0 {
-		t.Fatal("catalog has no Node checks; test cannot distinguish missing from empty")
-	}
-
-	sensorMissing := 0
-	for _, v := range verdicts {
-		switch v.Category {
-		case health.Xid:
-			if v.Skipped && v.SkipReason == health.SensorMissing {
+		seen[v.CheckID] = true
+		if v.Category == health.Xid {
+			if v.SkipReason == health.SensorMissing {
 				t.Errorf("CheckID %q: collected category reported SENSOR_MISSING", v.CheckID)
 			}
-		case health.Node:
-			// Node checks depend on nothing here, so each is skipped in its
-			// own right rather than cascading.
-			if !v.Skipped || v.SkipReason != health.SensorMissing {
-				t.Errorf("CheckID %q: skipped=%v reason=%v, want SENSOR_MISSING",
-					v.CheckID, v.Skipped, v.SkipReason)
-				continue
-			}
-			if !strings.Contains(v.SkipDetail, "node") {
+			continue
+		}
+		// An uncollected domain's checks may skip SENSOR_MISSING in their own
+		// right, or DEPENDENCY_SKIPPED when a prerequisite already did.
+		switch v.SkipReason {
+		case health.SensorMissing:
+			if !strings.Contains(v.SkipDetail, v.Category.String()) {
 				t.Errorf("CheckID %q skip detail %q does not name the missing category",
 					v.CheckID, v.SkipDetail)
 			}
-			sensorMissing++
+		case health.DependencySkipped:
 		default:
-			t.Errorf("CheckID %q is category %v; an unexpected absent domain must stay silent",
-				v.CheckID, v.Category)
+			t.Errorf("CheckID %q (category %v): skipped=%v reason=%v, want SENSOR_MISSING",
+				v.CheckID, v.Category, v.Skipped, v.SkipReason)
 		}
 	}
-	if sensorMissing != nodeChecks {
-		t.Errorf("SENSOR_MISSING skips = %d, want %d (one per Node check)", sensorMissing, nodeChecks)
+
+	// No registered check may be missing from the output entirely — the
+	// silent-drop this skip reason exists to eliminate.
+	for _, cd := range cat.List(catalog.Filter{}) {
+		if !seen[cd.ID] {
+			t.Errorf("CheckID %q produced no verdict at all", cd.ID)
+		}
 	}
 }
 
 // Disabling a check is intentional; a missing sensor is not. When both
 // apply the operator's reason must win, so that config-driven disabling
 // and an absent sensor stay distinguishable in the output.
-func TestEvaluateAllExpecting_DisabledOutranksSensorMissing(t *testing.T) {
+func TestEvaluateAll_DisabledOutranksSensorMissing(t *testing.T) {
 	disabled := health.CheckDefinition{
 		ID:                "node_disabled",
 		Category:          health.Node,
@@ -259,9 +221,9 @@ func TestEvaluateAllExpecting_DisabledOutranksSensorMissing(t *testing.T) {
 	cat.MustRegister(disabled)
 
 	// No measurements at all: the Node sensor never reported.
-	verdicts, err := cat.EvaluateAllRawExpecting([]health.Category{health.Node})
+	verdicts, err := cat.EvaluateAllRaw()
 	if err != nil {
-		t.Fatalf("EvaluateAllRawExpecting: %v", err)
+		t.Fatalf("EvaluateAllRaw: %v", err)
 	}
 	if len(verdicts) != 1 {
 		t.Fatalf("verdicts = %d, want 1", len(verdicts))
@@ -275,7 +237,7 @@ func TestEvaluateAllExpecting_DisabledOutranksSensorMissing(t *testing.T) {
 // completed checks, so CompletionRatio drops and a configured threshold
 // can push the node to UNKNOWN — the node was not fully assessed. Before
 // SENSOR_MISSING those checks vanished and the ratio read a perfect 1.
-func TestEvaluateAllExpecting_MissingSensorLowersCompletionRatio(t *testing.T) {
+func TestEvaluateAll_MissingSensorLowersCompletionRatio(t *testing.T) {
 	present := health.CheckDefinition{
 		ID:                "node_present",
 		Category:          health.Node,
@@ -304,7 +266,7 @@ func TestEvaluateAllExpecting_MissingSensorLowersCompletionRatio(t *testing.T) {
 	cat.MustRegister(present)
 	cat.MustRegister(absent)
 
-	nv, err := cat.EvaluateAllExpecting(cat.Categories(), node.NodeMeasurement{GPUCount: 4})
+	nv, err := cat.EvaluateAll(node.NodeMeasurement{GPUCount: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +283,7 @@ func TestEvaluateAllExpecting_MissingSensorLowersCompletionRatio(t *testing.T) {
 
 // A check whose dependency was skipped SENSOR_MISSING cascades to
 // DEPENDENCY_SKIPPED, the same as any other skipped prerequisite.
-func TestEvaluateAllExpecting_SensorMissingCascadesToDependents(t *testing.T) {
+func TestEvaluateAll_SensorMissingCascadesToDependents(t *testing.T) {
 	base := health.CheckDefinition{
 		ID:                "gpu_base",
 		Category:          health.GPU,
@@ -348,9 +310,9 @@ func TestEvaluateAllExpecting_SensorMissingCascadesToDependents(t *testing.T) {
 	cat.MustRegister(base)
 	cat.MustRegister(dependent)
 
-	verdicts, err := cat.EvaluateAllRawExpecting([]health.Category{health.GPU})
+	verdicts, err := cat.EvaluateAllRaw()
 	if err != nil {
-		t.Fatalf("EvaluateAllRawExpecting: %v", err)
+		t.Fatalf("EvaluateAllRaw: %v", err)
 	}
 
 	got := map[string]health.SkipReason{}
