@@ -105,8 +105,12 @@ The engine feeds a measurement to a check when **both** hold:
 
 Your check is then evaluated once per matching measurement (so a per-GPU check
 yields one verdict per GPU). If no supplied measurement carries its required
-signals, the check is skipped `NO_APPLICABLE_MEASUREMENT`; if its whole category
-was not collected at all, it produces no verdict.
+signals, the check is skipped `NO_APPLICABLE_MEASUREMENT`. If its whole category
+was not collected at all, the outcome depends on whether the caller expected
+that category: a whole-node run (`toolkit.Collect`, or `EvaluateAllExpecting`
+with `catalog.Categories()`) skips the check `SENSOR_MISSING`, while a
+single-domain `EvaluateAll` produces no verdict for the domains it did not ask
+about.
 
 So a private check only does something if **some measurement in its category
 carries its signals.** That is the real work of extending: getting your signals

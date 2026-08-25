@@ -76,7 +76,15 @@ func CollectWithTimeout(cat *catalog.Catalog, timeout time.Duration, sensors ...
 		}
 	}
 
-	return cat.EvaluateAll(all...)
+	// A whole-node run is accountable for every domain the catalog can
+	// check, so each registered category is expected to report. A domain
+	// that supplies no measurement at all — a sensor absent from the list,
+	// a backend that was never constructed, a sensor that returned no
+	// entities without erroring — skips SENSOR_MISSING instead of dropping
+	// its checks silently. A sensor that ran and failed is not this case:
+	// it is degraded above into errored measurements, so its category is
+	// present and its checks fail Critical.
+	return cat.EvaluateAllExpecting(cat.Categories(), all...)
 }
 
 // resourceKeyed is implemented by sensors that share a data source with

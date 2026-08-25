@@ -177,6 +177,194 @@ func TestEvaluateAll_AbsentCategoryChecksAreSilent(t *testing.T) {
 	}
 }
 
+// A category the caller expected but that supplied no measurement is a
+// missing sensor, not a narrowed evaluation: its checks must be visible as
+// SENSOR_MISSING skips rather than absent. Categories outside the expected
+// set keep the silent behavior above.
+func TestEvaluateAllExpecting_MissingCategorySkipsSensorMissing(t *testing.T) {
+	m := xid.XidMeasurement{
+		XidCounts:  map[int64]int64{79: 1},
+		EventCount: 1,
+		Since:      "boot",
+		Events:     []xid.XidEvent{{XidCode: 79}},
+	}
+
+	cat := catalog.New(
+		catalog.WithArchitecture("GB200"),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+
+	// Expect the Xid domain (collected) and the Node domain (not), but say
+	// nothing about GPU, NVLink or CPU.
+	verdicts, err := cat.EvaluateAllRawExpecting([]health.Category{health.Xid, health.Node}, m)
+	if err != nil {
+		t.Fatalf("EvaluateAllRawExpecting: %v", err)
+	}
+
+	nodeCategory := health.Node
+	nodeChecks := len(cat.List(catalog.Filter{Category: &nodeCategory}))
+	if nodeChecks == 0 {
+		t.Fatal("catalog has no Node checks; test cannot distinguish missing from empty")
+	}
+
+	sensorMissing := 0
+	for _, v := range verdicts {
+		switch v.Category {
+		case health.Xid:
+			if v.Skipped && v.SkipReason == health.SensorMissing {
+				t.Errorf("CheckID %q: collected category reported SENSOR_MISSING", v.CheckID)
+			}
+		case health.Node:
+			// Node checks depend on nothing here, so each is skipped in its
+			// own right rather than cascading.
+			if !v.Skipped || v.SkipReason != health.SensorMissing {
+				t.Errorf("CheckID %q: skipped=%v reason=%v, want SENSOR_MISSING",
+					v.CheckID, v.Skipped, v.SkipReason)
+				continue
+			}
+			if !strings.Contains(v.SkipDetail, "node") {
+				t.Errorf("CheckID %q skip detail %q does not name the missing category",
+					v.CheckID, v.SkipDetail)
+			}
+			sensorMissing++
+		default:
+			t.Errorf("CheckID %q is category %v; an unexpected absent domain must stay silent",
+				v.CheckID, v.Category)
+		}
+	}
+	if sensorMissing != nodeChecks {
+		t.Errorf("SENSOR_MISSING skips = %d, want %d (one per Node check)", sensorMissing, nodeChecks)
+	}
+}
+
+// Disabling a check is intentional; a missing sensor is not. When both
+// apply the operator's reason must win, so that config-driven disabling
+// and an absent sensor stay distinguishable in the output.
+func TestEvaluateAllExpecting_DisabledOutranksSensorMissing(t *testing.T) {
+	disabled := health.CheckDefinition{
+		ID:                "node_disabled",
+		Category:          health.Node,
+		RequiredSignals:   []string{node.SignalGPUCount},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "gpu_count < 1", Severity: health.Critical, Message: "no gpus"},
+		},
+	}
+
+	cat := catalog.NewEmpty(
+		catalog.WithExecutionContext(health.OperatorInfra),
+		catalog.WithDisabledChecks("node_disabled"),
+	)
+	cat.MustRegister(disabled)
+
+	// No measurements at all: the Node sensor never reported.
+	verdicts, err := cat.EvaluateAllRawExpecting([]health.Category{health.Node})
+	if err != nil {
+		t.Fatalf("EvaluateAllRawExpecting: %v", err)
+	}
+	if len(verdicts) != 1 {
+		t.Fatalf("verdicts = %d, want 1", len(verdicts))
+	}
+	if got := verdicts[0].SkipReason; got != health.CheckDisabled {
+		t.Errorf("skip reason = %v, want CHECK_DISABLED", got)
+	}
+}
+
+// A missing sensor's skips count toward the verdict's total but not its
+// completed checks, so CompletionRatio drops and a configured threshold
+// can push the node to UNKNOWN — the node was not fully assessed. Before
+// SENSOR_MISSING those checks vanished and the ratio read a perfect 1.
+func TestEvaluateAllExpecting_MissingSensorLowersCompletionRatio(t *testing.T) {
+	present := health.CheckDefinition{
+		ID:                "node_present",
+		Category:          health.Node,
+		RequiredSignals:   []string{node.SignalGPUCount},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "gpu_count < 1", Severity: health.Critical, Message: "no gpus"},
+		},
+	}
+	absent := health.CheckDefinition{
+		ID:                "gpu_absent",
+		Category:          health.GPU,
+		RequiredSignals:   []string{"gpu_id"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "gpu_id == ''", Severity: health.Critical, Message: "no id"},
+		},
+	}
+
+	cat := catalog.NewEmpty(
+		catalog.WithExecutionContext(health.OperatorInfra),
+		catalog.WithCompletionThreshold(0.75),
+	)
+	cat.MustRegister(present)
+	cat.MustRegister(absent)
+
+	nv, err := cat.EvaluateAllExpecting(cat.Categories(), node.NodeMeasurement{GPUCount: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := nv.CompletionRatio, 0.5; got != want {
+		t.Errorf("CompletionRatio = %v, want %v", got, want)
+	}
+	if nv.OverallSeverity != health.Unknown {
+		t.Errorf("OverallSeverity = %v, want UNKNOWN (completion below threshold)", nv.OverallSeverity)
+	}
+	if len(nv.SkippedChecks) != 1 || nv.SkippedChecks[0].SkipReason != health.SensorMissing {
+		t.Errorf("skipped = %+v, want one SENSOR_MISSING", nv.SkippedChecks)
+	}
+}
+
+// A check whose dependency was skipped SENSOR_MISSING cascades to
+// DEPENDENCY_SKIPPED, the same as any other skipped prerequisite.
+func TestEvaluateAllExpecting_SensorMissingCascadesToDependents(t *testing.T) {
+	base := health.CheckDefinition{
+		ID:                "gpu_base",
+		Category:          health.GPU,
+		RequiredSignals:   []string{"gpu_id"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "gpu_id == ''", Severity: health.Critical, Message: "no id"},
+		},
+	}
+	dependent := health.CheckDefinition{
+		ID:                "gpu_dependent",
+		Category:          health.GPU,
+		RequiredSignals:   []string{"gpu_id"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Dependencies:      []string{"gpu_base"},
+		Rules: []health.Rule{
+			{Expression: "gpu_id == ''", Severity: health.Critical, Message: "no id"},
+		},
+	}
+
+	cat := catalog.NewEmpty(catalog.WithExecutionContext(health.OperatorInfra))
+	cat.MustRegister(base)
+	cat.MustRegister(dependent)
+
+	verdicts, err := cat.EvaluateAllRawExpecting([]health.Category{health.GPU})
+	if err != nil {
+		t.Fatalf("EvaluateAllRawExpecting: %v", err)
+	}
+
+	got := map[string]health.SkipReason{}
+	for _, v := range verdicts {
+		got[v.CheckID] = v.SkipReason
+	}
+	if got["gpu_base"] != health.SensorMissing {
+		t.Errorf("gpu_base skip reason = %v, want SENSOR_MISSING", got["gpu_base"])
+	}
+	if got["gpu_dependent"] != health.DependencySkipped {
+		t.Errorf("gpu_dependent skip reason = %v, want DEPENDENCY_SKIPPED", got["gpu_dependent"])
+	}
+}
+
 func TestEvaluateAll_Dependencies(t *testing.T) {
 	driver := health.CheckDefinition{
 		ID:                "node_driver",

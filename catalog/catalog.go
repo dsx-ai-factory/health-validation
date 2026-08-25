@@ -159,6 +159,29 @@ func (c *Catalog) List(f Filter) []*health.CheckDefinition {
 	return result
 }
 
+// Categories returns the distinct categories of the registered checks,
+// sorted for deterministic output.
+//
+// Pass it to [Catalog.EvaluateAllExpecting] for a whole-node run: every
+// domain the catalog knows how to check is then expected to report, so a
+// domain that supplies no measurement at all surfaces as
+// [health.SensorMissing] instead of silently dropping its checks.
+func (c *Catalog) Categories() []health.Category {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	seen := make(map[health.Category]bool, len(c.checks))
+	var cats []health.Category
+	for _, cd := range c.checks {
+		if !seen[cd.Category] {
+			seen[cd.Category] = true
+			cats = append(cats, cd.Category)
+		}
+	}
+	slices.Sort(cats)
+	return cats
+}
+
 // Len returns the number of registered check definitions.
 func (c *Catalog) Len() int {
 	c.mu.RLock()
@@ -227,7 +250,20 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 // Each measurement is matched to checks by Category: GPU measurements
 // only run GPU checks, NVLink measurements only run NVLink checks, etc.
 func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVerdict, error) {
-	verdicts, err := c.EvaluateAllRaw(measurements...)
+	return c.EvaluateAllExpecting(nil, measurements...)
+}
+
+// EvaluateAllExpecting is [Catalog.EvaluateAll] for a run that knows which
+// domains it meant to cover.
+//
+// A category listed in expected but absent from measurements skips
+// [health.SensorMissing] rather than producing no verdict — see
+// [Catalog.EvaluateAllRawExpecting]. Because those skips count toward the
+// verdict's total, a node missing a whole sensor lowers CompletionRatio
+// and, under a configured completion threshold, can push OverallSeverity
+// to Unknown. That is the intent: the node was not fully assessed.
+func (c *Catalog) EvaluateAllExpecting(expected []health.Category, measurements ...health.Measurement) (health.NodeVerdict, error) {
+	verdicts, err := c.EvaluateAllRawExpecting(expected, measurements...)
 	if err != nil {
 		return health.NodeVerdict{}, err
 	}
@@ -251,8 +287,24 @@ func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVe
 // Checks whose category is absent from measurements entirely produce no
 // verdict: a partial measurement set (this is a public entry point, so
 // callers may evaluate a single domain) does not raise skips for every
-// other domain's checks.
+// other domain's checks. Use [Catalog.EvaluateAllRawExpecting] when the
+// caller does know which domains should have reported.
 func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.CheckVerdict, error) {
+	return c.EvaluateAllRawExpecting(nil, measurements...)
+}
+
+// EvaluateAllRawExpecting is [Catalog.EvaluateAllRaw] with an explicit set
+// of categories the caller intended to cover.
+//
+// An expected category that supplies no measurement is a missing sensor,
+// not a narrowed evaluation: its checks skip [health.SensorMissing] with
+// the category named in SkipDetail, and dependents cascade to
+// DependencySkipped. The measurement-independent reasons are decided
+// first, so an operator's CHECK_DISABLED still wins — a check turned off
+// on purpose does not report as a sensor hole. Categories outside
+// expected behave exactly as in EvaluateAllRaw. Pass
+// [Catalog.Categories] for a whole-node run.
+func (c *Catalog) EvaluateAllRawExpecting(expected []health.Category, measurements ...health.Measurement) ([]health.CheckVerdict, error) {
 	c.mu.RLock()
 	checks := make(map[string]*health.CheckDefinition, len(c.checks))
 	for k, v := range c.checks {
@@ -266,7 +318,7 @@ func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.C
 	}
 	c.mu.RUnlock()
 
-	return c.evaluationEngine.EvaluateBatch(checks, measurements, snap.forCheck)
+	return c.evaluationEngine.EvaluateBatch(checks, measurements, expected, snap.forCheck)
 }
 
 // CompletionThreshold returns the configured minimum fraction of

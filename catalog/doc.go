@@ -26,6 +26,13 @@
 // CheckVerdict is produced per (measurement, matching check) pair, and
 // [health.AggregateNodeVerdict] rolls them into the node verdict.
 //
+// EvaluateAll assumes nothing about the domains a caller left out, so a
+// category with no measurement simply produces no verdict. A whole-node
+// run — one that means to cover every domain the catalog can check —
+// should instead call [Catalog.EvaluateAllExpecting] with
+// [Catalog.Categories], which turns a domain that reported nothing into
+// visible [health.SensorMissing] skips rather than absent checks.
+//
 // # Architectures
 //
 // Each [health.CheckDefinition] declares the architectures it applies

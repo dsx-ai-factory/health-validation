@@ -34,7 +34,7 @@ type CheckVerdict struct {
 // change to the NodeVerdict JSON shape (removed fields, renamed fields,
 // changed semantics); increment MINOR for additive fields, enum values, or
 // outcomes. When this changes, update catalog/health/node-verdict.schema.json to match.
-const NodeVerdictSchemaVersion = "0.1"
+const NodeVerdictSchemaVersion = "0.2"
 
 // NodeVerdict aggregates per-check verdicts into a node-level
 // health assessment.

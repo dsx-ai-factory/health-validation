@@ -26,7 +26,7 @@ func TestNodeVerdict_ExitCode(t *testing.T) {
 }
 
 func TestAggregateNodeVerdict_SchemaVersion(t *testing.T) {
-	if got, want := NodeVerdictSchemaVersion, "0.1"; got != want {
+	if got, want := NodeVerdictSchemaVersion, "0.2"; got != want {
 		t.Errorf("NodeVerdictSchemaVersion = %q, want %q", got, want)
 	}
 

@@ -182,7 +182,10 @@ validate against the published
 - **`check_results`** — per-check `severity`, `messages`, `observed_values`, and
   the resolved `thresholds` (with `overridden`), for the human-readable why.
 - **`skipped_checks`** — checks that did **not** run, with a `skip_reason`
-  (`THRESHOLD_UNCONFIGURED`, `CHECK_DISABLED`, `NO_APPLICABLE_MEASUREMENT`, …).
+  (`THRESHOLD_UNCONFIGURED`, `CHECK_DISABLED`, `SENSOR_MISSING`, …).
+  `SENSOR_MISSING` is the one to alert on: a whole domain reported nothing, so
+  those checks were never assessed — distinct from `CHECK_DISABLED`, which is
+  deliberate.
   A PASS with many skips is **partial coverage**, not a clean bill of health —
   check `skipped_checks` and `completion_ratio` if coverage matters to your gate.
 

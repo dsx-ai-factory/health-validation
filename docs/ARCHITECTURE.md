@@ -65,7 +65,7 @@ To add a sensor for a new hardware domain: define a measurement struct in `catal
 
 ## Output schema
 
-The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (currently `"0.1"`, from `NodeVerdictSchemaVersion` in `catalog/health/verdict.go`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
+The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (currently `"0.2"`, from `NodeVerdictSchemaVersion` in `catalog/health/verdict.go`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
 
 ### NodeVerdict
 
@@ -121,7 +121,8 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | DEPENDENCY_SKIPPED | A prerequisite check was skipped or failed. |
 | INSUFFICIENT_HISTORY | Time-window data not yet accumulated. Applies only to checks that evaluate over a window; not used by any currently registered check. |
 | THRESHOLD_UNCONFIGURED | A threshold the operator must supply was not configured. |
-| NO_APPLICABLE_MEASUREMENT | No supplied measurement carries the check's required signals. |
+| NO_APPLICABLE_MEASUREMENT | The category was collected, but no measurement in it carries the check's required signals. |
+| SENSOR_MISSING | The category was expected but supplied no measurement at all — sensor absent, unconfigured, or never constructed. |
 
 ## Adding a check
 

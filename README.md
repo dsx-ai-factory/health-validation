@@ -19,7 +19,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "timestamp": "2026-06-05T14:32:01Z",
   "overall_severity": "PASS",
   "severity_by_domain": {},
@@ -44,7 +44,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "severity_by_domain": {
     "node": "CRITICAL",
