@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
@@ -31,7 +32,7 @@ func (m *twoSignalMeasurement) AddError(err error, signals ...string) {
 }
 
 func TestEvaluate_NotFound(t *testing.T) {
-	cat := catalog.New(catalog.WithArchitecture(catalog.DummyArchitecture))
+	cat := catalog.New(catalog.WithArchitecture(catalogtest.DummyArchitecture))
 	_, err := cat.Evaluate("nonexistent", gpu.GPUMeasurement{})
 	if err == nil {
 		t.Error("expected error for missing check")
@@ -116,7 +117,7 @@ func TestEvaluateAll_RoutesByRequiredSignals_NoCrossMeasurementSkips(t *testing.
 	}
 
 	cat := catalog.NewEmpty(
-		catalog.WithArchitecture(catalog.DummyArchitecture),
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 	cat.MustRegister(inventory)
@@ -216,7 +217,7 @@ func TestEvaluateAll_Dependencies(t *testing.T) {
 	}
 
 	cat := catalog.NewEmpty(
-		catalog.WithArchitecture(catalog.DummyArchitecture),
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 	cat.MustRegister(driver)
@@ -558,7 +559,7 @@ func TestEvaluate_RuleRecommendedActionOverridesCheckDefault(t *testing.T) {
 	}
 
 	cat := catalog.NewEmpty(
-		catalog.WithArchitecture(catalog.DummyArchitecture),
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 	cat.MustRegister(check)
@@ -615,7 +616,7 @@ func TestEvaluate_AllMatchingRulesAggregate(t *testing.T) {
 	}
 
 	cat := catalog.NewEmpty(
-		catalog.WithArchitecture(catalog.DummyArchitecture),
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 	cat.MustRegister(check)
@@ -682,7 +683,7 @@ func TestEvaluate_MultiMatchPicksTopPriorityOverride(t *testing.T) {
 	}
 
 	cat := catalog.NewEmpty(
-		catalog.WithArchitecture(catalog.DummyArchitecture),
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 	cat.MustRegister(check)
@@ -863,7 +864,7 @@ func requiredThresholdCheck() health.CheckDefinition {
 // to run: it skips rather than evaluating against a placeholder default, so a
 // configuration gap never reports as a node fault.
 func TestEvaluate_SkipsUnconfiguredRequiredThreshold(t *testing.T) {
-	cat := catalog.New(catalog.WithArchitecture(catalog.DummyArchitecture))
+	cat := catalog.New(catalog.WithArchitecture(catalogtest.DummyArchitecture))
 	if err := cat.Register(requiredThresholdCheck()); err != nil {
 		t.Fatal(err)
 	}
@@ -884,7 +885,7 @@ func TestEvaluate_SkipsUnconfiguredRequiredThreshold(t *testing.T) {
 // evaluates against the operator's value.
 func TestEvaluate_RunsConfiguredRequiredThreshold(t *testing.T) {
 	cat := catalog.New(
-		catalog.WithArchitecture(catalog.DummyArchitecture),
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
 		catalog.WithOverrides(catalog.NewOverrideSet(catalog.Override{
 			CheckID:       "required_threshold_check",
 			ThresholdName: "expected_first",

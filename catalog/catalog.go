@@ -55,12 +55,6 @@ func WithDisabledChecks(ids ...string) Option {
 // [WithArchitecture]. List, Get, and Register do not require it.
 var ErrArchitectureUnset = errors.New("architecture must be set via WithArchitecture")
 
-// DummyArchitecture is a non-empty architecture identifier for tests that
-// must call Evaluate but do not exercise architecture filtering or
-// per-architecture thresholds. Production callers pass a real GPU
-// generation (for example "GB200").
-const DummyArchitecture = "dummyArch"
-
 // WithArchitecture sets the current GPU architecture for filtering.
 // Checks that don't apply to this architecture are skipped.
 // Evaluate requires a non-empty architecture; omitting this option is valid

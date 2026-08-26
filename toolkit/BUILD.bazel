@@ -64,6 +64,7 @@ go_test(
     embed = [":toolkit"],
     deps = [
         "//catalog",
+        "//catalog/catalogtest",
         "//catalog/cpu",
         "//catalog/gpu",
         "//catalog/health",

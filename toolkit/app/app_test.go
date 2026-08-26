@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
@@ -160,8 +161,8 @@ func (x xidSpyBackend) Measure(context.Context) ([]health.Measurement, error) {
 // App.host.
 //
 // architecture reports GB200: runCommand Evaluates the full builtin catalog,
-// so this must be a real generation. DummyArchitecture would skip scoped
-// checks (see TestNUMANodeCountReachesVerdict). Empty is a discovery failure.
+// so this must be a real generation. catalogtest.DummyArchitecture would skip
+// scoped checks (see TestNUMANodeCountReachesVerdict). Empty is a discovery failure.
 type fakeHost struct {
 	b spyBackend
 }
@@ -560,7 +561,7 @@ func TestExitCodeForVerdict(t *testing.T) {
 // which is CRITICAL when gpu_count > 8.
 func nodeCatalog(t *testing.T) *catalog.Catalog {
 	t.Helper()
-	cat := catalog.NewEmpty(catalog.WithArchitecture(catalog.DummyArchitecture))
+	cat := catalog.NewEmpty(catalog.WithArchitecture(catalogtest.DummyArchitecture))
 	if err := cat.Register(customCheck()); err != nil {
 		t.Fatalf("register custom check: %v", err)
 	}
