@@ -3,6 +3,8 @@
 Thank you for your interest in contributing. This document covers how to report
 issues, propose changes, and submit code.
 
+Before you participate, read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Reporting Bugs
 
 Open a [GitHub Issue](../../issues/new?template=bug.yml). Include:

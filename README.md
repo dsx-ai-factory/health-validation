@@ -387,7 +387,9 @@ to know what actually ran.
 
 ## Contributing
 
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, check authoring, and PR guidelines.
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, check
+authoring, and PR guidelines. All participation is governed by our
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
