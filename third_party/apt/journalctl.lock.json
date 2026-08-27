@@ -94,9 +94,9 @@
 					"version": "255.4-1ubuntu8.17"
 				},
 				{
-					"key": "libssl3t64_3.0.13-0ubuntu3.12_amd64",
+					"key": "libssl3t64_3.0.13-0ubuntu3.15_amd64",
 					"name": "libssl3t64",
-					"version": "3.0.13-0ubuntu3.12"
+					"version": "3.0.13-0ubuntu3.15"
 				},
 				{
 					"key": "libseccomp2_2.5.5-1ubuntu3.1_amd64",
@@ -104,9 +104,9 @@
 					"version": "2.5.5-1ubuntu3.1"
 				},
 				{
-					"key": "libpam0g_1.5.3-5ubuntu5.6_amd64",
+					"key": "libpam0g_1.5.3-5ubuntu5.7_amd64",
 					"name": "libpam0g",
-					"version": "1.5.3-5ubuntu5.6"
+					"version": "1.5.3-5ubuntu5.7"
 				},
 				{
 					"key": "debconf_1.5.86ubuntu1_amd64",
@@ -412,14 +412,14 @@
 		{
 			"arch": "amd64",
 			"dependencies": [],
-			"key": "libssl3t64_3.0.13-0ubuntu3.12_amd64",
+			"key": "libssl3t64_3.0.13-0ubuntu3.15_amd64",
 			"name": "libssl3t64",
-			"sha256": "6a963adb1106fca567d24d4a1e5da0bad25de79ac2564cd1ba846e677e1c951b",
+			"sha256": "3d0955bc049bbcca0f4c3e78a3a8b994593d96db7d84f4320217224433844534",
 			"urls": [
-				"https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.12_amd64.deb",
-				"https://ports.ubuntu.com/ubuntu-ports/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.12_amd64.deb"
+				"https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.15_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.15_amd64.deb"
 			],
-			"version": "3.0.13-0ubuntu3.12"
+			"version": "3.0.13-0ubuntu3.15"
 		},
 		{
 			"arch": "amd64",
@@ -436,14 +436,14 @@
 		{
 			"arch": "amd64",
 			"dependencies": [],
-			"key": "libpam0g_1.5.3-5ubuntu5.6_amd64",
+			"key": "libpam0g_1.5.3-5ubuntu5.7_amd64",
 			"name": "libpam0g",
-			"sha256": "d803be0d019a4d76e11c040d589c58acb50cf39496b7af20540ead4ae1d6a4d4",
+			"sha256": "1d7f54e77f0455ab5e607cd5e78b576801d8efdc66115e02cf3c6e708d093667",
 			"urls": [
-				"https://archive.ubuntu.com/ubuntu/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.6_amd64.deb",
-				"https://ports.ubuntu.com/ubuntu-ports/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.6_amd64.deb"
+				"https://archive.ubuntu.com/ubuntu/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.7_amd64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.7_amd64.deb"
 			],
-			"version": "1.5.3-5ubuntu5.6"
+			"version": "1.5.3-5ubuntu5.7"
 		},
 		{
 			"arch": "amd64",
@@ -857,9 +857,9 @@
 					"version": "255.4-1ubuntu8.17"
 				},
 				{
-					"key": "libssl3t64_3.0.13-0ubuntu3.12_arm64",
+					"key": "libssl3t64_3.0.13-0ubuntu3.15_arm64",
 					"name": "libssl3t64",
-					"version": "3.0.13-0ubuntu3.12"
+					"version": "3.0.13-0ubuntu3.15"
 				},
 				{
 					"key": "libseccomp2_2.5.5-1ubuntu3.1_arm64",
@@ -867,9 +867,9 @@
 					"version": "2.5.5-1ubuntu3.1"
 				},
 				{
-					"key": "libpam0g_1.5.3-5ubuntu5.6_arm64",
+					"key": "libpam0g_1.5.3-5ubuntu5.7_arm64",
 					"name": "libpam0g",
-					"version": "1.5.3-5ubuntu5.6"
+					"version": "1.5.3-5ubuntu5.7"
 				},
 				{
 					"key": "debconf_1.5.86ubuntu1_arm64",
@@ -1175,14 +1175,14 @@
 		{
 			"arch": "arm64",
 			"dependencies": [],
-			"key": "libssl3t64_3.0.13-0ubuntu3.12_arm64",
+			"key": "libssl3t64_3.0.13-0ubuntu3.15_arm64",
 			"name": "libssl3t64",
-			"sha256": "ddc4806326140bd9553858a2b0f69caec0f3499d56d1238a2028e3a96f36ae78",
+			"sha256": "bf0b51fb18187c4e1b03900e1049dc219047080ff511aa3bf691dbe24e14d24a",
 			"urls": [
-				"https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.12_arm64.deb",
-				"https://ports.ubuntu.com/ubuntu-ports/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.12_arm64.deb"
+				"https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.15_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.15_arm64.deb"
 			],
-			"version": "3.0.13-0ubuntu3.12"
+			"version": "3.0.13-0ubuntu3.15"
 		},
 		{
 			"arch": "arm64",
@@ -1199,14 +1199,14 @@
 		{
 			"arch": "arm64",
 			"dependencies": [],
-			"key": "libpam0g_1.5.3-5ubuntu5.6_arm64",
+			"key": "libpam0g_1.5.3-5ubuntu5.7_arm64",
 			"name": "libpam0g",
-			"sha256": "15f820a81b3ed444eb9eab9069817b629b66bb6af036cb9b15b7d2838b3f514c",
+			"sha256": "00c9618121e9b040748db3b1ad2e42c08898c567044a7f6ccde3627e3650588c",
 			"urls": [
-				"https://archive.ubuntu.com/ubuntu/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.6_arm64.deb",
-				"https://ports.ubuntu.com/ubuntu-ports/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.6_arm64.deb"
+				"https://archive.ubuntu.com/ubuntu/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.7_arm64.deb",
+				"https://ports.ubuntu.com/ubuntu-ports/pool/main/p/pam/libpam0g_1.5.3-5ubuntu5.7_arm64.deb"
 			],
-			"version": "1.5.3-5ubuntu5.6"
+			"version": "1.5.3-5ubuntu5.7"
 		},
 		{
 			"arch": "arm64",
