@@ -7,6 +7,20 @@ go_sdk.nogo(nogo = "//tools/go/nogo")
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_work = "//:go.work")
+
+# cel-go ships its own pre-existing BUILD.bazel files, which use the legacy
+# go_default_library-only target naming. That naming convention doesn't get
+# picked up by rules_go's Go build-info embedding (see
+# https://github.com/bazel-contrib/rules_go/pull/4595), so cel-go silently
+# drops out of the linked binary's `go version -m` module list. Force a clean
+# regeneration so Gazelle emits the modern importpath-named target (with a
+# go_default_library alias for compatibility), matching every other go_deps
+# repo.
+go_deps.gazelle_override(
+    path = "github.com/google/cel-go",
+    build_file_generation = "clean",
+)
+
 use_repo(
     go_deps,
     "co_honnef_go_tools",
