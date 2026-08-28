@@ -206,18 +206,14 @@ func TestNUMANodeCount_SkippedOnWrongArchitecture(t *testing.T) {
 	}
 }
 
-// Architecture filtering only applies once an architecture is supplied, so a
-// caller that supplies none evaluates every check against its base value.
-func TestNUMANodeCount_NoArchitectureUsesBaseValue(t *testing.T) {
+// Evaluate requires WithArchitecture; a caller that supplies none gets an error
+// rather than evaluating against a base Value with filtering off.
+func TestNUMANodeCount_NoArchitectureErrors(t *testing.T) {
 	cat := catalog.New(catalog.WithExecutionContext(health.OperatorInfra))
 
-	verdict, err := cat.Evaluate("numa_node_count", cpu.CPUMeasurement{NUMANodeCount: 34})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if verdict.Skipped || verdict.Severity != health.Pass {
-		t.Fatalf("skipped=%v severity=%v, want evaluated PASS against the base value",
-			verdict.Skipped, verdict.Severity)
+	_, err := cat.Evaluate("numa_node_count", cpu.CPUMeasurement{NUMANodeCount: 34})
+	if !errors.Is(err, catalog.ErrArchitectureUnset) {
+		t.Fatalf("Evaluate error = %v, want ErrArchitectureUnset", err)
 	}
 }
 

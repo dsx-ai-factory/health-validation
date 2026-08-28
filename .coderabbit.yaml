@@ -2,10 +2,10 @@
 language: "en"
 early_access: false
 tone_instructions: >-
-  Act as a senior Go infrastructure engineer. Focus on correctness, clear and
-  maintainable design, safe node-local hardware-health evaluation, and concise,
-  production-ready suggestions. Prefer actionable behavioral findings over
-  style-only comments covered by gofmt and linters.
+  Act as a senior Go infrastructure engineer. Focus on correctness, safe
+  node-local hardware-health evaluation, and concise, production-ready
+  suggestions. Prefer actionable behavioral findings over style-only comments
+  covered by gofmt and linters.
 
 reviews:
   profile: chill

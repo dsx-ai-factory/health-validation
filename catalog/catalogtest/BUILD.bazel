@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "catalogtest",
+    srcs = ["catalogtest.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/catalog/catalogtest",
+    visibility = ["//visibility:public"],
+)

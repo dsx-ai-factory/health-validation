@@ -29,12 +29,14 @@
 // # Architectures
 //
 // Each [health.CheckDefinition] declares the architectures it applies
-// to (e.g. "GB200", "H100", "H200", "A100"). At evaluation time the
-// catalog skips checks whose architecture list does not include the
-// configured one, so architecture-specific thresholds and rules
-// coexist in the same registry. New architectures slot in by adding
-// their identifier to an existing check's list or by registering a
-// new architecture-specific check.
+// to (e.g. "GB200", "H100", "H200", "A100"). Evaluate requires
+// [WithArchitecture]; an unset architecture is an error, not a
+// filter-off. At evaluation time the catalog skips checks whose
+// architecture list does not include the configured one, so
+// architecture-specific thresholds and rules coexist in the same
+// registry. New architectures slot in by adding their identifier to
+// an existing check's list or by registering a new architecture-specific
+// check.
 //
 // # Operator overrides
 //

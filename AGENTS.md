@@ -32,6 +32,7 @@ This file provides guidance to AI coding agents when working with code in this r
 |---|---|---|---|
 | `cpu_count` | cpu | Any kernel-possible logical CPU is not online | None |
 | `numa_node_count` | cpu | Online NUMA node count ≠ `expected_numa_node_count` | None |
+| `gpu_average_power_draw` | gpu | One-second average power draw is outside the configured range | None |
 | `gpu_power_limit` | gpu | Current or enforced power limit ≠ expected (arch default or override) | None |
 | `gpu_power_state` | gpu | GPU pstate ≠ `expected_gpu_pstate` | None |
 | `gpu_count` | node | GPU count ≠ `expected_gpu_count` | None |
@@ -210,7 +211,7 @@ The standalone tool is a convenient first pass but is **not authoritative** — 
 **Build it with the repo's Go toolchain, or it can't analyze this code.** The tool embeds the `go/types` of whatever Go built it; a binary built with an older Go rejects these modules outright with `package requires newer Go version go1.27 (application built with go1.25)` and analyzes nothing. `go install` builds in x/tools' own module context, so it uses your default toolchain, not the repo's — pin it with `GOTOOLCHAIN` (matching the `go` directive in the module go.mod files):
 
 ```shell
-GOTOOLCHAIN=go1.27rc2 go install golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment@latest
+GOTOOLCHAIN=go1.27.0 go install golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment@latest
 ~/go/bin/fieldalignment -fix ./...
 ```
 

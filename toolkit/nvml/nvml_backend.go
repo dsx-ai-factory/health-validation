@@ -298,6 +298,7 @@ type gpuProbe struct{}
 func (gpuProbe) Measure(pc ProbeContext) health.Measurement {
 	m := gpu.GPUMeasurement{GPUID: pc.Self.UUID}
 	measureDevicePstate(pc.Self.Device, &m)
+	measureDeviceAveragePowerDraw(pc.Self.Device, &m)
 	measureDevicePowerLimits(pc.Self.Device, &m)
 	return m
 }
@@ -323,21 +324,55 @@ func measureDevicePstate(dev gonvml.Device, m *gpu.GPUMeasurement) {
 	m.GPUPstate = int64(state)
 }
 
+const milliwattsPerWatt = 1000
+
+// measureDeviceAveragePowerDraw sets the GPU's one-second average power
+// draw on m, in watts, from NVML's milliwatt FI_DEV_POWER_AVERAGE field.
+//
+// The field API returns a per-field NvmlReturn independent of the call's
+// own return, and reports the value as an untyped 8-byte union, so a
+// SUCCESS call can still carry a failed field or an unexpected ValueType;
+// both are treated as collection failures alongside the call itself.
+func measureDeviceAveragePowerDraw(dev gonvml.Device, m *gpu.GPUMeasurement) {
+	values := []gonvml.FieldValue{{
+		FieldId: gonvml.FI_DEV_POWER_AVERAGE,
+		ScopeId: 0,
+	}}
+	if ret := dev.GetFieldValues(values); ret != gonvml.SUCCESS {
+		m.AddError(&Error{Op: "DeviceGetFieldValues(POWER_AVERAGE)", Return: ret},
+			gpu.SignalAveragePowerDrawW)
+		return
+	}
+
+	value := values[0]
+	if ret := gonvml.Return(value.NvmlReturn); ret != gonvml.SUCCESS {
+		m.AddError(&Error{Op: "DeviceGetFieldValues(POWER_AVERAGE)", Return: ret},
+			gpu.SignalAveragePowerDrawW)
+		return
+	}
+	if gonvml.ValueType(value.ValueType) != gonvml.VALUE_TYPE_UNSIGNED_INT {
+		m.AddError(fmt.Errorf("nvml DeviceGetFieldValues(POWER_AVERAGE): unexpected ValueType %d, want UNSIGNED_INT", value.ValueType),
+			gpu.SignalAveragePowerDrawW)
+		return
+	}
+	m.AveragePowerDrawW = float64(binary.LittleEndian.Uint32(value.Value[:4])) / milliwattsPerWatt
+}
+
 func measureDevicePowerLimits(dev gonvml.Device, m *gpu.GPUMeasurement) {
 	limit, ret := dev.GetPowerManagementLimit()
 	if ret != gonvml.SUCCESS {
 		m.AddError(&Error{Op: "DeviceGetPowerManagementLimit", Return: ret},
-			gpu.SignalPowerLimitMW)
+			gpu.SignalPowerLimitW)
 	} else {
-		m.PowerLimitMW = int64(limit)
+		m.PowerLimitW = float64(limit) / milliwattsPerWatt
 	}
 
 	enforced, ret := dev.GetEnforcedPowerLimit()
 	if ret != gonvml.SUCCESS {
 		m.AddError(&Error{Op: "DeviceGetEnforcedPowerLimit", Return: ret},
-			gpu.SignalEnforcedPowerLimitMW)
+			gpu.SignalEnforcedPowerLimitW)
 	} else {
-		m.EnforcedPowerLimitMW = int64(enforced)
+		m.EnforcedPowerLimitW = float64(enforced) / milliwattsPerWatt
 	}
 }
 
@@ -476,7 +511,7 @@ var deviceFabricInfo = func(dev gonvml.Device) (gonvml.GpuFabricInfo_v3, gonvml.
 //   - fabric_registration_incomplete ← State != COMPLETED
 //   - fabric_registration_failed     ← State == COMPLETED but Status != SUCCESS
 //
-// The check is scoped to GB200, where every GPU must join the NVLink
+// The check is scoped to GB200/GB300, where every GPU must join the NVLink
 // fabric, so a GPU reporting NOT_SUPPORTED — whether as a SUCCESS query
 // with State NOT_SUPPORTED or an ERROR_NOT_SUPPORTED return — is flagged
 // as registration incomplete while its health-mask signals stay neutral.
@@ -508,7 +543,7 @@ func measureDeviceFabric(dev gonvml.Device, m *nvlink.NVLinkMeasurement) {
 		m.FabricRegistrationFailed = info.State == gonvml.GPU_FABRIC_STATE_COMPLETED &&
 			gonvml.Return(info.Status) != gonvml.SUCCESS
 	case gonvml.ERROR_NOT_SUPPORTED:
-		// On GB200 fabric registration is mandatory, so a not-supported
+		// On GB200/GB300 fabric registration is mandatory, so a not-supported
 		// result is flagged as unregistered rather than skipped.
 		m.FabricRegistrationIncomplete = true
 		slog.Debug("nvml: fabric info not supported on this device", "gpu", m.GPUID)

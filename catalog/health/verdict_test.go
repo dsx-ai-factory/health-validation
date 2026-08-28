@@ -36,6 +36,48 @@ func TestAggregateNodeVerdict_SchemaVersion(t *testing.T) {
 	}
 }
 
+// Every run gets one trace_id, shared by (and echoed on) all its checks;
+// every check invocation — run or skipped — gets a unique span_id.
+func TestAggregateNodeVerdict_RunAndTraceIDs(t *testing.T) {
+	verdicts := []CheckVerdict{
+		{CheckID: "a", Severity: Pass},
+		{CheckID: "b", Severity: Critical},
+		{CheckID: "c", Skipped: true, SkipReason: CheckDisabled},
+	}
+	nv := AggregateNodeVerdict(verdicts, 0)
+
+	if nv.TraceID == "" {
+		t.Fatal("NodeVerdict.TraceID is empty")
+	}
+
+	all := append(append([]CheckVerdict{}, nv.CheckResults...), nv.SkippedChecks...)
+	if len(all) != 3 {
+		t.Fatalf("got %d check verdicts, want 3", len(all))
+	}
+
+	seen := make(map[string]bool)
+	for _, v := range all {
+		if v.SpanID == "" {
+			t.Errorf("check %q has empty span_id", v.CheckID)
+		}
+		if seen[v.SpanID] {
+			t.Errorf("duplicate span_id %q on check %q", v.SpanID, v.CheckID)
+		}
+		seen[v.SpanID] = true
+		if v.TraceID != nv.TraceID {
+			t.Errorf("check %q trace_id = %q, want the run's %q", v.CheckID, v.TraceID, nv.TraceID)
+		}
+		if v.SpanID == nv.TraceID {
+			t.Errorf("check %q: span_id must not equal trace_id", v.CheckID)
+		}
+	}
+
+	// A separate run is a distinct trace.
+	if other := AggregateNodeVerdict(verdicts, 0); other.TraceID == nv.TraceID {
+		t.Error("two runs produced the same trace_id")
+	}
+}
+
 func TestAggregateNodeVerdict_CPUCategoryJSON(t *testing.T) {
 	nv := AggregateNodeVerdict([]CheckVerdict{
 		{CheckID: "cpu", Severity: Critical, Category: CPU},
@@ -125,6 +167,59 @@ func TestNodeVerdictJSON_NodeID(t *testing.T) {
 		}
 		if got.NodeID != want.NodeID {
 			t.Errorf("NodeID = %q, want %q", got.NodeID, want.NodeID)
+		}
+	})
+}
+
+func TestNodeVerdictJSON_CatalogVersion(t *testing.T) {
+	t.Run("populated", func(t *testing.T) {
+		data, err := json.Marshal(NodeVerdict{CatalogVersion: "v1.2.3"})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			t.Fatal(err)
+		}
+		if got := string(fields["catalog_version"]); got != `"v1.2.3"` {
+			t.Errorf("catalog_version = %s, want %q", got, "v1.2.3")
+		}
+	})
+
+	t.Run("aggregated verdict", func(t *testing.T) {
+		nv := AggregateNodeVerdict(nil, 0)
+		if nv.CatalogVersion == "" {
+			t.Fatal("CatalogVersion is empty")
+		}
+
+		data, err := json.Marshal(nv)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			t.Fatal(err)
+		}
+		if got := string(fields["catalog_version"]); got == "" || got == `""` {
+			t.Errorf("catalog_version = %s, want a non-empty value", got)
+		}
+	})
+
+	t.Run("round trip", func(t *testing.T) {
+		want := NodeVerdict{CatalogVersion: "v1.2.3"}
+		data, err := json.Marshal(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var got NodeVerdict
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.CatalogVersion != want.CatalogVersion {
+			t.Errorf("CatalogVersion = %q, want %q", got.CatalogVersion, want.CatalogVersion)
 		}
 	})
 }

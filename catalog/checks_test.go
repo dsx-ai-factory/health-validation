@@ -63,6 +63,13 @@ func TestNew_RegistersGPUPowerLimit(t *testing.T) {
 	}
 }
 
+func TestNew_RegistersGPUAveragePowerDraw(t *testing.T) {
+	cat := catalog.New()
+	if _, err := cat.Get("gpu_average_power_draw"); err != nil {
+		t.Errorf("Get(gpu_average_power_draw) = %v, want check to ship in builtinChecks()", err)
+	}
+}
+
 func TestNew_RegistersCPUCount(t *testing.T) {
 	cat := catalog.New()
 	if _, err := cat.Get("cpu_count"); err != nil {

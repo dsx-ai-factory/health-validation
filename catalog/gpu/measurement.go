@@ -6,10 +6,11 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // expressions and must match the RequiredSignals declared in GPU
 // check definitions.
 const (
-	SignalGPUID                = "gpu_id"
-	SignalGPUPstate            = "gpu_pstate"
-	SignalPowerLimitMW         = "power_limit_mw"
-	SignalEnforcedPowerLimitMW = "enforced_power_limit_mw"
+	SignalGPUID               = "gpu_id"
+	SignalGPUPstate           = "gpu_pstate"
+	SignalAveragePowerDrawW   = "average_power_draw_w"
+	SignalPowerLimitW         = "power_limit_w"
+	SignalEnforcedPowerLimitW = "enforced_power_limit_w"
 )
 
 // MeasurementSignals lists every signal a GPUMeasurement carries.
@@ -19,8 +20,9 @@ const (
 var MeasurementSignals = []string{
 	SignalGPUID,
 	SignalGPUPstate,
-	SignalPowerLimitMW,
-	SignalEnforcedPowerLimitMW,
+	SignalAveragePowerDrawW,
+	SignalPowerLimitW,
+	SignalEnforcedPowerLimitW,
 }
 
 // GPUMeasurement is a single observation of one GPU's health state.
@@ -37,10 +39,11 @@ var MeasurementSignals = []string{
 // data. For whole-entity failures (the sensor couldn't even identify
 // the GPU), build the measurement with [ErroredGPU].
 type GPUMeasurement struct {
-	GPUID                string `json:"gpu_id"`
-	errors               []health.ErroredMeasurement
-	PowerLimitMW         int64 `json:"power_limit_mw"`
-	EnforcedPowerLimitMW int64 `json:"enforced_power_limit_mw"`
+	GPUID               string `json:"gpu_id"`
+	errors              []health.ErroredMeasurement
+	AveragePowerDrawW   float64 `json:"average_power_draw_w"`
+	PowerLimitW         float64 `json:"power_limit_w"`
+	EnforcedPowerLimitW float64 `json:"enforced_power_limit_w"`
 	// GPUPstate is the GPU's current performance state as the numeric
 	// level N in P<N>: 0 is P0 (maximum performance) and higher values
 	// are progressively lower-power states.

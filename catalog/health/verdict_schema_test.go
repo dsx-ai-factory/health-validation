@@ -24,7 +24,9 @@ func TestNodeVerdictSchema_InSyncWithContract(t *testing.T) {
 			SchemaVersion struct {
 				Const string `json:"const"`
 			} `json:"schema_version"`
+			CatalogVersion json.RawMessage `json:"catalog_version"`
 		} `json:"properties"`
+		Required []string `json:"required"`
 	}
 	if err := json.Unmarshal(nodeVerdictSchema, &doc); err != nil {
 		t.Fatalf("parse node-verdict.schema.json: %v", err)
@@ -33,6 +35,12 @@ func TestNodeVerdictSchema_InSyncWithContract(t *testing.T) {
 	if doc.Properties.SchemaVersion.Const != NodeVerdictSchemaVersion {
 		t.Errorf("schema_version const = %q, want %q (NodeVerdictSchemaVersion); update node-verdict.schema.json",
 			doc.Properties.SchemaVersion.Const, NodeVerdictSchemaVersion)
+	}
+	if len(doc.Properties.CatalogVersion) == 0 {
+		t.Error("catalog_version missing from schema properties")
+	}
+	if !slices.Contains(doc.Required, "catalog_version") {
+		t.Error("catalog_version missing from schema required fields")
 	}
 
 	// Each enum's wire values are defined once, in the Go name maps; the
