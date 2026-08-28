@@ -1,1 +1,2 @@
-exports_files(["merge_dpkg_status.sh"])
+# This package is intentionally empty. It exists to make .bzl files in
+# this directory loadable.

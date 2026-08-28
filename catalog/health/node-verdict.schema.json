@@ -7,6 +7,8 @@
   "type": "object",
   "required": [
     "schema_version",
+    "catalog_version",
+    "trace_id",
     "timestamp",
     "severity_by_domain",
     "check_results",
@@ -18,6 +20,11 @@
       "description": "MAJOR.MINOR contract version. Consumers must check this before acting on a verdict; an unrecognised or missing value is untrusted output.",
       "const": "0.2"
     },
+    "catalog_version": {
+      "description": "Catalog module version that produced this verdict: a Go module version such as v0.1.0 on release builds, dev or dev+<commit> otherwise. Overrides and custom checks do not change it.",
+      "type": "string",
+      "minLength": 1
+    },
     "timestamp": {
       "description": "When the node verdict was aggregated (RFC 3339).",
       "type": "string",
@@ -25,6 +32,10 @@
     },
     "node_id": {
       "description": "Opaque identifier for the node under test. Omitted when unset.",
+      "type": "string"
+    },
+    "trace_id": {
+      "description": "Unique identifier for this run, shared by every check it fired and echoed on each check result. Lets downstream systems distinguish co-fired checks from different runs.",
       "type": "string"
     },
     "overall_severity": {
@@ -70,6 +81,8 @@
       "required": [
         "timestamp",
         "check_id",
+        "span_id",
+        "trace_id",
         "severity",
         "category",
         "maturity_level",
@@ -79,6 +92,14 @@
       "properties": {
         "timestamp": { "type": "string", "format": "date-time" },
         "check_id": { "type": "string" },
+        "span_id": {
+          "description": "Unique identifier for this check invocation, distinct from every other check in the run.",
+          "type": "string"
+        },
+        "trace_id": {
+          "description": "The run's trace_id, echoed here so this check result is self-correlating when consumed on its own.",
+          "type": "string"
+        },
         "severity": { "$ref": "#/$defs/severity" },
         "category": { "$ref": "#/$defs/category" },
         "maturity_level": { "$ref": "#/$defs/maturityLevel" },

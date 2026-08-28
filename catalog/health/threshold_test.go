@@ -155,6 +155,56 @@ func TestCheckDefinition_ValidateRejectsRequiredFixedThreshold(t *testing.T) {
 	}
 }
 
+func TestCheckDefinition_ValidatePerArchitectureMustCoverArchitectures(t *testing.T) {
+	cd := CheckDefinition{
+		ID:            "speed_check",
+		Architectures: []string{"GB200", "H100"},
+		Thresholds: map[string]ThresholdSpec{
+			"expected_speed": {
+				Value:           int64(50000),
+				PerArchitecture: map[string]any{"GB200": int64(53125)},
+				Category:        DefaultThreshold,
+			},
+		},
+	}
+	err := cd.Validate()
+	if err == nil || !strings.Contains(err.Error(), "H100") {
+		t.Fatalf("Validate() = %v, want missing H100 named", err)
+	}
+}
+
+func TestCheckDefinition_ValidateAllowsNilValueWhenPerArchitectureCovers(t *testing.T) {
+	cd := CheckDefinition{
+		ID:            "power_check",
+		Architectures: []string{"GB200", "H100"},
+		Thresholds: map[string]ThresholdSpec{
+			"expected_limit": {
+				PerArchitecture: map[string]any{
+					"GB200": int64(1200),
+					"H100":  int64(700),
+				},
+				Category: DefaultThreshold,
+			},
+		},
+	}
+	if err := cd.Validate(); err != nil {
+		t.Errorf("Validate() = %v, want nil", err)
+	}
+}
+
+func TestCheckDefinition_ValidateRequiresValueWithoutArchitectureCoverage(t *testing.T) {
+	cd := CheckDefinition{
+		ID: "unrestricted_check",
+		Thresholds: map[string]ThresholdSpec{
+			"expected_count": {Category: DefaultThreshold},
+		},
+	}
+	err := cd.Validate()
+	if err == nil || !strings.Contains(err.Error(), "Value is required") {
+		t.Fatalf("Validate() = %v, want Value required", err)
+	}
+}
+
 func TestCheckDefinition_ValidateAcceptsRequiredDefaultThreshold(t *testing.T) {
 	cd := CheckDefinition{
 		ID: "node_expected_first",

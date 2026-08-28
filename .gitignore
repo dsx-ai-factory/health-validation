@@ -7,6 +7,9 @@ public
 # Locally built/downloaded binaries. Keep these out of the repo root.
 /bin/
 
+# Local OCI image tarballs, including macOS cross-build staging output.
+/dist/
+
 # Workspace checksum file. go.work is committed to define the two-module local
 # dev layout; go.work.sum is regenerated on demand by go and gates nothing,
 # so keep it untracked rather than letting it drift.

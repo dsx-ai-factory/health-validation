@@ -10,6 +10,7 @@ package catalog
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -49,8 +50,15 @@ func WithDisabledChecks(ids ...string) Option {
 	}
 }
 
+// ErrArchitectureUnset is returned by [Catalog.Evaluate], [Catalog.EvaluateAll],
+// and [Catalog.EvaluateAllRaw] when the catalog was constructed without
+// [WithArchitecture]. List, Get, and Register do not require it.
+var ErrArchitectureUnset = errors.New("architecture must be set via WithArchitecture")
+
 // WithArchitecture sets the current GPU architecture for filtering.
 // Checks that don't apply to this architecture are skipped.
+// Evaluate requires a non-empty architecture; omitting this option is valid
+// for List/Overrides but fails closed at evaluation.
 func WithArchitecture(arch string) Option {
 	return func(c *Catalog) { c.architecture = arch }
 }
@@ -228,8 +236,21 @@ func (c *Catalog) snapshotParams() paramsSnapshot {
 	}
 }
 
+func (c *Catalog) requireArchitecture() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.architecture == "" {
+		return ErrArchitectureUnset
+	}
+	return nil
+}
+
 // Evaluate runs a single check against a typed measurement.
 func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVerdict, error) {
+	if err := c.requireArchitecture(); err != nil {
+		return health.CheckVerdict{}, err
+	}
+
 	c.mu.RLock()
 	cd, ok := c.checks[checkID]
 	c.mu.RUnlock()
@@ -289,6 +310,10 @@ func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVe
 // affect OverallSeverity. Register only the checks you intend to feed if
 // you want a narrower verdict.
 func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.CheckVerdict, error) {
+	if err := c.requireArchitecture(); err != nil {
+		return nil, err
+	}
+
 	c.mu.RLock()
 	checks := make(map[string]*health.CheckDefinition, len(c.checks))
 	for k, v := range c.checks {

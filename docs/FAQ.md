@@ -73,11 +73,11 @@ All active overrides appear in `thresholds[name].overridden: true` in the output
 
 ## What Go version is required?
 
-Go 1.27rc2. This is declared in each module's `go.mod` (the repo is split into the `catalog` and `toolkit` modules).
+Go 1.27.0. This is declared in each module's `go.mod` (the repo is split into the `catalog` and `toolkit` modules).
 
 ## What hardware is covered?
 
-The catalog currently centers on GB200 GPU nodes, with some checks scoped to further NVIDIA architectures, plus host CPU availability and topology. Registered checks cover host CPU (possible-versus-online logical CPU count and online NUMA node count), GPU power (power limit and power state), GPU count, NVLink (active links, fabric health, fabric status, bandwidth/count/speed, capabilities, and peer-to-peer), fatal mlx5 RDMA link flaps, and a set of XID-driven GPU events (a CRITICAL check per critical Xid code, a consolidated Xid warning check, and the Xid 154 INFO check).
+The catalog currently centers on GB200 and GB300 GPU nodes, with some checks scoped to further NVIDIA architectures, plus host CPU availability and topology. Registered checks cover host CPU (possible-versus-online logical CPU count and online NUMA node count), GPU power (power limit and power state), GPU count, NVLink (active links, fabric health, fabric status, bandwidth/count/speed, capabilities, and peer-to-peer), fatal mlx5 RDMA link flaps, and a set of XID-driven GPU events (a CRITICAL check per critical Xid code, a consolidated Xid warning check, and the Xid 154 INFO check). See the README's GB300 support note — GB200 coverage has been validated, GB300 coverage has not yet completed the same validation pass.
 
 The sensor interface is extensible. Partners can implement `toolkit.GPUBackend` for other GPU types and supply measurements directly to `cat.EvaluateAll()` without modifying catalog source. NVIDIA does not author or validate checks for non-NVIDIA hardware.
 

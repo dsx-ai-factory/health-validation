@@ -8,12 +8,16 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
 
 func cpuCatalog() *catalog.Catalog {
-	return catalog.New(catalog.WithExecutionContext(health.OperatorInfra))
+	return catalog.New(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
 }
 
 func TestCPUCountDefinition(t *testing.T) {

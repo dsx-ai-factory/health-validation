@@ -21,18 +21,22 @@ func powerLimitDevice(current, enforced uint32) *mock.Device {
 		GetPerformanceStateFunc: func() (gonvml.Pstates, gonvml.Return) {
 			return gonvml.PSTATE_0, gonvml.SUCCESS
 		},
+		GetFieldValuesFunc: averagePowerFieldValues(220_000),
 		GetPowerManagementLimitFunc: func() (uint32, gonvml.Return) {
 			return current, gonvml.SUCCESS
 		},
 		GetEnforcedPowerLimitFunc: func() (uint32, gonvml.Return) {
 			return enforced, gonvml.SUCCESS
 		},
+		GetCurrentClocksEventReasonsFunc: func() (uint64, gonvml.Return) {
+			return 0, gonvml.SUCCESS
+		},
 	}
 }
 
-// Measures a GPU whose NVML power APIs return mixed milliwatt values and
-// asserts they are stored exactly, including non-whole-watt 1199600 mW.
-func TestMeasureGPUs_PowerLimitsPreserveMilliwatts(t *testing.T) {
+// Measures a GPU whose NVML power APIs return milliwatts and asserts the
+// converted signals preserve a non-whole-watt value.
+func TestMeasureGPUs_PowerLimitsPreserveFractionalWatts(t *testing.T) {
 	b := nvml.NewWithLibrary(pstateLib(
 		powerLimitDevice(1_199_600, 1_200_000),
 	))
@@ -43,11 +47,11 @@ func TestMeasureGPUs_PowerLimitsPreserveMilliwatts(t *testing.T) {
 		t.Fatalf("MeasureGPUs: %v", err)
 	}
 	m := expectGPUMeasurement(t, ms, 0)
-	if m.PowerLimitMW != 1_199_600 {
-		t.Errorf("PowerLimitMW = %d, want 1199600", m.PowerLimitMW)
+	if m.PowerLimitW != 1199.6 {
+		t.Errorf("PowerLimitW = %g, want 1199.6", m.PowerLimitW)
 	}
-	if m.EnforcedPowerLimitMW != 1_200_000 {
-		t.Errorf("EnforcedPowerLimitMW = %d, want 1200000", m.EnforcedPowerLimitMW)
+	if m.EnforcedPowerLimitW != 1200 {
+		t.Errorf("EnforcedPowerLimitW = %g, want 1200", m.EnforcedPowerLimitW)
 	}
 	if errs := m.Errors(); len(errs) != 0 {
 		t.Errorf("Errors() = %v, want empty", errs)
@@ -100,7 +104,7 @@ func TestMeasureGPUs_PowerLimitFailuresAreIndependent(t *testing.T) {
 			dev.GetPowerManagementLimitFunc = func() (uint32, gonvml.Return) {
 				return 0, gonvml.ERROR_UNKNOWN
 			}
-		}, gpu.SignalPowerLimitMW, "DeviceGetPowerManagementLimit")
+		}, gpu.SignalPowerLimitW, "DeviceGetPowerManagementLimit")
 	})
 
 	t.Run("enforced", func(t *testing.T) {
@@ -108,6 +112,6 @@ func TestMeasureGPUs_PowerLimitFailuresAreIndependent(t *testing.T) {
 			dev.GetEnforcedPowerLimitFunc = func() (uint32, gonvml.Return) {
 				return 0, gonvml.ERROR_NOT_SUPPORTED
 			}
-		}, gpu.SignalEnforcedPowerLimitMW, "DeviceGetEnforcedPowerLimit")
+		}, gpu.SignalEnforcedPowerLimitW, "DeviceGetEnforcedPowerLimit")
 	})
 }

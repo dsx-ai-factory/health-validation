@@ -57,8 +57,12 @@ func threeSlotLib() *mock.Interface {
 		GetPerformanceStateFunc: func() (gonvml.Pstates, gonvml.Return) {
 			return gonvml.PSTATE_0, gonvml.SUCCESS
 		},
+		GetFieldValuesFunc:          averagePowerFieldValues(220_000),
 		GetPowerManagementLimitFunc: func() (uint32, gonvml.Return) { return 0, gonvml.SUCCESS },
 		GetEnforcedPowerLimitFunc:   func() (uint32, gonvml.Return) { return 0, gonvml.SUCCESS },
+		GetCurrentClocksEventReasonsFunc: func() (uint64, gonvml.Return) {
+			return 0, gonvml.SUCCESS
+		},
 	}
 	noUUID := &mock.Device{
 		GetUUIDFunc: func() (string, gonvml.Return) { return "", gonvml.ERROR_GPU_IS_LOST },

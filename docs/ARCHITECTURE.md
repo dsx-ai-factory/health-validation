@@ -4,7 +4,7 @@
 
 | Package | Role |
 |---|---|
-| `catalog/health` | Shared vocabulary. No logic. Defines all domain types: `CheckDefinition`, `CheckVerdict`, `NodeVerdict`, the `Measurement` interface, and all enums. No internal imports. |
+| `catalog/health` | Shared vocabulary and node-verdict aggregation. Defines all domain types: `CheckDefinition`, `CheckVerdict`, `NodeVerdict`, the `Measurement` interface, and all enums. It depends on the leaf `catalog/version` package for verdict provenance and does not import check-domain or evaluation packages. |
 | `catalog` | Check registry and evaluation entry point. `Catalog` is a thread-safe registry that holds check definitions and exposes `EvaluateAll(measurements...)`. Built-in checks are registered in `checks.go`. |
 | `catalog/cpu` | `cpu.CPUMeasurement` and the host-wide `CPUCount` and `NUMANodeCount` check definitions. |
 | `catalog/gpu` | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPowerState` check definitions. |
@@ -72,6 +72,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | Field | Type | JSON name | Description |
 |---|---|---|---|
 | SchemaVersion | string | `schema_version` | JSON schema version of this verdict (MAJOR.MINOR); always present. Consumers must check it before acting. |
+| CatalogVersion | string | `catalog_version` | Catalog module version that produced this verdict; `dev` or `dev+<commit>` on non-release builds. |
 | Timestamp | time.Time | `timestamp` | When the evaluation completed. |
 | NodeID | string | `node_id` | Opaque identifier for the node under test; the CLI defaults it to the system hostname. |
 | OverallSeverity | Severity | `overall_severity` | Worst severity across all non-skipped checks. |
@@ -143,4 +144,4 @@ go build -o health-validation ./toolkit/cmd/health-validation
 go test ./catalog/...
 ```
 
-The repo uses Bazel exclusively in CI. `go build` and `go test` work for local iteration but do not run all CI checks (nogo, link-mode validation). Use `bazel test --config=ci --platforms=//build/platforms:linux_amd64 //...` to reproduce CI results on darwin. See [DEVELOPER.md](DEVELOPER.md) for the full build, CI, and container workflow.
+The repo uses Bazel exclusively in CI. `go build` and `go test` work for local iteration but do not run all CI checks (nogo, link-mode validation). On macOS, run `bazel test --config=ci --platforms=//build/platforms:linux_amd64 //...` from a Linux VM or container to reproduce the Linux CI build. See [DEVELOPER.md](DEVELOPER.md#build-a-linux-image-from-macos) for the container workflow.
