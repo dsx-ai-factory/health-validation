@@ -18,93 +18,103 @@ func newCatalog(opts ...catalog.Option) *catalog.Catalog {
 	return catalog.New(append(defaults, opts...)...)
 }
 
-func TestGPUPowerState_AtExpected(t *testing.T) {
-	cat := newCatalog()
-
-	v, err := cat.Evaluate("gpu_power_state", gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if v.Severity != health.Pass {
-		t.Errorf("severity = %v, want PASS (P0 == default expected P0)", v.Severity)
-	}
-}
-
-func TestGPUPowerState_BelowExpected(t *testing.T) {
-	cat := newCatalog()
-
-	v, err := cat.Evaluate("gpu_power_state", gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 8})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL (P8 != default expected P0)", v.Severity)
-	}
-	if !v.RecommendedAction.Equal(health.GenericDrain()) {
-		t.Errorf("RecommendedAction = %v, want drain/reboot", v.RecommendedAction)
-	}
-	msg := strings.Join(v.Messages, " ")
-	for _, want := range []string{"GPU-0", "P8", "expected P0"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("Messages = %q, want %q interpolated", v.Messages, want)
-		}
-	}
-}
-
 // expected_gpu_pstate is a DefaultThreshold so fleets that idle at a
 // different state can override it. The rule is an equality, so the
 // override moves the passing state rather than widening a budget.
-func TestGPUPowerState_OverrideExpected(t *testing.T) {
-	cat := newCatalog(catalog.WithOverrides(catalog.NewOverrideSet(catalog.Override{
+func overriddenPstateCatalog(pstate int64) *catalog.Catalog {
+	return newCatalog(catalog.WithOverrides(catalog.NewOverrideSet(catalog.Override{
 		CheckID:       "gpu_power_state",
 		ThresholdName: "expected_gpu_pstate",
-		Value:         int64(8),
+		Value:         pstate,
 	})))
-
-	v, err := cat.Evaluate("gpu_power_state", gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 8})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if v.Severity != health.Pass {
-		t.Errorf("severity = %v, want PASS (P8 == overridden expected)", v.Severity)
-	}
-
-	v, err = cat.Evaluate("gpu_power_state", gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL (P0 != overridden expected P8)", v.Severity)
-	}
 }
 
-func TestGPUPowerState_SkippedOnWrongArchitecture(t *testing.T) {
-	cat := catalog.New(
+func wrongArchitectureCatalog() *catalog.Catalog {
+	return catalog.New(
 		catalog.WithArchitecture("V100"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
-
-	v, err := cat.Evaluate("gpu_power_state", gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if !v.Skipped || v.SkipReason != health.ArchitectureUnsupported {
-		t.Errorf("expected skipped with ArchitectureUnsupported, got skipped=%v reason=%v", v.Skipped, v.SkipReason)
-	}
 }
 
-// A GPU whose performance state could not be collected propagates to
-// Critical regardless of the rule, since the data the check needs is
-// unavailable.
-func TestGPUPowerState_ErroredGPU(t *testing.T) {
-	cat := newCatalog()
-
-	m := gpu.ErroredGPU("GPU-0", errors.New("nvml pstate query failed"), gpu.SignalGPUPstate)
-	v, err := cat.Evaluate("gpu_power_state", m)
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+func TestGPUPowerState(t *testing.T) {
+	tests := []struct {
+		name             string
+		cat              func() *catalog.Catalog
+		measurement      gpu.GPUMeasurement
+		wantSeverity     health.Severity
+		wantSkipped      bool
+		wantSkipReason   health.SkipReason
+		wantAction       health.RecommendedAction
+		wantMessageParts []string
+	}{
+		{
+			name:         "at expected pstate",
+			cat:          func() *catalog.Catalog { return newCatalog() },
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
+			wantSeverity: health.Pass,
+		},
+		{
+			name:             "below expected pstate",
+			cat:              func() *catalog.Catalog { return newCatalog() },
+			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 8},
+			wantSeverity:     health.Critical,
+			wantAction:       health.GenericDrain(),
+			wantMessageParts: []string{"GPU-0", "P8", "expected P0"},
+		},
+		{
+			name:         "matches overridden expected pstate",
+			cat:          func() *catalog.Catalog { return overriddenPstateCatalog(8) },
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 8},
+			wantSeverity: health.Pass,
+		},
+		{
+			name:         "no longer matches default pstate once overridden",
+			cat:          func() *catalog.Catalog { return overriddenPstateCatalog(8) },
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
+			wantSeverity: health.Critical,
+		},
+		{
+			name:           "skipped on wrong architecture",
+			cat:            wrongArchitectureCatalog,
+			measurement:    gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
+			wantSkipped:    true,
+			wantSkipReason: health.ArchitectureUnsupported,
+		},
+		{
+			// A GPU whose performance state could not be collected propagates
+			// to Critical regardless of the rule, since the data the check
+			// needs is unavailable.
+			name:         "errored GPU forces critical",
+			cat:          func() *catalog.Catalog { return newCatalog() },
+			measurement:  gpu.ErroredGPU("GPU-0", errors.New("nvml pstate query failed"), gpu.SignalGPUPstate),
+			wantSeverity: health.Critical,
+		},
 	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL (errored GPU)", v.Severity)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := tt.cat().Evaluate("gpu_power_state", tt.measurement)
+			if err != nil {
+				t.Fatalf("Evaluate: %v", err)
+			}
+			if v.Skipped != tt.wantSkipped || v.SkipReason != tt.wantSkipReason {
+				t.Fatalf("skipped=%v reason=%v, want skipped=%v reason=%v", v.Skipped, v.SkipReason, tt.wantSkipped, tt.wantSkipReason)
+			}
+			if tt.wantSkipped {
+				return
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Fatalf("severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if !tt.wantAction.IsZero() && !v.RecommendedAction.Equal(tt.wantAction) {
+				t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, tt.wantAction)
+			}
+			msg := strings.Join(v.Messages, " ")
+			for _, want := range tt.wantMessageParts {
+				if !strings.Contains(msg, want) {
+					t.Errorf("Messages = %q, want %q interpolated", v.Messages, want)
+				}
+			}
+		})
 	}
 }
