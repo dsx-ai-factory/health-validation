@@ -1,8 +1,9 @@
 // Package gpu defines the per-GPU measurement type ([GPUMeasurement])
-// consumed by GPU-category health checks.
+// and the GPU-category check definitions that evaluate it
+// ([GPUAveragePowerDraw], [GPUPowerLimit], [GPUPowerState],
+// [GPUSensorThrottle]).
 //
-// The catalog ships no built-in GPU-category check definitions in this
-// package today; XID-driven GPU checks live in [catalog/xid] and
-// node-wide checks live in [catalog/node]. Import this package to
+// XID-driven GPU checks live in [catalog/xid] and node-wide checks
+// (e.g. GPU count) live in [catalog/node]. Import this package to
 // construct or inspect GPU measurements that the sensors produce.
 package gpu

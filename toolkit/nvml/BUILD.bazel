@@ -36,6 +36,7 @@ go_test(
         "nvml_backend_power_limit_test.go",
         "nvml_backend_pstate_test.go",
         "nvml_backend_test.go",
+        "nvml_backend_throttle_test.go",
         "prober_test.go",
     ],
     embed = [":nvml"],
