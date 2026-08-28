@@ -28,6 +28,9 @@ func powerLimitDevice(current, enforced uint32) *mock.Device {
 		GetEnforcedPowerLimitFunc: func() (uint32, gonvml.Return) {
 			return enforced, gonvml.SUCCESS
 		},
+		GetCurrentClocksEventReasonsFunc: func() (uint64, gonvml.Return) {
+			return 0, gonvml.SUCCESS
+		},
 	}
 }
 
