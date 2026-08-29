@@ -22,73 +22,83 @@ func throttleCatalog(opts ...catalog.Option) *catalog.Catalog {
 	return c
 }
 
-func TestGPUSensorThrottle_Healthy(t *testing.T) {
-	cat := throttleCatalog()
-	v, err := cat.Evaluate("gpu_sensor_throttle", healthyThrottleGB200())
-	if err != nil {
-		t.Fatal(err)
+func TestGPUSensorThrottle(t *testing.T) {
+	tests := []struct {
+		name           string
+		cat            *catalog.Catalog
+		measurement    func() gpu.GPUMeasurement
+		wantSeverity   health.Severity
+		wantSkipped    bool
+		wantSkipReason health.SkipReason
+		wantAction     health.RecommendedAction
+	}{
+		{
+			name:         "healthy",
+			cat:          throttleCatalog(),
+			measurement:  healthyThrottleGB200,
+			wantSeverity: health.Pass,
+		},
+		{
+			name: "hardware slowdown",
+			cat:  throttleCatalog(),
+			measurement: func() gpu.GPUMeasurement {
+				m := healthyThrottleGB200()
+				m.HWSlowdown = true
+				return m
+			},
+			wantSeverity: health.Critical,
+			wantAction:   health.GenericDrain(),
+		},
+		{
+			name: "thermal slowdown",
+			cat:  throttleCatalog(),
+			measurement: func() gpu.GPUMeasurement {
+				m := healthyThrottleGB200()
+				m.HWThermalSlowdown = true
+				return m
+			},
+			wantSeverity: health.Critical,
+		},
+		{
+			name: "power-brake slowdown",
+			cat:  throttleCatalog(),
+			measurement: func() gpu.GPUMeasurement {
+				m := healthyThrottleGB200()
+				m.HWPowerBrakeSlowdown = true
+				return m
+			},
+			wantSeverity: health.Critical,
+		},
+		{
+			name:           "skipped on wrong architecture",
+			cat:            throttleCatalog(catalog.WithArchitecture("T4")),
+			measurement:    healthyThrottleGB200,
+			wantSkipped:    true,
+			wantSkipReason: health.ArchitectureUnsupported,
+		},
 	}
-	if v.Severity != health.Pass {
-		t.Errorf("severity = %v, want PASS", v.Severity)
-	}
-	if !v.RecommendedAction.IsZero() {
-		t.Errorf("recommended_action = %v, want zero on PASS", v.RecommendedAction)
-	}
-}
 
-func TestGPUSensorThrottle_HWSlowdown(t *testing.T) {
-	cat := throttleCatalog()
-	m := healthyThrottleGB200()
-	m.HWSlowdown = true
-
-	v, err := cat.Evaluate("gpu_sensor_throttle", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", v.Severity)
-	}
-	if !v.RecommendedAction.Equal(health.GenericDrain()) {
-		t.Errorf("recommended_action = %v, want Drain(RetestHardware)", v.RecommendedAction)
-	}
-}
-
-func TestGPUSensorThrottle_HWThermalSlowdown(t *testing.T) {
-	cat := throttleCatalog()
-	m := healthyThrottleGB200()
-	m.HWThermalSlowdown = true
-
-	v, err := cat.Evaluate("gpu_sensor_throttle", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", v.Severity)
-	}
-}
-
-func TestGPUSensorThrottle_HWPowerBrakeSlowdown(t *testing.T) {
-	cat := throttleCatalog()
-	m := healthyThrottleGB200()
-	m.HWPowerBrakeSlowdown = true
-
-	v, err := cat.Evaluate("gpu_sensor_throttle", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", v.Severity)
-	}
-}
-
-func TestGPUSensorThrottle_SkippedOnWrongArchitecture(t *testing.T) {
-	cat := throttleCatalog(catalog.WithArchitecture("T4"))
-
-	v, err := cat.Evaluate("gpu_sensor_throttle", healthyThrottleGB200())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !v.Skipped || v.SkipReason != health.ArchitectureUnsupported {
-		t.Errorf("expected skipped with ArchitectureUnsupported, got skipped=%v reason=%v", v.Skipped, v.SkipReason)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := tt.cat.Evaluate("gpu_sensor_throttle", tt.measurement())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Skipped != tt.wantSkipped || v.SkipReason != tt.wantSkipReason {
+				t.Fatalf("skipped=%v reason=%v, want skipped=%v reason=%v", v.Skipped, v.SkipReason, tt.wantSkipped, tt.wantSkipReason)
+			}
+			if tt.wantSkipped {
+				return
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Fatalf("severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if !tt.wantAction.IsZero() && !v.RecommendedAction.Equal(tt.wantAction) {
+				t.Errorf("recommended_action = %v, want %v", v.RecommendedAction, tt.wantAction)
+			}
+			if tt.wantSeverity == health.Pass && !v.RecommendedAction.IsZero() {
+				t.Errorf("recommended_action = %v, want zero on PASS", v.RecommendedAction)
+			}
+		})
 	}
 }
