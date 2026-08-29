@@ -10,83 +10,98 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 )
 
-func TestNVLinkFabric_Healthy(t *testing.T) {
-	cat := fabricCatalog()
-	v, err := cat.Evaluate("nvlink_fabric", healthyFabric())
-	if err != nil {
-		t.Fatal(err)
+func TestNVLinkFabric(t *testing.T) {
+	tests := []struct {
+		name                string
+		cat                 func() *catalog.Catalog
+		measurement         func() nvlink.NVLinkMeasurement
+		wantSeverity        health.Severity
+		wantSkipped         bool
+		wantSkipReason      health.SkipReason
+		wantAction          health.RecommendedAction
+		wantMessageParts    []string
+		checkNVIDIAEndorsed bool
+	}{
+		{
+			name:                "healthy",
+			cat:                 func() *catalog.Catalog { return fabricCatalog() },
+			measurement:         healthyFabric,
+			wantSeverity:        health.Pass,
+			checkNVIDIAEndorsed: true,
+		},
+		{
+			name: "registration incomplete",
+			cat:  func() *catalog.Catalog { return fabricCatalog() },
+			measurement: func() nvlink.NVLinkMeasurement {
+				m := healthyFabric()
+				m.FabricRegistrationIncomplete = true
+				return m
+			},
+			wantSeverity:     health.Critical,
+			wantAction:       health.GenericDrain(),
+			wantMessageParts: []string{"GPU-0"},
+		},
+		{
+			name: "registration failed",
+			cat:  func() *catalog.Catalog { return fabricCatalog() },
+			measurement: func() nvlink.NVLinkMeasurement {
+				m := healthyFabric()
+				m.FabricRegistrationFailed = true
+				return m
+			},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0"},
+		},
+		{
+			name: "skipped on wrong architecture",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("H100"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement:    healthyFabric,
+			wantSkipped:    true,
+			wantSkipReason: health.ArchitectureUnsupported,
+		},
+		{
+			name: "errored GPU forces critical",
+			cat:  func() *catalog.Catalog { return fabricCatalog() },
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.ErroredNVLink("GPU-0", errors.New("nvml fabric query failed"),
+					nvlink.SignalFabricRegistrationIncomplete, nvlink.SignalFabricRegistrationFailed)
+			},
+			wantSeverity: health.Critical,
+		},
 	}
-	if v.Severity != health.Pass {
-		t.Errorf("severity = %v, want PASS", v.Severity)
-	}
-	if !v.NVIDIAEndorsed {
-		t.Error("expected nvidia_endorsed = true")
-	}
-}
 
-func TestNVLinkFabric_RegistrationIncomplete(t *testing.T) {
-	cat := fabricCatalog()
-	m := healthyFabric()
-	m.FabricRegistrationIncomplete = true
-
-	v, err := cat.Evaluate("nvlink_fabric", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", v.Severity)
-	}
-	if !strings.Contains(strings.Join(v.Messages, " "), "GPU-0") {
-		t.Errorf("Messages = %q, want gpu_id interpolated", v.Messages)
-	}
-	if !v.RecommendedAction.Equal(health.GenericDrain()) {
-		t.Errorf("recommended_action = %+v, want Drain(RetestHardware)", v.RecommendedAction)
-	}
-}
-
-func TestNVLinkFabric_RegistrationFailed(t *testing.T) {
-	cat := fabricCatalog()
-	m := healthyFabric()
-	m.FabricRegistrationFailed = true
-
-	v, err := cat.Evaluate("nvlink_fabric", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", v.Severity)
-	}
-	if !strings.Contains(strings.Join(v.Messages, " "), "GPU-0") {
-		t.Errorf("Messages = %q, want gpu_id interpolated", v.Messages)
-	}
-}
-
-func TestNVLinkFabric_SkippedOnWrongArchitecture(t *testing.T) {
-	cat := catalog.New(
-		catalog.WithArchitecture("H100"),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-
-	v, err := cat.Evaluate("nvlink_fabric", healthyFabric())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !v.Skipped || v.SkipReason != health.ArchitectureUnsupported {
-		t.Errorf("expected skipped with ArchitectureUnsupported, got skipped=%v reason=%v", v.Skipped, v.SkipReason)
-	}
-}
-
-func TestNVLinkFabric_ErroredGPU(t *testing.T) {
-	cat := fabricCatalog()
-	v, err := cat.Evaluate(
-		"nvlink_fabric",
-		nvlink.ErroredNVLink("GPU-0", errors.New("nvml fabric query failed"),
-			nvlink.SignalFabricRegistrationIncomplete, nvlink.SignalFabricRegistrationFailed),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL (errored GPU)", v.Severity)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := tt.cat().Evaluate("nvlink_fabric", tt.measurement())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Skipped != tt.wantSkipped || v.SkipReason != tt.wantSkipReason {
+				t.Fatalf("skipped=%v reason=%v, want skipped=%v reason=%v", v.Skipped, v.SkipReason, tt.wantSkipped, tt.wantSkipReason)
+			}
+			if tt.wantSkipped {
+				return
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Fatalf("severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if checkAction := !tt.wantAction.IsZero(); checkAction && !v.RecommendedAction.Equal(tt.wantAction) {
+				t.Errorf("recommended_action = %+v, want %+v", v.RecommendedAction, tt.wantAction)
+			}
+			if tt.checkNVIDIAEndorsed && !v.NVIDIAEndorsed {
+				t.Error("expected nvidia_endorsed = true")
+			}
+			msg := strings.Join(v.Messages, " ")
+			for _, want := range tt.wantMessageParts {
+				if !strings.Contains(msg, want) {
+					t.Errorf("Messages = %q, want %q interpolated", v.Messages, want)
+				}
+			}
+		})
 	}
 }
