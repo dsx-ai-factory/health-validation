@@ -20,87 +20,95 @@ func fabricCatalog(opts ...catalog.Option) *catalog.Catalog {
 	return catalog.New(append(defaults, opts...)...)
 }
 
-func TestNVLinkFabricHealth_Healthy(t *testing.T) {
-	cat := fabricCatalog()
-	v, err := cat.Evaluate("nvlink_fabric_health", healthyFabric())
-	if err != nil {
-		t.Fatal(err)
+func TestNVLinkFabricHealth(t *testing.T) {
+	tests := []struct {
+		name                string
+		cat                 func() *catalog.Catalog
+		measurement         func() nvlink.NVLinkMeasurement
+		wantSeverity        health.Severity
+		wantSkipped         bool
+		wantSkipReason      health.SkipReason
+		checkNVIDIAEndorsed bool
+	}{
+		{
+			name:                "healthy",
+			cat:                 func() *catalog.Catalog { return fabricCatalog() },
+			measurement:         healthyFabric,
+			wantSeverity:        health.Pass,
+			checkNVIDIAEndorsed: true,
+		},
+		{
+			name: "bandwidth degraded",
+			cat:  func() *catalog.Catalog { return fabricCatalog() },
+			measurement: func() nvlink.NVLinkMeasurement {
+				m := healthyFabric()
+				m.FabricBandwidthDegraded = true
+				return m
+			},
+			wantSeverity: health.Critical,
+		},
+		{
+			name: "route recovery in progress",
+			cat:  func() *catalog.Catalog { return fabricCatalog() },
+			measurement: func() nvlink.NVLinkMeasurement {
+				m := healthyFabric()
+				m.FabricRouteRecoveryInProgress = true
+				return m
+			},
+			wantSeverity: health.Critical,
+		},
+		{
+			name: "route unhealthy",
+			cat:  func() *catalog.Catalog { return fabricCatalog() },
+			measurement: func() nvlink.NVLinkMeasurement {
+				m := healthyFabric()
+				m.FabricRouteUnhealthy = true
+				return m
+			},
+			wantSeverity: health.Critical,
+		},
+		{
+			name: "access timeout recovery",
+			cat:  func() *catalog.Catalog { return fabricCatalog() },
+			measurement: func() nvlink.NVLinkMeasurement {
+				m := healthyFabric()
+				m.FabricAccessTimeoutRecovery = true
+				return m
+			},
+			wantSeverity: health.Critical,
+		},
+		{
+			name: "skipped on wrong architecture",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("H100"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement:    healthyFabric,
+			wantSkipped:    true,
+			wantSkipReason: health.ArchitectureUnsupported,
+		},
 	}
-	if v.Severity != health.Pass {
-		t.Errorf("severity = %v, want PASS", v.Severity)
-	}
-	if !v.NVIDIAEndorsed {
-		t.Error("expected nvidia_endorsed = true")
-	}
-}
 
-func TestNVLinkFabricHealth_BandwidthDegraded(t *testing.T) {
-	cat := fabricCatalog()
-	m := healthyFabric()
-	m.FabricBandwidthDegraded = true
-
-	v, err := cat.Evaluate("nvlink_fabric_health", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", v.Severity)
-	}
-}
-
-func TestNVLinkFabricHealth_RouteRecoveryInProgress(t *testing.T) {
-	cat := fabricCatalog()
-	m := healthyFabric()
-	m.FabricRouteRecoveryInProgress = true
-
-	v, err := cat.Evaluate("nvlink_fabric_health", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", v.Severity)
-	}
-}
-
-func TestNVLinkFabricHealth_RouteUnhealthy(t *testing.T) {
-	cat := fabricCatalog()
-	m := healthyFabric()
-	m.FabricRouteUnhealthy = true
-
-	v, err := cat.Evaluate("nvlink_fabric_health", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", v.Severity)
-	}
-}
-
-func TestNVLinkFabricHealth_AccessTimeoutRecovery(t *testing.T) {
-	cat := fabricCatalog()
-	m := healthyFabric()
-	m.FabricAccessTimeoutRecovery = true
-
-	v, err := cat.Evaluate("nvlink_fabric_health", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", v.Severity)
-	}
-}
-
-func TestNVLinkFabricHealth_SkippedOnWrongArchitecture(t *testing.T) {
-	cat := catalog.New(
-		catalog.WithArchitecture("H100"),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-
-	v, err := cat.Evaluate("nvlink_fabric_health", healthyFabric())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !v.Skipped || v.SkipReason != health.ArchitectureUnsupported {
-		t.Errorf("expected skipped with ArchitectureUnsupported, got skipped=%v reason=%v", v.Skipped, v.SkipReason)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := tt.cat().Evaluate("nvlink_fabric_health", tt.measurement())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Skipped != tt.wantSkipped || v.SkipReason != tt.wantSkipReason {
+				t.Fatalf("skipped=%v reason=%v, want skipped=%v reason=%v", v.Skipped, v.SkipReason, tt.wantSkipped, tt.wantSkipReason)
+			}
+			if tt.wantSkipped {
+				return
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Fatalf("severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if tt.checkNVIDIAEndorsed && !v.NVIDIAEndorsed {
+				t.Error("expected nvidia_endorsed = true")
+			}
+		})
 	}
 }
