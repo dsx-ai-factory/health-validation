@@ -17,93 +17,91 @@ func newCatalog(opts ...catalog.Option) *catalog.Catalog {
 	return catalog.New(append(defaults, opts...)...)
 }
 
-func TestGPUCount_Matches(t *testing.T) {
-	cat := newCatalog()
-
-	v, err := cat.Evaluate("gpu_count", node.NodeMeasurement{GPUCount: 4})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+func TestGPUCount(t *testing.T) {
+	tests := []struct {
+		name           string
+		cat            func() *catalog.Catalog
+		measurement    func() node.NodeMeasurement
+		wantSeverity   health.Severity
+		wantSkipped    bool
+		wantSkipReason health.SkipReason
+	}{
+		{
+			name:         "matches default expected count",
+			cat:          func() *catalog.Catalog { return newCatalog() },
+			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 4} },
+			wantSeverity: health.Pass,
+		},
+		{
+			name:         "fewer than expected",
+			cat:          func() *catalog.Catalog { return newCatalog() },
+			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 3} },
+			wantSeverity: health.Critical,
+		},
+		{
+			name:         "more than expected",
+			cat:          func() *catalog.Catalog { return newCatalog() },
+			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 5} },
+			wantSeverity: health.Critical,
+		},
+		{
+			// expected_gpu_count is a DefaultThreshold so operators can
+			// override it per fleet/SKU. Verify the override path by
+			// accepting an 8-GPU node when configured.
+			name: "override accepts the configured count",
+			cat: func() *catalog.Catalog {
+				return newCatalog(catalog.WithOverrides(catalog.NewOverrideSet(catalog.Override{
+					CheckID:       "gpu_count",
+					ThresholdName: "expected_gpu_count",
+					Value:         int64(8),
+				})))
+			},
+			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 8} },
+			wantSeverity: health.Pass,
+		},
+		{
+			// The check is scoped to GB200 -- a non-GB200 architecture
+			// skips with ArchitectureUnsupported instead of running the
+			// rule.
+			name: "skipped on wrong architecture",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("H100"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement:    func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 4} },
+			wantSkipped:    true,
+			wantSkipReason: health.ArchitectureUnsupported,
+		},
+		{
+			// A NodeMeasurement whose errors cover gpu_count propagates to
+			// a Critical verdict regardless of the count rule, since the
+			// data the check needed is unavailable.
+			name: "errored node forces critical",
+			cat:  func() *catalog.Catalog { return newCatalog() },
+			measurement: func() node.NodeMeasurement {
+				return node.ErroredNode(errors.New("nvml init failed"), node.MeasurementSignals...)
+			},
+			wantSeverity: health.Critical,
+		},
 	}
-	if v.Severity != health.Pass {
-		t.Errorf("severity = %v, want PASS (4 == GB200 default expected_gpu_count)", v.Severity)
-	}
-}
 
-func TestGPUCount_FewerThanExpected(t *testing.T) {
-	cat := newCatalog()
-
-	v, err := cat.Evaluate("gpu_count", node.NodeMeasurement{GPUCount: 3})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL (3 < default 4)", v.Severity)
-	}
-}
-
-func TestGPUCount_MoreThanExpected(t *testing.T) {
-	cat := newCatalog()
-
-	v, err := cat.Evaluate("gpu_count", node.NodeMeasurement{GPUCount: 5})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL (5 != default 4)", v.Severity)
-	}
-}
-
-// expected_gpu_count is a DefaultThreshold so operators can override
-// it per fleet/SKU. Verify the override path by accepting an 8-GPU
-// node when configured.
-func TestGPUCount_OverrideExpected(t *testing.T) {
-	cat := newCatalog(catalog.WithOverrides(catalog.NewOverrideSet(catalog.Override{
-		CheckID:       "gpu_count",
-		ThresholdName: "expected_gpu_count",
-		Value:         int64(8),
-	})))
-
-	v, err := cat.Evaluate("gpu_count", node.NodeMeasurement{GPUCount: 8})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if v.Severity != health.Pass {
-		t.Errorf("severity = %v, want PASS (8 == overridden expected)", v.Severity)
-	}
-}
-
-// The check is scoped to GB200 — a non-GB200 architecture skips with
-// ArchitectureUnsupported instead of running the rule.
-func TestGPUCount_SkippedOnWrongArchitecture(t *testing.T) {
-	cat := catalog.New(
-		catalog.WithArchitecture("H100"),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-
-	v, err := cat.Evaluate("gpu_count", node.NodeMeasurement{GPUCount: 4})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if !v.Skipped || v.SkipReason != health.ArchitectureUnsupported {
-		t.Errorf("expected skipped with SIGNAL_UNAVAILABLE_ARCHITECTURE; got skipped=%v reason=%v",
-			v.Skipped, v.SkipReason)
-	}
-}
-
-// A NodeMeasurement whose errors cover gpu_count propagates to a
-// Critical verdict regardless of the count rule, since the data the
-// check needed is unavailable.
-func TestGPUCount_ErroredNode(t *testing.T) {
-	cat := newCatalog()
-
-	v, err := cat.Evaluate(
-		"gpu_count",
-		node.ErroredNode(errors.New("nvml init failed"), node.MeasurementSignals...),
-	)
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL (errored node)", v.Severity)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := tt.cat().Evaluate("gpu_count", tt.measurement())
+			if err != nil {
+				t.Fatalf("Evaluate: %v", err)
+			}
+			if v.Skipped != tt.wantSkipped || v.SkipReason != tt.wantSkipReason {
+				t.Fatalf("skipped=%v reason=%v, want skipped=%v reason=%v", v.Skipped, v.SkipReason, tt.wantSkipped, tt.wantSkipReason)
+			}
+			if tt.wantSkipped {
+				return
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Errorf("severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+		})
 	}
 }
