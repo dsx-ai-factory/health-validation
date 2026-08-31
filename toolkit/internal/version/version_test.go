@@ -14,6 +14,9 @@ func TestGetDefaults(t *testing.T) {
 	if got.Version != "dev" {
 		t.Errorf("Version = %q, want %q (unstamped build)", got.Version, "dev")
 	}
+	if got.CatalogVersion == "" {
+		t.Error("CatalogVersion is empty")
+	}
 	if got.GoVersion == "" {
 		t.Error("GoVersion is empty; want the runtime Go version")
 	}
@@ -21,10 +24,11 @@ func TestGetDefaults(t *testing.T) {
 
 func TestStringContainsFields(t *testing.T) {
 	info := Info{
-		Version:   "v1.4.0",
-		Commit:    "a1b2c3d4e5f6789000",
-		Date:      "2026-06-02T12:00:00Z",
-		GoVersion: "go1.25.1",
+		Version:        "v1.4.0",
+		CatalogVersion: "v1.2.0",
+		Commit:         "a1b2c3d4e5f6789000",
+		Date:           "2026-06-02T12:00:00Z",
+		GoVersion:      "go1.25.1",
 	}
 	s := info.String()
 	// Commit is shortened to 12 chars in the human line.
@@ -42,10 +46,11 @@ func TestStringPreservesDirty(t *testing.T) {
 	// A 40-char SHA plus the "+dirty" suffix is well over shortCommitLen; the
 	// suffix must survive truncation (it's the whole point of the marker).
 	info := Info{
-		Version:   "dev",
-		Commit:    "a1b2c3d4e5f6789000aaaabbbbccccddddeeeeff+dirty",
-		Date:      "unknown",
-		GoVersion: "go1.25.1",
+		Version:        "dev",
+		CatalogVersion: "dev",
+		Commit:         "a1b2c3d4e5f6789000aaaabbbbccccddddeeeeff+dirty",
+		Date:           "unknown",
+		GoVersion:      "go1.25.1",
 	}
 	s := info.String()
 	if !strings.Contains(s, "a1b2c3d4e5f6") {
@@ -60,7 +65,7 @@ func TestStringPreservesDirty(t *testing.T) {
 }
 
 func TestInfoJSONRoundTrip(t *testing.T) {
-	want := Info{Version: "v1.4.0", Commit: "abc", Date: "d", GoVersion: "go1.25.1"}
+	want := Info{Version: "v1.4.0", CatalogVersion: "v1.2.0", Commit: "abc", Date: "d", GoVersion: "go1.25.1"}
 	b, err := json.Marshal(want)
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -73,7 +78,9 @@ func TestInfoJSONRoundTrip(t *testing.T) {
 		t.Errorf("round trip = %+v, want %+v", got, want)
 	}
 	// Spot-check the lowerCamel JSON keys consumers will depend on.
-	if !strings.Contains(string(b), `"goVersion"`) {
-		t.Errorf("JSON = %s, want a goVersion key", b)
+	for _, key := range []string{`"catalogVersion"`, `"goVersion"`} {
+		if !strings.Contains(string(b), key) {
+			t.Errorf("JSON = %s, want a %s key", b, key)
+		}
 	}
 }

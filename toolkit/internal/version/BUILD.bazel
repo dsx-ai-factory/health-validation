@@ -5,6 +5,7 @@ go_library(
     srcs = ["version.go"],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/internal/version",
     visibility = ["//:__subpackages__"],
+    deps = ["//catalog/version"],
 )
 
 go_test(

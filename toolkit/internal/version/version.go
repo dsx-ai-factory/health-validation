@@ -17,6 +17,8 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+
+	catalogversion "github.com/dsx-ai-factory/health-validation/catalog/version"
 )
 
 // Build-time values, overridden via Bazel x_defs (-ldflags -X). Keep them as
@@ -34,10 +36,11 @@ var (
 
 // Info is resolved version metadata, suitable for JSON output.
 type Info struct {
-	Version   string `json:"version"`
-	Commit    string `json:"commit"`
-	Date      string `json:"date"`
-	GoVersion string `json:"goVersion"`
+	Version        string `json:"version"`
+	CatalogVersion string `json:"catalogVersion"`
+	Commit         string `json:"commit"`
+	Date           string `json:"date"`
+	GoVersion      string `json:"goVersion"`
 }
 
 // Get resolves version metadata. It prefers link-time stamped values; when
@@ -46,10 +49,11 @@ type Info struct {
 // completely opaque.
 func Get() Info {
 	info := Info{
-		Version:   version,
-		Commit:    commit,
-		Date:      date,
-		GoVersion: runtime.Version(),
+		Version:        version,
+		CatalogVersion: catalogversion.Version(),
+		Commit:         commit,
+		Date:           date,
+		GoVersion:      runtime.Version(),
 	}
 
 	// Stamped build: trust the injected values verbatim.

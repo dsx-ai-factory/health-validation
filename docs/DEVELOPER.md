@@ -48,3 +48,29 @@ docker run --rm --platform=linux/amd64 --entrypoint sh -v "$PWD:/src" -w /src gc
 
 Copy `dist/health-validation-linux-amd64.tar` to a Linux host and load it with
 `docker load -i`; `dist/` is intentionally ignored by Git.
+
+## Pulling a Published Image
+
+CI publishes a multi-architecture image for Linux amd64 and arm64:
+
+```shell
+docker pull ghcr.io/dsx-ai-factory/health-validation:<tag>
+```
+
+| Trigger | Image tags |
+|---|---|
+| Commit to `main` | `<pseudo-version>` and `latest` |
+| Git tag `toolkit/vX.Y.Z` or `toolkit/vX.Y.Z-rcN` | `X.Y.Z` or `X.Y.Z-rcN` |
+| Git tag `catalog/vX.Y.Z` or `catalog/vX.Y.Z-rcN` | No image; CI validates the catalog release |
+
+The binary keeps the leading `v`, while the image tag omits it. For example,
+`toolkit/v1.2.3` stamps the binary as `v1.2.3` and publishes the image as
+`ghcr.io/dsx-ai-factory/health-validation:1.2.3`. Package visibility controls
+whether pulling requires `docker login ghcr.io`; private packages require a
+token with package read access.
+
+Images use a toolkit release version on toolkit tags and a pseudo-version on
+main. They embed the matching catalog release or a catalog pseudo-version when
+sources have changed. Existing images remain unchanged; new tags apply to the
+next image build. Before publishing, CI runs both architectures and verifies the
+embedded toolkit and catalog versions.

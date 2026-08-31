@@ -1,6 +1,6 @@
 name: CI
 
-# Triggered on pushes to main and to pull-request/* branches.
+# Triggered on pushes to main, module release tags, and pull-request/* branches.
 #
 # pull-request/<number> branches are created by copy-pr-bot when a pull request
 # is opened against this repository, so self-hosted runners are not triggered
@@ -10,13 +10,55 @@ on:
     branches:
       - main
       - "pull-request/[0-9]+"
+    tags:
+      - "toolkit/v*"
+      - "catalog/v*"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Cancel in-progress runs on pull-request branches; never cancel main.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # Cancel superseded pull-request runs, but let main and releases finish.
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/heads/pull-request/') }}
 
 jobs:
+
+  # Resolve the versions once for the workflow. This also rejects malformed
+  # module tags before any release artifact can be published.
+  release-metadata:
+    if: github.repository == 'dsx-ai-factory/health-validation'
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 5
+    outputs:
+      toolkit_version: ${{ steps.status.outputs.toolkit_version }}
+      catalog_version: ${{ steps.status.outputs.catalog_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve and validate release metadata
+        id: status
+        run: |
+          status="$(./tools/workspace_status_release.sh)"
+          printf '%s\n' "$status"
+
+          toolkit_version="$(
+            printf '%s\n' "$status" |
+              awk '$1 == "STABLE_HEALTH_VALIDATION_VERSION" { print $2; exit }'
+          )"
+          catalog_version="$(
+            printf '%s\n' "$status" |
+              awk '$1 == "STABLE_HEALTH_VALIDATION_CATALOG_VERSION" { print $2; exit }'
+          )"
+          if [[ -z "$toolkit_version" || -z "$catalog_version" ]]; then
+            echo "could not determine toolkit and catalog versions" >&2
+            exit 1
+          fi
+
+          {
+            echo "toolkit_version=$toolkit_version"
+            echo "catalog_version=$catalog_version"
+          } >> "$GITHUB_OUTPUT"
 
   lint:
     # Guard: only run on the canonical repository, not forks.
@@ -86,11 +128,13 @@ jobs:
 
   build-amd64:
     if: github.repository == 'dsx-ai-factory/health-validation'
+    needs: release-metadata
     runs-on: linux-amd64-cpu4
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install Bazelisk
@@ -109,18 +153,45 @@ jobs:
           disk-cache: ${{ github.workflow }}
           repository-cache: true
 
-      - name: Build (linux/amd64)
-        run: bazel build --config=ci --platforms=//build/platforms:linux_amd64 //toolkit/cmd/health-validation:health-validation
+      - name: Build and smoke-test image (linux/amd64)
+        env:
+          EXPECTED_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
+          EXPECTED_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
+        run: |
+          set -euo pipefail
+          bazel build --config=release-ci --platforms=//build/platforms:linux_amd64 \
+            --remote_download_outputs=toplevel \
+            //toolkit/cmd/health-validation:health-validation.image.tar
+          docker load -i \
+            bazel-bin/toolkit/cmd/health-validation/health-validation.image.local_load/tarball.tar
+
+          metadata="$(docker run --rm health-validation:latest version --output json)"
+          embedded_toolkit="$(printf '%s\n' "$metadata" | jq -er '.version')"
+          embedded_catalog="$(printf '%s\n' "$metadata" | jq -er '.catalogVersion')"
+          if [[ "$embedded_toolkit" != "$EXPECTED_TOOLKIT_VERSION" ||
+                "$embedded_catalog" != "$EXPECTED_CATALOG_VERSION" ]]; then
+            echo "version stamp mismatch: toolkit='$embedded_toolkit' catalog='$embedded_catalog'; expected toolkit='$EXPECTED_TOOLKIT_VERSION' catalog='$EXPECTED_CATALOG_VERSION'" >&2
+            exit 1
+          fi
+
+          docker run --rm --entrypoint journalctl health-validation:latest --version
 
   build-arm64:
     if: github.repository == 'dsx-ai-factory/health-validation'
+    needs: release-metadata
     # Run natively on an arm64 runner — no cross-compilation needed.
     runs-on: linux-arm64-cpu4
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify container tooling (linux/arm64)
+        run: |
+          docker version
+          jq --version
 
       - name: Install Bazelisk
         run: |
@@ -138,8 +209,28 @@ jobs:
           disk-cache: ${{ github.workflow }}
           repository-cache: true
 
-      - name: Build (linux/arm64)
-        run: bazel build --config=ci --platforms=//build/platforms:linux_arm64 //toolkit/cmd/health-validation:health-validation
+      - name: Build and smoke-test image (linux/arm64)
+        env:
+          EXPECTED_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
+          EXPECTED_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
+        run: |
+          set -euo pipefail
+          bazel build --config=release-ci --platforms=//build/platforms:linux_arm64 \
+            --remote_download_outputs=toplevel \
+            //toolkit/cmd/health-validation:health-validation.image.tar
+          docker load -i \
+            bazel-bin/toolkit/cmd/health-validation/health-validation.image.local_load/tarball.tar
+
+          metadata="$(docker run --rm health-validation:latest version --output json)"
+          embedded_toolkit="$(printf '%s\n' "$metadata" | jq -er '.version')"
+          embedded_catalog="$(printf '%s\n' "$metadata" | jq -er '.catalogVersion')"
+          if [[ "$embedded_toolkit" != "$EXPECTED_TOOLKIT_VERSION" ||
+                "$embedded_catalog" != "$EXPECTED_CATALOG_VERSION" ]]; then
+            echo "version stamp mismatch: toolkit='$embedded_toolkit' catalog='$embedded_catalog'; expected toolkit='$EXPECTED_TOOLKIT_VERSION' catalog='$EXPECTED_CATALOG_VERSION'" >&2
+            exit 1
+          fi
+
+          docker run --rm --entrypoint journalctl health-validation:latest --version
 
   # Scan the packaged image for known CVEs. The shared action inspects the local
   # Docker daemon and never pulls, so the image must be loaded first — a sibling
@@ -149,6 +240,7 @@ jobs:
   # arm64 reports the same base-image CVEs.
   scan:
     if: github.repository == 'dsx-ai-factory/health-validation'
+    needs: release-metadata
     runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     permissions:
@@ -175,7 +267,12 @@ jobs:
           disk-cache: ${{ github.workflow }}
           repository-cache: true
 
-      - name: Build and load the image
+      # Exercise both platform transitions and the OCI index assembly on every
+      # workflow run, including pull-request branches that never publish.
+      - name: Build the multi-architecture image index
+        run: bazel build --config=ci //toolkit/cmd/health-validation:health-validation.image.index
+
+      - name: Build and load the amd64 image for scanning
         run: |
           bazel build --config=ci --platforms=//build/platforms:linux_amd64 \
             //toolkit/cmd/health-validation:health-validation.image.tar
@@ -215,3 +312,73 @@ jobs:
           jq -e
           '[.matches[] | select(.vulnerability.severity == "Critical" and .vulnerability.fix.state == "fixed")] | length == 0'
           "${{ steps.scan.outputs.report_json }}"
+
+  # Publish one OCI index containing linux/amd64 and linux/arm64. Main advances
+  # both its immutable pseudo-version and latest; toolkit release tags publish
+  # only the immutable semantic version. The architecture build jobs execute
+  # each stamped image and verify its toolkit and catalog versions first. The
+  # GITHUB_TOKEN is scoped to this job, and rules_oci reads the credentials
+  # written by docker login.
+  publish-image:
+    if: >-
+      github.repository == 'dsx-ai-factory/health-validation' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/toolkit/v'))
+    needs:
+      - release-metadata
+      - lint
+      - test
+      - build-amd64
+      - build-arm64
+      - scan
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # Version generation needs the module's complete tag history.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Bazelisk
+        run: |
+          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/bazel" \
+            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
+          chmod +x "$HOME/.local/bin/bazel"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-version: 1.28.1
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Publish multi-architecture image
+        env:
+          IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          EXPECTED_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
+        run: |
+          version="$EXPECTED_TOOLKIT_VERSION"
+          if [[ -z "$version" ]]; then
+            echo "could not determine the image version" >&2
+            exit 1
+          fi
+
+          tags=(--tag "${version#v}")
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            tags+=(--tag latest)
+          fi
+
+          bazel run --config=release-ci --remote_download_outputs=toplevel \
+            //toolkit/cmd/health-validation:health-validation.image.push -- \
+            --repository "$IMAGE_REPOSITORY" "${tags[@]}"

@@ -36,15 +36,20 @@ Two forms ship; pick by how your nodes run workloads.
 
 ### Container image (Kubernetes, containerized runners)
 
-Build the image with Bazel and publish it through your organization’s registry,
-then pull it on the target node (the registry selects the host architecture):
+Pull the published multi-arch image; the registry selects the host architecture:
 
 ```shell
-docker pull <registry>/health-validation:<tag>
+docker pull ghcr.io/dsx-ai-factory/health-validation:<tag>
 ```
 
-See [`docs/DEVELOPER.md`](DEVELOPER.md#build-a-linux-image-from-macos) for a
-local Linux/amd64 image build that produces a loadable tarball.
+The image publishes to GitHub Container Registry (GHCR). Image tags drop the
+release tag's `toolkit/` prefix and leading `v` (release git tag
+`toolkit/v1.2.3` → image `:1.2.3`); `latest` floats to the newest `main`. See
+[`docs/DEVELOPER.md`](DEVELOPER.md#pulling-a-published-image) for auth and how to
+pull a specific tag or architecture.
+
+For a local Linux/amd64 build that produces a loadable tarball, see
+[`docs/DEVELOPER.md`](DEVELOPER.md#build-a-linux-image-from-macos).
 
 The image carries the CLI on an Ubuntu base — **not** the NVIDIA driver or
 `journalctl`. Different check domains need different host resources mounted in;
@@ -56,7 +61,7 @@ Use the provided wrapper, which bind-mounts the host's `journalctl` binary and
 its shared-library dependencies as well as the journal resources:
 
 ```shell
-scripts/health-validation-run.sh <registry>/health-validation:<tag> \
+scripts/health-validation-run.sh ghcr.io/dsx-ai-factory/health-validation:<tag> \
   --node-id "$NODE_NAME"
 ```
 
@@ -73,7 +78,7 @@ docker run --rm \
   -v /etc/machine-id:/etc/machine-id:ro \
   -v /usr/bin/journalctl:/usr/bin/journalctl:ro \
   -v <journalctl ldd dependencies, one -v per .so, excluding libc/libpthread/libm> \
-  <registry>/health-validation:<tag> \
+  ghcr.io/dsx-ai-factory/health-validation:<tag> \
   run --node-id "$NODE_NAME"
 ```
 

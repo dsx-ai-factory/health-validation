@@ -21,7 +21,7 @@
       "const": "0.1"
     },
     "catalog_version": {
-      "description": "Catalog module version that produced this verdict: a Go module version such as v0.1.0 on release builds, dev or dev+<commit> otherwise. Overrides and custom checks do not change it.",
+      "description": "Catalog module version that produced this verdict: a release or pseudo-version on stamped builds, or dev/dev+<commit> on unstamped local builds. Overrides and custom checks do not change it.",
       "type": "string",
       "minLength": 1
     },

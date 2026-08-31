@@ -39,7 +39,7 @@ func TestVersionJSON(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
 		t.Fatalf("version --output json: not valid JSON: %v\noutput=%q", err, out.String())
 	}
-	for _, key := range []string{"version", "commit", "date", "goVersion"} {
+	for _, key := range []string{"version", "catalogVersion", "commit", "date", "goVersion"} {
 		if _, ok := m[key]; !ok {
 			t.Errorf("version JSON missing key %q; got %v", key, m)
 		}

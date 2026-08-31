@@ -72,7 +72,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | Field | Type | JSON name | Description |
 |---|---|---|---|
 | SchemaVersion | string | `schema_version` | JSON schema version of this verdict (MAJOR.MINOR); always present. Consumers must check it before acting. |
-| CatalogVersion | string | `catalog_version` | Catalog module version that produced this verdict; `dev` or `dev+<commit>` on non-release builds. |
+| CatalogVersion | string | `catalog_version` | Catalog module version that produced this verdict; stamped builds use a release or pseudo-version, while unstamped local builds use `dev` or `dev+<commit>`. |
 | Timestamp | time.Time | `timestamp` | When the evaluation completed. |
 | NodeID | string | `node_id` | Opaque identifier for the node under test; the CLI defaults it to the system hostname. |
 | OverallSeverity | Severity | `overall_severity` | Worst severity across all non-skipped checks. |
