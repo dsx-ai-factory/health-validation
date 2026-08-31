@@ -116,7 +116,7 @@ Titles follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 Examples from this repository:
 
-```
+```text
 feat(gpu): add average power draw health check
 fix(catalog): add GB300 to remaining GB200-only checks
 ```
@@ -141,7 +141,7 @@ To sign off on a commit you simply use the `--signoff` (or `-s`) option when
 committing your changes:
 
 ```bash
-$ git commit -s -m "feat(gpu): add cool feature"
+git commit -s -m "feat(gpu): add cool feature"
 ```
 
 This will append the following to your commit message:
