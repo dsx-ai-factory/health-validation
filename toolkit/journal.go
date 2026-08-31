@@ -48,10 +48,18 @@ type journalMatcher struct {
 // mount, container's own machine-id, unreadable format). Before trusting a
 // clean result, [journalReadable] confirms the journal is actually readable; if
 // it is not, the result is an errored measurement rather than a false PASS.
+//
+// --quiet is required for that exit-1-and-empty test to hold. Without it
+// journalctl writes "-- No entries --" to *stdout* (not stderr) when a --grep
+// matches nothing, so a clean boot arrives as exit 1 with 17 bytes of output
+// and falls through to the errored path -- turning every healthy node CRITICAL.
+// --output=cat happens to suppress the banner, which is why the Xid read was
+// unaffected while the link-flap read (--output=short-full, needed for its
+// per-line timestamps) reported an unreadable journal on every clean host.
 func readJournal(ctx context.Context, run runFunc, m journalMatcher) ([]health.Measurement, error) {
 	// The caller's context bounds the read; Collect's watchdog supplies the
 	// deadline, so the operator's collection timeout governs the journal read.
-	args := append([]string{"--dmesg", "--boot", "--no-pager"}, m.args...)
+	args := append([]string{"--dmesg", "--boot", "--no-pager", "--quiet"}, m.args...)
 	out, err := run(ctx, args...)
 	if err != nil {
 		var exitErr *exec.ExitError

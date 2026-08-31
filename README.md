@@ -31,6 +31,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "check_id": "gpu_count",
       "severity": "PASS",
       "category": "node",
+      "condition_scope": "NODE",
       "skipped": false,
       "skip_reason": "NOT_SKIPPED",
       "maturity_level": "stable",
@@ -94,6 +95,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       ],
       "severity": "CRITICAL",
       "category": "node",
+      "condition_scope": "NODE",
       "skipped": false,
       "nvidia_endorsed": true
     },
@@ -115,6 +117,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "check_id": "nvlink_active",
       "severity": "PASS",
       "category": "nvlink",
+      "condition_scope": "NODE",
       "skipped": false,
       "nvidia_endorsed": true
     },
@@ -136,6 +139,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       ],
       "severity": "CRITICAL",
       "category": "xid",
+      "condition_scope": "NODE",
       "skipped": false,
       "nvidia_endorsed": true
     }
@@ -193,6 +197,7 @@ The catalog includes these check families:
 | `gpu_average_power_draw` | gpu | Whether each GPU's one-second average power draw is within the configured range | `min_power_w`, `max_power_w` |
 | `gpu_power_limit` | gpu | Whether each GPU's power limit matches the expected value | `expected_power_limit_w` |
 | `gpu_power_state` | gpu | Whether each GPU is in the expected power state | `expected_gpu_pstate` |
+| `gpu_sensor_throttle` | gpu | Whether any GPU is being clamped by hardware slowdown, thermal, or power-brake protection | None |
 | `gpu_count` | node | Number of GPUs present on the node | `expected_gpu_count` |
 | `nvlink_active` | nvlink | Number of active NVLink connections | `max_inactive_nvlinks` |
 | `nvlink_fabric_health` | nvlink | NVLink fabric-health fault bits (degraded bandwidth, route recovery, access timeout) | None |
@@ -211,6 +216,7 @@ Each check definition carries:
 - `category`: the hardware domain (cpu, gpu, node, nvlink, pcie, infiniband, storage, xid)
 - `provenance`: `nvidia` for all built-in checks
 - `maturity_level`: stable or experimental
+- `condition_scope`: how far the condition reaches (NODE, DOMAIN, CLUSTER)
 
 > **GB300 support.** Most checks in the catalog declare support for both GB200 and GB300 in their `Architectures` field. GB200 support has been validated; GB300 support has not yet completed the same validation pass. Treat GB300 results as directionally correct but experimental and subject to change until this note is removed.
 

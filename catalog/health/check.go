@@ -9,7 +9,7 @@ import (
 // CheckDefinition is the canonical shape of a health check in the catalog.
 // Each definition encodes NVIDIA's operational judgment about a specific
 // hardware or driver condition: which signals to examine, what thresholds
-// apply, and what action to recommend.
+// apply, what action to recommend, and how far the condition reaches.
 //
 // Check definitions are data. They carry no sensor or hardware dependencies.
 // Evaluation happens when a caller provides signal values to [Catalog.Evaluate].
@@ -29,6 +29,7 @@ type CheckDefinition struct {
 	MaturityLevel     MaturityLevel            `json:"maturity_level"`
 	SchedulingCadence SchedulingCadence        `json:"scheduling_cadence"`
 	Category          Category                 `json:"category"`
+	ConditionScope    ConditionScope           `json:"condition_scope"`
 	Provenance        Provenance               `json:"provenance"`
 	ExecutionClass    ExecutionClass           `json:"execution_class"`
 	RecommendedAction RecommendedAction        `json:"recommended_action,omitzero"`

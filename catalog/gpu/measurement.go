@@ -6,11 +6,14 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // expressions and must match the RequiredSignals declared in GPU
 // check definitions.
 const (
-	SignalGPUID               = "gpu_id"
-	SignalGPUPstate           = "gpu_pstate"
-	SignalAveragePowerDrawW   = "average_power_draw_w"
-	SignalPowerLimitW         = "power_limit_w"
-	SignalEnforcedPowerLimitW = "enforced_power_limit_w"
+	SignalGPUID                = "gpu_id"
+	SignalGPUPstate            = "gpu_pstate"
+	SignalAveragePowerDrawW    = "average_power_draw_w"
+	SignalPowerLimitW          = "power_limit_w"
+	SignalEnforcedPowerLimitW  = "enforced_power_limit_w"
+	SignalHWSlowdown           = "hw_slowdown"
+	SignalHWThermalSlowdown    = "hw_thermal_slowdown"
+	SignalHWPowerBrakeSlowdown = "hw_power_brake_slowdown"
 )
 
 // MeasurementSignals lists every signal a GPUMeasurement carries.
@@ -23,6 +26,9 @@ var MeasurementSignals = []string{
 	SignalAveragePowerDrawW,
 	SignalPowerLimitW,
 	SignalEnforcedPowerLimitW,
+	SignalHWSlowdown,
+	SignalHWThermalSlowdown,
+	SignalHWPowerBrakeSlowdown,
 }
 
 // GPUMeasurement is a single observation of one GPU's health state.
@@ -48,6 +54,13 @@ type GPUMeasurement struct {
 	// level N in P<N>: 0 is P0 (maximum performance) and higher values
 	// are progressively lower-power states.
 	GPUPstate int64 `json:"gpu_pstate"`
+	// HWSlowdown, HWThermalSlowdown, and HWPowerBrakeSlowdown report NVML
+	// clocks-event-reasons bits: whether hardware protection logic (generic,
+	// thermal, or external power-brake respectively) is actively clamping
+	// the GPU's clocks.
+	HWSlowdown           bool `json:"hw_slowdown"`
+	HWThermalSlowdown    bool `json:"hw_thermal_slowdown"`
+	HWPowerBrakeSlowdown bool `json:"hw_power_brake_slowdown"`
 }
 
 // ErroredGPU returns a GPUMeasurement marked errored for a whole-GPU

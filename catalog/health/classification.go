@@ -373,3 +373,43 @@ func (ml MaturityLevel) MarshalJSON() ([]byte, error) { return marshalEnum(ml, m
 func (ml *MaturityLevel) UnmarshalJSON(data []byte) error {
 	return unmarshalEnum(data, maturityLevelFromName, ml, "maturity level")
 }
+
+// --- ConditionScope ---
+
+// ConditionScope records how far the condition a check detects reaches: the
+// smallest boundary that must be inspected to explain it. It is independent of
+// [RecommendedAction], which stays node-local: a ClusterScope verdict reports
+// what the fault implicates, not that the cluster should be acted on.
+//
+// NodeScope is the zero value, so a check that omits it is treated as
+// node-local, which is how consumers already treat every check.
+//
+// The NODE value is distinct from the [Node] Category: one is a blast radius,
+// the other a hardware domain. They serialize with different casing.
+type ConditionScope int
+
+const (
+	NodeScope    ConditionScope = iota // This node's own hardware explains the condition.
+	DomainScope                        // Explaining it requires the NVLink domain shared with peer nodes.
+	ClusterScope                       // Explaining it requires the cluster network fabric beyond the node.
+)
+
+var conditionScopeNames = map[ConditionScope]string{
+	NodeScope: "NODE", DomainScope: "DOMAIN", ClusterScope: "CLUSTER",
+}
+
+var conditionScopeFromName = map[string]ConditionScope{
+	"NODE": NodeScope, "DOMAIN": DomainScope, "CLUSTER": ClusterScope,
+}
+
+func (cs ConditionScope) String() string {
+	if name, ok := conditionScopeNames[cs]; ok {
+		return name
+	}
+	return fmt.Sprintf("ConditionScope(%d)", int(cs))
+}
+
+func (cs ConditionScope) MarshalJSON() ([]byte, error) { return marshalEnum(cs, conditionScopeNames) }
+func (cs *ConditionScope) UnmarshalJSON(data []byte) error {
+	return unmarshalEnum(data, conditionScopeFromName, cs, "condition scope")
+}

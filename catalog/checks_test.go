@@ -1,6 +1,7 @@
 package catalog_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
@@ -95,5 +96,59 @@ func TestNew_RegistersNVLinkFabric(t *testing.T) {
 	cat := catalog.New()
 	if _, err := cat.Get("nvlink_fabric"); err != nil {
 		t.Errorf("Get(nvlink_fabric) = %v, want check to ship in builtinChecks()", err)
+	}
+}
+
+// A built-in check is node-scoped unless its own signals describe state outside
+// this node. Registering a non-NODE check means listing it here, so a scope
+// change is always deliberate. What this cannot catch is a new check that
+// should have been DOMAIN and was left at the NODE default; that is a judgment
+// call, not a fact.
+func TestBuiltinChecks_ConditionScope(t *testing.T) {
+	nonNode := map[string]health.ConditionScope{
+		"nvlink_fabric_health": health.DomainScope,
+		"nvlink_fabric":        health.DomainScope,
+		"rdma_linkflap_fatal":  health.ClusterScope,
+	}
+
+	seen := make(map[string]bool)
+	for _, cd := range catalog.New().List(catalog.Filter{}) {
+		seen[cd.ID] = true
+		want, ok := nonNode[cd.ID]
+		if !ok {
+			want = health.NodeScope
+		}
+		if cd.ConditionScope != want {
+			t.Errorf("%s: ConditionScope = %v, want %v", cd.ID, cd.ConditionScope, want)
+		}
+	}
+	for id := range nonNode {
+		if !seen[id] {
+			t.Errorf("%q is listed as non-NODE but is not registered", id)
+		}
+	}
+}
+
+// healthdump marshals check definitions for the docs catalog, so the definition
+// tag is its own contract, separate from the one CheckVerdict carries.
+// gpu_count is NodeScope, the zero value an omitempty tag would silently drop;
+// nvlink_fabric proves a non-zero value is not merely reading as a default.
+func TestBuiltinChecks_ConditionScopeSerializes(t *testing.T) {
+	for id, want := range map[string]string{"gpu_count": "NODE", "nvlink_fabric": "DOMAIN"} {
+		cd, err := catalog.New().Get(id)
+		if err != nil {
+			t.Fatalf("Get(%s): %v", id, err)
+		}
+		data, err := json.Marshal(cd)
+		if err != nil {
+			t.Fatalf("Marshal(%s): %v", id, err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatalf("Unmarshal(%s): %v", id, err)
+		}
+		if got["condition_scope"] != want {
+			t.Errorf("%s: condition_scope = %v, want %q; json = %s", id, got["condition_scope"], want, data)
+		}
 	}
 }

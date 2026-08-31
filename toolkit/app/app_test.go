@@ -743,6 +743,14 @@ func TestRunCommandArchDiscoveryFailureDrains(t *testing.T) {
 	if v.NodeID != "nvl72d014-T02" {
 		t.Errorf("NodeID = %q, want %q", v.NodeID, "nvl72d014-T02")
 	}
+	// The synthetic verdict has no CheckDefinition to copy a scope from, so it is
+	// set by hand. Unenumerable GPUs are a node-local condition.
+	if len(v.CheckResults) != 1 {
+		t.Fatalf("CheckResults = %d, want 1", len(v.CheckResults))
+	}
+	if got := v.CheckResults[0]; got.CheckID != "architecture_discovery" || got.ConditionScope != health.NodeScope {
+		t.Errorf("check result = {id:%q scope:%v}, want {architecture_discovery NODE}", got.CheckID, got.ConditionScope)
+	}
 	if collected {
 		t.Error("collected measurements despite discovery failure; must not evaluate against wrong thresholds")
 	}

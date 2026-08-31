@@ -33,5 +33,18 @@ Run `go mod tidy` inside each module directory after changing imports.
 ## Linux-only Code
 
 `toolkit/nvml/` requires cgo and `libnvidia-ml.so.1`. On macOS, NVML stubs out
-and `health-validation run` exits with a backend error. Use RBE or a Linux
-VM to test NVML-dependent paths.
+and `health-validation run` exits with a backend error. Use a Linux VM to test
+NVML-dependent paths.
+
+### Build a Linux image from macOS
+
+Docker can run Bazel in a Linux/amd64 container and write a loadable image
+tarball to `dist/`. On Apple Silicon, configure Docker or Colima with amd64
+emulation first.
+
+```shell
+docker run --rm --platform=linux/amd64 --entrypoint sh -v "$PWD:/src" -w /src gcr.io/bazel-public/bazel:9.2.0 -c 'bazel build --config=ci --platforms=//build/platforms:linux_amd64 //toolkit/cmd/health-validation:health-validation.image.tar && mkdir -p /src/dist && cp -L bazel-bin/toolkit/cmd/health-validation/health-validation.image.local_load/tarball.tar /src/dist/health-validation-linux-amd64.tar'
+```
+
+Copy `dist/health-validation-linux-amd64.tar` to a Linux host and load it with
+`docker load -i`; `dist/` is intentionally ignored by Git.

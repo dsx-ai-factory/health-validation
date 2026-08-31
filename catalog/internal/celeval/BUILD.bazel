@@ -5,7 +5,7 @@ go_library(
     srcs = ["celeval.go"],
     importpath = "github.com/dsx-ai-factory/health-validation/catalog/internal/celeval",
     visibility = ["//:__subpackages__"],
-    deps = ["@com_github_google_cel_go//cel:go_default_library"],
+    deps = ["@com_github_google_cel_go//cel"],
 )
 
 go_test(

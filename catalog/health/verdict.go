@@ -34,6 +34,7 @@ type CheckVerdict struct {
 	Messages          []string                     `json:"messages,omitempty"`
 	Severity          Severity                     `json:"severity"`
 	Category          Category                     `json:"category"`
+	ConditionScope    ConditionScope               `json:"condition_scope"` // Blast radius; NODE when collection failed.
 	SkipReason        SkipReason                   `json:"skip_reason,omitempty"`
 	MaturityLevel     MaturityLevel                `json:"maturity_level"`
 	RecommendedAction RecommendedAction            `json:"recommended_action,omitzero"`

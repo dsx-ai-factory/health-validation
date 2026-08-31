@@ -20,7 +20,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ### Known gaps and data accuracy notes
 
-- **Catalog is early.** Coverage is whatever is registered in `catalog/checks.go` (CPU (count, NUMA), GPU power/state/limit, NVLink (active, fabric, fabric-health, bandwidth/count/speed, capabilities, P2P), node GPU count, InfiniBand RDMA link flap, XID, …). Do not describe coverage beyond that file. The catalog ships one InfiniBand check (`rdma_linkflap_fatal`), fed by the journal link-flap sensor; the generic IB sensor remains opt-in scaffolding (`toolkit.IBBackend`/`WithIBBackend`) for a consumer that brings additional IB backends and checks.
+- **Catalog is early.** Coverage is whatever is registered in `catalog/checks.go` (CPU (count, NUMA), GPU power/state/limit/throttle, NVLink (active, fabric, fabric-health, bandwidth/count/speed, capabilities, P2P), node GPU count, InfiniBand RDMA link flap, XID, …). Do not describe coverage beyond that file. The catalog ships one InfiniBand check (`rdma_linkflap_fatal`), fed by the journal link-flap sensor; the generic IB sensor remains opt-in scaffolding (`toolkit.IBBackend`/`WithIBBackend`) for a consumer that brings additional IB backends and checks.
 - **Cadence filtering is not implemented.** Checks declare `SchedulingCadence` but the CLI does not filter by it. All checks always run.
 - **`health.NodeVerdict.ExitCode()` is not what the binary uses.** That catalog-library method returns a 0/1/2/3 scheme and is not called by the CLI. The binary's exit policy lives in `toolkit/app` (`exitCodeForVerdict` plus the `exitOK`/`exitUnhealthy`/`exitError` constants): PASS/INFO/WARNING→0, CRITICAL/UNKNOWN→1, tool/runtime error→2. WARNING→0 is deliberate and noted as eventually-configurable. Keep the two schemes separate.
 - **OUT_OF_BAND context is defined but not used** by any registered check. The enum value exists in the codebase; no current check declares it as a valid context.
@@ -35,6 +35,7 @@ This file provides guidance to AI coding agents when working with code in this r
 | `gpu_average_power_draw` | gpu | One-second average power draw is outside the configured range | None |
 | `gpu_power_limit` | gpu | Current or enforced power limit ≠ expected (arch default or override) | None |
 | `gpu_power_state` | gpu | GPU pstate ≠ `expected_gpu_pstate` | None |
+| `gpu_sensor_throttle` | gpu | Any hardware/thermal/power-brake slowdown reason asserted | None |
 | `gpu_count` | node | GPU count ≠ `expected_gpu_count` | None |
 | `nvlink_active` | nvlink | Inactive NVLink count exceeds `max_inactive_nvlinks` | None |
 | `nvlink_fabric_health` | nvlink | Any fabric-health bit asserted (degraded BW, route recovery/unhealthy, access-timeout recovery) | None |
@@ -82,25 +83,22 @@ bazel run //tools/gazelle
 (cd catalog && bazel run //tools/go -- mod tidy -diff)    # verify: exit 0 + no output = CI will pass
 (cd toolkit && bazel run //tools/go -- mod tidy -diff)
 
-# Run a test on linux workers via RBE (mirrors CI) — catches linux-only
-# build-tag failures (nogo, PIE linking, etc.) that never execute on darwin.
-# NOTE: --platforms is required on darwin; without it --config=ci still
-# targets the host platform and linux-tagged files compile to empty stubs.
+# Run from a Linux VM or container to catch linux-only build-tag failures
+# (nogo, PIE linking, etc.) that never execute on darwin.
 bazel test --config=ci --platforms=//build/platforms:linux_amd64 \
   //toolkit/nvml:nvml_test
 
 # Build the operator CLI for every supported target platform. It links NVML
 # via cgo, so it is a linux-only artifact; CI builds both arches (build-only,
-# no publish). On darwin the native toolchain cannot link it — use RBE.
+# no publish). On darwin the native toolchain cannot link it — use a Linux VM
+# or container.
 bazel build --config=ci --platforms=//build/platforms:linux_amd64 //toolkit/cmd/health-validation:health-validation
 bazel build --config=ci --platforms=//build/platforms:linux_arm64 //toolkit/cmd/health-validation:health-validation
 
-# Pull a built linux binary back to local disk: --config=ci uses
-# --remote_download_outputs=minimal, so add =toplevel or the output stays
-# remote. Then cp -L out of the read-only cache into ./bin (gitignored —
-# keep local artifacts out of the repo root).
+# Copy a Linux binary built directly in a Linux environment into ./bin
+# (gitignored — keep local artifacts out of the repo root).
 bazel build --config=ci --platforms=//build/platforms:linux_amd64 \
-  --remote_download_outputs=toplevel //toolkit/cmd/health-validation:health-validation
+  //toolkit/cmd/health-validation:health-validation
 mkdir -p bin
 cp -L bazel-bin/toolkit/cmd/health-validation/health-validation_/health-validation ./bin/health-validation-linux-amd64
 
@@ -113,7 +111,7 @@ cp -L bazel-bin/toolkit/cmd/health-validation/health-validation_/health-validati
 
 The repo uses Bazel exclusively — do not use `go build` or `go test` directly for anything other than quick local iteration. See [docs/DEVELOPER.md](docs/DEVELOPER.md) for the full CI, publishing, and container workflow.
 
-**Verifying linux-only code on darwin.** `//go:build linux` files are excluded from the host Bazel build on darwin, so local `bazel test //...` compiles them to empty stubs and nogo/link-time issues never surface. To actually exercise them before pushing, use `bazel test --config=ci --platforms=//build/platforms:linux_amd64 <target>` — this routes the build to the RBE linux workers and produces a linux binary identical to what CI builds. The `--platforms` override is required because `--enable_platform_specific_config` only flips the `build:linux` config on linux hosts; on darwin you must set the target platform explicitly.
+**Verifying linux-only code on darwin.** `//go:build linux` files are excluded from the host Bazel build on darwin, so local `bazel test //...` compiles them to empty stubs and nogo/link-time issues never surface. Run `bazel test --config=ci --platforms=//build/platforms:linux_amd64 <target>` from a Linux VM or container to exercise them before pushing. See [docs/DEVELOPER.md](docs/DEVELOPER.md#build-a-linux-image-from-macos) for a macOS container recipe.
 
 ### Architecture
 
@@ -200,8 +198,6 @@ When adding a direct third-party dep here (this is how `gopkg.in/yaml.v3` arrive
 
 **BUILD files** — Gazelle manages `BUILD.bazel` files. After adding or removing `.go` files or changing imports, run `bazel run //tools/gazelle` to regenerate. Do not hand-edit dep lists that Gazelle owns.
 
-**Image package metadata** — an apt layer's `/var/lib/dpkg/status` replaces the base image's, so scanners would catalog the layer's packages and none of the base's. `go_image` stacks a final layer holding the reconciled database (`//build/rules/oci:dpkg_status.bzl`), with overlay entries superseding the base's for packages the layer overwrites. It fails the build rather than emitting an under-reporting database. Two rules follow from this: resolve apt packages from `noble-security`/`noble-updates`, not the release pocket alone, or the layer silently downgrades the base packages it overwrites; and set `mergedusr = True` on `apt.install`, since the base is merged-usr and a real `./lib/` would replace its `/lib -> usr/lib` symlink.
-
 **Mock constructors** — test doubles use exported constructor functions that return the interface (e.g. `MockGPU(...)`, `MockCommandExecutor(...)`), not exported mock structs. The underlying type stays unexported.
 
 **PIE + lazy binding** — the repo sets `--@rules_go//go/config:linkmode=pie` and the hermetic LLVM toolchain hardcodes `-Wl,-z,relro,-z,now` into every link. Two adjustments keep this workable:
@@ -220,6 +216,6 @@ GOTOOLCHAIN=go1.27.0 go install golang.org/x/tools/go/analysis/passes/fieldalign
 ~/go/bin/fieldalignment -fix ./...
 ```
 
-The check that actually mirrors CI is RBE: `bazel test --config=ci --platforms=//build/platforms:linux_amd64 <target>` — run it on the **test** target holding the struct, since a struct in a `_test.go` file is only analyzed when its `go_test` builds (an image or library build won't catch it).
+The CI-equivalent check runs on Linux: `bazel test --config=ci --platforms=//build/platforms:linux_amd64 <target>` — run it on the **test** target holding the struct, since a struct in a `_test.go` file is only analyzed when its `go_test` builds (an image or library build won't catch it).
 
 For `//go:build linux`-tagged files that also pull in cgo (e.g. `toolkit/nvml/`), local checking on darwin is not reliable — darwin's clang can't cross-compile linux cgo, so nogo never runs against these files locally and the tool errors out. When CI's nogo step rejects a struct in such a file, it prints a unified-diff patch in the failure log; apply it verbatim with `patch -p1 <<'EOF' … EOF` or by hand.

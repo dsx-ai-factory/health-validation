@@ -26,6 +26,7 @@ func NVLinkP2P() health.CheckDefinition {
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
 		Architectures:     []string{"GB200", "GB300", "H100", "A100"},
+		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
 		RecommendedAction: health.Drain(health.DiagnosticActionContactSupport),

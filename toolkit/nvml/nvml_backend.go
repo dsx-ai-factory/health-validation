@@ -300,6 +300,7 @@ func (gpuProbe) Measure(pc ProbeContext) health.Measurement {
 	measureDevicePstate(pc.Self.Device, &m)
 	measureDeviceAveragePowerDraw(pc.Self.Device, &m)
 	measureDevicePowerLimits(pc.Self.Device, &m)
+	measureDeviceThrottle(pc.Self.Device, &m)
 	return m
 }
 
@@ -373,6 +374,27 @@ func measureDevicePowerLimits(dev gonvml.Device, m *gpu.GPUMeasurement) {
 			gpu.SignalEnforcedPowerLimitW)
 	} else {
 		m.EnforcedPowerLimitW = float64(enforced) / milliwattsPerWatt
+	}
+}
+
+// measureDeviceThrottle sets the GPU's hardware clocks-event-reasons bits
+// on m. Unlike measureDevicePstate/measureDevicePowerLimits,
+// ERROR_NOT_SUPPORTED leaves the signals at their false zero value rather
+// than flagging an error: a device that cannot report clocks-event-reasons
+// at all should not be treated as actively throttling.
+func measureDeviceThrottle(dev gonvml.Device, m *gpu.GPUMeasurement) {
+	mask, ret := dev.GetCurrentClocksEventReasons()
+	switch ret {
+	case gonvml.SUCCESS:
+		m.HWSlowdown = mask&gonvml.ClocksThrottleReasonHwSlowdown != 0
+		m.HWThermalSlowdown = mask&gonvml.ClocksThrottleReasonHwThermalSlowdown != 0
+		m.HWPowerBrakeSlowdown = mask&gonvml.ClocksThrottleReasonHwPowerBrakeSlowdown != 0
+	case gonvml.ERROR_NOT_SUPPORTED:
+	default:
+		m.AddError(&Error{Op: "DeviceGetCurrentClocksEventReasons", Return: ret},
+			gpu.SignalHWSlowdown,
+			gpu.SignalHWThermalSlowdown,
+			gpu.SignalHWPowerBrakeSlowdown)
 	}
 }
 

@@ -50,6 +50,7 @@ go_test(
         "cpu_sensor_test.go",
         "example_test.go",
         "gpu_sensor_test.go",
+        "journal_internal_test.go",
         "lazy_backend_test.go",
         "node_sensor_test.go",
         "rdma_linkflap_backend_internal_test.go",

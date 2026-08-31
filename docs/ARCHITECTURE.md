@@ -90,6 +90,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | CheckID | string | `check_id` | Stable check identifier. |
 | Severity | Severity | `severity` | PASS, INFO, WARNING, CRITICAL, or UNKNOWN. |
 | Category | Category | `category` | Hardware domain: cpu, gpu, node, nvlink, pcie, infiniband, storage, xid. |
+| ConditionScope | ConditionScope | `condition_scope` | Blast radius of the condition: `NODE` (this node's own hardware explains it), `DOMAIN` (explaining it requires the NVLink domain shared with peer nodes), `CLUSTER` (explaining it requires the cluster network fabric beyond the node). A collection-failure verdict reports `NODE`; a skipped verdict keeps the check's declared value. Independent of `recommended_action`, which is always node-local. |
 | Skipped | bool | `skipped` | True if the check did not run. |
 | SkipReason | SkipReason | `skip_reason` | Machine-readable skip code (see below). |
 | SkipDetail | string | `skip_detail` | Human-readable skip explanation. |
@@ -143,4 +144,4 @@ go build -o health-validation ./toolkit/cmd/health-validation
 go test ./catalog/...
 ```
 
-The repo uses Bazel exclusively in CI. `go build` and `go test` work for local iteration but do not run all CI checks (nogo, link-mode validation). Use `bazel test --config=ci --platforms=//build/platforms:linux_amd64 //...` to reproduce CI results on darwin. See [DEVELOPER.md](DEVELOPER.md) for the full build, CI, and container workflow.
+The repo uses Bazel exclusively in CI. `go build` and `go test` work for local iteration but do not run all CI checks (nogo, link-mode validation). On macOS, run `bazel test --config=ci --platforms=//build/platforms:linux_amd64 //...` from a Linux VM or container to reproduce the Linux CI build. See [DEVELOPER.md](DEVELOPER.md#build-a-linux-image-from-macos) for the container workflow.
