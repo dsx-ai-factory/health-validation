@@ -24,6 +24,7 @@
 
 ## Checklist
 
+- [ ] PR title follows Conventional Commits (`type(scope): subject`)
 - [ ] Commit messages are self-contained and describe *why*, not just *what*
 - [ ] No internal tooling references, URLs, or credentials in the diff
 - [ ] `go mod tidy` run in affected module(s) (`catalog/` and/or `toolkit/`)

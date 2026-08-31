@@ -220,6 +220,8 @@ When adding a direct third-party dep here (this is how `gopkg.in/yaml.v3` arrive
 
 **Comments** — Keep comments sparse and concise. Explain why a non-obvious constraint or decision exists; do not narrate code, restate names, or add boilerplate. Keep required Go doc comments factual and brief, and shorten or remove redundant comments when editing nearby code.
 
+**Commit and PR titles** — Conventional Commits (`type(scope): subject`), checked on every pull request by the `commit-lint` check. Either the PR title or a commit subject becomes the subject on `main`, depending on the merge method, so both must conform. A leading capital is allowed (`fix: RDMA link-flap`); title-case and all-caps subjects are not. Rules live in `.commitlintrc.yaml`, the type list and examples in `CONTRIBUTING.md`.
+
 **Threshold governance** — `ThresholdCategory` controls whether operators can override a threshold: `DefaultThreshold` (overridable), `FixedThreshold` (never overridable, enforced at `OverrideSet` construction), `AdjustableThreshold` (overridable within bounds). Violations return `FixedThresholdError`.
 
 **Enum handling** — all enums use the generic `marshalEnum[T]` / `unmarshalEnum[T]` helpers in `catalog/health/enum.go`. Follow the same pattern for new enums.

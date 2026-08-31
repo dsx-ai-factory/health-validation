@@ -94,6 +94,33 @@ The short version (see the architecture section in `README.md` for context):
 5. A maintainer will review and may request changes. Address feedback in new
    commits (do not force-push after review has started).
 
+## Commit and PR Titles
+
+Titles follow [Conventional Commits](https://www.conventionalcommits.org/):
+`type(scope): subject`. CI checks this on every pull request through the
+`commit-lint` check; the rules live in [`.commitlintrc.yaml`](.commitlintrc.yaml).
+
+- Types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`,
+  `revert`, `style`, `test`.
+- Scope is optional and unrestricted — use the package or domain the change
+  belongs to. `catalog`, `gpu`, `ci` and `container` are already in use.
+- Keep both the PR title and your commit subjects conventional. Depending on
+  the merge method, either one can become the subject on `main`.
+- A leading capital is fine, so `fix: RDMA link-flap` is correct. Title-case and
+  all-caps subjects are rejected: not `feat: Add Support For X`, not `fix: BROKEN`.
+- Title a revert `revert: <original subject>`. The `Revert "..."` title GitHub's
+  Revert button generates is not valid here.
+- CI reads these rules from `main`, not from your branch. A PR that changes them
+  is still judged by the current rules, so title it under those and use anything
+  new in a follow-up PR.
+
+Examples from this repository:
+
+```
+feat(gpu): add average power draw health check
+fix(catalog): add GB300 to remaining GB200-only checks
+```
+
 ## Code Style
 
 - Go: [gofumpt](https://github.com/mvdan/gofumpt). Run `bazel run //tools/format`.
@@ -114,7 +141,7 @@ To sign off on a commit you simply use the `--signoff` (or `-s`) option when
 committing your changes:
 
 ```bash
-$ git commit -s -m "Add cool feature."
+$ git commit -s -m "feat(gpu): add cool feature"
 ```
 
 This will append the following to your commit message:

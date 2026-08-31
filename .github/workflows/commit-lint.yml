@@ -1,0 +1,100 @@
+name: Commit Lint
+
+# Triggered on pull_request, not on the pull-request/<number> push that drives
+# ci.yml: the PR title and the commit count exist only in the pull_request event
+# payload.
+#
+# `edited` is not optional. Without it, correcting a rejected title never
+# re-runs the check and it stays red.
+#
+# There is deliberately no `if: github.repository == ...` guard on the job, even
+# though ci.yml puts one on every job. A skipped job reports Success and
+# satisfies a required status check, so a guard the pull request can edit would
+# be a fail-open.
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+
+  commit-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Check out the base branch, not the pull request. commitlint discovers
+      # its config from the working tree, so a default merge-ref checkout would
+      # let the PR supply the rules it is judged against, and `extends` would
+      # load code out of that tree. Nothing here needs PR content: the title
+      # comes from the event payload and the commit subject from the API.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      # commitlint 21 declares engines.node >= 22.12.0.
+      #
+      # setup-node is pinned at v4 deliberately: v5 auto-enables package-manager
+      # caching when package.json declares `packageManager`, and this repo's root
+      # package.json declares pnpm. That would set up a pnpm cache for a job that
+      # has no pnpm and nothing to cache.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install commitlint
+        run: npm install --no-package-lock --no-save --ignore-scripts @commitlint/cli@21 @commitlint/config-conventional@21
+
+      # Without `defaultIgnores: false` in .commitlintrc.yaml, commitlint exits 0
+      # on a `Revert "..."` title having evaluated no rules, and the log looks
+      # identical to a real pass. Fail here rather than report a green check that
+      # means nothing.
+      - name: Check the ignore bypass stays closed
+        run: |
+          if printf 'Revert "feat: x"\n' | ./node_modules/.bin/commitlint >/dev/null 2>&1; then
+            echo "::error::.commitlintrc.yaml is missing defaultIgnores: false; revert and merge titles would pass unchecked"
+            exit 1
+          fi
+
+      # Rules come from .commitlintrc.yaml via commitlint's default discovery.
+      # The local binary is called directly rather than through npx so a
+      # resolution miss fails here instead of triggering a network install.
+      #
+      # The title is untrusted input: pass it through the environment, never
+      # interpolate it into the run command.
+      - name: Lint the pull request title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | ./node_modules/.bin/commitlint --verbose
+
+      # squash_merge_commit_title is COMMIT_OR_PR_TITLE, so a PR holding exactly
+      # one commit defaults its squash subject to that commit's subject rather
+      # than the title checked above. Delete this step only once the repository
+      # is set to PR_TITLE and rebase merge is disabled; a rebase-merged
+      # single-commit PR lands this subject either way. Both this and the
+      # title above are checked rather than one or the other, because the
+      # merge box is editable and either string can end up on `main`.
+      - name: Lint the single commit's subject
+        if: github.event.pull_request.commits == 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # Capture before linting: piping a failed `gh` straight into commitlint
+        # feeds it empty input, and its 30-line usage table then buries the
+        # actual error.
+        run: |
+          subject="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits" \
+            --jq '.[0].commit.message | split("\n")[0]')"
+          printf '%s\n' "$subject" | ./node_modules/.bin/commitlint --verbose
