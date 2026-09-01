@@ -70,7 +70,7 @@ docker run --rm \
   it `all` (a scoped subset makes `gpu_count` fire CRITICAL on visibility, not
   health).
 - The journal + machine-id mounts are required for `gpu_xid_*`; without them
-  those checks report **UNKNOWN** rather than a false PASS.
+  those checks report **CRITICAL** rather than a false PASS.
 
 [`docs/DEVELOPER.md`](DEVELOPER.md#running-on-a-gpu-node) has the exhaustive
 per-domain mount table and the container limitations (notably: `gpu_xid_*`

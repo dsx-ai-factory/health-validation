@@ -98,11 +98,11 @@ func (nv *NodeVerdict) ExitCode() int {
 	}
 }
 
-// AggregateNodeVerdict builds a NodeVerdict from a set of check verdicts,
-// applying the given completion threshold. If the ratio of completed
-// checks to expected checks falls below the threshold, the overall
-// severity is Unknown.
-func AggregateNodeVerdict(verdicts []CheckVerdict, completionThreshold float64) NodeVerdict {
+// AggregateNodeVerdict builds a NodeVerdict from a set of check verdicts.
+// Skipped checks are recorded separately and do not contribute to the
+// overall severity; CompletionRatio reports how many of the evaluated
+// checks completed, for observability only.
+func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 	now := time.Now()
 	nv := NodeVerdict{
 		SchemaVersion:    NodeVerdictSchemaVersion,
@@ -138,10 +138,6 @@ func AggregateNodeVerdict(verdicts []CheckVerdict, completionThreshold float64) 
 
 	if total > 0 {
 		nv.CompletionRatio = float64(completed) / float64(total)
-	}
-
-	if completionThreshold > 0 && nv.CompletionRatio < completionThreshold {
-		nv.OverallSeverity = Unknown
 	}
 
 	// The node-level action mirrors severity: it comes from the checks

@@ -32,7 +32,7 @@
       "$ref": "#/$defs/severity"
     },
     "completion_ratio": {
-      "description": "Fraction of evaluated checks that completed (non-skipped / total). Below a configured completion threshold the overall severity becomes UNKNOWN.",
+      "description": "Fraction of evaluated checks that completed (non-skipped / total). Reported for observability; it does not affect overall_severity.",
       "type": "number",
       "minimum": 0,
       "maximum": 1

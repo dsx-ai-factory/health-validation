@@ -21,14 +21,13 @@ import (
 // Catalog is a registry of health check definitions with evaluation
 // capabilities. It is safe for concurrent use.
 type Catalog struct {
-	checks              map[string]*health.CheckDefinition
-	disabledChecks      map[string]bool
-	evaluationEngine    *evaluation.EvaluationEngine
-	overrides           OverrideSet
-	architecture        string
-	completionThreshold float64
-	executionContext    health.ExecutionContext
-	mu                  sync.RWMutex
+	checks           map[string]*health.CheckDefinition
+	disabledChecks   map[string]bool
+	evaluationEngine *evaluation.EvaluationEngine
+	overrides        OverrideSet
+	architecture     string
+	executionContext health.ExecutionContext
+	mu               sync.RWMutex
 }
 
 // Option configures a Catalog during construction.
@@ -59,13 +58,6 @@ func WithArchitecture(arch string) Option {
 // don't list this context are skipped.
 func WithExecutionContext(ctx health.ExecutionContext) Option {
 	return func(c *Catalog) { c.executionContext = ctx }
-}
-
-// WithCompletionThreshold sets the minimum fraction of checks that
-// must complete for the node-level verdict to be valid. If fewer
-// complete, the overall severity is Unknown. Default is 0 (no minimum).
-func WithCompletionThreshold(t float64) Option {
-	return func(c *Catalog) { c.completionThreshold = t }
 }
 
 // NewEmpty creates a Catalog with no pre-loaded checks. Use this when
@@ -231,7 +223,7 @@ func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVe
 	if err != nil {
 		return health.NodeVerdict{}, err
 	}
-	return health.AggregateNodeVerdict(verdicts, c.completionThreshold), nil
+	return health.AggregateNodeVerdict(verdicts), nil
 }
 
 // EvaluateAllRaw routes the provided measurements to the checks they can
@@ -267,10 +259,4 @@ func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.C
 	c.mu.RUnlock()
 
 	return c.evaluationEngine.EvaluateBatch(checks, measurements, snap.forCheck)
-}
-
-// CompletionThreshold returns the configured minimum fraction of
-// checks that must complete for a node verdict to be valid.
-func (c *Catalog) CompletionThreshold() float64 {
-	return c.completionThreshold
 }

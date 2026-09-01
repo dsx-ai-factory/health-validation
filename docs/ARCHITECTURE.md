@@ -53,7 +53,6 @@ To add a sensor for a new hardware domain: define a measurement struct in `catal
 | `catalog.WithExecutionContext(health.OperatorInfra)` | Checks that don't list this context are skipped with `SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL`. |
 | `catalog.WithDisabledChecks("check_id", ...)` | Named checks are skipped with `CHECK_DISABLED`. Built from a config file's `disabled_checks:` via `Config.DisabledCheckIDs()`. |
 | `catalog.WithOverrides(overrides)` | Applies operator threshold overrides. Built from a config file via `Config.Overrides()`. |
-| `catalog.WithCompletionThreshold(0.8)` | If fewer than 80% of checks complete, `overall_severity` is set to UNKNOWN. |
 
 ## Execution contexts
 
