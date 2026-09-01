@@ -78,7 +78,6 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | SeverityByDomain | map[Category]Severity | `severity_by_domain` | Worst severity per hardware category. |
 | CheckResults | []CheckVerdict | `check_results` | Per-check results for checks that ran. |
 | SkippedChecks | []CheckVerdict | `skipped_checks` | Per-check results for checks that were skipped. |
-| CompletionRatio | float64 | `completion_ratio` | Fraction of expected checks that completed. |
 | AffectedComponents | []AffectedComponent | `affected_components` | Non-PASS domains with their affected entities and check IDs. |
 | RecommendedAction | RecommendedAction | `recommended_action` | Node-level remediation object `{operational_state, diagnostic_action}` selected from the checks tying at `overall_severity`; elided (`omitzero`) when no action applies. |
 

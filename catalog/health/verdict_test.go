@@ -293,10 +293,10 @@ func TestAggregateNodeVerdict_WithSkipped(t *testing.T) {
 	}
 }
 
-// TestAggregateNodeVerdict_MostlySkipped guards that a low completion
-// ratio is reported but never degrades the verdict: skips are a
-// first-class outcome (e.g. a check that does not apply to this
-// architecture), not a failure to assess.
+// TestAggregateNodeVerdict_MostlySkipped guards that a node whose checks
+// were mostly skipped still reports the verdict of the checks that ran:
+// skips are a first-class outcome (e.g. an H100 check on GB300 hardware),
+// not a failure to assess.
 func TestAggregateNodeVerdict_MostlySkipped(t *testing.T) {
 	now := time.Now()
 	verdicts := []CheckVerdict{
@@ -311,8 +311,8 @@ func TestAggregateNodeVerdict_MostlySkipped(t *testing.T) {
 	if nv.OverallSeverity != Pass {
 		t.Errorf("overall severity = %v, want PASS", nv.OverallSeverity)
 	}
-	if nv.CompletionRatio != 0.25 {
-		t.Errorf("completion ratio = %f, want 0.25", nv.CompletionRatio)
+	if len(nv.SkippedChecks) != 3 {
+		t.Errorf("skipped checks = %d, want 3", len(nv.SkippedChecks))
 	}
 	if nv.ExitCode() != 0 {
 		t.Errorf("exit code = %d, want 0", nv.ExitCode())
@@ -333,9 +333,6 @@ func TestAggregateNodeVerdict_AllPass(t *testing.T) {
 	}
 	if nv.ExitCode() != 0 {
 		t.Errorf("exit code = %d, want 0", nv.ExitCode())
-	}
-	if nv.CompletionRatio != 1.0 {
-		t.Errorf("completion ratio = %f, want 1.0", nv.CompletionRatio)
 	}
 	if !nv.RecommendedAction.IsZero() {
 		t.Errorf("recommended action = %+v, want NoAction", nv.RecommendedAction)

@@ -12,7 +12,6 @@
     "timestamp",
     "severity_by_domain",
     "check_results",
-    "completion_ratio",
     "overall_severity"
   ],
   "properties": {
@@ -41,12 +40,6 @@
     "overall_severity": {
       "description": "Worst severity across all non-skipped checks. The authoritative health signal (the process exit code is only a coarse projection of it).",
       "$ref": "#/$defs/severity"
-    },
-    "completion_ratio": {
-      "description": "Fraction of evaluated checks that completed (non-skipped / total). Reported for observability; it does not affect overall_severity.",
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1
     },
     "severity_by_domain": {
       "description": "Worst severity per hardware domain among non-skipped checks. Keys are category names; may be empty.",

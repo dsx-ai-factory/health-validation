@@ -24,7 +24,6 @@ The check engine collects typed measurements from sensors, evaluates them agains
   "timestamp": "2026-06-05T14:32:01Z",
   "overall_severity": "PASS",
   "severity_by_domain": {},
-  "completion_ratio": 1,
   "check_results": [
     {
       "timestamp": "2026-06-05T14:32:01Z",
@@ -149,12 +148,11 @@ The check engine collects typed measurements from sensors, evaluates them agains
     "operational_state": "drain",
     "diagnostic_action": "restart_bm"
   },
-  "completion_ratio": 1,
   "overall_severity": "CRITICAL"
 }
 ```
 
-The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks`/`completion_ratio` — read `overall_severity` in the JSON for the precise level.
+The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
 
 The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers. `catalog_version` names the catalog module that produced the verdict, so consumers can verify which check logic and default thresholds were available when the run occurred.
 

@@ -64,7 +64,6 @@ type NodeVerdict struct {
 	CheckResults       []CheckVerdict        `json:"check_results"`
 	SkippedChecks      []CheckVerdict        `json:"skipped_checks,omitempty"`
 	RecommendedAction  RecommendedAction     `json:"recommended_action,omitzero"`
-	CompletionRatio    float64               `json:"completion_ratio"`
 	OverallSeverity    Severity              `json:"overall_severity"`
 }
 
@@ -116,9 +115,12 @@ func (nv *NodeVerdict) ExitCode() int {
 }
 
 // AggregateNodeVerdict builds a NodeVerdict from a set of check verdicts.
-// Skipped checks are recorded separately and do not contribute to the
-// overall severity; CompletionRatio reports how many of the evaluated
-// checks completed, for observability only.
+// Skipped checks are recorded separately in SkippedChecks and do not
+// contribute to the overall severity. No coverage ratio is derived: most
+// skips are by design (a check that does not apply to this architecture or
+// execution context), so a count of them says nothing about how well the
+// node was assessed. Consumers that care about coverage should inspect
+// SkippedChecks and their SkipReason.
 func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 	now := time.Now()
 	traceID := newID()
@@ -131,12 +133,10 @@ func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 		Timestamp:        now,
 	}
 
-	var completed, total int
 	domainChecks := make(map[Category][]string)
 	domainEntities := make(map[Category][]string)
 
 	for _, v := range verdicts {
-		total++
 		// Stamp a unique id on every check invocation and the shared trace
 		// id on each, so downstream consumers can trace one check execution
 		// and correlate co-fired checks even when records are split apart.
@@ -147,7 +147,6 @@ func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 			continue
 		}
 
-		completed++
 		nv.CheckResults = append(nv.CheckResults, v)
 		nv.OverallSeverity = Worse(nv.OverallSeverity, v.Severity)
 
@@ -159,10 +158,6 @@ func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 			domainChecks[v.Category] = append(domainChecks[v.Category], v.CheckID)
 			domainEntities[v.Category] = append(domainEntities[v.Category], v.AffectedEntities...)
 		}
-	}
-
-	if total > 0 {
-		nv.CompletionRatio = float64(completed) / float64(total)
 	}
 
 	// The node-level action mirrors severity: it comes from the checks

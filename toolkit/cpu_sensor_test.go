@@ -181,8 +181,8 @@ func TestCollectWithTimeout_CPUBackendFailureProducesResult(t *testing.T) {
 	if verdict.OverallSeverity != health.Critical {
 		t.Fatalf("overall = %v, want CRITICAL", verdict.OverallSeverity)
 	}
-	if verdict.CompletionRatio != 1 {
-		t.Errorf("completion ratio = %v, want 1", verdict.CompletionRatio)
+	if len(verdict.SkippedChecks) != 0 {
+		t.Errorf("skipped checks = %+v, want none", verdict.SkippedChecks)
 	}
 	if len(verdict.CheckResults) != 1 {
 		t.Fatalf("got %d check results, want 1", len(verdict.CheckResults))
