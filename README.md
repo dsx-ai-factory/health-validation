@@ -22,6 +22,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
   "schema_version": "0.2",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
+  "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
   "overall_severity": "PASS",
   "severity_by_domain": {},
   "completion_ratio": 1,
@@ -29,6 +30,8 @@ The check engine collects typed measurements from sensors, evaluates them agains
     {
       "timestamp": "2026-06-05T14:32:01Z",
       "check_id": "gpu_count",
+      "span_id": "b4c7e0d9-59a1-4f0e-8c2b-1d6e7a9f3042",
+      "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
       "severity": "PASS",
       "category": "node",
       "skipped": false,
@@ -48,6 +51,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
   "schema_version": "0.2",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
+  "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
   "severity_by_domain": {
     "node": "CRITICAL",
     "xid": "CRITICAL"
@@ -85,6 +89,8 @@ The check engine collects typed measurements from sensors, evaluates them agains
       },
       "maturity_level": "stable",
       "check_id": "gpu_count",
+      "span_id": "1a2f5c07-3b64-4e8d-9a70-5f1c2d8e46b3",
+      "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
       "recommended_action": {
         "operational_state": "drain",
         "diagnostic_action": "reboot"
@@ -113,6 +119,8 @@ The check engine collects typed measurements from sensors, evaluates them agains
       },
       "maturity_level": "stable",
       "check_id": "nvlink_active",
+      "span_id": "8d3b6e42-97ac-4d51-b0e8-3a7f4c15928d",
+      "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
       "severity": "PASS",
       "category": "nvlink",
       "skipped": false,
@@ -127,6 +135,8 @@ The check engine collects typed measurements from sensors, evaluates them agains
       },
       "maturity_level": "stable",
       "check_id": "gpu_xid_79",
+      "span_id": "e57c190b-46d2-4c8a-a3f1-9b04d7e2635c",
+      "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
       "recommended_action": {
         "operational_state": "drain",
         "diagnostic_action": "restart_bm"

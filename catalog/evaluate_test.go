@@ -231,6 +231,7 @@ func TestEvaluateAll_DisabledOutranksSensorMissing(t *testing.T) {
 	}
 
 	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
 		catalog.WithDisabledChecks("node_disabled"),
 	)
@@ -276,6 +277,7 @@ func TestEvaluateAll_MissingSensorLowersCompletionRatio(t *testing.T) {
 	}
 
 	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
 		catalog.WithCompletionThreshold(0.75),
 	)
@@ -322,7 +324,10 @@ func TestEvaluateAll_SensorMissingCascadesToDependents(t *testing.T) {
 		},
 	}
 
-	cat := catalog.NewEmpty(catalog.WithExecutionContext(health.OperatorInfra))
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
 	cat.MustRegister(base)
 	cat.MustRegister(dependent)
 
