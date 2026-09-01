@@ -186,11 +186,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify container tooling (linux/arm64)
-        run: |
-          docker version
-          jq --version
-
       - name: Install Bazelisk
         run: |
           arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
@@ -236,7 +231,6 @@ jobs:
   # arm64 reports the same base-image CVEs.
   scan:
     if: github.repository == 'dsx-ai-factory/health-validation'
-    needs: release-metadata
     runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     permissions:
