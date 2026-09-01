@@ -399,7 +399,7 @@ authoring, and PR guidelines. All participation is governed by our
 
 ## License
 
-This project is licensed under the [Apache License 2.0](LICENSE).
+Use of this software is governed by the NVIDIA Software and Model Evaluation License. See [LICENSE](LICENSE).
 
 ## Reporting issues
 
