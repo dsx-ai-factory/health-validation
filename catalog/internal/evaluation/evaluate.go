@@ -75,14 +75,23 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 // unconfigured threshold, dependency) are decided once per check, not
 // once per measurement.
 //
-// A check whose Category is absent from measurements entirely produces
-// no verdict at all: the domain simply was not part of this evaluation,
-// so it is neither a result nor a skip. This keeps a partial measurement
-// set (these methods are a public entry point; callers may evaluate one
-// domain at a time) from emitting NoApplicableMeasurement skips for every
-// other domain's checks. NoApplicableMeasurement is reserved for the
-// sharper case: the domain was collected but this check's measurement
-// shape was not among what the sensor produced.
+// A check whose Category supplied no measurement at all skips
+// [health.SensorMissing]. Registering a check is what declares the
+// expectation: if the catalog holds a GPU check, this run means to assess
+// GPUs, so a GPU sensor that is absent, unconfigured, or never constructed
+// is a hole in the assessment rather than a domain that was out of scope.
+// Every registered check therefore yields a verdict — a result or a skip —
+// and none can vanish. NoApplicableMeasurement remains the sharper case:
+// the domain was collected but this check's measurement shape was not
+// among what the sensor produced.
+//
+// The skip is a report, not a failure: skipped checks are excluded from
+// OverallSeverity, so a missing sensor never turns a node CRITICAL on its
+// own. Recording it is the point — the check stays visible as unassessed
+// under a skip_reason a consumer can act on. The measurement-independent
+// skips are decided
+// first, so an operator's [health.CheckDisabled] outranks SensorMissing:
+// a check turned off on purpose never reads as a sensor hole.
 //
 // paramsFor supplies the per-check evaluation context; the engine asks
 // for fresh Params per check so overrides and disabled state stay
@@ -111,12 +120,6 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 	for _, id := range order {
 		cd := checks[id]
 
-		// A check whose whole domain was not collected is out of scope for
-		// this batch: emit nothing rather than a NoApplicableMeasurement skip.
-		if !presentCategories[cd.Category] {
-			continue
-		}
-
 		if dep, ok := skippedDependency(cd, skipped); ok {
 			verdicts = append(verdicts, skippedVerdict(cd, now, health.DependencySkipped,
 				fmt.Sprintf("dependency %q was skipped", dep)))
@@ -127,6 +130,16 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 		p := paramsFor(id)
 		if v, isSkip := checkLevelSkip(cd, p, now); isSkip {
 			verdicts = append(verdicts, v)
+			skipped[id] = true
+			continue
+		}
+
+		// Nothing of this check's domain arrived. Record the hole so the
+		// check is visibly unassessed instead of silently producing no
+		// verdict.
+		if !presentCategories[cd.Category] {
+			verdicts = append(verdicts, skippedVerdict(cd, now, health.SensorMissing,
+				fmt.Sprintf("no measurement of category %s was supplied", cd.Category)))
 			skipped[id] = true
 			continue
 		}

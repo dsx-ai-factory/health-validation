@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -115,6 +116,25 @@ func TestCatalog_Len(t *testing.T) {
 	cat.MustRegister(health.CheckDefinition{ID: "b"})
 	if cat.Len() != 2 {
 		t.Errorf("Len() = %d, want 2", cat.Len())
+	}
+}
+
+// Categories reports each registered check's category once, sorted, so a
+// whole-node run can declare exactly the domains the catalog can assess.
+func TestCatalog_Categories(t *testing.T) {
+	cat := NewEmpty()
+	if got := cat.Categories(); len(got) != 0 {
+		t.Errorf("empty catalog Categories() = %v, want none", got)
+	}
+
+	cat.MustRegister(health.CheckDefinition{ID: "n1", Category: health.Node})
+	cat.MustRegister(health.CheckDefinition{ID: "n2", Category: health.Node})
+	cat.MustRegister(health.CheckDefinition{ID: "g1", Category: health.GPU})
+
+	got := cat.Categories()
+	want := []health.Category{health.GPU, health.Node}
+	if !slices.Equal(got, want) {
+		t.Errorf("Categories() = %v, want %v", got, want)
 	}
 }
 

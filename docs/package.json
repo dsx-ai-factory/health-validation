@@ -1,6 +1,7 @@
 {
     "name": "@health-validation/docs",
     "version": "0.0.0",
+    "private": true,
     "scripts": {
         "dev": "docusaurus start"
     },

@@ -26,7 +26,8 @@ The check did not execute. The `skip_reason` field says why:
 
 | Reason | Meaning | Action |
 |---|---|---|
-| NO_APPLICABLE_MEASUREMENT | No supplied measurement carries the check's required signals. | Confirm the sensor that produces the check's domain measurement ran. |
+| NO_APPLICABLE_MEASUREMENT | The check's domain was collected, but no measurement in it carries the check's required signals. | Confirm the sensor produces the measurement shape this check needs. |
+| SENSOR_MISSING | The check's whole domain supplied no measurement: the sensor is absent, unconfigured, or its backend was never constructed. | Confirm the domain's sensor ran. Note this is not a collection *failure* — a sensor that ran and failed yields a CRITICAL result, not a skip. |
 | SIGNAL_UNAVAILABLE_ARCHITECTURE | Check does not apply to this GPU architecture. | None. The check will never run in this environment. |
 | SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL | Requires a different execution context. | Check `skip_detail` for the required context. |
 | CHECK_DISABLED | Operator disabled this check, via `disabled_checks:` in the config or `catalog.WithDisabledChecks`. | Intentional, but the verdict does not record which config file asked for it. |

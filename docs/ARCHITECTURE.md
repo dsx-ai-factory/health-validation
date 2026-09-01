@@ -64,7 +64,7 @@ To add a sensor for a new hardware domain: define a measurement struct in `catal
 
 ## Output schema
 
-The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (currently `"0.1"`, from `NodeVerdictSchemaVersion` in `catalog/health/verdict.go`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
+The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (currently `"0.2"`, from `NodeVerdictSchemaVersion` in `catalog/health/verdict.go`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
 
 ### NodeVerdict
 
@@ -74,6 +74,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | CatalogVersion | string | `catalog_version` | Catalog module version that produced this verdict; `dev` or `dev+<commit>` on non-release builds. |
 | Timestamp | time.Time | `timestamp` | When the evaluation completed. |
 | NodeID | string | `node_id` | Opaque identifier for the node under test; the CLI defaults it to the system hostname. |
+| TraceID | string | `trace_id` | UUID identifying this run; echoed on every `CheckVerdict` it produced. |
 | OverallSeverity | Severity | `overall_severity` | Worst severity across all non-skipped checks. |
 | SeverityByDomain | map[Category]Severity | `severity_by_domain` | Worst severity per hardware category. |
 | CheckResults | []CheckVerdict | `check_results` | Per-check results for checks that ran. |
@@ -86,6 +87,8 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | Field | Type | JSON name | Description |
 |---|---|---|---|
 | CheckID | string | `check_id` | Stable check identifier. |
+| SpanID | string | `span_id` | UUID unique to this check invocation, run or skipped. |
+| TraceID | string | `trace_id` | The run's `trace_id`, echoed here so a check result is self-correlating when consumed on its own. |
 | Severity | Severity | `severity` | PASS, INFO, WARNING, CRITICAL, or UNKNOWN. |
 | Category | Category | `category` | Hardware domain: cpu, gpu, node, nvlink, pcie, infiniband, storage, xid. |
 | ConditionScope | ConditionScope | `condition_scope` | Blast radius of the condition: `NODE` (this node's own hardware explains it), `DOMAIN` (explaining it requires the NVLink domain shared with peer nodes), `CLUSTER` (explaining it requires the cluster network fabric beyond the node). A collection-failure verdict reports `NODE`; a skipped verdict keeps the check's declared value. Independent of `recommended_action`, which is always node-local. |
@@ -121,7 +124,8 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | DEPENDENCY_SKIPPED | A prerequisite check was skipped or failed. |
 | INSUFFICIENT_HISTORY | Time-window data not yet accumulated. Applies only to checks that evaluate over a window; not used by any currently registered check. |
 | THRESHOLD_UNCONFIGURED | A threshold the operator must supply was not configured. |
-| NO_APPLICABLE_MEASUREMENT | No supplied measurement carries the check's required signals. |
+| NO_APPLICABLE_MEASUREMENT | The category was collected, but no measurement in it carries the check's required signals. Routing is by measurement schema, so a measurement that carries the signals but whose sensor failed to collect one reports CRITICAL rather than skipping. |
+| SENSOR_MISSING | The check's category supplied no measurement at all — sensor absent, unconfigured, or never constructed. Registering a check declares that its sensor is expected, so every registered check reports either a result or a skip. |
 
 ## Adding a check
 

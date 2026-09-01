@@ -159,6 +159,26 @@ func (c *Catalog) List(f Filter) []*health.CheckDefinition {
 	return result
 }
 
+// Categories returns the distinct categories of the registered checks,
+// sorted for deterministic output — the set of domains this catalog
+// expects to be able to assess, and so the set of sensors a caller must
+// supply for full coverage.
+func (c *Catalog) Categories() []health.Category {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	seen := make(map[health.Category]bool, len(c.checks))
+	var cats []health.Category
+	for _, cd := range c.checks {
+		if !seen[cd.Category] {
+			seen[cd.Category] = true
+			cats = append(cats, cd.Category)
+		}
+	}
+	slices.Sort(cats)
+	return cats
+}
+
 // Len returns the number of registered check definitions.
 func (c *Catalog) Len() int {
 	c.mu.RLock()
@@ -239,6 +259,13 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 //
 // Each measurement is matched to checks by Category: GPU measurements
 // only run GPU checks, NVLink measurements only run NVLink checks, etc.
+//
+// Every registered check produces a verdict, a result or a skip. A check
+// whose category supplied no measurement is skipped
+// [health.SensorMissing] — see [Catalog.EvaluateAllRaw] — which leaves
+// OverallSeverity untouched but marks the check as unassessed in
+// SkippedChecks. Supply the measurements for every category
+// in [Catalog.Categories], or register only the checks you intend to feed.
 func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVerdict, error) {
 	verdicts, err := c.EvaluateAllRaw(measurements...)
 	if err != nil {
@@ -261,10 +288,19 @@ func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVe
 // detail; it never reaches checks whose required signals its schema does
 // not carry.
 //
-// Checks whose category is absent from measurements entirely produce no
-// verdict: a partial measurement set (this is a public entry point, so
-// callers may evaluate a single domain) does not raise skips for every
-// other domain's checks.
+// A check whose category supplied no measurement at all is skipped
+// [health.SensorMissing], with the category named in SkipDetail and
+// dependents cascading to DependencySkipped. Registering a check is what
+// declares the expectation that its sensor exists, so this needs no
+// configuration: a domain that reports nothing is reported as unassessed
+// rather than dropped. The measurement-independent reasons are decided
+// first, so an operator's CHECK_DISABLED still wins — a check turned off
+// on purpose does not read as a sensor hole.
+//
+// A caller evaluating a single domain therefore receives SensorMissing
+// skips for the others. That is a report, not a failure: skips do not
+// affect OverallSeverity. Register only the checks you intend to feed if
+// you want a narrower verdict.
 func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.CheckVerdict, error) {
 	if err := c.requireArchitecture(); err != nil {
 		return nil, err

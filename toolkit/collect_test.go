@@ -1,8 +1,10 @@
 package toolkit_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +58,90 @@ func TestCollect_FailingNode(t *testing.T) {
 	}
 	if nv.ExitCode() != 1 {
 		t.Errorf("exit code = %d, want 1", nv.ExitCode())
+	}
+}
+
+// emptySensor is a Sensor that succeeds while observing nothing — the
+// shape of a backend that enumerates no entities, or a domain whose sensor
+// was never added to the run at all. It reports no error, so nothing is
+// degraded into errored measurements and its category simply never
+// arrives.
+type emptySensor struct{ name string }
+
+func (s emptySensor) Name() string { return s.name }
+
+func (s emptySensor) Measure(context.Context) ([]health.Measurement, error) { return nil, nil }
+
+func (s emptySensor) Errored(error) []health.Measurement { return nil }
+
+// A sensor that collects nothing without erroring must not make its
+// domain's checks disappear. Before SENSOR_MISSING those checks were in
+// neither check_results nor skipped_checks, so a node with no GPUs at all
+// looked exactly like a catalog that never had GPU checks.
+func TestCollect_MissingSensorSurfacesAsSkip(t *testing.T) {
+	cat := catalog.New(
+		catalog.WithArchitecture("GB200"),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+
+	nv, err := toolkit.Collect(cat, emptySensor{name: "node"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if len(nv.CheckResults) != 0 {
+		t.Errorf("check_results = %d, want 0; nothing was measured", len(nv.CheckResults))
+	}
+	if len(nv.SkippedChecks) != cat.Len() {
+		t.Errorf("skipped_checks = %d, want %d (every registered check)",
+			len(nv.SkippedChecks), cat.Len())
+	}
+
+	var sensorMissing int
+	for _, v := range nv.SkippedChecks {
+		if v.SkipReason == health.SensorMissing {
+			sensorMissing++
+		}
+	}
+	if sensorMissing == 0 {
+		t.Error("no SENSOR_MISSING skips; an uncollected domain is still invisible")
+	}
+	if len(nv.CheckResults) != 0 {
+		t.Errorf("check_results = %+v, want none; no check completed", nv.CheckResults)
+	}
+}
+
+// The skips are the machine-readable record; an operator watching the
+// console needs to be told too, since a domain that never reported
+// produces no other output. One warning per missing domain, not per check.
+func TestCollect_MissingSensorWarns(t *testing.T) {
+	var buf bytes.Buffer
+	restore := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(restore) })
+
+	cat := catalog.New(
+		catalog.WithArchitecture("GB200"),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+
+	if _, err := toolkit.Collect(cat, emptySensor{name: "node"}); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	logged := buf.String()
+	if !strings.Contains(logged, "no measurement collected for domain") {
+		t.Errorf("no warning for the uncollected domains; log was:\n%s", logged)
+	}
+	for _, domain := range []health.Category{health.Node, health.GPU} {
+		if !strings.Contains(logged, "category="+domain.String()) {
+			t.Errorf("log does not name the missing %v domain; log was:\n%s", domain, logged)
+		}
+	}
+	// Nothing was collected, so every domain the catalog covers is missing —
+	// one line each. Per-check logging would bury the operator in noise.
+	if got, want := strings.Count(logged, "no measurement collected for domain"), len(cat.Categories()); got != want {
+		t.Errorf("warnings = %d, want %d (one per domain, not per check)", got, want)
 	}
 }
 

@@ -353,10 +353,12 @@ validate against the published
   Entries in `skipped_checks` carry the declared value, so gate on `skipped`
   first.
 - **`skipped_checks`** — checks that did **not** run, with a `skip_reason`
-  (`THRESHOLD_UNCONFIGURED`, `CHECK_DISABLED`, `NO_APPLICABLE_MEASUREMENT`, …).
-  Most skips are by design (the check does not apply to this architecture or
-  execution context). If coverage matters to your gate, read `skipped_checks`
-  and filter on `skip_reason` rather than counting them.
+  (`THRESHOLD_UNCONFIGURED`, `CHECK_DISABLED`, `SENSOR_MISSING`, …).
+  `SENSOR_MISSING` is the one to alert on: a whole domain reported nothing, so
+  those checks were never assessed — distinct from `CHECK_DISABLED` or
+  `SIGNAL_UNAVAILABLE_ARCHITECTURE`, which are deliberate. Skip *count* is not
+  a coverage signal, since most skips are by design; if coverage matters to
+  your gate, filter `skipped_checks` on `skip_reason`.
 
 Set `--node-id` to your scheduler/inventory identifier (it defaults to the
 hostname) so the verdict correlates with the rest of your fleet data.

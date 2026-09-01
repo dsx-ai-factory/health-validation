@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
@@ -76,7 +78,34 @@ func CollectWithTimeout(cat *catalog.Catalog, timeout time.Duration, sensors ...
 		}
 	}
 
-	return cat.EvaluateAll(all...)
+	nv, err := cat.EvaluateAll(all...)
+	if err != nil {
+		return nv, err
+	}
+	warnMissingSensors(nv)
+	return nv, nil
+}
+
+// warnMissingSensors logs one warning per domain that reported nothing.
+//
+// The SENSOR_MISSING skips in the verdict are the machine-readable
+// record; this is the operator-facing half, since a sensor absent from
+// the run — never registered, backend never constructed, or returning no
+// entities without an error — produces no other console output at all. A
+// sensor that ran and failed is not this case: it is degraded above into
+// errored measurements, so its category is present and its checks fail
+// Critical with the cause attached.
+func warnMissingSensors(nv health.NodeVerdict) {
+	counts := make(map[health.Category]int)
+	for _, v := range nv.SkippedChecks {
+		if v.SkipReason == health.SensorMissing {
+			counts[v.Category]++
+		}
+	}
+	for _, cat := range slices.Sorted(maps.Keys(counts)) {
+		slog.Warn("no measurement collected for domain; its checks were not assessed",
+			"category", cat.String(), "skipped_checks", counts[cat])
+	}
 }
 
 // resourceKeyed is implemented by sensors that share a data source with
