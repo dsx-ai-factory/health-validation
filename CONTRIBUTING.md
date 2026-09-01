@@ -5,6 +5,22 @@ issues, propose changes, and submit code.
 
 Before you participate, read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 
+## Code of Conduct Enforcement
+
+Report Code of Conduct incidents to
+[health-validation-maintainers@nvidia.com](mailto:health-validation-maintainers@nvidia.com).
+This address is monitored by the project maintainers.
+
+The maintainers will acknowledge a report within 3 business days. They will
+provide a written outcome within 14 calendar days after acknowledgement. If the
+review is not complete by then, they will provide a status update and a revised
+target date.
+
+Conduct is out of scope only when it occurred outside all project community
+spaces and the person was not officially representing the project community.
+If either condition is not met, the maintainers will handle the report under
+the Code of Conduct.
+
 ## Reporting Bugs
 
 Open a [GitHub Issue](../../issues/new?template=bug.yml). Include:
