@@ -2,6 +2,34 @@
 
 This file provides guidance to AI coding agents when working with code in this repository.
 
+## Agent Scope
+
+### Permitted without asking first
+
+- Reading any file in the repository, running `bazel build`/`bazel test`/`go build`/`go test`, formatting (`bazel run //tools/format`), and regenerating `BUILD.bazel` files (`bazel run //tools/gazelle`).
+- Editing tracked source, test, and doc files in a local branch or worktree.
+- Creating a local branch and committing to it.
+
+### Requires explicit human confirmation first
+
+- Pushing a branch, opening a PR, or otherwise making a change visible outside your local checkout.
+- Merging a PR, tagging a release, or anything that publishes an artifact (container image, binary, module version).
+- Any destructive or hard-to-reverse git operation: force-push, `git reset --hard`, rewriting already-pushed history, deleting a branch or tag.
+- Changing CI/CD configuration (`.github/workflows/`), branch protection, or repository settings.
+- Modifying `LICENSE`, `SECURITY.md`, `GOVERNANCE.md`, or `CODE_OF_CONDUCT.md`.
+
+### Out of scope
+
+- Filing or responding to a security report — route to NVIDIA PSIRT per [`SECURITY.md`](SECURITY.md); do not investigate or fix a suspected vulnerability from an external report without a maintainer directing that work.
+- Making governance decisions (adding/removing maintainers, changing decision-making process) — see [`GOVERNANCE.md`](GOVERNANCE.md).
+- Deploying to or configuring infrastructure outside this repository (registries, package indexes, hosting).
+
+### Secrets and credentials
+
+- Never commit secrets, tokens, API keys, or credentials, including in test fixtures, config examples, or comments. If you find one already committed, treat it as compromised and flag it to a maintainer immediately rather than just deleting it (history retains it).
+- This repository is public: assume anything pushed is public immediately and permanently, even after a force-push or squash. Do not push internal NVIDIA URLs, hostnames, tooling references, or unreleased hardware/product details — the PR template's checklist ([`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)) has the exact item to self-check against.
+- Do not read from or write to credential stores, `~/.netrc`, cloud provider config, or SSH keys as part of a task in this repository.
+
 ## Boundaries
 
 ### Capability boundaries
