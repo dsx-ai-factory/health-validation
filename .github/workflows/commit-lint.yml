@@ -59,8 +59,13 @@ jobs:
         with:
           node-version: 22
 
+      # Exact pins, not a range: a new 21.x patch is a new artifact executing
+      # on the runner, and there is no Dependabot here to vet one. Bump both
+      # together and deliberately. Transitive deps still float; a lockfile
+      # would close that, at the cost of a second lockfile format in a repo
+      # that declares pnpm.
       - name: Install commitlint
-        run: npm install --no-package-lock --no-save --ignore-scripts @commitlint/cli@21 @commitlint/config-conventional@21
+        run: npm install --no-package-lock --no-save --ignore-scripts @commitlint/cli@21.2.2 @commitlint/config-conventional@21.2.2
 
       # Without `defaultIgnores: false` in .commitlintrc.yaml, commitlint exits 0
       # on a `Revert "..."` title having evaluated no rules, and the log looks
