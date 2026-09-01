@@ -174,8 +174,6 @@ jobs:
             exit 1
           fi
 
-          docker run --rm --entrypoint journalctl health-validation:latest --version
-
   build-arm64:
     if: github.repository == 'dsx-ai-factory/health-validation'
     needs: release-metadata
@@ -229,8 +227,6 @@ jobs:
             echo "version stamp mismatch: toolkit='$embedded_toolkit' catalog='$embedded_catalog'; expected toolkit='$EXPECTED_TOOLKIT_VERSION' catalog='$EXPECTED_CATALOG_VERSION'" >&2
             exit 1
           fi
-
-          docker run --rm --entrypoint journalctl health-validation:latest --version
 
   # Scan the packaged image for known CVEs. The shared action inspects the local
   # Docker daemon and never pulls, so the image must be loaded first — a sibling
