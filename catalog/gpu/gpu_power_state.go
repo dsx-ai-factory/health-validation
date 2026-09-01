@@ -25,6 +25,7 @@ func GPUPowerState() health.CheckDefinition {
 		SchedulingCadence: health.Continuous,
 		Architectures:     []string{"GB200", "GB300", "H100", "A100"},
 
+		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
 		RecommendedAction: health.Drain(health.DiagnosticActionReboot),

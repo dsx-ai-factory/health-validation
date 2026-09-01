@@ -35,6 +35,7 @@ go_test(
     embed = [":app"],
     deps = [
         "//catalog",
+        "//catalog/catalogtest",
         "//catalog/cpu",
         "//catalog/gpu",
         "//catalog/health",

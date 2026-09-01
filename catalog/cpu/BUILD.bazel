@@ -23,6 +23,7 @@ go_test(
     deps = [
         ":cpu",
         "//catalog",
+        "//catalog/catalogtest",
         "//catalog/health",
     ],
 )

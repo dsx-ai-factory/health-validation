@@ -20,19 +20,15 @@ go_binary(
     # static-distroless). The driver itself is injected by the NVIDIA Container
     # Toolkit at run time, not baked into the image.
     oci = True,
-    # The Xid checks shell out to `journalctl` to read the host's systemd
-    # journal; the minimal Ubuntu base ships no systemd, so bake in the
-    # `systemd` package (which provides /usr/bin/journalctl) and its transitive
-    # deps as a flattened layer. Resolved from the Ubuntu archive via
-    # rules_distroless — see //third_party:apt.MODULE.bazel. Without this layer
-    # journalctl is absent and every gpu_xid_* check reports UNKNOWN (the
-    # backend's journal-liveness probe refuses to emit a false PASS).
-    tars = ["@journalctl//:flat"],
+    # journalctl (Xid/RDMA link-flap checks) is bind-mounted from the host at
+    # runtime instead of bundled here, to avoid tracking systemd's apt churn.
+    # See scripts/health-validation-run.sh and docs/INTEGRATION.md.
     visibility = ["//visibility:public"],
     # Stamped only under --config=release (see .bazel/release.bazelrc); plain
-    # builds leave the internal/version defaults ("dev"). The {STABLE_*} keys
-    # are produced by the --workspace_status_command set in .bazel/release.bazelrc.
+    # builds leave the version defaults ("dev"). The {STABLE_*} keys are
+    # produced by the --workspace_status_command set in .bazel/release.bazelrc.
     x_defs = {
+        "github.com/dsx-ai-factory/health-validation/catalog/version.version": "{STABLE_HEALTH_VALIDATION_CATALOG_VERSION}",
         "github.com/dsx-ai-factory/health-validation/toolkit/internal/version.version": "{STABLE_HEALTH_VALIDATION_VERSION}",
         "github.com/dsx-ai-factory/health-validation/toolkit/internal/version.commit": "{STABLE_GIT_COMMIT}",
         "github.com/dsx-ai-factory/health-validation/toolkit/internal/version.date": "{STABLE_BUILD_DATE}",

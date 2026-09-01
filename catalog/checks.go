@@ -16,8 +16,10 @@ func builtinChecks() []health.CheckDefinition {
 	checks := []health.CheckDefinition{
 		cpu.CPUCount(),
 		cpu.NUMANodeCount(),
+		gpu.GPUAveragePowerDraw(),
 		gpu.GPUPowerLimit(),
 		gpu.GPUPowerState(),
+		gpu.GPUSensorThrottle(),
 		node.GPUCount(),
 		infiniband.RDMALinkFlapFatal(),
 		nvlink.NVLinkActive(),

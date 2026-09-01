@@ -9,7 +9,7 @@ import (
 // CheckDefinition is the canonical shape of a health check in the catalog.
 // Each definition encodes NVIDIA's operational judgment about a specific
 // hardware or driver condition: which signals to examine, what thresholds
-// apply, and what action to recommend.
+// apply, what action to recommend, and how far the condition reaches.
 //
 // Check definitions are data. They carry no sensor or hardware dependencies.
 // Evaluation happens when a caller provides signal values to [Catalog.Evaluate].
@@ -29,14 +29,19 @@ type CheckDefinition struct {
 	MaturityLevel     MaturityLevel            `json:"maturity_level"`
 	SchedulingCadence SchedulingCadence        `json:"scheduling_cadence"`
 	Category          Category                 `json:"category"`
+	ConditionScope    ConditionScope           `json:"condition_scope"`
 	Provenance        Provenance               `json:"provenance"`
 	ExecutionClass    ExecutionClass           `json:"execution_class"`
 	RecommendedAction RecommendedAction        `json:"recommended_action,omitzero"`
 }
 
-// Validate reports whether the definition is internally consistent: a Fixed
-// threshold cannot require an override, since the check would skip without one
-// and reject one. Names are sorted so the reported threshold is deterministic.
+// Validate reports whether the definition is internally consistent. Names are
+// sorted so the reported threshold is deterministic.
+//
+// A Fixed threshold cannot require an override (the check would skip without
+// one and reject one). When PerArchitecture is set, every architecture in
+// Architectures must be a key. Value may be omitted only when that coverage
+// is complete; unrestricted checks (empty Architectures) still need a Value.
 func (cd CheckDefinition) Validate() error {
 	names := make([]string, 0, len(cd.Thresholds))
 	for name := range cd.Thresholds {
@@ -45,11 +50,36 @@ func (cd CheckDefinition) Validate() error {
 	slices.Sort(names)
 
 	for _, name := range names {
-		if spec := cd.Thresholds[name]; spec.RequiredOverride && spec.Category == FixedThreshold {
+		spec := cd.Thresholds[name]
+		if spec.RequiredOverride && spec.Category == FixedThreshold {
 			return fmt.Errorf("check %q threshold %q: a fixed threshold cannot require an override", cd.ID, name)
+		}
+		if err := validateThresholdCoverage(cd.ID, name, spec, cd.Architectures); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// validateThresholdCoverage requires PerArchitecture to cover Architectures, or else Value / RequiredOverride.
+func validateThresholdCoverage(checkID, name string, spec ThresholdSpec, architectures []string) error {
+	if len(spec.PerArchitecture) > 0 && len(architectures) > 0 {
+		missing := make([]string, 0)
+		for _, arch := range architectures {
+			if _, ok := spec.PerArchitecture[arch]; !ok {
+				missing = append(missing, arch)
+			}
+		}
+		if len(missing) > 0 {
+			slices.Sort(missing)
+			return fmt.Errorf("check %q threshold %q: PerArchitecture missing architectures %v", checkID, name, missing)
+		}
+		return nil
+	}
+	if spec.RequiredOverride || spec.Value != nil {
+		return nil
+	}
+	return fmt.Errorf("check %q threshold %q: Value is required unless PerArchitecture covers every declared architecture", checkID, name)
 }
 
 // Rule defines a single evaluation condition within a check. Rules are

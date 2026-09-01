@@ -5,8 +5,8 @@ build --@rules_go//go/config:linkmode=pie
 # //tools/gazelle` — because PIE linkmode routes even pure-Go tool binaries
 # through the external C linker. Scope it to linux builds instead of applying it
 # globally:
-#   build:ci    — the path every linux build takes, including darwin->linux RBE
-#                 cross-builds (`--config=ci --platforms=//build/platforms:linux_*`).
+#   build:ci    — the path every Linux CI build takes, and the configuration
+#                 used by Linux VM/container builds from darwin.
 #   build:linux — native linux hosts (auto-applied by
 #                 --enable_platform_specific_config) that build without --config=ci.
 # Native darwin builds match neither, so gazelle and other host tools link clean.

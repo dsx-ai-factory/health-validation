@@ -1,6 +1,18 @@
 package health
 
-import "time"
+import (
+	"time"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/version"
+	"github.com/google/uuid"
+)
+
+// newID returns a random RFC 4122 version-4 UUID string. It backs the per-run
+// trace_id and per-check span_id so a downstream system can trace a
+// specific check execution and correlate all checks fired in one run.
+func newID() string {
+	return uuid.NewString()
+}
 
 // CheckVerdict is the outcome of evaluating a single check against
 // signal values. It carries all context needed for downstream systems
@@ -15,11 +27,14 @@ type CheckVerdict struct {
 	ObservedValues    map[string]any               `json:"observed_values,omitempty"`
 	Thresholds        map[string]ResolvedThreshold `json:"thresholds,omitempty"`
 	CheckID           string                       `json:"check_id"`
+	SpanID            string                       `json:"span_id"`  // Unique per check invocation.
+	TraceID           string                       `json:"trace_id"` // Shared by all checks in the same run.
 	SkipDetail        string                       `json:"skip_detail,omitempty"`
 	AffectedEntities  []string                     `json:"affected_entities,omitempty"`
 	Messages          []string                     `json:"messages,omitempty"`
 	Severity          Severity                     `json:"severity"`
 	Category          Category                     `json:"category"`
+	ConditionScope    ConditionScope               `json:"condition_scope"` // Blast radius; NODE when collection failed.
 	SkipReason        SkipReason                   `json:"skip_reason,omitempty"`
 	MaturityLevel     MaturityLevel                `json:"maturity_level"`
 	RecommendedAction RecommendedAction            `json:"recommended_action,omitzero"`
@@ -40,8 +55,10 @@ const NodeVerdictSchemaVersion = "0.1"
 // health assessment.
 type NodeVerdict struct {
 	SchemaVersion      string                `json:"schema_version"`
+	CatalogVersion     string                `json:"catalog_version"` // Catalog module version compiled into the producer.
 	Timestamp          time.Time             `json:"timestamp"`
 	NodeID             string                `json:"node_id,omitempty"` // Opaque identifier for the node under test.
+	TraceID            string                `json:"trace_id"`          // Shared by all checks in this run; echoed on each CheckVerdict.
 	SeverityByDomain   map[Category]Severity `json:"severity_by_domain"`
 	AffectedComponents []AffectedComponent   `json:"affected_components,omitempty"`
 	CheckResults       []CheckVerdict        `json:"check_results"`
@@ -104,8 +121,11 @@ func (nv *NodeVerdict) ExitCode() int {
 // checks completed, for observability only.
 func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 	now := time.Now()
+	traceID := newID()
 	nv := NodeVerdict{
 		SchemaVersion:    NodeVerdictSchemaVersion,
+		CatalogVersion:   version.Version(),
+		TraceID:          traceID,
 		OverallSeverity:  Pass,
 		SeverityByDomain: make(map[Category]Severity),
 		Timestamp:        now,
@@ -117,6 +137,11 @@ func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 
 	for _, v := range verdicts {
 		total++
+		// Stamp a unique id on every check invocation and the shared trace
+		// id on each, so downstream consumers can trace one check execution
+		// and correlate co-fired checks even when records are split apart.
+		v.SpanID = newID()
+		v.TraceID = traceID
 		if v.Skipped {
 			nv.SkippedChecks = append(nv.SkippedChecks, v)
 			continue

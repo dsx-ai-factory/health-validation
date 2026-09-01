@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
@@ -31,10 +32,22 @@ func (m *twoSignalMeasurement) AddError(err error, signals ...string) {
 }
 
 func TestEvaluate_NotFound(t *testing.T) {
-	cat := catalog.New()
+	cat := catalog.New(catalog.WithArchitecture(catalogtest.DummyArchitecture))
 	_, err := cat.Evaluate("nonexistent", gpu.GPUMeasurement{})
 	if err == nil {
 		t.Error("expected error for missing check")
+	}
+}
+
+func TestEvaluate_ArchitectureUnset(t *testing.T) {
+	cat := catalog.New()
+	_, err := cat.Evaluate("cpu_count", gpu.GPUMeasurement{})
+	if !errors.Is(err, catalog.ErrArchitectureUnset) {
+		t.Fatalf("Evaluate error = %v, want ErrArchitectureUnset", err)
+	}
+	_, err = cat.EvaluateAllRaw()
+	if !errors.Is(err, catalog.ErrArchitectureUnset) {
+		t.Fatalf("EvaluateAllRaw error = %v, want ErrArchitectureUnset", err)
 	}
 }
 
@@ -103,7 +116,10 @@ func TestEvaluateAll_RoutesByRequiredSignals_NoCrossMeasurementSkips(t *testing.
 		},
 	}
 
-	cat := catalog.NewEmpty(catalog.WithExecutionContext(health.OperatorInfra))
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
 	cat.MustRegister(inventory)
 	cat.MustRegister(perDevice)
 
@@ -201,7 +217,7 @@ func TestEvaluateAll_Dependencies(t *testing.T) {
 	}
 
 	cat := catalog.NewEmpty(
-		catalog.WithArchitecture("GB200"),
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 	cat.MustRegister(driver)
@@ -542,7 +558,10 @@ func TestEvaluate_RuleRecommendedActionOverridesCheckDefault(t *testing.T) {
 		},
 	}
 
-	cat := catalog.NewEmpty(catalog.WithExecutionContext(health.OperatorInfra))
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
 	cat.MustRegister(check)
 
 	rebootCase := twoSignalMeasurement{First: 4, Second: 1}
@@ -596,7 +615,10 @@ func TestEvaluate_AllMatchingRulesAggregate(t *testing.T) {
 		},
 	}
 
-	cat := catalog.NewEmpty(catalog.WithExecutionContext(health.OperatorInfra))
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
 	cat.MustRegister(check)
 
 	// All three rules fire simultaneously.
@@ -660,7 +682,10 @@ func TestEvaluate_MultiMatchPicksTopPriorityOverride(t *testing.T) {
 		},
 	}
 
-	cat := catalog.NewEmpty(catalog.WithExecutionContext(health.OperatorInfra))
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
 	cat.MustRegister(check)
 
 	m := twoSignalMeasurement{First: 4, Second: 1}
@@ -706,6 +731,20 @@ func TestEvaluateAll_NodeVerdict(t *testing.T) {
 	}
 	if nv.ExitCode() != 1 {
 		t.Errorf("exit code = %d, want 1", nv.ExitCode())
+	}
+}
+
+// Every verdict the catalog aggregates must name the catalog that produced
+// it, so a consumer can tell whether a threshold or rule fix was in effect.
+func TestEvaluateAll_StampsCatalogVersion(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+
+	nv, err := cat.EvaluateAll(node.NodeMeasurement{GPUCount: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nv.CatalogVersion == "" {
+		t.Error("CatalogVersion is empty; every catalog-produced verdict must carry one")
 	}
 }
 
@@ -825,7 +864,7 @@ func requiredThresholdCheck() health.CheckDefinition {
 // to run: it skips rather than evaluating against a placeholder default, so a
 // configuration gap never reports as a node fault.
 func TestEvaluate_SkipsUnconfiguredRequiredThreshold(t *testing.T) {
-	cat := catalog.New()
+	cat := catalog.New(catalog.WithArchitecture(catalogtest.DummyArchitecture))
 	if err := cat.Register(requiredThresholdCheck()); err != nil {
 		t.Fatal(err)
 	}
@@ -845,11 +884,14 @@ func TestEvaluate_SkipsUnconfiguredRequiredThreshold(t *testing.T) {
 // Once supplied, the Required threshold behaves like any other: the check
 // evaluates against the operator's value.
 func TestEvaluate_RunsConfiguredRequiredThreshold(t *testing.T) {
-	cat := catalog.New(catalog.WithOverrides(catalog.NewOverrideSet(catalog.Override{
-		CheckID:       "required_threshold_check",
-		ThresholdName: "expected_first",
-		Value:         int64(1),
-	})))
+	cat := catalog.New(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithOverrides(catalog.NewOverrideSet(catalog.Override{
+			CheckID:       "required_threshold_check",
+			ThresholdName: "expected_first",
+			Value:         int64(1),
+		})),
+	)
 	if err := cat.Register(requiredThresholdCheck()); err != nil {
 		t.Fatal(err)
 	}
@@ -863,5 +905,111 @@ func TestEvaluate_RunsConfiguredRequiredThreshold(t *testing.T) {
 	}
 	if v.Severity != health.Pass {
 		t.Errorf("severity = %v, want PASS", v.Severity)
+	}
+}
+
+// scopedCheck is a synthetic DomainScope check. The table below drives it down
+// all four paths that build a verdict from a definition: pass, matched,
+// skipped, and errored.
+func scopedCheck() health.CheckDefinition {
+	return health.CheckDefinition{
+		ID:                "scoped_check",
+		Category:          health.Node,
+		ConditionScope:    health.DomainScope,
+		RequiredSignals:   []string{"first"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "first < 0", Severity: health.Critical, Message: "negative"},
+		},
+	}
+}
+
+// TestEvaluate_ConditionScope drives scopedCheck down all four paths that
+// build a verdict from a definition and asserts each one's severity, skip
+// state, and ConditionScope.
+func TestEvaluate_ConditionScope(t *testing.T) {
+	tests := []struct {
+		// measurement precedes name because fieldalignment scores pointer-scan
+		// bytes, not padding: an 8-byte func ahead of a 16-byte string keeps the
+		// scanned span at 16.
+		measurement        func() twoSignalMeasurement
+		name               string
+		wantSeverity       health.Severity
+		wantSkipReason     health.SkipReason
+		wantConditionScope health.ConditionScope
+		disableCheck       bool
+		wantSkipped        bool
+	}{
+		{
+			name:               "pass",
+			measurement:        func() twoSignalMeasurement { return twoSignalMeasurement{First: 1} },
+			wantSeverity:       health.Pass,
+			wantConditionScope: health.DomainScope,
+		},
+		{
+			// ConditionScope describes the check, not the observation, so a
+			// skipped verdict still reports what that check would have
+			// implicated. RecommendedAction cannot do this: a skipped verdict
+			// carries none.
+			name:               "disabled and skipped",
+			disableCheck:       true,
+			measurement:        func() twoSignalMeasurement { return twoSignalMeasurement{First: 1} },
+			wantSkipped:        true,
+			wantSkipReason:     health.CheckDisabled,
+			wantConditionScope: health.DomainScope,
+		},
+		{
+			// A failure to observe is node-local whatever the check would have
+			// implicated: the rules never ran, so nothing off-node was seen.
+			// Reporting the check's declared scope here would route a local
+			// sensor failure to the fabric owner, the same mistake the
+			// collection-failure action already avoids.
+			name: "collection failure",
+			measurement: func() twoSignalMeasurement {
+				m := twoSignalMeasurement{First: 1}
+				m.AddError(errors.New("sensor unavailable"), "first")
+				return m
+			},
+			wantSeverity:       health.Critical,
+			wantConditionScope: health.NodeScope,
+		},
+		{
+			// A matched rule is a real detected condition, so it carries the
+			// check's declared scope. This is the path where blast radius
+			// drives triage.
+			name:               "matched rule",
+			measurement:        func() twoSignalMeasurement { return twoSignalMeasurement{First: -1} },
+			wantSeverity:       health.Critical,
+			wantConditionScope: health.DomainScope,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := []catalog.Option{
+				catalog.WithArchitecture(catalogtest.DummyArchitecture),
+				catalog.WithExecutionContext(health.OperatorInfra),
+			}
+			if tt.disableCheck {
+				opts = append(opts, catalog.WithDisabledChecks("scoped_check"))
+			}
+			cat := catalog.NewEmpty(opts...)
+			cat.MustRegister(scopedCheck())
+
+			v, err := cat.Evaluate("scoped_check", tt.measurement())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Skipped != tt.wantSkipped || v.SkipReason != tt.wantSkipReason {
+				t.Fatalf("skipped=%v reason=%v, want skipped=%v reason=%v", v.Skipped, v.SkipReason, tt.wantSkipped, tt.wantSkipReason)
+			}
+			if !tt.wantSkipped && v.Severity != tt.wantSeverity {
+				t.Fatalf("severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if v.ConditionScope != tt.wantConditionScope {
+				t.Errorf("ConditionScope = %v, want %v", v.ConditionScope, tt.wantConditionScope)
+			}
+		})
 	}
 }

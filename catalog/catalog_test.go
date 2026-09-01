@@ -136,3 +136,19 @@ func TestCatalog_RegisterRejectsRequiredFixedThreshold(t *testing.T) {
 		t.Fatalf("Register error = %v, want fixed-and-required rejection", err)
 	}
 }
+
+func TestCatalog_RegisterRejectsIncompletePerArchitecture(t *testing.T) {
+	err := NewEmpty().Register(health.CheckDefinition{
+		ID:            "incomplete_per_arch",
+		Architectures: []string{"GB200", "GB300"},
+		Thresholds: map[string]health.ThresholdSpec{
+			"expected_value": {
+				PerArchitecture: map[string]any{"GB200": int64(1)},
+				Category:        health.DefaultThreshold,
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "GB300") {
+		t.Fatalf("Register error = %v, want missing GB300 named", err)
+	}
+}

@@ -21,6 +21,7 @@ interface CheckDefinition {
   name: string;
   description: string;
   category: string;
+  condition_scope: string;
   provenance: string;
   maturity_level: string;
   execution_class: string;
@@ -44,6 +45,7 @@ function CheckDetail({ check }: { check: CheckDefinition }) {
 
       <div className={styles.metaRow}>
         <Chip label={check.provenance} />
+        <Chip label={check.condition_scope} />
         <Chip label={check.execution_class} />
         <Chip label={check.scheduling_cadence} />
         <Chip label={check.maturity_level} variant="neutral" />

@@ -5,7 +5,7 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // NVLinkFabric returns the check definition for NVLink fabric
 // registration.
 //
-// On GB200 a GPU must register with the shared NVLink fabric before it
+// On GB200/GB300 a GPU must register with the shared NVLink fabric before it
 // can route traffic to its peers; a GPU that never completes
 // registration, or completes it with a failure status, is cut off from
 // multi-GPU NVLink collectives. Both conditions are collected per GPU
@@ -31,8 +31,9 @@ func NVLinkFabric() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200"},
+		Architectures:     []string{"GB200", "GB300"},
 
+		ConditionScope:    health.DomainScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
 		RecommendedAction: health.Drain(health.DiagnosticActionRetestHardware),

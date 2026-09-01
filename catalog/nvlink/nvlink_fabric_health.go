@@ -39,6 +39,7 @@ func NVLinkFabricHealth() health.CheckDefinition {
 		SchedulingCadence: health.Continuous,
 		Architectures:     []string{"GB200", "GB300"},
 
+		ConditionScope:    health.DomainScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
 		RecommendedAction: health.Drain(health.DiagnosticActionRetestHardware),

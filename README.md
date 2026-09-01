@@ -20,6 +20,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 ```json
 {
   "schema_version": "0.1",
+  "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
   "overall_severity": "PASS",
   "severity_by_domain": {},
@@ -30,6 +31,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "check_id": "gpu_count",
       "severity": "PASS",
       "category": "node",
+      "condition_scope": "NODE",
       "skipped": false,
       "skip_reason": "NOT_SKIPPED",
       "maturity_level": "stable",
@@ -45,6 +47,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 ```json
 {
   "schema_version": "0.1",
+  "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "severity_by_domain": {
     "node": "CRITICAL",
@@ -92,6 +95,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       ],
       "severity": "CRITICAL",
       "category": "node",
+      "condition_scope": "NODE",
       "skipped": false,
       "nvidia_endorsed": true
     },
@@ -113,6 +117,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "check_id": "nvlink_active",
       "severity": "PASS",
       "category": "nvlink",
+      "condition_scope": "NODE",
       "skipped": false,
       "nvidia_endorsed": true
     },
@@ -134,6 +139,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
       ],
       "severity": "CRITICAL",
       "category": "xid",
+      "condition_scope": "NODE",
       "skipped": false,
       "nvidia_endorsed": true
     }
@@ -150,7 +156,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks`/`completion_ratio` — read `overall_severity` in the JSON for the precise level.
 
-The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers.
+The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers. `catalog_version` names the catalog module that produced the verdict, so consumers can verify which check logic and default thresholds were available when the run occurred.
 
 ## How it works
 
@@ -188,8 +194,10 @@ The catalog includes these check families:
 |---|---|---|---|
 | `cpu_count` | cpu | Whether every kernel-possible logical CPU is online | None |
 | `numa_node_count` | cpu | Whether the node brought online the expected number of NUMA nodes | `expected_numa_node_count` |
+| `gpu_average_power_draw` | gpu | Whether each GPU's one-second average power draw is within the configured range | `min_power_w`, `max_power_w` |
 | `gpu_power_limit` | gpu | Whether each GPU's power limit matches the expected value | `expected_power_limit_w` |
 | `gpu_power_state` | gpu | Whether each GPU is in the expected power state | `expected_gpu_pstate` |
+| `gpu_sensor_throttle` | gpu | Whether any GPU is being clamped by hardware slowdown, thermal, or power-brake protection | None |
 | `gpu_count` | node | Number of GPUs present on the node | `expected_gpu_count` |
 | `nvlink_active` | nvlink | Number of active NVLink connections | `max_inactive_nvlinks` |
 | `nvlink_fabric_health` | nvlink | NVLink fabric-health fault bits (degraded bandwidth, route recovery, access timeout) | None |
@@ -208,10 +216,13 @@ Each check definition carries:
 - `category`: the hardware domain (cpu, gpu, node, nvlink, pcie, infiniband, storage, xid)
 - `provenance`: `nvidia` for all built-in checks
 - `maturity_level`: stable or experimental
+- `condition_scope`: how far the condition reaches (NODE, DOMAIN, CLUSTER)
+
+> **GB300 support.** Most checks in the catalog declare support for both GB200 and GB300 in their `Architectures` field. GB200 support has been validated; GB300 support has not yet completed the same validation pass. Treat GB300 results as directionally correct but experimental and subject to change until this note is removed.
 
 ## Prerequisites
 
-- go 1.27rc2
+- go 1.27.0
 - Linux sysfs exposing `/sys/devices/system/cpu/{possible,online}` and `/sys/devices/system/node/online` (required for CPU collection)
 - NVIDIA driver (required for the GPU sensor; not required if you supply measurements directly)
 - NVML (libnvidia-ml) for the NVML-backed sensor

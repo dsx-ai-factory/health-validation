@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
@@ -90,9 +91,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 
 // TestBuildCatalogAppliesArchitecture confirms a detected architecture is
 // wired into the catalog: a check skips on an architecture it does not cover
-// (A100 here) instead of running with the wrong thresholds. With an empty
-// architecture the filter stays off, which the other buildCatalog tests
-// exercise.
+// (A100 here) instead of running with the wrong thresholds.
 func TestBuildCatalogAppliesArchitecture(t *testing.T) {
 	cat, _, err := buildCatalog("", nil, "A100")
 	if err != nil {
@@ -160,6 +159,10 @@ func (x xidSpyBackend) Measure(context.Context) ([]health.Measurement, error) {
 // (no NVML, no cgo). One spy backs all three per-domain accessors, mirroring
 // the real host where a single NVML backend does. Installed by overwriting
 // App.host.
+//
+// architecture reports GB200: runCommand Evaluates the full builtin catalog,
+// so this must be a real generation. catalogtest.DummyArchitecture would skip
+// scoped checks (see TestNUMANodeCountReachesVerdict). Empty is a discovery failure.
 type fakeHost struct {
 	b spyBackend
 }
@@ -167,7 +170,7 @@ type fakeHost struct {
 func (h fakeHost) gpuBackend() toolkit.GPUBackend       { return h.b }
 func (h fakeHost) nodeBackend() toolkit.NodeBackend     { return h.b }
 func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
-func (fakeHost) architecture() (string, error)          { return "", nil }
+func (fakeHost) architecture() (string, error)          { return "GB200", nil }
 func (fakeHost) close() error                           { return nil }
 
 // panicHost ensures invalid input returns before touching the host backend.
@@ -558,7 +561,7 @@ func TestExitCodeForVerdict(t *testing.T) {
 // which is CRITICAL when gpu_count > 8.
 func nodeCatalog(t *testing.T) *catalog.Catalog {
 	t.Helper()
-	cat := catalog.NewEmpty()
+	cat := catalog.NewEmpty(catalog.WithArchitecture(catalogtest.DummyArchitecture))
 	if err := cat.Register(customCheck()); err != nil {
 		t.Fatalf("register custom check: %v", err)
 	}
@@ -611,7 +614,7 @@ func TestEvaluateExitCodes(t *testing.T) {
 
 func TestWriteVerdictNodeID(t *testing.T) {
 	t.Run("stamps a value copy", func(t *testing.T) {
-		input := health.NodeVerdict{NodeID: "upstream"}
+		input := health.NodeVerdict{NodeID: "upstream", CatalogVersion: "upstream"}
 		var stdout, stderr bytes.Buffer
 		if code := writeVerdict(input, "test", "  node-123  ", &stdout, &stderr); code != exitOK {
 			t.Fatalf("writeVerdict exit = %d, want %d; stderr = %q", code, exitOK, stderr.String())
@@ -624,8 +627,14 @@ func TestWriteVerdictNodeID(t *testing.T) {
 		if output.NodeID != testNodeID {
 			t.Errorf("output NodeID = %q, want %q", output.NodeID, testNodeID)
 		}
+		if got, want := output.CatalogVersion, "upstream"; got != want {
+			t.Errorf("output CatalogVersion = %q, want %q", got, want)
+		}
 		if input.NodeID != "upstream" {
 			t.Errorf("input NodeID = %q, want the original value", input.NodeID)
+		}
+		if input.CatalogVersion != "upstream" {
+			t.Errorf("input CatalogVersion = %q, want the original value", input.CatalogVersion)
 		}
 	})
 
@@ -733,6 +742,14 @@ func TestRunCommandArchDiscoveryFailureDrains(t *testing.T) {
 	}
 	if v.NodeID != "nvl72d014-T02" {
 		t.Errorf("NodeID = %q, want %q", v.NodeID, "nvl72d014-T02")
+	}
+	// The synthetic verdict has no CheckDefinition to copy a scope from, so it is
+	// set by hand. Unenumerable GPUs are a node-local condition.
+	if len(v.CheckResults) != 1 {
+		t.Fatalf("CheckResults = %d, want 1", len(v.CheckResults))
+	}
+	if got := v.CheckResults[0]; got.CheckID != "architecture_discovery" || got.ConditionScope != health.NodeScope {
+		t.Errorf("check result = {id:%q scope:%v}, want {architecture_discovery NODE}", got.CheckID, got.ConditionScope)
 	}
 	if collected {
 		t.Error("collected measurements despite discovery failure; must not evaluate against wrong thresholds")

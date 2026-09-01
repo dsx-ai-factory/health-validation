@@ -24,7 +24,9 @@ func TestNodeVerdictSchema_InSyncWithContract(t *testing.T) {
 			SchemaVersion struct {
 				Const string `json:"const"`
 			} `json:"schema_version"`
+			CatalogVersion json.RawMessage `json:"catalog_version"`
 		} `json:"properties"`
+		Required []string `json:"required"`
 	}
 	if err := json.Unmarshal(nodeVerdictSchema, &doc); err != nil {
 		t.Fatalf("parse node-verdict.schema.json: %v", err)
@@ -33,6 +35,12 @@ func TestNodeVerdictSchema_InSyncWithContract(t *testing.T) {
 	if doc.Properties.SchemaVersion.Const != NodeVerdictSchemaVersion {
 		t.Errorf("schema_version const = %q, want %q (NodeVerdictSchemaVersion); update node-verdict.schema.json",
 			doc.Properties.SchemaVersion.Const, NodeVerdictSchemaVersion)
+	}
+	if len(doc.Properties.CatalogVersion) == 0 {
+		t.Error("catalog_version missing from schema properties")
+	}
+	if !slices.Contains(doc.Required, "catalog_version") {
+		t.Error("catalog_version missing from schema required fields")
 	}
 
 	// Each enum's wire values are defined once, in the Go name maps; the
@@ -43,6 +51,7 @@ func TestNodeVerdictSchema_InSyncWithContract(t *testing.T) {
 	}{
 		{"severity", wireValues(severityNames)},
 		{"category", wireValues(categoryNames)},
+		{"conditionScope", wireValues(conditionScopeNames)},
 		{"skipReason", wireValues(skipReasonNames)},
 		{"maturityLevel", wireValues(maturityLevelNames)},
 		{"thresholdCategory", wireValues(thresholdCategoryNames)},
@@ -68,4 +77,23 @@ func wireValues[K comparable](m map[K]string) []string {
 		out = append(out, v)
 	}
 	return out
+}
+
+// The enum table above pins conditionScope's wire values but not that anything
+// uses them, so the property can vanish from checkVerdict while the $def stays
+// and every other test passes.
+func TestNodeVerdictSchema_CheckVerdictDeclaresConditionScope(t *testing.T) {
+	var doc struct {
+		Defs struct {
+			CheckVerdict struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+			} `json:"checkVerdict"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(nodeVerdictSchema, &doc); err != nil {
+		t.Fatalf("parse node-verdict.schema.json: %v", err)
+	}
+	if _, ok := doc.Defs.CheckVerdict.Properties["condition_scope"]; !ok {
+		t.Error("$defs.checkVerdict.properties.condition_scope missing; the schema must describe every field CheckVerdict emits")
+	}
 }

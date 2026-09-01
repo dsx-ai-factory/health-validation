@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
@@ -32,7 +33,10 @@ func xidPresenceCheck() health.CheckDefinition {
 }
 
 func xidCatalog() *catalog.Catalog {
-	cat := catalog.NewEmpty(catalog.WithExecutionContext(health.OperatorInfra))
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
 	cat.MustRegister(xidPresenceCheck())
 	return cat
 }

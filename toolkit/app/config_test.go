@@ -34,6 +34,25 @@ func TestOverridesCoercesToThresholdType(t *testing.T) {
 	}
 }
 
+func TestOverridesCoercesAveragePowerDrawBounds(t *testing.T) {
+	cfg := &Config{Checks: map[string]map[string]any{
+		"gpu_average_power_draw": {
+			"min_power_w": 65,
+			"max_power_w": 1500,
+		},
+	}}
+
+	os, err := cfg.Overrides(catalog.New())
+	if err != nil {
+		t.Fatalf("Overrides: %v", err)
+	}
+
+	got := os.ForCheck("gpu_average_power_draw")
+	if got["min_power_w"] != float64(65) || got["max_power_w"] != float64(1500) {
+		t.Fatalf("average power bounds = %#v, want min=65 and max=1500 as float64", got)
+	}
+}
+
 // coerce handles []string thresholds (whitespace-trimmed, rejecting
 // non-lists, non-string items, and empties). Exercised directly on the
 // coercion helper since no built-in check currently declares a []string
@@ -274,9 +293,10 @@ func TestEvaluatePassingNode(t *testing.T) {
 	sensors := []toolkit.Sensor{
 		toolkit.NewGPUSensor(toolkit.MockGPU(
 			gpu.GPUMeasurement{
-				GPUID:                "GPU-0",
-				PowerLimitMW:         1_200_000,
-				EnforcedPowerLimitMW: 1_200_000,
+				GPUID:               "GPU-0",
+				AveragePowerDrawW:   220,
+				PowerLimitW:         1200,
+				EnforcedPowerLimitW: 1200,
 			},
 		)),
 		toolkit.NewNodeSensor(toolkit.MockNode(
@@ -313,7 +333,7 @@ func TestBuildCatalogAppliesConfigOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, _, err := buildCatalog(path, nil, "")
+	cat, _, err := buildCatalog(path, nil, "GB200")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -357,7 +377,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, timeout, err := buildCatalog(path, nil, "")
+	cat, timeout, err := buildCatalog(path, nil, "GB200")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -410,7 +430,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 // a produced CRITICAL verdict is an out-of-service outcome. The full
 // severity still lives in the JSON verdict written to stdout.
 func TestEvaluateGPUCountMismatch(t *testing.T) {
-	cat := catalog.New()
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
 	sensors := []toolkit.Sensor{
 		toolkit.NewNodeSensor(toolkit.MockNode(
 			node.NodeMeasurement{GPUCount: 3},

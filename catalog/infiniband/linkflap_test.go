@@ -43,7 +43,7 @@ func TestRDMALinkFlapFatalDefinition(t *testing.T) {
 	if got, want := def.RequiredSignals, []string{infiniband.SignalOutageDurations}; !slices.Equal(got, want) {
 		t.Errorf("RequiredSignals = %v, want %v", got, want)
 	}
-	if got, want := def.Architectures, []string{"GB200"}; !slices.Equal(got, want) {
+	if got, want := def.Architectures, []string{"GB200", "GB300"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
 	if def.RecommendedAction != health.Drain(health.DiagnosticActionCheckNetwork) {
@@ -152,8 +152,8 @@ func TestRDMALinkFlapFatal_Errored(t *testing.T) {
 	}
 }
 
-// The check is scoped to GB200: on another architecture it skips rather
-// than evaluating, even when a fatal outage is present.
+// The check is scoped to GB200/GB300: on another architecture it skips
+// rather than evaluating, even when a fatal outage is present.
 func TestRDMALinkFlapFatal_SkipsOffArchitecture(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("A100"),

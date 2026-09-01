@@ -329,11 +329,12 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	// Detect the node architecture so architecture-scoped checks run only
 	// where they apply. A discovery failure is a node fault — the GPUs are
 	// unenumerable or unreadable — so drain for that explicit reason instead
-	// of continuing with an empty architecture, which disables filtering and
-	// would evaluate every check against the wrong thresholds (falsely
-	// draining a healthy node) or skip a dead node into a false PASS.
+	// of evaluating with no architecture (Evaluate requires WithArchitecture).
 	arch, err := a.host.architecture()
-	if err != nil {
+	if err != nil || arch == "" {
+		if arch == "" {
+			err = fmt.Errorf("architecture is empty")
+		}
 		slog.Warn("architecture discovery failed", "err", err)
 		return writeVerdict(discoveryFailureVerdict(err), a.prog, resolvedNodeID, stdout, stderr)
 	}
@@ -434,6 +435,8 @@ func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch
 
 	// An empty architecture is reserved for backends that cannot detect one.
 	// NVML reports "unknown" for unrecognized devices so scoped checks still skip.
+	// Evaluate requires a non-empty architecture; the CLI fails discovery before
+	// it would construct a catalog with none.
 	var opts []catalog.Option
 	if arch != "" {
 		opts = append(opts, catalog.WithArchitecture(arch))
@@ -532,6 +535,7 @@ func discoveryFailureVerdict(cause error) health.NodeVerdict {
 		Timestamp:         time.Now(),
 		CheckID:           "architecture_discovery",
 		Category:          health.Node,
+		ConditionScope:    health.NodeScope,
 		Severity:          health.Critical,
 		Messages:          []string{fmt.Sprintf("could not determine GPU architecture: %v", cause)},
 		RecommendedAction: health.Drain(health.DiagnosticActionRetestHardware),

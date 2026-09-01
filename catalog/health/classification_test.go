@@ -2,6 +2,7 @@ package health
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -135,5 +136,68 @@ func TestMaturityLevel_UnmarshalInvalid(t *testing.T) {
 	var ml MaturityLevel
 	if err := json.Unmarshal([]byte(`"BOGUS"`), &ml); err == nil {
 		t.Error("Unmarshal of unknown maturity level: want error, got nil")
+	}
+}
+
+// NodeScope is the zero value, so a check that omits ConditionScope is treated
+// as node-local, the way every consumer already treats every check today. A
+// forgotten field can never widen a condition's blast radius.
+func TestConditionScopeZeroValueIsNodeScope(t *testing.T) {
+	var zero ConditionScope
+	if zero != NodeScope {
+		t.Fatalf("zero value = %v, want NodeScope", zero)
+	}
+}
+
+func TestConditionScopeContract(t *testing.T) {
+	tests := []struct {
+		name     string
+		jsonName string
+		scope    ConditionScope
+		ordinal  int
+	}{
+		{name: "NodeScope", jsonName: "NODE", scope: NodeScope, ordinal: 0},
+		{name: "DomainScope", jsonName: "DOMAIN", scope: DomainScope, ordinal: 1},
+		{name: "ClusterScope", jsonName: "CLUSTER", scope: ClusterScope, ordinal: 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := int(tt.scope); got != tt.ordinal {
+				t.Fatalf("ordinal = %d, want %d", got, tt.ordinal)
+			}
+			if got := tt.scope.String(); got != tt.jsonName {
+				t.Errorf("String = %q, want %q", got, tt.jsonName)
+			}
+
+			data, err := json.Marshal(tt.scope)
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+			if got, want := string(data), `"`+tt.jsonName+`"`; got != want {
+				t.Errorf("Marshal = %s, want %s", got, want)
+			}
+
+			var roundTrip ConditionScope
+			if err := json.Unmarshal(data, &roundTrip); err != nil {
+				t.Fatalf("Unmarshal: %v", err)
+			}
+			if roundTrip != tt.scope {
+				t.Errorf("round trip = %v, want %v", roundTrip, tt.scope)
+			}
+		})
+	}
+}
+
+// The error names the type, so a copy-pasted typeName from a neighboring enum
+// is caught here rather than surfacing to a consumer decoding a verdict.
+func TestConditionScope_UnmarshalInvalid(t *testing.T) {
+	var cs ConditionScope
+	err := json.Unmarshal([]byte(`"RACK"`), &cs)
+	if err == nil {
+		t.Fatal("Unmarshal of unknown condition scope: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown condition scope") {
+		t.Errorf("error = %q, want it to name the type", err)
 	}
 }

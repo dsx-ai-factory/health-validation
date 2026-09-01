@@ -1,7 +1,6 @@
 load("@aspect_bazel_lib//lib:transitions.bzl", "platform_transition_filegroup")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_image_index", "oci_load", "oci_push")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
-load("//build/rules/oci:dpkg_status.bzl", "merged_dpkg_status")
 load("//build/rules/oci:transition.bzl", "multi_arch")
 
 # Must be a glibc userland (Ubuntu), NOT scratch / static-distroless. Images
@@ -59,18 +58,6 @@ def _image(name, tars, base_image, visibility, tags = [], repository = None):
     )
     tars = tars + [arm64_linker_layer]
 
-    # An apt layer's own /var/lib/dpkg/status replaces the base's, hiding every
-    # base package from image scanners. Rebuild the database from both and stack
-    # it last so it wins. See dpkg_status.bzl.
-    dpkg_status_layer = "{}.image.dpkg_status".format(name)
-    merged_dpkg_status(
-        name = dpkg_status_layer,
-        base = base_image,
-        layers = tars,
-        tags = ["manual", "no-remote-cache"] + tags,
-    )
-    tars = tars + [dpkg_status_layer]
-
     image = "{}.image.pre_transitioned_image".format(name)
     oci_image(
         name = image,
@@ -85,7 +72,7 @@ def _image(name, tars, base_image, visibility, tags = [], repository = None):
     # target CPU (the host CPU under normal defaults, but a --platforms override
     # wins — e.g. --platforms=//build/platforms:linux_amd64 on an arm64 host
     # selects amd64). Transition to //build/platforms:linux_* (the repo's platforms with the
-    # CC/cgo toolchain + RBE exec_properties wired in), NOT
+    # CC/cgo toolchain configured), NOT
     # @rules_go//go/toolchain:linux_*: the latter lacks this repo's C toolchain
     # config, so cgo silently disables and a cgo binary like health-validation fails to
     # link its NVML bindings. This must match the platforms the multi_arch

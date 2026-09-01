@@ -53,11 +53,13 @@ func (tc *ThresholdCategory) UnmarshalJSON(data []byte) error {
 // ThresholdSpec defines a threshold in a check definition. It carries
 // the catalog-authored value and its governance classification.
 type ThresholdSpec struct {
-	Value any `json:"value"`
+	Value any `json:"value,omitempty"`
 	// PerArchitecture overrides Value for a specific detected architecture
 	// (keyed by the catalog architecture identifier, e.g. "H100"). It lets one
 	// check carry per-architecture defaults — e.g. NVLink speed differs by GPU
 	// generation. Architectures absent from the map fall back to Value.
+	// When the check declares Architectures, registration requires this map
+	// to include every listed architecture; Value may then be omitted.
 	PerArchitecture map[string]any    `json:"per_architecture,omitempty"`
 	Description     string            `json:"description,omitempty"`
 	Unit            string            `json:"unit,omitempty"`

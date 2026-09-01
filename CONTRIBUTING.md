@@ -54,7 +54,7 @@ bazel run //tools/gazelle
 > **Linux only:** The `toolkit/nvml/` package requires cgo and
 > `libnvidia-ml.so.1`. On macOS, the NVML backend stubs out and `go test
 > ./catalog/...` works, but `health-validation run` will exit with a backend
-> error. Use RBE or a Linux VM to test NVML-dependent code.
+> error. Use a Linux VM or container to test NVML-dependent code.
 
 ## Adding a Health Check
 
