@@ -17,10 +17,9 @@ go_deps.from_file(go_work = "//:go.work")
 # go_default_library alias for compatibility), matching every other go_deps
 # repo.
 go_deps.gazelle_override(
-    path = "github.com/google/cel-go",
     build_file_generation = "clean",
+    path = "github.com/google/cel-go",
 )
-
 use_repo(
     go_deps,
     "co_honnef_go_tools",

@@ -38,6 +38,12 @@ pseudo_version() {
 	base="$(git describe --tags --abbrev=0 --match "${module}/v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)"
 	base="${base:-${module}/v0.0.0}"
 	base="${base#"${module}/v"}"
+	# Commits after an RC remain prereleases of the same final version.
+	if [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]]; then
+		printf 'v%s.0.%s-%s\n' "$base" "$pseudo_ts" "$short"
+		return
+	fi
+
 	IFS=. read -r major minor patch <<<"$base"
 	patch="${patch%%[-+]*}"
 	printf 'v%s.%s.%s-0.%s-%s\n' "$major" "$minor" "$((10#$patch + 1))" "$pseudo_ts" "$short"
