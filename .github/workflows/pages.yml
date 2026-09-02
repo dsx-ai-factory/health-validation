@@ -1,0 +1,116 @@
+name: Pages
+
+# Kept separate from ci.yml on purpose. ci.yml also runs on pull-request/*
+# branches, which must never deploy; GitHub permits one in-flight Pages
+# deployment, which needs a concurrency group that would fight ci.yml's
+# per-ref group; and `pages: write` / `id-token: write` stay scoped to the one
+# job that needs them instead of being granted to all of CI.
+#
+# workflow_dispatch is here because Pages must be enabled by a repository
+# admin (Settings -> Pages -> Source: GitHub Actions) before this workflow can
+# succeed, and because republishing on demand is occasionally useful.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+
+  build:
+    if: github.repository == 'dsx-ai-factory/health-validation'
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Runs before the build so a disabled Pages site fails in seconds rather
+      # than after a full Docusaurus build. Reads the site config only;
+      # enabling Pages needs an admin token and is deliberately not attempted.
+      - uses: actions/configure-pages@v6
+        id: pages
+
+      - name: Install Bazelisk
+        run: |
+          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/bazel" \
+            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
+          chmod +x "$HOME/.local/bin/bazel"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-version: 1.28.1
+          bazelisk-cache: true
+          # Pinned to CI rather than ${{ github.workflow }}: keying on this
+          # workflow's own name would miss the cache the CI workflow already
+          # warms for the same targets.
+          disk-cache: CI
+          repository-cache: true
+
+      # Deliberately no `paths:` filter on the trigger. The check reference
+      # pages are generated from catalog/**/*.go by //catalog/cmd/gencheckpages,
+      # so filtering on docs/** would silently keep serving a stale catalog
+      # after a check changes.
+      - name: Build the docs site
+        run: bazel build --config=ci //docs:build
+
+      # Pages serves private and internal sites from the root of a generated
+      # subdomain rather than under /<repo>/, so a baseUrl that is right for
+      # the public URL 404s every asset on the internal one. deploy-pages
+      # reports success either way and an access-controlled site cannot be
+      # checked anonymously after the fact, so compare the prefix baked into
+      # the built HTML against the path Pages actually serves from, and fail
+      # before anything is published.
+      - name: Check baseUrl against the Pages base path
+        run: |
+          href=$(grep -o 'href="[^"]*assets/css/[^"]*\.css"' bazel-bin/docs/build/index.html | head -1 | cut -d'"' -f2 || true)
+          if [ -z "$href" ]; then
+            echo "::error::no stylesheet link found in bazel-bin/docs/build/index.html"
+            exit 1
+          fi
+          built="${href%%assets/*}"
+          built="${built%/}"
+          expected="$PAGES_BASE_PATH"
+          expected="${expected%/}"
+          if [ "$built" != "$expected" ]; then
+            echo "::error::docs build serves assets under '${built}/' but Pages serves this site from '${expected}/'. Set baseUrl in docs/docusaurus.config.ts to '${expected}/'."
+            exit 1
+          fi
+          echo "baseUrl matches the Pages base path: '${built}/'"
+        env:
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+
+      # Bazel outputs are read-only and bazel-bin is a symlink, but the action
+      # only reads and tars with --dereference, so no copy is needed.
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: bazel-bin/docs/build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
