@@ -100,7 +100,7 @@ func TestGPUAveragePowerDraw_OutOfRange(t *testing.T) {
 			if v.Severity != health.Critical {
 				t.Fatalf("Severity = %v, want CRITICAL", v.Severity)
 			}
-			if v.RecommendedAction != health.Drain(health.DiagnosticActionCheckMechanicals) {
+			if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckMechanicals)) {
 				t.Errorf("RecommendedAction = %v, want drain/check_mechanicals", v.RecommendedAction)
 			}
 			message := strings.Join(v.Messages, " ")
@@ -154,7 +154,7 @@ func TestGPUAveragePowerDraw_ErroredSignal(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("Severity = %v, want CRITICAL", v.Severity)
 	}
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionCheckCollection) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckCollection)) {
 		t.Errorf("RecommendedAction = %v, want drain/check_collection", v.RecommendedAction)
 	}
 }

@@ -163,7 +163,7 @@ func TestCollectWithTimeout_CPUTimeoutDegradesToCritical(t *testing.T) {
 	if len(result.Messages) != 1 || !strings.Contains(result.Messages[0], health.ErrCollectionTimeout.Error()) {
 		t.Errorf("messages = %v, want collection timeout", result.Messages)
 	}
-	if got, want := result.RecommendedAction, health.Drain(health.DiagnosticActionRetryCollection); got != want {
+	if got, want := result.RecommendedAction, health.Drain(health.RemediationActionRetryCollection); !got.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", got, want)
 	}
 }
@@ -194,7 +194,7 @@ func TestCollectWithTimeout_CPUBackendFailureProducesResult(t *testing.T) {
 	if len(result.Messages) != 1 || !strings.Contains(result.Messages[0], cause.Error()) {
 		t.Errorf("messages = %v, want backend failure", result.Messages)
 	}
-	if got, want := result.RecommendedAction, health.Drain(health.DiagnosticActionCheckCollection); got != want {
+	if got, want := result.RecommendedAction, health.Drain(health.RemediationActionCheckCollection); !got.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", got, want)
 	}
 }

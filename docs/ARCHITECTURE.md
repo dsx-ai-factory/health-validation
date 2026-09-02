@@ -64,7 +64,7 @@ To add a sensor for a new hardware domain: define a measurement struct in `catal
 
 ## Output schema
 
-The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (currently `"0.2"`, from `NodeVerdictSchemaVersion` in `catalog/health/verdict.go`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
+The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (currently `"1.0"`, from `NodeVerdictSchemaVersion` in `catalog/health/verdict.go`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
 
 ### NodeVerdict
 
@@ -80,7 +80,8 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | CheckResults | []CheckVerdict | `check_results` | Per-check results for checks that ran. |
 | SkippedChecks | []CheckVerdict | `skipped_checks` | Per-check results for checks that were skipped. |
 | AffectedComponents | []AffectedComponent | `affected_components` | Non-PASS domains with their affected entities and check IDs. |
-| RecommendedAction | RecommendedAction | `recommended_action` | Node-level remediation object `{operational_state, diagnostic_action}` selected from the checks tying at `overall_severity`; elided (`omitzero`) when no action applies. |
+
+`NodeVerdict` carries no node-level `RecommendedAction`. Each `CheckVerdict` carries its own remediation sequence; with several checks potentially tying at `overall_severity`, there is no longer a single, clearly-ranked action to surface at the node level. Consumers that need node-level remediation should walk `CheckResults`.
 
 ### CheckVerdict
 
@@ -91,14 +92,14 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | TraceID | string | `trace_id` | The run's `trace_id`, echoed here so a check result is self-correlating when consumed on its own. |
 | Severity | Severity | `severity` | PASS, INFO, WARNING, CRITICAL, or UNKNOWN. |
 | Category | Category | `category` | Hardware domain: cpu, gpu, node, nvlink, pcie, infiniband, storage, xid. |
-| ConditionScope | ConditionScope | `condition_scope` | Blast radius of the condition: `NODE` (this node's own hardware explains it), `DOMAIN` (explaining it requires the NVLink domain shared with peer nodes), `CLUSTER` (explaining it requires the cluster network fabric beyond the node). A collection-failure verdict reports `NODE`; a skipped verdict keeps the check's declared value. Independent of `recommended_action`, which is always node-local. |
+| ConditionScope | ConditionScope | `condition_scope` | Blast radius of the condition: `NODE` (this node's own hardware explains it), `DOMAIN` (explaining it requires the NVLink domain shared with peer nodes), `CLUSTER` (explaining it requires the cluster network fabric beyond the node). A collection-failure verdict reports `NODE`; a skipped verdict keeps the check's declared value. Independent of `recommended_action`'s `remediation_actions`, which are always node-local. |
 | Skipped | bool | `skipped` | True if the check did not run. |
 | SkipReason | SkipReason | `skip_reason` | Machine-readable skip code (see below). |
 | SkipDetail | string | `skip_detail` | Human-readable skip explanation. |
 | AffectedEntities | []string | `affected_entities` | Device identifiers with non-PASS results (e.g. GPU UUIDs). |
 | ObservedValues | map[string]any | `observed_values` | Signal values that triggered the matching rule. |
 | Thresholds | map[string]ResolvedThreshold | `thresholds` | Threshold values used in evaluation, with override provenance. |
-| RecommendedAction | RecommendedAction | `recommended_action` | Structured remediation object `{operational_state, diagnostic_action}`. `diagnostic_action` is present only when `operational_state` is `drain`; the field is elided (`omitzero`) when no action applies. |
+| RecommendedAction | RecommendedAction | `recommended_action` | Structured remediation object `{operational_state, remediation_actions}`. `remediation_actions` is an ordered sequence of remediation steps for a remediation engine to work through, present only when `operational_state` is `drain`; the field is elided (`omitzero`) when no action applies. |
 | Messages | []string | `messages` | Human-readable verdict messages, one per matching rule. |
 | MaturityLevel | enum | `maturity_level` | `stable` or `experimental`. |
 | NVIDIAEndorsed | bool | `nvidia_endorsed` | True for `provenance: nvidia` checks. |

@@ -3,12 +3,13 @@ package health
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 )
 
 // OperationalState names the node-level state change a verdict
 // recommends. It is the high-level "what should happen to the node?"
-// answer; the [DiagnosticAction] companion narrows the why when the
-// state is [OperationalDrain].
+// answer; the [RemediationAction] companion sequence narrows the why when
+// the state is [OperationalDrain].
 type OperationalState int
 
 const (
@@ -21,8 +22,8 @@ const (
 	OperationalMonitor
 
 	// OperationalDrain removes the node from scheduling so the
-	// finding can be remediated. The accompanying [DiagnosticAction]
-	// names the specific remediation.
+	// finding can be remediated. The accompanying [RemediationAction]
+	// sequence names the specific remediation steps.
 	OperationalDrain
 )
 
@@ -53,200 +54,98 @@ func (s *OperationalState) UnmarshalJSON(data []byte) error {
 	return unmarshalEnum(data, operationalStateFromName, s, "operational state")
 }
 
-// DiagnosticAction is the finer-grained remediation tag carried
-// alongside [OperationalDrain]. It is meaningful only when the
-// companion [OperationalState] is [OperationalDrain]; verdicts elide
-// it from JSON otherwise.
-type DiagnosticAction int
+// RemediationAction is a single step in the remediation sequence carried
+// alongside [OperationalDrain]. It is meaningful only when the companion
+// [OperationalState] is [OperationalDrain]; verdicts elide the sequence
+// from JSON otherwise.
+//
+// Unlike the enum types in this package, RemediationAction is an open
+// string type: the constants below name the steps NVIDIA's own catalog
+// entries use, but a catalog extended with custom checks may recommend
+// any string value here. A remediation engine (e.g. Maestro) consuming
+// this field should treat unrecognized values as opaque remediation
+// steps, not as errors.
+type RemediationAction string
 
 const (
-	// DiagnosticActionUnspecified is the zero value.
-	DiagnosticActionUnspecified DiagnosticAction = iota
+	RemediationActionContactSupport     RemediationAction = "contact_support"
+	RemediationActionReboot             RemediationAction = "reboot"
+	RemediationActionResetGPU           RemediationAction = "reset_gpu"
+	RemediationActionRestartApp         RemediationAction = "restart_app"
+	RemediationActionRestartBM          RemediationAction = "restart_bm"
+	RemediationActionRestartVM          RemediationAction = "restart_vm"
+	RemediationActionUpdateSWFW         RemediationAction = "update_swfw"
+	RemediationActionCheckMechanicals   RemediationAction = "check_mechanicals"
+	RemediationActionCheckNetwork       RemediationAction = "check_network"
+	RemediationActionCheckUVM           RemediationAction = "check_uvm"
+	RemediationActionWorkflowXid45      RemediationAction = "workflow_xid_45"
+	RemediationActionWorkflowXid48      RemediationAction = "workflow_xid_48"
+	RemediationActionWorkflowNVLinkErr  RemediationAction = "workflow_nvlink_err"
+	RemediationActionWorkflowNVLink5Err RemediationAction = "workflow_nvlink5_err"
+	RemediationActionXid154             RemediationAction = "xid_154"
+	RemediationActionRetestHardware     RemediationAction = "retest_hardware"
 
-	DiagnosticActionContactSupport
-	DiagnosticActionReboot
-	DiagnosticActionResetGPU
-	DiagnosticActionRestartApp
-	DiagnosticActionRestartBM
-	DiagnosticActionRestartVM
-	DiagnosticActionUpdateSWFW
-	DiagnosticActionCheckMechanicals
-	DiagnosticActionCheckNetwork
-	DiagnosticActionCheckUVM
-	DiagnosticActionWorkflowXid45
-	DiagnosticActionWorkflowXid48
-	DiagnosticActionWorkflowNVLinkErr
-	DiagnosticActionWorkflowNVLink5Err
-	DiagnosticActionXid154
-	DiagnosticActionRetestHardware
-
-	// DiagnosticActionRetryCollection marks a verdict whose data could not
+	// RemediationActionRetryCollection marks a verdict whose data could not
 	// be collected in time (a sensor timeout) rather than a confirmed
 	// fault: the node should retry collection or be investigated before
 	// any hardware remediation.
-	DiagnosticActionRetryCollection
+	RemediationActionRetryCollection RemediationAction = "retry_collection"
 
-	// DiagnosticActionCheckCollection marks a verdict whose data could not
+	// RemediationActionCheckCollection marks a verdict whose data could not
 	// be collected for a non-timeout reason (a driver, permission, or
 	// decode failure). The collection mechanism itself failed, so the fix
 	// is to investigate it — not to remediate hardware that was never
 	// observed to be faulty.
-	DiagnosticActionCheckCollection
+	RemediationActionCheckCollection RemediationAction = "check_collection"
 )
 
-var diagnosticActionNames = map[DiagnosticAction]string{
-	DiagnosticActionContactSupport:     "contact_support",
-	DiagnosticActionReboot:             "reboot",
-	DiagnosticActionResetGPU:           "reset_gpu",
-	DiagnosticActionRestartApp:         "restart_app",
-	DiagnosticActionRestartBM:          "restart_bm",
-	DiagnosticActionRestartVM:          "restart_vm",
-	DiagnosticActionUpdateSWFW:         "update_swfw",
-	DiagnosticActionCheckMechanicals:   "check_mechanicals",
-	DiagnosticActionCheckNetwork:       "check_network",
-	DiagnosticActionCheckUVM:           "check_uvm",
-	DiagnosticActionWorkflowXid45:      "workflow_xid_45",
-	DiagnosticActionWorkflowXid48:      "workflow_xid_48",
-	DiagnosticActionWorkflowNVLinkErr:  "workflow_nvlink_err",
-	DiagnosticActionWorkflowNVLink5Err: "workflow_nvlink5_err",
-	DiagnosticActionXid154:             "xid_154",
-	DiagnosticActionRetestHardware:     "retest_hardware",
-	DiagnosticActionRetryCollection:    "retry_collection",
-	DiagnosticActionCheckCollection:    "check_collection",
-}
-
-var diagnosticActionFromName = map[string]DiagnosticAction{
-	"contact_support":      DiagnosticActionContactSupport,
-	"reboot":               DiagnosticActionReboot,
-	"reset_gpu":            DiagnosticActionResetGPU,
-	"restart_app":          DiagnosticActionRestartApp,
-	"restart_bm":           DiagnosticActionRestartBM,
-	"restart_vm":           DiagnosticActionRestartVM,
-	"update_swfw":          DiagnosticActionUpdateSWFW,
-	"check_mechanicals":    DiagnosticActionCheckMechanicals,
-	"check_network":        DiagnosticActionCheckNetwork,
-	"check_uvm":            DiagnosticActionCheckUVM,
-	"workflow_xid_45":      DiagnosticActionWorkflowXid45,
-	"workflow_xid_48":      DiagnosticActionWorkflowXid48,
-	"workflow_nvlink_err":  DiagnosticActionWorkflowNVLinkErr,
-	"workflow_nvlink5_err": DiagnosticActionWorkflowNVLink5Err,
-	"xid_154":              DiagnosticActionXid154,
-	"retest_hardware":      DiagnosticActionRetestHardware,
-	"retry_collection":     DiagnosticActionRetryCollection,
-	"check_collection":     DiagnosticActionCheckCollection,
-}
-
-func (a DiagnosticAction) String() string {
-	if name, ok := diagnosticActionNames[a]; ok {
-		return name
-	}
-	if a == DiagnosticActionUnspecified {
-		return ""
-	}
-	return fmt.Sprintf("DiagnosticAction(%d)", int(a))
-}
-
-// diagnosticActionPriority ranks diagnostic actions by remediation
-// authority for node-level aggregation: when several checks tie at the
-// top severity and all recommend [OperationalDrain], the action earliest
-// in this list is the one that surfaces on the node verdict. Lower index
-// = higher priority.
-var diagnosticActionPriority = []DiagnosticAction{
-	DiagnosticActionContactSupport,
-	DiagnosticActionCheckMechanicals,
-	DiagnosticActionCheckNetwork,
-	DiagnosticActionRetestHardware,
-	DiagnosticActionWorkflowXid45,
-	DiagnosticActionWorkflowXid48,
-	DiagnosticActionWorkflowNVLinkErr,
-	DiagnosticActionWorkflowNVLink5Err,
-	DiagnosticActionCheckUVM,
-	DiagnosticActionUpdateSWFW,
-	DiagnosticActionResetGPU,
-	DiagnosticActionRestartVM,
-	DiagnosticActionRestartBM,
-	DiagnosticActionRestartApp,
-	DiagnosticActionReboot,
-	DiagnosticActionXid154,
-	// Collection failures rank last: an observed fault outranks "could not
-	// observe", and a concrete failure (check_collection) outranks a timeout
-	// (retry_collection).
-	DiagnosticActionCheckCollection,
-	DiagnosticActionRetryCollection,
-}
-
-// priorityRank returns this action's index in diagnosticActionPriority,
-// or len(list) for actions not present (ranking them last). Lower is
-// higher priority.
-func (a DiagnosticAction) priorityRank() int {
-	for i, d := range diagnosticActionPriority {
-		if d == a {
-			return i
-		}
-	}
-	return len(diagnosticActionPriority)
-}
-
-func (a DiagnosticAction) MarshalJSON() ([]byte, error) {
-	return marshalEnum(a, diagnosticActionNames)
-}
-
-func (a *DiagnosticAction) UnmarshalJSON(data []byte) error {
-	return unmarshalEnum(data, diagnosticActionFromName, a, "diagnostic action")
-}
-
 // RecommendedAction is the structured remediation a check carries.
-// OperationalState is the high-level state change to apply; DiagnosticAction
-// names the specific remediation and is only valid (and only emitted in
-// JSON) when OperationalState is [OperationalDrain].
+// OperationalState is the high-level state change to apply; RemediationActions
+// is the ordered sequence of remediation steps a cluster operator's
+// remediation engine should work through, and is only meaningful (and only
+// emitted in JSON) when OperationalState is [OperationalDrain].
 //
 // Use [Drain] / [Monitor] / [NoAction] for readable call sites instead
 // of constructing the struct directly.
 type RecommendedAction struct {
-	OperationalState OperationalState `json:"operational_state"`
-	DiagnosticAction DiagnosticAction `json:"diagnostic_action,omitzero"`
+	RemediationActions []RemediationAction `json:"remediation_actions,omitempty"`
+	OperationalState   OperationalState    `json:"operational_state"`
+}
+
+// Equal reports whether r and other carry the same OperationalState and
+// RemediationActions sequence. RecommendedAction contains a slice, so it
+// is not comparable with ==; use Equal instead.
+func (r RecommendedAction) Equal(other RecommendedAction) bool {
+	return r.OperationalState == other.OperationalState &&
+		slices.Equal(r.RemediationActions, other.RemediationActions)
 }
 
 // IsZero reports whether this RecommendedAction carries no
 // recommendation. Container types use it via the `omitzero` JSON tag
 // to elide the field entirely when no action applies. A non-zero
 // OperationalState (anything other than [OperationalNone]) makes the
-// recommendation non-zero regardless of DiagnosticAction.
+// recommendation non-zero regardless of RemediationActions.
 func (r RecommendedAction) IsZero() bool {
 	return r.OperationalState == OperationalNone
 }
 
-// MarshalJSON enforces the invariant that DiagnosticAction is emitted
+// MarshalJSON enforces the invariant that RemediationActions is emitted
 // only when OperationalState is [OperationalDrain]. A non-Drain state
-// always serializes without a diagnostic_action key, even if the
+// always serializes without a remediation_actions key, even if the
 // in-memory value carries one.
 func (r RecommendedAction) MarshalJSON() ([]byte, error) {
 	if r.OperationalState != OperationalDrain {
-		r.DiagnosticAction = DiagnosticActionUnspecified
+		r.RemediationActions = nil
 	}
 	type alias RecommendedAction
 	return json.Marshal(alias(r))
 }
 
-// outranks reports whether r should win over other when selecting a
-// single node-level action from checks that tie at the top severity. The
-// higher [OperationalState] wins first (drain > monitor > none);
-// when both are [OperationalDrain] the higher-priority [DiagnosticAction]
-// wins. Equal candidates return false, so the first one encountered is kept.
-func (r RecommendedAction) outranks(other RecommendedAction) bool {
-	if r.OperationalState != other.OperationalState {
-		return r.OperationalState > other.OperationalState
-	}
-	if r.OperationalState == OperationalDrain {
-		return r.DiagnosticAction.priorityRank() < other.DiagnosticAction.priorityRank()
-	}
-	return false
-}
-
 // Drain returns a RecommendedAction with [OperationalDrain] and the
-// given DiagnosticAction.
-func Drain(d DiagnosticAction) RecommendedAction {
-	return RecommendedAction{OperationalState: OperationalDrain, DiagnosticAction: d}
+// given sequence of remediation steps, in the order a remediation engine
+// should attempt them.
+func Drain(actions ...RemediationAction) RecommendedAction {
+	return RecommendedAction{OperationalState: OperationalDrain, RemediationActions: actions}
 }
 
 // Monitor is the canonical "keep in service, watch the trend"

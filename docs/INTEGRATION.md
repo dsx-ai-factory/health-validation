@@ -335,16 +335,23 @@ validate against the published
   and disabled checks do not change this value.
 - **`overall_severity`** — the authoritative level (`PASS`/`INFO`/`WARNING`/
   `CRITICAL`/`UNKNOWN`). Gate on this, not only the exit code.
-- **`recommended_action`** — what to do, present **only when there is an
-  action**. The field is **omitted entirely** when none is needed (the common
-  healthy-node case), so treat its absence as "no action" and guard for it
-  before reading into it — don't assume it's there. When present it is
-  `{operational_state, diagnostic_action}` (e.g.
-  `{"operational_state":"drain","diagnostic_action":"reboot"}`):
+- **`recommended_action`** (on each check result — `NodeVerdict` carries no
+  node-level `recommended_action`) — what to do, present **only when there is
+  an action**. The field is **omitted entirely** when none is needed (the
+  common healthy-check case), so treat its absence as "no action" and guard
+  for it before reading into it — don't assume it's there. When present it is
+  `{operational_state, remediation_actions}` (e.g.
+  `{"operational_state":"drain","remediation_actions":["reboot"]}`):
   `operational_state` is `monitor` or `drain` (never `none` — that case is the
-  omitted field), and `diagnostic_action` (`reboot`, `reset_gpu`,
-  `retest_hardware`, …) is present **only** when `operational_state` is `drain`.
-  Map these to your fleet action and follow-up.
+  omitted field), and `remediation_actions` is an **ordered sequence** of
+  remediation steps, present only when `operational_state` is `drain` — feed
+  it to your remediation engine in order. `remediation_actions` entries are an
+  open string set, not a closed enum (`reboot`, `reset_gpu`,
+  `retest_hardware`, … from NVIDIA's own catalog, but a custom catalog may add
+  its own); treat an unrecognized value as an opaque step, not an error. Since
+  each check now carries its own remediation sequence and there is no single
+  node-level ranking across them, walk `check_results` for a full remediation
+  picture rather than looking for one node-level field.
 - **`affected_components`** / **`severity_by_domain`** — which domain and which
   `check_ids`/entities failed, so you route (GPU vs NVLink vs Xid) without
   re-parsing every result.

@@ -697,13 +697,13 @@ func TestEvaluate_RuleRecommendedActionOverridesCheckDefault(t *testing.T) {
 		RequiredSignals:   []string{"first", "second"},
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
 		Thresholds:        map[string]health.ThresholdSpec{},
-		RecommendedAction: health.Drain(health.DiagnosticActionResetGPU),
+		RecommendedAction: health.Drain(health.RemediationActionResetGPU),
 		Rules: []health.Rule{
 			{
 				Expression:        "second > 0",
 				Severity:          health.Warning,
 				Message:           "second nonzero",
-				RecommendedAction: health.Drain(health.DiagnosticActionReboot),
+				RecommendedAction: health.Drain(health.RemediationActionReboot),
 			},
 			{
 				Expression: "first < 4",
@@ -724,7 +724,7 @@ func TestEvaluate_RuleRecommendedActionOverridesCheckDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionReboot) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionReboot)) {
 		t.Errorf("RecommendedAction = %v, want %v (rule override)", v.RecommendedAction, "reboot")
 	}
 
@@ -733,7 +733,7 @@ func TestEvaluate_RuleRecommendedActionOverridesCheckDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionResetGPU) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionResetGPU)) {
 		t.Errorf("RecommendedAction = %v, want %v (check default)", v.RecommendedAction, "drain")
 	}
 }
@@ -749,13 +749,13 @@ func TestEvaluate_AllMatchingRulesAggregate(t *testing.T) {
 		RequiredSignals:   []string{"first", "second"},
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
 		Thresholds:        map[string]health.ThresholdSpec{},
-		RecommendedAction: health.Drain(health.DiagnosticActionResetGPU),
+		RecommendedAction: health.Drain(health.RemediationActionResetGPU),
 		Rules: []health.Rule{
 			{
 				Expression:        "second > 0",
 				Severity:          health.Warning,
 				Message:           "second nonzero",
-				RecommendedAction: health.Drain(health.DiagnosticActionReboot),
+				RecommendedAction: health.Drain(health.RemediationActionReboot),
 			},
 			{
 				Expression: "first < 4",
@@ -804,7 +804,7 @@ func TestEvaluate_AllMatchingRulesAggregate(t *testing.T) {
 
 	// Top-priority rule (first Critical match, "first below four") has no
 	// RecommendedAction override, so the check default applies.
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionResetGPU) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionResetGPU)) {
 		t.Errorf("RecommendedAction = %v, want %v (top-priority rule has no override → check default)",
 			v.RecommendedAction, "drain")
 	}
@@ -820,19 +820,19 @@ func TestEvaluate_MultiMatchPicksTopPriorityOverride(t *testing.T) {
 		RequiredSignals:   []string{"first", "second"},
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
 		Thresholds:        map[string]health.ThresholdSpec{},
-		RecommendedAction: health.Drain(health.DiagnosticActionResetGPU),
+		RecommendedAction: health.Drain(health.RemediationActionResetGPU),
 		Rules: []health.Rule{
 			{
 				Expression:        "first == 4",
 				Severity:          health.Info,
 				Message:           "first is four (informational)",
-				RecommendedAction: health.Drain(health.DiagnosticActionContactSupport),
+				RecommendedAction: health.Drain(health.RemediationActionContactSupport),
 			},
 			{
 				Expression:        "second > 0",
 				Severity:          health.Warning,
 				Message:           "second nonzero",
-				RecommendedAction: health.Drain(health.DiagnosticActionReboot),
+				RecommendedAction: health.Drain(health.RemediationActionReboot),
 			},
 		},
 	}
@@ -857,7 +857,7 @@ func TestEvaluate_MultiMatchPicksTopPriorityOverride(t *testing.T) {
 	}
 	// Warning rule has higher severity than Info, so its "reboot"
 	// override wins over Info's "monitor".
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionReboot) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionReboot)) {
 		t.Errorf("RecommendedAction = %v, want %v (Warning rule outranks Info rule)",
 			v.RecommendedAction, "reboot")
 	}

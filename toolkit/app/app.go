@@ -538,7 +538,7 @@ func discoveryFailureVerdict(cause error) health.NodeVerdict {
 		ConditionScope:    health.NodeScope,
 		Severity:          health.Critical,
 		Messages:          []string{fmt.Sprintf("could not determine GPU architecture: %v", cause)},
-		RecommendedAction: health.Drain(health.DiagnosticActionRetestHardware),
+		RecommendedAction: health.Drain(health.RemediationActionRetestHardware),
 		MaturityLevel:     health.Stable,
 		NVIDIAEndorsed:    true,
 	}

@@ -76,7 +76,7 @@ func GPUClockCapped() health.CheckDefinition {
 				Expression: "sm_clock_mhz < min_sm_clock_mhz",
 				Severity:   health.Critical,
 				Message:    "GPU ${gpu_id}: SM clock ${sm_clock_mhz} MHz below floor ${min_sm_clock_mhz} MHz.",
-				RecommendedAction: health.Drain(health.DiagnosticActionCheckMechanicals),
+				RecommendedAction: health.Drain(health.RemediationActionCheckMechanicals),
 			},
 		},
 	}
@@ -92,6 +92,11 @@ Fields worth knowing:
 - **`Thresholds`** are operator-tunable by default. `FixedThreshold` values can
   never be overridden; `RequiredOverride` means the check skips until a fleet
   supplies a value.
+- **`RecommendedAction`**'s `RemediationActions` is an open `[]RemediationAction`
+  (a string type, not a closed enum): use the `health.RemediationAction*`
+  constants for steps NVIDIA's own catalog uses, or supply your own string for
+  a remediation step specific to your extension. A downstream remediation
+  engine should treat an unrecognized value as an opaque step, not an error.
 - **`Provenance`**, `MaturityLevel`, and the other classification fields are
   passed through untouched. Use `health.Private`.
 - **`ConditionScope`** records how far the detected condition reaches: `NodeScope`,

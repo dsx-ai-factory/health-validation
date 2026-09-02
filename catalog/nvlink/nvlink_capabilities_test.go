@@ -70,7 +70,7 @@ func TestNVLinkCapabilities_CapabilityUnsupported(t *testing.T) {
 			if !strings.Contains(msg, "GPU-0") || !strings.Contains(msg, tc.wantMsg) {
 				t.Errorf("Messages = %q, want %q and gpu_id interpolated", v.Messages, tc.wantMsg)
 			}
-			if v.RecommendedAction != health.Drain(health.DiagnosticActionRetestHardware) {
+			if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRetestHardware)) {
 				t.Errorf("RecommendedAction = %v, want Drain/retest_hardware", v.RecommendedAction)
 			}
 		})
@@ -109,7 +109,7 @@ func TestNVLinkCapabilities_ErroredGPU(t *testing.T) {
 	if len(v.Messages) != 1 || !strings.Contains(v.Messages[0], "measurement unavailable") {
 		t.Errorf("Messages = %q, want one measurement-unavailable message", v.Messages)
 	}
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionCheckCollection) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckCollection)) {
 		t.Errorf("RecommendedAction = %v, want Drain/check_collection", v.RecommendedAction)
 	}
 }

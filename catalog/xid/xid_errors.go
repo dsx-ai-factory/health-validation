@@ -23,32 +23,32 @@ type criticalXid struct {
 // is the immediate-action bucket; codes whose action is IGNORE/empty or
 // that are marked Unused are excluded entirely.
 var criticalXids = []criticalXid{
-	{code: 46, action: health.Drain(health.DiagnosticActionResetGPU), description: "GPU stopped processing"},
-	{code: 54, action: health.Drain(health.DiagnosticActionCheckMechanicals), description: "auxiliary power is not connected to the GPU board"},
-	{code: 62, action: health.Drain(health.DiagnosticActionResetGPU), description: "internal micro-controller halt"},
-	{code: 64, action: health.Drain(health.DiagnosticActionResetGPU), description: "GPU memory remapping failure"},
-	{code: 74, action: health.Drain(health.DiagnosticActionWorkflowNVLinkErr), description: "NVLink error"},
-	{code: 79, action: health.Drain(health.DiagnosticActionRestartBM), description: "GPU has fallen off the bus"},
-	{code: 95, action: health.Drain(health.DiagnosticActionResetGPU), description: "uncontained memory error"},
-	{code: 109, action: health.Drain(health.DiagnosticActionResetGPU), description: "context switch timeout error"},
-	{code: 110, action: health.Drain(health.DiagnosticActionResetGPU), description: "security fault error"},
-	{code: 119, action: health.Drain(health.DiagnosticActionResetGPU), description: "GSP RPC timeout"},
-	{code: 120, action: health.Drain(health.DiagnosticActionResetGPU), description: "GSP error"},
-	{code: 136, action: health.Drain(health.DiagnosticActionResetGPU), description: "link training failed"},
-	{code: 140, action: health.Drain(health.DiagnosticActionResetGPU), description: "ECC unrecovered error"},
-	{code: 142, action: health.Drain(health.DiagnosticActionContactSupport), description: "NVENC3 error"},
-	{code: 143, action: health.Drain(health.DiagnosticActionResetGPU), description: "GPU initialization error"},
-	{code: 144, action: health.Drain(health.DiagnosticActionWorkflowNVLink5Err), description: "NVLink SAW error"},
-	{code: 145, action: health.Drain(health.DiagnosticActionWorkflowNVLink5Err), description: "NVLink RLW error"},
-	{code: 146, action: health.Drain(health.DiagnosticActionWorkflowNVLink5Err), description: "NVLink TLW error"},
-	{code: 147, action: health.Drain(health.DiagnosticActionWorkflowNVLink5Err), description: "NVLink TREX error"},
-	{code: 148, action: health.Drain(health.DiagnosticActionWorkflowNVLink5Err), description: "NVLink NVLPW_CTRL error"},
-	{code: 149, action: health.Drain(health.DiagnosticActionWorkflowNVLink5Err), description: "NVLink NETIR error"},
-	{code: 150, action: health.Drain(health.DiagnosticActionWorkflowNVLink5Err), description: "NVLink MSE error"},
-	{code: 155, action: health.Drain(health.DiagnosticActionResetGPU), description: "NVLink SW-defined error"},
-	{code: 156, action: health.Drain(health.DiagnosticActionResetGPU), description: "resource retirement event"},
-	{code: 158, action: health.Drain(health.DiagnosticActionResetGPU), description: "GPU fatal timeout"},
-	{code: 159, action: health.Drain(health.DiagnosticActionCheckUVM), description: "CHI non-data error"},
+	{code: 46, action: health.Drain(health.RemediationActionResetGPU), description: "GPU stopped processing"},
+	{code: 54, action: health.Drain(health.RemediationActionCheckMechanicals), description: "auxiliary power is not connected to the GPU board"},
+	{code: 62, action: health.Drain(health.RemediationActionResetGPU), description: "internal micro-controller halt"},
+	{code: 64, action: health.Drain(health.RemediationActionResetGPU), description: "GPU memory remapping failure"},
+	{code: 74, action: health.Drain(health.RemediationActionWorkflowNVLinkErr), description: "NVLink error"},
+	{code: 79, action: health.Drain(health.RemediationActionRestartBM), description: "GPU has fallen off the bus"},
+	{code: 95, action: health.Drain(health.RemediationActionResetGPU), description: "uncontained memory error"},
+	{code: 109, action: health.Drain(health.RemediationActionResetGPU), description: "context switch timeout error"},
+	{code: 110, action: health.Drain(health.RemediationActionResetGPU), description: "security fault error"},
+	{code: 119, action: health.Drain(health.RemediationActionResetGPU), description: "GSP RPC timeout"},
+	{code: 120, action: health.Drain(health.RemediationActionResetGPU), description: "GSP error"},
+	{code: 136, action: health.Drain(health.RemediationActionResetGPU), description: "link training failed"},
+	{code: 140, action: health.Drain(health.RemediationActionResetGPU), description: "ECC unrecovered error"},
+	{code: 142, action: health.Drain(health.RemediationActionContactSupport), description: "NVENC3 error"},
+	{code: 143, action: health.Drain(health.RemediationActionResetGPU), description: "GPU initialization error"},
+	{code: 144, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink SAW error"},
+	{code: 145, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink RLW error"},
+	{code: 146, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink TLW error"},
+	{code: 147, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink TREX error"},
+	{code: 148, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink NVLPW_CTRL error"},
+	{code: 149, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink NETIR error"},
+	{code: 150, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink MSE error"},
+	{code: 155, action: health.Drain(health.RemediationActionResetGPU), description: "NVLink SW-defined error"},
+	{code: 156, action: health.Drain(health.RemediationActionResetGPU), description: "resource retirement event"},
+	{code: 158, action: health.Drain(health.RemediationActionResetGPU), description: "GPU fatal timeout"},
+	{code: 159, action: health.Drain(health.RemediationActionCheckUVM), description: "CHI non-data error"},
 }
 
 // warningClass groups warning-severity Xid codes that share a
@@ -63,7 +63,7 @@ type warningClass struct {
 
 var warningClasses = []warningClass{
 	{
-		action:  health.Drain(health.DiagnosticActionRestartApp),
+		action:  health.Drain(health.RemediationActionRestartApp),
 		message: "Application-level GPU Xid error detected. Restart the faulting application; the GPU itself remains healthy.",
 		codes: []int64{
 			8, 11, 25, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77,
@@ -72,17 +72,17 @@ var warningClasses = []warningClass{
 		},
 	},
 	{
-		action:  health.Drain(health.DiagnosticActionWorkflowXid45),
+		action:  health.Drain(health.RemediationActionWorkflowXid45),
 		message: "GPU Xid 45 (preemptive removal) detected. Follow the Xid 45 workflow.",
 		codes:   []int64{45},
 	},
 	{
-		action:  health.Drain(health.DiagnosticActionUpdateSWFW),
+		action:  health.Drain(health.RemediationActionUpdateSWFW),
 		message: "GPU Xid 78 (vGPU start error) detected. Update GPU software/firmware.",
 		codes:   []int64{78},
 	},
 	{
-		action:  health.Drain(health.DiagnosticActionRestartVM),
+		action:  health.Drain(health.RemediationActionRestartVM),
 		message: "GPU Xid 151 (key rotation error) detected. Restart the affected VM.",
 		codes:   []int64{151},
 	},
@@ -128,7 +128,7 @@ func warningCheck() health.CheckDefinition {
 		"gpu_xid_warning",
 		"GPU Xid Warnings",
 		"Detects application-level and otherwise recoverable NVRM Xid errors in the system journal since boot, grouped by their NVIDIA Xid-catalog immediate-action resolution bucket.",
-		health.Drain(health.DiagnosticActionRestartApp),
+		health.Drain(health.RemediationActionRestartApp),
 	)
 	rules := make([]health.Rule, 0, len(warningClasses))
 	for _, w := range warningClasses {
@@ -149,7 +149,7 @@ func xid154Check() health.CheckDefinition {
 		"gpu_xid_154",
 		"GPU Xid 154 (GPU recovery action changed)",
 		"Detects NVRM Xid 154 in the system journal since boot. Informational; correlates with an accompanying Xid.",
-		health.Drain(health.DiagnosticActionXid154),
+		health.Drain(health.RemediationActionXid154),
 	)
 	def.Rules = []health.Rule{{
 		Expression: "154 in xid_counts",

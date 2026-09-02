@@ -113,7 +113,7 @@ func TestXidErrors_PerCodeCriticalCheck(t *testing.T) {
 	if critical[0].CheckID != "gpu_xid_79" {
 		t.Errorf("CheckID = %q, want gpu_xid_79", critical[0].CheckID)
 	}
-	if want := health.Drain(health.DiagnosticActionRestartBM); critical[0].RecommendedAction != want {
+	if want := health.Drain(health.RemediationActionRestartBM); !critical[0].RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", critical[0].RecommendedAction, want)
 	}
 }

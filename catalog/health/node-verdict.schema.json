@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/dsx-ai-factory/health-validation/-/raw/main/catalog/health/node-verdict.schema.json",
   "title": "NodeVerdict",
-  "description": "The JSON a health-validation run emits: one node-level health verdict aggregating per-check results. This file documents schema_version 0.2; keep it in sync with health.NodeVerdictSchemaVersion.",
-  "$comment": "Describes NodeVerdict schema_version 0.2 (health.NodeVerdictSchemaVersion). MAJOR bumps on breaking shape changes; MINOR on additive fields/enum values.",
+  "description": "The JSON a health-validation run emits: one node-level health verdict aggregating per-check results. This file documents schema_version 1.0; keep it in sync with health.NodeVerdictSchemaVersion.",
+  "$comment": "Describes NodeVerdict schema_version 1.0 (health.NodeVerdictSchemaVersion). MAJOR bumps on breaking shape changes; MINOR on additive fields/enum values.",
   "type": "object",
   "required": [
     "schema_version",
@@ -17,7 +17,7 @@
   "properties": {
     "schema_version": {
       "description": "MAJOR.MINOR contract version. Consumers must check this before acting on a verdict; an unrecognised or missing value is untrusted output.",
-      "const": "0.2"
+      "const": "1.0"
     },
     "catalog_version": {
       "description": "Catalog module version that produced this verdict: a release or pseudo-version on stamped builds, or dev/dev+<commit> on unstamped local builds. Overrides and custom checks do not change it.",
@@ -46,10 +46,6 @@
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/category" },
       "additionalProperties": { "$ref": "#/$defs/severity" }
-    },
-    "recommended_action": {
-      "description": "Node-level remediation, chosen from the checks tied at overall_severity. Omitted when no action is recommended (operational_state none).",
-      "$ref": "#/$defs/recommendedAction"
     },
     "affected_components": {
       "description": "One entry per domain with a non-PASS result. Omitted when all domains pass.",
@@ -96,7 +92,7 @@
         "severity": { "$ref": "#/$defs/severity" },
         "category": { "$ref": "#/$defs/category" },
         "condition_scope": {
-          "description": "How far the condition this check detects reaches: the smallest boundary that must be inspected to explain it. A collection-failure verdict reports NODE, since the rules never ran and nothing beyond this node was observed; a skipped verdict keeps the check's declared value. Independent of recommended_action, which is always node-local.",
+          "description": "How far the condition this check detects reaches: the smallest boundary that must be inspected to explain it. A collection-failure verdict reports NODE, since the rules never ran and nothing beyond this node was observed; a skipped verdict keeps the check's declared value. Independent of recommended_action's remediation_actions, which are always node-local.",
           "$ref": "#/$defs/conditionScope"
         },
         "maturity_level": { "$ref": "#/$defs/maturityLevel" },
@@ -122,7 +118,7 @@
           "items": { "type": "string" }
         },
         "recommended_action": {
-          "description": "Remediation for this check. Omitted when none (operational_state none).",
+          "description": "Remediation for this check, including the ordered sequence of remediation steps a remediation engine should attempt. Omitted when none (operational_state none).",
           "$ref": "#/$defs/recommendedAction"
         },
         "affected_entities": {
@@ -164,11 +160,15 @@
     },
     "recommendedAction": {
       "type": "object",
-      "description": "A remediation recommendation. diagnostic_action is present only when operational_state is drain.",
+      "description": "A remediation recommendation. remediation_actions is present only when operational_state is drain.",
       "required": ["operational_state"],
       "properties": {
         "operational_state": { "$ref": "#/$defs/operationalState" },
-        "diagnostic_action": { "$ref": "#/$defs/diagnosticAction" }
+        "remediation_actions": {
+          "description": "Ordered sequence of remediation steps to attempt, most-preferred first. An open set of strings, not an enum: a catalog extended with custom checks may recommend its own remediation steps here, so a remediation engine should treat unrecognized values as opaque steps rather than errors.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "affectedComponent": {
@@ -232,30 +232,6 @@
       "description": "What to do with the node.",
       "type": "string",
       "enum": ["none", "monitor", "drain"]
-    },
-    "diagnosticAction": {
-      "description": "Diagnostic/remediation step. Emitted only alongside a drain operational_state.",
-      "type": "string",
-      "enum": [
-        "contact_support",
-        "reboot",
-        "reset_gpu",
-        "restart_app",
-        "restart_bm",
-        "restart_vm",
-        "update_swfw",
-        "check_mechanicals",
-        "check_network",
-        "check_uvm",
-        "workflow_xid_45",
-        "workflow_xid_48",
-        "workflow_nvlink_err",
-        "workflow_nvlink5_err",
-        "xid_154",
-        "retest_hardware",
-        "retry_collection",
-        "check_collection"
-      ]
     }
   }
 }

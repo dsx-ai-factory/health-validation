@@ -40,7 +40,7 @@ func TestGPUPowerState_BelowExpected(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("severity = %v, want CRITICAL (P8 != default expected P0)", v.Severity)
 	}
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionReboot) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionReboot)) {
 		t.Errorf("RecommendedAction = %v, want drain/reboot", v.RecommendedAction)
 	}
 	msg := strings.Join(v.Messages, " ")

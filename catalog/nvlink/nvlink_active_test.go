@@ -32,7 +32,7 @@ func TestNVLinkActive_OneInactive(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("severity = %v, want CRITICAL (1 > default 0)", v.Severity)
 	}
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionRetestHardware) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRetestHardware)) {
 		t.Errorf("RecommendedAction = %v, want retest_hardware", v.RecommendedAction)
 	}
 	msg := strings.Join(v.Messages, " ")

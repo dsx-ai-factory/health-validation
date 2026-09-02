@@ -51,7 +51,7 @@ func TestNUMANodeCountDefinition(t *testing.T) {
 	if definition.Provenance != health.NVIDIA || definition.MaturityLevel != health.Stable {
 		t.Errorf("classification = %v/%q, want NVIDIA/stable", definition.Provenance, definition.MaturityLevel)
 	}
-	if definition.RecommendedAction != health.Drain(health.DiagnosticActionReboot) {
+	if !definition.RecommendedAction.Equal(health.Drain(health.RemediationActionReboot)) {
 		t.Errorf("RecommendedAction = %v, want reboot", definition.RecommendedAction)
 	}
 
@@ -105,7 +105,7 @@ func TestNUMANodeCount_MatchesExpected(t *testing.T) {
 	if verdict.Skipped || verdict.Severity != health.Pass {
 		t.Fatalf("skipped=%v severity=%v, want evaluated PASS (34 == GB200 default)", verdict.Skipped, verdict.Severity)
 	}
-	if verdict.RecommendedAction != health.NoAction {
+	if !verdict.RecommendedAction.Equal(health.NoAction) {
 		t.Errorf("RecommendedAction = %v, want NoAction", verdict.RecommendedAction)
 	}
 }
@@ -118,7 +118,7 @@ func TestNUMANodeCount_FewerThanExpected(t *testing.T) {
 	if verdict.Skipped || verdict.Severity != health.Critical {
 		t.Fatalf("skipped=%v severity=%v, want evaluated CRITICAL (33 != 34)", verdict.Skipped, verdict.Severity)
 	}
-	if verdict.RecommendedAction != health.Drain(health.DiagnosticActionReboot) {
+	if !verdict.RecommendedAction.Equal(health.Drain(health.RemediationActionReboot)) {
 		t.Errorf("RecommendedAction = %v, want reboot", verdict.RecommendedAction)
 	}
 	if got, want := verdict.Messages, []string{"Expected 34 NUMA nodes online, found 33."}; !slices.Equal(got, want) {
@@ -226,12 +226,12 @@ func TestNUMANodeCount_CollectionErrorsUseCollectionActions(t *testing.T) {
 		{
 			cause:      errors.New("NUMA node online list unavailable"),
 			name:       "collection failure",
-			wantAction: health.Drain(health.DiagnosticActionCheckCollection),
+			wantAction: health.Drain(health.RemediationActionCheckCollection),
 		},
 		{
 			cause:      fmt.Errorf("cpu sensor: %w", health.ErrCollectionTimeout),
 			name:       "collection timeout",
-			wantAction: health.Drain(health.DiagnosticActionRetryCollection),
+			wantAction: health.Drain(health.RemediationActionRetryCollection),
 		},
 	}
 
@@ -247,13 +247,13 @@ func TestNUMANodeCount_CollectionErrorsUseCollectionActions(t *testing.T) {
 			if verdict.Skipped || verdict.Severity != health.Critical {
 				t.Fatalf("skipped=%v severity=%v, want evaluated CRITICAL", verdict.Skipped, verdict.Severity)
 			}
-			if verdict.RecommendedAction != tt.wantAction {
+			if !verdict.RecommendedAction.Equal(tt.wantAction) {
 				t.Errorf("RecommendedAction = %v, want %v", verdict.RecommendedAction, tt.wantAction)
 			}
 			if len(verdict.Messages) != 1 || !strings.Contains(verdict.Messages[0], tt.cause.Error()) {
 				t.Errorf("Messages = %q, want surfaced cause %q", verdict.Messages, tt.cause)
 			}
-			if verdict.RecommendedAction == health.Drain(health.DiagnosticActionReboot) {
+			if verdict.RecommendedAction.Equal(health.Drain(health.RemediationActionReboot)) {
 				t.Error("collection failure inherited the topology mismatch action")
 			}
 		})

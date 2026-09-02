@@ -48,7 +48,7 @@ func TestGPUSensorThrottle_HWSlowdown(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("severity = %v, want CRITICAL", v.Severity)
 	}
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionRetestHardware) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRetestHardware)) {
 		t.Errorf("recommended_action = %v, want Drain(RetestHardware)", v.RecommendedAction)
 	}
 }

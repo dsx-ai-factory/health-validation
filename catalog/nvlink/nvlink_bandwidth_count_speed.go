@@ -43,7 +43,7 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.DiagnosticActionRetestHardware),
+		RecommendedAction: health.Drain(health.RemediationActionRetestHardware),
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_link_count": {

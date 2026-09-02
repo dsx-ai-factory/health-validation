@@ -43,7 +43,7 @@ func GPUSensorThrottle() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.DiagnosticActionRetestHardware),
+		RecommendedAction: health.Drain(health.RemediationActionRetestHardware),
 
 		Rules: []health.Rule{
 			{

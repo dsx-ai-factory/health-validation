@@ -29,7 +29,7 @@ func NVLinkP2P() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.DiagnosticActionContactSupport),
+		RecommendedAction: health.Drain(health.RemediationActionContactSupport),
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"max_unhealthy_p2p_peers": {

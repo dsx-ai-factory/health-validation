@@ -28,7 +28,7 @@ func GPUPowerState() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.DiagnosticActionReboot),
+		RecommendedAction: health.Drain(health.RemediationActionReboot),
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_gpu_pstate": {

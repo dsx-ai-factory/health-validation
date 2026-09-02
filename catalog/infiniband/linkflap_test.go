@@ -46,7 +46,7 @@ func TestRDMALinkFlapFatalDefinition(t *testing.T) {
 	if got, want := def.Architectures, []string{"GB200", "GB300"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
-	if def.RecommendedAction != health.Drain(health.DiagnosticActionCheckNetwork) {
+	if !def.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckNetwork)) {
 		t.Errorf("RecommendedAction = %v, want check_network drain", def.RecommendedAction)
 	}
 	for _, name := range []string{"min_outage_seconds", "fatal_flap_threshold"} {
@@ -81,7 +81,7 @@ func TestRDMALinkFlapFatal_Pass(t *testing.T) {
 			if v.Skipped || v.Severity != health.Pass {
 				t.Fatalf("skipped=%v severity=%v, want evaluated PASS", v.Skipped, v.Severity)
 			}
-			if v.RecommendedAction != health.NoAction {
+			if !v.RecommendedAction.Equal(health.NoAction) {
 				t.Errorf("RecommendedAction = %v, want NoAction", v.RecommendedAction)
 			}
 		})
@@ -99,7 +99,7 @@ func TestRDMALinkFlapFatal_OneFatalOutage(t *testing.T) {
 		if v.Skipped || v.Severity != health.Critical {
 			t.Fatalf("outage %ds: skipped=%v severity=%v, want CRITICAL", secs, v.Skipped, v.Severity)
 		}
-		if v.RecommendedAction != health.Drain(health.DiagnosticActionCheckNetwork) {
+		if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckNetwork)) {
 			t.Errorf("outage %ds: RecommendedAction = %v, want check_network drain", secs, v.RecommendedAction)
 		}
 	}

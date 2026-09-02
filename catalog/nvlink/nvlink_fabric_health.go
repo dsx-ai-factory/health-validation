@@ -42,7 +42,7 @@ func NVLinkFabricHealth() health.CheckDefinition {
 		ConditionScope:    health.DomainScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.DiagnosticActionRetestHardware),
+		RecommendedAction: health.Drain(health.RemediationActionRetestHardware),
 
 		Rules: []health.Rule{
 			{

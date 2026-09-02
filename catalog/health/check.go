@@ -19,12 +19,13 @@ type CheckDefinition struct {
 	Description       string                   `json:"description"`
 	Name              string                   `json:"name"`
 	ID                string                   `json:"id"`
-	RequiredSignals   []string                 `json:"required_signals"`
 	Dependencies      []string                 `json:"dependencies,omitempty"`
-	Rules             []Rule                   `json:"rules"`
 	Architectures     []string                 `json:"architectures,omitempty"`
+	Rules             []Rule                   `json:"rules"`
 	ExecutionContexts []ExecutionContext       `json:"execution_contexts"`
 	Prerequisites     []Prerequisite           `json:"prerequisites,omitempty"`
+	RequiredSignals   []string                 `json:"required_signals"`
+	RecommendedAction RecommendedAction        `json:"recommended_action,omitzero"`
 	Timeout           time.Duration            `json:"timeout,omitempty"`
 	MaturityLevel     MaturityLevel            `json:"maturity_level"`
 	SchedulingCadence SchedulingCadence        `json:"scheduling_cadence"`
@@ -32,7 +33,6 @@ type CheckDefinition struct {
 	ConditionScope    ConditionScope           `json:"condition_scope"`
 	Provenance        Provenance               `json:"provenance"`
 	ExecutionClass    ExecutionClass           `json:"execution_class"`
-	RecommendedAction RecommendedAction        `json:"recommended_action,omitzero"`
 }
 
 // Validate reports whether the definition is internally consistent. Names are
@@ -95,16 +95,16 @@ type Rule struct {
 	// placeholders interpolated from signal and threshold values.
 	Message string `json:"message"`
 
-	// Severity produced when this rule matches.
-	Severity Severity `json:"severity"`
-
 	// RecommendedAction, when non-zero (see
 	// [RecommendedAction.IsZero]), overrides the parent
 	// [CheckDefinition.RecommendedAction] in the resulting
 	// [CheckVerdict]. Use it when a specific failure mode warrants a
-	// different remediation than the check's default. A zero value
-	// leaves the check-level action in place.
+	// different remediation sequence than the check's default. A zero
+	// value leaves the check-level action in place.
 	RecommendedAction RecommendedAction `json:"recommended_action,omitzero"`
+
+	// Severity produced when this rule matches.
+	Severity Severity `json:"severity"`
 }
 
 // HasRecommendedAction reports whether the rule sets a non-zero

@@ -365,9 +365,9 @@ func matchingError(errs []health.ErroredMeasurement, required []string) (detail 
 	}
 	switch {
 	case hasOther:
-		action = health.Drain(health.DiagnosticActionCheckCollection)
+		action = health.Drain(health.RemediationActionCheckCollection)
 	case hasTimeout:
-		action = health.Drain(health.DiagnosticActionRetryCollection)
+		action = health.Drain(health.RemediationActionRetryCollection)
 	}
 	return strings.Join(details, "; "), action
 }

@@ -56,7 +56,6 @@ func TestNodeVerdictSchema_InSyncWithContract(t *testing.T) {
 		{"maturityLevel", wireValues(maturityLevelNames)},
 		{"thresholdCategory", wireValues(thresholdCategoryNames)},
 		{"operationalState", wireValues(operationalStateNames)},
-		{"diagnosticAction", wireValues(diagnosticActionNames)},
 	}
 	for _, e := range enums {
 		want := slices.Clone(e.values)

@@ -53,7 +53,7 @@ func TestCPUCountDefinition(t *testing.T) {
 	if definition.Provenance != health.NVIDIA || definition.MaturityLevel != health.Stable {
 		t.Errorf("classification = %v/%v, want NVIDIA/stable", definition.Provenance, definition.MaturityLevel)
 	}
-	if definition.RecommendedAction != health.Drain(health.DiagnosticActionCheckMechanicals) {
+	if !definition.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckMechanicals)) {
 		t.Errorf("RecommendedAction = %v, want check_mechanicals", definition.RecommendedAction)
 	}
 	if len(definition.Thresholds) != 0 {
@@ -87,7 +87,7 @@ func TestCPUCount_AllPossibleCPUsOnline(t *testing.T) {
 	if verdict.Skipped || verdict.Severity != health.Pass {
 		t.Fatalf("skipped=%v severity=%v, want evaluated PASS", verdict.Skipped, verdict.Severity)
 	}
-	if verdict.RecommendedAction != health.NoAction {
+	if !verdict.RecommendedAction.Equal(health.NoAction) {
 		t.Errorf("RecommendedAction = %v, want NoAction", verdict.RecommendedAction)
 	}
 }
@@ -103,7 +103,7 @@ func TestCPUCount_OfflineCPU(t *testing.T) {
 	if verdict.Skipped || verdict.Severity != health.Critical {
 		t.Fatalf("skipped=%v severity=%v, want evaluated CRITICAL", verdict.Skipped, verdict.Severity)
 	}
-	if verdict.RecommendedAction != health.Drain(health.DiagnosticActionCheckMechanicals) {
+	if !verdict.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckMechanicals)) {
 		t.Errorf("RecommendedAction = %v, want check_mechanicals", verdict.RecommendedAction)
 	}
 	if got, want := verdict.Messages, []string{"Expected all 144 possible logical CPUs to be online; found 143 online."}; !slices.Equal(got, want) {
@@ -122,19 +122,19 @@ func TestCPUCount_CollectionErrorsUseCollectionActions(t *testing.T) {
 			cause:      errors.New("CPU possible list unavailable"),
 			name:       "possible collection failure",
 			signal:     cpu.SignalPossibleCPUCount,
-			wantAction: health.Drain(health.DiagnosticActionCheckCollection),
+			wantAction: health.Drain(health.RemediationActionCheckCollection),
 		},
 		{
 			cause:      errors.New("CPU online list unavailable"),
 			name:       "online collection failure",
 			signal:     cpu.SignalOnlineCPUCount,
-			wantAction: health.Drain(health.DiagnosticActionCheckCollection),
+			wantAction: health.Drain(health.RemediationActionCheckCollection),
 		},
 		{
 			cause:      fmt.Errorf("cpu sensor: %w", health.ErrCollectionTimeout),
 			name:       "collection timeout",
 			signal:     cpu.SignalOnlineCPUCount,
-			wantAction: health.Drain(health.DiagnosticActionRetryCollection),
+			wantAction: health.Drain(health.RemediationActionRetryCollection),
 		},
 	}
 
@@ -153,13 +153,13 @@ func TestCPUCount_CollectionErrorsUseCollectionActions(t *testing.T) {
 			if verdict.Skipped || verdict.Severity != health.Critical {
 				t.Fatalf("skipped=%v severity=%v, want evaluated CRITICAL", verdict.Skipped, verdict.Severity)
 			}
-			if verdict.RecommendedAction != tt.wantAction {
+			if !verdict.RecommendedAction.Equal(tt.wantAction) {
 				t.Errorf("RecommendedAction = %v, want %v", verdict.RecommendedAction, tt.wantAction)
 			}
 			if len(verdict.Messages) != 1 || !strings.Contains(verdict.Messages[0], tt.cause.Error()) {
 				t.Errorf("Messages = %q, want surfaced cause %q", verdict.Messages, tt.cause)
 			}
-			if verdict.RecommendedAction == health.Drain(health.DiagnosticActionCheckMechanicals) {
+			if verdict.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckMechanicals)) {
 				t.Error("collection failure inherited the hardware mismatch action")
 			}
 		})

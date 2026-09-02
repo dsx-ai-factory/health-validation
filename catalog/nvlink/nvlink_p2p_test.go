@@ -32,7 +32,7 @@ func TestNVLinkP2P_OneUnreachable(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("severity = %v, want CRITICAL (1 > default 0)", v.Severity)
 	}
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionContactSupport) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionContactSupport)) {
 		t.Errorf("RecommendedAction = %v, want contact_support", v.RecommendedAction)
 	}
 	msg := strings.Join(v.Messages, " ")

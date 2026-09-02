@@ -39,7 +39,7 @@ func TestNVLinkFabric_RegistrationIncomplete(t *testing.T) {
 	if !strings.Contains(strings.Join(v.Messages, " "), "GPU-0") {
 		t.Errorf("Messages = %q, want gpu_id interpolated", v.Messages)
 	}
-	if v.RecommendedAction != health.Drain(health.DiagnosticActionRetestHardware) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRetestHardware)) {
 		t.Errorf("recommended_action = %+v, want Drain(RetestHardware)", v.RecommendedAction)
 	}
 }

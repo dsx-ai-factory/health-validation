@@ -31,7 +31,7 @@ func GPUPowerLimit() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.DiagnosticActionCheckMechanicals),
+		RecommendedAction: health.Drain(health.RemediationActionCheckMechanicals),
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_power_limit_w": {
