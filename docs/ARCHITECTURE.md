@@ -64,7 +64,7 @@ To add a sensor for a new hardware domain: define a measurement struct in `catal
 
 ## Output schema
 
-The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (currently `"1.0"`, from `NodeVerdictSchemaVersion` in `catalog/health/verdict.go`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
+The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (currently `"0.2"`, from `NodeVerdictSchemaVersion` in `catalog/health/verdict.go`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
 
 ### NodeVerdict
 

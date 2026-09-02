@@ -19,7 +19,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "0.2",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
   "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
@@ -48,7 +48,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "0.2",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
