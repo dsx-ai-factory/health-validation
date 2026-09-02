@@ -1,0 +1,22 @@
+name: Set up Bazel
+description: Install Bazelisk and configure Bazel caching, shared across all CI jobs.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Bazelisk
+      shell: bash
+      run: |
+        arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
+        mkdir -p "$HOME/.local/bin"
+        curl -fsSL -o "$HOME/.local/bin/bazel" \
+          "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
+        chmod +x "$HOME/.local/bin/bazel"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+      with:
+        bazelisk-version: 1.28.1
+        bazelisk-cache: true
+        disk-cache: ${{ github.workflow }}
+        repository-cache: true

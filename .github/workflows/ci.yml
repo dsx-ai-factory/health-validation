@@ -73,21 +73,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Bazelisk
-        run: |
-          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL -o "$HOME/.local/bin/bazel" \
-            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
-          chmod +x "$HOME/.local/bin/bazel"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
-        with:
-          bazelisk-version: 1.28.1
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
 
       - name: Format check
         run: bazel test //tools/format:test
@@ -110,21 +97,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Bazelisk
-        run: |
-          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL -o "$HOME/.local/bin/bazel" \
-            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
-          chmod +x "$HOME/.local/bin/bazel"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
-        with:
-          bazelisk-version: 1.28.1
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
 
       - name: Test
         run: bazel test --config=ci //...
@@ -140,21 +114,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Install Bazelisk
-        run: |
-          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL -o "$HOME/.local/bin/bazel" \
-            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
-          chmod +x "$HOME/.local/bin/bazel"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
-        with:
-          bazelisk-version: 1.28.1
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
 
       - name: Build and smoke-test image (linux/amd64)
         env:
@@ -189,21 +150,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Install Bazelisk
-        run: |
-          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL -o "$HOME/.local/bin/bazel" \
-            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
-          chmod +x "$HOME/.local/bin/bazel"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
-        with:
-          bazelisk-version: 1.28.1
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
 
       - name: Build and smoke-test image (linux/arm64)
         env:
@@ -244,21 +192,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Bazelisk
-        run: |
-          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL -o "$HOME/.local/bin/bazel" \
-            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
-          chmod +x "$HOME/.local/bin/bazel"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
-        with:
-          bazelisk-version: 1.28.1
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
 
       # Exercise both platform transitions and the OCI index assembly on every
       # workflow run, including pull-request branches that never publish.
@@ -335,21 +270,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Install Bazelisk
-        run: |
-          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL -o "$HOME/.local/bin/bazel" \
-            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
-          chmod +x "$HOME/.local/bin/bazel"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
-        with:
-          bazelisk-version: 1.28.1
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
 
       - name: Log in to GHCR
         env:
