@@ -5,7 +5,7 @@ For build setup, test commands, and contribution workflow, see
 
 ## Prerequisites
 
-- Go ≥ 1.23
+- Go ≥ 1.27
 - Bazel ≥ 9 (pinned version in `.bazelversion`)
 - Linux for NVML-dependent targets (`toolkit/nvml/`); macOS works for catalog and CLI logic
 
@@ -67,6 +67,31 @@ first. Then update the toolkit `require` directive to that catalog version,
 test the combined modules, and tag the toolkit release. This policy defines
 tag and compatibility semantics only. The repository does not currently
 provide automatic release stamping or publishing.
+
+## Documentation Site
+
+`docs/` is a Docusaurus site, built through Bazel rather than pnpm directly:
+
+```bash
+bazel run //docs:serve    # live preview on http://localhost:3000/health-validation/
+bazel build //docs:build  # one-shot build into bazel-bin/docs/build
+```
+
+Most reference content is generated rather than authored:
+`//catalog/cmd/healthdump:checks` and `//catalog/health:schema` emit JSON that
+`//catalog/cmd/gencheckpages:pages` turns into one MDX page per check category.
+Editing a check in `catalog/` changes the published docs. `//docs:test` builds
+the whole site and is part of `//...`, so a broken site fails `bazel test //...`.
+
+Pushes to `main` are wired to publish the site to GitHub Pages via
+[`.github/workflows/pages.yml`](../.github/workflows/pages.yml), which also has a
+`workflow_dispatch` trigger for republishing on demand. Publishing fails until a
+repository admin sets Settings -> Pages -> Source to GitHub Actions.
+
+Once the repository is public the site will be at
+https://dsx-ai-factory.github.io/health-validation/. While it is internal, Pages
+serves it from a generated access-controlled subdomain named on that same
+settings page.
 
 ## Linux-only Code
 
