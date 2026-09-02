@@ -1,22 +1,22 @@
-# Security Policy
+## Security
 
-## Reporting a Vulnerability
+NVIDIA is dedicated to the security and trust of our software products and services, including all source code repositories managed through our organization.
 
-Report security vulnerabilities to NVIDIA PSIRT rather than a public GitHub
-issue:
+If you need to report a security issue, please use the appropriate contact points outlined below. **Please do not report security vulnerabilities through GitHub.** If a potential security issue is inadvertently reported via a public issue or pull request, NVIDIA maintainers may limit public discussion and redirect the reporter to the appropriate private disclosure channels.
 
-- **Web, preferred:** [NVIDIA Vulnerability Disclosure Program](https://www.nvidia.com/en-us/security/)
-- **E-mail:** [psirt@nvidia.com](mailto:psirt@nvidia.com)
-  - Use the [NVIDIA public PGP key](https://www.nvidia.com/en-us/security/pgp-key) for sensitive reports.
+## Reporting Potential Security Vulnerability in an NVIDIA Product
 
-Please include:
+To report a potential security vulnerability in any NVIDIA product:
+- [Security Vulnerability Reporting Form](https://www.nvidia.com/en-us/security/report-vulnerability/)
+    - Please include the following information:
+        - GPU model and driver version, and version/branch of `health-validation` that contains the vulnerability. If relevant, include the affected check or catalog entry.
+        - Type of vulnerability (code execution, denial of service, buffer overflow, etc.)
+        - Instructions to reproduce the vulnerability
+        - Proof-of-concept or exploit code
+        - Potential impact of the vulnerability, including how an attacker could exploit the vulnerability
 
-- The full JSON output of `health-validation run` (or the error message), if applicable
-- GPU model and driver version, kernel and OS (if hardware-related)
-- Steps to reproduce and the version of `health-validation` affected
-- An assessment of the potential impact
+While NVIDIA currently does not have a bug bounty program, we do offer acknowledgement when an externally reported security issue is addressed under our coordinated vulnerability disclosure policy. Please visit our [Product Security Incident Response Team (PSIRT)](https://www.nvidia.com/en-us/security/psirt-policies/) policies page for more information.
 
-Detailed reports help NVIDIA evaluate and address issues faster. NVIDIA PSIRT
-will acknowledge receipt, validate severity, coordinate fixes, and publish
-security bulletins as appropriate. We aim to acknowledge new reports within 5
-business days and will work with you on a coordinated disclosure timeline.
+## NVIDIA Product Security
+
+For all security-related concerns, please visit NVIDIA's Product Security portal at https://www.nvidia.com/en-us/security
