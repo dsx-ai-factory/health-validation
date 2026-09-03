@@ -35,8 +35,9 @@ func TestMeasureDeviceActiveLinks_AllActive(t *testing.T) {
 }
 
 func TestMeasureDeviceActiveLinks_SomeInactive(t *testing.T) {
+	const disabledFrom = 16
 	dev := deviceWithLinkStates(func(link int) (gonvml.EnableState, gonvml.Return) {
-		if link >= 16 {
+		if link >= disabledFrom {
 			return gonvml.FEATURE_DISABLED, gonvml.SUCCESS
 		}
 		return gonvml.FEATURE_ENABLED, gonvml.SUCCESS
@@ -48,8 +49,13 @@ func TestMeasureDeviceActiveLinks_SomeInactive(t *testing.T) {
 	if errs := m.Errors(); len(errs) != 0 {
 		t.Errorf("Errors() = %v, want none", errs)
 	}
-	if m.InactiveCount != 2 {
-		t.Errorf("InactiveCount = %d, want 2 (links 16, 17 disabled)", m.InactiveCount)
+	// The probe loop runs to gonvml.NVLINK_MAX_LINKS, so every link from
+	// disabledFrom onward is disabled — derive the count instead of
+	// hardcoding it, so a go-nvml bump that changes the link ceiling
+	// doesn't silently desync this test from the mock's own behavior.
+	want := int64(gonvml.NVLINK_MAX_LINKS - disabledFrom)
+	if m.InactiveCount != want {
+		t.Errorf("InactiveCount = %d, want %d (links %d..%d disabled)", m.InactiveCount, want, disabledFrom, gonvml.NVLINK_MAX_LINKS-1)
 	}
 }
 
@@ -128,13 +134,20 @@ func TestMeasureDeviceActiveLinks_QueryFailureFlagsSignal(t *testing.T) {
 // (deviceFabricInfo is stubbed NOT_SUPPORTED by the package init, so
 // fabric collection stays a no-op here.)
 func TestMeasureNVLink_CollectsInactivePerGPU(t *testing.T) {
+	// GPU-0's probe disables links from disabledFrom0 onward; GPU-1's from
+	// disabledFrom1. want (below) derives each device's expected inactive
+	// count from gonvml.NVLINK_MAX_LINKS instead of hardcoding it, so a
+	// go-nvml bump that changes the link ceiling doesn't silently desync
+	// this test from the mocks' own behavior.
+	const disabledFrom0 = gonvml.NVLINK_MAX_LINKS - 1
+	const disabledFrom1 = gonvml.NVLINK_MAX_LINKS - 3
 	devs := []gonvml.Device{
-		// GPU-0: one inactive link (17).
+		// GPU-0: one inactive link.
 		&mock.Device{
 			GetUUIDFunc:        func() (string, gonvml.Return) { return "GPU-0", gonvml.SUCCESS },
 			GetFieldValuesFunc: linkFieldValues(50000, 18, gonvml.SUCCESS, gonvml.SUCCESS),
 			GetNvLinkStateFunc: func(link int) (gonvml.EnableState, gonvml.Return) {
-				if link == 17 {
+				if link >= disabledFrom0 {
 					return gonvml.FEATURE_DISABLED, gonvml.SUCCESS
 				}
 				return gonvml.FEATURE_ENABLED, gonvml.SUCCESS
@@ -146,12 +159,12 @@ func TestMeasureNVLink_CollectsInactivePerGPU(t *testing.T) {
 				return gonvml.P2P_STATUS_OK, gonvml.SUCCESS
 			},
 		},
-		// GPU-1: three inactive links (15, 16, 17).
+		// GPU-1: three inactive links.
 		&mock.Device{
 			GetUUIDFunc:        func() (string, gonvml.Return) { return "GPU-1", gonvml.SUCCESS },
 			GetFieldValuesFunc: linkFieldValues(50000, 18, gonvml.SUCCESS, gonvml.SUCCESS),
 			GetNvLinkStateFunc: func(link int) (gonvml.EnableState, gonvml.Return) {
-				if link >= 15 {
+				if link >= disabledFrom1 {
 					return gonvml.FEATURE_DISABLED, gonvml.SUCCESS
 				}
 				return gonvml.FEATURE_ENABLED, gonvml.SUCCESS
@@ -183,7 +196,10 @@ func TestMeasureNVLink_CollectsInactivePerGPU(t *testing.T) {
 		t.Fatalf("got %d measurements, want 2", len(ms))
 	}
 
-	want := map[string]int64{"GPU-0": 1, "GPU-1": 3}
+	want := map[string]int64{
+		"GPU-0": int64(gonvml.NVLINK_MAX_LINKS - disabledFrom0),
+		"GPU-1": int64(gonvml.NVLINK_MAX_LINKS - disabledFrom1),
+	}
 	for _, raw := range ms {
 		m, ok := raw.(nvlink.NVLinkMeasurement)
 		if !ok {
