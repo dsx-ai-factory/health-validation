@@ -7,7 +7,9 @@ If you need to report a security issue, please use the appropriate contact point
 ## Reporting Potential Security Vulnerability in an NVIDIA Product
 
 To report a potential security vulnerability in any NVIDIA product:
-- [Security Vulnerability Reporting Form](https://www.nvidia.com/en-us/security/report-vulnerability/)
+- Web: [Security Vulnerability Reporting Form](https://www.nvidia.com/en-us/security/report-vulnerability/)
+- E-Mail: psirt@nvidia.com
+    - We encourage you to use the following PGP key for secure email communication: [NVIDIA public PGP Key for communication](https://www.nvidia.com/en-us/security/pgp-key)
     - Please include the following information:
         - GPU model and driver version, and version/branch of `health-validation` that contains the vulnerability. If relevant, include the affected check or catalog entry.
         - Type of vulnerability (code execution, denial of service, buffer overflow, etc.)

@@ -31,6 +31,14 @@ Both modules follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PAT
   a new exported function).
 - **PATCH** — backward-compatible bug fixes.
 
+**Before 1.0.0** (both modules are currently `v0.x`), project policy departs
+from the scheme above: a breaking public-API change bumps **MINOR** instead of
+MAJOR, and a compatible fix bumps **PATCH**. A MINOR release that deprecates
+public API must document a migration path and keep the deprecated API until a
+later breaking release removes it. See
+[`docs/DEVELOPER.md`](docs/DEVELOPER.md#versioning-and-releases) for the full
+policy.
+
 ## Branch naming and tagging
 
 Releases are cut from `main`; there is no separate release branch. Tag each

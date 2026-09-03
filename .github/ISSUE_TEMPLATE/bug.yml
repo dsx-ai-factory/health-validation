@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report a bug. Please fill in as much detail as you can.
-        For **security vulnerabilities**, use [GitHub Security Advisories](../security/advisories/new) instead.
+        For **security vulnerabilities**, do not open an issue here — see [SECURITY.md](https://github.com/dsx-ai-factory/health-validation/blob/main/SECURITY.md) to report to NVIDIA PSIRT.
 
   - type: textarea
     id: description
