@@ -135,7 +135,10 @@ STATICCHECK_ANALYZERS = [
     "@co_honnef_go_tools//staticcheck/sa5008:sa5008",
     "@co_honnef_go_tools//staticcheck/sa5009:sa5009",
     "@co_honnef_go_tools//staticcheck/sa5010:sa5010",
-    "@co_honnef_go_tools//staticcheck/sa5011:sa5011",
+    # SA5011 is intentionally excluded: honnef.co/go/tools >= 0.8 panics if it
+    # is invoked at all ("SA5011 is broken and should not be used") — the
+    # upstream maintainers disabled it after years of false positives.
+    # go/analysis/passes/nilness (registered above) covers similar ground.
     "@co_honnef_go_tools//staticcheck/sa5012:sa5012",
     "@co_honnef_go_tools//staticcheck/sa6000:sa6000",
     "@co_honnef_go_tools//staticcheck/sa6001:sa6001",
