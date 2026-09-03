@@ -379,12 +379,13 @@ to know what actually ran.
 ## Where to go for more
 
 1. [docs/INTEGRATION.md](docs/INTEGRATION.md): deploy to a GPU cluster, wire into the workload lifecycle, act on verdicts, collect results across the fleet
-2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): package roles, data flow, adding checks and sensors
-3. [docs/EXTENDING.md](docs/EXTENDING.md): extend the catalog with your own private checks
-4. [docs/DEVELOPER.md](docs/DEVELOPER.md): build, CI, container images, publishing
-5. [docs/FAQ.md](docs/FAQ.md)
-6. [catalog/health/node-verdict.schema.json](catalog/health/node-verdict.schema.json): JSON Schema for the node verdict output
-7. [CONTRIBUTING.md](CONTRIBUTING.md)
+2. [docs/REMEDIATION.md](docs/REMEDIATION.md): the remediation action catalog and how to work through a check's remediation sequence
+3. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): package roles, data flow, adding checks and sensors
+4. [docs/EXTENDING.md](docs/EXTENDING.md): extend the catalog with your own private checks
+5. [docs/DEVELOPER.md](docs/DEVELOPER.md): build, CI, container images, publishing
+6. [docs/FAQ.md](docs/FAQ.md)
+7. [catalog/health/node-verdict.schema.json](catalog/health/node-verdict.schema.json): JSON Schema for the node verdict output
+8. [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Maintainers
 
