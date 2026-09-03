@@ -15,36 +15,46 @@ for the JSON contract. For the field's place in the wider verdict shape, see
 ## How to consume a remediation sequence
 
 `remediation_actions` is ordered, most-preferred/least-disruptive step first.
-Work through it one step at a time, re-running `health-validation` after each
-step to see whether it cleared the fault:
+`NodeVerdict` does not carry a single node-level remediation sequence (see
+[`docs/ARCHITECTURE.md`](ARCHITECTURE.md#nodeverdict)) — each failing check
+carries its own — so when more than one check is failing, don't work through
+them independently in isolation. Instead, re-run the **whole suite** after
+every remediation step, and each time pick the single next action to perform
+by weighing the current set of failing checks against each other:
 
-1. Take the next action in the list (start at the first).
-2. Perform that remediation step against the node.
-3. Re-run `health-validation`.
-4. If the check that recommended this sequence now passes, **stop** — the
-   node is healthy and there is no need to perform any later action in the
-   list.
-5. If the check still fails, go back to step 1 and take the **next** action
-   in the sequence.
-6. If the sequence is exhausted and the check still fails, escalate — treat
-   this the same as reaching a `contact_support` step: the available
-   self-service remediation didn't clear the condition, so it needs a human
-   (or a deeper investigation) rather than another automated action.
-
-This is per-check, not per-node: `NodeVerdict` does not carry a single
-node-level remediation sequence (see [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#nodeverdict)),
-because with several checks potentially failing at once there's no single
-correct ordering across them. Walk `check_results`, and apply this loop
-independently for each failing check's own `remediation_actions`. If two
-checks recommend the same first step (e.g. both start with `reboot`), one
-re-run can clear both — you'll see both checks pass on the next run and can
-skip the rest of both sequences.
+1. Run `health-validation` (the full suite).
+2. If everything passes, **stop** — the node is healthy.
+3. Otherwise, look at every currently-failing check with `operational_state:
+   drain` and choose which one to act on next:
+   - **A check whose next remediation step is `contact_support` takes
+     precedence over everything else**, regardless of the other failing
+     checks' severity. There's no further self-service step to try for it,
+     so get a human involved before spending time on other checks' actions.
+   - Otherwise, **the highest-severity failing check takes precedence**
+     (`CRITICAL` before `WARNING`). Among checks tied at the same severity,
+     use judgment — e.g. prefer the action that's also recommended by the
+     most checks, or the least disruptive one, since clearing it may clear
+     others too.
+4. Take the next **untried** action from that check's `remediation_actions`
+   (the first one, the first time you act on that check; the next one after
+   that, if you already tried its earlier steps and it's still failing).
+5. Perform that remediation step against the node.
+6. Go back to step 1: re-run the **whole suite** again, not just the one
+   check you just acted on. A single action can clear more than one check
+   (e.g. several checks recommending `reboot` as their first step), and
+   re-deriving the failing set and priority from scratch each time — rather
+   than tracking a plan up front — keeps you from wasting a later, more
+   disruptive step on a check that a different check's remediation already
+   fixed.
+7. If a check's `remediation_actions` is exhausted and it's still failing,
+   treat it the same as reaching a `contact_support` step: escalate, don't
+   keep retrying.
 
 **Do not** perform every action in a sequence unconditionally, and do not
-skip the re-run between steps — later actions are more disruptive (e.g.
-restarting a VM/bare-metal host) than earlier ones (e.g. resetting a GPU),
-and are only warranted once the cheaper attempt has been confirmed not to
-work.
+skip the whole-suite re-run between steps — later actions are more disruptive
+(e.g. restarting a VM/bare-metal host) than earlier ones (e.g. resetting a
+GPU), and are only warranted once the cheaper attempt has been confirmed not
+to work.
 
 ## Action catalog
 

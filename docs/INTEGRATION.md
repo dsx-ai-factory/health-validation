@@ -352,8 +352,10 @@ validate against the published
   each check carries its own remediation sequence and there is no single
   node-level ranking across them, walk `check_results` for a full remediation
   picture. See [`docs/REMEDIATION.md`](REMEDIATION.md) for the full action
-  catalog and how to work through a sequence (re-run after each step; stop as
-  soon as the check passes).
+  catalog and how to prioritize across multiple failing checks and work
+  through a sequence (re-run the whole suite after each step; a
+  `contact_support` step, then severity, decides which failing check to act
+  on next).
 - **`affected_components`** / **`severity_by_domain`** — which domain and which
   `check_ids`/entities failed, so you route (GPU vs NVLink vs Xid) without
   re-parsing every result.
