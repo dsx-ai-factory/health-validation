@@ -57,6 +57,10 @@ docusaurus_bin.docusaurus(
     srcs = DOCUSAURUS_SRCS,
     args = ["build"],
     chdir = package_name(),
+    env = {
+        "DOCS_BASE_URL": "$(DOCS_BASE_URL)",
+        "DOCS_URL": "$(DOCS_URL)",
+    },
     out_dirs = ["build"],
     visibility = ["//visibility:public"],
 )

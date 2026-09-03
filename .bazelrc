@@ -2,6 +2,12 @@ common --registry=https://bcr.bazel.build
 
 build --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 
+# Default docs origin/base path for //docs:build. The Pages workflow
+# overrides these from actions/configure-pages' own origin and base_path
+# outputs; local/dev builds get the eventual public origin and the site root.
+build --define=DOCS_URL=https://dsx-ai-factory.github.io
+build --define=DOCS_BASE_URL=/
+
 
 import %workspace%/.bazel/ci.bazelrc
 import %workspace%/.bazel/convenience.bazelrc

@@ -6,12 +6,17 @@ const config: Config = {
   title: "health-validation",
   tagline: "Hardware health check catalog and evaluation engine for NVIDIA GPU nodes",
 
-  url: "https://dsx-ai-factory.github.io",
-  // The Pages site is access-controlled while this repository is internal, and
-  // GitHub serves those from the root of a generated subdomain rather than under
-  // /<repo>/. Set this back to "/health-validation/" when the repository goes
-  // public; the Pages workflow fails the build if the two disagree.
-  baseUrl: "/",
+  // url and baseUrl together form the origin Docusaurus bakes into canonical
+  // links and sitemap.xml. The Pages site is access-controlled and served
+  // from a generated per-run subdomain while this repository is internal,
+  // not from dsx-ai-factory.github.io, and moves under /<repo>/ instead of
+  // "/" once the repository (and the Pages site) goes public. The Pages
+  // workflow gets both from actions/configure-pages' own origin and
+  // base_path outputs and passes them through as DOCS_URL/DOCS_BASE_URL, so
+  // they always match what Pages actually serves. Local/non-Pages builds
+  // fall back to the eventual public origin and the site root.
+  url: process.env.DOCS_URL || "https://dsx-ai-factory.github.io",
+  baseUrl: process.env.DOCS_BASE_URL || "/",
 
   onBrokenLinks: "throw",
 
