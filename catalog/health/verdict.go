@@ -52,11 +52,7 @@ type CheckVerdict struct {
 const NodeVerdictSchemaVersion = "0.2"
 
 // NodeVerdict aggregates per-check verdicts into a node-level
-// health assessment. There is no node-level RecommendedAction: each
-// CheckVerdict now carries its own remediation sequence, and with several
-// checks potentially tying at OverallSeverity there is no longer a clear
-// ranking among them from which to pick a single node-level action.
-// Consumers that need node-level remediation should walk CheckResults.
+// health assessment.
 type NodeVerdict struct {
 	SchemaVersion      string                `json:"schema_version"`
 	CatalogVersion     string                `json:"catalog_version"` // Catalog module version compiled into the producer.
