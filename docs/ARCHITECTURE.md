@@ -81,7 +81,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | SkippedChecks | []CheckVerdict | `skipped_checks` | Per-check results for checks that were skipped. |
 | AffectedComponents | []AffectedComponent | `affected_components` | Non-PASS domains with their affected entities and check IDs. |
 
-`NodeVerdict` carries no node-level `RecommendedAction`. Each `CheckVerdict` carries its own remediation sequence; with several checks potentially tying at `overall_severity`, there is no longer a single, clearly-ranked action to surface at the node level. Consumers that need node-level remediation should walk `CheckResults`.
+`NodeVerdict` carries no node-level `RecommendedAction`. Each `CheckVerdict` carries its own remediation sequence; with several checks potentially tying at `overall_severity`, there is not a single, clearly-ranked action to surface at the node level. Consumers that need node-level remediation should walk `CheckResults`.
 
 ### CheckVerdict
 

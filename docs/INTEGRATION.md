@@ -349,9 +349,9 @@ validate against the published
   open string set, not a closed enum (`reboot`, `reset_gpu`,
   `retest_hardware`, … from NVIDIA's own catalog, but a custom catalog may add
   its own); treat an unrecognized value as an opaque step, not an error. Since
-  each check now carries its own remediation sequence and there is no single
+  each check carries its own remediation sequence and there is no single
   node-level ranking across them, walk `check_results` for a full remediation
-  picture rather than looking for one node-level field.
+  picture.
 - **`affected_components`** / **`severity_by_domain`** — which domain and which
   `check_ids`/entities failed, so you route (GPU vs NVLink vs Xid) without
   re-parsing every result.

@@ -62,9 +62,7 @@ func (s *OperationalState) UnmarshalJSON(data []byte) error {
 // Unlike the enum types in this package, RemediationAction is an open
 // string type: the constants below name the steps NVIDIA's own catalog
 // entries use, but a catalog extended with custom checks may recommend
-// any string value here. A remediation engine (e.g. Maestro) consuming
-// this field should treat unrecognized values as opaque remediation
-// steps, not as errors.
+// any string value here.
 type RemediationAction string
 
 const (
