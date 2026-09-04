@@ -6,12 +6,16 @@ name: Commit Lint
 # skipped job reports Success and satisfies a required status check.
 #
 # That trigger is only safe because this job never checks out or executes pull
-# request content. It reads the base commit, the title from the event payload,
-# and commit subjects from the API. Do not add a head-ref or merge-ref checkout
-# here, and do not widen `permissions`.
+# request content. It reads the base commit and the title from the event
+# payload. Do not add a head-ref or merge-ref checkout here, and do not widen
+# `permissions`.
 #
-# The title and the commit count exist only in this event's payload, which is
-# why this does not ride on the pull-request/<number> push that drives ci.yml.
+# The title exists only in this event's payload, which is why this does not
+# ride on the pull-request/<number> push that drives ci.yml.
+#
+# Linting only the title is sound because the repository is squash-only with
+# squash_merge_commit_title=PR_TITLE. If either setting changes, commit subjects
+# reach `main` again and this job stops covering them.
 #
 # `edited` is not optional. Without it, correcting a rejected title never
 # re-runs the check and it stays red.
@@ -26,7 +30,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -34,19 +37,27 @@ concurrency:
 
 jobs:
 
+  # Shaped to mirror the commitlint action in dsx-ai-factory/dsx-github-actions:
+  # same step names, same install flags, same default config discovery. It
+  # deviates where it must: the title arrives on stdin rather than as a
+  # --from/--to range, versions are pinned, Node is 22 rather than the action's
+  # 20, and the ignore probe has no counterpart. That action lints commit ranges
+  # and has no input for a title, so this job stands in until a title mode lands
+  # upstream, then it should become a `uses:` of it.
   commit-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      # Pin to the pull request's base commit. Under pull_request_target the
-      # default checkout is already the default branch, so this is determinism
-      # rather than trust: a PR is judged by the rules on its base, not by
-      # whatever main happens to be mid-run. commitlint discovers its config
-      # from the working tree, and `extends` loads code from it, so this must
-      # never point at PR-controlled content.
+      # No `ref:` on purpose. Under pull_request_target the default checkout is
+      # the base repository's default branch, which is both trusted and certain
+      # to carry the rules. Pinning to the PR's base commit instead checks out a
+      # tree that predates them on every already-open PR, and on any PR stacked
+      # on a feature branch, so commitlint exits 9 on a title it never read.
+      #
+      # commitlint discovers its config from the working tree and `extends`
+      # loads code from it, so this must never point at PR-controlled content.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
 
       # commitlint 21 declares engines.node >= 22.12.0.
@@ -55,7 +66,8 @@ jobs:
       # caching when package.json declares `packageManager`, and this repo's root
       # package.json declares pnpm. That would set up a pnpm cache for a job that
       # has no pnpm and nothing to cache.
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
 
@@ -67,44 +79,28 @@ jobs:
       - name: Install commitlint
         run: npm install --no-package-lock --no-save --ignore-scripts @commitlint/cli@21.2.2 @commitlint/config-conventional@21.2.2
 
-      # Without `defaultIgnores: false` in .commitlintrc.yaml, commitlint exits 0
-      # on a `Revert "..."` title having evaluated no rules, and the log looks
-      # identical to a real pass. Fail here rather than report a green check that
-      # means nothing.
+      # Without `defaultIgnores: false` in commitlint.config.js, commitlint exits
+      # 0 on nine more message shapes having evaluated no rules, and the log looks
+      # identical to a real pass. Probe a merge subject rather than a revert one,
+      # since reverts are now deliberately exempt.
       - name: Check the ignore bypass stays closed
         run: |
-          if printf 'Revert "feat: x"\n' | ./node_modules/.bin/commitlint >/dev/null 2>&1; then
-            echo "::error::.commitlintrc.yaml is missing defaultIgnores: false; revert and merge titles would pass unchecked"
-            exit 1
-          fi
+          status=0
+          printf 'Merge branch main into x\n' | ./node_modules/.bin/commitlint >/dev/null 2>&1 || status=$?
+          case "$status" in
+            0) echo "::error::commitlint.config.js is missing defaultIgnores: false; merge and fixup titles would pass unchecked"; exit 1 ;;
+            1) ;;
+            *) echo "::error::commitlint exited $status instead of linting; its config is absent or unreadable"; exit 1 ;;
+          esac
 
-      # Rules come from .commitlintrc.yaml via commitlint's default discovery.
-      # The local binary is called directly rather than through npx so a
+      # Rules come from commitlint.config.js via commitlint's default discovery.
+      # The action calls `npx commitlint`; this calls the local binary so a
       # resolution miss fails here instead of triggering a network install.
+      # Worth raising upstream.
       #
       # The title is untrusted input: pass it through the environment, never
       # interpolate it into the run command.
-      - name: Lint the pull request title
+      - name: Run commitlint
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: printf '%s\n' "$PR_TITLE" | ./node_modules/.bin/commitlint --verbose
-
-      # squash_merge_commit_title is COMMIT_OR_PR_TITLE, so a PR holding exactly
-      # one commit defaults its squash subject to that commit's subject rather
-      # than the title checked above. Delete this step only once the repository
-      # is set to PR_TITLE and rebase merge is disabled; a rebase-merged
-      # single-commit PR lands this subject either way. Both this and the
-      # title above are checked rather than one or the other, because the
-      # merge box is editable and either string can end up on `main`.
-      - name: Lint the single commit's subject
-        if: github.event.pull_request.commits == 1
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        # Capture before linting: piping a failed `gh` straight into commitlint
-        # feeds it empty input, and its 30-line usage table then buries the
-        # actual error.
-        run: |
-          subject="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits" \
-            --jq '.[0].commit.message | split("\n")[0]')"
-          printf '%s\n' "$subject" | ./node_modules/.bin/commitlint --verbose

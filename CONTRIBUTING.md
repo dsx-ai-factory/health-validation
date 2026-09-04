@@ -98,18 +98,18 @@ The short version (see the architecture section in `README.md` for context):
 
 Titles follow [Conventional Commits](https://www.conventionalcommits.org/):
 `type(scope): subject`. CI checks this on every pull request through the
-`commit-lint` check; the rules live in [`.commitlintrc.yaml`](.commitlintrc.yaml).
+`commit-lint` check; the rules live in [`commitlint.config.js`](commitlint.config.js).
 
 - Types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`,
-  `revert`, `style`, `test`.
+  `revert`, `style`, `test`. Titles are limited to 120 characters.
 - Scope is optional and unrestricted — use the package or domain the change
   belongs to. `catalog`, `gpu`, `ci` and `container` are already in use.
-- Keep both the PR title and your commit subjects conventional. Depending on
-  the merge method, either one can become the subject on `main`.
+- Only the PR title is checked. It is the subject that lands on `main`, so
+  your individual commit subjects are yours to write however you like.
 - A leading capital is fine, so `fix: RDMA link-flap` is correct. Title-case and
   all-caps subjects are rejected: not `feat: Add Support For X`, not `fix: BROKEN`.
-- Title a revert `revert: <original subject>`. The `Revert "..."` title GitHub's
-  Revert button generates is not valid here.
+- Any title starting with `Revert ` or `revert ` skips the check entirely. That
+  covers what GitHub's Revert button prefills, so a revert needs no retitling.
 - CI reads these rules from `main`, not from your branch. A PR that changes them
   is still judged by the current rules, so title it under those and use anything
   new in a follow-up PR.

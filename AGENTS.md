@@ -220,7 +220,7 @@ When adding a direct third-party dep here (this is how `gopkg.in/yaml.v3` arrive
 
 **Comments** — Keep comments sparse and concise. Explain why a non-obvious constraint or decision exists; do not narrate code, restate names, or add boilerplate. Keep required Go doc comments factual and brief, and shorten or remove redundant comments when editing nearby code.
 
-**Commit and PR titles** — Conventional Commits (`type(scope): subject`), checked on every pull request by the `commit-lint` check. Either the PR title or a commit subject becomes the subject on `main`, depending on the merge method, so both must conform. A leading capital is allowed (`fix: RDMA link-flap`); title-case and all-caps subjects are not. Rules live in `.commitlintrc.yaml`, the type list and examples in `CONTRIBUTING.md`.
+**Commit and PR titles** — Conventional Commits (`type(scope): subject`), checked on every pull request by the `commit-lint` check. Only the PR title is checked; it is the subject that lands on `main`, and individual commit subjects are unconstrained. A leading capital is allowed (`fix: RDMA link-flap`); title-case and all-caps subjects are not. Any title starting with `Revert ` or `revert ` skips the check entirely. Rules live in `commitlint.config.js`, the type list and examples in `CONTRIBUTING.md`.
 
 **Threshold governance** — `ThresholdCategory` controls whether operators can override a threshold: `DefaultThreshold` (overridable), `FixedThreshold` (never overridable, enforced at `OverrideSet` construction), `AdjustableThreshold` (overridable within bounds). Violations return `FixedThresholdError`.
 
