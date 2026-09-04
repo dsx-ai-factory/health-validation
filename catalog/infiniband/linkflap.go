@@ -31,7 +31,7 @@ func RDMALinkFlapFatal() health.CheckDefinition {
 		ConditionScope:    health.ClusterScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.RemediationActionCheckNetwork),
+		RecommendedAction: health.GenericDrain(),
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"min_outage_seconds": {

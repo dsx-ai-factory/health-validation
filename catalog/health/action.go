@@ -146,6 +146,17 @@ func Drain(actions ...RemediationAction) RecommendedAction {
 	return RecommendedAction{OperationalState: OperationalDrain, RemediationActions: actions}
 }
 
+// GenericDrain returns the default remediation sequence for a fault with
+// no remediation-engine-confirmed bespoke handling: attempt a GPU-only
+// reset (the lightest-touch automated step some remediation engines take
+// before falling back to a host-level action; engines that don't
+// implement one simply no-op through it), then a host-level restart,
+// then escalate. Checks with confirmed engine-specific handling should
+// use [Drain] directly instead.
+func GenericDrain() RecommendedAction {
+	return Drain(RemediationActionResetGPU, RemediationActionRestartVM, RemediationActionContactSupport)
+}
+
 // Monitor is the canonical "keep in service, watch the trend"
 // recommendation.
 var Monitor = RecommendedAction{OperationalState: OperationalMonitor}

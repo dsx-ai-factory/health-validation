@@ -23,7 +23,7 @@ func CPUCount() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.RemediationActionCheckMechanicals),
+		RecommendedAction: health.GenericDrain(),
 
 		Rules: []health.Rule{
 			{

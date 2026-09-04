@@ -32,7 +32,7 @@ func NUMANodeCount() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.RemediationActionReboot),
+		RecommendedAction: health.GenericDrain(),
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_numa_node_count": {

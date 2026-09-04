@@ -524,8 +524,8 @@ func TestNUMANodeCountReachesVerdict(t *testing.T) {
 	if result.Severity != health.Critical {
 		t.Errorf("Severity = %v, want CRITICAL (33 != expected 34)", result.Severity)
 	}
-	if !result.RecommendedAction.Equal(health.Drain(health.RemediationActionReboot)) {
-		t.Errorf("RecommendedAction = %v, want reboot", result.RecommendedAction)
+	if !result.RecommendedAction.Equal(health.GenericDrain()) {
+		t.Errorf("RecommendedAction = %v, want generic reset/restart/escalate ladder", result.RecommendedAction)
 	}
 	if got := result.ObservedValues[cpu.SignalNUMANodeCount]; got != float64(33) {
 		t.Errorf("numa_node_count = %v, want 33", got)

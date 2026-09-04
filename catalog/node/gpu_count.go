@@ -36,7 +36,7 @@ func GPUCount() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.RemediationActionReboot),
+		RecommendedAction: health.GenericDrain(),
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_gpu_count": {

@@ -92,8 +92,8 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "span_id": "1a2f5c07-3b64-4e8d-9a70-5f1c2d8e46b3",
       "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
       "recommended_action": {
-        "operational_state": "drain",
-        "remediation_actions": ["reboot"]
+        "remediation_actions": ["reset_gpu", "restart_vm", "contact_support"],
+        "operational_state": "drain"
       },
       "messages": [
         "Expected 4 GPUs, found 1."
@@ -140,8 +140,8 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "span_id": "e57c190b-46d2-4c8a-a3f1-9b04d7e2635c",
       "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
       "recommended_action": {
-        "operational_state": "drain",
-        "remediation_actions": ["restart_bm", "contact_support"]
+        "remediation_actions": ["reset_gpu", "restart_vm", "contact_support"],
+        "operational_state": "drain"
       },
       "messages": [
         "GPU Xid 79 detected: GPU has fallen off the bus."

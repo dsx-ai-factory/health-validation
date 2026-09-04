@@ -2,7 +2,7 @@
 
 When a check fails with `operational_state: drain`, its `recommended_action`
 carries a `remediation_actions` array: an ordered sequence of steps a cluster
-operator (or their automated remediation engine, e.g. Maestro) should work
+operator (or their automated remediation engine) should work
 through to clear the fault. This document describes the contract for
 consuming that sequence and catalogs every action NVIDIA's own catalog
 recommends.

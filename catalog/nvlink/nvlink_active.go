@@ -30,7 +30,7 @@ func NVLinkActive() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.RemediationActionRetestHardware),
+		RecommendedAction: health.GenericDrain(),
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"max_inactive_nvlinks": {

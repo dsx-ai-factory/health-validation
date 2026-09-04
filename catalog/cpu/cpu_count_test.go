@@ -53,8 +53,8 @@ func TestCPUCountDefinition(t *testing.T) {
 	if definition.Provenance != health.NVIDIA || definition.MaturityLevel != health.Stable {
 		t.Errorf("classification = %v/%v, want NVIDIA/stable", definition.Provenance, definition.MaturityLevel)
 	}
-	if !definition.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckMechanicals)) {
-		t.Errorf("RecommendedAction = %v, want check_mechanicals", definition.RecommendedAction)
+	if !definition.RecommendedAction.Equal(health.GenericDrain()) {
+		t.Errorf("RecommendedAction = %v, want generic reset/restart/escalate ladder", definition.RecommendedAction)
 	}
 	if len(definition.Thresholds) != 0 {
 		t.Errorf("Thresholds = %v, want none", definition.Thresholds)
@@ -103,8 +103,8 @@ func TestCPUCount_OfflineCPU(t *testing.T) {
 	if verdict.Skipped || verdict.Severity != health.Critical {
 		t.Fatalf("skipped=%v severity=%v, want evaluated CRITICAL", verdict.Skipped, verdict.Severity)
 	}
-	if !verdict.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckMechanicals)) {
-		t.Errorf("RecommendedAction = %v, want check_mechanicals", verdict.RecommendedAction)
+	if !verdict.RecommendedAction.Equal(health.GenericDrain()) {
+		t.Errorf("RecommendedAction = %v, want generic reset/restart/escalate ladder", verdict.RecommendedAction)
 	}
 	if got, want := verdict.Messages, []string{"Expected all 144 possible logical CPUs to be online; found 143 online."}; !slices.Equal(got, want) {
 		t.Errorf("Messages = %q, want %q", got, want)
@@ -159,7 +159,7 @@ func TestCPUCount_CollectionErrorsUseCollectionActions(t *testing.T) {
 			if len(verdict.Messages) != 1 || !strings.Contains(verdict.Messages[0], tt.cause.Error()) {
 				t.Errorf("Messages = %q, want surfaced cause %q", verdict.Messages, tt.cause)
 			}
-			if verdict.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckMechanicals)) {
+			if verdict.RecommendedAction.Equal(health.GenericDrain()) {
 				t.Error("collection failure inherited the hardware mismatch action")
 			}
 		})

@@ -40,7 +40,7 @@ func requirePowerLimitCritical(t *testing.T, cat *catalog.Catalog, m gpu.GPUMeas
 	if v.Severity != health.Critical {
 		t.Fatalf("Severity = %v, want CRITICAL", v.Severity)
 	}
-	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckMechanicals)) {
+	if !v.RecommendedAction.Equal(health.GenericDrain()) {
 		t.Errorf("RecommendedAction = %v, want drain/check_mechanicals", v.RecommendedAction)
 	}
 	message := strings.Join(v.Messages, " ")

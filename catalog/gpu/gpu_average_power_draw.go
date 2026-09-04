@@ -24,7 +24,7 @@ func GPUAveragePowerDraw() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.RemediationActionCheckMechanicals),
+		RecommendedAction: health.GenericDrain(),
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"min_power_w": {

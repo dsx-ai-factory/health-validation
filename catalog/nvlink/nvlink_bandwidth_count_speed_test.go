@@ -58,7 +58,7 @@ func TestNVLinkBandwidthCountSpeed_SpeedMismatch(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("severity = %v, want CRITICAL (50000 != default 53125)", v.Severity)
 	}
-	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRetestHardware)) {
+	if !v.RecommendedAction.Equal(health.GenericDrain()) {
 		t.Errorf("RecommendedAction = %v, want Drain/retest_hardware", v.RecommendedAction)
 	}
 	msg := strings.Join(v.Messages, " ")

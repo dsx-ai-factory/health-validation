@@ -97,7 +97,7 @@ func TestXidErrors_WorstSeverityWins(t *testing.T) {
 }
 
 func TestXidErrors_PerCodeCriticalCheck(t *testing.T) {
-	// Xid 79 fires its own gpu_xid_79 check (CRITICAL, restart_bm); every
+	// Xid 79 fires its own gpu_xid_79 check (CRITICAL, generic ladder); every
 	// other Xid check runs against the same measurement but passes.
 	nv := evalXid(t, 79)
 
@@ -113,7 +113,7 @@ func TestXidErrors_PerCodeCriticalCheck(t *testing.T) {
 	if critical[0].CheckID != "gpu_xid_79" {
 		t.Errorf("CheckID = %q, want gpu_xid_79", critical[0].CheckID)
 	}
-	if want := health.Drain(health.RemediationActionRestartBM); !critical[0].RecommendedAction.Equal(want) {
+	if want := health.GenericDrain(); !critical[0].RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", critical[0].RecommendedAction, want)
 	}
 }

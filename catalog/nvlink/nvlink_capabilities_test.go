@@ -70,7 +70,7 @@ func TestNVLinkCapabilities_CapabilityUnsupported(t *testing.T) {
 			if !strings.Contains(msg, "GPU-0") || !strings.Contains(msg, tc.wantMsg) {
 				t.Errorf("Messages = %q, want %q and gpu_id interpolated", v.Messages, tc.wantMsg)
 			}
-			if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRetestHardware)) {
+			if !v.RecommendedAction.Equal(health.GenericDrain()) {
 				t.Errorf("RecommendedAction = %v, want Drain/retest_hardware", v.RecommendedAction)
 			}
 		})
