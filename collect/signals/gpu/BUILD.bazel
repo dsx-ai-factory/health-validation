@@ -1,0 +1,16 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "gpu",
+    srcs = ["signals.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/gpu",
+    visibility = ["//visibility:public"],
+    deps = ["//collect"],
+)
+
+go_test(
+    name = "gpu_test",
+    srcs = ["signals_test.go"],
+    embed = [":gpu"],
+    deps = ["//collect"],
+)

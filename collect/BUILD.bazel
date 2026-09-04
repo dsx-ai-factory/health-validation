@@ -1,0 +1,30 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# gazelle:prefix github.com/dsx-ai-factory/health-validation/collect
+
+go_library(
+    name = "collect",
+    srcs = [
+        "collect.go",
+        "cycle.go",
+        "doc.go",
+        "signals.go",
+    ],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect/observation",
+    ],
+)
+
+go_test(
+    name = "collect_test",
+    srcs = [
+        "collect_test.go",
+        "cycle_test.go",
+    ],
+    embed = [":collect"],
+    deps = [
+        "//collect/signals/gpu",
+    ],
+)

@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "device",
+    srcs = [
+        "device.go",
+        "margin_temperature.go",
+    ],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/source/nvml/device",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_nvidia_go_nvlib//pkg/nvlib/device",
+        "@com_github_nvidia_go_nvml//pkg/nvml",
+    ],
+)

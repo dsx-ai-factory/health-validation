@@ -1,0 +1,31 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "server",
+    srcs = [
+        "api.go",
+        "server.go",
+    ],
+    importpath = "github.com/dsx-ai-factory/health-validation/agentkit/server",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/proto/go/health/v1:health",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_soheilhy_cmux//:cmux",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_protobuf//encoding/protojson",
+    ],
+)
+
+go_test(
+    name = "server_test",
+    srcs = ["server_test.go"],
+    embed = [":server"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/gpu",
+    ],
+)

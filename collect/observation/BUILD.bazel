@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "observation",
+    srcs = [
+        "doc.go",
+        "observation.go",
+    ],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/observation",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect/proto/go/health/v1:health",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ],
+)
+
+go_test(
+    name = "observation_test",
+    srcs = ["observation_test.go"],
+    embed = [":observation"],
+)

@@ -1,0 +1,29 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "dcgm",
+    srcs = [
+        "doc.go",
+        "sensor.go",
+        "signals.go",
+    ],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/gpu",
+        "//collect/source/dcgm",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ],
+)
+
+go_test(
+    name = "dcgm_test",
+    srcs = ["sensor_test.go"],
+    embed = [":dcgm"],
+    deps = [
+        "//collect",
+        "//collect/signals/gpu",
+    ],
+)

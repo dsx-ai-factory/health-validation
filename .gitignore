@@ -3,6 +3,7 @@ node_modules/
 0
 .bazelrc.user
 public
+.DS_Store
 
 # Locally built/downloaded binaries. Keep these out of the repo root.
 /bin/

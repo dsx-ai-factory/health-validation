@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package health.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/dsx-ai-factory/health-validation/collect/proto/go/health/v1;healthv1";
+
+// ObservationBatch is the shared payload of one collection cycle.
+// Additive-only within a major version: new signals get added, old ones
+// are never repurposed.
+message ObservationBatch {
+  string collection_id = 1;
+  repeated Observation observations = 2;
+}
+
+message Observation {
+  string signal_id = 1;
+  string source = 2;
+  Entity entity = 3;
+  google.protobuf.Timestamp observed_at = 4;
+
+  // Optional because inventory and event signals may not have a unit.
+  optional string unit = 5;
+
+  // Exactly one outcome: a value, or the reason collection failed.
+  // Collection status never lives in the value — no sentinel values.
+  oneof outcome {
+    Value value = 6;
+    CollectionError collection_error = 7;
+  }
+}
+
+// Entity identifies what an observation is about.
+message Entity {
+  string type = 1; // "node", "gpu", "link"
+  string id = 2;   // e.g. the GPU UUID
+}
+
+// Value is a typed observed value.
+message Value {
+  oneof kind {
+    int64 int_value = 1;
+    double double_value = 2;
+    string string_value = 3;
+    bool bool_value = 4;
+  }
+}
+
+// CollectionError records why a signal could not be collected. It keeps the
+// source's symbolic error next to the normalized category, because collapsing
+// them loses information the catalog needs.
+// It carries no health severity; each consumer decides what a failed
+// observation means for its own result.
+message CollectionError {
+  string source = 1;
+  string operation = 2;
+  CollectionErrorCategory category = 3;
+  string source_error = 4;
+  string detail = 5;
+}
+
+enum CollectionErrorCategory {
+  COLLECTION_ERROR_CATEGORY_UNSPECIFIED = 0;
+  COLLECTION_ERROR_CATEGORY_TIMEOUT = 1;
+  COLLECTION_ERROR_CATEGORY_UNSUPPORTED = 2;
+  COLLECTION_ERROR_CATEGORY_UNAVAILABLE = 3;
+  COLLECTION_ERROR_CATEGORY_NOT_CONFIGURED = 4;
+  COLLECTION_ERROR_CATEGORY_PERMISSION_DENIED = 5;
+  COLLECTION_ERROR_CATEGORY_PARSE_ERROR = 6;
+  COLLECTION_ERROR_CATEGORY_SOURCE_ERROR = 7;
+}

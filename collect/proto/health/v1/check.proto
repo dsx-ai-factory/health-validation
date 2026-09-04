@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package health.v1;
+
+import "health/v1/observation.proto";
+
+option go_package = "github.com/dsx-ai-factory/health-validation/collect/proto/go/health/v1;healthv1";
+
+// CheckService is the client-facing collection surface: one call runs one
+// collection cycle and returns the typed batch. The verdict-returning API
+// for Health Validation builds on this later.
+service CheckService {
+  rpc Check(CheckRequest) returns (ObservationBatch);
+}
+
+message CheckRequest {}

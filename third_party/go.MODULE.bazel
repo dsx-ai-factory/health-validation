@@ -25,7 +25,13 @@ use_repo(
     "co_honnef_go_tools",
     "com_github_google_cel_go",
     "com_github_google_uuid",
+    "com_github_nvidia_go_dcgm",
+    "com_github_nvidia_go_nvlib",
     "com_github_nvidia_go_nvml",
+    "com_github_soheilhy_cmux",
+    "com_github_stretchr_testify",
     "in_gopkg_yaml_v3",
+    "org_golang_google_grpc",
+    "org_golang_google_protobuf",
     "org_golang_x_tools",
 )
