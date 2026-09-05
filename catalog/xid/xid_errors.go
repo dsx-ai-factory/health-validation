@@ -44,17 +44,32 @@ var criticalXids = []criticalXid{
 	{code: 140, action: resetAndContactSupport(), description: "ECC unrecovered error"},
 	{code: 142, action: health.Drain(health.RemediationActionContactSupport), description: "NVENC3 error"},
 	{code: 143, action: resetAndContactSupport(), description: "GPU initialization error"},
-	{code: 144, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink SAW error"},
-	{code: 145, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink RLW error"},
-	{code: 146, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink TLW error"},
-	{code: 147, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink TREX error"},
-	{code: 148, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink NVLPW_CTRL error"},
-	{code: 149, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink NETIR error"},
-	{code: 150, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink MSE error"},
+	// 144-150 (NVLink5/NETIR family) are not listed here: they get their
+	// own severity-differentiated checks below, built by nvlink5Check.
 	{code: 155, action: resetAndContactSupport(), description: "NVLink SW-defined error"},
 	{code: 156, action: resetAndContactSupport(), description: "resource retirement event"},
 	{code: 158, action: resetAndContactSupport(), description: "GPU fatal timeout"},
 	{code: 159, action: health.Drain(health.RemediationActionCheckUVM), description: "CHI non-data error"},
+}
+
+// nvlink5Xid is one Xid code in the NVLink5/NVSwitch fault family
+// (144-150, Blackwell-only). Unlike other Xid codes, NVRM itself marks
+// each occurrence Fatal or Nonfatal in the log line, so the check
+// differentiates severity and action on that basis instead of firing
+// CRITICAL uniformly — see [nvlink5Check].
+type nvlink5Xid struct {
+	description string
+	code        int64
+}
+
+var nvlink5Xids = []nvlink5Xid{
+	{code: 144, description: "NVLink SAW error"},
+	{code: 145, description: "NVLink RLW error"},
+	{code: 146, description: "NVLink TLW error"},
+	{code: 147, description: "NVLink TREX error"},
+	{code: 148, description: "NVLink NVLPW_CTRL error"},
+	{code: 149, description: "NVLink NETIR error"},
+	{code: 150, description: "NVLink MSE error"},
 }
 
 // warningClass groups warning-severity Xid codes that share a
@@ -103,9 +118,12 @@ var warningClasses = []warningClass{
 // sensor and tests its xid_counts map. Codes whose immediate action is
 // IGNORE/empty, and Unused codes, are not represented and never fire.
 func Checks() []health.CheckDefinition {
-	checks := make([]health.CheckDefinition, 0, len(criticalXids)+2)
+	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+2)
 	for _, c := range criticalXids {
 		checks = append(checks, criticalCheck(c))
+	}
+	for _, c := range nvlink5Xids {
+		checks = append(checks, nvlink5Check(c))
 	}
 	checks = append(checks, warningCheck(), xid154Check())
 	return checks
@@ -124,6 +142,46 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 		Severity:   health.Critical,
 		Message:    fmt.Sprintf("GPU Xid %d detected: %s.", c.code, c.description),
 	}}
+	return def
+}
+
+// nvlink5Check builds the per-code check for one NVLink5-family Xid
+// (144-150). NVRM marks each occurrence Fatal or Nonfatal in the log
+// line itself (see [toolkit.ParseXid] / [NVLink5Detail]); the check
+// mirrors that split: Fatal is CRITICAL and carries the NVLink5
+// workflow action, Nonfatal is WARNING with no recommended action
+// (matching NVIDIA's own guidance that most non-fatal NVLink5 subcodes
+// need no remediation).
+//
+// Unlike [criticalCheck], the check-level default here is
+// [health.NoAction] and the Fatal rule sets its own RecommendedAction:
+// a Rule can only override a non-zero check default (see
+// [health.Rule.HasRecommendedAction]), so the zero-value "no action"
+// outcome has to be the fallback, not an override.
+func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
+	def := baseCheck(
+		fmt.Sprintf("gpu_xid_%d", c.code),
+		fmt.Sprintf("GPU Xid %d (%s)", c.code, c.description),
+		fmt.Sprintf("Detects NVRM Xid %d in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.", c.code),
+		health.NoAction,
+	)
+	def.RequiredSignals = []string{SignalXidCounts, SignalFatalXidCounts}
+	// NVLink5 (144-150) is Blackwell-only per NVIDIA's Xid catalog — it
+	// does not occur on H100/A100, unlike baseCheck's default coverage.
+	def.Architectures = []string{"GB200", "GB300"}
+	def.Rules = []health.Rule{
+		{
+			Expression:        fmt.Sprintf("%d in fatal_xid_counts", c.code),
+			Severity:          health.Critical,
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s (Fatal).", c.code, c.description),
+			RecommendedAction: health.Drain(health.RemediationActionWorkflowNVLink5Err),
+		},
+		{
+			Expression: fmt.Sprintf("%d in xid_counts", c.code),
+			Severity:   health.Warning,
+			Message:    fmt.Sprintf("GPU Xid %d detected: %s (Nonfatal).", c.code, c.description),
+		},
+	}
 	return def
 }
 
