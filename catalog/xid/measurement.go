@@ -46,20 +46,40 @@ type XidEvent struct {
 // NVLink5/NVSwitch fault family (Xid 144-150, Blackwell-only) instead
 // of the pid/name pair other Xid codes use.
 //
-// IntrInfo, ErrorStatus, and DebugData are raw hex strings, deliberately
-// left uninterpreted: NVIDIA's Xid 144-150 decode table maps these
-// registers to a specific fault subtype and resolution per driver
-// version, but that table was not available from a source reliable
-// enough to hardcode here. Fatal and SubComponent are literal text in
-// the log line itself (not register-decoded), so they are safe to rely
-// on today.
+// IntrInfo, ErrorStatus, and DebugData are raw hex strings. Fatal and
+// SubComponent are literal text in the log line itself (not
+// register-decoded), so they are always reliable. Resolution and
+// Investigation are looked up from NVIDIA's Xid 144-150 decode table —
+// see [ResolutionMatched] before trusting them: NVIDIA's public decode
+// table differentiates several fault subtypes only by IntrInfo bit
+// position, and those bit positions differ between pre- and
+// post-R575 drivers (see driver-version detection in the toolkit
+// module's parser). Not every combination of SubComponent/ErrorStatus
+// this repo has seen documented could be sourced with confidence — see
+// toolkit's nvlink5_decode.go for exactly which entries are
+// table-backed vs. a conservative Fatal-flag-derived fallback.
 type NVLink5Detail struct {
-	SubComponent string   `json:"sub_component"`
-	IntrInfo     string   `json:"intr_info,omitempty"`
-	ErrorStatus  string   `json:"error_status,omitempty"`
-	DebugData    []string `json:"debug_data,omitempty"`
-	Link         int64    `json:"link"`
-	Fatal        bool     `json:"fatal"`
+	SubComponent string `json:"sub_component"`
+	IntrInfo     string `json:"intr_info,omitempty"`
+	ErrorStatus  string `json:"error_status,omitempty"`
+	// DriverEra records which IntrInfo bit layout was assumed when
+	// decoding Resolution/Investigation ("v1(<R575)", "v2(>=R575)", or
+	// "unknown" — see toolkit.DriverEra). Kept as a plain string here
+	// so this package (imported by the catalog) doesn't depend on the
+	// toolkit's host-detection code.
+	DriverEra     string   `json:"driver_era,omitempty"`
+	DebugData     []string `json:"debug_data,omitempty"`
+	Resolution    string   `json:"resolution,omitempty"`
+	Investigation string   `json:"investigation,omitempty"`
+	Link          int64    `json:"link"`
+	Fatal         bool     `json:"fatal"`
+	// ResolutionMatched reports whether Resolution/Investigation came
+	// from an exact (code, sub-component, error-status) table entry
+	// NVIDIA's docs stated unambiguously, as opposed to the generic
+	// Fatal-flag-derived fallback (RESET_GPU/CONTACT_SUPPORT when
+	// Fatal, IGNORE/CONTACT_SUPPORT when not) used when the table has
+	// no confirmed entry for this combination.
+	ResolutionMatched bool `json:"resolution_matched"`
 }
 
 // XidMeasurement is the aggregate of every Xid event observed in the

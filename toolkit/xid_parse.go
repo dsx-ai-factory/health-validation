@@ -39,10 +39,24 @@ var xidNVLink5RE = regexp.MustCompile(`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (14[4
 // that do not match are skipped. The returned measurement always has a
 // non-nil meaning even with zero events: EventCount is 0 and XidCounts
 // is nil, which a check reads as "no Xid faults observed".
-func ParseXid(since string, lines []string) xid.XidMeasurement {
+//
+// era is the host's NVIDIA driver era (see [DetectDriverEra]),
+// used only to decode the NVLink5 fault family's (Xid 144-150)
+// resolution bucket. It is variadic so existing callers are unaffected;
+// omitting it (or passing [DriverEraUnknown]) still parses every field
+// correctly, it just means [xid.NVLink5Detail.ResolutionMatched] can
+// never be true for entries that would have needed era to resolve — see
+// [decodeNVLink5Resolution]. Only the first value is used; passing more
+// than one is a caller error and the rest are ignored.
+func ParseXid(since string, lines []string, era ...DriverEra) xid.XidMeasurement {
+	driverEra := DriverEraUnknown
+	if len(era) > 0 {
+		driverEra = era[0]
+	}
+
 	m := xid.XidMeasurement{Since: since}
 	for _, line := range lines {
-		ev, ok := parseNVLink5Line(line)
+		ev, ok := parseNVLink5Line(line, driverEra)
 		if !ok {
 			ev, ok = parseXidLine(line)
 		}
@@ -92,7 +106,7 @@ func parseXidLine(line string) (xid.XidEvent, bool) {
 
 // parseNVLink5Line matches the extended sub-component/severity format
 // used by the NVLink5 fault family (Xid 144-150).
-func parseNVLink5Line(line string) (xid.XidEvent, bool) {
+func parseNVLink5Line(line string, era DriverEra) (xid.XidEvent, bool) {
 	groups := xidNVLink5RE.FindStringSubmatch(line)
 	if groups == nil {
 		return xid.XidEvent{}, false
@@ -117,6 +131,7 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 			detail.DebugData = tail[2:]
 		}
 	}
+	decodeNVLink5Resolution(code, era, detail)
 
 	return xid.XidEvent{PCIAddress: groups[1], XidCode: code, NVLink5: detail}, true
 }
