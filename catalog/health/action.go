@@ -66,15 +66,14 @@ func (s *OperationalState) UnmarshalJSON(data []byte) error {
 type RemediationAction string
 
 const (
-	RemediationActionContactSupport     RemediationAction = "contact_support"
-	RemediationActionResetGPU           RemediationAction = "reset_gpu"
-	RemediationActionRestartApp         RemediationAction = "restart_app"
-	RemediationActionRestartOS          RemediationAction = "restart_os"
-	RemediationActionUpdateSWFW         RemediationAction = "update_swfw"
-	RemediationActionCheckUVM           RemediationAction = "check_uvm"
-	RemediationActionWorkflowXid45      RemediationAction = "workflow_xid_45"
-	RemediationActionWorkflowNVLink5Err RemediationAction = "workflow_nvlink5_err"
-	RemediationActionXid154             RemediationAction = "xid_154"
+	RemediationActionContactSupport RemediationAction = "contact_support"
+	RemediationActionResetGPU       RemediationAction = "reset_gpu"
+	RemediationActionRestartApp     RemediationAction = "restart_app"
+	RemediationActionRestartOS      RemediationAction = "restart_os"
+	RemediationActionUpdateSWFW     RemediationAction = "update_swfw"
+	RemediationActionCheckUVM       RemediationAction = "check_uvm"
+	RemediationActionWorkflowXid45  RemediationAction = "workflow_xid_45"
+	RemediationActionXid154         RemediationAction = "xid_154"
 
 	// RemediationActionHold marks a node as drained but not yet
 	// individually remediated: hold it out of scheduling until a

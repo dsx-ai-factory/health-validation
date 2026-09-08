@@ -108,7 +108,7 @@ func TestXidErrors_NVLink5_FatalIsCritical(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("gpu_xid_146 severity = %v, want CRITICAL", v.Severity)
 	}
-	if want := health.Drain(health.RemediationActionWorkflowNVLink5Err); !v.RecommendedAction.Equal(want) {
+	if want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionContactSupport); !v.RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
 	}
 }
