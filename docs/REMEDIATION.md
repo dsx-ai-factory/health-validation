@@ -86,7 +86,7 @@ expected to add anything a GPU reset wouldn't already cover.
 | Action | Description |
 |---|---|
 | `reset_gpu` | Reset the GPU: `nvidia-smi --gpu-reset` (no active processes may be using the GPU). |
-| `restart_vm` | Restart the VM that owns the affected GPU. |
+| `restart_vm` | Restart the VM that owns the affected GPU. For bare-metal hosts, treat this as a host-level restart rather than a VM restart. |
 | `contact_support` | Escalate to your cluster's support path for further investigation (i.e. your CSP if CSP-managed, or your organization's support path if on-prem); the end of the line for self-service remediation. |
 
 ### Domain-hold action
