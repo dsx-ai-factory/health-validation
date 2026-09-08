@@ -69,8 +69,7 @@ step (log it, surface it to a human) rather than an error.
 
 Most checks outside the Xid catalog — CPU/NUMA topology, GPU count/power,
 most NVLink connectivity checks, InfiniBand link health, and the CLI's own
-architecture-discovery failure — have no NVIDIA-documented bespoke
-remediation, so they all recommend the same default ladder
+architecture-discovery failure — all recommend the same default sequence
 (`health.GenericDrain()`):
 
 ```json
@@ -83,6 +82,12 @@ host-level restart, then escalate. Several Xid checks (below) use a shorter
 two-step variant of this same pattern — `["reset_gpu", "contact_support"]`,
 skipping the host-restart step — for faults where a host restart isn't
 expected to add anything a GPU reset wouldn't already cover.
+
+| Action | Description |
+|---|---|
+| `reset_gpu` | Reset the GPU: `nvidia-smi --gpu-reset` (no active processes may be using the GPU). |
+| `restart_vm` | Restart the VM that owns the affected GPU. |
+| `contact_support` | Escalate to your cluster's support path for further investigation (i.e. your CSP if CSP-managed, or your organization's support path if on-prem); the end of the line for self-service remediation. |
 
 ### Domain-hold action
 
@@ -108,19 +113,20 @@ one pass once it does.
 
 ### Xid-catalog actions
 
-These map to the "immediate action" resolution buckets in NVIDIA's
+These are specific to individual Xid codes — beyond the generic actions
+above, they map to the "immediate action" resolution buckets in NVIDIA's
 [Xid Errors documentation](https://docs.nvidia.com/deploy/xid-errors/latest/analyzing-xid-catalog.html),
 and are recommended by the per-code `gpu_xid_<code>` checks and the
-consolidated `gpu_xid_warning` check.
+consolidated `gpu_xid_warning` check. (`reset_gpu`, `restart_vm`, and
+`contact_support` also appear in several of these checks' sequences — e.g.
+Xid 140 and 151 both recommend `restart_vm` — but are documented once, above,
+since they're not Xid-specific.)
 
 | Action | Description |
 |---|---|
-| `reset_gpu` | Reset the GPU: `nvidia-smi --gpu-reset` (no active processes may be using the GPU). |
-| `restart_vm` | Restart the VM that owns the affected GPU. Recommended for Xid 140 (ECC unrecovered) and Xid 151 (key rotation error), and as the middle step of the [generic sequence](#generic-resetrestartescalate-sequence) above. |
 | `restart_app` | Restart the application using the GPU; the GPU itself is not considered faulted. The default for the consolidated `gpu_xid_warning` check and most of the Xid codes it groups under "application-level" faults. |
 | `update_swfw` | Update GPU driver/firmware and any related system software to the latest supported versions. Recommended for Xid 78 (vGPU start error). |
 | `check_uvm` | If Unified Virtual Memory or vGPU is in use, reset the GPU; otherwise no hardware action is warranted. Recommended for Xid 159 (CHI non-data error). |
-| `contact_support` | Escalate to your cluster's support path for further investigation (i.e. your CSP if CSP-managed, or your organization's support path if on-prem); the end of the line for self-service remediation. |
 | `workflow_xid_45` | Follow the Xid 45 (preemptive GPU removal) workflow: restart the fabric manager if the node is solo; otherwise this Xid typically accompanies another Xid and that Xid's guidance applies instead. |
 | `workflow_nvlink_err` | Follow the NVLink error workflow for the accompanying Xid (74): decode the hex register values in the error message to determine the specific NVLink remediation. |
 | `workflow_nvlink5_err` | Follow the NVLink5 error workflow for the accompanying Xid (144–150): decode the hex register values in the error message to determine the specific NVLink remediation. |
