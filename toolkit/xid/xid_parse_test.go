@@ -1,14 +1,14 @@
-package toolkit_test
+package xid_test
 
 import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/toolkit"
+	"github.com/dsx-ai-factory/health-validation/toolkit/xid"
 )
 
 func TestParseXid_FullLine(t *testing.T) {
-	m := toolkit.ParseXid("boot", []string{
+	m := xid.ParseXid("boot", []string{
 		"NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3",
 	})
 
@@ -38,7 +38,7 @@ func TestParseXid_FullLine(t *testing.T) {
 }
 
 func TestParseXid_CodeOnly(t *testing.T) {
-	m := toolkit.ParseXid("boot", []string{
+	m := xid.ParseXid("boot", []string{
 		"NVRM: Xid (PCI:0000:01:00): 31, Ch 0000000a, intr 10000000",
 	})
 
@@ -58,7 +58,7 @@ func TestParseXid_CodeOnly(t *testing.T) {
 }
 
 func TestParseXid_RepeatedCodeIncrementsCount(t *testing.T) {
-	m := toolkit.ParseXid("boot", []string{
+	m := xid.ParseXid("boot", []string{
 		"NVRM: Xid (PCI:0000:01:00): 79, pid=1, name=a",
 		"NVRM: Xid (PCI:0000:02:00): 79, pid=2, name=b",
 		"NVRM: Xid (PCI:0000:03:00): 31, pid=3, name=c",
@@ -79,7 +79,7 @@ func TestParseXid_RepeatedCodeIncrementsCount(t *testing.T) {
 }
 
 func TestParseXid_WithJournalPrefix(t *testing.T) {
-	m := toolkit.ParseXid("boot", []string{
+	m := xid.ParseXid("boot", []string{
 		"Jun 09 12:00:00 node1 kernel: NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
 	})
 
@@ -93,7 +93,7 @@ func TestParseXid_WithJournalPrefix(t *testing.T) {
 }
 
 func TestParseXid_NonMatchingLinesSkipped(t *testing.T) {
-	m := toolkit.ParseXid("boot", []string{
+	m := xid.ParseXid("boot", []string{
 		"",
 		"NVRM: GPU at 0000:01:00.0: GPU has fallen off the bus.",
 		"some unrelated kernel message",
@@ -109,7 +109,7 @@ func TestParseXid_NonMatchingLinesSkipped(t *testing.T) {
 }
 
 func TestParseXid_NVLink5Fatal(t *testing.T) {
-	m := toolkit.ParseXid("boot", []string{
+	m := xid.ParseXid("boot", []string{
 		"NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000 0x00000001 0x00000002)",
 	})
 
@@ -154,7 +154,7 @@ func TestParseXid_NVLink5Fatal(t *testing.T) {
 }
 
 func TestParseXid_NVLink5Nonfatal(t *testing.T) {
-	m := toolkit.ParseXid("boot", []string{
+	m := xid.ParseXid("boot", []string{
 		"NVRM: Xid (PCI:0000:5f:00): 145, RLW_REMAP Nonfatal XC0 i0 Link 02",
 	})
 
@@ -190,7 +190,7 @@ func TestParseXid_NVLink5Nonfatal(t *testing.T) {
 func TestParseXid_NonNVLink5CodesUnaffected(t *testing.T) {
 	// A regular (non-144-150) Xid line must still parse via the
 	// pid=/name= format and never populate NVLink5 or FatalXidCounts.
-	m := toolkit.ParseXid("boot", []string{
+	m := xid.ParseXid("boot", []string{
 		"NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3",
 	})
 	if m.Events[0].NVLink5 != nil {
@@ -202,7 +202,7 @@ func TestParseXid_NonNVLink5CodesUnaffected(t *testing.T) {
 }
 
 func TestParseXid_NoLines_EmptyMeasurement(t *testing.T) {
-	m := toolkit.ParseXid("boot", nil)
+	m := xid.ParseXid("boot", nil)
 
 	if m.EventCount != 0 {
 		t.Errorf("EventCount = %d, want 0", m.EventCount)

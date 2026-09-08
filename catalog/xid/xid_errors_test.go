@@ -22,7 +22,7 @@ func xidCatalog(t *testing.T) *catalog.Catalog {
 
 // measurementFor builds an XidMeasurement directly from raw Xid codes —
 // the catalog-native way, with no dmesg parsing. Parsing "NVRM: Xid …"
-// log lines is the toolkit's concern (toolkit.ParseXid) and is tested
+// log lines is the toolkit's concern (toolkit/xid.ParseXid) and is tested
 // there; the catalog only needs the aggregated XidCounts/EventCount.
 func measurementFor(codes ...int64) xid.XidMeasurement {
 	m := xid.XidMeasurement{Since: "boot"}
@@ -74,7 +74,7 @@ func TestXidErrors_SeverityByBucket(t *testing.T) {
 }
 
 // nvlink5MeasurementFor builds an XidMeasurement for one NVLink5-family
-// event (144-150), the way toolkit.ParseXid would after decoding the
+// event (144-150), the way toolkit/xid.ParseXid would after decoding the
 // extended Fatal/Nonfatal log format.
 func nvlink5MeasurementFor(code int64, fatal bool) xid.XidMeasurement {
 	m := xid.XidMeasurement{

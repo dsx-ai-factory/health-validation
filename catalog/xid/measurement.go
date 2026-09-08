@@ -53,10 +53,10 @@ type XidEvent struct {
 // see [ResolutionMatched] before trusting them: NVIDIA's public decode
 // table differentiates several fault subtypes only by IntrInfo bit
 // position, and those bit positions differ between pre- and
-// post-R575 drivers (see driver-version detection in the toolkit
-// module's parser). Not every combination of SubComponent/ErrorStatus
+// post-R575 drivers (see driver-version detection in the toolkit/xid
+// package's parser). Not every combination of SubComponent/ErrorStatus
 // this repo has seen documented could be sourced with confidence — see
-// toolkit's nvlink5_decode.go for exactly which entries are
+// toolkit/xid/nvlink5_decode.go for exactly which entries are
 // table-backed vs. a conservative Fatal-flag-derived fallback.
 type NVLink5Detail struct {
 	SubComponent string `json:"sub_component"`
@@ -64,9 +64,9 @@ type NVLink5Detail struct {
 	ErrorStatus  string `json:"error_status,omitempty"`
 	// DriverEra records which IntrInfo bit layout was assumed when
 	// decoding Resolution/Investigation ("v1(<R575)", "v2(>=R575)", or
-	// "unknown" — see toolkit.DriverEra). Kept as a plain string here
+	// "unknown" — see toolkit/xid.DriverEra). Kept as a plain string here
 	// so this package (imported by the catalog) doesn't depend on the
-	// toolkit's host-detection code.
+	// toolkit/xid package's host-detection code.
 	DriverEra     string   `json:"driver_era,omitempty"`
 	DebugData     []string `json:"debug_data,omitempty"`
 	Resolution    string   `json:"resolution,omitempty"`
