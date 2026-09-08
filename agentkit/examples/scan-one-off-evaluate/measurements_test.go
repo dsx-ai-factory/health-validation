@@ -60,7 +60,7 @@ func TestBuildGPUMeasurementsPreservesPerSignalFailure(t *testing.T) {
 	}
 	require.Equal(t, health.Pass, byID["gpu_power_limit"].Severity)
 	require.Equal(t, health.Critical, byID["gpu_power_state"].Severity)
-	require.Equal(t, health.DiagnosticActionRetryCollection, byID["gpu_power_state"].RecommendedAction.DiagnosticAction)
+	require.Equal(t, []health.RemediationAction{health.RemediationActionRetryCollection}, byID["gpu_power_state"].RecommendedAction.RemediationActions)
 
 	measurement := measurements[0].(cataloggpu.GPUMeasurement)
 	require.Len(t, measurement.Errors(), 1)
