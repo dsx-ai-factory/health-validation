@@ -73,25 +73,29 @@ provide automatic release stamping or publishing.
 `docs/` is a Docusaurus site, built through Bazel rather than pnpm directly:
 
 ```bash
-bazel run //docs:serve    # live preview on http://localhost:3000/health-validation/
+bazel run //docs:serve    # live preview on http://localhost:3000/
 bazel build //docs:build  # one-shot build into bazel-bin/docs/build
 ```
 
-Most reference content is generated rather than authored:
-`//catalog/cmd/healthdump:checks` and `//catalog/health:schema` emit JSON that
-`//catalog/cmd/gencheckpages:pages` turns into one MDX page per check category.
-Editing a check in `catalog/` changes the published docs. `//docs:test` builds
+Most reference content is generated rather than authored, by two separate
+paths. `//catalog/cmd/gencheckpages:pages` reads the `Category` enum from
+`//catalog/health:schema` and writes one MDX page per category. The checks
+themselves never pass through it: `//catalog/cmd/healthdump:checks` lands as
+`static/data/checks.json`, which the `health-data` plugin loads and the
+`CheckCatalog` component renders into those pages at build time. Either way,
+editing a check in `catalog/` changes the published docs. `//docs:test` builds
 the whole site and is part of `//...`, so a broken site fails `bazel test //...`.
 
 Pushes to `main` are wired to publish the site to GitHub Pages via
 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml), which also has a
-`workflow_dispatch` trigger for republishing on demand. Publishing fails until a
-repository admin sets Settings -> Pages -> Source to GitHub Actions.
+`workflow_dispatch` trigger for republishing on demand. Pages is enabled on this
+repository with Source set to GitHub Actions.
 
-Once the repository is public the site will be at
-https://dsx-ai-factory.github.io/health-validation/. While it is internal, Pages
-serves it from a generated access-controlled subdomain named on that same
-settings page.
+The workflow takes `url` and `baseUrl` from `actions/configure-pages`, so the
+site is built for wherever GitHub serves it: a generated access-controlled
+subdomain while the repository is internal, and
+https://dsx-ai-factory.github.io/health-validation/ once it is public. Going
+public needs no change here.
 
 ## Linux-only Code
 

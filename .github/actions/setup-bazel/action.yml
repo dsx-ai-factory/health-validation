@@ -1,6 +1,15 @@
 name: Set up Bazel
 description: Install Bazelisk and configure Bazel caching, shared across all CI jobs.
 
+inputs:
+  disk-cache:
+    description: >-
+      Bazel disk cache key. Defaults to the calling workflow's name. Set it to
+      another workflow's name to share that workflow's cache, which is worth
+      doing when both build the same targets.
+    required: false
+    default: ""
+
 runs:
   using: composite
   steps:
@@ -18,5 +27,5 @@ runs:
       with:
         bazelisk-version: 1.28.1
         bazelisk-cache: true
-        disk-cache: ${{ github.workflow }}
+        disk-cache: ${{ inputs.disk-cache || github.workflow }}
         repository-cache: true

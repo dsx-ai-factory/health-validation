@@ -6,9 +6,9 @@ name: Pages
 # per-ref group; and `pages: write` / `id-token: write` stay scoped to the one
 # job that needs them instead of being granted to all of CI.
 #
-# workflow_dispatch is here because Pages must be enabled by a repository
-# admin (Settings -> Pages -> Source: GitHub Actions) before this workflow can
-# succeed, and because republishing on demand is occasionally useful.
+# workflow_dispatch republishes without a push, which is needed after a change
+# that affects the site but does not touch the repository, such as making it
+# public.
 on:
   push:
     branches:
@@ -27,53 +27,40 @@ jobs:
   build:
     if: github.repository == 'dsx-ai-factory/health-validation'
     runs-on: linux-amd64-cpu4
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       pages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      # Runs before the build so a disabled Pages site fails in seconds rather
-      # than after a full Docusaurus build. Reads the site config only;
-      # enabling Pages needs an admin token and is deliberately not attempted.
+      # Placed before the build so a repository without Pages enabled fails in
+      # seconds rather than after a full Docusaurus build.
       - uses: actions/configure-pages@v6
         id: pages
 
-      - name: Install Bazelisk
-        run: |
-          arch=${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL -o "$HOME/.local/bin/bazel" \
-            "https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-${arch}"
-          chmod +x "$HOME/.local/bin/bazel"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+      # Pinned to CI so this shares the disk cache that workflow already warms
+      # for the same targets. Its own key would start cold, and only the disk
+      # cache is workflow-scoped: the repository and bazelisk caches are shared
+      # either way.
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
         with:
-          bazelisk-version: 1.28.1
-          bazelisk-cache: true
-          # Pinned to CI rather than ${{ github.workflow }}: keying on this
-          # workflow's own name would miss the cache the CI workflow already
-          # warms for the same targets.
           disk-cache: CI
-          repository-cache: true
 
       # Deliberately no `paths:` filter on the trigger. The check reference
       # pages are generated from catalog/**/*.go by //catalog/cmd/gencheckpages,
       # so filtering on docs/** would silently keep serving a stale catalog
       # after a check changes.
       #
-      # Pages serves private and internal sites from a generated per-run
-      # subdomain rather than dsx-ai-factory.github.io, and from the root of
-      # it rather than under /<repo>/, so a URL/baseUrl baked in for the
-      # public site would 404 every asset (baseUrl) and mislabel every
-      # canonical link and sitemap entry (url) on the internal one.
-      # configure-pages already knows which of those two this run is, so the
-      # build gets the right values the first time instead of a separate step
-      # catching a baseUrl mismatch after the fact.
+      # Pages serves an access-controlled site from the root of a generated
+      # subdomain rather than under dsx-ai-factory.github.io/<repo>/, so a
+      # url/baseUrl baked in for the public site would 404 every asset and
+      # mislabel every canonical link. configure-pages reports which of the
+      # two this repository currently is, so the build gets it right rather
+      # than a later step catching the mismatch.
       - name: Build the docs site
         run: |
           bazel build --config=ci \
