@@ -341,14 +341,14 @@ validate against the published
   common healthy-check case), so treat its absence as "no action" and guard
   for it before reading into it — don't assume it's there. When present it is
   `{operational_state, remediation_actions}` (e.g.
-  `{"operational_state":"drain","remediation_actions":["reboot"]}`):
+  `{"operational_state":"drain","remediation_actions":["reset_gpu","restart_vm","contact_support"]}`):
   `operational_state` is `monitor` or `drain` (never `none` — that case is the
   omitted field), and `remediation_actions` is an **ordered sequence** of
   remediation steps, present only when `operational_state` is `drain` — feed
   it to your remediation engine in order. `remediation_actions` entries are an
-  open string set, not a closed enum (`reboot`, `reset_gpu`,
-  `retest_hardware`, … from NVIDIA's own catalog, but a custom catalog may add
-  its own); treat an unrecognized value as an opaque step, not an error. Since
+  open string set, not a closed enum (`reset_gpu`, `restart_vm`,
+  `contact_support`, … from this repo's own checks, but a custom catalog may
+  add its own); treat an unrecognized value as an opaque step, not an error. Since
   each check carries its own remediation sequence and there is no single
   node-level ranking across them, walk `check_results` for a full remediation
   picture. See [`docs/REMEDIATION.md`](REMEDIATION.md) for the full action

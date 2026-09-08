@@ -73,10 +73,10 @@ func GPUClockCapped() health.CheckDefinition {
 
 		Rules: []health.Rule{
 			{
-				Expression: "sm_clock_mhz < min_sm_clock_mhz",
-				Severity:   health.Critical,
-				Message:    "GPU ${gpu_id}: SM clock ${sm_clock_mhz} MHz below floor ${min_sm_clock_mhz} MHz.",
-				RecommendedAction: health.Drain(health.RemediationActionCheckMechanicals),
+				Expression:        "sm_clock_mhz < min_sm_clock_mhz",
+				Severity:          health.Critical,
+				Message:           "GPU ${gpu_id}: SM clock ${sm_clock_mhz} MHz below floor ${min_sm_clock_mhz} MHz.",
+				RecommendedAction: health.GenericDrain(),
 			},
 		},
 	}

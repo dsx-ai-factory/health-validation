@@ -67,21 +67,15 @@ type RemediationAction string
 
 const (
 	RemediationActionContactSupport     RemediationAction = "contact_support"
-	RemediationActionReboot             RemediationAction = "reboot"
 	RemediationActionResetGPU           RemediationAction = "reset_gpu"
 	RemediationActionRestartApp         RemediationAction = "restart_app"
-	RemediationActionRestartBM          RemediationAction = "restart_bm"
 	RemediationActionRestartVM          RemediationAction = "restart_vm"
 	RemediationActionUpdateSWFW         RemediationAction = "update_swfw"
-	RemediationActionCheckMechanicals   RemediationAction = "check_mechanicals"
-	RemediationActionCheckNetwork       RemediationAction = "check_network"
 	RemediationActionCheckUVM           RemediationAction = "check_uvm"
 	RemediationActionWorkflowXid45      RemediationAction = "workflow_xid_45"
-	RemediationActionWorkflowXid48      RemediationAction = "workflow_xid_48"
 	RemediationActionWorkflowNVLinkErr  RemediationAction = "workflow_nvlink_err"
 	RemediationActionWorkflowNVLink5Err RemediationAction = "workflow_nvlink5_err"
 	RemediationActionXid154             RemediationAction = "xid_154"
-	RemediationActionRetestHardware     RemediationAction = "retest_hardware"
 
 	// RemediationActionRetryCollection marks a verdict whose data could not
 	// be collected in time (a sensor timeout) rather than a confirmed

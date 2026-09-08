@@ -19,27 +19,35 @@ type criticalXid struct {
 	code        int64
 }
 
+// resetAndContactSupport is the remediation sequence for a Xid code
+// whose immediate-action bucket is a GPU-only reset: attempt the reset,
+// then escalate directly to support rather than the generic
+// [health.GenericDrain] ladder's intermediate host-restart step.
+func resetAndContactSupport() health.RecommendedAction {
+	return health.Drain(health.RemediationActionResetGPU, health.RemediationActionContactSupport)
+}
+
 // criticalXids lists every critical Xid code, ordered by code. action
 // is the immediate-action bucket; codes whose action is IGNORE/empty or
 // that are marked Unused are excluded entirely.
 var criticalXids = []criticalXid{
-	{code: 46, action: health.GenericDrain(), description: "GPU stopped processing"},
-	{code: 54, action: health.Drain(health.RemediationActionCheckMechanicals), description: "auxiliary power is not connected to the GPU board"},
-	{code: 62, action: health.GenericDrain(), description: "internal micro-controller halt"},
-	{code: 64, action: health.GenericDrain(), description: "GPU memory remapping failure"},
+	{code: 46, action: resetAndContactSupport(), description: "GPU stopped processing"},
+	{code: 54, action: health.Drain(health.RemediationActionContactSupport), description: "auxiliary power is not connected to the GPU board"},
+	{code: 62, action: resetAndContactSupport(), description: "internal micro-controller halt"},
+	{code: 64, action: resetAndContactSupport(), description: "GPU memory remapping failure"},
 	{code: 74, action: health.Drain(health.RemediationActionWorkflowNVLinkErr), description: "NVLink error"},
-	{code: 79, action: health.GenericDrain(), description: "GPU has fallen off the bus"},
-	{code: 95, action: health.GenericDrain(), description: "uncontained memory error"},
-	{code: 109, action: health.GenericDrain(), description: "context switch timeout error"},
-	{code: 110, action: health.GenericDrain(), description: "security fault error"},
-	{code: 119, action: health.GenericDrain(), description: "GSP RPC timeout"},
-	{code: 120, action: health.GenericDrain(), description: "GSP error"},
-	{code: 136, action: health.GenericDrain(), description: "link training failed"},
+	{code: 79, action: resetAndContactSupport(), description: "GPU has fallen off the bus"},
+	{code: 95, action: resetAndContactSupport(), description: "uncontained memory error"},
+	{code: 109, action: resetAndContactSupport(), description: "context switch timeout error"},
+	{code: 110, action: resetAndContactSupport(), description: "security fault error"},
+	{code: 119, action: resetAndContactSupport(), description: "GSP RPC timeout"},
+	{code: 120, action: resetAndContactSupport(), description: "GSP error"},
+	{code: 136, action: resetAndContactSupport(), description: "link training failed"},
 	// ECC routes through a threshold-gated quarantine path downstream
 	// rather than the generic reset-first ladder, so it skips ResetGPU.
 	{code: 140, action: health.Drain(health.RemediationActionRestartVM, health.RemediationActionContactSupport), description: "ECC unrecovered error"},
 	{code: 142, action: health.Drain(health.RemediationActionContactSupport), description: "NVENC3 error"},
-	{code: 143, action: health.GenericDrain(), description: "GPU initialization error"},
+	{code: 143, action: resetAndContactSupport(), description: "GPU initialization error"},
 	{code: 144, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink SAW error"},
 	{code: 145, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink RLW error"},
 	{code: 146, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink TLW error"},
@@ -47,9 +55,9 @@ var criticalXids = []criticalXid{
 	{code: 148, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink NVLPW_CTRL error"},
 	{code: 149, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink NETIR error"},
 	{code: 150, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink MSE error"},
-	{code: 155, action: health.GenericDrain(), description: "NVLink SW-defined error"},
-	{code: 156, action: health.GenericDrain(), description: "resource retirement event"},
-	{code: 158, action: health.GenericDrain(), description: "GPU fatal timeout"},
+	{code: 155, action: resetAndContactSupport(), description: "NVLink SW-defined error"},
+	{code: 156, action: resetAndContactSupport(), description: "resource retirement event"},
+	{code: 158, action: resetAndContactSupport(), description: "GPU fatal timeout"},
 	{code: 159, action: health.Drain(health.RemediationActionCheckUVM), description: "CHI non-data error"},
 }
 
