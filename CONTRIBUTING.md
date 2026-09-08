@@ -108,7 +108,7 @@ Titles follow [Conventional Commits](https://www.conventionalcommits.org/):
   your individual commit subjects are yours to write however you like.
 - A leading capital is fine, so `fix: RDMA link-flap` is correct. Title-case and
   all-caps subjects are rejected: not `feat: Add Support For X`, not `fix: BROKEN`.
-- Any title starting with `Revert ` or `revert ` skips the check entirely. That
+- Any title whose first word is `Revert` or `revert` skips the check entirely. That
   covers what GitHub's Revert button prefills, so a revert needs no retitling.
 - CI reads these rules from `main`, not from your branch. A PR that changes them
   is still judged by the current rules, so title it under those and use anything

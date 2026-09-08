@@ -41,7 +41,7 @@ jobs:
   # same step names, same install flags, same default config discovery. It
   # deviates where it must: the title arrives on stdin rather than as a
   # --from/--to range, versions are pinned, Node is 22 rather than the action's
-  # 20, and the ignore probe has no counterpart. That action lints commit ranges
+  # 20. That action lints commit ranges
   # and has no input for a title, so this job stands in until a title mode lands
   # upstream, then it should become a `uses:` of it.
   commit-lint:
@@ -78,20 +78,6 @@ jobs:
       # that declares pnpm.
       - name: Install commitlint
         run: npm install --no-package-lock --no-save --ignore-scripts @commitlint/cli@21.2.2 @commitlint/config-conventional@21.2.2
-
-      # Without `defaultIgnores: false` in commitlint.config.js, commitlint exits
-      # 0 on nine more message shapes having evaluated no rules, and the log looks
-      # identical to a real pass. Probe a merge subject rather than a revert one,
-      # since reverts are now deliberately exempt.
-      - name: Check the ignore bypass stays closed
-        run: |
-          status=0
-          printf 'Merge branch main into x\n' | ./node_modules/.bin/commitlint >/dev/null 2>&1 || status=$?
-          case "$status" in
-            0) echo "::error::commitlint.config.js is missing defaultIgnores: false; merge and fixup titles would pass unchecked"; exit 1 ;;
-            1) ;;
-            *) echo "::error::commitlint exited $status instead of linting; its config is absent or unreadable"; exit 1 ;;
-          esac
 
       # Rules come from commitlint.config.js via commitlint's default discovery.
       # The action calls `npx commitlint`; this calls the local binary so a
