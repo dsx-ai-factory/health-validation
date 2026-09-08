@@ -43,9 +43,7 @@ var criticalXids = []criticalXid{
 	{code: 119, action: resetAndContactSupport(), description: "GSP RPC timeout"},
 	{code: 120, action: resetAndContactSupport(), description: "GSP error"},
 	{code: 136, action: resetAndContactSupport(), description: "link training failed"},
-	// ECC routes through a threshold-gated quarantine path downstream
-	// rather than the generic reset-first ladder, so it skips ResetGPU.
-	{code: 140, action: health.Drain(health.RemediationActionRestartVM, health.RemediationActionContactSupport), description: "ECC unrecovered error"},
+	{code: 140, action: resetAndContactSupport(), description: "ECC unrecovered error"},
 	{code: 142, action: health.Drain(health.RemediationActionContactSupport), description: "NVENC3 error"},
 	{code: 143, action: resetAndContactSupport(), description: "GPU initialization error"},
 	{code: 144, action: health.Drain(health.RemediationActionWorkflowNVLink5Err), description: "NVLink SAW error"},
