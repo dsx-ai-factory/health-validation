@@ -68,7 +68,7 @@ step (log it, surface it to a human) rather than an error.
 ### Generic reset/restart/escalate sequence
 
 Most checks outside the Xid catalog — CPU/NUMA topology, GPU count/power,
-NVLink connectivity, InfiniBand link health, and the CLI's own
+most NVLink connectivity checks, InfiniBand link health, and the CLI's own
 architecture-discovery failure — have no NVIDIA-documented bespoke
 remediation, so they all recommend the same default ladder
 (`health.GenericDrain()`):
@@ -83,6 +83,28 @@ host-level restart, then escalate. Several Xid checks (below) use a shorter
 two-step variant of this same pattern — `["reset_gpu", "contact_support"]`,
 skipping the host-restart step — for faults where a host restart isn't
 expected to add anything a GPU reset wouldn't already cover.
+
+### Domain-hold action
+
+`nvlink_fabric_health` is the one exception to the generic sequence's final
+`contact_support` step:
+
+```json
+"remediation_actions": ["reset_gpu", "restart_vm", "hold"]
+```
+
+| Action | Description |
+|---|---|
+| `hold` | Hold the node out of scheduling — drained, but do not individually remediate or escalate it yet. Once a threshold number of other nodes in the **same NVLink/rack domain** have also reached `hold` (recommended: **3**), remediate the whole domain together (e.g. a single switch/rack-level repair) instead of chasing each node independently. |
+
+An NVLink fabric/route problem (`fabric_route_unhealthy` and friends) is often
+a symptom of a shared upstream component — a switch or rack-level NVLink
+issue — rather than something local to one GPU. Escalating on the first held
+node risks opening a support case per node for what turns out to be one
+underlying fault. Holding and counting first lets the pattern (multiple nodes
+in the same domain failing the same way) confirm itself before involving
+support, and gives a remediation engine the chance to fix the whole domain in
+one pass once it does.
 
 ### Xid-catalog actions
 

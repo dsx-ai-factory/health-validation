@@ -77,6 +77,15 @@ const (
 	RemediationActionWorkflowNVLink5Err RemediationAction = "workflow_nvlink5_err"
 	RemediationActionXid154             RemediationAction = "xid_154"
 
+	// RemediationActionHold marks a node as drained but not yet
+	// individually remediated: hold it out of scheduling until a
+	// threshold number of other nodes in the same NVLink/rack domain
+	// have also been held (3 is the recommended threshold), at which
+	// point the whole domain should be remediated together rather than
+	// node-by-node. Used for NVLink fabric/route faults that are more
+	// often a shared-switch problem than a single-node one.
+	RemediationActionHold RemediationAction = "hold"
+
 	// RemediationActionRetryCollection marks a verdict whose data could not
 	// be collected in time (a sensor timeout) rather than a confirmed
 	// fault: the node should retry collection or be investigated before
