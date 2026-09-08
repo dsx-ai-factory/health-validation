@@ -175,6 +175,36 @@ func TestParseXid_NVLink5ResolutionEndToEnd(t *testing.T) {
 	}
 }
 
+// TestDecodeNVLink5Resolution_Action2Escalation covers Xid 145
+// RLW_RXPIPE, ErrorStatus 0x1/0x2/0x4: NVIDIA's source table marks
+// these "promoteable" ('*') — normally IGNORE, but escalates to
+// RESET_GPU if a second, more specific IntrInfo bit is also set. Values
+// computed directly from the table's V2 bit patterns.
+func TestDecodeNVLink5Resolution_Action2Escalation(t *testing.T) {
+	base := &xid.NVLink5Detail{SubComponent: "RLW_RXPIPE", ErrorStatus: "0x00000001", IntrInfo: "0x00000006", Fatal: false}
+	decodeNVLink5Resolution(145, DriverEraV2, base)
+	if !base.ResolutionMatched || base.Resolution != "IGNORE" {
+		t.Errorf("base pattern: Resolution = %q matched=%v, want IGNORE/true", base.Resolution, base.ResolutionMatched)
+	}
+
+	escalated := &xid.NVLink5Detail{SubComponent: "RLW_RXPIPE", ErrorStatus: "0x00000001", IntrInfo: "0x00000086", Fatal: false}
+	decodeNVLink5Resolution(145, DriverEraV2, escalated)
+	if !escalated.ResolutionMatched || escalated.Resolution != "RESET_GPU" {
+		t.Errorf("action2 pattern: Resolution = %q matched=%v, want RESET_GPU/true (escalated)", escalated.Resolution, escalated.ResolutionMatched)
+	}
+	if escalated.Investigation != "CONTACT_SUPPORT" {
+		t.Errorf("action2 pattern: Investigation = %q, want CONTACT_SUPPORT (unchanged by escalation)", escalated.Investigation)
+	}
+
+	// A sub-component with no action2 data must be unaffected regardless
+	// of IntrInfo content.
+	noAction2 := &xid.NVLink5Detail{SubComponent: "NVLPW_CTRL", ErrorStatus: "0x80000000", IntrInfo: "0xFFFFFFFF", Fatal: false}
+	decodeNVLink5Resolution(148, DriverEraV2, noAction2)
+	if noAction2.Resolution != "IGNORE" {
+		t.Errorf("no-action2 row: Resolution = %q, want IGNORE (no escalation table for this row)", noAction2.Resolution)
+	}
+}
+
 func TestDecodeNVLink5Resolution_RecordsDriverEra(t *testing.T) {
 	detail := &xid.NVLink5Detail{SubComponent: "TREX", ErrorStatus: "0x00000001"}
 	decodeNVLink5Resolution(147, DriverEraV2, detail)

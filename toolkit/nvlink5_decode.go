@@ -17,14 +17,24 @@ import (
 // row. errorStatus is "" when the row applies regardless of
 // ErrorStatus (disambiguated by pattern alone instead), or a
 // "/"-separated list of hex values that all mean the same thing.
+//
+// A handful of rows carry a second, more specific IntrInfo pattern
+// (action2V1Pattern/action2V2Pattern) representing a "promoteable"
+// condition NVIDIA's source spreadsheet flags with a '*': if the
+// driver-era-appropriate pattern also matches, the resolution escalates
+// from `resolution` to `action2Resolution` (investigatory action is
+// unchanged). Empty when the row has no such escalation.
 type nvlink5DecodeRow struct {
-	code          int64
-	subComponent  string
-	v1Pattern     string
-	v2Pattern     string
-	errorStatus   string
-	resolution    string
-	investigatory string
+	code              int64
+	subComponent      string
+	v1Pattern         string
+	v2Pattern         string
+	errorStatus       string
+	resolution        string
+	investigatory     string
+	action2V1Pattern  string
+	action2V2Pattern  string
+	action2Resolution string
 }
 
 // nvlink5DecodeTable is generated from NVIDIA's internal Xid 144-150
@@ -54,9 +64,9 @@ var nvlink5DecodeTable = []nvlink5DecodeRow{
 	{code: 145, subComponent: "RLW_RSPCOL", v1Pattern: "------000000----------0010100010", v2Pattern: "------000000-------------0000101", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
 	{code: 145, subComponent: "RLW_RSPCOL", v1Pattern: "------000000----------0010100010", v2Pattern: "------000000-------------0000101", errorStatus: "0x00000002", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
 	{code: 145, subComponent: "RLW_RSPCOL", v1Pattern: "------000000----------0010100010", v2Pattern: "------000000-------------0000101", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000004", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT", action2V1Pattern: "------000000---------10011000010", action2V2Pattern: "------000000------------10000110", action2Resolution: "RESET_GPU"},
+	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT", action2V1Pattern: "------000000---------10011000010", action2V2Pattern: "------000000------------10000110", action2Resolution: "RESET_GPU"},
+	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000004", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT", action2V1Pattern: "------000000---------10011000010", action2V2Pattern: "------000000------------10000110", action2Resolution: "RESET_GPU"},
 	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000----------0011000010", v2Pattern: "------000000-------------0000110", errorStatus: "0x00000008", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
 	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000----------0011000010", v2Pattern: "------000000-------------0000110", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
 	{code: 145, subComponent: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000001", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
@@ -176,7 +186,7 @@ func decodeNVLink5Resolution(code int64, era DriverEra, detail *xid.NVLink5Detai
 	}
 
 	if byStatus := filterByErrorStatus(candidates, detail.ErrorStatus); len(byStatus) == 1 {
-		applyResolution(detail, byStatus[0], true)
+		applyResolution(detail, byStatus[0], era, true)
 		return
 	} else if len(byStatus) > 0 {
 		candidates = byStatus
@@ -190,7 +200,7 @@ func decodeNVLink5Resolution(code int64, era DriverEra, detail *xid.NVLink5Detai
 					pattern = row.v1Pattern
 				}
 				if matchesPattern(intrInfo, pattern) {
-					applyResolution(detail, row, true)
+					applyResolution(detail, row, era, true)
 					return
 				}
 			}
@@ -203,10 +213,34 @@ func decodeNVLink5Resolution(code int64, era DriverEra, detail *xid.NVLink5Detai
 	detail.ResolutionMatched = false
 }
 
-func applyResolution(detail *xid.NVLink5Detail, row nvlink5DecodeRow, matched bool) {
+// applyResolution sets detail's resolution fields from row, promoting
+// resolution to row.action2Resolution when row declares one and the
+// driver-era-appropriate action2 IntrInfo pattern also matches — the
+// "promoteable" ('*') condition NVIDIA's source spreadsheet documents
+// for a few rows (e.g. Xid 145 RLW_RXPIPE), where a second, more
+// specific bit must also be set to escalate past the base resolution.
+func applyResolution(detail *xid.NVLink5Detail, row nvlink5DecodeRow, era DriverEra, matched bool) {
 	detail.Resolution = row.resolution
 	detail.Investigation = row.investigatory
 	detail.ResolutionMatched = matched
+
+	if row.action2V1Pattern == "" && row.action2V2Pattern == "" {
+		return
+	}
+	if era == DriverEraUnknown {
+		return
+	}
+	intrInfo, ok := parseHexUint32(detail.IntrInfo)
+	if !ok {
+		return
+	}
+	pattern := row.action2V2Pattern
+	if era == DriverEraV1 {
+		pattern = row.action2V1Pattern
+	}
+	if pattern != "" && matchesPattern(intrInfo, pattern) {
+		detail.Resolution = row.action2Resolution
+	}
 }
 
 // filterByErrorStatus returns the rows among candidates whose
