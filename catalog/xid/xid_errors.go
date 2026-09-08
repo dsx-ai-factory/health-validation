@@ -90,8 +90,8 @@ var warningClasses = []warningClass{
 		codes:   []int64{78},
 	},
 	{
-		action:  health.Drain(health.RemediationActionRestartVM),
-		message: "GPU Xid 151 (key rotation error) detected. Restart the affected VM.",
+		action:  health.Drain(health.RemediationActionRestartOS),
+		message: "GPU Xid 151 (key rotation error) detected. Restart the affected VM or host.",
 		codes:   []int64{151},
 	},
 }

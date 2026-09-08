@@ -73,7 +73,7 @@ architecture-discovery failure — all recommend the same default sequence
 (`health.GenericDrain()`):
 
 ```json
-"remediation_actions": ["reset_gpu", "restart_vm", "contact_support"]
+"remediation_actions": ["reset_gpu", "restart_os", "contact_support"]
 ```
 
 Attempt a GPU-only reset first (the lightest-touch step; a remediation engine
@@ -86,7 +86,7 @@ expected to add anything a GPU reset wouldn't already cover.
 | Action | Description |
 |---|---|
 | `reset_gpu` | Reset the GPU: `nvidia-smi --gpu-reset` (no active processes may be using the GPU). |
-| `restart_vm` | Restart the VM that owns the affected GPU. For bare-metal hosts, treat this as a host-level restart rather than a VM restart. |
+| `restart_os` | Restart the affected node's operating system — a VM reboot on a virtualized GPU, a host-level reboot on bare metal. |
 | `contact_support` | Escalate to your cluster's support path for further investigation (i.e. your CSP if CSP-managed, or your organization's support path if on-prem); the end of the line for self-service remediation. |
 
 ### Domain-hold action
@@ -95,7 +95,7 @@ expected to add anything a GPU reset wouldn't already cover.
 `contact_support` step:
 
 ```json
-"remediation_actions": ["reset_gpu", "restart_vm", "hold"]
+"remediation_actions": ["reset_gpu", "restart_os", "hold"]
 ```
 
 | Action | Description |
@@ -117,10 +117,10 @@ These are specific to individual Xid codes — beyond the generic actions
 above, they map to the "immediate action" resolution buckets in NVIDIA's
 [Xid Errors documentation](https://docs.nvidia.com/deploy/xid-errors/latest/analyzing-xid-catalog.html),
 and are recommended by the per-code `gpu_xid_<code>` checks and the
-consolidated `gpu_xid_warning` check. (`reset_gpu`, `restart_vm`, and
+consolidated `gpu_xid_warning` check. (`reset_gpu`, `restart_os`, and
 `contact_support` also appear in several of these checks' sequences — e.g.
-Xid 140 and 151 both recommend `restart_vm` — but are documented once, above,
-since they're not Xid-specific.)
+Xid 151 recommends `restart_os` — but are documented once, above, since
+they're not Xid-specific.)
 
 | Action | Description |
 |---|---|

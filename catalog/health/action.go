@@ -69,7 +69,7 @@ const (
 	RemediationActionContactSupport     RemediationAction = "contact_support"
 	RemediationActionResetGPU           RemediationAction = "reset_gpu"
 	RemediationActionRestartApp         RemediationAction = "restart_app"
-	RemediationActionRestartVM          RemediationAction = "restart_vm"
+	RemediationActionRestartOS          RemediationAction = "restart_os"
 	RemediationActionUpdateSWFW         RemediationAction = "update_swfw"
 	RemediationActionCheckUVM           RemediationAction = "check_uvm"
 	RemediationActionWorkflowXid45      RemediationAction = "workflow_xid_45"
@@ -157,7 +157,7 @@ func Drain(actions ...RemediationAction) RecommendedAction {
 // then escalate. Checks with confirmed engine-specific handling should
 // use [Drain] directly instead.
 func GenericDrain() RecommendedAction {
-	return Drain(RemediationActionResetGPU, RemediationActionRestartVM, RemediationActionContactSupport)
+	return Drain(RemediationActionResetGPU, RemediationActionRestartOS, RemediationActionContactSupport)
 }
 
 // Monitor is the canonical "keep in service, watch the trend"

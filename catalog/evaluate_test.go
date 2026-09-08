@@ -703,7 +703,7 @@ func TestEvaluate_RuleRecommendedActionOverridesCheckDefault(t *testing.T) {
 				Expression:        "second > 0",
 				Severity:          health.Warning,
 				Message:           "second nonzero",
-				RecommendedAction: health.Drain(health.RemediationActionRestartVM),
+				RecommendedAction: health.Drain(health.RemediationActionRestartOS),
 			},
 			{
 				Expression: "first < 4",
@@ -724,8 +724,8 @@ func TestEvaluate_RuleRecommendedActionOverridesCheckDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRestartVM)) {
-		t.Errorf("RecommendedAction = %v, want %v (rule override)", v.RecommendedAction, "restart_vm")
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRestartOS)) {
+		t.Errorf("RecommendedAction = %v, want %v (rule override)", v.RecommendedAction, "restart_os")
 	}
 
 	drainCase := twoSignalMeasurement{First: 3}
@@ -755,7 +755,7 @@ func TestEvaluate_AllMatchingRulesAggregate(t *testing.T) {
 				Expression:        "second > 0",
 				Severity:          health.Warning,
 				Message:           "second nonzero",
-				RecommendedAction: health.Drain(health.RemediationActionRestartVM),
+				RecommendedAction: health.Drain(health.RemediationActionRestartOS),
 			},
 			{
 				Expression: "first < 4",
@@ -832,7 +832,7 @@ func TestEvaluate_MultiMatchPicksTopPriorityOverride(t *testing.T) {
 				Expression:        "second > 0",
 				Severity:          health.Warning,
 				Message:           "second nonzero",
-				RecommendedAction: health.Drain(health.RemediationActionRestartVM),
+				RecommendedAction: health.Drain(health.RemediationActionRestartOS),
 			},
 		},
 	}
@@ -855,11 +855,11 @@ func TestEvaluate_MultiMatchPicksTopPriorityOverride(t *testing.T) {
 	if v.Severity != health.Warning {
 		t.Errorf("Severity = %v, want WARNING", v.Severity)
 	}
-	// Warning rule has higher severity than Info, so its "restart_vm"
+	// Warning rule has higher severity than Info, so its "restart_os"
 	// override wins over Info's "monitor".
-	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRestartVM)) {
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRestartOS)) {
 		t.Errorf("RecommendedAction = %v, want %v (Warning rule outranks Info rule)",
-			v.RecommendedAction, "restart_vm")
+			v.RecommendedAction, "restart_os")
 	}
 }
 
