@@ -56,18 +56,18 @@ jobs:
       #
       # commitlint discovers its config from the working tree and `extends`
       # loads code from it, so this must never point at PR-controlled content.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       # commitlint 21 declares engines.node >= 22.12.0.
       #
-      # setup-node is pinned at v4 deliberately: v5 auto-enables package-manager
-      # caching when package.json declares `packageManager`, and this repo's root
-      # package.json declares pnpm. That would set up a pnpm cache for a job that
-      # has no pnpm and nothing to cache.
+      # Avoid v5 specifically. It auto-enables package-manager caching from
+      # package.json's `packageManager`, and this repo's root declares pnpm, so
+      # the step runs `pnpm store path` and fails on a runner that has no pnpm.
+      # v6 narrowed that to npm only and v7 kept it, so v7 is inert here.
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
