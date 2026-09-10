@@ -14,6 +14,7 @@ const (
 	SignalXidCounts      = "xid_counts"
 	SignalFatalXidCounts = "fatal_xid_counts"
 	SignalSubcodeCounts  = "subcode_counts"
+	SignalDriverVersion  = "driver_version"
 	SignalSince          = "since"
 	SignalEventCount     = "event_count"
 )
@@ -27,6 +28,7 @@ var MeasurementSignals = []string{
 	SignalXidCounts,
 	SignalFatalXidCounts,
 	SignalSubcodeCounts,
+	SignalDriverVersion,
 	SignalSince,
 	SignalEventCount,
 }
@@ -48,47 +50,28 @@ type XidEvent struct {
 // NVLink5/NVSwitch fault family (Xid 144-150, Blackwell-only) instead
 // of the pid/name pair other Xid codes use.
 //
-// IntrInfo, ErrorStatus, and DebugData are raw hex strings. Fatal and
-// SubComponent are literal text in the log line itself (not
-// register-decoded), so they are always reliable. Resolution and
-// Investigation are looked up from NVIDIA's Xid 144-150 decode table —
-// see [ResolutionMatched] before trusting them: NVIDIA's public decode
-// table differentiates several fault subtypes only by IntrInfo bit
-// position, and those bit positions differ between pre- and
-// post-R575 drivers (see driver-version detection in the toolkit/xid
-// package's parser). Not every combination of SubComponent/ErrorStatus
-// this repo has seen documented could be sourced with confidence — see
-// toolkit/xid/nvlink5_decode.go for exactly which entries are
-// table-backed vs. a conservative Fatal-flag-derived fallback.
+// Every field here is directly available from the log line: IntrInfo,
+// ErrorStatus, and DebugData are the raw hex strings NVRM prints; Fatal
+// and SubComponent are literal text in the log line (not
+// register-decoded); Subcode is a fixed 6-bit mask over IntrInfo (see
+// toolkit/xid/nvlink5_decode.go), not a table lookup. Deciding what a
+// given (code, SubComponent, ErrorStatus/IntrInfo) combination means —
+// NVIDIA's documented resolution/investigation guidance — requires
+// NVIDIA's Xid 144-150 decode table and the host's driver era, which is
+// catalog knowledge: see [DecodeNVLink5Resolution].
 type NVLink5Detail struct {
 	SubComponent string `json:"sub_component"`
 	IntrInfo     string `json:"intr_info,omitempty"`
 	ErrorStatus  string `json:"error_status,omitempty"`
 	// Subcode is "<XidCode>.<hex digit>" (e.g. "149.4", "149.A"),
 	// identifying the specific fault subtype within this Xid code: the
-	// 6-bit field at IntrInfo[25:20]. Unlike Resolution/Investigation,
-	// this bit position is constant across driver eras (see
-	// toolkit/xid/nvlink5_decode.go), so Subcode does not depend on
-	// DriverEra. Empty when IntrInfo could not be parsed.
-	Subcode string `json:"subcode,omitempty"`
-	// DriverEra records which IntrInfo bit layout was assumed when
-	// decoding Resolution/Investigation ("v1(<R575)", "v2(>=R575)", or
-	// "unknown" — see toolkit/xid.DriverEra). Kept as a plain string here
-	// so this package (imported by the catalog) doesn't depend on the
-	// toolkit/xid package's host-detection code.
-	DriverEra     string   `json:"driver_era,omitempty"`
-	DebugData     []string `json:"debug_data,omitempty"`
-	Resolution    string   `json:"resolution,omitempty"`
-	Investigation string   `json:"investigation,omitempty"`
-	Link          int64    `json:"link"`
-	Fatal         bool     `json:"fatal"`
-	// ResolutionMatched reports whether Resolution/Investigation came
-	// from an exact (code, sub-component, error-status) table entry
-	// NVIDIA's docs stated unambiguously, as opposed to the generic
-	// Fatal-flag-derived fallback (RESET_GPU/CONTACT_SUPPORT when
-	// Fatal, IGNORE/CONTACT_SUPPORT when not) used when the table has
-	// no confirmed entry for this combination.
-	ResolutionMatched bool `json:"resolution_matched"`
+	// 6-bit field at IntrInfo[25:20]. This bit position is constant
+	// across driver eras (see toolkit/xid/nvlink5_decode.go). Empty
+	// when IntrInfo could not be parsed.
+	Subcode   string   `json:"subcode,omitempty"`
+	DebugData []string `json:"debug_data,omitempty"`
+	Link      int64    `json:"link"`
+	Fatal     bool     `json:"fatal"`
 }
 
 // XidMeasurement is the aggregate of every Xid event observed in the
@@ -105,9 +88,11 @@ type NVLink5Detail struct {
 // [NVLink5Detail.Subcode] (e.g. "149.4") instead of the bare Xid code,
 // letting a check threshold on a specific documented fault subtype
 // rather than the whole Xid code (e.g.
-// subcode_counts["149.4"] > xid_149_4_threshold) — see
-// catalog/xid/xid_errors.go's nvlink5SubcodeCheck for an example.
-// Populated only for the NVLink5 family, same as FatalXidCounts. Events
+// subcode_counts["149.4"] > xid_149_4_threshold). Populated only for
+// the NVLink5 family, same as FatalXidCounts. DriverVersion is the raw
+// host driver version string (e.g. "575.51.03", empty if undetectable)
+// needed to classify [DriverEra] for [DecodeNVLink5Resolution]; a
+// single host fact for the whole measurement, not per-event. Events
 // preserves the full per-occurrence detail — process name, PCI address,
 // pid, and (for 144-150) NVLink5 — for message interpolation and richer
 // rules.
@@ -116,6 +101,7 @@ type XidMeasurement struct {
 	FatalXidCounts map[int64]int64  `json:"fatal_xid_counts"`
 	SubcodeCounts  map[string]int64 `json:"subcode_counts"`
 	Since          string           `json:"since"`
+	DriverVersion  string           `json:"driver_version,omitempty"`
 	Events         []XidEvent       `json:"events"`
 	errors         []health.ErroredMeasurement
 	EventCount     int64 `json:"event_count"`
