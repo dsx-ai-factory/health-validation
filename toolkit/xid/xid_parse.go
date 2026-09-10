@@ -41,7 +41,7 @@ var xidNVLink5RE = regexp.MustCompile(`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (14[4
 // is nil, which a check reads as "no Xid faults observed".
 //
 // Every field this parses comes straight from the log line (or, for
-// Subcode, a fixed bit-mask over a field the log line carries) — no
+// SubXidCode, a fixed bit-mask over a field the log line carries) — no
 // NVIDIA decode-table lookup happens here. driverVersion is the raw
 // host driver version string (see [DetectDriverVersion]), stamped
 // as-is onto the measurement so the catalog can classify it and decode
@@ -75,11 +75,11 @@ func ParseXid(since string, lines []string, driverVersion ...string) xid.XidMeas
 			}
 			m.FatalXidCounts[ev.XidCode]++
 		}
-		if ev.NVLink5 != nil && ev.NVLink5.Subcode != "" {
-			if m.SubcodeCounts == nil {
-				m.SubcodeCounts = make(map[string]int64)
+		if ev.NVLink5 != nil && ev.NVLink5.SubXidCode != "" {
+			if m.SubXidCodeCounts == nil {
+				m.SubXidCodeCounts = make(map[string]int64)
 			}
-			m.SubcodeCounts[ev.NVLink5.Subcode]++
+			m.SubXidCodeCounts[ev.NVLink5.SubXidCode]++
 		}
 	}
 	return m
@@ -136,8 +136,8 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 			detail.DebugData = tail[2:]
 		}
 	}
-	if subcode, ok := nvlink5Subcode(code, detail.IntrInfo); ok {
-		detail.Subcode = subcode
+	if subXidCode, ok := nvlink5SubXidCode(code, detail.IntrInfo); ok {
+		detail.SubXidCode = subXidCode
 	}
 
 	return xid.XidEvent{PCIAddress: groups[1], XidCode: code, NVLink5: detail}, true

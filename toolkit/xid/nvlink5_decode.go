@@ -6,22 +6,24 @@ import (
 	"strings"
 )
 
-// nvlink5SubcodeMask isolates IntrInfo[25:20], the 6-bit fault-subtype
+// nvlink5SubXidCodeMask isolates IntrInfo[25:20], the 6-bit fault-subtype
 // field NVRM packs into the IntrInfo register logged for the NVLink5/
 // NVSwitch fault family (Xid 144-150). This bit position is fixed
-// regardless of driver version.
-const nvlink5SubcodeMask = 0x3F00000
+// regardless of driver version. Not to be confused with NVIDIA's
+// decode-table guide's "Subcode," which is a bit-encoding of
+// SubComponent (redundant with the text NVRM already prints).
+const nvlink5SubXidCodeMask = 0x3F00000
 
-// nvlink5Subcode formats "<code>.<hex digit>" (e.g. "149.4") from code
-// and the raw IntrInfo hex string logged for an NVLink5-family event.
-// Returns ok=false when intrInfoHex isn't parseable (e.g. empty, for a
-// non-NVLink5 event).
-func nvlink5Subcode(code int64, intrInfoHex string) (string, bool) {
+// nvlink5SubXidCode formats "<code>.<hex digit>" (e.g. "149.4") from
+// code and the raw IntrInfo hex string logged for an NVLink5-family
+// event. Returns ok=false when intrInfoHex isn't parseable (e.g. empty,
+// for a non-NVLink5 event).
+func nvlink5SubXidCode(code int64, intrInfoHex string) (string, bool) {
 	v, ok := parseHexUint32(intrInfoHex)
 	if !ok {
 		return "", false
 	}
-	digit := (v & nvlink5SubcodeMask) >> 20
+	digit := (v & nvlink5SubXidCodeMask) >> 20
 	return fmt.Sprintf("%d.%X", code, digit), true
 }
 

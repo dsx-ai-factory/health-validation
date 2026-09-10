@@ -21,7 +21,7 @@ func TestParseHexUint32(t *testing.T) {
 	}
 }
 
-func TestNvlink5Subcode(t *testing.T) {
+func TestNvlink5SubXidCode(t *testing.T) {
 	tests := []struct {
 		code     int64
 		intrInfo string
@@ -40,9 +40,9 @@ func TestNvlink5Subcode(t *testing.T) {
 		{149, "not-hex", "", false},
 	}
 	for _, tt := range tests {
-		got, ok := nvlink5Subcode(tt.code, tt.intrInfo)
+		got, ok := nvlink5SubXidCode(tt.code, tt.intrInfo)
 		if ok != tt.wantOK || (ok && got != tt.want) {
-			t.Errorf("nvlink5Subcode(%d, %q) = (%q, %v), want (%q, %v)", tt.code, tt.intrInfo, got, ok, tt.want, tt.wantOK)
+			t.Errorf("nvlink5SubXidCode(%d, %q) = (%q, %v), want (%q, %v)", tt.code, tt.intrInfo, got, ok, tt.want, tt.wantOK)
 		}
 	}
 }
