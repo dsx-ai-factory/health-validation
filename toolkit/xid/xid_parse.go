@@ -76,6 +76,12 @@ func ParseXid(since string, lines []string, era ...DriverEra) xid.XidMeasurement
 			}
 			m.FatalXidCounts[ev.XidCode]++
 		}
+		if ev.NVLink5 != nil && ev.NVLink5.Subcode != "" {
+			if m.SubcodeCounts == nil {
+				m.SubcodeCounts = make(map[string]int64)
+			}
+			m.SubcodeCounts[ev.NVLink5.Subcode]++
+		}
 	}
 	return m
 }

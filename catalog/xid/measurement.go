@@ -13,6 +13,7 @@ const (
 	SignalEvents         = "events"
 	SignalXidCounts      = "xid_counts"
 	SignalFatalXidCounts = "fatal_xid_counts"
+	SignalSubcodeCounts  = "subcode_counts"
 	SignalSince          = "since"
 	SignalEventCount     = "event_count"
 )
@@ -25,6 +26,7 @@ var MeasurementSignals = []string{
 	SignalEvents,
 	SignalXidCounts,
 	SignalFatalXidCounts,
+	SignalSubcodeCounts,
 	SignalSince,
 	SignalEventCount,
 }
@@ -62,6 +64,13 @@ type NVLink5Detail struct {
 	SubComponent string `json:"sub_component"`
 	IntrInfo     string `json:"intr_info,omitempty"`
 	ErrorStatus  string `json:"error_status,omitempty"`
+	// Subcode is "<XidCode>.<hex digit>" (e.g. "149.4", "149.A"),
+	// identifying the specific fault subtype within this Xid code: the
+	// 6-bit field at IntrInfo[25:20]. Unlike Resolution/Investigation,
+	// this bit position is constant across driver eras (see
+	// toolkit/xid/nvlink5_decode.go), so Subcode does not depend on
+	// DriverEra. Empty when IntrInfo could not be parsed.
+	Subcode string `json:"subcode,omitempty"`
 	// DriverEra records which IntrInfo bit layout was assumed when
 	// decoding Resolution/Investigation ("v1(<R575)", "v2(>=R575)", or
 	// "unknown" — see toolkit/xid.DriverEra). Kept as a plain string here
@@ -92,14 +101,22 @@ type NVLink5Detail struct {
 // FatalXidCounts is the same shape, but counts only occurrences NVRM
 // itself marked Fatal; today that is populated exclusively by the
 // NVLink5 family (Xid 144-150) since no other Xid code's log line
-// carries a fatal/nonfatal distinction. Events preserves the full
-// per-occurrence detail — process name, PCI address, pid, and (for
-// 144-150) NVLink5 — for message interpolation and richer rules.
+// carries a fatal/nonfatal distinction. SubcodeCounts is keyed by
+// [NVLink5Detail.Subcode] (e.g. "149.4") instead of the bare Xid code,
+// letting a check threshold on a specific documented fault subtype
+// rather than the whole Xid code (e.g.
+// subcode_counts["149.4"] > xid_149_4_threshold) — see
+// catalog/xid/xid_errors.go's nvlink5SubcodeCheck for an example.
+// Populated only for the NVLink5 family, same as FatalXidCounts. Events
+// preserves the full per-occurrence detail — process name, PCI address,
+// pid, and (for 144-150) NVLink5 — for message interpolation and richer
+// rules.
 type XidMeasurement struct {
-	XidCounts      map[int64]int64 `json:"xid_counts"`
-	FatalXidCounts map[int64]int64 `json:"fatal_xid_counts"`
-	Since          string          `json:"since"`
-	Events         []XidEvent      `json:"events"`
+	XidCounts      map[int64]int64  `json:"xid_counts"`
+	FatalXidCounts map[int64]int64  `json:"fatal_xid_counts"`
+	SubcodeCounts  map[string]int64 `json:"subcode_counts"`
+	Since          string           `json:"since"`
+	Events         []XidEvent       `json:"events"`
 	errors         []health.ErroredMeasurement
 	EventCount     int64 `json:"event_count"`
 }

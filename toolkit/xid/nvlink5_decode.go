@@ -1,6 +1,7 @@
 package xid
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -177,6 +178,9 @@ type nvlink5Resolution struct {
 // [nvlink5FallbackResolution] whenever no single row is confirmed.
 func decodeNVLink5Resolution(code int64, era DriverEra, detail *xid.NVLink5Detail) {
 	detail.DriverEra = era.String()
+	if subcode, ok := nvlink5Subcode(code, detail.IntrInfo); ok {
+		detail.Subcode = subcode
+	}
 
 	candidates := make([]nvlink5DecodeRow, 0, 4)
 	for _, row := range nvlink5DecodeTable {
@@ -280,6 +284,28 @@ func subComponentMatches(log, table string) bool {
 		}
 	}
 	return false
+}
+
+// nvlink5SubcodeMask isolates IntrInfo[25:20], the 6-bit fault-subtype
+// field that differentiates rows within a (code, sub-component) family
+// in [nvlink5DecodeTable] — e.g. the NETIR_LINK_EVT/NETIR_LINK_DOWN
+// rows under Xid 149, distinguished only by this field (see v1Pattern/
+// v2Pattern chars 6-11, which both driver eras place at this same bit
+// position; unlike the rest of the pattern, this field's location does
+// not shift between v1 and v2).
+const nvlink5SubcodeMask = 0x3F00000
+
+// nvlink5Subcode formats "<code>.<hex digit>" (e.g. "149.4") from code
+// and the raw IntrInfo hex string logged for an NVLink5-family event.
+// Returns ok=false when intrInfoHex isn't parseable (e.g. empty, for a
+// non-NVLink5 event).
+func nvlink5Subcode(code int64, intrInfoHex string) (string, bool) {
+	v, ok := parseHexUint32(intrInfoHex)
+	if !ok {
+		return "", false
+	}
+	digit := (v & nvlink5SubcodeMask) >> 20
+	return fmt.Sprintf("%d.%X", code, digit), true
 }
 
 // parseHexUint32 parses a "0x..."-prefixed hex string into a uint32.
