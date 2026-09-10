@@ -37,6 +37,9 @@ func pstateDevice(uuid string, state gonvml.Pstates, ret gonvml.Return) *mock.De
 		GetCurrentClocksEventReasonsFunc: func() (uint64, gonvml.Return) {
 			return 0, gonvml.SUCCESS
 		},
+		GetComputeRunningProcessesFunc: func() ([]gonvml.ProcessInfo, gonvml.Return) {
+			return nil, gonvml.SUCCESS
+		},
 	}
 }
 

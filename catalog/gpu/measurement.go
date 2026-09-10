@@ -6,14 +6,16 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // expressions and must match the RequiredSignals declared in GPU
 // check definitions.
 const (
-	SignalGPUID                = "gpu_id"
-	SignalGPUPstate            = "gpu_pstate"
-	SignalAveragePowerDrawW    = "average_power_draw_w"
-	SignalPowerLimitW          = "power_limit_w"
-	SignalEnforcedPowerLimitW  = "enforced_power_limit_w"
-	SignalHWSlowdown           = "hw_slowdown"
-	SignalHWThermalSlowdown    = "hw_thermal_slowdown"
-	SignalHWPowerBrakeSlowdown = "hw_power_brake_slowdown"
+	SignalGPUID                  = "gpu_id"
+	SignalGPUPstate              = "gpu_pstate"
+	SignalAveragePowerDrawW      = "average_power_draw_w"
+	SignalPowerLimitW            = "power_limit_w"
+	SignalEnforcedPowerLimitW    = "enforced_power_limit_w"
+	SignalHWSlowdown             = "hw_slowdown"
+	SignalHWThermalSlowdown      = "hw_thermal_slowdown"
+	SignalHWPowerBrakeSlowdown   = "hw_power_brake_slowdown"
+	SignalComputeProcessCount    = "compute_process_count"
+	SignalComputeProcessCmdlines = "compute_process_cmdlines"
 )
 
 // MeasurementSignals lists every signal a GPUMeasurement carries.
@@ -29,6 +31,8 @@ var MeasurementSignals = []string{
 	SignalHWSlowdown,
 	SignalHWThermalSlowdown,
 	SignalHWPowerBrakeSlowdown,
+	SignalComputeProcessCount,
+	SignalComputeProcessCmdlines,
 }
 
 // GPUMeasurement is a single observation of one GPU's health state.
@@ -45,11 +49,18 @@ var MeasurementSignals = []string{
 // data. For whole-entity failures (the sensor couldn't even identify
 // the GPU), build the measurement with [ErroredGPU].
 type GPUMeasurement struct {
-	GPUID               string `json:"gpu_id"`
-	errors              []health.ErroredMeasurement
-	AveragePowerDrawW   float64 `json:"average_power_draw_w"`
-	PowerLimitW         float64 `json:"power_limit_w"`
-	EnforcedPowerLimitW float64 `json:"enforced_power_limit_w"`
+	GPUID string `json:"gpu_id"`
+	// ComputeProcessCmdlines is a diagnostic summary of compute-context
+	// PIDs still holding this GPU (pid plus /proc cmdline when readable),
+	// one process per line.
+	ComputeProcessCmdlines string `json:"compute_process_cmdlines"`
+	errors                 []health.ErroredMeasurement
+	AveragePowerDrawW      float64 `json:"average_power_draw_w"`
+	PowerLimitW            float64 `json:"power_limit_w"`
+	EnforcedPowerLimitW    float64 `json:"enforced_power_limit_w"`
+	// ComputeProcessCount is the number of compute (CUDA) contexts NVML
+	// reports on this GPU. Graphics and other process classes are omitted.
+	ComputeProcessCount int64 `json:"compute_process_count"`
 	// GPUPstate is the GPU's current performance state as the numeric
 	// level N in P<N>: 0 is P0 (maximum performance) and higher values
 	// are progressively lower-power states.

@@ -49,6 +49,7 @@ func TestNew_RegistersBuiltinCheck(t *testing.T) {
 		"gpu_power_state",
 		"gpu_power_limit",
 		"gpu_average_power_draw",
+		"gpu_compute_apps",
 		"cpu_count",
 		"numa_node_count",
 		"nvlink_capabilities",

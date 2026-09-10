@@ -3,9 +3,11 @@
 package nvml
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
 	gonvml "github.com/NVIDIA/go-nvml/pkg/nvml"
@@ -301,6 +303,7 @@ func (gpuProbe) Measure(pc ProbeContext) health.Measurement {
 	measureDeviceAveragePowerDraw(pc.Self.Device, &m)
 	measureDevicePowerLimits(pc.Self.Device, &m)
 	measureDeviceThrottle(pc.Self.Device, &m)
+	measureDeviceComputeProcesses(pc.Self.Device, &m)
 	return m
 }
 
@@ -396,6 +399,53 @@ func measureDeviceThrottle(dev gonvml.Device, m *gpu.GPUMeasurement) {
 			gpu.SignalHWThermalSlowdown,
 			gpu.SignalHWPowerBrakeSlowdown)
 	}
+}
+
+// procCmdlineMax is the diagnostic cap on /proc/<pid>/cmdline after NUL
+// bytes are turned into spaces. Fail/pass uses process count, not this text.
+const procCmdlineMax = 250
+
+func measureDeviceComputeProcesses(dev gonvml.Device, m *gpu.GPUMeasurement) {
+	infos, ret := dev.GetComputeRunningProcesses()
+	if ret != gonvml.SUCCESS {
+		m.AddError(&Error{Op: "DeviceGetComputeRunningProcesses", Return: ret},
+			gpu.SignalComputeProcessCount,
+			gpu.SignalComputeProcessCmdlines)
+		return
+	}
+	var parts []string
+	var n int64
+	for _, p := range infos {
+		if p.Pid == 0 {
+			continue
+		}
+		n++
+		cmdline := readProcCmdline(p.Pid)
+		if cmdline == "" {
+			parts = append(parts, fmt.Sprintf("pid=%d", p.Pid))
+		} else {
+			parts = append(parts, fmt.Sprintf("pid=%d %s", p.Pid, cmdline))
+		}
+	}
+	m.ComputeProcessCount = n
+	// One process per line
+	m.ComputeProcessCmdlines = strings.Join(parts, "\n")
+}
+
+func readProcCmdline(pid uint32) string {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil {
+		return ""
+	}
+	return decodeProcCmdline(b, procCmdlineMax)
+}
+
+func decodeProcCmdline(raw []byte, max int) string {
+	s := strings.ReplaceAll(string(bytes.TrimRight(raw, "\x00")), "\x00", " ")
+	if max > 0 && len(s) > max {
+		return s[:max]
+	}
+	return s
 }
 
 func (gpuProbe) Errored(id string, err error) health.Measurement {

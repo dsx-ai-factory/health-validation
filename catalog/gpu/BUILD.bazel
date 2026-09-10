@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "gpu_average_power_draw.go",
+        "gpu_compute_apps.go",
         "gpu_power_limit.go",
         "gpu_power_state.go",
         "gpu_sensor_throttle.go",
@@ -19,6 +20,7 @@ go_test(
     name = "gpu_test",
     srcs = [
         "gpu_average_power_draw_test.go",
+        "gpu_compute_apps_test.go",
         "gpu_power_limit_test.go",
         "gpu_power_state_test.go",
         "gpu_sensor_throttle_test.go",

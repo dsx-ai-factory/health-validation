@@ -63,6 +63,9 @@ func threeSlotLib() *mock.Interface {
 		GetCurrentClocksEventReasonsFunc: func() (uint64, gonvml.Return) {
 			return 0, gonvml.SUCCESS
 		},
+		GetComputeRunningProcessesFunc: func() ([]gonvml.ProcessInfo, gonvml.Return) {
+			return nil, gonvml.SUCCESS
+		},
 	}
 	noUUID := &mock.Device{
 		GetUUIDFunc: func() (string, gonvml.Return) { return "", gonvml.ERROR_GPU_IS_LOST },

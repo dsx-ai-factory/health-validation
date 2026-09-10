@@ -28,6 +28,9 @@ func throttleDevice(mask uint64, ret gonvml.Return) *mock.Device {
 		GetCurrentClocksEventReasonsFunc: func() (uint64, gonvml.Return) {
 			return mask, ret
 		},
+		GetComputeRunningProcessesFunc: func() ([]gonvml.ProcessInfo, gonvml.Return) {
+			return nil, gonvml.SUCCESS
+		},
 	}
 }
 
