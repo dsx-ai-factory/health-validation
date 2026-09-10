@@ -1,2 +1,6 @@
 # Default owner for everything not covered by a more specific rule below.
 * @dsx-ai-factory/dca-cluster-products
+
+# Shared collection library.
+/collect/ @dsx-ai-factory/dca-cluster-products @gyuho @ooolafhu @rsampaio
+/agentkit/ @dsx-ai-factory/dca-cluster-products @gyuho @ooolafhu @rsampaio
