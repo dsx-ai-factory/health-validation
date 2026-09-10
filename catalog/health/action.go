@@ -73,7 +73,6 @@ const (
 	RemediationActionUpdateSWFW         RemediationAction = "update_swfw"
 	RemediationActionCheckUVM           RemediationAction = "check_uvm"
 	RemediationActionWorkflowXid45      RemediationAction = "workflow_xid_45"
-	RemediationActionWorkflowNVLinkErr  RemediationAction = "workflow_nvlink_err"
 	RemediationActionWorkflowNVLink5Err RemediationAction = "workflow_nvlink5_err"
 	RemediationActionXid154             RemediationAction = "xid_154"
 
