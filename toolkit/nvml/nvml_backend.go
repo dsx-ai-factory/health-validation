@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 
 	gonvml "github.com/NVIDIA/go-nvml/pkg/nvml"
@@ -420,16 +421,19 @@ func measureDeviceComputeProcesses(dev gonvml.Device, m *gpu.GPUMeasurement) {
 			continue
 		}
 		n++
-		cmdline := readProcCmdline(p.Pid)
-		if cmdline == "" {
-			parts = append(parts, fmt.Sprintf("pid=%d", p.Pid))
-		} else {
-			parts = append(parts, fmt.Sprintf("pid=%d %s", p.Pid, cmdline))
-		}
+		parts = append(parts, formatComputeProcessLine(p.Pid, readProcCmdline(p.Pid)))
 	}
 	m.ComputeProcessCount = n
-	// One process per line
+	// One process per line. Each cmdline is strconv.Quote'd so an
+	// argument that contains a newline cannot split the diagnostic.
 	m.ComputeProcessCmdlines = strings.Join(parts, "\n")
+}
+
+func formatComputeProcessLine(pid uint32, cmdline string) string {
+	if cmdline == "" {
+		return fmt.Sprintf("pid=%d", pid)
+	}
+	return fmt.Sprintf("pid=%d %s", pid, strconv.Quote(cmdline))
 }
 
 func readProcCmdline(pid uint32) string {

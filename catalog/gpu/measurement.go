@@ -51,8 +51,8 @@ var MeasurementSignals = []string{
 type GPUMeasurement struct {
 	GPUID string `json:"gpu_id"`
 	// ComputeProcessCmdlines is a diagnostic summary of compute-context
-	// PIDs still holding this GPU (pid plus /proc cmdline when readable),
-	// one process per line.
+	// PIDs still holding this GPU (pid plus quoted /proc cmdline when
+	// readable), one process per line.
 	ComputeProcessCmdlines string `json:"compute_process_cmdlines"`
 	errors                 []health.ErroredMeasurement
 	AveragePowerDrawW      float64 `json:"average_power_draw_w"`

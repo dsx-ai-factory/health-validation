@@ -99,7 +99,7 @@ func TestMeasureGPUs_ComputeProcessesReadsProcCmdline(t *testing.T) {
 	if m.ComputeProcessCount != 1 {
 		t.Errorf("ComputeProcessCount = %d, want 1", m.ComputeProcessCount)
 	}
-	wantPrefix := "pid=" + strconv.FormatUint(uint64(pid), 10) + " "
+	wantPrefix := "pid=" + strconv.FormatUint(uint64(pid), 10) + " \""
 	if !strings.HasPrefix(m.ComputeProcessCmdlines, wantPrefix) {
 		t.Fatalf("ComputeProcessCmdlines = %q, want prefix %q", m.ComputeProcessCmdlines, wantPrefix)
 	}
