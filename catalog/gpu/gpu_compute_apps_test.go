@@ -97,7 +97,7 @@ func TestGPUComputeApps_ErroredSignal(t *testing.T) {
 }
 
 func TestGPUComputeApps_WrongArchitectureSkipped(t *testing.T) {
-	cat := computeAppsCatalog(catalog.WithArchitecture("GB300"))
+	cat := computeAppsCatalog(catalog.WithArchitecture("T4"))
 	v, err := cat.Evaluate("gpu_compute_apps", gpu.GPUMeasurement{GPUID: "GPU-0"})
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
