@@ -11,9 +11,7 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 //
 // It consumes a [LinkFlapMeasurement] from the journal link-flap sensor
 // and counts outage_durations at or above min_outage_seconds. Both knobs
-// are operator-overridable, matching the dca-health-checks parameters
-// this check was migrated from (window_size → min_outage_seconds,
-// threshold → fatal_flap_threshold).
+// are operator-overridable.
 func RDMALinkFlapFatal() health.CheckDefinition {
 	return health.CheckDefinition{
 		ID:          "rdma_linkflap_fatal",

@@ -41,9 +41,9 @@ type linkEvent struct {
 // outage's length in seconds. Each up recovers one outage, so consecutive
 // downs before an up (e.g. a reset re-emitting "down" with no intervening
 // "up") collapse into a single outage from the first down; a down with no
-// following up (an unrecovered link) is not paired. This differs from the
-// dca-health-checks source, which pairs every down with the same up and so
-// double-counts one continuous outage. Lines that do not parse are skipped.
+// following up (an unrecovered link) is not paired. This deliberately
+// avoids pairing every down with the same up, which would double-count
+// one continuous outage. Lines that do not parse are skipped.
 // The measurement always has meaning even with zero outages, which a check
 // reads as "no fatal link flaps observed".
 func ParseLinkFlaps(since string, lines []string) infiniband.LinkFlapMeasurement {

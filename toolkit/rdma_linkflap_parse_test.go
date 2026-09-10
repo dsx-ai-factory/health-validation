@@ -7,7 +7,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 )
 
-// These fixtures mirror the source check's tests in dca-health-checks
+// These fixtures mirror the source check's tests
 // (test_sw_sys_logs_rdma_linkflap_fatal.py).
 var (
 	onlyUpLines = []string{

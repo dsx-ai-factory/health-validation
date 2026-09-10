@@ -20,8 +20,7 @@ import (
 // are collected; the parser does the exact structuring.
 const linkFlapGrep = `(?i)mlx5_core .* Link (up|down)`
 
-// Defaults mirror the dca-health-checks sw_sys_logs_rdma_linkflap_fatal
-// config: a 1-hour lookback and no boot offset.
+// Defaults: a 1-hour lookback and no boot offset.
 const (
 	defaultLinkFlapLookback   = time.Hour
 	defaultLinkFlapBootOffset = time.Duration(0)
