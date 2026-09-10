@@ -32,6 +32,7 @@ func resetAndContactSupport() health.RecommendedAction {
 // that are marked Unused are excluded entirely.
 var criticalXids = []criticalXid{
 	{code: 46, action: resetAndContactSupport(), description: "GPU stopped processing"},
+	{code: 48, action: health.Drain(health.RemediationActionWorkflowXid48), description: "double bit ECC error"},
 	{code: 62, action: resetAndContactSupport(), description: "internal micro-controller halt"},
 	{code: 64, action: resetAndContactSupport(), description: "GPU memory remapping failure"},
 	{code: 79, action: resetAndContactSupport(), description: "GPU has fallen off the bus"},
@@ -71,7 +72,7 @@ var warningClasses = []warningClass{
 		action:  health.Drain(health.RemediationActionRestartApp),
 		message: "Application-level GPU Xid error detected. Restart the faulting application; the GPU itself remains healthy.",
 		codes: []int64{
-			8, 11, 25, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77,
+			8, 11, 13, 25, 31, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77,
 			82, 83, 84, 85, 86, 88, 89, 94, 96, 97, 98, 99, 100, 101, 102, 103,
 			104, 105, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139,
 		},
