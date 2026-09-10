@@ -178,7 +178,7 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300", "H100", "A100"},
+		Architectures:     []string{"GB200", "GB300"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
