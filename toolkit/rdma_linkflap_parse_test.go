@@ -7,8 +7,6 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 )
 
-// These fixtures mirror the source check's tests
-// (test_sw_sys_logs_rdma_linkflap_fatal.py).
 var (
 	onlyUpLines = []string{
 		"Tue 2026-03-10 11:49:08 UTC node-name kernel: mlx5_core 0000:5a:00.0 enp90s0np0: Link up",
@@ -53,7 +51,7 @@ func TestParseLinkFlaps_Durations(t *testing.T) {
 }
 
 // A down with no following up (an unrecovered link) is not paired — it
-// records no outage, matching the source check.
+// records no outage.
 func TestParseLinkFlaps_UnrecoveredDownIgnored(t *testing.T) {
 	lines := []string{
 		"Thu 2025-12-11 11:49:00 UTC host kernel: mlx5_core 0000:5a:00.0 enp90s0np0: Link down",
