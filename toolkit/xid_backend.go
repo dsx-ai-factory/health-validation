@@ -67,11 +67,10 @@ type journalctlBackend struct {
 // tripping the collection timeout. See [readJournal] for the clean-boot vs
 // unreadable-journal handling.
 func (b *journalctlBackend) Measure(ctx context.Context) ([]health.Measurement, error) {
-	driverVersion, _ := xidparse.DetectDriverVersion()
 	return readJournal(ctx, b.run, journalMatcher{
 		args:    []string{"--output=cat", "--grep=Xid"},
 		subject: "Xid state",
-		parse:   func(lines []string) health.Measurement { return xidparse.ParseXid(sinceBoot, lines, driverVersion) },
+		parse:   func(lines []string) health.Measurement { return xidparse.ParseXid(sinceBoot, lines) },
 		errored: func(err error) health.Measurement {
 			return xid.ErroredXid(sinceBoot, err, xid.MeasurementSignals...)
 		},
