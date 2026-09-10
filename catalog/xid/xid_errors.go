@@ -154,10 +154,8 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 // [nvlink5DecodeTable]: Non-fatal-severity rows resolve to IGNORE in
 // the overwhelming majority of cases).
 //
-// The Fatal rule uses [resetAndContactSupport] rather than the opaque
-// workflow_nvlink5_err this family used before NVIDIA's Xid 144-150
-// decode table was available in this repo (see nvlink5_decode.go):
-// filtering that table to Fatal-severity rows only, ~95% (37 of 39)
+// The Fatal rule uses [resetAndContactSupport]: filtering
+// [nvlink5DecodeTable] to Fatal-severity rows only, ~95% (37 of 39)
 // resolve to a GPU reset with support contacted if it doesn't clear —
 // exactly this sequence. The rare exceptions that resolve to IGNORE
 // despite Fatal severity aren't distinguishable from a static per-check
