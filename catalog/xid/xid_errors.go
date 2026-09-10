@@ -32,7 +32,7 @@ func resetAndContactSupport() health.RecommendedAction {
 // that are marked Unused are excluded entirely.
 var criticalXids = []criticalXid{
 	{code: 46, action: resetAndContactSupport(), description: "GPU stopped processing"},
-	{code: 48, action: health.Drain(health.RemediationActionWorkflowXid48), description: "double bit ECC error"},
+	{code: 48, action: resetAndContactSupport(), description: "double bit ECC error"},
 	{code: 62, action: resetAndContactSupport(), description: "internal micro-controller halt"},
 	{code: 64, action: resetAndContactSupport(), description: "GPU memory remapping failure"},
 	{code: 79, action: resetAndContactSupport(), description: "GPU has fallen off the bus"},
