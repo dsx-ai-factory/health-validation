@@ -54,7 +54,7 @@ func TestXidErrors_SeverityByBucket(t *testing.T) {
 	}{
 		{"reset_gpu (46)", 46, health.Critical},
 		{"fell off bus (79)", 79, health.Critical},
-		{"nvlink (74)", 74, health.Critical},
+		{"memory remapping failure (64)", 64, health.Critical},
 		{"nvlink5 (146)", 146, health.Critical},
 		{"app fault (11)", 11, health.Warning},
 		{"vgpu start (78)", 78, health.Warning},

@@ -32,17 +32,14 @@ func resetAndContactSupport() health.RecommendedAction {
 // that are marked Unused are excluded entirely.
 var criticalXids = []criticalXid{
 	{code: 46, action: resetAndContactSupport(), description: "GPU stopped processing"},
-	{code: 54, action: health.Drain(health.RemediationActionContactSupport), description: "auxiliary power is not connected to the GPU board"},
 	{code: 62, action: resetAndContactSupport(), description: "internal micro-controller halt"},
 	{code: 64, action: resetAndContactSupport(), description: "GPU memory remapping failure"},
-	{code: 74, action: health.Drain(health.RemediationActionWorkflowNVLinkErr), description: "NVLink error"},
 	{code: 79, action: resetAndContactSupport(), description: "GPU has fallen off the bus"},
 	{code: 95, action: resetAndContactSupport(), description: "uncontained memory error"},
 	{code: 109, action: resetAndContactSupport(), description: "context switch timeout error"},
 	{code: 110, action: resetAndContactSupport(), description: "security fault error"},
 	{code: 119, action: resetAndContactSupport(), description: "GSP RPC timeout"},
 	{code: 120, action: resetAndContactSupport(), description: "GSP error"},
-	{code: 136, action: resetAndContactSupport(), description: "link training failed"},
 	{code: 140, action: resetAndContactSupport(), description: "ECC unrecovered error"},
 	{code: 142, action: health.Drain(health.RemediationActionContactSupport), description: "NVENC3 error"},
 	{code: 143, action: resetAndContactSupport(), description: "GPU initialization error"},
@@ -75,7 +72,7 @@ var warningClasses = []warningClass{
 		message: "Application-level GPU Xid error detected. Restart the faulting application; the GPU itself remains healthy.",
 		codes: []int64{
 			8, 11, 25, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77,
-			80, 82, 83, 84, 85, 86, 88, 89, 94, 96, 97, 98, 99, 100, 101, 102, 103,
+			82, 83, 84, 85, 86, 88, 89, 94, 96, 97, 98, 99, 100, 101, 102, 103,
 			104, 105, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139,
 		},
 	},
