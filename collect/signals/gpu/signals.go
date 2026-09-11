@@ -13,6 +13,19 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 )
 
+// Fabric Manager status values reported by FabricManagerStatus. These values
+// follow DCGM's public dcgmFabricManagerStatus_t contract:
+// https://docs.nvidia.com/datacenter/dcgm/latest/dcgm-api/dcgm-api-structs.html
+const (
+	FabricManagerStatusNotSupported int64 = iota
+	FabricManagerStatusNotStarted
+	FabricManagerStatusInProgress
+	FabricManagerStatusSuccess
+	FabricManagerStatusFailure
+	FabricManagerStatusUnrecognized
+	FabricManagerStatusNVMLTooOld
+)
+
 // Canonical GPU signal definitions. Source-specific DCGM and NVML mappings
 // live with their sources; overlapping sources reference the same values here.
 var (
@@ -34,6 +47,9 @@ var (
 	SMClock                             = collect.NewSignal("gpu.clock.sm", "megahertz")
 	MemoryClock                         = collect.NewSignal("gpu.clock.memory", "megahertz")
 	ClockEventReasons                   = collect.NewSignal("gpu.clock.event_reasons", "1")
+	HardwareSlowdownActive              = collect.NewSignal("gpu.clock.hardware_slowdown.active", "")
+	HardwareThermalSlowdownActive       = collect.NewSignal("gpu.clock.hardware_thermal_slowdown.active", "")
+	HardwarePowerBrakeSlowdownActive    = collect.NewSignal("gpu.clock.hardware_power_brake_slowdown.active", "")
 	ComputeUtilization                  = collect.NewSignal("gpu.compute.utilization", "percent")
 	MemoryCopyUtilization               = collect.NewSignal("gpu.memory.copy_utilization", "percent")
 	FramebufferFree                     = collect.NewSignal("gpu.memory.frame_buffer.free", "mebibytes")
@@ -65,6 +81,10 @@ var (
 	NVLinkRecoverySuccessfulCount       = collect.NewSignal("gpu.nvlink.recovery.successful.count", "1")
 	NVLinkRecoveryFailedCount           = collect.NewSignal("gpu.nvlink.recovery.failed.count", "1")
 	FabricManagerStatus                 = collect.NewSignal("gpu.fabric_manager.status", "1")
+	NVLinkFabricBandwidthDegraded       = collect.NewSignal("gpu.nvlink.fabric.bandwidth.degraded", "")
+	NVLinkFabricRouteRecoveryActive     = collect.NewSignal("gpu.nvlink.fabric.route_recovery.active", "")
+	NVLinkFabricRouteUnhealthy          = collect.NewSignal("gpu.nvlink.fabric.route.unhealthy", "")
+	NVLinkFabricAccessTimeoutRecovery   = collect.NewSignal("gpu.nvlink.fabric.access_timeout_recovery.active", "")
 	C2CLinkReplayErrorCount             = collect.NewSignal("gpu.c2c.link.error.replay.count", "1")
 	NVLinkRXGeneralErrorCount           = collect.NewSignal("gpu.nvlink.rx.error.general.count", "1")
 	NVLinkRXErrorCount                  = collect.NewSignal("gpu.nvlink.rx.error.count", "1")
@@ -87,7 +107,8 @@ var all = collect.Signals{
 	TemperatureSlowdownMarginCelsius, TemperatureThresholdShutdownCelsius,
 	TemperatureThresholdSlowdownCelsius, TemperatureThresholdMemMaxCelsius,
 	TemperatureThresholdGPUMaxCelsius, ThermalViolationDuration, SMClock, MemoryClock,
-	ClockEventReasons, ComputeUtilization, MemoryCopyUtilization, FramebufferFree,
+	ClockEventReasons, HardwareSlowdownActive, HardwareThermalSlowdownActive,
+	HardwarePowerBrakeSlowdownActive, ComputeUtilization, MemoryCopyUtilization, FramebufferFree,
 	FramebufferUsed, FramebufferTotal, FramebufferUsedRatio, UncorrectableRemappedRows,
 	CorrectableRemappedRows, RowRemapFailure, RowRemapPending,
 	ECCSingleBitVolatileTotal, ECCDoubleBitVolatileTotal, ECCSingleBitAggregateTotal,
@@ -98,6 +119,8 @@ var all = collect.Signals{
 	PCIeReplayCount, NVLinkThroughputTotal, NVLinkDLCrcErrorCount,
 	NVLinkDLRecoveryErrorCount, NVLinkDLReplayErrorCount,
 	NVLinkRecoverySuccessfulCount, NVLinkRecoveryFailedCount, FabricManagerStatus,
+	NVLinkFabricBandwidthDegraded, NVLinkFabricRouteRecoveryActive,
+	NVLinkFabricRouteUnhealthy, NVLinkFabricAccessTimeoutRecovery,
 	C2CLinkReplayErrorCount, NVLinkRXGeneralErrorCount, NVLinkRXErrorCount,
 	NVLinkRXMalformedPacketErrorCount, NVLinkRXRemoteErrorCount,
 	NVLinkRXSymbolErrorCount, NVLinkRXBufferOverrunErrorCount,

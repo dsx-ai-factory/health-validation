@@ -37,6 +37,7 @@ go_test(
     srcs = [
         "errors_linux_test.go",
         "errors_test.go",
+        "fields_linux_test.go",
         "source_test.go",
     ],
     embed = [":dcgm"],

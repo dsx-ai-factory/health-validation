@@ -6,6 +6,7 @@ go_library(
     srcs = [
         "main.go",
         "measurements.go",
+        "nvlink_measurements.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/agentkit/examples/scan-one-off-evaluate",
     visibility = ["//visibility:private"],
@@ -13,6 +14,7 @@ go_library(
         "//catalog",
         "//catalog/gpu",
         "//catalog/health",
+        "//catalog/nvlink",
         "//collect",
         "//collect/observation",
         "//collect/sensors/dcgm",
@@ -30,11 +32,15 @@ go_binary(
 
 go_test(
     name = "scan-one-off-evaluate_test",
-    srcs = ["measurements_test.go"],
+    srcs = [
+        "measurements_test.go",
+        "nvlink_measurements_test.go",
+    ],
     embed = [":scan-one-off-evaluate_lib"],
     deps = [
         "//catalog/gpu",
         "//catalog/health",
+        "//catalog/nvlink",
         "//collect/observation",
         "//collect/signals/gpu",
         "@com_github_stretchr_testify//require",

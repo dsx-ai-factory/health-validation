@@ -16,6 +16,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	cataloggpu "github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	catalognvlink "github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
@@ -23,10 +24,22 @@ import (
 	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
 )
 
-var requiredSignals = []string{
+var requiredGPUSignals = []string{
+	gpusignals.PowerDraw.ID(),
 	gpusignals.PowerLimitRequested.ID(),
 	gpusignals.PowerLimitEnforced.ID(),
 	gpusignals.PerformanceState.ID(),
+	gpusignals.HardwareSlowdownActive.ID(),
+	gpusignals.HardwareThermalSlowdownActive.ID(),
+	gpusignals.HardwarePowerBrakeSlowdownActive.ID(),
+}
+
+var requiredNVLinkSignals = []string{
+	gpusignals.NVLinkFabricBandwidthDegraded.ID(),
+	gpusignals.NVLinkFabricRouteRecoveryActive.ID(),
+	gpusignals.NVLinkFabricRouteUnhealthy.ID(),
+	gpusignals.NVLinkFabricAccessTimeoutRecovery.ID(),
+	gpusignals.FabricManagerStatus.ID(),
 }
 
 type config struct {
@@ -81,7 +94,8 @@ func run(cfg config) error {
 
 	// Selecting only the signals required by the registered checks also fixes
 	// the DCGM field watch before its first lazy native read.
-	sensor, err := dcgmsensor.New(dcgmSource, requiredSignals...)
+	signalIDs := append(append([]string{}, requiredGPUSignals...), requiredNVLinkSignals...)
+	sensor, err := dcgmsensor.New(dcgmSource, signalIDs...)
 	if err != nil {
 		return fmt.Errorf("initialize DCGM sensor: %w", err)
 	}
@@ -91,20 +105,20 @@ func run(cfg config) error {
 	}
 	batch, err := sensor.Measure(context.Background(), collect.WithCycle(currentCycle))
 	if err != nil {
-		return fmt.Errorf("collect GPU observations: %w", err)
+		return fmt.Errorf("collect observations: %w", err)
 	}
 	if validationErr := observation.ValidateBatch(batch); validationErr != nil {
 		return fmt.Errorf("validate observation batch: %w", validationErr)
 	}
 
-	measurements := buildGPUMeasurements(batch.GetObservations())
+	measurements := buildMeasurements(batch.GetObservations())
 	validationCatalog, err := newValidationCatalog(cfg.architecture)
 	if err != nil {
 		return err
 	}
 	verdict, err := validationCatalog.EvaluateAll(measurements...)
 	if err != nil {
-		return fmt.Errorf("evaluate GPU measurements: %w", err)
+		return fmt.Errorf("evaluate measurements: %w", err)
 	}
 	verdict.NodeID = cfg.nodeID
 
@@ -126,8 +140,12 @@ func newValidationCatalog(architecture string) (*catalog.Catalog, error) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 	for _, check := range []health.CheckDefinition{
+		cataloggpu.GPUAveragePowerDraw(),
 		cataloggpu.GPUPowerLimit(),
 		cataloggpu.GPUPowerState(),
+		cataloggpu.GPUSensorThrottle(),
+		catalognvlink.NVLinkFabric(),
+		catalognvlink.NVLinkFabricHealth(),
 	} {
 		if err := validationCatalog.Register(check); err != nil {
 			return nil, fmt.Errorf("register check %q: %w", check.ID, err)

@@ -15,17 +15,25 @@ import (
 
 func TestBuildGPUMeasurements(t *testing.T) {
 	measurements := buildGPUMeasurements([]*observation.Observation{
+		valueObservation(gpusignals.PowerDraw.ID(), doubleValue(75), stringPointer("watts")),
 		valueObservation(gpusignals.PowerLimitRequested.ID(), doubleValue(700), stringPointer("watts")),
 		valueObservation(gpusignals.PowerLimitEnforced.ID(), doubleValue(700), stringPointer("watts")),
 		valueObservation(gpusignals.PerformanceState.ID(), intValue(0), nil),
+		valueObservation(gpusignals.HardwareSlowdownActive.ID(), booleanValue(false), nil),
+		valueObservation(gpusignals.HardwareThermalSlowdownActive.ID(), booleanValue(true), nil),
+		valueObservation(gpusignals.HardwarePowerBrakeSlowdownActive.ID(), booleanValue(false), nil),
 	})
 
 	require.Len(t, measurements, 1)
 	measurement := measurements[0].(cataloggpu.GPUMeasurement)
 	require.Equal(t, "GPU-0", measurement.GPUID)
+	require.Equal(t, float64(75), measurement.AveragePowerDrawW)
 	require.Equal(t, float64(700), measurement.PowerLimitW)
 	require.Equal(t, float64(700), measurement.EnforcedPowerLimitW)
 	require.Zero(t, measurement.GPUPstate)
+	require.False(t, measurement.HWSlowdown)
+	require.True(t, measurement.HWThermalSlowdown)
+	require.False(t, measurement.HWPowerBrakeSlowdown)
 	require.Empty(t, measurement.Errors())
 }
 
@@ -43,8 +51,12 @@ func TestBuildGPUMeasurementsPreservesPerSignalFailure(t *testing.T) {
 		}},
 	}
 	measurements := buildGPUMeasurements([]*observation.Observation{
+		valueObservation(gpusignals.PowerDraw.ID(), doubleValue(75), stringPointer("watts")),
 		valueObservation(gpusignals.PowerLimitRequested.ID(), doubleValue(700), stringPointer("watts")),
 		valueObservation(gpusignals.PowerLimitEnforced.ID(), doubleValue(700), stringPointer("watts")),
+		valueObservation(gpusignals.HardwareSlowdownActive.ID(), booleanValue(false), nil),
+		valueObservation(gpusignals.HardwareThermalSlowdownActive.ID(), booleanValue(false), nil),
+		valueObservation(gpusignals.HardwarePowerBrakeSlowdownActive.ID(), booleanValue(false), nil),
 		failed,
 	})
 
@@ -52,7 +64,7 @@ func TestBuildGPUMeasurementsPreservesPerSignalFailure(t *testing.T) {
 	require.NoError(t, err)
 	verdict, err := validationCatalog.EvaluateAll(measurements...)
 	require.NoError(t, err)
-	require.Len(t, verdict.CheckResults, 2)
+	require.Len(t, verdict.CheckResults, 3)
 
 	byID := make(map[string]health.CheckVerdict, len(verdict.CheckResults))
 	for _, result := range verdict.CheckResults {
@@ -84,6 +96,10 @@ func intValue(value int64) *observation.Value {
 
 func doubleValue(value float64) *observation.Value {
 	return &observation.Value{Kind: &observation.Value_DoubleValue{DoubleValue: value}}
+}
+
+func booleanValue(value bool) *observation.Value {
+	return &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: value}}
 }
 
 func stringPointer(value string) *string { return &value }

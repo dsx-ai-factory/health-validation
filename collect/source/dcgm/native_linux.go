@@ -63,10 +63,7 @@ func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, er
 	if err != nil {
 		return nil, err
 	}
-	fieldIDs := make([]godcgm.Short, 0, len(mappings))
-	for _, mapping := range mappings {
-		fieldIDs = append(fieldIDs, mapping.fieldID)
-	}
+	fieldIDs := uniqueFieldIDs(mappings)
 
 	watchID := metricWatchSequence.Add(1)
 	name := metricWatchName(library.options.GroupNamePrefix, os.Getpid(), watchID)
@@ -106,11 +103,10 @@ func (*nativeLibrary) ReadMetrics(
 	if err != nil {
 		return nil, err
 	}
-	fieldIDs := make([]godcgm.Short, 0, len(mappings))
-	mappingsByField := make(map[godcgm.Short]fieldMapping, len(mappings))
+	fieldIDs := uniqueFieldIDs(mappings)
+	mappingsByField := make(map[godcgm.Short][]fieldMapping, len(fieldIDs))
 	for _, mapping := range mappings {
-		fieldIDs = append(fieldIDs, mapping.fieldID)
-		mappingsByField[mapping.fieldID] = mapping
+		mappingsByField[mapping.fieldID] = append(mappingsByField[mapping.fieldID], mapping)
 	}
 
 	// Read every selected field for this GPU in one DCGM call.
@@ -120,11 +116,13 @@ func (*nativeLibrary) ReadMetrics(
 	}
 	results := make(map[string]FieldValue, len(mappings))
 	for _, value := range values {
-		mapping, expected := mappingsByField[value.FieldID]
+		fieldMappings, expected := mappingsByField[value.FieldID]
 		if !expected {
 			continue
 		}
-		results[mapping.signalID] = decodeMetricValue(mapping, value)
+		for _, mapping := range fieldMappings {
+			results[mapping.signalID] = decodeMetricValue(mapping, value)
+		}
 	}
 	for _, mapping := range mappings {
 		if _, exists := results[mapping.signalID]; !exists {
@@ -136,6 +134,21 @@ func (*nativeLibrary) ReadMetrics(
 		}
 	}
 	return results, nil
+}
+
+// uniqueFieldIDs prevents duplicate watches and reads when several canonical
+// signals are derived from one DCGM field.
+func uniqueFieldIDs(mappings []fieldMapping) []godcgm.Short {
+	fieldIDs := make([]godcgm.Short, 0, len(mappings))
+	seen := make(map[godcgm.Short]struct{}, len(mappings))
+	for _, mapping := range mappings {
+		if _, exists := seen[mapping.fieldID]; exists {
+			continue
+		}
+		seen[mapping.fieldID] = struct{}{}
+		fieldIDs = append(fieldIDs, mapping.fieldID)
+	}
+	return fieldIDs
 }
 
 // fieldMappingsFor validates signal IDs and preserves their requested order.
@@ -185,6 +198,12 @@ func decodeMetricValue(mapping fieldMapping, value godcgm.FieldValue_v1) FieldVa
 	decoded, failure := decodeObservationValue(value)
 	if failure != nil {
 		return FieldValue{CollectionError: failure}
+	}
+	if mapping.transform != nil {
+		decoded, failure = mapping.transform(&decoded)
+		if failure != nil {
+			return FieldValue{CollectionError: failure}
+		}
 	}
 	return FieldValue{
 		ObservedAt: time.UnixMicro(value.TS).UTC(),
