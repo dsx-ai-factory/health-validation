@@ -10,3 +10,12 @@ overrides:
   # patched 7.x line. It is a build-time-only transitive dep (copy-webpack-plugin,
   # css-minimizer-webpack-plugin) and requires Node >=20 (see docs/package.json).
   serialize-javascript: 7.0.7
+  # CVE-2026-84370 (high) and CVE-2026-84369 (medium): svgo's opt-in
+  # removeScriptElement plugin leaks executable links and foreignObject HTML past
+  # sanitization. Build-time only, reaching us through @svgr/plugin-svgo and
+  # postcss-svgo under @docusaurus/preset-classic. An override is needed because
+  # the patched 4.x line is unreachable here: cssnano-preset-default 6.1.2 caps
+  # postcss-svgo at ^6.0.3, 6.0.3 is the last of that line, and postcss-svgo only
+  # moved to svgo 4 in 7.1.0. Drop this once Docusaurus resolves postcss-svgo
+  # >= 7.1.0.
+  svgo: 3.3.5
