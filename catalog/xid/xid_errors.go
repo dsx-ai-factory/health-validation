@@ -72,6 +72,63 @@ var nvlink5Xids = []nvlink5Xid{
 	{code: 150, description: "NVLink MSE error"},
 }
 
+// nvlink5SubXidCode is one Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN fault
+// subtype: the one NVLink5-family subcomponent NVIDIA's decode table
+// (see [nvlink5DecodeTable]) differentiates purely by SubXidCode
+// (IntrInfo[25:20]) rather than by ErrorStatus — and the one operators
+// configure per-subcode in practice (e.g. "149.4", "149.A"). Every
+// other NVLink5 subcomponent varies by ErrorStatus instead, where
+// SubXidCode alone doesn't distinguish the different resolutions, so
+// only 149's NETIR_LINK_EVT/NETIR_LINK_DOWN family gets this treatment.
+//
+// Each subcode gets its own check (gpu_xid_149_<digit>), additive to
+// (not a replacement for) [nvlink5Check]'s existing Fatal/Nonfatal
+// gpu_xid_149 check, so every 149 event still produces at least that
+// baseline verdict. Splitting lets an operator independently
+// disable/override the guidance for one specific fault subtype without
+// touching the rest — e.g. a chronically noisy "149.F" doesn't have to
+// affect how "149.4" is handled.
+//
+// Caveat: SubXidCode is computed from IntrInfo bits alone, independent
+// of SubComponent, so a rare event from a different 149 subcomponent
+// (NETIR_BER_EVENT, NETIR_MFDE_EVENT, NETIR/NETIR_INT) that happens to
+// share the same digit will also match here; the message's
+// investigatory guidance is only correct for the intended
+// NETIR_LINK_EVT/NETIR_LINK_DOWN case.
+type nvlink5SubXidCode struct {
+	subcode       string
+	investigatory string
+	critical      bool // true when the decode table's resolution is RESET_GPU rather than IGNORE
+}
+
+// nvlink5SubXidCodes lists every subcode NVIDIA's decode table
+// documents for Xid 149's NETIR_LINK_EVT/NETIR_LINK_DOWN family,
+// derived directly from [nvlink5DecodeTable]'s rows for that
+// subcomponent.
+var nvlink5SubXidCodes = []nvlink5SubXidCode{
+	{subcode: "149.0", investigatory: "SYMPATHETIC_REPORT_SOLO", critical: true},
+	{subcode: "149.1", investigatory: "REPORT_ISSUE (if seen >1 per day)", critical: true},
+	{subcode: "149.2", investigatory: "INVESTIGATE_LINK_SI", critical: true},
+	{subcode: "149.4", investigatory: "INVESTIGATE_LINK_SI", critical: true},
+	{subcode: "149.A", investigatory: "INVESTIGATE_LINK_SI", critical: true},
+	{subcode: "149.F", investigatory: "INVESTIGATE_SW_USER", critical: true},
+	{subcode: "149.10", investigatory: "INVESTIGATE_SW_USER_LINK_SI", critical: true},
+	{subcode: "149.11", investigatory: "INVESTIGATE_SW_USER", critical: true},
+	{subcode: "149.12", investigatory: "INVESTIGATE_SW_USER_LINK_SI", critical: true},
+	{subcode: "149.15", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
+	{subcode: "149.16", investigatory: "INVESTIGATE_SW_USER", critical: true},
+	{subcode: "149.20", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
+	{subcode: "149.21", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
+	{subcode: "149.22", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
+	{subcode: "149.23", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
+	{subcode: "149.24", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
+	{subcode: "149.25", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
+	{subcode: "149.26", investigatory: "INVESTIGATE_SW/USER", critical: false},
+	{subcode: "149.28", investigatory: "INVESTIGATE_HOST", critical: false},
+	{subcode: "149.2A", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES", critical: true},
+	{subcode: "149.2B", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES", critical: true},
+}
+
 // warningClass groups warning-severity Xid codes that share a
 // resolution bucket. All warning classes live as separate rules in the
 // single consolidated gpu_xid_warning check, each carrying its bucket
@@ -110,7 +167,10 @@ var warningClasses = []warningClass{
 }
 
 // Checks returns every Xid check shipped with the catalog: one CRITICAL
-// check per critical Xid code, a single consolidated WARNING check
+// check per critical Xid code, one Fatal/Nonfatal check per NVLink5
+// (144-150) code, one additional per-SubXidCode check for each Xid 149
+// NETIR_LINK_EVT/NETIR_LINK_DOWN fault subtype (see
+// [nvlink5SubXidCodeCheck]), a single consolidated WARNING check
 // covering all warning-severity codes, and an INFO check for Xid 154
 // (a recovery-action notice that only annotates another Xid).
 //
@@ -118,12 +178,15 @@ var warningClasses = []warningClass{
 // sensor and tests its xid_counts map. Codes whose immediate action is
 // IGNORE/empty, and Unused codes, are not represented and never fire.
 func Checks() []health.CheckDefinition {
-	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+2)
+	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+2)
 	for _, c := range criticalXids {
 		checks = append(checks, criticalCheck(c))
 	}
 	for _, c := range nvlink5Xids {
 		checks = append(checks, nvlink5Check(c))
+	}
+	for _, c := range nvlink5SubXidCodes {
+		checks = append(checks, nvlink5SubXidCodeCheck(c))
 	}
 	checks = append(checks, warningCheck(), xid154Check())
 	return checks
@@ -198,6 +261,32 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 			Message:    fmt.Sprintf("GPU Xid %d detected: %s (Nonfatal).", c.code, c.description),
 		},
 	}
+	return def
+}
+
+// nvlink5SubXidCodeCheck builds the check for one Xid 149 SubXidCode
+// (see [nvlink5SubXidCode]).
+func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
+	id := "gpu_xid_" + strings.ToLower(strings.Replace(c.subcode, ".", "_", 1))
+	action := health.NoAction
+	severity := health.Warning
+	if c.critical {
+		action = resetAndService()
+		severity = health.Critical
+	}
+	def := baseCheck(
+		id,
+		fmt.Sprintf("GPU Xid %s (NVLink NETIR_LINK_DOWN)", c.subcode),
+		fmt.Sprintf("Detects NVRM Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN occurrences with subcode %s in the system journal since boot.", c.subcode),
+		action,
+	)
+	def.RequiredSignals = []string{SignalSubXidCodeCounts}
+	def.Architectures = []string{"GB200", "GB300"}
+	def.Rules = []health.Rule{{
+		Expression: fmt.Sprintf("%q in sub_xid_code_counts", c.subcode),
+		Severity:   severity,
+		Message:    fmt.Sprintf("GPU Xid %s (NVLink NETIR_LINK_DOWN) detected. Investigatory guidance: %s.", c.subcode, c.investigatory),
+	}}
 	return def
 }
 

@@ -205,6 +205,79 @@ func TestXidErrors_NVLink5_FatalAndNonfatalReportsBoth(t *testing.T) {
 	}
 }
 
+// nvlink5SubXidCodeMeasurementFor builds an XidMeasurement for one Xid 149
+// NETIR_LINK_EVT/NETIR_LINK_DOWN event carrying the given subcode, the way
+// toolkit/xid.ParseXid would after decoding the extended log format.
+func nvlink5SubXidCodeMeasurementFor(subcode string, fatal bool) xid.XidMeasurement {
+	m := xid.XidMeasurement{
+		Since:            "boot",
+		XidCounts:        map[int64]int64{149: 1},
+		SubXidCodeCounts: map[string]int64{subcode: 1},
+		Events: []xid.XidEvent{{
+			PCIAddress: "0000:01:00",
+			XidCode:    149,
+			NVLink5:    &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", Fatal: fatal, Link: 8, SubXidCode: subcode},
+		}},
+		EventCount: 1,
+	}
+	if fatal {
+		m.FatalXidCounts = map[int64]int64{149: 1}
+	}
+	return m
+}
+
+func TestXidErrors_NVLink5SubXidCode_Critical(t *testing.T) {
+	nv, err := xidCatalog(t).EvaluateAll(nvlink5SubXidCodeMeasurementFor("149.4", true))
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	v, ok := checkResult(nv, "gpu_xid_149_4")
+	if !ok {
+		t.Fatalf("gpu_xid_149_4 verdict not found")
+	}
+	if v.Severity != health.Critical {
+		t.Errorf("gpu_xid_149_4 severity = %v, want CRITICAL", v.Severity)
+	}
+	if want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired); !v.RecommendedAction.Equal(want) {
+		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
+	}
+}
+
+func TestXidErrors_NVLink5SubXidCode_Warning(t *testing.T) {
+	// Subcode 149.26 is the one row whose decode-table resolution is
+	// IGNORE rather than RESET_GPU.
+	nv, err := xidCatalog(t).EvaluateAll(nvlink5SubXidCodeMeasurementFor("149.26", false))
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	v, ok := checkResult(nv, "gpu_xid_149_26")
+	if !ok {
+		t.Fatalf("gpu_xid_149_26 verdict not found")
+	}
+	if v.Severity != health.Warning {
+		t.Errorf("gpu_xid_149_26 severity = %v, want WARNING", v.Severity)
+	}
+	if !v.RecommendedAction.Equal(health.NoAction) {
+		t.Errorf("RecommendedAction = %v, want NoAction", v.RecommendedAction)
+	}
+}
+
+func TestXidErrors_NVLink5SubXidCode_AdditiveWithBaseline(t *testing.T) {
+	// A "149.4" Fatal event fires both the per-subcode check and the
+	// baseline gpu_xid_149 Fatal/Nonfatal check: subcode checks are
+	// additive, not a replacement.
+	nv, err := xidCatalog(t).EvaluateAll(nvlink5SubXidCodeMeasurementFor("149.4", true))
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	if _, ok := checkResult(nv, "gpu_xid_149"); !ok {
+		t.Errorf("gpu_xid_149 (baseline) verdict not found")
+	}
+	if _, ok := checkResult(nv, "gpu_xid_149_4"); !ok {
+		t.Errorf("gpu_xid_149_4 (subcode) verdict not found")
+	}
+}
+
 func checkResult(nv health.NodeVerdict, checkID string) (health.CheckVerdict, bool) {
 	for _, v := range nv.CheckResults {
 		if v.CheckID == checkID {
