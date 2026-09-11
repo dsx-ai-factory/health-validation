@@ -14,6 +14,7 @@ const (
 	SignalXidCounts        = "xid_counts"
 	SignalFatalXidCounts   = "fatal_xid_counts"
 	SignalSubXidCodeCounts = "sub_xid_code_counts"
+	SignalDriverVersion    = "driver_version"
 	SignalSince            = "since"
 	SignalEventCount       = "event_count"
 )
@@ -27,6 +28,7 @@ var MeasurementSignals = []string{
 	SignalXidCounts,
 	SignalFatalXidCounts,
 	SignalSubXidCodeCounts,
+	SignalDriverVersion,
 	SignalSince,
 	SignalEventCount,
 }
@@ -55,7 +57,11 @@ type XidEvent struct {
 // (see toolkit/xid/nvlink5_decode.go), not a table lookup. Not to be
 // confused with NVIDIA's decode-table guide's "Subcode," which is a
 // bit-encoding of SubComponent (redundant with the text NVRM already
-// prints — see NVIDIA's Customer User Guide tab).
+// prints — see NVIDIA's Customer User Guide tab). Deciding what a given
+// (code, SubComponent, ErrorStatus/IntrInfo) combination means —
+// NVIDIA's documented resolution/investigation guidance — requires
+// NVIDIA's Xid 144-150 decode table and the host's driver era, which is
+// catalog knowledge: see [DecodeNVLink5Resolution].
 type NVLink5Detail struct {
 	SubComponent string `json:"sub_component"`
 	IntrInfo     string `json:"intr_info,omitempty"`
@@ -86,14 +92,19 @@ type NVLink5Detail struct {
 // code, letting a check threshold on a specific documented fault
 // subtype rather than the whole Xid code (e.g.
 // sub_xid_code_counts["149.4"] > xid_149_4_threshold). Populated only
-// for the NVLink5 family, same as FatalXidCounts. Events preserves the
-// full per-occurrence detail — process name, PCI address, pid, and (for
-// 144-150) NVLink5 — for message interpolation and richer rules.
+// for the NVLink5 family, same as FatalXidCounts. DriverVersion is the
+// raw host driver version string (e.g. "575.51.03", empty if
+// undetectable) needed to classify [DriverEra] for
+// [DecodeNVLink5Resolution]; a single host fact for the whole
+// measurement, not per-event. Events preserves the full per-occurrence
+// detail — process name, PCI address, pid, and (for 144-150) NVLink5 —
+// for message interpolation and richer rules.
 type XidMeasurement struct {
 	XidCounts        map[int64]int64  `json:"xid_counts"`
 	FatalXidCounts   map[int64]int64  `json:"fatal_xid_counts"`
 	SubXidCodeCounts map[string]int64 `json:"sub_xid_code_counts"`
 	Since            string           `json:"since"`
+	DriverVersion    string           `json:"driver_version,omitempty"`
 	Events           []XidEvent       `json:"events"`
 	errors           []health.ErroredMeasurement
 	EventCount       int64 `json:"event_count"`

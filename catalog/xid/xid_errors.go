@@ -150,18 +150,19 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 // line itself (see [toolkit/xid.ParseXid] / [NVLink5Detail]); the check
 // mirrors that split: Fatal is CRITICAL, Nonfatal is WARNING with no
 // recommended action (matching NVIDIA's own guidance that most
-// non-fatal NVLink5 subcodes need no remediation — confirmed against
-// NVIDIA's Xid 144-150 decode table: Non-fatal-severity rows resolve to
-// IGNORE in the overwhelming majority of cases).
+// non-fatal NVLink5 subcodes need no remediation — confirmed by
+// [nvlink5DecodeTable]: Non-fatal-severity rows resolve to IGNORE in
+// the overwhelming majority of cases).
 //
-// The Fatal rule uses [resetAndService]: filtering NVIDIA's Xid
-// 144-150 decode table to Fatal-severity rows only, ~95% (37 of 39)
+// The Fatal rule uses [resetAndService]: filtering
+// [nvlink5DecodeTable] to Fatal-severity rows only, ~95% (37 of 39)
 // resolve to a GPU reset, then service if the reset doesn't clear it:
 // exactly this sequence. The rare exceptions that resolve to IGNORE
 // despite Fatal severity aren't distinguishable from a static per-check
-// action (they depend on the specific IntrInfo fault variant, only
-// available per-event), so this errs toward the safer over-remediation
-// rather than silently doing nothing.
+// action (they depend on the specific IntrInfo subcode, only available
+// per-event — see [DecodeNVLink5Resolution] for that detail), so this
+// errs toward the safer over-remediation rather than silently doing
+// nothing.
 //
 // Unlike [criticalCheck], the check-level default here is
 // [health.NoAction] and the Fatal rule sets its own RecommendedAction:

@@ -58,9 +58,18 @@ var xidNVLink5RE = regexp.MustCompile(
 //
 // Every field this parses comes straight from the log line (or, for
 // SubXidCode, a fixed bit-mask over a field the log line carries) — no
-// NVIDIA decode-table lookup happens here.
-func ParseXid(since string, lines []string) xid.XidMeasurement {
+// NVIDIA decode-table lookup happens here. driverVersion is the raw
+// host driver version string (see [DetectDriverVersion]), stamped
+// as-is onto the measurement so the catalog can classify it and decode
+// the NVLink5 family's resolution bucket itself (see
+// catalog/xid.DecodeNVLink5Resolution). It is variadic so existing
+// callers are unaffected; only the first value is used, and passing
+// more than one is a caller error and the rest are ignored.
+func ParseXid(since string, lines []string, driverVersion ...string) xid.XidMeasurement {
 	m := xid.XidMeasurement{Since: since}
+	if len(driverVersion) > 0 {
+		m.DriverVersion = driverVersion[0]
+	}
 	for _, line := range lines {
 		ev, ok := parseNVLink5Line(line)
 		if !ok {

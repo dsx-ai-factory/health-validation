@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "xid",
     srcs = [
+        "driver_version.go",
         "nvlink5_decode.go",
         "xid_parse.go",
     ],
@@ -14,6 +15,7 @@ go_library(
 go_test(
     name = "xid_test",
     srcs = [
+        "driver_version_test.go",
         "nvlink5_decode_test.go",
         "xid_parse_test.go",
     ],
