@@ -67,6 +67,34 @@ bazel run //tools/gazelle
 # Go mod tidy (repo has two modules: catalog/ and toolkit/)
 (cd catalog && go mod tidy)
 (cd toolkit && go mod tidy)
+
+# Check NOTICE is up to date with actual Go dependencies (see "Updating
+# NOTICE" below)
+./tools/check_notice.sh
+```
+
+### Updating NOTICE
+
+`NOTICE` lists every third-party Go module this repo compiles in (across
+all four `go.work` modules — `agentkit`, `catalog`, `collect`, and
+`toolkit` — including test-only dependencies), each with its version,
+SPDX license identifier, and upstream URL. `tools/check_notice.sh` is a
+CI gate (see `.github/workflows/ci.yml`'s `lint` job) that fails if a
+module's version has drifted or a used module has no entry at all;
+run it locally after a dependency bump to see the same diff before
+pushing.
+
+The script only catches *mechanical* drift — a stale version, or a
+module in the build graph with no entry. It does not identify a new
+module's license for you: if it reports a missing entry, look up that
+module's actual license (its `LICENSE`/`COPYING` file, e.g. under
+`$(go env GOMODCACHE)/<module>@<version>/`) and add a block to `NOTICE`
+in the same format as the surrounding entries, in alphabetical order:
+
+```
+  <module path>  <version>
+  License:  <SPDX identifier>
+  URL:      https://<module path>
 ```
 
 > **Linux only:** The `toolkit/nvml/` package requires cgo and
