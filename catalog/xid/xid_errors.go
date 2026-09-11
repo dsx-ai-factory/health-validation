@@ -72,61 +72,106 @@ var nvlink5Xids = []nvlink5Xid{
 	{code: 150, description: "NVLink MSE error"},
 }
 
-// nvlink5SubXidCode is one Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN fault
-// subtype: the one NVLink5-family subcomponent NVIDIA's decode table
-// (see [nvlink5DecodeTable]) differentiates purely by SubXidCode
-// (IntrInfo[25:20]) rather than by ErrorStatus — and the one operators
-// configure per-subcode in practice (e.g. "149.4", "149.A"). Every
-// other NVLink5 subcomponent varies by ErrorStatus instead, where
-// SubXidCode alone doesn't distinguish the different resolutions, so
-// only 149's NETIR_LINK_EVT/NETIR_LINK_DOWN family gets this treatment.
+// nvlink5SubXidCode is one fault subtype NVIDIA's decode table
+// differentiates purely by SubXidCode (IntrInfo[25:20]) rather than by
+// ErrorStatus — e.g. Xid 149's NETIR_LINK_EVT/NETIR_LINK_DOWN family,
+// the one operators configure per-subcode in practice (e.g. "149.4",
+// "149.A"). Most (code, subcode) groups in [nvlink5DecodeTable] instead
+// vary by ErrorStatus, where SubXidCode alone doesn't distinguish the
+// different resolutions — see [nvlink5SubXidCodes] for which groups
+// qualify.
 //
-// Each subcode gets its own check (gpu_xid_149_<digit>), additive to
-// (not a replacement for) [nvlink5Check]'s existing Fatal/Nonfatal
-// gpu_xid_149 check, so every 149 event still produces at least that
-// baseline verdict. Splitting lets an operator independently
-// disable/override the guidance for one specific fault subtype without
-// touching the rest — e.g. a chronically noisy "149.F" doesn't have to
-// affect how "149.4" is handled.
+// Each one gets its own check (gpu_xid_<subXidCode>, e.g.
+// gpu_xid_149_4), additive to (not a replacement for) [nvlink5Check]'s
+// code-level Fatal/Nonfatal check, so every event on that code still
+// produces at least that baseline verdict. Splitting lets an operator
+// independently disable/override the guidance for one specific fault
+// subtype without touching the rest — e.g. a chronically noisy
+// "149.F" doesn't have to affect how "149.4" is handled.
 //
 // Caveat: SubXidCode is computed from IntrInfo bits alone, independent
-// of SubComponent, so a rare event from a different 149 subcomponent
-// (NETIR_BER_EVENT, NETIR_MFDE_EVENT, NETIR/NETIR_INT) that happens to
-// share the same digit will also match here; the message's
-// investigatory guidance is only correct for the intended
-// NETIR_LINK_EVT/NETIR_LINK_DOWN case.
+// of subcode, so a rare event from a different subcode under the same
+// code that happens to share the same digit will also match here; the
+// message's investigatory guidance is only correct for the intended
+// subcode.
 type nvlink5SubXidCode struct {
-	subcode       string
+	subXidCode    string // e.g. "149.4"
+	subcode       string // e.g. "NETIR_LINK_EVT/NETIR_LINK_DOWN"
 	investigatory string
 	critical      bool // true when the decode table's resolution is RESET_GPU rather than IGNORE
 }
 
-// nvlink5SubXidCodes lists every subcode NVIDIA's decode table
-// documents for Xid 149's NETIR_LINK_EVT/NETIR_LINK_DOWN family,
-// derived directly from [nvlink5DecodeTable]'s rows for that
-// subcomponent.
-var nvlink5SubXidCodes = []nvlink5SubXidCode{
-	{subcode: "149.0", investigatory: "SYMPATHETIC_REPORT_SOLO", critical: true},
-	{subcode: "149.1", investigatory: "REPORT_ISSUE (if seen >1 per day)", critical: true},
-	{subcode: "149.2", investigatory: "INVESTIGATE_LINK_SI", critical: true},
-	{subcode: "149.4", investigatory: "INVESTIGATE_LINK_SI", critical: true},
-	{subcode: "149.A", investigatory: "INVESTIGATE_LINK_SI", critical: true},
-	{subcode: "149.F", investigatory: "INVESTIGATE_SW_USER", critical: true},
-	{subcode: "149.10", investigatory: "INVESTIGATE_SW_USER_LINK_SI", critical: true},
-	{subcode: "149.11", investigatory: "INVESTIGATE_SW_USER", critical: true},
-	{subcode: "149.12", investigatory: "INVESTIGATE_SW_USER_LINK_SI", critical: true},
-	{subcode: "149.15", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
-	{subcode: "149.16", investigatory: "INVESTIGATE_SW_USER", critical: true},
-	{subcode: "149.20", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
-	{subcode: "149.21", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
-	{subcode: "149.22", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
-	{subcode: "149.23", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
-	{subcode: "149.24", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
-	{subcode: "149.25", investigatory: "INVESTIGATE_PEER_DEVICE", critical: true},
-	{subcode: "149.26", investigatory: "INVESTIGATE_SW/USER", critical: false},
-	{subcode: "149.28", investigatory: "INVESTIGATE_HOST", critical: false},
-	{subcode: "149.2A", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES", critical: true},
-	{subcode: "149.2B", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES", critical: true},
+// nvlink5SubXidCodes derives every [nvlink5SubXidCode] from
+// [nvlink5DecodeTable]: rows within a (code, subcode) group that share
+// a blank ErrorStatus and are disambiguated purely by their IntrInfo
+// pattern's embedded SubXidCode digit (see [nvlink5SubXidCodeDigit]).
+// A group with only one row, or whose rows vary by ErrorStatus instead,
+// is left to [nvlink5Check]'s code-level Fatal/Nonfatal check.
+var nvlink5SubXidCodes = deriveNVLink5SubXidCodes()
+
+// deriveNVLink5SubXidCodes builds [nvlink5SubXidCodes]' value; split
+// out so the derivation logic isn't buried in a var initializer.
+func deriveNVLink5SubXidCodes() []nvlink5SubXidCode {
+	type groupKey struct {
+		code    int64
+		subcode string
+	}
+	var order []groupKey
+	groups := make(map[groupKey][]nvlink5DecodeRow)
+	for _, row := range nvlink5DecodeTable {
+		if row.errorStatus != "" {
+			continue // disambiguated by ErrorStatus, not SubXidCode
+		}
+		k := groupKey{row.code, row.subcode}
+		if _, ok := groups[k]; !ok {
+			order = append(order, k)
+		}
+		groups[k] = append(groups[k], row)
+	}
+
+	var out []nvlink5SubXidCode
+	for _, k := range order {
+		rows := groups[k]
+		if len(rows) < 2 {
+			continue // nothing to differentiate by SubXidCode
+		}
+		for _, row := range rows {
+			digit, ok := nvlink5SubXidCodeDigit(row)
+			if !ok {
+				continue
+			}
+			out = append(out, nvlink5SubXidCode{
+				subXidCode:    fmt.Sprintf("%d.%s", row.code, digit),
+				subcode:       row.subcode,
+				investigatory: row.investigatory,
+				critical:      row.resolution == "RESET_GPU",
+			})
+		}
+	}
+	return out
+}
+
+// nvlink5SubXidCodeDigit extracts row's SubXidCode digit: the literal
+// 6-bit value at characters 6-11 of its v1Pattern, the fixed IntrInfo
+// bit position (see toolkit/xid's nvlink5SubXidCodeMask) both driver
+// eras place it at — formatted the same way toolkit/xid.ParseXid
+// computes it, so the label matches what a check's CEL rule looks up in
+// sub_xid_code_counts. Returns ok=false if that bit range isn't a fixed
+// value in this row's pattern (wildcarded, meaning the row isn't
+// SubXidCode-differentiated).
+func nvlink5SubXidCodeDigit(row nvlink5DecodeRow) (string, bool) {
+	if len(row.v1Pattern) != 32 {
+		return "", false
+	}
+	bits := row.v1Pattern[6:12]
+	if strings.ContainsRune(bits, '-') {
+		return "", false
+	}
+	v, err := strconv.ParseUint(bits, 2, 8)
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("%X", v), true
 }
 
 // warningClass groups warning-severity Xid codes that share a
@@ -168,8 +213,8 @@ var warningClasses = []warningClass{
 
 // Checks returns every Xid check shipped with the catalog: one CRITICAL
 // check per critical Xid code, one Fatal/Nonfatal check per NVLink5
-// (144-150) code, one additional per-SubXidCode check for each Xid 149
-// NETIR_LINK_EVT/NETIR_LINK_DOWN fault subtype (see
+// (144-150) code, one additional per-SubXidCode check for each fault
+// subtype NVIDIA's decode table differentiates that way (see
 // [nvlink5SubXidCodeCheck]), a single consolidated WARNING check
 // covering all warning-severity codes, and an INFO check for Xid 154
 // (a recovery-action notice that only annotates another Xid).
@@ -264,10 +309,10 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 	return def
 }
 
-// nvlink5SubXidCodeCheck builds the check for one Xid 149 SubXidCode
-// (see [nvlink5SubXidCode]).
+// nvlink5SubXidCodeCheck builds the check for one [nvlink5SubXidCode],
+// for whichever Xid code and subcode it names.
 func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
-	id := "gpu_xid_" + strings.ToLower(strings.Replace(c.subcode, ".", "_", 1))
+	id := "gpu_xid_" + strings.ToLower(strings.Replace(c.subXidCode, ".", "_", 1))
 	action := health.NoAction
 	severity := health.Warning
 	if c.critical {
@@ -276,16 +321,16 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 	}
 	def := baseCheck(
 		id,
-		fmt.Sprintf("GPU Xid %s (NVLink NETIR_LINK_DOWN)", c.subcode),
-		fmt.Sprintf("Detects NVRM Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN occurrences with subcode %s in the system journal since boot.", c.subcode),
+		fmt.Sprintf("GPU Xid %s (%s)", c.subXidCode, c.subcode),
+		fmt.Sprintf("Detects NVRM Xid %s (%s) occurrences in the system journal since boot.", c.subXidCode, c.subcode),
 		action,
 	)
 	def.RequiredSignals = []string{SignalSubXidCodeCounts}
 	def.Architectures = []string{"GB200", "GB300"}
 	def.Rules = []health.Rule{{
-		Expression: fmt.Sprintf("%q in sub_xid_code_counts", c.subcode),
+		Expression: fmt.Sprintf("%q in sub_xid_code_counts", c.subXidCode),
 		Severity:   severity,
-		Message:    fmt.Sprintf("GPU Xid %s (NVLink NETIR_LINK_DOWN) detected. Investigatory guidance: %s.", c.subcode, c.investigatory),
+		Message:    fmt.Sprintf("GPU Xid %s (%s) detected. Investigatory guidance: %s.", c.subXidCode, c.subcode, c.investigatory),
 	}}
 	return def
 }

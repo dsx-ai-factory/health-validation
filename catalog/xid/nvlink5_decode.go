@@ -70,7 +70,7 @@ func DriverEraFromVersion(version string) DriverEra {
 }
 
 // nvlink5DecodeRow is one entry from NVIDIA's Xid 144-150 decode table:
-// the resolution NVIDIA documents for a given (Xid code, sub-component,
+// the resolution NVIDIA documents for a given (Xid code, subcode,
 // ErrorStatus) combination, plus the IntrInfo bit pattern identifying
 // it. v1Pattern/v2Pattern are 32-character strings, one character per
 // bit (MSB first): '0'/'1' means that bit must match exactly, '-' is
@@ -88,7 +88,7 @@ func DriverEraFromVersion(version string) DriverEra {
 // unchanged). Empty when the row has no such escalation.
 type nvlink5DecodeRow struct {
 	code              int64
-	subComponent      string
+	subcode           string
 	v1Pattern         string
 	v2Pattern         string
 	errorStatus       string
@@ -105,101 +105,101 @@ type nvlink5DecodeRow struct {
 // patterns. Regenerate from the source spreadsheet rather than
 // hand-editing if NVIDIA revises the table.
 var nvlink5DecodeTable = []nvlink5DecodeRow{
-	{code: 144, subComponent: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 144, subComponent: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000002", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 144, subComponent: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000004", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 144, subComponent: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000008", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 144, subComponent: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000010", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 144, subComponent: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000020", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 145, subComponent: "RLW_CTRL", v1Pattern: "------000000----------0001100010", v2Pattern: "------000000-------------0000011", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000001", resolution: "XID_154_EVAL", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000002", resolution: "XID_154_EVAL", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000004", resolution: "XID_154_EVAL", investigatory: "CHECK_NVLINK_FAILURE_FLOW"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000008", resolution: "XID_154_EVAL", investigatory: "CHECK_NVLINK_FAILURE_FLOW"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000010", resolution: "XID_154_EVAL", investigatory: "CHECK_NVLINK_FAILURE_FLOW"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000020", resolution: "XID_154_EVAL", investigatory: "CHECK_NVLINK_FAILURE_FLOW"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000040", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000080", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000100", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000200", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 145, subComponent: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_RSPCOL", v1Pattern: "------000000----------0010100010", v2Pattern: "------000000-------------0000101", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 145, subComponent: "RLW_RSPCOL", v1Pattern: "------000000----------0010100010", v2Pattern: "------000000-------------0000101", errorStatus: "0x00000002", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_RSPCOL", v1Pattern: "------000000----------0010100010", v2Pattern: "------000000-------------0000101", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT", action2V1Pattern: "------000000---------10011000010", action2V2Pattern: "------000000------------10000110", action2Resolution: "RESET_GPU"},
-	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT", action2V1Pattern: "------000000---------10011000010", action2V2Pattern: "------000000------------10000110", action2Resolution: "RESET_GPU"},
-	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000004", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT", action2V1Pattern: "------000000---------10011000010", action2V2Pattern: "------000000------------10000110", action2Resolution: "RESET_GPU"},
-	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000----------0011000010", v2Pattern: "------000000-------------0000110", errorStatus: "0x00000008", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_RXPIPE", v1Pattern: "------000000----------0011000010", v2Pattern: "------000000-------------0000110", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000001", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 145, subComponent: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000004", resolution: "XID_154_EVAL", investigatory: "IGNORE"},
-	{code: 145, subComponent: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000008", resolution: "XID_154_EVAL", investigatory: "IGNORE"},
-	{code: 145, subComponent: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000010", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000020", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 145, subComponent: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x00000002", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x00010000", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 145, subComponent: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x00020000", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x00100000", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 145, subComponent: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_CTRL", v1Pattern: "------000000----------0100100011", v2Pattern: "------000000-------------0001001", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 146, subComponent: "TLW_CTRL", v1Pattern: "------000000----------0100100011", v2Pattern: "------000000-------------0001001", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_CTRL", v1Pattern: "------000000----------0100100011", v2Pattern: "------000000-------------0001001", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_CTRL", v1Pattern: "------000000----------0100100011", v2Pattern: "------000000-------------0001001", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_RX/TLW_RX_PIPE0", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001010", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 146, subComponent: "TLW_RX/TLW_RX_PIPE0", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001010", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_RX/TLW_RX_PIPE0", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001010", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_RX/TLW_RX_PIPE0", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001010", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_RX/TLW_RX_PIPE1", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001011", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 146, subComponent: "TLW_RX/TLW_RX_PIPE1", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001011", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_RX/TLW_RX_PIPE1", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001011", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_RX/TLW_RX_PIPE1", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001011", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_TX/TLW_TX_PIPE0", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001100", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 146, subComponent: "TLW_TX/TLW_TX_PIPE0", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001100", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_TX/TLW_TX_PIPE0", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001100", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_TX/TLW_TX_PIPE0", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001100", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_TX/TLW_TX_PIPE1", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001101", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 146, subComponent: "TLW_TX/TLW_TX_PIPE1", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001101", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_TX/TLW_TX_PIPE1", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001101", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 146, subComponent: "TLW_TX/TLW_TX_PIPE1", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001101", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 147, subComponent: "TREX", v1Pattern: "------000000----------0110000100", v2Pattern: "------000000-------------0001110", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 147, subComponent: "TREX", v1Pattern: "------000000----------0110000100", v2Pattern: "------000000-------------0001110", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 148, subComponent: "NVLPW_CTRL/NVLPW", v1Pattern: "------000000----------0000000101", v2Pattern: "------000000-------------0001111", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
-	{code: 149, subComponent: "NETIR/NETIR_INT", v1Pattern: "------000000----------0000000110", v2Pattern: "------000000-------------0011000", errorStatus: "", resolution: "RESET_GPU", investigatory: "SYMPATHETIC_REPORT_SOLO"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------000000----------0111000110", v2Pattern: "------000000-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "SYMPATHETIC_REPORT_SOLO"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------000001----------0111000110", v2Pattern: "------000001-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "REPORT_ISSUE (if seen >1 per day)"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------000010----------0111000110", v2Pattern: "------000010-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_LINK_SI"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------000100----------0111000110", v2Pattern: "------000100-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_LINK_SI"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------001010----------0111000110", v2Pattern: "------001010-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_LINK_SI"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------001111----------0111000110", v2Pattern: "------001111-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_SW_USER"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------010000----------0111000110", v2Pattern: "------010000-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_SW_USER_LINK_SI"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------010001----------0111000110", v2Pattern: "------010001-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_SW_USER"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------010010----------0111000110", v2Pattern: "------010010-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_SW_USER_LINK_SI"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------010101----------0111000110", v2Pattern: "------010101-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------010110----------0111000110", v2Pattern: "------010110-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_SW_USER"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100000----------0111000110", v2Pattern: "------100000-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100001----------0111000110", v2Pattern: "------100001-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100010----------0111000110", v2Pattern: "------100010-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100011----------0111000110", v2Pattern: "------100011-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100100----------0111000110", v2Pattern: "------100100-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100101----------0111000110", v2Pattern: "------100101-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100110----------0111000110", v2Pattern: "------100110-------------0010001", errorStatus: "", resolution: "IGNORE", investigatory: "INVESTIGATE_SW/USER"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------101000----------0111000110", v2Pattern: "------101000-------------0010001", errorStatus: "", resolution: "IGNORE", investigatory: "INVESTIGATE_HOST"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------101010----------0111000110", v2Pattern: "------101010-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
-	{code: 149, subComponent: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------101011----------0111000110", v2Pattern: "------101011-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
-	{code: 149, subComponent: "NETIR_BER_EVENT", v1Pattern: "------000000----------1000100110", v2Pattern: "------000000-------------0010011", errorStatus: "0x00000000", resolution: "IGNORE", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
-	{code: 149, subComponent: "NETIR_BER_EVENT", v1Pattern: "------000000----------1000100110", v2Pattern: "------000000-------------0010011", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
-	{code: 149, subComponent: "NETIR_BER_EVENT", v1Pattern: "------000000----------1000100110", v2Pattern: "------000000-------------0010011", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
-	{code: 149, subComponent: "NETIR_BER_EVENT", v1Pattern: "------000000----------1000100110", v2Pattern: "------000000-------------0010011", errorStatus: "0x00000003", resolution: "IGNORE", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
-	{code: 149, subComponent: "NETIR_MFDE_EVENT", v1Pattern: "------000000----------1001000110", v2Pattern: "------000000-------------0010100", errorStatus: "0x00000001", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 149, subComponent: "NETIR_MFDE_EVENT", v1Pattern: "------000000----------1001000110", v2Pattern: "------000000-------------0010100", errorStatus: "0x00000003", resolution: "IGNORE", investigatory: "IGNORE"},
-	{code: 149, subComponent: "NETIR_MFDE_EVENT", v1Pattern: "------000000----------1001000110", v2Pattern: "------000000-------------0010100", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 149, subComponent: "NETIR_MFDE_EVENT", v1Pattern: "------000000----------1001000110", v2Pattern: "------000000-------------0010100", errorStatus: "0x00000005", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 149, subComponent: "NETIR_MFDE_EVENT", v1Pattern: "------000000----------1001000110", v2Pattern: "------000000-------------0010100", errorStatus: "0x00000007", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 150, subComponent: "MSE Degraded", v1Pattern: "------000000----------0000000000", v2Pattern: "------000000-------------0000000", errorStatus: "0x00000000/0xFFFFFFFF", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
-	{code: 150, subComponent: "MSE_WATCHDOG", v1Pattern: "------000000----------0000000000", v2Pattern: "------000000-------------0000000", errorStatus: "0x00000000", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 144, subcode: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 144, subcode: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000002", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 144, subcode: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000004", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 144, subcode: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000008", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 144, subcode: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000010", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 144, subcode: "SAW_MVB", v1Pattern: "------000000----------0000100001", v2Pattern: "------000000-------------0000001", errorStatus: "0x00000020", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 145, subcode: "RLW_CTRL", v1Pattern: "------000000----------0001100010", v2Pattern: "------000000-------------0000011", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000001", resolution: "XID_154_EVAL", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000002", resolution: "XID_154_EVAL", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000004", resolution: "XID_154_EVAL", investigatory: "CHECK_NVLINK_FAILURE_FLOW"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000008", resolution: "XID_154_EVAL", investigatory: "CHECK_NVLINK_FAILURE_FLOW"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000010", resolution: "XID_154_EVAL", investigatory: "CHECK_NVLINK_FAILURE_FLOW"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000020", resolution: "XID_154_EVAL", investigatory: "CHECK_NVLINK_FAILURE_FLOW"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000040", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000080", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000100", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x00000200", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 145, subcode: "RLW_REMAP", v1Pattern: "------000000----------0010000010", v2Pattern: "------000000-------------0000100", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_RSPCOL", v1Pattern: "------000000----------0010100010", v2Pattern: "------000000-------------0000101", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 145, subcode: "RLW_RSPCOL", v1Pattern: "------000000----------0010100010", v2Pattern: "------000000-------------0000101", errorStatus: "0x00000002", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_RSPCOL", v1Pattern: "------000000----------0010100010", v2Pattern: "------000000-------------0000101", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT", action2V1Pattern: "------000000---------10011000010", action2V2Pattern: "------000000------------10000110", action2Resolution: "RESET_GPU"},
+	{code: 145, subcode: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT", action2V1Pattern: "------000000---------10011000010", action2V2Pattern: "------000000------------10000110", action2Resolution: "RESET_GPU"},
+	{code: 145, subcode: "RLW_RXPIPE", v1Pattern: "------000000---------00011000010", v2Pattern: "------000000------------00000110", errorStatus: "0x00000004", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT", action2V1Pattern: "------000000---------10011000010", action2V2Pattern: "------000000------------10000110", action2Resolution: "RESET_GPU"},
+	{code: 145, subcode: "RLW_RXPIPE", v1Pattern: "------000000----------0011000010", v2Pattern: "------000000-------------0000110", errorStatus: "0x00000008", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_RXPIPE", v1Pattern: "------000000----------0011000010", v2Pattern: "------000000-------------0000110", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000001", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 145, subcode: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000004", resolution: "XID_154_EVAL", investigatory: "IGNORE"},
+	{code: 145, subcode: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000008", resolution: "XID_154_EVAL", investigatory: "IGNORE"},
+	{code: 145, subcode: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000010", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x00000020", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_SRC_TRACK", v1Pattern: "------000000----------0011100010", v2Pattern: "------000000-------------0000111", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 145, subcode: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x00000002", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x00010000", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 145, subcode: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x00020000", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x00100000", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 145, subcode: "RLW_TAGSTATE", v1Pattern: "------000000----------0100000010", v2Pattern: "------000000-------------0001000", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_CTRL", v1Pattern: "------000000----------0100100011", v2Pattern: "------000000-------------0001001", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 146, subcode: "TLW_CTRL", v1Pattern: "------000000----------0100100011", v2Pattern: "------000000-------------0001001", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_CTRL", v1Pattern: "------000000----------0100100011", v2Pattern: "------000000-------------0001001", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_CTRL", v1Pattern: "------000000----------0100100011", v2Pattern: "------000000-------------0001001", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_RX/TLW_RX_PIPE0", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001010", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 146, subcode: "TLW_RX/TLW_RX_PIPE0", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001010", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_RX/TLW_RX_PIPE0", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001010", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_RX/TLW_RX_PIPE0", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001010", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_RX/TLW_RX_PIPE1", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001011", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 146, subcode: "TLW_RX/TLW_RX_PIPE1", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001011", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_RX/TLW_RX_PIPE1", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001011", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_RX/TLW_RX_PIPE1", v1Pattern: "------000000----------0101000011", v2Pattern: "------000000-------------0001011", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_TX/TLW_TX_PIPE0", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001100", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 146, subcode: "TLW_TX/TLW_TX_PIPE0", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001100", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_TX/TLW_TX_PIPE0", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001100", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_TX/TLW_TX_PIPE0", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001100", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_TX/TLW_TX_PIPE1", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001101", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 146, subcode: "TLW_TX/TLW_TX_PIPE1", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001101", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_TX/TLW_TX_PIPE1", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001101", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 146, subcode: "TLW_TX/TLW_TX_PIPE1", v1Pattern: "------000000----------0101100011", v2Pattern: "------000000-------------0001101", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 147, subcode: "TREX", v1Pattern: "------000000----------0110000100", v2Pattern: "------000000-------------0001110", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 147, subcode: "TREX", v1Pattern: "------000000----------0110000100", v2Pattern: "------000000-------------0001110", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 148, subcode: "NVLPW_CTRL/NVLPW", v1Pattern: "------000000----------0000000101", v2Pattern: "------000000-------------0001111", errorStatus: "0x80000000", resolution: "IGNORE", investigatory: "CONTACT_SUPPORT"},
+	{code: 149, subcode: "NETIR/NETIR_INT", v1Pattern: "------000000----------0000000110", v2Pattern: "------000000-------------0011000", errorStatus: "", resolution: "RESET_GPU", investigatory: "SYMPATHETIC_REPORT_SOLO"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------000000----------0111000110", v2Pattern: "------000000-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "SYMPATHETIC_REPORT_SOLO"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------000001----------0111000110", v2Pattern: "------000001-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "REPORT_ISSUE (if seen >1 per day)"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------000010----------0111000110", v2Pattern: "------000010-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_LINK_SI"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------000100----------0111000110", v2Pattern: "------000100-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_LINK_SI"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------001010----------0111000110", v2Pattern: "------001010-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_LINK_SI"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------001111----------0111000110", v2Pattern: "------001111-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_SW_USER"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------010000----------0111000110", v2Pattern: "------010000-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_SW_USER_LINK_SI"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------010001----------0111000110", v2Pattern: "------010001-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_SW_USER"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------010010----------0111000110", v2Pattern: "------010010-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_SW_USER_LINK_SI"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------010101----------0111000110", v2Pattern: "------010101-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------010110----------0111000110", v2Pattern: "------010110-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_SW_USER"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100000----------0111000110", v2Pattern: "------100000-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100001----------0111000110", v2Pattern: "------100001-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100010----------0111000110", v2Pattern: "------100010-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100011----------0111000110", v2Pattern: "------100011-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100100----------0111000110", v2Pattern: "------100100-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100101----------0111000110", v2Pattern: "------100101-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_PEER_DEVICE"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------100110----------0111000110", v2Pattern: "------100110-------------0010001", errorStatus: "", resolution: "IGNORE", investigatory: "INVESTIGATE_SW/USER"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------101000----------0111000110", v2Pattern: "------101000-------------0010001", errorStatus: "", resolution: "IGNORE", investigatory: "INVESTIGATE_HOST"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------101010----------0111000110", v2Pattern: "------101010-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
+	{code: 149, subcode: "NETIR_LINK_EVT/NETIR_LINK_DOWN", v1Pattern: "------101011----------0111000110", v2Pattern: "------101011-------------0010001", errorStatus: "", resolution: "RESET_GPU", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
+	{code: 149, subcode: "NETIR_BER_EVENT", v1Pattern: "------000000----------1000100110", v2Pattern: "------000000-------------0010011", errorStatus: "0x00000000", resolution: "IGNORE", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
+	{code: 149, subcode: "NETIR_BER_EVENT", v1Pattern: "------000000----------1000100110", v2Pattern: "------000000-------------0010011", errorStatus: "0x00000001", resolution: "IGNORE", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
+	{code: 149, subcode: "NETIR_BER_EVENT", v1Pattern: "------000000----------1000100110", v2Pattern: "------000000-------------0010011", errorStatus: "0x00000002", resolution: "IGNORE", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
+	{code: 149, subcode: "NETIR_BER_EVENT", v1Pattern: "------000000----------1000100110", v2Pattern: "------000000-------------0010011", errorStatus: "0x00000003", resolution: "IGNORE", investigatory: "INVESTIGATE_LINK_SI_AND_CABLES"},
+	{code: 149, subcode: "NETIR_MFDE_EVENT", v1Pattern: "------000000----------1001000110", v2Pattern: "------000000-------------0010100", errorStatus: "0x00000001", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 149, subcode: "NETIR_MFDE_EVENT", v1Pattern: "------000000----------1001000110", v2Pattern: "------000000-------------0010100", errorStatus: "0x00000003", resolution: "IGNORE", investigatory: "IGNORE"},
+	{code: 149, subcode: "NETIR_MFDE_EVENT", v1Pattern: "------000000----------1001000110", v2Pattern: "------000000-------------0010100", errorStatus: "0x00000004", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 149, subcode: "NETIR_MFDE_EVENT", v1Pattern: "------000000----------1001000110", v2Pattern: "------000000-------------0010100", errorStatus: "0x00000005", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 149, subcode: "NETIR_MFDE_EVENT", v1Pattern: "------000000----------1001000110", v2Pattern: "------000000-------------0010100", errorStatus: "0x00000007", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 150, subcode: "MSE Degraded", v1Pattern: "------000000----------0000000000", v2Pattern: "------000000-------------0000000", errorStatus: "0x00000000/0xFFFFFFFF", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
+	{code: 150, subcode: "MSE_WATCHDOG", v1Pattern: "------000000----------0000000000", v2Pattern: "------000000-------------0000000", errorStatus: "0x00000000", resolution: "RESET_GPU", investigatory: "CONTACT_SUPPORT"},
 }
 
 // nvlink5resolutionPair is the pair of actions a matched row or the
@@ -232,7 +232,7 @@ type NVLink5Resolution struct {
 	Resolution    string
 	Investigation string
 	// Matched reports whether Resolution/Investigation came from an
-	// exact (code, sub-component, error-status) table entry NVIDIA's
+	// exact (code, subcode, error-status) table entry NVIDIA's
 	// docs stated unambiguously, as opposed to the generic
 	// Fatal-flag-derived fallback (RESET_GPU/CONTACT_SUPPORT when
 	// Fatal, IGNORE/CONTACT_SUPPORT when not) used when the table has
@@ -246,15 +246,15 @@ type NVLink5Resolution struct {
 // table for the given Xid code and driver era. era must come from
 // classifying the host's raw driver version (see
 // [DriverEraFromVersion] and [xid.XidMeasurement.DriverVersion]) —
-// passing [DriverEraUnknown] limits matching to sub-components NVIDIA's
+// passing [DriverEraUnknown] limits matching to subcodes NVIDIA's
 // table disambiguates by ErrorStatus alone, since pre-/post-R575
 // drivers place the IntrInfo subcode at different bit positions and
 // guessing the wrong one risks matching an unrelated row.
 //
 // Matching proceeds in two stages against rows sharing detail's Xid
-// code and sub-component: first by ErrorStatus, which uniquely
-// disambiguates most sub-components. If more than one candidate row
-// remains (NVIDIA's table differentiates a few sub-components, e.g.
+// code and subcode: first by ErrorStatus, which uniquely
+// disambiguates most subcodes. If more than one candidate row
+// remains (NVIDIA's table differentiates a few subcodes, e.g.
 // Xid 149's NETIR_LINK_EVT/NETIR_LINK_DOWN family, purely by IntrInfo
 // bit pattern instead of ErrorStatus), pattern-matching against the
 // driver-era-appropriate IntrInfo bit layout picks among them. Falls
@@ -263,7 +263,7 @@ type NVLink5Resolution struct {
 func DecodeNVLink5Resolution(code int64, era DriverEra, detail NVLink5Detail) NVLink5Resolution {
 	candidates := make([]nvlink5DecodeRow, 0, 4)
 	for _, row := range nvlink5DecodeTable {
-		if row.code == code && subComponentMatches(detail.SubComponent, row.subComponent) {
+		if row.code == code && subcodeMatches(detail.SubComponent, row.subcode) {
 			candidates = append(candidates, row)
 		}
 	}
@@ -341,14 +341,14 @@ func filterByErrorStatus(candidates []nvlink5DecodeRow, actual string) []nvlink5
 	return out
 }
 
-// subComponentMatches reports whether the literal sub-component name
-// NVRM printed in the log line (log) matches one of the "/"-separated
-// alternative names in a decode-table row (table), e.g. table
-// "TLW_RX/TLW_RX_PIPE0" matches log "TLW_RX_PIPE0". Comparison
-// normalizes spaces to underscores and is case-insensitive, since the
-// source spreadsheet uses "MSE Degraded" where a log line would print
-// an underscore-joined identifier.
-func subComponentMatches(log, table string) bool {
+// subcodeMatches reports whether the literal subcode name NVRM printed
+// in the log line as SubComponent (log) matches one of the
+// "/"-separated alternative names in a decode-table row's subcode
+// (table), e.g. table "TLW_RX/TLW_RX_PIPE0" matches log
+// "TLW_RX_PIPE0". Comparison normalizes spaces to underscores and is
+// case-insensitive, since the source spreadsheet uses "MSE Degraded"
+// where a log line would print an underscore-joined identifier.
+func subcodeMatches(log, table string) bool {
 	normalize := func(s string) string {
 		return strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(s), " ", "_"))
 	}
