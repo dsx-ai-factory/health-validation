@@ -93,16 +93,31 @@ def tool_from_runfiles(env_var: str) -> Path:
     return Path(resolved)
 
 
-def go_toolchain() -> tuple[Path, dict[str, str]]:
+def go_toolchain(root: Path) -> tuple[Path, dict[str, str]]:
     """Bazel's pinned Go SDK, and the environment it needs to run.
 
     Go resolves the module versions written into NOTICE, so which Go runs
     matters more than for the other tools: two versions can resolve the same
     go.mod graph differently. The SDK keeps the binary at <root>/bin/go, and
     everything else is found relative to GOROOT.
+
+    The remaining settings pin Go's *behaviour* rather than its binary. Left
+    inherited, each one changes what gets resolved: GOWORK=off drops
+    workspace-wide MVS and resolves lower versions with no error at all, and
+    GOTOOLCHAIN makes the pinned binary hand off to a different toolchain.
     """
     go = tool_from_runfiles("CHECK_NOTICE_GO")
-    return go, {"GOROOT": str(go.parent.parent)}
+    return go, {
+        "GOROOT": str(go.parent.parent),
+        # Run this SDK, never download or hand off to another.
+        "GOTOOLCHAIN": "local",
+        # Ignore whatever `go env -w` has persisted for the developer.
+        "GOENV": "off",
+        # Drop inherited -mod/-tags, which alter resolution and reachability.
+        "GOFLAGS": "",
+        # Resolve across the workspace explicitly rather than by discovery.
+        "GOWORK": str(root / "go.work"),
+    }
 
 
 def run(cmd: list[str], cwd: Path, extra_env: dict[str, str] | None = None) -> str:
@@ -355,7 +370,7 @@ def main() -> int:
     notice_path = root / "NOTICE"
 
     syft = tool_from_runfiles("CHECK_NOTICE_SYFT")
-    go, go_env = go_toolchain()
+    go, go_env = go_toolchain(root)
 
     gomodcache = run([str(go), "env", "GOMODCACHE"], cwd=root, extra_env=go_env).strip()
     modules = reachable_modules(root, go, go_env)
