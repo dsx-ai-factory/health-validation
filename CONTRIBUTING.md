@@ -83,34 +83,49 @@ its version, SPDX license identifier, and upstream URL.
 `lint` job) that checks two things:
 
 1. **Presence and version** — every module actually reachable from this
-   repo's packages (including `tool` directive targets like
-   `staticcheck`) has a NOTICE entry at its currently-resolved version.
-2. **License accuracy** — using [go-licenses](https://github.com/google/go-licenses)
-   to classify each reachable module's actual `LICENSE` file text and
-   flag a NOTICE entry whose `License:` value doesn't include what
-   go-licenses found. (Checked in one direction only: go-licenses
-   under-reports rather than over-reports on a mixed-license file — see
-   the script's comments — so a NOTICE entry listing *more* licenses
-   than go-licenses found isn't itself a failure.)
+   repo's packages has a NOTICE entry at its currently-resolved
+   version, and NOTICE lists nothing beyond that set. Reachability
+   covers `tool` directive targets and `//go:build tools` files
+   (`catalog/tools.go` blank-imports `staticcheck` that way).
+   A module appearing in `go.sum` does **not** mean it ships — `go.sum`
+   records a hash for every `go.mod` Go read while resolving versions,
+   most of which are never compiled.
+2. **License accuracy** — [syft](https://github.com/anchore/syft) reads
+   each module's license files out of the local module cache, and
+   NOTICE's `License:` value must match what it found, in both
+   directions.
 
 Run it locally after a dependency bump to see the same diff before
-pushing:
+pushing. To regenerate the section instead of just checking it:
 
 ```bash
-./tools/check_notice.sh
+./tools/check_notice.sh            # check
+./tools/check_notice.sh --write    # regenerate, then review the diff
 ```
 
-A module go-licenses can't classify (nothing in the build graph
-resolves cleanly to a single package for it — usually a build-tool's
-own transitive test dependency) is reported as "unverified", not
-failed; its `License:` value still needs a human to check by hand if it
-changes. To add or fix an entry, read the module's actual `LICENSE`/
-`COPYING` file (`$(go env GOMODCACHE)/<module>@<version>/`) rather than
-trusting a single tool's classification uncritically — go-licenses
-itself has been wrong about a mixed-license file in this repo's
-dependency set before (a file explicitly covering two different
-licenses, classified as only one). Add a block to `NOTICE` in the same
-format as the surrounding entries, in alphabetical order:
+`--write` derives module paths, versions, and URLs from `go list`, which
+is authoritative. It does **not** overwrite a `License:` value that is
+already in NOTICE — those are human decisions, and a classifier is not
+allowed to silently revise one. A module new to NOTICE gets syft's
+finding, or `UNKNOWN` if syft had none; either way, verify it before
+committing.
+
+Do not trust a single classifier. Read the module's actual
+`LICENSE`/`COPYING` files under
+`$(go env GOMODCACHE)/<module>@<version>/` and decide for yourself —
+classifiers fail in both directions, and this repo's dependency set
+contains a live example of each:
+
+- **Over-reporting:** syft concludes both `Apache-2.0` and
+  `BSD-3-Clause` for `cel-go`, which ships exactly one Apache-2.0
+  `LICENSE` file. The script carries an explicit, commented exception
+  for this (`syft_false_positive`); add to it only after checking the
+  files by hand.
+- **Under-reporting:** `honnef.co/go/tools` was recorded as `MIT` alone,
+  but its `LICENSE-THIRD-PARTY` declares statically-linked Go standard
+  library code under `BSD-3-Clause`.
+
+Entries are formatted as:
 
 ```
   <module path>  <version>

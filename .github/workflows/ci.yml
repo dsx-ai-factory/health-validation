@@ -94,6 +94,9 @@ jobs:
       - name: Go mod tidy check (toolkit)
         run: cd toolkit && bazel run //tools/go -- mod tidy -diff
 
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
       - name: NOTICE up to date check
         run: BAZEL_GO=1 ./tools/check_notice.sh
 
