@@ -75,71 +75,23 @@ bazel run //tools:check_notice
 
 ### Updating NOTICE
 
-`NOTICE` lists every third-party Go module this repo compiles in (across
-all four `go.work` modules — `agentkit`, `catalog`, `collect`, and
-`toolkit` — including test-only and build-tool dependencies), each with
-its version, SPDX license identifier, and upstream URL.
-`tools/check_notice.py` is a CI gate (see `.github/workflows/ci.yml`'s
-`lint` job) that checks two things:
+`NOTICE` lists the third-party Go modules this repo compiles, each with
+its version, license, and upstream URL. `tools/check_notice.py` gates it
+in CI. Bazel supplies Go, Python, and syft, so nothing needs installing.
 
-1. **Presence and version** — every module actually reachable from this
-   repo's packages has a NOTICE entry at its currently-resolved
-   version, and NOTICE lists nothing beyond that set. Reachability
-   covers `tool` directive targets and `//go:build tools` files
-   (`catalog/tools.go` blank-imports `staticcheck` that way).
-   A module appearing in `go.sum` does **not** mean it ships — `go.sum`
-   records a hash for every `go.mod` Go read while resolving versions,
-   most of which are never compiled.
-2. **License accuracy** — [syft](https://github.com/anchore/syft) reads
-   each module's license files out of the local module cache, and
-   NOTICE's `License:` value must match what it found, in both
-   directions.
-
-Run it locally after a dependency bump to see the same diff before
-pushing. To regenerate the section instead of just checking it:
+After changing dependencies:
 
 ```bash
 bazel run //tools:check_notice              # check
-bazel run //tools:check_notice -- --write   # regenerate, review the diff
+bazel run //tools:check_notice -- --write   # fix, then review the diff
 ```
 
-Bazel supplies the Python interpreter, syft (pinned in
-`multitool.lock.json`), and the Go SDK, so nothing needs installing first
-and a local run classifies licenses with the same syft build CI uses.
-Bumping syft is a lockfile edit, not a CI change.
-
-`--write` derives module paths, versions, and URLs from `go list`, which
-is authoritative. It does **not** overwrite a `License:` value that is
-already in NOTICE — those are human decisions, and a classifier is not
-allowed to silently revise one. A module new to NOTICE gets syft's
-finding, or `UNKNOWN` if syft had none; either way, verify it before
-committing.
-
-Do not trust a single classifier. Read the module's actual
-`LICENSE`/`COPYING` files under
-`$(go env GOMODCACHE)/<module>@<version>/` and decide for yourself —
-classifiers fail in both directions, and this repo's dependency set
-contains a live example of each:
-
-- **Over-reporting:** syft concludes both `Apache-2.0` and
-  `BSD-3-Clause` for `cel-go`, which ships exactly one Apache-2.0
-  `LICENSE` file. The script carries an explicit, commented exception
-  for this (`syft_false_positive`); add to it only after checking the
-  files by hand.
-- **Under-reporting:** `honnef.co/go/tools` was recorded as `MIT` alone,
-  but its `LICENSE-THIRD-PARTY` declares statically-linked Go standard
-  library code under `BSD-3-Clause`.
-
-Entries are formatted as:
-
-```
-  <module path>  <version>
-  License:  <SPDX identifier>
-  URL:      https://<module path>
-```
-
-For a module covered by more than one license, join them with `AND`
-(e.g. `Apache-2.0 AND MIT`).
+`--write` is authoritative for versions and URLs, and leaves existing
+`License:` values alone. A module new to NOTICE gets syft's
+classification, or `UNKNOWN` if syft found none. Verify that value
+against the module's own `LICENSE`/`COPYING` under
+`$(go env GOMODCACHE)/<module>@<version>/` before committing — license
+classifiers err in both directions. Join multiple licenses with `AND`.
 
 > **Linux only:** The `toolkit/nvml/` package requires cgo and
 > `libnvidia-ml.so.1`. On macOS, the NVML backend stubs out and `go test
