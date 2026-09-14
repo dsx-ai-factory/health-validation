@@ -33,7 +33,7 @@ Go module dependencies:
   URL:      https://github.com/NVIDIA/go-nvml
 
   github.com/antlr4-go/antlr/v4  v4.13.1
-  License:  BSD-2-Clause
+  License:  BSD-3-Clause
   URL:      https://github.com/antlr4-go/antlr/v4
 
   github.com/davecgh/go-spew  v1.1.2-0.20180830191138-d8f796af33cc
@@ -57,7 +57,7 @@ Go module dependencies:
   URL:      https://github.com/google/uuid
 
   github.com/pmezard/go-difflib  v1.0.1-0.20181226105442-5d4384ee4fb2
-  License:  BSD-2-Clause
+  License:  BSD-3-Clause
   URL:      https://github.com/pmezard/go-difflib
 
   github.com/soheilhy/cmux  v0.1.5
@@ -73,7 +73,7 @@ Go module dependencies:
   URL:      https://github.com/yuin/goldmark
 
   go.yaml.in/yaml/v3  v3.0.4
-  License:  Apache-2.0
+  License:  Apache-2.0 AND MIT
   URL:      https://go.yaml.in/yaml/v3
 
   golang.org/x/exp  v0.0.0-20240823005443-9b4947da3948
@@ -137,7 +137,7 @@ Go module dependencies:
   URL:      https://gopkg.in/check.v1
 
   gopkg.in/yaml.v3  v3.0.1
-  License:  Apache-2.0
+  License:  Apache-2.0 AND MIT
   URL:      https://gopkg.in/yaml.v3
 
   honnef.co/go/tools  v0.8.1
