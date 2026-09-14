@@ -76,6 +76,9 @@ func TestFabricHealthTransformPreservesUnsupported(t *testing.T) {
 	if failure.GetCategory() != observation.CollectionErrorCategoryUnsupported {
 		t.Errorf("category = %v, want %v", failure.GetCategory(), observation.CollectionErrorCategoryUnsupported)
 	}
+	if failure.GetReason() != observation.CollectionErrorReasonValueReportedUnsupported {
+		t.Errorf("reason = %v, want %v", failure.GetReason(), observation.CollectionErrorReasonValueReportedUnsupported)
+	}
 	if failure.GetSourceError() != "" {
 		t.Errorf("source error = %q, want empty", failure.GetSourceError())
 	}

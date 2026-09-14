@@ -35,10 +35,11 @@ func TestBuildNVLinkMeasurements(t *testing.T) {
 func TestBuildNVLinkMeasurementsPreservesFieldFailure(t *testing.T) {
 	failed := valueObservation(gpusignals.NVLinkFabricRouteUnhealthy.ID(), booleanValue(false), nil)
 	failed.Outcome = &observation.Observation_CollectionError{CollectionError: &observation.CollectionError{
-		Source:    "dcgm",
-		Operation: "metrics",
-		Category:  observation.CollectionErrorCategorySourceError,
-		Detail:    "field unavailable",
+		Source:      "dcgm",
+		Operation:   "metrics",
+		Category:    observation.CollectionErrorCategoryUnsupported,
+		SourceError: "DCGM_FT_NOT_SUPPORTED",
+		Detail:      "field is not supported",
 	}}
 
 	measurements := buildNVLinkMeasurements([]*observation.Observation{
@@ -60,6 +61,60 @@ func TestBuildNVLinkMeasurementsPreservesFieldFailure(t *testing.T) {
 	}
 	require.Equal(t, health.Pass, byID["nvlink_fabric"].Severity)
 	require.Equal(t, health.Critical, byID["nvlink_fabric_health"].Severity)
+}
+
+func TestBuildNVLinkMeasurementsLeavesReportedUnsupportedNeutral(t *testing.T) {
+	tests := []struct {
+		name              string
+		wantSeverity      health.Severity
+		bandwidthDegraded bool
+	}{
+		{name: "healthy bandwidth", wantSeverity: health.Pass},
+		{name: "degraded bandwidth", bandwidthDegraded: true, wantSeverity: health.Critical},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			unsupported := valueObservation(
+				gpusignals.NVLinkFabricAccessTimeoutRecovery.ID(),
+				booleanValue(false),
+				nil,
+			)
+			unsupported.Outcome = &observation.Observation_CollectionError{
+				CollectionError: &observation.CollectionError{
+					Source:    "dcgm",
+					Operation: "metrics",
+					Category:  observation.CollectionErrorCategoryUnsupported,
+					Reason:    observation.CollectionErrorReasonValueReportedUnsupported,
+					Detail:    "fabric condition is not supported",
+				},
+			}
+
+			measurements := buildNVLinkMeasurements([]*observation.Observation{
+				valueObservation(gpusignals.NVLinkFabricBandwidthDegraded.ID(), booleanValue(test.bandwidthDegraded), nil),
+				valueObservation(gpusignals.NVLinkFabricRouteRecoveryActive.ID(), booleanValue(false), nil),
+				valueObservation(gpusignals.NVLinkFabricRouteUnhealthy.ID(), booleanValue(false), nil),
+				unsupported,
+				valueObservation(gpusignals.FabricManagerStatus.ID(), intValue(gpusignals.FabricManagerStatusSuccess), stringPointer("1")),
+			})
+
+			require.Len(t, measurements, 1)
+			measurement := measurements[0].(catalognvlink.NVLinkMeasurement)
+			require.Empty(t, measurement.Errors())
+
+			validationCatalog, err := newValidationCatalog("GB200")
+			require.NoError(t, err)
+			verdict, err := validationCatalog.EvaluateAll(measurements...)
+			require.NoError(t, err)
+
+			byID := make(map[string]health.CheckVerdict, len(verdict.CheckResults))
+			for _, result := range verdict.CheckResults {
+				byID[result.CheckID] = result
+			}
+			require.Equal(t, test.wantSeverity, byID["nvlink_fabric_health"].Severity)
+			require.Equal(t, health.DomainScope, byID["nvlink_fabric_health"].ConditionScope)
+		})
+	}
 }
 
 func TestBuildNVLinkMeasurementsConvertsFabricManagerStatus(t *testing.T) {

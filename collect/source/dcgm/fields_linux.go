@@ -145,8 +145,8 @@ func bitSet(mask int64) fieldTransform {
 }
 
 // Each fabric-health condition occupies two bits: 1 means active, 2 means
-// inactive, and 0 means that the condition is not supported. Unsupported is
-// preserved as a collection error rather than being reported as healthy.
+// inactive, and 0 means that the returned data reports the condition as
+// unsupported. Preserve that outcome rather than reporting it as inactive.
 func fabricHealthFlag(shift uint) fieldTransform {
 	return func(value *observation.Value) (observation.Value, *observation.CollectionError) {
 		integer, failure := int64Field(value)
@@ -158,6 +158,7 @@ func fabricHealthFlag(shift uint) fieldTransform {
 		case 0:
 			return observation.Value{}, &observation.CollectionError{
 				Category: observation.CollectionErrorCategoryUnsupported,
+				Reason:   observation.CollectionErrorReasonValueReportedUnsupported,
 				Detail:   "DCGM fabric health condition is not supported",
 			}
 		case fabricHealthValueTrue:

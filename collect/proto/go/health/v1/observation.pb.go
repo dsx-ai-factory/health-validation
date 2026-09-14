@@ -87,6 +87,54 @@ func (CollectionErrorCategory) EnumDescriptor() ([]byte, []int) {
 	return file_health_v1_observation_proto_rawDescGZIP(), []int{0}
 }
 
+type CollectionErrorReason int32
+
+const (
+	CollectionErrorReason_COLLECTION_ERROR_REASON_UNSPECIFIED CollectionErrorReason = 0
+	// Collection succeeded, but the returned data explicitly reports that the
+	// requested signal or part of it is unsupported.
+	CollectionErrorReason_COLLECTION_ERROR_REASON_VALUE_REPORTED_UNSUPPORTED CollectionErrorReason = 1
+)
+
+// Enum value maps for CollectionErrorReason.
+var (
+	CollectionErrorReason_name = map[int32]string{
+		0: "COLLECTION_ERROR_REASON_UNSPECIFIED",
+		1: "COLLECTION_ERROR_REASON_VALUE_REPORTED_UNSUPPORTED",
+	}
+	CollectionErrorReason_value = map[string]int32{
+		"COLLECTION_ERROR_REASON_UNSPECIFIED":                0,
+		"COLLECTION_ERROR_REASON_VALUE_REPORTED_UNSUPPORTED": 1,
+	}
+)
+
+func (x CollectionErrorReason) Enum() *CollectionErrorReason {
+	p := new(CollectionErrorReason)
+	*p = x
+	return p
+}
+
+func (x CollectionErrorReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CollectionErrorReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_health_v1_observation_proto_enumTypes[1].Descriptor()
+}
+
+func (CollectionErrorReason) Type() protoreflect.EnumType {
+	return &file_health_v1_observation_proto_enumTypes[1]
+}
+
+func (x CollectionErrorReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CollectionErrorReason.Descriptor instead.
+func (CollectionErrorReason) EnumDescriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{1}
+}
+
 // ObservationBatch is the shared payload of one collection cycle.
 // Additive-only within a major version: new signals get added, old ones
 // are never repurposed.
@@ -442,13 +490,14 @@ func (*Value_BoolValue) isValue_Kind() {}
 // It carries no health severity; each consumer decides what a failed
 // observation means for its own result.
 type CollectionError struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Operation     string                 `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
-	SourceError   string                 `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
-	Detail        string                 `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
-	unknownFields protoimpl.UnknownFields
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Source        string                  `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Operation     string                  `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
+	SourceError   string                  `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
+	Detail        string                  `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
 	Category      CollectionErrorCategory `protobuf:"varint,3,opt,name=category,proto3,enum=health.v1.CollectionErrorCategory" json:"category,omitempty"`
+	Reason        CollectionErrorReason   `protobuf:"varint,6,opt,name=reason,proto3,enum=health.v1.CollectionErrorReason" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
@@ -496,13 +545,6 @@ func (x *CollectionError) GetOperation() string {
 	return ""
 }
 
-func (x *CollectionError) GetCategory() CollectionErrorCategory {
-	if x != nil {
-		return x.Category
-	}
-	return CollectionErrorCategory_COLLECTION_ERROR_CATEGORY_UNSPECIFIED
-}
-
 func (x *CollectionError) GetSourceError() string {
 	if x != nil {
 		return x.SourceError
@@ -515,6 +557,20 @@ func (x *CollectionError) GetDetail() string {
 		return x.Detail
 	}
 	return ""
+}
+
+func (x *CollectionError) GetCategory() CollectionErrorCategory {
+	if x != nil {
+		return x.Category
+	}
+	return CollectionErrorCategory_COLLECTION_ERROR_CATEGORY_UNSPECIFIED
+}
+
+func (x *CollectionError) GetReason() CollectionErrorReason {
+	if x != nil {
+		return x.Reason
+	}
+	return CollectionErrorReason_COLLECTION_ERROR_REASON_UNSPECIFIED
 }
 
 var File_health_v1_observation_proto protoreflect.FileDescriptor
@@ -545,13 +601,14 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\fstring_value\x18\x03 \x01(\tH\x00R\vstringValue\x12\x1f\n" +
 	"\n" +
 	"bool_value\x18\x04 \x01(\bH\x00R\tboolValueB\x06\n" +
-	"\x04kind\"\xc2\x01\n" +
+	"\x04kind\"\xfc\x01\n" +
 	"\x0fCollectionError\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x1c\n" +
-	"\toperation\x18\x02 \x01(\tR\toperation\x12>\n" +
-	"\bcategory\x18\x03 \x01(\x0e2\".health.v1.CollectionErrorCategoryR\bcategory\x12!\n" +
+	"\toperation\x18\x02 \x01(\tR\toperation\x12!\n" +
 	"\fsource_error\x18\x04 \x01(\tR\vsourceError\x12\x16\n" +
-	"\x06detail\x18\x05 \x01(\tR\x06detail*\xf7\x02\n" +
+	"\x06detail\x18\x05 \x01(\tR\x06detail\x12>\n" +
+	"\bcategory\x18\x03 \x01(\x0e2\".health.v1.CollectionErrorCategoryR\bcategory\x128\n" +
+	"\x06reason\x18\x06 \x01(\x0e2 .health.v1.CollectionErrorReasonR\x06reason*\xf7\x02\n" +
 	"\x17CollectionErrorCategory\x12)\n" +
 	"%COLLECTION_ERROR_CATEGORY_UNSPECIFIED\x10\x00\x12%\n" +
 	"!COLLECTION_ERROR_CATEGORY_TIMEOUT\x10\x01\x12)\n" +
@@ -560,7 +617,10 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"(COLLECTION_ERROR_CATEGORY_NOT_CONFIGURED\x10\x04\x12/\n" +
 	"+COLLECTION_ERROR_CATEGORY_PERMISSION_DENIED\x10\x05\x12)\n" +
 	"%COLLECTION_ERROR_CATEGORY_PARSE_ERROR\x10\x06\x12*\n" +
-	"&COLLECTION_ERROR_CATEGORY_SOURCE_ERROR\x10\aBQZOgithub.com/dsx-ai-factory/health-validation/collect/proto/go/health/v1;healthv1b\x06proto3"
+	"&COLLECTION_ERROR_CATEGORY_SOURCE_ERROR\x10\a*x\n" +
+	"\x15CollectionErrorReason\x12'\n" +
+	"#COLLECTION_ERROR_REASON_UNSPECIFIED\x10\x00\x126\n" +
+	"2COLLECTION_ERROR_REASON_VALUE_REPORTED_UNSUPPORTED\x10\x01BQZOgithub.com/dsx-ai-factory/health-validation/collect/proto/go/health/v1;healthv1b\x06proto3"
 
 var (
 	file_health_v1_observation_proto_rawDescOnce sync.Once
@@ -575,31 +635,32 @@ func file_health_v1_observation_proto_rawDescGZIP() []byte {
 }
 
 var (
-	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 5)
 	file_health_v1_observation_proto_goTypes   = []any{
 		(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
-		(*ObservationBatch)(nil),      // 1: health.v1.ObservationBatch
-		(*Observation)(nil),           // 2: health.v1.Observation
-		(*Entity)(nil),                // 3: health.v1.Entity
-		(*Value)(nil),                 // 4: health.v1.Value
-		(*CollectionError)(nil),       // 5: health.v1.CollectionError
-		(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+		(CollectionErrorReason)(0),    // 1: health.v1.CollectionErrorReason
+		(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
+		(*Observation)(nil),           // 3: health.v1.Observation
+		(*Entity)(nil),                // 4: health.v1.Entity
+		(*Value)(nil),                 // 5: health.v1.Value
+		(*CollectionError)(nil),       // 6: health.v1.CollectionError
+		(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
 	}
 )
-
 var file_health_v1_observation_proto_depIdxs = []int32{
-	2, // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
-	3, // 1: health.v1.Observation.entity:type_name -> health.v1.Entity
-	6, // 2: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
-	4, // 3: health.v1.Observation.value:type_name -> health.v1.Value
-	5, // 4: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
+	3, // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
+	4, // 1: health.v1.Observation.entity:type_name -> health.v1.Entity
+	7, // 2: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
+	5, // 3: health.v1.Observation.value:type_name -> health.v1.Value
+	6, // 4: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
 	0, // 5: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	1, // 6: health.v1.CollectionError.reason:type_name -> health.v1.CollectionErrorReason
+	7, // [7:7] is the sub-list for method output_type
+	7, // [7:7] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_health_v1_observation_proto_init() }
@@ -622,7 +683,7 @@ func file_health_v1_observation_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_health_v1_observation_proto_rawDesc), len(file_health_v1_observation_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,

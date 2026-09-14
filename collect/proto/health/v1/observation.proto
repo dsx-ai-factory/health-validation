@@ -55,9 +55,10 @@ message Value {
 message CollectionError {
   string source = 1;
   string operation = 2;
-  CollectionErrorCategory category = 3;
   string source_error = 4;
   string detail = 5;
+  CollectionErrorCategory category = 3;
+  CollectionErrorReason reason = 6;
 }
 
 enum CollectionErrorCategory {
@@ -69,4 +70,11 @@ enum CollectionErrorCategory {
   COLLECTION_ERROR_CATEGORY_PERMISSION_DENIED = 5;
   COLLECTION_ERROR_CATEGORY_PARSE_ERROR = 6;
   COLLECTION_ERROR_CATEGORY_SOURCE_ERROR = 7;
+}
+
+enum CollectionErrorReason {
+  COLLECTION_ERROR_REASON_UNSPECIFIED = 0;
+  // Collection succeeded, but the returned data explicitly reports that the
+  // requested signal or part of it is unsupported.
+  COLLECTION_ERROR_REASON_VALUE_REPORTED_UNSUPPORTED = 1;
 }

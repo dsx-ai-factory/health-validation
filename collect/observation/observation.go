@@ -19,6 +19,7 @@ type (
 	Value                   = healthv1.Value
 	CollectionError         = healthv1.CollectionError
 	CollectionErrorCategory = healthv1.CollectionErrorCategory
+	CollectionErrorReason   = healthv1.CollectionErrorReason
 )
 
 // Oneof wrappers for Observation.outcome and Value.kind.
@@ -43,6 +44,9 @@ const (
 	// CollectionErrorCategoryOther is the fallback for source failures that do
 	// not fit a more specific, portable category.
 	CollectionErrorCategoryOther = CollectionErrorCategorySourceError
+
+	CollectionErrorReasonUnspecified              = healthv1.CollectionErrorReason_COLLECTION_ERROR_REASON_UNSPECIFIED
+	CollectionErrorReasonValueReportedUnsupported = healthv1.CollectionErrorReason_COLLECTION_ERROR_REASON_VALUE_REPORTED_UNSUPPORTED
 )
 
 // EntityTypeGPU identifies a whole physical GPU. Its stable ID is the GPU

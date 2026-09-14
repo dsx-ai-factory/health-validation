@@ -59,6 +59,15 @@ func buildNVLinkMeasurements(observations []*observation.Observation) []health.M
 			continue
 		}
 		if failure := current.GetCollectionError(); failure != nil {
+			if failure.GetReason() == observation.CollectionErrorReasonValueReportedUnsupported {
+				switch current.GetSignalId() {
+				case gpusignals.NVLinkFabricBandwidthDegraded.ID(),
+					gpusignals.NVLinkFabricRouteRecoveryActive.ID(),
+					gpusignals.NVLinkFabricRouteUnhealthy.ID(),
+					gpusignals.NVLinkFabricAccessTimeoutRecovery.ID():
+					continue
+				}
+			}
 			measurement.AddError(collectionFailure(failure), catalogSignals...)
 			continue
 		}
