@@ -303,7 +303,13 @@ def check(
             continue
         claimed = declared.get(path)
         if claimed is None:
-            continue  # already reported as missing
+            # An entry whose module line is present but whose License: line is
+            # not never reaches the missing-entry check above, which compares
+            # module paths only. Left to fall through it would be silently
+            # exempt from license checking.
+            if path in versions:
+                problems.append(f"NOTICE's entry for {path} has no License: value")
+            continue
         claimed_terms = set(claimed.split(" AND "))
 
         for license_id in sorted(reported - claimed_terms):
