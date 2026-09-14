@@ -3,8 +3,15 @@ load("@rules_python//python:py_binary.bzl", "py_binary")
 py_binary(
     name = "check_notice",
     srcs = ["check_notice.py"],
-    data = ["@multitool//tools/syft"],
-    env = {"CHECK_NOTICE_SYFT": "$(rlocationpath @multitool//tools/syft)"},
+    data = [
+        "@go_sdk//:bin/go",
+        "@go_sdk//:files",
+        "@multitool//tools/syft",
+    ],
+    env = {
+        "CHECK_NOTICE_GO": "$(rlocationpath @go_sdk//:bin/go)",
+        "CHECK_NOTICE_SYFT": "$(rlocationpath @multitool//tools/syft)",
+    },
     visibility = ["//visibility:public"],
     deps = ["@rules_python//python/runfiles"],
 )

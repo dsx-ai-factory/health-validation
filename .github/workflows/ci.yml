@@ -95,7 +95,7 @@ jobs:
         run: cd toolkit && bazel run //tools/go -- mod tidy -diff
 
       - name: NOTICE up to date check
-        run: BAZEL_GO=1 bazel run //tools:check_notice
+        run: bazel run //tools:check_notice
 
   test:
     if: github.repository == 'dsx-ai-factory/health-validation'

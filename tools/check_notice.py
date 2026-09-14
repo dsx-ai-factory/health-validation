@@ -39,10 +39,11 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from python.runfiles import runfiles
 
 GO_MODULE_DIRS = ("agentkit", "catalog", "collect", "toolkit")
 FIRST_PARTY_PREFIX = "github.com/dsx-ai-factory/health-validation"
@@ -69,36 +70,39 @@ LICENSE_REF = re.compile(r"^LicenseRef-[0-9a-f]+$")
 
 
 def repo_root() -> Path:
-    """Locate the workspace root, whether run via bazel or directly."""
-    if workspace := os.environ.get("BUILD_WORKSPACE_DIRECTORY"):
-        return Path(workspace)
-    return Path(__file__).resolve().parent.parent
+    """The source tree, which `bazel run` reports separately from its own cwd."""
+    return Path(os.environ["BUILD_WORKSPACE_DIRECTORY"])
 
 
-def go_command() -> list[str]:
-    """The `go` invocation, optionally routed through Bazel's pinned SDK."""
-    if os.environ.get("BAZEL_GO") == "1":
-        return ["bazel", "run", "//tools/go", "--"]
-    return ["go"]
+def tool_from_runfiles(env_var: str) -> Path:
+    """Resolve a binary Bazel exported as an $(rlocationpath) in `env`.
 
-
-def syft_binary() -> str | None:
-    """Locate syft, preferring the version Bazel pins in multitool.lock.json.
-
-    Running under `bazel run` puts that pinned copy in the runfiles, so a local
-    check and CI classify licenses with byte-identical syft. Falling back to
-    PATH only matters when this file is executed directly, where the version is
-    whatever the developer happens to have installed.
+    Every tool this script drives is pinned by Bazel -- the Go SDK by
+    rules_go, syft by multitool.lock.json -- so a local run and CI produce
+    identical output. That only holds when the binaries come from the
+    runfiles, which is why there is no PATH fallback: silently using a
+    developer's own build would defeat the pinning.
     """
-    if rlocation := os.environ.get("CHECK_NOTICE_SYFT"):
-        # Imported lazily: the runfiles module only exists under Bazel, and the
-        # PATH fallback below has to keep working without it.
-        from python.runfiles import runfiles
+    rlocation = os.environ.get(env_var)
+    resolved = runfiles.Create().Rlocation(rlocation) if rlocation else None
+    if not resolved or not Path(resolved).exists():
+        sys.exit(
+            f"{env_var} did not resolve to a binary. Run this through Bazel:\n"
+            "  bazel run //tools:check_notice"
+        )
+    return Path(resolved)
 
-        resolved = runfiles.Create().Rlocation(rlocation)
-        if resolved and Path(resolved).exists():
-            return resolved
-    return shutil.which("syft")
+
+def go_toolchain() -> tuple[Path, dict[str, str]]:
+    """Bazel's pinned Go SDK, and the environment it needs to run.
+
+    Go resolves the module versions written into NOTICE, so which Go runs
+    matters more than for the other tools: two versions can resolve the same
+    go.mod graph differently. The SDK keeps the binary at <root>/bin/go, and
+    everything else is found relative to GOROOT.
+    """
+    go = tool_from_runfiles("CHECK_NOTICE_GO")
+    return go, {"GOROOT": str(go.parent.parent)}
 
 
 def run(cmd: list[str], cwd: Path, extra_env: dict[str, str] | None = None) -> str:
@@ -127,7 +131,7 @@ def tool_directive_targets(module_dir: Path) -> list[str]:
     return targets
 
 
-def reachable_modules(root: Path) -> dict[str, str]:
+def reachable_modules(root: Path, go: Path, go_env: dict[str, str]) -> dict[str, str]:
     """Modules actually compiled, mapped to the version `go list` resolves."""
     modules: dict[str, str] = {}
     for name in GO_MODULE_DIRS:
@@ -135,7 +139,7 @@ def reachable_modules(root: Path) -> dict[str, str]:
         targets = ["./...", *tool_directive_targets(module_dir)]
         stdout = run(
             [
-                *go_command(),
+                str(go),
                 "list",
                 "-deps",
                 "-test",
@@ -146,7 +150,7 @@ def reachable_modules(root: Path) -> dict[str, str]:
                 *targets,
             ],
             cwd=module_dir,
-            extra_env=GO_TARGET_ENV,
+            extra_env={**GO_TARGET_ENV, **go_env},
         )
         for line in stdout.splitlines():
             parts = line.split()
@@ -159,12 +163,12 @@ def reachable_modules(root: Path) -> dict[str, str]:
     return modules
 
 
-def syft_licenses(root: Path, gomodcache: str, syft: str) -> dict[str, set[str]]:
+def syft_licenses(root: Path, gomodcache: str, syft: Path) -> dict[str, set[str]]:
     """Module path to the licenses syft concluded from its license files."""
     licenses: dict[str, set[str]] = {}
     for name in GO_MODULE_DIRS:
         stdout = run(
-            [syft, "scan", f"dir:{name}", "-o", "spdx-tag-value", "-q"],
+            [str(syft), "scan", f"dir:{name}", "-o", "spdx-tag-value", "-q"],
             cwd=root,
             extra_env={
                 "SYFT_GOLANG_SEARCH_LOCAL_MOD_CACHE_LICENSES": "true",
@@ -350,19 +354,11 @@ def main() -> int:
     root = repo_root()
     notice_path = root / "NOTICE"
 
-    syft = syft_binary()
-    if not syft:
-        print(
-            "syft not found — it classifies the licenses NOTICE reports.\n"
-            "Run this through Bazel ('bazel run //tools:check_notice') to use "
-            "the pinned copy, or install syft on PATH:\n"
-            "https://github.com/anchore/syft#installation",
-            file=sys.stderr,
-        )
-        return 1
+    syft = tool_from_runfiles("CHECK_NOTICE_SYFT")
+    go, go_env = go_toolchain()
 
-    gomodcache = run([*go_command(), "env", "GOMODCACHE"], cwd=root).strip()
-    modules = reachable_modules(root)
+    gomodcache = run([str(go), "env", "GOMODCACHE"], cwd=root, extra_env=go_env).strip()
+    modules = reachable_modules(root, go, go_env)
     found = syft_licenses(root, gomodcache, syft)
 
     # A license checker that classifies nothing reports no problems, which reads

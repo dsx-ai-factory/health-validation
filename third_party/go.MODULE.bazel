@@ -4,6 +4,7 @@ go_sdk.from_file(
     go_mod = "//:go.mod",
 )
 go_sdk.nogo(nogo = "//tools/go/nogo")
+use_repo(go_sdk, "go_sdk")
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_work = "//:go.work")
