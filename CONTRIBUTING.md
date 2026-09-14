@@ -70,7 +70,7 @@ bazel run //tools/gazelle
 
 # Check NOTICE is up to date with actual Go dependencies (see "Updating
 # NOTICE" below)
-./tools/check_notice.sh
+bazel run //tools:check_notice
 ```
 
 ### Updating NOTICE
@@ -79,7 +79,7 @@ bazel run //tools/gazelle
 all four `go.work` modules — `agentkit`, `catalog`, `collect`, and
 `toolkit` — including test-only and build-tool dependencies), each with
 its version, SPDX license identifier, and upstream URL.
-`tools/check_notice.sh` is a CI gate (see `.github/workflows/ci.yml`'s
+`tools/check_notice.py` is a CI gate (see `.github/workflows/ci.yml`'s
 `lint` job) that checks two things:
 
 1. **Presence and version** — every module actually reachable from this
@@ -99,9 +99,12 @@ Run it locally after a dependency bump to see the same diff before
 pushing. To regenerate the section instead of just checking it:
 
 ```bash
-./tools/check_notice.sh            # check
-./tools/check_notice.sh --write    # regenerate, then review the diff
+bazel run //tools:check_notice              # check
+bazel run //tools:check_notice -- --write   # regenerate, review the diff
 ```
+
+Bazel supplies the pinned Python interpreter, so no local Python setup is
+needed. syft must be on `PATH`; CI installs it via `anchore/sbom-action`.
 
 `--write` derives module paths, versions, and URLs from `go list`, which
 is authoritative. It does **not** overwrite a `License:` value that is

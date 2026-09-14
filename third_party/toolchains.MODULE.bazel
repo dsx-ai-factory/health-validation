@@ -13,6 +13,16 @@ osx.frameworks(names = [
     "SystemConfiguration",
 ])
 
+# Pin the interpreter rather than taking whatever python3 a runner happens to
+# have. tools/check_notice.py gates NOTICE in CI, and an unpinned interpreter is
+# the same class of environment assumption that let its predecessor silently
+# verify nothing for want of a usable toolchain.
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = "3.13",
+)
+
 multitool = use_extension("@rules_multitool//multitool:extension.bzl", "multitool")
 multitool.hub(lockfile = "//:multitool.lock.json")
 use_repo(multitool, "multitool")

@@ -98,7 +98,7 @@ jobs:
         uses: anchore/sbom-action/download-syft@v0
 
       - name: NOTICE up to date check
-        run: BAZEL_GO=1 ./tools/check_notice.sh
+        run: BAZEL_GO=1 bazel run //tools:check_notice
 
   test:
     if: github.repository == 'dsx-ai-factory/health-validation'

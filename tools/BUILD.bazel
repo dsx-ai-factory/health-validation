@@ -1,0 +1,7 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+
+py_binary(
+    name = "check_notice",
+    srcs = ["check_notice.py"],
+    visibility = ["//visibility:public"],
+)
