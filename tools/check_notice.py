@@ -82,6 +82,25 @@ def go_command() -> list[str]:
     return ["go"]
 
 
+def syft_binary() -> str | None:
+    """Locate syft, preferring the version Bazel pins in multitool.lock.json.
+
+    Running under `bazel run` puts that pinned copy in the runfiles, so a local
+    check and CI classify licenses with byte-identical syft. Falling back to
+    PATH only matters when this file is executed directly, where the version is
+    whatever the developer happens to have installed.
+    """
+    if rlocation := os.environ.get("CHECK_NOTICE_SYFT"):
+        # Imported lazily: the runfiles module only exists under Bazel, and the
+        # PATH fallback below has to keep working without it.
+        from python.runfiles import runfiles
+
+        resolved = runfiles.Create().Rlocation(rlocation)
+        if resolved and Path(resolved).exists():
+            return resolved
+    return shutil.which("syft")
+
+
 def run(cmd: list[str], cwd: Path, extra_env: dict[str, str] | None = None) -> str:
     env = {**os.environ, **(extra_env or {})}
     result = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
@@ -140,12 +159,12 @@ def reachable_modules(root: Path) -> dict[str, str]:
     return modules
 
 
-def syft_licenses(root: Path, gomodcache: str) -> dict[str, set[str]]:
+def syft_licenses(root: Path, gomodcache: str, syft: str) -> dict[str, set[str]]:
     """Module path to the licenses syft concluded from its license files."""
     licenses: dict[str, set[str]] = {}
     for name in GO_MODULE_DIRS:
         stdout = run(
-            ["syft", "scan", f"dir:{name}", "-o", "spdx-tag-value", "-q"],
+            [syft, "scan", f"dir:{name}", "-o", "spdx-tag-value", "-q"],
             cwd=root,
             extra_env={
                 "SYFT_GOLANG_SEARCH_LOCAL_MOD_CACHE_LICENSES": "true",
@@ -325,17 +344,20 @@ def main() -> int:
     root = repo_root()
     notice_path = root / "NOTICE"
 
-    if not shutil.which("syft"):
+    syft = syft_binary()
+    if not syft:
         print(
-            "syft not found on PATH — it classifies the licenses NOTICE "
-            "reports.\nInstall: https://github.com/anchore/syft#installation",
+            "syft not found — it classifies the licenses NOTICE reports.\n"
+            "Run this through Bazel ('bazel run //tools:check_notice') to use "
+            "the pinned copy, or install syft on PATH:\n"
+            "https://github.com/anchore/syft#installation",
             file=sys.stderr,
         )
         return 1
 
     gomodcache = run([*go_command(), "env", "GOMODCACHE"], cwd=root).strip()
     modules = reachable_modules(root)
-    found = syft_licenses(root, gomodcache)
+    found = syft_licenses(root, gomodcache, syft)
 
     # A license checker that classifies nothing reports no problems, which reads
     # exactly like success. Fail loudly instead — this script's predecessor spent

@@ -3,5 +3,8 @@ load("@rules_python//python:py_binary.bzl", "py_binary")
 py_binary(
     name = "check_notice",
     srcs = ["check_notice.py"],
+    data = ["@multitool//tools/syft"],
+    env = {"CHECK_NOTICE_SYFT": "$(rlocationpath @multitool//tools/syft)"},
     visibility = ["//visibility:public"],
+    deps = ["@rules_python//python/runfiles"],
 )

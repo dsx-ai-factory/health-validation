@@ -103,8 +103,10 @@ bazel run //tools:check_notice              # check
 bazel run //tools:check_notice -- --write   # regenerate, review the diff
 ```
 
-Bazel supplies the pinned Python interpreter, so no local Python setup is
-needed. syft must be on `PATH`; CI installs it via `anchore/sbom-action`.
+Bazel supplies the Python interpreter, syft (pinned in
+`multitool.lock.json`), and the Go SDK, so nothing needs installing first
+and a local run classifies licenses with the same syft build CI uses.
+Bumping syft is a lockfile edit, not a CI change.
 
 `--write` derives module paths, versions, and URLs from `go list`, which
 is authoritative. It does **not** overwrite a `License:` value that is
