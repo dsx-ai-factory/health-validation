@@ -490,14 +490,14 @@ func (*Value_BoolValue) isValue_Kind() {}
 // It carries no health severity; each consumer decides what a failed
 // observation means for its own result.
 type CollectionError struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Source        string                  `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Operation     string                  `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
-	SourceError   string                  `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
-	Detail        string                  `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Operation     string                 `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
+	SourceError   string                 `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
+	Detail        string                 `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
+	unknownFields protoimpl.UnknownFields
 	Category      CollectionErrorCategory `protobuf:"varint,3,opt,name=category,proto3,enum=health.v1.CollectionErrorCategory" json:"category,omitempty"`
 	Reason        CollectionErrorReason   `protobuf:"varint,6,opt,name=reason,proto3,enum=health.v1.CollectionErrorReason" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
@@ -648,6 +648,7 @@ var (
 		(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
 	}
 )
+
 var file_health_v1_observation_proto_depIdxs = []int32{
 	3, // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
 	4, // 1: health.v1.Observation.entity:type_name -> health.v1.Entity
