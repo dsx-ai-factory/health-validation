@@ -77,25 +77,49 @@ bazel run //tools/gazelle
 
 `NOTICE` lists every third-party Go module this repo compiles in (across
 all four `go.work` modules — `agentkit`, `catalog`, `collect`, and
-`toolkit` — including test-only dependencies), each with its version,
-SPDX license identifier, and upstream URL. `tools/check_notice.sh` is a
-CI gate (see `.github/workflows/ci.yml`'s `lint` job) that fails if a
-module's version has drifted or a used module has no entry at all;
-run it locally after a dependency bump to see the same diff before
-pushing.
+`toolkit` — including test-only and build-tool dependencies), each with
+its version, SPDX license identifier, and upstream URL.
+`tools/check_notice.sh` is a CI gate (see `.github/workflows/ci.yml`'s
+`lint` job) that checks two things:
 
-The script only catches *mechanical* drift — a stale version, or a
-module in the build graph with no entry. It does not identify a new
-module's license for you: if it reports a missing entry, look up that
-module's actual license (its `LICENSE`/`COPYING` file, e.g. under
-`$(go env GOMODCACHE)/<module>@<version>/`) and add a block to `NOTICE`
-in the same format as the surrounding entries, in alphabetical order:
+1. **Presence and version** — every module actually reachable from this
+   repo's packages (including `tool` directive targets like
+   `staticcheck`) has a NOTICE entry at its currently-resolved version.
+2. **License accuracy** — using [go-licenses](https://github.com/google/go-licenses)
+   to classify each reachable module's actual `LICENSE` file text and
+   flag a NOTICE entry whose `License:` value doesn't include what
+   go-licenses found. (Checked in one direction only: go-licenses
+   under-reports rather than over-reports on a mixed-license file — see
+   the script's comments — so a NOTICE entry listing *more* licenses
+   than go-licenses found isn't itself a failure.)
+
+Run it locally after a dependency bump to see the same diff before
+pushing:
+
+```bash
+./tools/check_notice.sh
+```
+
+A module go-licenses can't classify (nothing in the build graph
+resolves cleanly to a single package for it — usually a build-tool's
+own transitive test dependency) is reported as "unverified", not
+failed; its `License:` value still needs a human to check by hand if it
+changes. To add or fix an entry, read the module's actual `LICENSE`/
+`COPYING` file (`$(go env GOMODCACHE)/<module>@<version>/`) rather than
+trusting a single tool's classification uncritically — go-licenses
+itself has been wrong about a mixed-license file in this repo's
+dependency set before (a file explicitly covering two different
+licenses, classified as only one). Add a block to `NOTICE` in the same
+format as the surrounding entries, in alphabetical order:
 
 ```
   <module path>  <version>
   License:  <SPDX identifier>
   URL:      https://<module path>
 ```
+
+For a module covered by more than one license, join them with `AND`
+(e.g. `Apache-2.0 AND MIT`).
 
 > **Linux only:** The `toolkit/nvml/` package requires cgo and
 > `libnvidia-ml.so.1`. On macOS, the NVML backend stubs out and `go test
