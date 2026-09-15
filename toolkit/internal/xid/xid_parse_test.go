@@ -309,3 +309,69 @@ func TestParseXid_NVLink5_RealWorldVariations(t *testing.T) {
 		})
 	}
 }
+
+// TestParseXid_RecoveryAction covers the Xid 154 transition format.
+// [xidLineRE] matches these lines too, so without a dedicated pattern
+// they parse into a bare 154 event carrying no transition at all —
+// enough to know the action changed, not enough to know to what.
+func TestParseXid_RecoveryAction(t *testing.T) {
+	m := xid.ParseXid("boot", []string{
+		"NVRM: Xid (PCI:0019:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x4 (Drain and Reset)",
+		"NVRM: Xid (PCI:0019:01:00): 154, GPU recovery action changed from 0x4 (Drain and Reset) to 0x1 (GPU Reset Required)",
+	})
+
+	if m.EventCount != 2 {
+		t.Fatalf("EventCount = %d, want 2", m.EventCount)
+	}
+	if got := m.XidCounts[154]; got != 2 {
+		t.Errorf("XidCounts[154] = %d, want 2", got)
+	}
+
+	first := m.Events[0]
+	if first.PCIAddress != "0019:01:00" {
+		t.Errorf("PCIAddress = %q, want 0019:01:00", first.PCIAddress)
+	}
+	if first.RecoveryAction == nil {
+		t.Fatalf("RecoveryAction = nil, want populated")
+	}
+	if got := first.RecoveryAction.FromCode; got != "0x0" {
+		t.Errorf("FromCode = %q, want 0x0", got)
+	}
+	if got := first.RecoveryAction.FromName; got != "None" {
+		t.Errorf("FromName = %q, want None", got)
+	}
+	if got := first.RecoveryAction.ToCode; got != "0x4" {
+		t.Errorf("ToCode = %q, want 0x4", got)
+	}
+	if got := first.RecoveryAction.ToName; got != "Drain and Reset" {
+		t.Errorf("ToName = %q, want %q", got, "Drain and Reset")
+	}
+
+	// The second line's From matches the first line's To: NVRM reports
+	// one transition per line, so the pair forms a chain.
+	second := m.Events[1]
+	if second.RecoveryAction == nil {
+		t.Fatalf("second RecoveryAction = nil, want populated")
+	}
+	if second.RecoveryAction.FromCode != first.RecoveryAction.ToCode {
+		t.Errorf("chain broken: second.From = %q, first.To = %q",
+			second.RecoveryAction.FromCode, first.RecoveryAction.ToCode)
+	}
+	if second.RecoveryAction.ToName != "GPU Reset Required" {
+		t.Errorf("second To = %q, want GPU Reset Required", second.RecoveryAction.ToName)
+	}
+}
+
+// TestParseXid_NonRecoveryCodesHaveNoAction guards the pattern from
+// widening: only Xid 154 carries a recovery-action transition.
+func TestParseXid_NonRecoveryCodesHaveNoAction(t *testing.T) {
+	m := xid.ParseXid("boot", []string{
+		"NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3",
+		"NVRM: Xid (PCI:0000:5f:00): 145, RLW_REMAP Nonfatal XC0 i0 Link 02",
+	})
+	for _, ev := range m.Events {
+		if ev.RecoveryAction != nil {
+			t.Errorf("Xid %d: RecoveryAction = %+v, want nil", ev.XidCode, ev.RecoveryAction)
+		}
+	}
+}
