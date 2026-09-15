@@ -23,21 +23,21 @@ func TestParseHexUint32(t *testing.T) {
 
 func TestNvlink5SubXidCode(t *testing.T) {
 	tests := []struct {
-		code     int64
 		intrInfo string
 		want     string
+		code     int64
 		wantOK   bool
 	}{
 		// Bits 20-25 = 000100 = 4.
-		{149, "0x004505c6", "149.4", true},
+		{"0x004505c6", "149.4", 149, true},
 		// Bits 20-25 all zero.
-		{149, "0x00000091", "149.0", true},
+		{"0x00000091", "149.0", 149, true},
 		// Bits 20-25 = 001010 = 0xA.
-		{149, "0x00A00000", "149.A", true},
+		{"0x00A00000", "149.A", 149, true},
 		// Bits 20-25 = 010000 = 0x10 (two hex digits).
-		{145, "0x01000000", "145.10", true},
-		{149, "", "", false},
-		{149, "not-hex", "", false},
+		{"0x01000000", "145.10", 145, true},
+		{"", "", 149, false},
+		{"not-hex", "", 149, false},
 	}
 	for _, tt := range tests {
 		got, ok := nvlink5SubXidCode(tt.code, tt.intrInfo)

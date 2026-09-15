@@ -37,11 +37,11 @@ var MeasurementSignals = []string{
 // for the NVLink5/NVSwitch fault family (Xid 144-150), which carries a
 // sub-component and severity instead of pid/name.
 type XidEvent struct {
+	NVLink5     *NVLink5Detail `json:"nvlink5,omitempty"`
 	ProcessName string         `json:"process_name"`
 	PCIAddress  string         `json:"pci_address"`
 	XidCode     int64          `json:"xid_code"`
 	Pid         int64          `json:"pid"`
-	NVLink5     *NVLink5Detail `json:"nvlink5,omitempty"`
 }
 
 // NVLink5Detail carries the extended fields NVRM logs for the
