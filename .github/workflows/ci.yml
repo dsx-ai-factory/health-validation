@@ -222,7 +222,7 @@ jobs:
       # visible there without failing the build.
       - name: Grype vulnerability scan
         id: scan
-        uses: dsx-ai-factory/dsx-github-actions/.github/actions/security-container-scan@0ffa781e68b9f417fc18ba597e9352ad3250fc1a # v1.19.2
+        uses: dsx-ai-factory/dsx-github-actions/.github/actions/security-container-scan@d15d46d22d09f7111177a6f5e9f7ae9933e067b2 # v1.20.0
         with:
           image: health-validation:latest
           fail-on: critical
