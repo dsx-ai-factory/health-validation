@@ -67,6 +67,9 @@ func ParseXid(since string, lines []string) xid.XidMeasurement {
 	for _, line := range lines {
 		ev, ok := parseNVLink5Line(line)
 		if !ok {
+			ev, ok = parseRecoveryActionLine(line)
+		}
+		if !ok {
 			ev, ok = parseXidLine(line)
 		}
 		if !ok {
@@ -150,5 +153,39 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 		Pid:         pid,
 		ProcessName: groups[4],
 		NVLink5:     detail,
+	}, true
+}
+
+// xidRecoveryActionRE matches the Xid 154 line NVRM logs when the
+// recovery action it wants for a GPU changes, e.g.
+//
+//	NVRM: Xid (PCI:0019:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x4 (Drain and Reset)
+//
+// Group 1 PCI address, 2 and 3 the code and name being left, 4 and 5
+// the code and name being entered. Both codes and names are captured
+// verbatim: the code set is not documented as closed, so an
+// unrecognized value still carries a name worth surfacing.
+var xidRecoveryActionRE = regexp.MustCompile(
+	`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): 154, GPU recovery action changed ` +
+		`from (0x[0-9a-fA-F]+) \(([^)]*)\) to (0x[0-9a-fA-F]+) \(([^)]*)\)`)
+
+// parseRecoveryActionLine parses an Xid 154 line. It is tried before
+// [xidLineRE], which would otherwise match the line and discard the
+// transition entirely, leaving a bare 154 event that says only that
+// *some* action changed.
+func parseRecoveryActionLine(line string) (xid.XidEvent, bool) {
+	groups := xidRecoveryActionRE.FindStringSubmatch(line)
+	if groups == nil {
+		return xid.XidEvent{}, false
+	}
+	return xid.XidEvent{
+		PCIAddress: groups[1],
+		XidCode:    154,
+		RecoveryAction: &xid.RecoveryAction{
+			FromCode: groups[2],
+			FromName: groups[3],
+			ToCode:   groups[4],
+			ToName:   groups[5],
+		},
 	}, true
 }

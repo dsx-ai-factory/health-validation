@@ -110,8 +110,7 @@ func buildXid(obs []*observation.Observation) (xid.XidMeasurement, error) {
 	return m, nil
 }
 
-// buildXidEvent builds one event. Recovery-action signals are read by no
-// field: XidEvent does not carry the Xid 154 transition.
+// buildXidEvent builds one event.
 func buildXidEvent(f xidFields) (xid.XidEvent, error) {
 	for _, required := range []collect.Signal{xidsignals.Code, xidsignals.PCIAddress} {
 		if f.values[required.ID()] == nil {
@@ -140,6 +139,23 @@ func buildXidEvent(f xidFields) (xid.XidEvent, error) {
 		}
 		if debug := strings.Fields(f.string(xidsignals.NVLink5DebugData)); len(debug) > 0 {
 			event.NVLink5.DebugData = debug
+		}
+	}
+	recovery := []collect.Signal{
+		xidsignals.RecoveryActionFromCode, xidsignals.RecoveryActionFromName,
+		xidsignals.RecoveryActionToCode, xidsignals.RecoveryActionToName,
+	}
+	if slices.ContainsFunc(recovery, func(s collect.Signal) bool { return f.values[s.ID()] != nil }) {
+		// A transition missing its target code would read as unrecognized
+		// rather than as the action the driver named.
+		if f.values[xidsignals.RecoveryActionFromCode.ID()] == nil || f.values[xidsignals.RecoveryActionToCode.ID()] == nil {
+			return xid.XidEvent{}, fmt.Errorf("xid event %d: incomplete recovery-action fields", f.index)
+		}
+		event.RecoveryAction = &xid.RecoveryAction{
+			FromCode: f.string(xidsignals.RecoveryActionFromCode),
+			FromName: f.string(xidsignals.RecoveryActionFromName),
+			ToCode:   f.string(xidsignals.RecoveryActionToCode),
+			ToName:   f.string(xidsignals.RecoveryActionToName),
 		}
 	}
 	return event, f.err
