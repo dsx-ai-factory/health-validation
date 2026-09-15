@@ -2,7 +2,7 @@
 
 ## What gets versioned
 
-The repository is split into two independently versioned Go modules — `catalog`
+The repository publishes two independently versioned Go modules — `catalog`
 and `toolkit` — plus a multi-architecture (`linux/amd64` + `linux/arm64`)
 container image built from `toolkit/cmd/health-validation` and published to
 [GHCR](https://ghcr.io/dsx-ai-factory/health-validation). `catalog` and

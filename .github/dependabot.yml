@@ -18,6 +18,18 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
 
+  - package-ecosystem: gomod
+    directory: /collect
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: gomod
+    directory: /agentkit
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
   - package-ecosystem: npm
     directory: /
     schedule:

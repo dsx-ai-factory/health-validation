@@ -2,7 +2,7 @@
 
 NVIDIA Health Validation runs on a GPU node, evaluates hardware and driver state against calibrated thresholds, and returns a structured verdict. The verdict answers one question: is this node ready to accept the next workload?
 
-The repository is `github.com/dsx-ai-factory/health-validation`. It is split into two independently versioned Go modules:
+The repository is `github.com/dsx-ai-factory/health-validation`. It contains four Go modules; the two published and independently versioned ones are:
 
 - **`catalog`** (`…/health-validation/catalog`): Check definitions, threshold logic, severity classifications, and a CEL-based evaluation engine. No hardware dependency. Import this if you already collect GPU telemetry and want NVIDIA's operational judgment applied to your signal stream.
 - **`toolkit`** (`…/health-validation/toolkit`): Sensor implementations (including NVML-backed GPU collection and sysfs-backed CPU collection), mock backends for testing, and a `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Import this if you want the full working sensor and evaluation stack.

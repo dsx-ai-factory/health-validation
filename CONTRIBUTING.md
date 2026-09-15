@@ -64,8 +64,10 @@ bazel run //tools/format
 # Sync BUILD files after adding/removing Go files or imports
 bazel run //tools/gazelle
 
-# Go mod tidy (repo has two modules: catalog/ and toolkit/)
+# Go mod tidy (repo has four modules; CI gates all four)
+(cd agentkit && go mod tidy)
 (cd catalog && go mod tidy)
+(cd collect && go mod tidy)
 (cd toolkit && go mod tidy)
 
 # Check NOTICE is up to date with actual Go dependencies (see "Updating

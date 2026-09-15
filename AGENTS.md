@@ -101,14 +101,19 @@ bazel test //tools/format:test
 bazel run //tools/gazelle
 
 # Go mod tidy — run this whenever a go.mod changes OR a new import is added.
-# The repo is TWO modules (catalog/, toolkit/), so tidy each one. //tools/go
+# The repo is FOUR modules (agentkit/, catalog/, collect/, toolkit/), so tidy
+# each one. //tools/go
 # runs in BUILD_WORKING_DIRECTORY, so cd into the module first. CI gates on
 # `mod tidy -diff` per module and fails if go.sum would drift (e.g. a
 # transitive testify dep pulls in davecgh/go-spew, pmezard/go-difflib, or
 # gopkg.in/yaml.v3). Commit each go.sum alongside its go.mod.
+(cd agentkit && bazel run //tools/go -- mod tidy)
 (cd catalog && bazel run //tools/go -- mod tidy)
+(cd collect && bazel run //tools/go -- mod tidy)
 (cd toolkit && bazel run //tools/go -- mod tidy)
-(cd catalog && bazel run //tools/go -- mod tidy -diff)    # verify: exit 0 + no output = CI will pass
+(cd agentkit && bazel run //tools/go -- mod tidy -diff)   # verify: exit 0 + no output = CI will pass
+(cd catalog && bazel run //tools/go -- mod tidy -diff)
+(cd collect && bazel run //tools/go -- mod tidy -diff)
 (cd toolkit && bazel run //tools/go -- mod tidy -diff)
 
 # Run from a Linux VM or container to catch linux-only build-tag failures
@@ -147,7 +152,7 @@ This repo is a **hardware health check catalog and evaluation engine** for NVIDI
 
 #### Module layout
 
-The repo is **two independently versioned Go modules**, joined for local development by a root `go.work` (the root `go.mod` is an anchor only — it holds no packages):
+The repo is **four Go modules**, joined for local development by a root `go.work` (the root `go.mod` is an anchor only — it holds no packages). Only `catalog` and `toolkit` are independently versioned and published; `collect/` and `agentkit/` are in-repo only. All four are resolved together by Gazelle, so a pin in any of them can change the versions linked into the CLI:
 
 - **`catalog/`** (`…/health-validation/catalog`) — the check catalog and evaluation engine. Self-contained: `health/` (shared vocabulary), `internal/{celeval,evaluation}/`, the `catalog` package at the module root, the per-domain check packages (`cpu/`, `gpu/`, `node/`, `nvlink/`, `xid/`), and the catalog-only codegen/dump binaries under `cmd/`. No dependency on the toolkit.
 - **`toolkit/`** (`…/health-validation/toolkit`) — sensors, the NVML backend (`nvml/`), and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on the catalog module.** Resolved from `../catalog` via a `replace` in `toolkit/go.mod` until catalog is tagged and published.

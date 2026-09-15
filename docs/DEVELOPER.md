@@ -23,10 +23,16 @@ bazel run //tools/gazelle # sync BUILD files after import changes
 
 ## Module Layout
 
-The repo contains two independently versioned Go modules:
+The repo contains four Go modules, joined by a root `go.work`:
 
 - **`catalog/`** — check catalog and CEL evaluation engine (no external deps)
 - **`toolkit/`** — NVML backend, sensors, and the `health-validation` CLI
+- **`collect/`** — telemetry collection emitting protobuf observations
+- **`agentkit/`** — gRPC/HTTP server exposing `collect`
+
+Only `catalog` and `toolkit` are independently versioned and published. All four
+are resolved together by Gazelle, so a dependency pin in any of them can change
+the versions linked into the CLI. CI gates `mod tidy -diff` on all four.
 
 Run `go mod tidy` inside each module directory after changing imports.
 

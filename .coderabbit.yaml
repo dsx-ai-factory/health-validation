@@ -67,8 +67,8 @@ reviews:
         platforms.
     - path: "**/go.mod"
       instructions: >-
-        This repository has independently versioned catalog and toolkit Go
-        modules. Review dependency changes for module-boundary correctness,
+        This repository has four Go modules (agentkit, catalog, collect,
+        toolkit); catalog and toolkit are independently versioned and published. Review dependency changes for module-boundary correctness,
         minimal additions, replace directives, and whether mod tidy has been
         applied to each affected module.
     - path: "**/go.sum"
