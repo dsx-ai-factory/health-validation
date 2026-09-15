@@ -3,12 +3,6 @@
 All notable changes to NVIDIA Health Validation are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-From `v0.2.0-rc1` onward, entries group changes by
-[Conventional Commit](https://www.conventionalcommits.org/) type — Breaking
-Changes, Features, Fixes, Performance Improvements — omitting any section with
-nothing in it. Earlier entries use
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) sections.
-
 ## [catalog/v0.2.0-rc1] and [toolkit/v0.2.0-rc1] - 2026-09-15
 
 Release candidate covering everything since `catalog/v0.1.0` and
@@ -71,7 +65,7 @@ Release candidate covering everything since `catalog/v0.1.0` and
 
 ## [catalog/v0.1.0] and [toolkit/v0.1.0] - 2026-08-17
 
-### Added
+### Features
 - Initial open-source release of the `catalog` and `toolkit` Go modules.
 - GPU health check catalog: `gpu_count`, `nvlink_active`, `gpu_nvlink_fabric_health`, and per-XID checks (`gpu_xid_*`).
 - NVML-backed GPU sensor for Linux (`toolkit/nvml`).
