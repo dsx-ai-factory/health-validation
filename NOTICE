@@ -20,7 +20,7 @@ Go module dependencies:
   License:  Apache-2.0
   URL:      https://github.com/NVIDIA/go-nvlib
 
-  github.com/NVIDIA/go-nvml  v0.13.3-1
+  github.com/NVIDIA/go-nvml  v0.13.4-0
   License:  Apache-2.0
   URL:      https://github.com/NVIDIA/go-nvml
 
@@ -32,10 +32,6 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://github.com/bits-and-blooms/bitset
 
-  github.com/davecgh/go-spew  v1.1.2-0.20180830191138-d8f796af33cc
-  License:  ISC
-  URL:      https://github.com/davecgh/go-spew
-
   github.com/google/cel-go  v0.28.0
   License:  Apache-2.0
   URL:      https://github.com/google/cel-go
@@ -44,17 +40,17 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://github.com/google/uuid
 
-  github.com/pmezard/go-difflib  v1.0.1-0.20181226105442-5d4384ee4fb2
-  License:  BSD-3-Clause
-  URL:      https://github.com/pmezard/go-difflib
-
   github.com/soheilhy/cmux  v0.1.5
   License:  Apache-2.0
   URL:      https://github.com/soheilhy/cmux
 
-  github.com/stretchr/testify  v1.11.1
+  github.com/stretchr/testify  v1.12.1
   License:  MIT
   URL:      https://github.com/stretchr/testify
+
+  go.yaml.in/yaml/v3  v3.0.5
+  License:  Apache-2.0 AND MIT
+  URL:      https://go.yaml.in/yaml/v3
 
   golang.org/x/exp  v0.0.0-20240823005443-9b4947da3948
   License:  BSD-3-Clause
