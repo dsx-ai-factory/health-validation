@@ -6,6 +6,7 @@ go_library(
         "derived.go",
         "measurement.go",
         "nvlink5_decode.go",
+        "nvlink5_resolve.go",
         "recovery_action.go",
         "sub_xid_code.go",
         "xid_errors.go",
@@ -20,6 +21,7 @@ go_test(
     srcs = [
         "derived_test.go",
         "nvlink5_decode_test.go",
+        "nvlink5_resolve_test.go",
         "recovery_action_test.go",
         "sub_xid_code_test.go",
         "xid_errors_test.go",

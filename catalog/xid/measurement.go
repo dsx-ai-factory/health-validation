@@ -21,11 +21,12 @@ const (
 	SignalXidCounts        = "xid_counts"
 	SignalFatalXidCounts   = "fatal_xid_counts"
 	SignalSubXidCodeCounts = "sub_xid_code_counts"
-	// SignalRecoveryActionCounts is derived rather than stored; see
-	// [XidMeasurement.DerivedSignals].
-	SignalRecoveryActionCounts = "recovery_action_counts"
-	SignalSince                = "since"
-	SignalEventCount           = "event_count"
+	// SignalRecoveryActionCounts and SignalNVLink5ResolutionCounts are
+	// derived rather than stored; see [XidMeasurement.DerivedSignals].
+	SignalRecoveryActionCounts    = "recovery_action_counts"
+	SignalNVLink5ResolutionCounts = "nvlink5_resolution_counts"
+	SignalSince                   = "since"
+	SignalEventCount              = "event_count"
 )
 
 var measurementSignals = []string{
@@ -34,6 +35,7 @@ var measurementSignals = []string{
 	SignalFatalXidCounts,
 	SignalSubXidCodeCounts,
 	SignalRecoveryActionCounts,
+	SignalNVLink5ResolutionCounts,
 	SignalSince,
 	SignalEventCount,
 }
