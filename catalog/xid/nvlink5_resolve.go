@@ -7,6 +7,16 @@ const (
 	ResolutionIgnore   = "IGNORE"
 	ResolutionResetGPU = "RESET_GPU"
 
+	// ResolutionResetGPUUnconfirmed is a reset the Fatal flag implies
+	// rather than one NVIDIA's table names. [DecodeNVLink5Resolution]
+	// falls back to the flag when no row covers a
+	// (subcode, ErrorStatus/IntrInfo) combination, so without this the
+	// verdict could not distinguish "the table says reset this GPU" from
+	// "the table says nothing and NVRM called it Fatal". Both still
+	// escalate -- a Fatal NVLink5 fault is not something to sit on --
+	// but only one of them is documented guidance.
+	ResolutionResetGPUUnconfirmed = "RESET_GPU_UNCONFIRMED"
+
 	// ResolutionXid154Eval is the table's deferral, not an action: the
 	// row says the action is whatever Xid 154 reports for the same GPU.
 	// It never survives [NVLink5ResolutionCounts] — every occurrence is
@@ -58,14 +68,22 @@ func resolveRecoveryAction(action RecoveryAction) string {
 // NVLink5 event, having already substituted the GPU's terminal recovery
 // action for the table's XID_154_EVAL deferral.
 func resolveNVLink5Event(code int64, era DriverEra, detail NVLink5Detail, action RecoveryAction, observed bool) string {
-	resolution := DecodeNVLink5Resolution(code, era, detail).Resolution
-	if resolution != ResolutionXid154Eval {
-		return resolution
+	decoded := DecodeNVLink5Resolution(code, era, detail)
+
+	// A deferral only ever comes from a confirmed row: the Fatal-flag
+	// fallback yields RESET_GPU or IGNORE and never XID_154_EVAL, so
+	// anything resolved through the Xid 154 below is table-backed.
+	if decoded.Resolution == ResolutionXid154Eval {
+		if !observed {
+			return ResolutionXid154Missing
+		}
+		return resolveRecoveryAction(action)
 	}
-	if !observed {
-		return ResolutionXid154Missing
+
+	if !decoded.Matched && decoded.Resolution == ResolutionResetGPU {
+		return ResolutionResetGPUUnconfirmed
 	}
-	return resolveRecoveryAction(action)
+	return decoded.Resolution
 }
 
 // NVLink5ResolutionCounts returns how many NVLink5 events in the window

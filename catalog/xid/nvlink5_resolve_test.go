@@ -226,3 +226,75 @@ func TestNVLink5ResolutionCheck_NoNVLink5EventsIsPass(t *testing.T) {
 		t.Errorf("Severity = %v, want PASS", v.Severity)
 	}
 }
+
+// unmatchedEvent uses a subcomponent NVIDIA's table does not cover, so
+// decoding falls back to the Fatal flag rather than a confirmed row.
+func unmatchedEvent(pci string, fatal bool) xid.XidEvent {
+	return xid.XidEvent{
+		PCIAddress: pci,
+		XidCode:    146,
+		NVLink5: &xid.NVLink5Detail{
+			SubComponent: "TLW_NOT_IN_THE_TABLE",
+			IntrInfo:     "0x04098000",
+			ErrorStatus:  "0x00000040",
+			Fatal:        fatal,
+		},
+	}
+}
+
+// TestNVLink5ResolutionCounts_UnmatchedFatalIsUnconfirmed separates a
+// reset the table names from one the Fatal flag merely implies. Both
+// escalate, but only one is documented guidance, and a verdict that
+// cannot tell them apart overstates what NVIDIA actually said.
+func TestNVLink5ResolutionCounts_UnmatchedFatalIsUnconfirmed(t *testing.T) {
+	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
+		unmatchedEvent("0019:01:00", true),
+	}, "575.51.03")
+
+	if got[xid.ResolutionResetGPUUnconfirmed] != 1 {
+		t.Errorf("counts = %v, want %s -> 1", got, xid.ResolutionResetGPUUnconfirmed)
+	}
+	if got[xid.ResolutionResetGPU] != 0 {
+		t.Errorf("counts = %v, a fallback reset must not report as a table-confirmed %s",
+			got, xid.ResolutionResetGPU)
+	}
+}
+
+func TestNVLink5ResolutionCounts_UnmatchedNonfatalStaysIgnore(t *testing.T) {
+	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
+		unmatchedEvent("0019:01:00", false),
+	}, "575.51.03")
+
+	if got[xid.ResolutionIgnore] != 1 {
+		t.Errorf("counts = %v, want %s -> 1", got, xid.ResolutionIgnore)
+	}
+}
+
+// TestNVLink5ResolutionCounts_MatchedResetStaysConfirmed is the other
+// half of the distinction: a row the table does cover must not be
+// downgraded to unconfirmed.
+func TestNVLink5ResolutionCounts_MatchedResetStaysConfirmed(t *testing.T) {
+	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
+		srcTrackEvent("0019:01:00", resetOutright),
+	}, "575.51.03")
+
+	if got[xid.ResolutionResetGPU] != 1 {
+		t.Errorf("counts = %v, want %s -> 1", got, xid.ResolutionResetGPU)
+	}
+	if _, ok := got[xid.ResolutionResetGPUUnconfirmed]; ok {
+		t.Errorf("counts = %v, a table-confirmed row must not report as unconfirmed", got)
+	}
+}
+
+func TestNVLink5ResolutionCheck_UnconfirmedResetIsCritical(t *testing.T) {
+	v := resolutionVerdict(t, resolutionMeasurement("575.51.03",
+		unmatchedEvent("0019:01:00", true)))
+
+	if v.Severity != health.Critical {
+		t.Errorf("Severity = %v, want CRITICAL", v.Severity)
+	}
+	want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
+	if !v.RecommendedAction.Equal(want) {
+		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
+	}
+}

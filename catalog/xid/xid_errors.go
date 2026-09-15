@@ -520,8 +520,10 @@ func xid154Check() health.CheckDefinition {
 // what this check exists not to escalate.
 //
 // There is deliberately no rule for IGNORE. See [NVLink5ResolutionCounts]
-// for how a row that defers to Xid 154 is resolved, and for the two
-// buckets that record why a deferral could not be.
+// for how a row that defers to Xid 154 is resolved, for the two buckets
+// that record why a deferral could not be, and for
+// RESET_GPU_UNCONFIRMED, which separates a reset the Fatal flag implies
+// from one the table names.
 func nvlink5ResolutionCheck() health.CheckDefinition {
 	def := baseCheck(
 		"gpu_xid_nvlink5_resolution",
@@ -535,6 +537,12 @@ func nvlink5ResolutionCheck() health.CheckDefinition {
 			Expression:        fmt.Sprintf("%q in nvlink5_resolution_counts", ResolutionResetGPU),
 			Severity:          health.Critical,
 			Message:           "NVLink5 fault resolving to a GPU reset detected (Xid 144-150), either from NVIDIA's decode table directly or through the accompanying Xid 154.",
+			RecommendedAction: resetAndService(),
+		},
+		{
+			Expression:        fmt.Sprintf("%q in nvlink5_resolution_counts", ResolutionResetGPUUnconfirmed),
+			Severity:          health.Critical,
+			Message:           "NVLink5 fault NVRM marked Fatal with no confirmed entry in NVIDIA's Xid 144-150 decode table for this subcomponent and error status. Escalated on the strength of the Fatal flag alone, not on documented guidance.",
 			RecommendedAction: resetAndService(),
 		},
 		{
