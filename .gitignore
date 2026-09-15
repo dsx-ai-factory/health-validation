@@ -5,6 +5,10 @@ node_modules/
 public
 .DS_Store
 
+# Formatter cache (ruff). Ruff also writes a .gitignore inside it, but say so
+# here too rather than depending on a tool's internals to keep it untracked.
+.ruff_cache/
+
 # Locally built/downloaded binaries. Keep these out of the repo root.
 /bin/
 

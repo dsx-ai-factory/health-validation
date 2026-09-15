@@ -1,2 +1,12 @@
 node_modules/
 docs/node_modules
+
+# Claude Code's workspace state. Git worktrees created under here are whole
+# checkouts with their own bazel-* symlinks and external/ trees, so leaving
+# them visible makes `bazel build //...` walk another workspace's generated
+# files and fail on repos that workspace declares and this one does not.
+.claude
+
+# Formatter cache (ruff). Contains no BUILD files; listing it keeps the
+# package walk out of a directory that only grows.
+.ruff_cache
