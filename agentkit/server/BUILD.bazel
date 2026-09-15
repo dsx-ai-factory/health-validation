@@ -26,6 +26,9 @@ go_test(
     deps = [
         "//collect",
         "//collect/observation",
+        "//collect/proto/go/health/v1:health",
         "//collect/signals/gpu",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//credentials/insecure",
     ],
 )

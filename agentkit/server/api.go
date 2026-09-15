@@ -39,9 +39,17 @@ func Serve(address string, collector *Server) error {
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", address, err)
 	}
+	return serveOnListener(listener, collector)
+}
 
+func serveOnListener(listener net.Listener, collector *Server) error {
 	mux := cmux.New(listener)
-	grpcListener := mux.Match(cmux.HTTP2HeaderFieldPrefix("content-type", "application/grpc"))
+	mux.SetReadTimeout(httpReadHeaderTimeout)
+	// Some HTTP/2 clients wait for the server's SETTINGS frame before sending
+	// request headers. Send it while cmux reads the gRPC content type.
+	grpcListener := mux.MatchWithWriters(
+		cmux.HTTP2MatchHeaderFieldPrefixSendSettings("content-type", "application/grpc"),
+	)
 	httpListener := mux.Match(cmux.HTTP1Fast())
 	// cmux routes only the two protocols above. Plain HTTP/2 without the
 	// gRPC content-type matches neither listener, and cmux returns an error
