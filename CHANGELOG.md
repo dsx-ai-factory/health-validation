@@ -52,7 +52,7 @@ Release candidate covering everything since `catalog/v0.1.0` and
   `SENSOR_MISSING` reason rather than being reported as a failure. ([#21](https://github.com/dsx-ai-factory/health-validation/pull/21))
 - The container mounts the host's `journalctl` instead of bundling systemd,
   shrinking the image. Host journal access is now a deployment requirement —
-  see the container journal access profiles in the docs. ([#15](https://github.com/dsx-ai-factory/health-validation/pull/15))
+  see the [container journal access profiles](docs/INTEGRATION.md#security-context-and-check-coverage). ([#15](https://github.com/dsx-ai-factory/health-validation/pull/15))
 
 ### Fixes
 
