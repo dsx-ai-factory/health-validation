@@ -40,3 +40,26 @@ func TerminalRecoveryActions(events []XidEvent) map[string]RecoveryAction {
 	}
 	return terminal
 }
+
+// recoveryActionCounts is the recovery_action_counts signal: the
+// recovery action in effect for each GPU.
+//
+// The value is keyed by the raw action code rather than its name — the
+// code is what NVRM commits to, while the name is display text — and
+// counts GPUs, not log lines. That distinction is the point of routing
+// it through [TerminalRecoveryActions]: a GPU that escalates
+// None -> Drain and Reset -> GPU Reset Required logs three Xid 154
+// lines but is one GPU needing one reset, so counting lines would
+// triple it and counting transitions would count states it has already
+// left.
+//
+// This reports which actions the driver asked for, not which fault
+// asked for them. Joining an individual XID_154_EVAL fault to its GPU's
+// action still needs the decode table, and stays with the decode.
+func recoveryActionCounts(events []XidEvent) map[string]int64 {
+	counts := make(map[string]int64)
+	for _, action := range TerminalRecoveryActions(events) {
+		counts[action.ToCode]++
+	}
+	return counts
+}
