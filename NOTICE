@@ -100,7 +100,7 @@ Go module dependencies:
   License:  Apache-2.0
   URL:      https://google.golang.org/grpc
 
-  google.golang.org/protobuf  v1.36.11
+  google.golang.org/protobuf  v1.36.12
   License:  BSD-3-Clause
   URL:      https://google.golang.org/protobuf
 
