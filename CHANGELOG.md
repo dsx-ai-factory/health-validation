@@ -31,7 +31,8 @@ Release candidate covering everything since `catalog/v0.1.0` and
 
 - New `collect` and `agentkit` packages: a DCGM source that watches GPU
   fields, normalizes values and collection errors into observations, and
-  guards against source re-entry after a collection timeout. ([#19](https://github.com/dsx-ai-factory/health-validation/pull/19))
+  guards against source re-entry after a collection timeout. Note that this is not yet
+  wired into the core code path and is not yet included in the container image. ([#19](https://github.com/dsx-ai-factory/health-validation/pull/19))
 - Remediation sequences now match confirmed downstream behavior on
   GB200/GB300: a generic reset → restart → escalate ladder for most checks,
   and a shorter two-step sequence where a host restart adds nothing. NVLink
