@@ -45,7 +45,7 @@ Go module dependencies:
   URL:      https://github.com/soheilhy/cmux
 
   github.com/stretchr/testify  v1.12.1
-  License:  MIT
+  License:  MIT AND BSD-3-Clause AND ISC
   URL:      https://github.com/stretchr/testify
 
   go.yaml.in/yaml/v3  v3.0.5
