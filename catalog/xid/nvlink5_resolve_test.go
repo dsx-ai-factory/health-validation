@@ -3,6 +3,7 @@ package xid_test
 import (
 	"testing"
 
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
@@ -127,5 +128,101 @@ func TestNVLink5ResolutionCounts_IgnoresNonNVLink5Events(t *testing.T) {
 
 	if len(got) != 0 {
 		t.Errorf("counts = %v, want empty: no NVLink5-family events present", got)
+	}
+}
+
+// resolutionInput is a measurement carrying NVLink5 events together with
+// the driver version of the host it came from. The version is a fact the
+// catalog is built with, not a field of the measurement.
+type resolutionInput struct {
+	driverVersion string
+	m             xid.XidMeasurement
+}
+
+// resolutionMeasurement builds a measurement carrying NVLink5 events, so
+// evaluation exercises the derived nvlink5_resolution_counts signal
+// rather than a hand-set count.
+func resolutionMeasurement(driverVersion string, events ...xid.XidEvent) resolutionInput {
+	m := xid.XidMeasurement{Since: "boot", Events: events}
+	m.XidCounts = map[int64]int64{}
+	for _, ev := range events {
+		m.XidCounts[ev.XidCode]++
+		m.EventCount++
+	}
+	return resolutionInput{driverVersion: driverVersion, m: m}
+}
+
+func resolutionVerdict(t *testing.T, in resolutionInput) health.CheckVerdict {
+	t.Helper()
+	nv, err := hostCatalog(t, in.driverVersion).EvaluateAll(in.m)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	v, ok := checkResult(nv, "gpu_xid_nvlink5_resolution")
+	if !ok {
+		t.Fatalf("gpu_xid_nvlink5_resolution verdict not found")
+	}
+	return v
+}
+
+func TestNVLink5ResolutionCheck_ResetIsCritical(t *testing.T) {
+	v := resolutionVerdict(t, resolutionMeasurement("575.51.03",
+		srcTrackEvent("0019:01:00", resetOutright)))
+
+	if v.Severity != health.Critical {
+		t.Errorf("Severity = %v, want CRITICAL", v.Severity)
+	}
+	want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
+	if !v.RecommendedAction.Equal(want) {
+		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
+	}
+}
+
+// TestNVLink5ResolutionCheck_IgnoreIsPass is the reason this check exists.
+// Roughly half the decode table's rows resolve to IGNORE; escalating them
+// is exactly what reading the table is meant to avoid. The per-code
+// gpu_xid_145 check still fires on the same event, which is the intended
+// division of labour, not a conflict.
+func TestNVLink5ResolutionCheck_IgnoreIsPass(t *testing.T) {
+	ignored := xid.XidEvent{
+		PCIAddress: "0019:01:00",
+		XidCode:    145,
+		NVLink5: &xid.NVLink5Detail{
+			SubComponent: "RLW_SRC_TRACK",
+			IntrInfo:     "0x040988e2",
+			ErrorStatus:  "0x00000002",
+		},
+	}
+	v := resolutionVerdict(t, resolutionMeasurement("575.51.03", ignored))
+
+	if v.Severity != health.Pass {
+		t.Errorf("Severity = %v, want PASS (the table resolves this row to IGNORE)", v.Severity)
+	}
+}
+
+func TestNVLink5ResolutionCheck_MissingXid154IsWarning(t *testing.T) {
+	v := resolutionVerdict(t, resolutionMeasurement("560.35.03",
+		srcTrackEvent("0019:01:00", deferToXid154)))
+
+	if v.Severity != health.Warning {
+		t.Errorf("Severity = %v, want WARNING", v.Severity)
+	}
+}
+
+func TestNVLink5ResolutionCheck_UnrecognizedActionIsWarning(t *testing.T) {
+	v := resolutionVerdict(t, resolutionMeasurement("575.51.03",
+		srcTrackEvent("0019:01:00", deferToXid154),
+		recoveryEvent("0019:01:00", "0x0", "None", "0x9", "Some Future Action")))
+
+	if v.Severity != health.Warning {
+		t.Errorf("Severity = %v, want WARNING", v.Severity)
+	}
+}
+
+func TestNVLink5ResolutionCheck_NoNVLink5EventsIsPass(t *testing.T) {
+	v := resolutionVerdict(t, resolutionMeasurement("575.51.03"))
+
+	if v.Severity != health.Pass {
+		t.Errorf("Severity = %v, want PASS", v.Severity)
 	}
 }
