@@ -1,5 +1,8 @@
+load("@aspect_bazel_lib//lib:write_source_files.bzl", "write_source_files")
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 load("@rules_go//go:def.bzl", "go_library")
 load("//build/rules/go:defs.bzl", "go_binary")
+load("//build/rules/go:shipped_modules.bzl", "go_linked_modules", "go_shipped_modules")
 
 go_library(
     name = "health-validation_lib",
@@ -33,4 +36,42 @@ go_binary(
         "github.com/dsx-ai-factory/health-validation/toolkit/internal/version.commit": "{STABLE_GIT_COMMIT}",
         "github.com/dsx-ai-factory/health-validation/toolkit/internal/version.date": "{STABLE_BUILD_DATE}",
     },
+)
+
+# The module list the Go linker embedded in the shipped linux binary. See
+# build/rules/go/shipped_modules.bzl for what this does and does not cover.
+go_shipped_modules(
+    name = "shipped_modules",
+    binary = ":health-validation",
+)
+
+write_source_files(
+    name = "shipped_modules_update",
+    files = {"SHIPPED_MODULES.txt": ":shipped_modules"},
+)
+
+# Cross-check: the module set the Bazel graph says is linked, versus the set the
+# linker embedded. The golden test above cannot see a module that is linked but
+# missing from the embedded list, because it regenerates from that same list.
+go_linked_modules(
+    name = "linked_modules",
+    binary = ":health-validation",
+    recorded = ":recorded_modules",
+)
+
+genrule(
+    name = "recorded_modules",
+    srcs = ["SHIPPED_MODULES.txt"],
+    outs = ["recorded_modules.txt"],
+    cmd = "grep -E '^[^#[:space:]]' $< | cut -f1 > $@",
+)
+
+diff_test(
+    name = "shipped_modules_cross_check",
+    failure_message = "The Bazel graph and SHIPPED_MODULES.txt disagree. A line only on the " +
+                      "right is linked but unrecorded; regenerate with 'bazel run " +
+                      "//toolkit/cmd/health-validation:shipped_modules_update'. An ABSORBED " +
+                      "line means two modules folded together, which the record cannot express.",
+    file1 = ":recorded_modules",
+    file2 = ":linked_modules",
 )

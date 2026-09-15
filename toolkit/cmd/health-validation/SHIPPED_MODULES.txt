@@ -1,0 +1,19 @@
+# Third-party Go modules embedded in the shipped linux/amd64 health-validation
+# binary. Generated; edit by running
+# //toolkit/cmd/health-validation:shipped_modules_update.
+#
+# This is a Go-binary inventory, not a container inventory. It omits first-party
+# modules resolved through a `replace` (catalog is linked but never listed), says
+# nothing about the image's base layer, can undercount a dependency whose BUILD
+# files use the legacy go_default_library naming, and records only the
+# linux/amd64 half of the published multi-arch index.
+cel.dev/expr	v0.25.2
+github.com/NVIDIA/go-nvml	v0.13.4-0
+github.com/antlr4-go/antlr/v4	v4.13.1
+github.com/google/cel-go	v0.28.0
+github.com/google/uuid	v1.6.0
+golang.org/x/exp	v0.0.0-20240823005443-9b4947da3948
+google.golang.org/genproto/googleapis/api	v0.0.0-20260526163538-3dc84a4a5aaa
+google.golang.org/genproto/googleapis/rpc	v0.0.0-20260526163538-3dc84a4a5aaa
+google.golang.org/protobuf	v1.36.12
+gopkg.in/yaml.v3	v3.0.1

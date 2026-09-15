@@ -221,6 +221,8 @@ Consequence: on darwin `(cd toolkit && go build ./cmd/health-validation)` succee
 
 When adding a direct third-party dep here (this is how `gopkg.in/yaml.v3` arrived), run `bazel run //tools/gazelle` and `(cd toolkit && bazel run //tools/go -- mod tidy)` — tidy must run inside the `toolkit` module since this binary lives there (`//tools/go` runs in `BUILD_WORKING_DIRECTORY`). Both run natively on darwin now that the `-z,lazy` linkopt is scoped to linux builds (see PIE + lazy binding below). The new external repo must also be added to `use_repo(go_deps, …)` in `third_party/go.MODULE.bazel` (gazelle's repo name for `gopkg.in/yaml.v3` is `in_gopkg_yaml_v3`, target `:yaml_v3`).
 
+If the dep ends up linked into the CLI, `toolkit/cmd/health-validation/SHIPPED_MODULES.txt` changes too. Regenerate it with `bazel run //toolkit/cmd/health-validation:shipped_modules_update`, then run `bazel run //tools:check_notice -- --write` so `NOTICE` keeps up (without `--write` it only verifies). `//toolkit/cmd/health-validation:shipped_modules_cross_check` also checks the recorded list against the module set the Bazel graph says is linked, which catches a module that is linked but absent from the embedded list.
+
 ### Conventions
 
 **Comments** — Keep comments sparse and concise. Explain why a non-obvious constraint or decision exists; do not narrate code, restate names, or add boilerplate. Keep required Go doc comments factual and brief, and shorten or remove redundant comments when editing nearby code.
