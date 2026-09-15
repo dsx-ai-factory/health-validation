@@ -90,7 +90,7 @@ type RecoveryAction struct {
 // (code, SubComponent, ErrorStatus/IntrInfo) combination means —
 // NVIDIA's documented resolution/investigation guidance — requires
 // NVIDIA's Xid 144-150 decode table and the host's driver era, which is
-// catalog knowledge and arrives with the code that consumes it.
+// catalog knowledge: see [DecodeNVLink5Resolution].
 type NVLink5Detail struct {
 	SubComponent string   `json:"sub_component"`
 	IntrInfo     string   `json:"intr_info,omitempty"`

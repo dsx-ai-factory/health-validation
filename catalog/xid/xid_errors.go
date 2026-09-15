@@ -363,8 +363,9 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 // exactly this sequence. The rare exceptions that resolve to IGNORE
 // despite Fatal severity aren't distinguishable from a static per-check
 // action (they depend on the specific IntrInfo subcode, only available
-// per-event), so this errs toward the safer over-remediation rather
-// than silently doing nothing.
+// per-event — see [DecodeNVLink5Resolution] for that detail), so this
+// errs toward the safer over-remediation rather than silently doing
+// nothing.
 //
 // Unlike [criticalCheck], the check-level default here is
 // [health.NoAction] and the Fatal rule sets its own RecommendedAction:
