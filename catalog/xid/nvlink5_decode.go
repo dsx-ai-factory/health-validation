@@ -87,7 +87,6 @@ func DriverEraFromVersion(version string) DriverEra {
 // from `resolution` to `action2Resolution` (investigatory action is
 // unchanged). Empty when the row has no such escalation.
 type nvlink5DecodeRow struct {
-	code              int64
 	subcode           string
 	v1Pattern         string
 	v2Pattern         string
@@ -97,6 +96,7 @@ type nvlink5DecodeRow struct {
 	action2V1Pattern  string
 	action2V2Pattern  string
 	action2Resolution string
+	code              int64
 }
 
 // nvlink5DecodeTable is generated from NVIDIA's internal Xid 144-150

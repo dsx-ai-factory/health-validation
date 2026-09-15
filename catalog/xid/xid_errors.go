@@ -113,8 +113,8 @@ var nvlink5SubXidCodes = deriveNVLink5SubXidCodes()
 // out so the derivation logic isn't buried in a var initializer.
 func deriveNVLink5SubXidCodes() []nvlink5SubXidCode {
 	type groupKey struct {
-		code    int64
 		subcode string
+		code    int64
 	}
 	var order []groupKey
 	groups := make(map[groupKey][]nvlink5DecodeRow)
@@ -122,7 +122,7 @@ func deriveNVLink5SubXidCodes() []nvlink5SubXidCode {
 		if row.errorStatus != "" {
 			continue // disambiguated by ErrorStatus, not SubXidCode
 		}
-		k := groupKey{row.code, row.subcode}
+		k := groupKey{row.subcode, row.code}
 		if _, ok := groups[k]; !ok {
 			order = append(order, k)
 		}

@@ -4,6 +4,7 @@ go_library(
     name = "xid",
     srcs = [
         "measurement.go",
+        "nvlink5_decode.go",
         "xid_errors.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/catalog/xid",
@@ -13,9 +14,12 @@ go_library(
 
 go_test(
     name = "xid_test",
-    srcs = ["xid_errors_test.go"],
+    srcs = [
+        "nvlink5_decode_test.go",
+        "xid_errors_test.go",
+    ],
+    embed = [":xid"],
     deps = [
-        ":xid",
         "//catalog",
         "//catalog/health",
     ],

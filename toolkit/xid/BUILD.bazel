@@ -20,8 +20,5 @@ go_test(
         "xid_parse_test.go",
     ],
     embed = [":xid"],
-    deps = [
-        "//catalog/health",
-        "//catalog/xid",
-    ],
+    deps = ["//catalog/health"],
 )
