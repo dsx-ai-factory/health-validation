@@ -3,10 +3,13 @@ package evaluation
 import (
 	"reflect"
 	"strings"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
 
 // ToSignals converts a typed measurement struct into the map[string]any
-// that CEL evaluation expects. Keys are derived from json struct tags.
+// that CEL evaluation expects. Keys are derived from json struct tags,
+// plus anything the measurement computes via [health.DerivedSignaler].
 func ToSignals(m any) map[string]any {
 	v := reflect.ValueOf(m)
 	t := v.Type()
@@ -20,6 +23,11 @@ func ToSignals(m any) map[string]any {
 		}
 		key, _, _ := strings.Cut(tag, ",")
 		out[key] = v.Field(i).Interface()
+	}
+	if d, ok := m.(health.DerivedSignaler); ok {
+		for key, value := range d.DerivedSignals() {
+			out[key] = value
+		}
 	}
 	return out
 }

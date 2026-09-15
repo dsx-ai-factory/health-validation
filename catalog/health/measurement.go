@@ -71,3 +71,30 @@ func (m ErroredMeasurement) Err() error { return m.err }
 // measurement schema; for per-field failures, only the specific
 // signals the failing call would have populated.
 func (m ErroredMeasurement) FailedSignals() []string { return m.failedSignals }
+
+// DerivedSignaler is an optional interface a measurement may implement
+// to expose signals it computes rather than stores.
+//
+// Signals are ordinarily the measurement struct's own json-tagged
+// fields, which means a sensor has to compute anything a rule needs.
+// That is the right split for facts a sensor can read off the wire, but
+// not for values that require catalog knowledge — a vendor decode
+// table, or a correlation across events that only means something in
+// light of one. Implementing this interface keeps that reasoning in the
+// catalog while still presenting the result to CEL as an ordinary
+// signal.
+//
+// The returned map's *key set must not depend on the measurement's
+// data*. Routing and the signal-uniqueness check ask a zero value which
+// signals a type carries (see the evaluation package's SchemaKeys), so
+// a key that appears only once some field is populated would be
+// invisible to them, and a check requiring it would never be routed a
+// measurement. Return every key every time, with an empty or nil value
+// when there is nothing to report.
+//
+// Keys must also not collide with the type's own json field names. A
+// derived signal takes precedence on collision, which silently shadows
+// the field rather than failing.
+type DerivedSignaler interface {
+	DerivedSignals() map[string]any
+}
