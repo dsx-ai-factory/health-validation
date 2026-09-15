@@ -217,3 +217,95 @@ func TestParseXid_NoLines_EmptyMeasurement(t *testing.T) {
 		t.Errorf("Category = %v, want Xid", m.Category())
 	}
 }
+
+// TestParseXid_NVLink5_RealWorldVariations pins the log-format
+// variations that appear in captured NVRM output but not in the
+// idealized form. Each of these once fell through to the generic
+// pid=/name= parser, which silently produced an event with no
+// NVLink5 detail at all — no sub-component, no Fatal flag, and none of
+// the registers the catalog decodes a resolution from. A regression
+// here is invisible in XidCounts, so assert on the detail.
+func TestParseXid_NVLink5_RealWorldVariations(t *testing.T) {
+	tests := []struct {
+		name             string
+		line             string
+		wantSubComponent string
+		wantIntrInfo     string
+		wantErrorStatus  string
+		wantProcessName  string
+		wantPid          int64
+		wantLink         int64
+		wantFatal        bool
+	}{
+		{
+			name:             "pid and name precede the sub-component",
+			line:             "NVRM: Xid (PCI:0009:01:00): 145, pid=2348952, name=cache_mgr_main, RLW_SRC_TRACK Fatal XC1 i0 Link 17 (0x040a28e2 0x00000020 0x00000000)",
+			wantSubComponent: "RLW_SRC_TRACK",
+			wantIntrInfo:     "0x040a28e2",
+			wantErrorStatus:  "0x00000020",
+			wantPid:          2348952,
+			wantProcessName:  "cache_mgr_main",
+			wantLink:         17,
+			wantFatal:        true,
+		},
+		{
+			name:             "runs of whitespace between fields",
+			line:             "NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT  Fatal   XC0 i0 Link 17 (0x004001C6 0x00000080 0x00000000)",
+			wantSubComponent: "NETIR_LINK_EVT",
+			wantIntrInfo:     "0x004001C6",
+			wantErrorStatus:  "0x00000080",
+			wantLink:         17,
+			wantFatal:        true,
+		},
+		{
+			name:             "link -1 when not attributable to one link",
+			line:             "NVRM: Xid (PCI:0009:01:00): 149, NETIR  Fatal   XC0 i0 Link -1 (0x000fe406 0x00000000 0x00000000)",
+			wantSubComponent: "NETIR",
+			wantIntrInfo:     "0x000fe406",
+			wantErrorStatus:  "0x00000000",
+			wantLink:         -1,
+			wantFatal:        true,
+		},
+		{
+			name:             "nonfatal with no register tail",
+			line:             "NVRM: Xid (PCI:0000:5f:00): 145, RLW_REMAP Nonfatal XC0 i0 Link 02",
+			wantSubComponent: "RLW_REMAP",
+			wantLink:         2,
+			wantFatal:        false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := xid.ParseXid("boot", []string{tc.line})
+			if m.EventCount != 1 {
+				t.Fatalf("EventCount = %d, want 1", m.EventCount)
+			}
+			ev := m.Events[0]
+			if ev.NVLink5 == nil {
+				t.Fatalf("NVLink5 = nil, want populated (line fell through to the generic parser)")
+			}
+			if ev.NVLink5.SubComponent != tc.wantSubComponent {
+				t.Errorf("SubComponent = %q, want %q", ev.NVLink5.SubComponent, tc.wantSubComponent)
+			}
+			if ev.NVLink5.IntrInfo != tc.wantIntrInfo {
+				t.Errorf("IntrInfo = %q, want %q", ev.NVLink5.IntrInfo, tc.wantIntrInfo)
+			}
+			if ev.NVLink5.ErrorStatus != tc.wantErrorStatus {
+				t.Errorf("ErrorStatus = %q, want %q", ev.NVLink5.ErrorStatus, tc.wantErrorStatus)
+			}
+			if ev.NVLink5.Link != tc.wantLink {
+				t.Errorf("Link = %d, want %d", ev.NVLink5.Link, tc.wantLink)
+			}
+			if ev.NVLink5.Fatal != tc.wantFatal {
+				t.Errorf("Fatal = %v, want %v", ev.NVLink5.Fatal, tc.wantFatal)
+			}
+			if ev.Pid != tc.wantPid {
+				t.Errorf("Pid = %d, want %d", ev.Pid, tc.wantPid)
+			}
+			if ev.ProcessName != tc.wantProcessName {
+				t.Errorf("ProcessName = %q, want %q", ev.ProcessName, tc.wantProcessName)
+			}
+		})
+	}
+}

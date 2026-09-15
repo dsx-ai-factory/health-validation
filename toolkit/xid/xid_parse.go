@@ -21,18 +21,34 @@ var xidLineRE = regexp.MustCompile(`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (\d+)(?:
 // xidNVLink5RE matches the extended log format NVRM uses for the
 // NVLink5/NVSwitch fault family (Xid 144-150, Blackwell-only), e.g.
 //
-//	NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000 ...)
+//	NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT  Fatal   XC0 i0 Link 17 (0x004001C6 0x00000000 ...)
+//	NVRM: Xid (PCI:0009:01:00): 145, pid=2348952, name=cache_mgr_main, RLW_SRC_TRACK Fatal XC1 i0 Link 17 (0x040a28e2 0x00000020 ...)
+//	NVRM: Xid (PCI:0009:01:00): 149, NETIR  Fatal   XC0 i0 Link -1 (0x000fe406 0x00000000 ...)
 //	NVRM: Xid (PCI:0000:5f:00): 145, RLW_REMAP Nonfatal XC0 i0 Link 02
 //
-// Unlike other Xid codes, these carry a human-readable sub-component
-// name and a literal Fatal/Nonfatal severity instead of pid/name.
-// Group 1 PCI address, 2 Xid code, 3 sub-component, 4 Fatal|Nonfatal,
-// 5 crosscontain digit, 6 injected digit, 7 link number, 8 the
-// optional parenthesized intrInfo/errorStatus/errorDebugData tail
-// (raw — split on whitespace by the caller rather than matched
-// field-by-field, since the trailing debug-data register count is not
-// confirmed to be fixed).
-var xidNVLink5RE = regexp.MustCompile(`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (14[4-9]|150), (\S+) (Fatal|Nonfatal) XC(\d+) i(\d+) Link (\d+)(?: \(([^)]*)\))?`)
+// These carry a human-readable sub-component name and a literal
+// Fatal/Nonfatal severity that other Xid codes do not. Three real-world
+// variations the format permits, each of which a stricter pattern
+// silently drops to [xidLineRE] — losing the sub-component, severity,
+// and registers the catalog decodes from:
+//
+//   - pid= and name= may precede the sub-component. They are not
+//     mutually exclusive with it, despite carrying the same meaning
+//     they do for every other Xid code.
+//   - Fields are separated by runs of whitespace, not single spaces.
+//   - Link is -1 when the fault is not attributable to one link.
+//
+// Group 1 PCI address, 2 Xid code, 3 pid and 4 process name (both
+// optional), 5 sub-component, 6 Fatal|Nonfatal, 7 crosscontain digit,
+// 8 injected digit, 9 link number, 10 the optional parenthesized
+// intrInfo/errorStatus/errorDebugData tail (raw — split on whitespace
+// by the caller rather than matched field-by-field, since the trailing
+// debug-data register count is not confirmed to be fixed).
+var xidNVLink5RE = regexp.MustCompile(
+	`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (14[4-9]|150),\s*` +
+		`(?:pid=(\d+),\s*)?(?:name=([^,]+),\s*)?` +
+		`(\S+)\s+(Fatal|Nonfatal)\s+XC(\d+)\s+i(\d+)\s+Link\s+(-?\d+)` +
+		`(?:\s+\(([^)]*)\))?`)
 
 // ParseXid scans lines for NVRM Xid entries and returns the aggregate
 // measurement for the window described by since (e.g. "boot"). Lines
@@ -111,14 +127,14 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 	if err != nil {
 		return xid.XidEvent{}, false
 	}
-	link, _ := strconv.ParseInt(groups[7], 10, 64)
+	link, _ := strconv.ParseInt(groups[9], 10, 64)
 
 	detail := &xid.NVLink5Detail{
-		SubComponent: groups[3],
-		Fatal:        groups[4] == "Fatal",
+		SubComponent: groups[5],
+		Fatal:        groups[6] == "Fatal",
 		Link:         link,
 	}
-	if tail := strings.Fields(groups[8]); len(tail) > 0 {
+	if tail := strings.Fields(groups[10]); len(tail) > 0 {
 		detail.IntrInfo = tail[0]
 		if len(tail) > 1 {
 			detail.ErrorStatus = tail[1]
@@ -131,5 +147,15 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 		detail.SubXidCode = subXidCode
 	}
 
-	return xid.XidEvent{PCIAddress: groups[1], XidCode: code, NVLink5: detail}, true
+	// pid/name are optional here but carry the same meaning as on any
+	// other Xid line, so they populate the same event fields.
+	pid, _ := strconv.ParseInt(groups[3], 10, 64)
+
+	return xid.XidEvent{
+		PCIAddress:  groups[1],
+		XidCode:     code,
+		Pid:         pid,
+		ProcessName: groups[4],
+		NVLink5:     detail,
+	}, true
 }
