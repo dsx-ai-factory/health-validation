@@ -376,6 +376,58 @@ skipped checks are excluded from `overall_severity`, a disable narrows the
 minimum bar the node is held to — read `skipped_checks`, not just the exit code,
 to know what actually ran.
 
+### Publishing metrics
+
+The same config file can push the verdict to an OTLP/HTTP metrics endpoint —
+a collector running on the node, or a remote one:
+
+```yaml
+# operator.yaml
+metrics:
+  enabled: true
+  endpoint: http://127.0.0.1:44318   # full URL, not the collector's host:port form
+  timeout_seconds: 10                # optional; defaults to 10
+  headers:                           # optional; for an endpoint that authenticates
+    x-api-key: ${SECRET}
+  resource_attributes:               # optional; fleet context on every metric
+    cluster: dsx-east
+```
+
+`endpoint` is a full URL. An OTLP collector's own receiver config writes
+`127.0.0.1:44318`, so that form is the easy mistake — it is rejected at load
+time with the fix spelled out. A URL with no path gets `/v1/metrics` appended;
+an explicit path is used as given. `https` enables TLS.
+
+Six metrics are published per run:
+
+| Metric | Type | Value | Attributes |
+|---|---|---|---|
+| `health_validation.node.severity` | gauge | Overall severity ordinal | — |
+| `health_validation.domain.severity` | gauge | Per-domain severity ordinal | `category` |
+| `health_validation.check.severity` | gauge | Per-check severity ordinal | `check_id`, `category`, `condition_scope`, `maturity_level`, `nvidia_endorsed` |
+| `health_validation.check.skipped` | gauge | Always `1`, one per skipped check | `check_id`, `category`, `skip_reason` |
+| `health_validation.check.affected_entities` | gauge | Count of entities a check named | `check_id`, `category` |
+| `health_validation.runs` | counter (delta) | `1` | `severity` |
+
+Severity ordinals are `0` PASS, `1` INFO, `2` WARNING, `3` CRITICAL, `4`
+UNKNOWN. Node identity and versions ride on the OTLP **resource**
+(`service.name`, `service.version`, `service.instance.id` = the node ID, plus
+`health_validation.catalog_version` and `health_validation.schema_version`), not
+on each data point. The per-run `trace_id` and `span_id` are deliberately not
+published — they are unique every run and would mint a new time series per
+execution; read them from the JSON verdict instead.
+
+Publishing never changes the verdict or the exit code: an unreachable collector
+is logged as a warning and the run reports exactly what it would have reported
+otherwise. The verdict JSON is written to stdout before the push, so a slow
+collector cannot delay it. No `OTEL_*` environment variable is consulted — the
+config file is the only source, so a stray variable on a node cannot silently
+redirect health telemetry.
+
+> Running in a container? The stock wrapper does not use host networking, so
+> `127.0.0.1` inside the container is not the node's loopback. See
+> [docs/INTEGRATION.md](docs/INTEGRATION.md#publishing-metrics-from-a-container).
+
 ## Where to go for more
 
 1. [docs/INTEGRATION.md](docs/INTEGRATION.md): deploy to a GPU cluster, wire into the workload lifecycle, act on verdicts, collect results across the fleet

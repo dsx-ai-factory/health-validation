@@ -1,0 +1,31 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "otelmetrics",
+    srcs = ["publisher.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//catalog/health",
+        "@io_opentelemetry_go_otel//attribute",
+        "@io_opentelemetry_go_otel//semconv/v1.37.0:semconv",
+        "@io_opentelemetry_go_otel_exporters_otlp_otlpmetric_otlpmetrichttp//:otlpmetrichttp",
+        "@io_opentelemetry_go_otel_metric//:metric",
+        "@io_opentelemetry_go_otel_sdk//resource",
+        "@io_opentelemetry_go_otel_sdk_metric//:metric",
+        "@io_opentelemetry_go_otel_sdk_metric//metricdata",
+    ],
+)
+
+go_test(
+    name = "otelmetrics_test",
+    srcs = ["publisher_test.go"],
+    deps = [
+        ":otelmetrics",
+        "//catalog/health",
+        "@io_opentelemetry_go_proto_otlp//collector/metrics/v1:metrics",
+        "@io_opentelemetry_go_proto_otlp//common/v1:common",
+        "@io_opentelemetry_go_proto_otlp//metrics/v1:metrics",
+        "@org_golang_google_protobuf//proto",
+    ],
+)

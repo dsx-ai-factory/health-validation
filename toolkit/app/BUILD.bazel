@@ -16,6 +16,7 @@ go_library(
         "//catalog/health",
         "//toolkit",
         "//toolkit/internal/version",
+        "//toolkit/otelmetrics",
         "@in_gopkg_yaml_v3//:yaml_v3",
     ] + select({
         "@rules_go//go/platform:linux": [

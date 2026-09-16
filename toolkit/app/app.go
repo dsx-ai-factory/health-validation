@@ -28,6 +28,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -41,6 +42,8 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/version"
+	"github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics"
 )
 
 // Exit codes returned by Run. The split is verdict-vs-no-verdict: 0/1 report a
@@ -326,6 +329,16 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	// detection so the NVML handle that detection opens is always released.
 	defer a.host.close()
 
+	// Load the config before touching the hardware so a typo is reported as a
+	// config error rather than surfacing after a full collection — and so the
+	// metrics settings are in hand even on the discovery-failure path below,
+	// which is exactly the outcome worth publishing.
+	cfg, err := loadOptionalConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+
 	// Detect the node architecture so architecture-scoped checks run only
 	// where they apply. A discovery failure is a node fault — the GPUs are
 	// unenumerable or unreadable — so drain for that explicit reason instead
@@ -336,10 +349,13 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 			err = fmt.Errorf("architecture is empty")
 		}
 		slog.Warn("architecture discovery failed", "err", err)
-		return writeVerdict(discoveryFailureVerdict(err), a.prog, resolvedNodeID, stdout, stderr)
+		verdict := discoveryFailureVerdict(err)
+		code := writeVerdict(verdict, a.prog, resolvedNodeID, stdout, stderr)
+		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
+		return code
 	}
 
-	cat, timeout, err := buildCatalog(*configPath, a.customChecks, arch)
+	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
@@ -385,7 +401,51 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	if a.ib != nil {
 		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
 	}
-	return evaluate(cat, timeout, a.prog, resolvedNodeID, stdout, stderr, sensors...)
+	verdict, produced, code := evaluate(cat, timeout, a.prog, resolvedNodeID, stdout, stderr, sensors...)
+	if produced {
+		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
+	}
+	return code
+}
+
+// publishMetrics pushes the verdict to the configured OTLP endpoint. It is a
+// no-op when metrics are disabled, and every failure is logged and swallowed:
+// a node's health must not read differently because a collector was down. It
+// runs after the verdict has already been written to stdout, so a slow
+// collector cannot delay the operator's primary output.
+func publishMetrics(cfg MetricsConfig, verdict health.NodeVerdict, nodeID string) {
+	if !cfg.Enabled {
+		return
+	}
+	timeout := cfg.Timeout()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	info := version.Get()
+	publisher, err := otelmetrics.New(ctx, otelmetrics.Options{
+		Headers:            cfg.Headers,
+		ResourceAttributes: cfg.ResourceAttributes,
+		Endpoint:           cfg.Endpoint,
+		NodeID:             nodeID,
+		ServiceVersion:     info.Version,
+		CatalogVersion:     info.CatalogVersion,
+		Timeout:            timeout,
+	})
+	if err != nil {
+		slog.Warn("metrics publishing skipped", "endpoint", cfg.Endpoint, "err", err)
+		return
+	}
+	defer func() {
+		if err := publisher.Shutdown(ctx); err != nil {
+			slog.Debug("metrics publisher shutdown", "err", err)
+		}
+	}()
+
+	if err := publisher.Publish(ctx, verdict); err != nil {
+		slog.Warn("metrics publishing failed", "endpoint", cfg.Endpoint, "err", err)
+		return
+	}
+	slog.Debug("metrics published", "endpoint", cfg.Endpoint)
 }
 
 func (a *App) resolveNodeID(value string, supplied bool) (string, error) {
@@ -413,14 +473,25 @@ func usage(prog string) string {
 	return "usage: " + prog + " <run|version> [flags]"
 }
 
+// loadOptionalConfig loads the config at path, or returns the zero config when
+// path is empty. It never returns nil, so callers can read cfg.Metrics without
+// a nil check on the no-config-file path.
+func loadOptionalConfig(path string) (*Config, error) {
+	if path == "" {
+		return &Config{}, nil
+	}
+	return LoadConfig(path)
+}
+
 // buildCatalog returns a catalog pre-loaded with all built-in checks plus
-// any custom checks, and the per-sensor collection timeout to apply. If
-// configPath is non-empty, its check parameters and disabled_checks are
-// validated against the full check set (built-ins + custom) and applied as
-// threshold overrides and disables — so a config may target a custom check
-// too — and its collection_timeout_seconds (if set) is the timeout;
-// otherwise the toolkit default is used.
-func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch string) (*catalog.Catalog, time.Duration, error) {
+// any custom checks, and the per-sensor collection timeout to apply. cfg's
+// check parameters and disabled_checks are validated against the full check
+// set (built-ins + custom) and applied as threshold overrides and disables —
+// so a config may target a custom check too — and its
+// collection_timeout_seconds (if set) is the timeout; otherwise the toolkit
+// default is used. A nil cfg means no config file: built-ins only, default
+// timeout.
+func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string) (*catalog.Catalog, time.Duration, error) {
 	// register adds the caller-supplied checks to a freshly built catalog.
 	// Classification is passed through untouched; the only failure is the
 	// catalog's duplicate-ID guard.
@@ -442,7 +513,7 @@ func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch
 		opts = append(opts, catalog.WithArchitecture(arch))
 	}
 
-	if configPath == "" {
+	if cfg == nil {
 		c := catalog.New(opts...)
 		if err := register(c); err != nil {
 			return nil, 0, err
@@ -450,16 +521,11 @@ func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch
 		return c, toolkit.DefaultSensorTimeout, nil
 	}
 
-	cfg, err := LoadConfig(configPath)
-	if err != nil {
-		return nil, 0, err
-	}
-
 	// Validate the config against a catalog that already includes the custom
 	// checks, so an override naming a custom check resolves. Then build the
 	// real catalog with the resolved overrides and re-register.
 	validation := catalog.New(opts...)
-	if err = register(validation); err != nil {
+	if err := register(validation); err != nil {
 		return nil, 0, err
 	}
 	overrides, err := cfg.Overrides(validation)
@@ -486,13 +552,16 @@ func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch
 // timeout, prints the node verdict as indented JSON, and returns the process
 // exit code. It takes the timeout and sensors as arguments so tests can
 // inject mock sensors without hardware.
-func evaluate(cat *catalog.Catalog, timeout time.Duration, prog, nodeID string, stdout, stderr io.Writer, sensors ...toolkit.Sensor) int {
+// It returns the verdict alongside the exit code, and a produced flag that is
+// false when collection failed before any verdict existed — the caller uses it
+// to decide whether there is anything worth publishing.
+func evaluate(cat *catalog.Catalog, timeout time.Duration, prog, nodeID string, stdout, stderr io.Writer, sensors ...toolkit.Sensor) (verdict health.NodeVerdict, produced bool, code int) {
 	verdict, err := toolkit.CollectWithTimeout(cat, timeout, sensors...)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
-		return exitError
+		return health.NodeVerdict{}, false, exitError
 	}
-	return writeVerdict(verdict, prog, nodeID, stdout, stderr)
+	return verdict, true, writeVerdict(verdict, prog, nodeID, stdout, stderr)
 }
 
 // writeVerdict prints a node verdict as indented JSON and returns the process

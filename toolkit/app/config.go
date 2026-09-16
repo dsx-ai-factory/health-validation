@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -25,7 +26,8 @@ import (
 // DisabledChecks lists check IDs to remove from the run entirely; they are
 // reported as skipped with [health.CheckDisabled] and excluded from the
 // node-level severity. CollectionTimeoutSeconds optionally bounds each
-// sensor's collection (0 = use the built-in default):
+// sensor's collection (0 = use the built-in default). Metrics optionally
+// pushes the resulting verdict to an OTLP/HTTP endpoint:
 //
 //	collection_timeout_seconds: 60
 //	checks:
@@ -35,10 +37,103 @@ import (
 //	    max_inactive_nvlinks: 0
 //	disabled_checks:
 //	  - gpu_power_state
+//	metrics:
+//	  enabled: true
+//	  endpoint: http://127.0.0.1:44318
 type Config struct {
 	Checks                   map[string]map[string]any `yaml:"checks"`
 	DisabledChecks           []string                  `yaml:"disabled_checks"`
+	Metrics                  MetricsConfig             `yaml:"metrics"`
 	CollectionTimeoutSeconds int                       `yaml:"collection_timeout_seconds"`
+}
+
+// MetricsConfig configures the OTLP/HTTP metrics push performed after a run
+// produces a verdict. Publishing is off unless Enabled is set, and a failure to
+// publish never changes the verdict or the exit code — a health check must not
+// report differently because a collector was unreachable.
+//
+//	metrics:
+//	  enabled: true
+//	  endpoint: http://127.0.0.1:44318   # full URL; https for a remote collector
+//	  timeout_seconds: 10
+//	  headers:
+//	    x-api-key: ...
+//	  resource_attributes:
+//	    cluster: dsx-east
+//
+// Endpoint is a full URL, not the "host:port" form an OTLP collector uses in
+// its own receiver config; the collector snippet's 127.0.0.1:44318 becomes
+// http://127.0.0.1:44318 here. A URL with no path gets /v1/metrics appended.
+//
+// Headers are sent on every OTLP request, for an endpoint that authenticates.
+// ResourceAttributes add fleet context (cluster, region) to every metric; the
+// attributes the publisher owns — service.name and the node/version identity —
+// are merged over them and cannot be overridden.
+//
+// No OTEL_* environment variable is consulted. The config file is the only
+// source, so a stray variable in a node's environment cannot silently redirect
+// health telemetry somewhere else.
+type MetricsConfig struct {
+	Headers            map[string]string `yaml:"headers"`
+	ResourceAttributes map[string]string `yaml:"resource_attributes"`
+	Endpoint           string            `yaml:"endpoint"`
+	TimeoutSeconds     int               `yaml:"timeout_seconds"`
+	Enabled            bool              `yaml:"enabled"`
+}
+
+// DefaultMetricsTimeout bounds the OTLP export when the operator sets no
+// timeout_seconds. Retries are disabled in the publisher, so this is the whole
+// budget, not one attempt's.
+const DefaultMetricsTimeout = 10 * time.Second
+
+// Timeout returns the export timeout to apply; a non-positive TimeoutSeconds
+// falls back to [DefaultMetricsTimeout].
+func (mc *MetricsConfig) Timeout() time.Duration {
+	if mc.TimeoutSeconds > 0 {
+		return time.Duration(mc.TimeoutSeconds) * time.Second
+	}
+	return DefaultMetricsTimeout
+}
+
+// validate rejects a metrics block that would fail only at publish time, when
+// the run has already completed and the error is too late to be actionable.
+// A disabled block is not validated: an operator commenting out `enabled` should
+// not have to also strip a half-written endpoint.
+func (mc *MetricsConfig) validate(path string) error {
+	if !mc.Enabled {
+		return nil
+	}
+	endpoint := strings.TrimSpace(mc.Endpoint)
+	if endpoint == "" {
+		return fmt.Errorf("config %s: metrics.endpoint is required when metrics.enabled is true", path)
+	}
+	// A bare "host:port" — the form the collector's own receiver config uses,
+	// so the likeliest mistake — fails url.Parse outright rather than parsing
+	// to a bad scheme. Both land on the same message, which names the fix.
+	u, err := url.Parse(endpoint)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf(
+			"config %s: metrics.endpoint %q must be a full URL with an http or https scheme (e.g. http://%s)",
+			path, endpoint, endpoint)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("config %s: metrics.endpoint %q has no host", path, endpoint)
+	}
+	if mc.TimeoutSeconds < 0 || mc.TimeoutSeconds > maxCollectionTimeoutSeconds {
+		return fmt.Errorf("config %s: metrics.timeout_seconds must be between 0 and %d, got %d",
+			path, maxCollectionTimeoutSeconds, mc.TimeoutSeconds)
+	}
+	for _, key := range sortedKeys(mc.Headers) {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("config %s: metrics.headers contains an empty header name", path)
+		}
+	}
+	for _, key := range sortedKeys(mc.ResourceAttributes) {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("config %s: metrics.resource_attributes contains an empty attribute name", path)
+		}
+	}
+	return nil
 }
 
 // maxCollectionTimeoutSeconds is the largest collection_timeout_seconds
@@ -68,6 +163,9 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.CollectionTimeoutSeconds < 0 || cfg.CollectionTimeoutSeconds > maxCollectionTimeoutSeconds {
 		return nil, fmt.Errorf("config %s: collection_timeout_seconds must be between 0 and %d, got %d",
 			path, maxCollectionTimeoutSeconds, cfg.CollectionTimeoutSeconds)
+	}
+	if err := cfg.Metrics.validate(path); err != nil {
+		return nil, err
 	}
 	return &cfg, nil
 }

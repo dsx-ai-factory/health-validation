@@ -17,6 +17,18 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 )
 
+// mustLoadConfig loads a config file the test just wrote, failing the test if
+// it does not parse. buildCatalog takes a parsed config, so the run path loads
+// the file once and shares it with metrics publishing.
+func mustLoadConfig(t *testing.T, path string) *Config {
+	t.Helper()
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig(%s): %v", path, err)
+	}
+	return cfg
+}
+
 func TestOverridesCoercesToThresholdType(t *testing.T) {
 	cfg := &Config{Checks: map[string]map[string]any{
 		"gpu_count": {"expected_gpu_count": 8},
@@ -305,7 +317,7 @@ func TestEvaluatePassingNode(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := evaluate(cat, toolkit.DefaultSensorTimeout, "health-validation", testNodeID, &stdout, &stderr, sensors...)
+	_, _, code := evaluate(cat, toolkit.DefaultSensorTimeout, "health-validation", testNodeID, &stdout, &stderr, sensors...)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -333,7 +345,7 @@ func TestBuildCatalogAppliesConfigOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, _, err := buildCatalog(path, nil, "GB200")
+	cat, _, err := buildCatalog(mustLoadConfig(t, path), nil, "GB200")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -377,7 +389,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, timeout, err := buildCatalog(path, nil, "GB200")
+	cat, timeout, err := buildCatalog(mustLoadConfig(t, path), nil, "GB200")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -389,7 +401,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := evaluate(cat, timeout, "health-validation", testNodeID, &stdout, &stderr, sensors...)
+	_, _, code := evaluate(cat, timeout, "health-validation", testNodeID, &stdout, &stderr, sensors...)
 	if code != exitOK {
 		t.Fatalf("exit code = %d, want %d (a disabled check must not reach the verdict); stderr=%q",
 			code, exitOK, stderr.String())
@@ -438,7 +450,7 @@ func TestEvaluateGPUCountMismatch(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := evaluate(cat, toolkit.DefaultSensorTimeout, "health-validation", testNodeID, &stdout, &stderr, sensors...)
+	_, _, code := evaluate(cat, toolkit.DefaultSensorTimeout, "health-validation", testNodeID, &stdout, &stderr, sensors...)
 	if code != exitUnhealthy {
 		t.Fatalf("exit code = %d, want %d (CRITICAL propagated); stderr=%q", code, exitUnhealthy, stderr.String())
 	}
@@ -516,7 +528,7 @@ func TestBuildCatalogResolvesTimeout(t *testing.T) {
 	if err := os.WriteFile(path, []byte("collection_timeout_seconds: 45\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, timeout, err := buildCatalog(path, nil, "")
+	_, timeout, err := buildCatalog(mustLoadConfig(t, path), nil, "")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -524,11 +536,161 @@ func TestBuildCatalogResolvesTimeout(t *testing.T) {
 		t.Errorf("timeout = %v, want 45s", timeout)
 	}
 
-	_, timeout, err = buildCatalog("", nil, "")
+	_, timeout, err = buildCatalog(nil, nil, "")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
 	if timeout != toolkit.DefaultSensorTimeout {
 		t.Errorf("timeout = %v, want default %v", timeout, toolkit.DefaultSensorTimeout)
 	}
+}
+
+// TestLoadConfigParsesMetricsBlock is the round-trip guard for the metrics
+// settings: every key an operator can write must reach the struct, or the
+// endpoint silently stays unset and nothing is ever published.
+func TestLoadConfigParsesMetricsBlock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := `metrics:
+  enabled: true
+  endpoint: http://127.0.0.1:44318
+  timeout_seconds: 30
+  headers:
+    x-api-key: secret
+  resource_attributes:
+    cluster: dsx-east
+`
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	m := cfg.Metrics
+	if !m.Enabled {
+		t.Error("metrics.enabled = false, want true")
+	}
+	if m.Endpoint != "http://127.0.0.1:44318" {
+		t.Errorf("metrics.endpoint = %q", m.Endpoint)
+	}
+	if got := m.Timeout(); got != 30*time.Second {
+		t.Errorf("Timeout() = %v, want 30s", got)
+	}
+	if m.Headers["x-api-key"] != "secret" {
+		t.Errorf("metrics.headers = %v", m.Headers)
+	}
+	if m.ResourceAttributes["cluster"] != "dsx-east" {
+		t.Errorf("metrics.resource_attributes = %v", m.ResourceAttributes)
+	}
+}
+
+// TestMetricsTimeoutDefaults covers the unset case: an operator who enables
+// metrics without a timeout still gets a bounded export.
+func TestMetricsTimeoutDefaults(t *testing.T) {
+	var m MetricsConfig
+	if got := m.Timeout(); got != DefaultMetricsTimeout {
+		t.Errorf("Timeout() = %v, want %v", got, DefaultMetricsTimeout)
+	}
+}
+
+// TestLoadConfigRejectsBadMetrics checks the settings at load time rather than
+// at publish time, when the run has already finished and the error is too late
+// to act on. The bare host:port case matters most: it is the form the
+// collector's own receiver config uses, so operators will copy it in.
+func TestLoadConfigRejectsBadMetrics(t *testing.T) {
+	cases := []struct {
+		name     string
+		contents string
+		want     string
+	}{
+		{
+			name:     "enabled without endpoint",
+			contents: "metrics:\n  enabled: true\n",
+			want:     "metrics.endpoint is required",
+		},
+		{
+			name:     "bare host and port",
+			contents: "metrics:\n  enabled: true\n  endpoint: 127.0.0.1:44318\n",
+			want:     "must be a full URL",
+		},
+		{
+			name:     "unsupported scheme",
+			contents: "metrics:\n  enabled: true\n  endpoint: grpc://127.0.0.1:44317\n",
+			want:     "must be a full URL",
+		},
+		{
+			name:     "no host",
+			contents: "metrics:\n  enabled: true\n  endpoint: http://\n",
+			want:     "has no host",
+		},
+		{
+			name:     "negative timeout",
+			contents: "metrics:\n  enabled: true\n  endpoint: http://h:1\n  timeout_seconds: -1\n",
+			want:     "metrics.timeout_seconds must be between",
+		},
+		{
+			name:     "unknown key",
+			contents: "metrics:\n  enabled: true\n  endpoint: http://h:1\n  protocol: grpc\n",
+			want:     "protocol",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(c.contents), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadConfig(path)
+			if err == nil {
+				t.Fatalf("LoadConfig: got nil error, want one mentioning %q", c.want)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want it to mention %q", err, c.want)
+			}
+		})
+	}
+}
+
+// TestDisabledMetricsSkipValidation lets an operator park a half-written
+// endpoint under `enabled: false` without failing every run.
+func TestDisabledMetricsSkipValidation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := "metrics:\n  enabled: false\n  endpoint: 127.0.0.1:44318\n"
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(path); err != nil {
+		t.Errorf("LoadConfig: %v, want a disabled block to skip validation", err)
+	}
+}
+
+// TestPublishMetricsSurvivesDeadCollector is the load-bearing guarantee: an
+// unreachable collector must not change the verdict or the exit code. It calls
+// publishMetrics directly against a port nothing is listening on.
+func TestPublishMetricsSurvivesDeadCollector(t *testing.T) {
+	cfg := MetricsConfig{
+		Enabled: true,
+		// Reserved as "discard" by RFC 6890; nothing accepts here.
+		Endpoint:       "http://192.0.2.1:44318",
+		TimeoutSeconds: 1,
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		publishMetrics(cfg, health.NodeVerdict{OverallSeverity: health.Pass}, "node-1")
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("publishMetrics did not return; a dead collector must not hang the run")
+	}
+}
+
+// TestPublishMetricsDisabledIsNoop guards the default: an operator who never
+// configures metrics must not pay for a network attempt.
+func TestPublishMetricsDisabledIsNoop(t *testing.T) {
+	publishMetrics(MetricsConfig{Endpoint: "http://192.0.2.1:44318"},
+		health.NodeVerdict{OverallSeverity: health.Pass}, "node-1")
 }

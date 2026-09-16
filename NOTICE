@@ -32,6 +32,22 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://github.com/bits-and-blooms/bitset
 
+  github.com/cenkalti/backoff/v5  v5.0.3
+  License:  MIT
+  URL:      https://github.com/cenkalti/backoff/v5
+
+  github.com/cespare/xxhash/v2  v2.3.0
+  License:  MIT
+  URL:      https://github.com/cespare/xxhash/v2
+
+  github.com/go-logr/logr  v1.4.4
+  License:  Apache-2.0
+  URL:      https://github.com/go-logr/logr
+
+  github.com/go-logr/stdr  v1.2.2
+  License:  Apache-2.0
+  URL:      https://github.com/go-logr/stdr
+
   github.com/google/cel-go  v0.28.0
   License:  Apache-2.0
   URL:      https://github.com/google/cel-go
@@ -40,6 +56,10 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://github.com/google/uuid
 
+  github.com/grpc-ecosystem/grpc-gateway/v2  v2.30.0
+  License:  BSD-3-Clause
+  URL:      https://github.com/grpc-ecosystem/grpc-gateway/v2
+
   github.com/soheilhy/cmux  v0.1.5
   License:  Apache-2.0
   URL:      https://github.com/soheilhy/cmux
@@ -47,6 +67,38 @@ Go module dependencies:
   github.com/stretchr/testify  v1.12.1
   License:  MIT AND BSD-3-Clause AND ISC
   URL:      https://github.com/stretchr/testify
+
+  go.opentelemetry.io/auto/sdk  v1.2.1
+  License:  Apache-2.0
+  URL:      https://go.opentelemetry.io/auto/sdk
+
+  go.opentelemetry.io/otel  v1.46.0
+  License:  Apache-2.0
+  URL:      https://go.opentelemetry.io/otel
+
+  go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp  v1.46.0
+  License:  Apache-2.0
+  URL:      https://go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp
+
+  go.opentelemetry.io/otel/metric  v1.46.0
+  License:  Apache-2.0
+  URL:      https://go.opentelemetry.io/otel/metric
+
+  go.opentelemetry.io/otel/sdk  v1.46.0
+  License:  Apache-2.0
+  URL:      https://go.opentelemetry.io/otel/sdk
+
+  go.opentelemetry.io/otel/sdk/metric  v1.46.0
+  License:  Apache-2.0
+  URL:      https://go.opentelemetry.io/otel/sdk/metric
+
+  go.opentelemetry.io/otel/trace  v1.46.0
+  License:  Apache-2.0
+  URL:      https://go.opentelemetry.io/otel/trace
+
+  go.opentelemetry.io/proto/otlp  v1.11.0
+  License:  Apache-2.0
+  URL:      https://go.opentelemetry.io/proto/otlp
 
   go.yaml.in/yaml/v3  v3.0.5
   License:  Apache-2.0 AND MIT
@@ -84,11 +136,11 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://golang.org/x/tools
 
-  google.golang.org/genproto/googleapis/api  v0.0.0-20260526163538-3dc84a4a5aaa
+  google.golang.org/genproto/googleapis/api  v0.0.0-20260819154853-08b0e4226688
   License:  Apache-2.0
   URL:      https://google.golang.org/genproto/googleapis/api
 
-  google.golang.org/genproto/googleapis/rpc  v0.0.0-20260526163538-3dc84a4a5aaa
+  google.golang.org/genproto/googleapis/rpc  v0.0.0-20260819154853-08b0e4226688
   License:  Apache-2.0
   URL:      https://google.golang.org/genproto/googleapis/rpc
 
