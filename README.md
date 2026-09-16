@@ -406,6 +406,11 @@ authoring, and PR guidelines. All participation is governed by our
 
 Use of this software is governed by the NVIDIA Software and Model Evaluation License. See [LICENSE](LICENSE).
 
-## Reporting issues
+## Support
 
-File an issue at <https://github.com/dsx-ai-factory/health-validation/issues> with the check ID, observed behavior, hardware platform, driver version, and NVML version.
+[GitHub Issues](https://github.com/dsx-ai-factory/health-validation/issues) is the
+public support channel for bug reports and feature requests. See
+[SUPPORT.md](SUPPORT.md) for other help options and response expectations.
+
+Report security vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md). Do not file a public issue.
