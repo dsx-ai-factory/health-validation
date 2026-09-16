@@ -3,6 +3,7 @@ package xid_test
 import (
 	"testing"
 
+	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/internal/evaluation"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
@@ -124,38 +125,23 @@ func TestTerminalRecoveryActions_RevertsToNone(t *testing.T) {
 	}
 }
 
-// TestDerivedSignals_KeySetIsDataIndependent pins the contract
-// [health.DerivedSignaler] documents: routing asks a zero value which
-// signals a type carries, so a key that only appeared once events were
-// present would be invisible to it and any check requiring it would
-// never be routed a measurement.
+// TestDerivedSignals_KeySetIsDataIndependent supplies the populated
+// measurement and host for the contract [health.DerivedSignaler]
+// documents; the rule itself lives next to CheckSignalUniqueness, which
+// is what reads a zero value's signal set. Only this package knows what
+// "populated" looks like for an XidMeasurement.
 func TestDerivedSignals_KeySetIsDataIndependent(t *testing.T) {
-	empty := xid.XidMeasurement{}.DerivedSignals(health.Host{})
-	populated := xid.XidMeasurement{Events: []xid.XidEvent{
+	m := xid.XidMeasurement{Events: []xid.XidEvent{
 		recoveryEvent("0019:01:00", "0x0", "None", "0x1", "GPU Reset Required"),
-	}}.DerivedSignals(health.Host{})
-
-	if len(empty) != len(populated) {
-		t.Fatalf("key counts differ: empty=%v populated=%v", empty, populated)
+		srcTrackEvent("0019:01:00", resetOutright),
+	}}
+	version, ok := health.ParseDriverVersion("575.51.03")
+	if !ok {
+		t.Fatal("ParseDriverVersion failed on a well-formed version")
 	}
-	for key := range populated {
-		if _, ok := empty[key]; !ok {
-			t.Errorf("key %q appears only when data is present", key)
-		}
-	}
-
-	// The consequence that actually matters: routing derives a type's
-	// signal set from a zero value, so the derived name has to be
-	// visible there or no check requiring it is ever routed.
-	var routed bool
-	for _, key := range evaluation.SchemaKeys(xid.XidMeasurement{}) {
-		if key == xid.SignalRecoveryActionCounts {
-			routed = true
-		}
-	}
-	if !routed {
-		t.Errorf("%s is not in a zero measurement's schema; checks requiring it would never be routed",
-			xid.SignalRecoveryActionCounts)
+	host := health.Host{Architecture: "GB200", DriverVersion: version}
+	if err := catalog.CheckDerivedSignalKeysStable(m, host); err != nil {
+		t.Error(err)
 	}
 }
 
@@ -179,36 +165,12 @@ func TestDerivedSignals_ReachesCELSignals(t *testing.T) {
 }
 
 // TestDerivedSignals_DoNotShadowFields covers the other half of the
-// contract: a derived key equal to a json field name would silently
-// replace that field rather than failing.
+// contract. CheckDerivedSignals reads the json field names by reflection,
+// so unlike the hand-listed version this cannot go stale when a field is
+// added to XidMeasurement.
 func TestDerivedSignals_DoNotShadowFields(t *testing.T) {
-	derived := xid.XidMeasurement{}.DerivedSignals(health.Host{})
-	for _, field := range evaluation.SchemaKeys(xid.XidMeasurement{}) {
-		if _, clash := derived[field]; clash {
-			// SchemaKeys includes derived names, so only a name that is
-			// *also* a struct field is a real collision.
-			var hasField bool
-			for _, tag := range structJSONTags() {
-				if tag == field {
-					hasField = true
-				}
-			}
-			if hasField {
-				t.Errorf("derived signal %q shadows a struct field of the same name", field)
-			}
-		}
-	}
-}
-
-// structJSONTags lists XidMeasurement's own json field names, without
-// the derived ones SchemaKeys folds in.
-func structJSONTags() []string {
-	return []string{
-		xid.SignalXidCounts,
-		xid.SignalFatalXidCounts,
-		xid.SignalSince,
-		xid.SignalEvents,
-		xid.SignalEventCount,
+	if err := catalog.CheckDerivedSignals(xid.XidMeasurement{}); err != nil {
+		t.Error(err)
 	}
 }
 
