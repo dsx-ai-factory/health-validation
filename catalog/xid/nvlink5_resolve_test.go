@@ -298,3 +298,58 @@ func TestNVLink5ResolutionCheck_UnconfirmedResetIsCritical(t *testing.T) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
 	}
 }
+
+// TestNVLink5ResolutionCounts_HexRenderingIsNormalised covers the log
+// format permitting any hex rendering of a recovery-action code. Matching
+// the printed text read "0x01" and "0X1" as codes this catalog does not
+// know, turning a driver-requested reset into an unresolved WARNING.
+func TestNVLink5ResolutionCounts_HexRenderingIsNormalised(t *testing.T) {
+	for _, toCode := range []string{"0x1", "0x01", "0X1", "0x00000001"} {
+		t.Run(toCode, func(t *testing.T) {
+			got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
+				srcTrackEvent("0019:01:00", deferToXid154),
+				recoveryEvent("0019:01:00", "0x0", "None", toCode, "GPU Reset Required"),
+			}, "575.51.03")
+
+			if got[xid.ResolutionResetGPU] != 1 {
+				t.Errorf("counts = %v, want %s -> 1", got, xid.ResolutionResetGPU)
+			}
+			if _, ok := got[xid.ResolutionXid154Unrecognized]; ok {
+				t.Errorf("counts = %v, %q is a known action however it is spelled",
+					got, toCode)
+			}
+		})
+	}
+}
+
+// TestDerivedSignals_RecoveryActionKeysAreCanonical is the same problem
+// one layer up: a padded rendering must not split one action across two
+// signal keys, or a rule matching "0x1" misses a GPU that needs a reset.
+func TestDerivedSignals_RecoveryActionKeysAreCanonical(t *testing.T) {
+	m := xid.XidMeasurement{Events: []xid.XidEvent{
+		recoveryEvent("0018:01:00", "0x0", "None", "0x1", "GPU Reset Required"),
+		recoveryEvent("0019:01:00", "0x0", "None", "0x00000001", "GPU Reset Required"),
+	}}
+	counts := m.DerivedSignals(health.Host{})[xid.SignalRecoveryActionCounts].(map[string]int64)
+
+	if counts["0x1"] != 2 {
+		t.Errorf("counts = %v, want both GPUs under 0x1", counts)
+	}
+	if len(counts) != 1 {
+		t.Errorf("counts = %v, want one key: the two spellings are one action", counts)
+	}
+}
+
+// TestDerivedSignals_UnparseableActionCodeSurvives pins the pass-through:
+// a code that is not hex at all stays visible under whatever NVRM printed
+// rather than vanishing from the signal.
+func TestDerivedSignals_UnparseableActionCodeSurvives(t *testing.T) {
+	m := xid.XidMeasurement{Events: []xid.XidEvent{
+		recoveryEvent("0019:01:00", "0x0", "None", "not-hex", "Something Odd"),
+	}}
+	counts := m.DerivedSignals(health.Host{})[xid.SignalRecoveryActionCounts].(map[string]int64)
+
+	if counts["not-hex"] != 1 {
+		t.Errorf("counts = %v, want the raw value preserved", counts)
+	}
+}

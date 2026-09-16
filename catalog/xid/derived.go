@@ -12,13 +12,17 @@ var _ health.DerivedSignaler = XidMeasurement{}
 // Xid events gets them interpreted the same way instead of each
 // reimplementing the NVIDIA-specific parts.
 func (m XidMeasurement) DerivedSignals(host health.Host) map[string]any {
-	resolutions := NVLink5ResolutionCounts(m.Events, host.DriverVersion.Raw)
+	// Derived once and passed to both signals that need it: resolving a
+	// fault needs the same per-GPU actions, and two independent
+	// derivations of one thing can drift apart.
+	terminal := TerminalRecoveryActions(m.Events)
+	resolutions := nvlink5ResolutionCounts(m.Events, host.DriverVersion.Raw, terminal)
 	if resolutions == nil {
 		resolutions = make(map[string]int64)
 	}
 	return map[string]any{
 		SignalSubXidCodeCounts:        subXidCodeCounts(m.Events),
-		SignalRecoveryActionCounts:    recoveryActionCounts(m.Events),
+		SignalRecoveryActionCounts:    recoveryActionCounts(terminal),
 		SignalNVLink5ResolutionCounts: resolutions,
 	}
 }

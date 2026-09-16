@@ -1,5 +1,7 @@
 package xid
 
+import "fmt"
+
 // Immediate-action buckets NVIDIA's Xid 144-150 decode table assigns.
 // IGNORE and RESET_GPU are actions; the rest describe what happened when
 // a row declined to name one.
@@ -40,11 +42,28 @@ const (
 // Recovery-action codes observed in Xid 154 lines. NVRM prints the code
 // and the name it expands to; the code is matched because it is what the
 // driver commits to, while the name is display text.
+//
+// Compared numerically rather than as the strings NVRM printed. The log
+// format permits any hex rendering, so "0x1", "0x01" and "0X1" are the
+// same action, and matching on the printed text read the padded forms as
+// unrecognized.
 const (
-	recoveryActionNone             = "0x0" // None
-	recoveryActionGPUResetRequired = "0x1" // GPU Reset Required
-	recoveryActionDrainAndReset    = "0x4" // Drain and Reset
+	recoveryActionNone             = 0x0 // None
+	recoveryActionGPUResetRequired = 0x1 // GPU Reset Required
+	recoveryActionDrainAndReset    = 0x4 // Drain and Reset
 )
+
+// canonicalRecoveryActionCode renders a recovery-action code one way, so
+// the same action keys the same signal entry however NVRM spelled it. An
+// unparseable value passes through rather than being dropped, keeping a
+// malformed line visible instead of silently absent.
+func canonicalRecoveryActionCode(raw string) string {
+	v, ok := parseHexUint32(raw)
+	if !ok {
+		return raw
+	}
+	return fmt.Sprintf("0x%x", v)
+}
 
 // resolveRecoveryAction maps a terminal Xid 154 action onto the decode
 // table's bucket vocabulary.
@@ -54,7 +73,11 @@ const (
 // consequence: a check firing Critical already carries OperationalDrain,
 // so the draining half is expressed there rather than duplicated here.
 func resolveRecoveryAction(action RecoveryAction) string {
-	switch action.ToCode {
+	code, ok := parseHexUint32(action.ToCode)
+	if !ok {
+		return ResolutionXid154Unrecognized
+	}
+	switch code {
 	case recoveryActionNone:
 		return ResolutionIgnore
 	case recoveryActionGPUResetRequired, recoveryActionDrainAndReset:
@@ -105,7 +128,13 @@ func resolveNVLink5Event(code int64, era DriverEra, detail NVLink5Detail, action
 // occurrence to investigate. That differs deliberately from
 // recovery_action_counts, which counts GPUs.
 func NVLink5ResolutionCounts(events []XidEvent, driverVersion string) map[string]int64 {
-	terminal := TerminalRecoveryActions(events)
+	return nvlink5ResolutionCounts(events, driverVersion, TerminalRecoveryActions(events))
+}
+
+// nvlink5ResolutionCounts is [NVLink5ResolutionCounts] with the terminal
+// recovery actions supplied, so a caller that has already derived them
+// does not derive them a second time.
+func nvlink5ResolutionCounts(events []XidEvent, driverVersion string, terminal map[string]RecoveryAction) map[string]int64 {
 	era := DriverEraFromVersion(driverVersion)
 
 	var counts map[string]int64
