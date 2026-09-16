@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
@@ -26,7 +27,7 @@ func TestCollect_HealthyNode(t *testing.T) {
 		node.NodeMeasurement{GPUCount: 4},
 	))
 
-	nv, err := toolkit.Collect(cat, sensor)
+	nv, err := toolkit.Collect(cat, nil, sensor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestCollect_FailingNode(t *testing.T) {
 		node.NodeMeasurement{GPUCount: 3},
 	))
 
-	nv, err := toolkit.Collect(cat, sensor)
+	nv, err := toolkit.Collect(cat, nil, sensor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +59,34 @@ func TestCollect_FailingNode(t *testing.T) {
 	}
 	if nv.ExitCode() != 1 {
 		t.Errorf("exit code = %d, want 1", nv.ExitCode())
+	}
+}
+
+func TestCollect_ContinuousCadenceDropsPrologChecks(t *testing.T) {
+	cat := catalog.New(
+		catalog.WithArchitecture("GB200"),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+	sensor := toolkit.NewGPUSensor(toolkit.MockGPU(
+		gpu.GPUMeasurement{GPUID: "GPU-0"},
+	))
+	cadence := health.Continuous
+	nv, err := toolkit.Collect(cat, &cadence, sensor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, v := range nv.CheckResults {
+		seen[v.CheckID] = true
+	}
+	for _, v := range nv.SkippedChecks {
+		seen[v.CheckID] = true
+	}
+	if seen["gpu_power_limit"] || seen["gpu_sensor_throttle"] {
+		t.Errorf("CONTINUOUS Collect included Prolog checks: %v", seen)
+	}
+	if !seen["gpu_power_state"] {
+		t.Error("CONTINUOUS Collect missing Continuous check gpu_power_state")
 	}
 }
 
@@ -84,7 +113,7 @@ func TestCollect_MissingSensorSurfacesAsSkip(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	nv, err := toolkit.Collect(cat, emptySensor{name: "node"})
+	nv, err := toolkit.Collect(cat, nil, emptySensor{name: "node"})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -125,7 +154,7 @@ func TestCollect_MissingSensorWarns(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	if _, err := toolkit.Collect(cat, emptySensor{name: "node"}); err != nil {
+	if _, err := toolkit.Collect(cat, nil, emptySensor{name: "node"}); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 
@@ -179,7 +208,7 @@ func TestCollect_SensorErrorDegradesToCritical(t *testing.T) {
 		},
 	}
 
-	nv, err := toolkit.Collect(cat, sensor)
+	nv, err := toolkit.Collect(cat, nil, sensor)
 	if err != nil {
 		t.Fatalf("Collect returned error, want graceful degrade: %v", err)
 	}
@@ -225,7 +254,7 @@ func TestCollect_FailingSensorDoesNotMaskHealthy(t *testing.T) {
 		},
 	}
 
-	nv, err := toolkit.Collect(cat, healthy, failing)
+	nv, err := toolkit.Collect(cat, nil, healthy, failing)
 	if err != nil {
 		t.Fatalf("Collect returned error: %v", err)
 	}
@@ -302,7 +331,7 @@ func TestCollectWithTimeout_UninterruptibleSensorDoesNotHang(t *testing.T) {
 
 	done := make(chan health.NodeVerdict, 1)
 	go func() {
-		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, s)
+		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, s)
 		done <- nv
 	}()
 
@@ -335,7 +364,7 @@ func TestCollectWithTimeout_TimeoutDegradesToCritical(t *testing.T) {
 	}
 	defer close(s.release)
 
-	nv, err := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, s)
+	nv, err := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, s)
 	if err != nil {
 		t.Fatalf("CollectWithTimeout returned error, want graceful degrade: %v", err)
 	}
@@ -381,7 +410,7 @@ func TestCollectWithTimeout_TimeoutDoesNotMaskHealthy(t *testing.T) {
 	}
 	defer close(slow.release)
 
-	nv, err := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, healthy, slow)
+	nv, err := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, healthy, slow)
 	if err != nil {
 		t.Fatalf("CollectWithTimeout returned error: %v", err)
 	}
@@ -433,7 +462,7 @@ func TestCollectWithTimeout_CircuitBreakerSkipsWedgedResource(t *testing.T) {
 
 	done := make(chan health.NodeVerdict, 1)
 	go func() {
-		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, first, second)
+		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, first, second)
 		done <- nv
 	}()
 
@@ -483,7 +512,7 @@ func TestCollectWithTimeout_CircuitBreakerScopedToResource(t *testing.T) {
 
 	done := make(chan health.NodeVerdict, 1)
 	go func() {
-		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, wedged, healthy)
+		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, wedged, healthy)
 		done <- nv
 	}()
 
@@ -561,7 +590,7 @@ func TestCollectWithTimeout_SensorPanicDegradesToCritical(t *testing.T) {
 		},
 	}
 
-	nv, err := toolkit.CollectWithTimeout(cat, time.Second, s)
+	nv, err := toolkit.CollectWithTimeout(cat, time.Second, nil, s)
 	if err != nil {
 		t.Fatalf("CollectWithTimeout returned error, want graceful degrade: %v", err)
 	}

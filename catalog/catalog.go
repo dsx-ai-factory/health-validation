@@ -266,8 +266,10 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 // OverallSeverity untouched but marks the check as unassessed in
 // SkippedChecks. Supply the measurements for every category
 // in [Catalog.Categories], or register only the checks you intend to feed.
-func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVerdict, error) {
-	verdicts, err := c.EvaluateAllRaw(measurements...)
+// cadence is forwarded to [Catalog.EvaluateAllRaw]; nil evaluates every
+// registered check.
+func (c *Catalog) EvaluateAll(cadence *health.SchedulingCadence, measurements ...health.Measurement) (health.NodeVerdict, error) {
+	verdicts, err := c.EvaluateAllRaw(cadence, measurements...)
 	if err != nil {
 		return health.NodeVerdict{}, err
 	}
@@ -301,7 +303,15 @@ func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVe
 // skips for the others. That is a report, not a failure: skips do not
 // affect OverallSeverity. Register only the checks you intend to feed if
 // you want a narrower verdict.
-func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.CheckVerdict, error) {
+//
+// cadence, when non-nil, drops checks whose declared cadence does not
+// cover that window before this routing. Those checks produce no verdict
+// (not a skip): they were out of this window, matching [Catalog.List].
+// A nil cadence evaluates every registered check. Continuous is the enum
+// zero value, so the pointer distinguishes unfiltered from
+// filter-to-Continuous. [Catalog.Evaluate] of an explicit ID is not
+// cadence-filtered.
+func (c *Catalog) EvaluateAllRaw(cadence *health.SchedulingCadence, measurements ...health.Measurement) ([]health.CheckVerdict, error) {
 	if err := c.requireArchitecture(); err != nil {
 		return nil, err
 	}
@@ -309,6 +319,9 @@ func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.C
 	c.mu.RLock()
 	checks := make(map[string]*health.CheckDefinition, len(c.checks))
 	for k, v := range c.checks {
+		if cadence != nil && !v.SchedulingCadence.Covers(*cadence) {
+			continue
+		}
 		checks[k] = v
 	}
 	snap := paramsSnapshot{

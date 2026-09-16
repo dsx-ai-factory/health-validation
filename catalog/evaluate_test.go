@@ -45,7 +45,7 @@ func TestEvaluate_ArchitectureUnset(t *testing.T) {
 	if !errors.Is(err, catalog.ErrArchitectureUnset) {
 		t.Fatalf("Evaluate error = %v, want ErrArchitectureUnset", err)
 	}
-	_, err = cat.EvaluateAllRaw()
+	_, err = cat.EvaluateAllRaw(nil)
 	if !errors.Is(err, catalog.ErrArchitectureUnset) {
 		t.Fatalf("EvaluateAllRaw error = %v, want ErrArchitectureUnset", err)
 	}
@@ -123,7 +123,7 @@ func TestEvaluateAll_RoutesByRequiredSignals_NoCrossMeasurementSkips(t *testing.
 	cat.MustRegister(inventory)
 	cat.MustRegister(perDevice)
 
-	verdicts, err := cat.EvaluateAllRaw(
+	verdicts, err := cat.EvaluateAllRaw(nil,
 		inventoryMeasurement{Names: []string{"dev0", "dev1"}},
 		deviceMeasurement{Device: "dev0", Metric: 0.5},
 		deviceMeasurement{Device: "dev1", Metric: 0.5},
@@ -177,7 +177,7 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	verdicts, err := cat.EvaluateAllRaw(m)
+	verdicts, err := cat.EvaluateAllRaw(nil, m)
 	if err != nil {
 		t.Fatalf("EvaluateAllRaw: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestEvaluateAll_DisabledOutranksSensorMissing(t *testing.T) {
 	cat.MustRegister(disabled)
 
 	// No measurements at all: the Node sensor never reported.
-	verdicts, err := cat.EvaluateAllRaw()
+	verdicts, err := cat.EvaluateAllRaw(nil)
 	if err != nil {
 		t.Fatalf("EvaluateAllRaw: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestEvaluateAll_MissingSensorRecordsSkip(t *testing.T) {
 	cat.MustRegister(present)
 	cat.MustRegister(absent)
 
-	nv, err := cat.EvaluateAll(node.NodeMeasurement{GPUCount: 4})
+	nv, err := cat.EvaluateAll(nil, node.NodeMeasurement{GPUCount: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestEvaluateAll_SensorMissingCascadesToDependents(t *testing.T) {
 	cat.MustRegister(base)
 	cat.MustRegister(dependent)
 
-	verdicts, err := cat.EvaluateAllRaw()
+	verdicts, err := cat.EvaluateAllRaw(nil)
 	if err != nil {
 		t.Fatalf("EvaluateAllRaw: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestEvaluateAll_Dependencies(t *testing.T) {
 	cat.MustRegister(driver)
 	cat.MustRegister(dependent)
 
-	nv, err := cat.EvaluateAll(node.NodeMeasurement{GPUCount: 4})
+	nv, err := cat.EvaluateAll(nil, node.NodeMeasurement{GPUCount: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestEvaluateAll_ErroredMeasurement(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	verdicts, err := cat.EvaluateAllRaw(
+	verdicts, err := cat.EvaluateAllRaw(nil,
 		xid.ErroredXid("boot", errors.New("journal unavailable: ERROR_READ_FAILED"),
 			xid.MeasurementSignals...),
 	)
@@ -472,7 +472,7 @@ func TestEvaluateAll_ErroredMeasurement_GatesOnRequiredSignals(t *testing.T) {
 	cat.MustRegister(standard)
 	cat.MustRegister(thermal)
 
-	verdicts, err := cat.EvaluateAllRaw(gpu.ErroredGPU("GPU-4", errors.New("GPU is lost"),
+	verdicts, err := cat.EvaluateAllRaw(nil, gpu.ErroredGPU("GPU-4", errors.New("GPU is lost"),
 		gpu.MeasurementSignals...))
 	if err != nil {
 		t.Fatalf("EvaluateAllRaw: %v", err)
@@ -550,7 +550,7 @@ func TestEvaluateAll_ErroredMeasurement_PartialFailureSparesUnaffectedChecks(t *
 	m := twoSignalMeasurement{First: 4}
 	m.AddError(errors.New("second-signal query: ERROR_UNKNOWN"), "second")
 
-	verdicts, err := cat.EvaluateAllRaw(m)
+	verdicts, err := cat.EvaluateAllRaw(nil, m)
 	if err != nil {
 		t.Fatalf("EvaluateAllRaw: %v", err)
 	}
@@ -613,7 +613,7 @@ func TestEvaluateAll_ErroredMeasurement_JoinsMatchingErrorDetails(t *testing.T) 
 	m.AddError(errors.New("first-signal query: ERROR_UNKNOWN"), "first")
 	m.AddError(errors.New("second-signal query: ERROR_UNKNOWN"), "second")
 
-	verdicts, err := cat.EvaluateAllRaw(m)
+	verdicts, err := cat.EvaluateAllRaw(nil, m)
 	if err != nil {
 		t.Fatalf("EvaluateAllRaw: %v", err)
 	}
@@ -670,7 +670,7 @@ func TestEvaluateAll_MixedErroredAndHealthy(t *testing.T) {
 	errored := gpu.ErroredGPU("GPU-7", errors.New("GPU-7 fell off the bus"),
 		gpu.MeasurementSignals...)
 
-	nv, err := cat.EvaluateAll(healthy, errored)
+	nv, err := cat.EvaluateAll(nil, healthy, errored)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
@@ -877,7 +877,7 @@ func TestEvaluateAll_NodeVerdict(t *testing.T) {
 		Events:     []xid.XidEvent{{XidCode: 79}},
 	}
 
-	nv, err := cat.EvaluateAll(m)
+	nv, err := cat.EvaluateAll(nil, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -894,7 +894,7 @@ func TestEvaluateAll_NodeVerdict(t *testing.T) {
 func TestEvaluateAll_StampsCatalogVersion(t *testing.T) {
 	cat := catalog.New(catalog.WithArchitecture("GB200"))
 
-	nv, err := cat.EvaluateAll(node.NodeMeasurement{GPUCount: 8})
+	nv, err := cat.EvaluateAll(nil, node.NodeMeasurement{GPUCount: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -922,7 +922,7 @@ func TestEvaluateAll_AppliesOverrides(t *testing.T) {
 		})),
 	)
 
-	nv, err := cat.EvaluateAll(m)
+	nv, err := cat.EvaluateAll(nil, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -934,7 +934,7 @@ func TestEvaluateAll_AppliesOverrides(t *testing.T) {
 	}
 
 	// And the resolved threshold must record the override and its provenance.
-	verdicts, err := cat.EvaluateAllRaw(m)
+	verdicts, err := cat.EvaluateAllRaw(nil, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -969,7 +969,7 @@ func TestEvaluateAll_HonorsDisabledChecks(t *testing.T) {
 		catalog.WithDisabledChecks("gpu_xid_79"),
 	)
 
-	verdicts, err := cat.EvaluateAllRaw(xid.XidMeasurement{
+	verdicts, err := cat.EvaluateAllRaw(nil, xid.XidMeasurement{
 		XidCounts: map[int64]int64{79: 1}, Since: "boot", EventCount: 1,
 	})
 	if err != nil {

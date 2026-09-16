@@ -18,7 +18,7 @@
 //	)
 //
 //	m := gpu.GPUMeasurement{GPUID: "GPU-0"}
-//	nv, err := cat.EvaluateAll(m)
+//	nv, err := cat.EvaluateAll(nil, m)
 //	if err != nil { /* handle */ }
 //	os.Exit(nv.ExitCode())
 //
@@ -26,12 +26,15 @@
 // CheckVerdict is produced per (measurement, matching check) pair, and
 // [health.AggregateNodeVerdict] rolls them into the node verdict.
 //
-// Registering a check is what declares that its sensor is expected, so
-// every registered check yields a verdict — a result or a skip — and none
-// can silently vanish. A category that supplies no measurement at all is
-// skipped [health.SensorMissing]. Supply measurements for every category
-// in [Catalog.Categories] for full coverage, or register only the checks
-// you intend to feed.
+// [Catalog.EvaluateAll] takes an optional cadence. nil considers every
+// registered check. A non-nil window keeps only checks whose declared
+// cadence covers it; the rest are omitted (no verdict, not a skip). Cadence
+// is an argument on each call, not a catalog option.
+//
+// For checks that remain, registration means a sensor is expected: each
+// yields a result or a skip. A category with no measurement is skipped
+// [health.SensorMissing]. Pass measurements for every category in
+// [Catalog.Categories], or register only the checks you intend to feed.
 //
 // # Architectures
 //

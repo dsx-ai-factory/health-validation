@@ -300,6 +300,8 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		"path to a YAML config file that parameterizes and disables checks (optional)")
 	nodeID := fs.String("node-id", a.nodeID,
 		"identifier of the node under test (overrides the configured default or system hostname)")
+	cadenceFlag := fs.String("cadence", "",
+		"evaluate checks whose scheduling cadence covers this window (CONTINUOUS, PROLOG, MAINTENANCE); omit to run every registered check")
 	if err := fs.Parse(args); err != nil {
 		return exitError
 	}
@@ -309,15 +311,28 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	}
 
 	nodeIDSet := a.nodeIDSet
+	cadenceSet := false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "node-id" {
 			nodeIDSet = true
+		}
+		if f.Name == "cadence" {
+			cadenceSet = true
 		}
 	})
 	resolvedNodeID, err := a.resolveNodeID(*nodeID, nodeIDSet)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
+	}
+	var cadence *health.SchedulingCadence
+	if cadenceSet {
+		sc, parseErr := health.ParseSchedulingCadence(*cadenceFlag)
+		if parseErr != nil {
+			fmt.Fprintf(stderr, "%s: --cadence: %v\n", a.prog, parseErr)
+			return exitError
+		}
+		cadence = &sc
 	}
 
 	// Close only the host backend: per-domain overrides are caller-owned (see
@@ -385,7 +400,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	if a.ib != nil {
 		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
 	}
-	return evaluate(cat, timeout, a.prog, resolvedNodeID, stdout, stderr, sensors...)
+	return evaluate(cat, timeout, cadence, a.prog, resolvedNodeID, stdout, stderr, sensors...)
 }
 
 func (a *App) resolveNodeID(value string, supplied bool) (string, error) {
@@ -484,10 +499,11 @@ func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch
 
 // evaluate runs the sensors through the catalog under the given per-sensor
 // timeout, prints the node verdict as indented JSON, and returns the process
-// exit code. It takes the timeout and sensors as arguments so tests can
-// inject mock sensors without hardware.
-func evaluate(cat *catalog.Catalog, timeout time.Duration, prog, nodeID string, stdout, stderr io.Writer, sensors ...toolkit.Sensor) int {
-	verdict, err := toolkit.CollectWithTimeout(cat, timeout, sensors...)
+// exit code. It takes the timeout, cadence, and sensors as arguments so tests
+// can inject mock sensors without hardware. A nil cadence evaluates every
+// registered check.
+func evaluate(cat *catalog.Catalog, timeout time.Duration, cadence *health.SchedulingCadence, prog, nodeID string, stdout, stderr io.Writer, sensors ...toolkit.Sensor) int {
+	verdict, err := toolkit.CollectWithTimeout(cat, timeout, cadence, sensors...)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 		return exitError

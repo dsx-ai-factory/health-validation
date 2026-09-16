@@ -596,7 +596,7 @@ func TestEvaluateExitCodes(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := evaluate(nodeCatalog(t), toolkit.DefaultSensorTimeout, "test", testNodeID, &stdout, &stderr, c.sensor)
+			code := evaluate(nodeCatalog(t), toolkit.DefaultSensorTimeout, nil, "test", testNodeID, &stdout, &stderr, c.sensor)
 			if code != c.want {
 				t.Fatalf("evaluate = %d, want %d; stderr=%q", code, c.want, stderr.String())
 			}
@@ -756,5 +756,80 @@ func TestRunCommandArchDiscoveryFailureDrains(t *testing.T) {
 	}
 	if cpuCollected {
 		t.Error("collected CPU measurements despite discovery failure")
+	}
+}
+
+func verdictHasCheck(nv health.NodeVerdict, id string) bool {
+	for _, v := range nv.CheckResults {
+		if v.CheckID == id {
+			return true
+		}
+	}
+	for _, v := range nv.SkippedChecks {
+		if v.CheckID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func cadenceRunApp() *App {
+	a := New().WithProgramName("test")
+	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	a.WithXidBackend(xidSpyBackend{called: new(bool)})
+	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
+	return a
+}
+
+func TestRunCommandRejectsInvalidCadence(t *testing.T) {
+	a := New().WithProgramName("test")
+	a.host = panicHost{}
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"run", "--node-id", testNodeID, "--cadence", "NOT_A_CADENCE"}, &stdout, &stderr); code != exitError {
+		t.Fatalf("Run exit = %d, want %d; stderr = %q", code, exitError, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want no verdict", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "unknown scheduling cadence") {
+		t.Errorf("stderr = %q, want unknown cadence error", stderr.String())
+	}
+}
+
+func TestRunCommandDefaultIncludesPrologChecks(t *testing.T) {
+	a := cadenceRunApp()
+	var stdout, stderr bytes.Buffer
+	if code := a.runCommand([]string{"--node-id", testNodeID}, &stdout, &stderr); code == exitError {
+		t.Fatalf("runCommand exit = %d; stderr = %q", code, stderr.String())
+	}
+	var v health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+		t.Fatalf("unmarshal: %v; stdout = %s", err, stdout.String())
+	}
+	for _, id := range []string{"gpu_power_limit", "gpu_sensor_throttle"} {
+		if !verdictHasCheck(v, id) {
+			t.Errorf("default run missing %s; unfiltered default evaluates all registered checks", id)
+		}
+	}
+}
+
+func TestRunCommandCadenceContinuousDropsPrologChecks(t *testing.T) {
+	a := cadenceRunApp()
+	var stdout, stderr bytes.Buffer
+	if code := a.runCommand([]string{"--node-id", testNodeID, "--cadence", "CONTINUOUS"}, &stdout, &stderr); code == exitError {
+		t.Fatalf("runCommand exit = %d; stderr = %q", code, stderr.String())
+	}
+	var v health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+		t.Fatalf("unmarshal: %v; stdout = %s", err, stdout.String())
+	}
+	for _, id := range []string{"gpu_power_limit", "gpu_sensor_throttle"} {
+		if verdictHasCheck(v, id) {
+			t.Errorf("CONTINUOUS run included Prolog check %s", id)
+		}
+	}
+	if !verdictHasCheck(v, "gpu_count") {
+		t.Error("CONTINUOUS run missing Continuous check gpu_count")
 	}
 }

@@ -23,7 +23,7 @@ var MeasurementSignals = []string{
 // lives in [gpu.GPUMeasurement].
 //
 //	m := node.NodeMeasurement{GPUCount: 8}
-//	verdict, err := cat.EvaluateAll(m)
+//	verdict, err := cat.EvaluateAll(nil, m)
 //
 // Sensors that encounter per-field collection failures call AddError
 // for each failing query, naming the signals that query would have

@@ -80,7 +80,7 @@ func TestXidSensor_InjectedFailure(t *testing.T) {
 		"NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3",
 	))
 
-	nv, err := toolkit.Collect(xidCatalog(), s)
+	nv, err := toolkit.Collect(xidCatalog(), nil, s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestXidSensor_InjectedFailure(t *testing.T) {
 func TestXidSensor_CleanBoot(t *testing.T) {
 	s := toolkit.NewXidSensor(toolkit.MockXid())
 
-	nv, err := toolkit.Collect(xidCatalog(), s)
+	nv, err := toolkit.Collect(xidCatalog(), nil, s)
 	if err != nil {
 		t.Fatal(err)
 	}

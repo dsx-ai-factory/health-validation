@@ -4,7 +4,8 @@
 // A [Sensor] collects measurements from a hardware domain, either per observed
 // entity or host-wide. [Collect] runs one or more sensors, hands their
 // measurements to [catalog.Catalog.EvaluateAll], and returns the aggregated
-// [health.NodeVerdict].
+// [health.NodeVerdict]. Pass a non-nil cadence to filter the evaluation
+// window; nil evaluates every registered check.
 //
 // # Sensors and reference backends
 //
@@ -30,7 +31,7 @@
 //	)
 //	gpu := toolkit.NewGPUSensor(nvml.New())
 //	cpu := toolkit.NewCPUSensor(toolkit.SysfsCPU())
-//	nv, err := toolkit.Collect(cat, gpu, cpu)
+//	nv, err := toolkit.Collect(cat, nil, gpu, cpu)
 //	if err != nil { /* handle */ }
 //	os.Exit(nv.ExitCode())
 package toolkit

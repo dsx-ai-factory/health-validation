@@ -312,9 +312,11 @@ spec:
 A `cron` entry or `systemd` timer running `health-validation run` and piping
 stdout to your log shipper is a complete integration for non-scheduler fleets.
 
-> **Cadence note.** All registered checks run on **every** invocation — the CLI
-> does not (yet) filter by a check's declared `SchedulingCadence`. So you get the
-> full suite each run; control frequency from the scheduler, not the tool.
+> **Cadence note.** Omit `--cadence` and all registered
+> checks run on every invocation. Pass `--cadence=CONTINUOUS|PROLOG|MAINTENANCE`
+> to evaluate only checks whose declared cadence covers that window (Continuous
+> ⊂ Prolog ⊂ Maintenance). A job-time run that must not evaluate Prolog
+> checks uses `--cadence=CONTINUOUS`.
 
 ## 3. Read and act on the verdict
 

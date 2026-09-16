@@ -39,7 +39,7 @@ func measurementFor(codes ...int64) xid.XidMeasurement {
 
 func evalXid(t *testing.T, codes ...int64) health.NodeVerdict {
 	t.Helper()
-	nv, err := xidCatalog(t).EvaluateAll(measurementFor(codes...))
+	nv, err := xidCatalog(t).EvaluateAll(nil, measurementFor(codes...))
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
@@ -94,7 +94,7 @@ func nvlink5MeasurementFor(code int64, fatal bool) xid.XidMeasurement {
 }
 
 func TestXidErrors_NVLink5_FatalIsCritical(t *testing.T) {
-	nv, err := xidCatalog(t).EvaluateAll(nvlink5MeasurementFor(146, true))
+	nv, err := xidCatalog(t).EvaluateAll(nil, nvlink5MeasurementFor(146, true))
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestXidErrors_NVLink5_FatalIsCritical(t *testing.T) {
 }
 
 func TestXidErrors_NVLink5_NonfatalIsWarningNoAction(t *testing.T) {
-	nv, err := xidCatalog(t).EvaluateAll(nvlink5MeasurementFor(146, false))
+	nv, err := xidCatalog(t).EvaluateAll(nil, nvlink5MeasurementFor(146, false))
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}

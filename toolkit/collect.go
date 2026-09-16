@@ -19,17 +19,20 @@ import (
 const DefaultSensorTimeout = 60 * time.Second
 
 // Collect runs the provided sensors with the default per-sensor timeout,
-// evaluates all registered checks against each measurement, and
-// aggregates results into a node-level verdict. It is a thin wrapper over
-// [CollectWithTimeout]; see it for the collection and degradation
-// semantics.
-func Collect(cat *catalog.Catalog, sensors ...Sensor) (health.NodeVerdict, error) {
-	return CollectWithTimeout(cat, DefaultSensorTimeout, sensors...)
+// evaluates the catalog against the collected measurements, and
+// aggregates results into a node-level verdict. cadence is forwarded to
+// [catalog.Catalog.EvaluateAll]; nil evaluates every registered check.
+// It is a thin wrapper over [CollectWithTimeout]; see it for collection
+// and degradation semantics.
+func Collect(cat *catalog.Catalog, cadence *health.SchedulingCadence, sensors ...Sensor) (health.NodeVerdict, error) {
+	return CollectWithTimeout(cat, DefaultSensorTimeout, cadence, sensors...)
 }
 
 // CollectWithTimeout is [Collect] with an explicit per-sensor collection
 // timeout (used directly mainly by tests, which cannot wait the full
-// default). Each sensor is bounded independently and runs sequentially:
+// default, and by the CLI when YAML sets collection_timeout_seconds).
+// cadence is forwarded to [catalog.Catalog.EvaluateAll]; nil evaluates
+// every registered check. Each sensor is bounded independently and runs sequentially:
 // if a sensor's Measure does not return within timeout, or returns an
 // error, the failure is degraded into errored measurements (via
 // [Sensor.Errored]) so the catalog fails exactly the dependent checks
@@ -42,7 +45,7 @@ func Collect(cat *catalog.Catalog, sensors ...Sensor) (health.NodeVerdict, error
 // and degraded without re-entering the presumed-wedged data source.
 // CollectWithTimeout returns an error only when evaluation itself fails,
 // never for a sensor failure.
-func CollectWithTimeout(cat *catalog.Catalog, timeout time.Duration, sensors ...Sensor) (health.NodeVerdict, error) {
+func CollectWithTimeout(cat *catalog.Catalog, timeout time.Duration, cadence *health.SchedulingCadence, sensors ...Sensor) (health.NodeVerdict, error) {
 	// Backend resource keys whose collection timed out; sensors sharing one
 	// are skipped rather than re-entering a presumed-wedged data source.
 	wedged := make(map[string]bool)
@@ -78,7 +81,7 @@ func CollectWithTimeout(cat *catalog.Catalog, timeout time.Duration, sensors ...
 		}
 	}
 
-	nv, err := cat.EvaluateAll(all...)
+	nv, err := cat.EvaluateAll(cadence, all...)
 	if err != nil {
 		return nv, err
 	}

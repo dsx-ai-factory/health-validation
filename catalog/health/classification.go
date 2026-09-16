@@ -1,6 +1,9 @@
 package health
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // --- Severity ---
 
@@ -220,6 +223,17 @@ var cadenceFrequency = map[SchedulingCadence]int{
 // returns every check.
 func (sc SchedulingCadence) Covers(requested SchedulingCadence) bool {
 	return cadenceFrequency[sc] >= cadenceFrequency[requested]
+}
+
+// ParseSchedulingCadence maps a CONTINUOUS / PROLOG / MAINTENANCE name to
+// the enum. Comparison is case-insensitive after trim; unknown names error.
+func ParseSchedulingCadence(s string) (SchedulingCadence, error) {
+	name := strings.ToUpper(strings.TrimSpace(s))
+	v, ok := schedulingCadenceFromName[name]
+	if !ok {
+		return 0, fmt.Errorf("unknown scheduling cadence %q", s)
+	}
+	return v, nil
 }
 
 func (sc SchedulingCadence) String() string {

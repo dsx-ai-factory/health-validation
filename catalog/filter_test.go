@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/node"
 )
 
 // cadenceCheck builds a minimal registrable check with the given id and cadence.
@@ -14,9 +16,9 @@ func cadenceCheck(id string, cadence health.SchedulingCadence) health.CheckDefin
 		ID:                id,
 		Category:          health.Node,
 		SchedulingCadence: cadence,
-		RequiredSignals:   []string{"x"},
+		RequiredSignals:   []string{"gpu_count"},
 		Thresholds:        map[string]health.ThresholdSpec{},
-		Rules:             []health.Rule{{Expression: "x > 0", Severity: health.Critical, Message: "x"}},
+		Rules:             []health.Rule{{Expression: "gpu_count > 0", Severity: health.Critical, Message: "x"}},
 	}
 }
 
@@ -59,5 +61,66 @@ func TestListFiltersByCadenceHierarchy(t *testing.T) {
 	// A nil cadence filter is ignored: every check is returned.
 	if got := len(cat.List(catalog.Filter{})); got != 3 {
 		t.Errorf("List(no filter) returned %d checks, want 3", got)
+	}
+}
+
+func cadenceCatalog() *catalog.Catalog {
+	cat := catalog.NewEmpty(catalog.WithArchitecture(catalogtest.DummyArchitecture))
+	cat.MustRegister(cadenceCheck("cont", health.Continuous))
+	cat.MustRegister(cadenceCheck("prolog", health.Prolog))
+	cat.MustRegister(cadenceCheck("maint", health.MaintenanceWindow))
+	return cat
+}
+
+func evaluatedIDs(t *testing.T, cat *catalog.Catalog, cadence *health.SchedulingCadence) []string {
+	t.Helper()
+	verdicts, err := cat.EvaluateAllRaw(cadence, node.NodeMeasurement{GPUCount: 1})
+	if err != nil {
+		t.Fatalf("EvaluateAllRaw: %v", err)
+	}
+	ids := make([]string, len(verdicts))
+	for i, v := range verdicts {
+		ids[i] = v.CheckID
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+func TestEvaluateAll_FiltersByCadenceHierarchy(t *testing.T) {
+	cat := cadenceCatalog()
+	tests := []struct {
+		name    string
+		want    []string
+		cadence health.SchedulingCadence
+	}{
+		{name: "continuous evaluates only continuous", cadence: health.Continuous, want: []string{"cont"}},
+		{name: "prolog evaluates continuous and prolog", cadence: health.Prolog, want: []string{"cont", "prolog"}},
+		{name: "maintenance evaluates every check", cadence: health.MaintenanceWindow, want: []string{"cont", "maint", "prolog"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := tt.cadence
+			got := evaluatedIDs(t, cat, &c)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("EvaluateAll cadence=%v = %v, want %v", tt.cadence, got, tt.want)
+			}
+		})
+	}
+
+	got := evaluatedIDs(t, cat, nil)
+	want := []string{"cont", "maint", "prolog"}
+	if !slices.Equal(got, want) {
+		t.Errorf("EvaluateAll unset cadence = %v, want %v", got, want)
+	}
+}
+
+func TestEvaluate_IgnoresCadenceFilter(t *testing.T) {
+	cat := cadenceCatalog()
+	v, err := cat.Evaluate("prolog", node.NodeMeasurement{GPUCount: 1})
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if v.Skipped {
+		t.Fatalf("Evaluate(prolog) skipped with %v; single-ID Evaluate is not cadence-filtered", v.SkipReason)
 	}
 }

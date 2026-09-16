@@ -143,7 +143,7 @@ func TestCollectWithTimeout_CPUTimeoutDegradesToCritical(t *testing.T) {
 		return cpu.CPUMeasurement{}, ctx.Err()
 	}))
 
-	verdict, err := toolkit.CollectWithTimeout(cpuCatalog(), 20*time.Millisecond, sensor)
+	verdict, err := toolkit.CollectWithTimeout(cpuCatalog(), 20*time.Millisecond, nil, sensor)
 	if err != nil {
 		t.Fatalf("CollectWithTimeout returned error: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestCollectWithTimeout_CPUBackendFailureProducesResult(t *testing.T) {
 		return cpu.CPUMeasurement{}, cause
 	}))
 
-	verdict, err := toolkit.CollectWithTimeout(cpuCatalog(), time.Second, sensor)
+	verdict, err := toolkit.CollectWithTimeout(cpuCatalog(), time.Second, nil, sensor)
 	if err != nil {
 		t.Fatalf("CollectWithTimeout returned error: %v", err)
 	}

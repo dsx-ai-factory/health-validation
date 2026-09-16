@@ -36,7 +36,7 @@ var MeasurementSignals = []string{
 // DCGM, NVML, or custom) and pass it to catalog evaluation.
 //
 //	m := gpu.GPUMeasurement{GPUID: "GPU-0"}
-//	verdict, err := cat.EvaluateAll(m)
+//	verdict, err := cat.EvaluateAll(nil, m)
 //
 // Sensors that encounter per-field collection failures call AddError
 // for each failing query, naming the signals that query would have

@@ -5,7 +5,7 @@
 | Package | Role |
 |---|---|
 | `catalog/health` | Shared vocabulary and node-verdict aggregation. Defines all domain types: `CheckDefinition`, `CheckVerdict`, `NodeVerdict`, the `Measurement` interface, and all enums. It depends on the leaf `catalog/version` package for verdict provenance and does not import check-domain or evaluation packages. |
-| `catalog` | Check registry and evaluation entry point. `Catalog` is a thread-safe registry that holds check definitions and exposes `EvaluateAll(measurements...)`. Built-in checks are registered in `checks.go`. |
+| `catalog` | Check registry and evaluation entry point. `Catalog` is a thread-safe registry that holds check definitions and exposes `EvaluateAll(cadence, measurements...)`. Built-in checks are registered in `checks.go`. |
 | `catalog/cpu` | `cpu.CPUMeasurement` and the host-wide `CPUCount` and `NUMANodeCount` check definitions. |
 | `catalog/gpu` | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPowerState` check definitions. |
 | `catalog/node` | `node.NodeMeasurement` struct and the node-level `GPUCount` check definition. |
@@ -53,6 +53,8 @@ To add a sensor for a new hardware domain: define a measurement struct in `catal
 | `catalog.WithExecutionContext(health.OperatorInfra)` | Checks that don't list this context are skipped with `SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL`. |
 | `catalog.WithDisabledChecks("check_id", ...)` | Named checks are skipped with `CHECK_DISABLED`. Built from a config file's `disabled_checks:` via `Config.DisabledCheckIDs()`. |
 | `catalog.WithOverrides(overrides)` | Applies operator threshold overrides. Built from a config file via `Config.Overrides()`. |
+
+Scheduling cadence is not a construction option. Pass a `*health.SchedulingCadence` into `EvaluateAll` / `Collect` / `CollectWithTimeout` (nil evaluates every registered check). One catalog can serve Continuous, Prolog, and Maintenance windows.
 
 ## Execution contexts
 
@@ -132,7 +134,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 
 1. Add any new signal fields to the measurement struct in `catalog/<domain>/measurement.go`. Add matching `Signal*` string constants.
 2. Write a `CheckDefinition` factory in `catalog/<domain>/`. Declare `RequiredSignals`, `Thresholds`, and `Rules` (CEL expressions referencing signal names and threshold names).
-3. Register it in `catalog/checks.go` via `builtinChecks()`.
+3. Register it in `catalog/checks.go` via `builtinChecks()` so `catalog.New()` and the stock CLI run it. Declare `SchedulingCadence` on the check. Omit `--cadence` (or pass a nil cadence into `EvaluateAll` / `Collect` / `CollectWithTimeout`) to evaluate every registered check; pass a window to keep only checks whose cadence covers it (Continuous ⊂ Prolog ⊂ Maintenance).
 4. Add a test covering the PASS path, at least one non-PASS path, and the skipped path (errored measurement).
 
 ## Build

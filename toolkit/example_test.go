@@ -22,7 +22,7 @@ func Example() {
 	))
 
 	// Collect measurements and evaluate.
-	verdict, err := toolkit.Collect(cat, sensor)
+	verdict, err := toolkit.Collect(cat, nil, sensor)
 	if err != nil {
 		panic(err)
 	}

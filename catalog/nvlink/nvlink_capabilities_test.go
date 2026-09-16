@@ -143,7 +143,7 @@ func TestNVLinkCapabilities_EvaluateAllBatchPath(t *testing.T) {
 	m.LinkCount = 18
 	m.SpeedMBytesPerSec = 53125
 
-	nv, err := cat.EvaluateAll(m)
+	nv, err := cat.EvaluateAll(nil, m)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}

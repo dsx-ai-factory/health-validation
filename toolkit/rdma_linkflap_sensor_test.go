@@ -47,7 +47,7 @@ func TestRDMALinkFlapSensor_Measure(t *testing.T) {
 // window trip rdma_linkflap_fatal (default threshold 1) to CRITICAL.
 func TestRDMALinkFlapSensor_FatalFlap(t *testing.T) {
 	s := toolkit.NewRDMALinkFlapSensor(toolkit.MockRDMALinkFlap(twoOutageLines...))
-	nv, err := toolkit.Collect(linkFlapCatalog(), s)
+	nv, err := toolkit.Collect(linkFlapCatalog(), nil, s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestRDMALinkFlapSensor_FatalFlap(t *testing.T) {
 // Only "Link up" lines: no outage, check passes and is not skipped.
 func TestRDMALinkFlapSensor_CleanBoot(t *testing.T) {
 	s := toolkit.NewRDMALinkFlapSensor(toolkit.MockRDMALinkFlap(onlyUpLines...))
-	nv, err := toolkit.Collect(linkFlapCatalog(), s)
+	nv, err := toolkit.Collect(linkFlapCatalog(), nil, s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestRDMALinkFlapSensor_ShortOutagePasses(t *testing.T) {
 		"Thu 2025-12-11 11:49:00 UTC host kernel: mlx5_core 0000:5a:00.0 enp90s0np0: Link down",
 		"Thu 2025-12-11 11:49:10 UTC host kernel: mlx5_core 0000:5a:00.0 enp90s0np0: Link up",
 	))
-	nv, err := toolkit.Collect(linkFlapCatalog(), s)
+	nv, err := toolkit.Collect(linkFlapCatalog(), nil, s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestRDMALinkFlapSensor_Errored(t *testing.T) {
 	if len(ms) != 1 {
 		t.Fatalf("Errored returned %d measurements, want 1", len(ms))
 	}
-	nv, err := toolkit.Collect(linkFlapCatalog(), erroredSensor{ms: ms})
+	nv, err := toolkit.Collect(linkFlapCatalog(), nil, erroredSensor{ms: ms})
 	if err != nil {
 		t.Fatal(err)
 	}

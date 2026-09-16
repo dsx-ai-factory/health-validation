@@ -54,7 +54,7 @@ func TestLazyGPUBackend_HungInitDoesNotHang(t *testing.T) {
 
 	done := make(chan health.NodeVerdict, 1)
 	go func() {
-		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, sensors...)
+		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, sensors...)
 		done <- nv
 	}()
 
@@ -92,7 +92,7 @@ func TestLazyGPUBackend_InitErrorDegrades(t *testing.T) {
 		toolkit.NewXidSensor(toolkit.MockXid()),
 	}
 
-	nv, err := toolkit.CollectWithTimeout(cat, time.Second, sensors...)
+	nv, err := toolkit.CollectWithTimeout(cat, time.Second, nil, sensors...)
 	if err != nil {
 		t.Fatalf("CollectWithTimeout returned error, want graceful degrade: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestLazyGPUBackend_SkipsCloseWhileMeasureInFlight(t *testing.T) {
 	// Time out MeasureNode so its goroutine stays parked inside the backend.
 	done := make(chan struct{})
 	go func() {
-		_, _ = toolkit.CollectWithTimeout(cat, 20*time.Millisecond, toolkit.NewNodeSensor(backend))
+		_, _ = toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, toolkit.NewNodeSensor(backend))
 		close(done)
 	}()
 	select {
