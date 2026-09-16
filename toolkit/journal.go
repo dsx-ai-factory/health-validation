@@ -14,9 +14,10 @@ import (
 // sinceBoot labels measurements collected with journalctl --boot.
 const sinceBoot = "boot"
 
-// runFunc runs journalctl with the given arguments and returns its stdout. It
-// is the seam the journal-backed backends inject so tests can exercise parsing
-// and error handling without a host journal; production uses [runJournalctl].
+// runFunc runs an external command with the given arguments and returns its
+// stdout. It is the seam the command-backed backends inject so tests can
+// exercise parsing and error handling without the host tool; production uses
+// [runJournalctl] for the journal reads and [runIBStat] for ibstat.
 type runFunc func(ctx context.Context, args ...string) ([]byte, error)
 
 // journalMatcher is the per-domain configuration a journal-backed backend

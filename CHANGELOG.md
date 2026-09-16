@@ -3,6 +3,18 @@
 All notable changes to NVIDIA Health Validation are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Features
+
+- New opt-in ibstat sensor. `toolkit.IBStat` runs `ibstat` and emits one
+  `infiniband.PortMeasurement` per port on every channel adapter, carrying the
+  logical and physical state, negotiated rate, and link layer (`InfiniBand` or
+  `Ethernet`). A host without `ibstat` or without adapters yields no
+  measurements. No built-in check consumes the measurement yet, so the sensor
+  runs only when enabled with `App.WithIBStatBackend` alongside consumer
+  checks.
+
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
 Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,

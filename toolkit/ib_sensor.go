@@ -8,10 +8,10 @@ import (
 
 // IBSensor collects InfiniBand measurements through an IB backend.
 //
-// It is backend-agnostic scaffolding: the catalog ships no InfiniBand
-// measurement or check, so the sensor forwards both collection and its errored
-// form to the consumer-supplied backend and holds no InfiniBand types itself.
-// See [App.WithIBBackend].
+// It is backend-agnostic scaffolding: the catalog's only built-in InfiniBand
+// check is fed by [RDMALinkFlapSensor], so this one forwards both collection
+// and its errored form to the consumer-supplied backend and holds no
+// InfiniBand types itself. See [App.WithIBBackend].
 type IBSensor struct {
 	backend IBBackend
 }

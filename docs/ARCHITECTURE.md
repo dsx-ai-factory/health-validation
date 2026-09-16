@@ -10,7 +10,7 @@
 | `catalog/gpu` | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPowerState` check definitions. |
 | `catalog/node` | `node.NodeMeasurement` struct and the node-level `GPUCount` check definition. |
 | `catalog/nvlink` | `nvlink.NVLinkMeasurement` struct and its NVLink check definitions (`NVLinkActive`, `NVLinkFabricHealth`, `NVLinkFabric`, `NVLinkBandwidthCountSpeed`, `NVLinkCapabilities`, `NVLinkP2P`). |
-| `catalog/infiniband` | `infiniband.LinkFlapMeasurement` struct and the `RDMALinkFlapFatal` check definition (category `infiniband`). |
+| `catalog/infiniband` | `infiniband.LinkFlapMeasurement` with the `RDMALinkFlapFatal` check definition, plus `infiniband.PortMeasurement`, the ibstat-derived per-port state (category `infiniband`). No built-in check consumes the port measurement yet. |
 | `catalog/xid` | `xid.XidMeasurement` struct and the XID check factory `xid.Checks()`, which returns one CRITICAL check per critical Xid code, a consolidated WARNING check (`gpu_xid_warning`), and the INFO `gpu_xid_154` check. |
 | `toolkit` | Sensor and per-domain backend interfaces, `Collect()` / `CollectWithOptions()`, production backends including `SysfsCPU`, and mock helpers. |
 | `catalog/internal/celeval` | Evaluates CEL expressions from check `Rule` definitions against signal values and resolved thresholds. Not a public API. |
@@ -42,6 +42,8 @@ Two distinct concepts:
 `SysfsCPU` observes the kernel CPU topology exposed in its execution environment. The `cpu_count` check compares the possible and online logical CPU counts, requires no operator value, and reports CRITICAL when they differ. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM/SKU count, process affinity, or cgroup CPU limits; inside a container, it evaluates the sysfs view exposed by the runtime.
 
 The `numa_node_count` check compares the online NUMA node count against `expected_numa_node_count` and reports CRITICAL when they differ. The expected value resolves from the detected architecture, and an operator override replaces whatever the architecture resolved to. Each read is attributed to its own signal, so an unreadable NUMA node list fails `numa_node_count` while `cpu_count` still evaluates, and the reverse. The check applies only to the architectures it lists and skips on any other, including a node whose architecture cannot be identified.
+
+One domain may have several sensors, each with its own measurement type, as long as their schemas stay disjoint so a check routes to exactly one of them. `infiniband` is the worked example: `RDMALinkFlapSensor` reads outage history from the journal, and the opt-in `IBStatSensor` runs `ibstat` for the current state of each port. The ibstat sensor treats an absent `ibstat` binary, or a host with no channel adapters, as "no InfiniBand here" and emits no measurements; any other `ibstat` failure yields an errored measurement.
 
 To add a sensor for a new hardware domain: define a measurement struct in `catalog/<domain>/`, declare a backend interface in `toolkit/`, implement a sensor wrapping it, and add a mock constructor.
 

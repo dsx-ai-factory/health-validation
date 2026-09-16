@@ -1,9 +1,15 @@
-// Package infiniband defines the measurement type and checks for
-// InfiniBand / RDMA network health derived from the system journal. The
-// mlx5 driver logs RDMA interface link transitions ("Link up"/"Link
-// down") to the kernel journal; a sensor pairs each down with its next
-// up, and the catalog evaluates the resulting outage durations against
-// the link-flap checks.
+// Package infiniband defines the measurement types and checks for
+// InfiniBand / RDMA network health. It carries two views of the fabric,
+// each with its own measurement type and data source:
+//
+//   - [LinkFlapMeasurement] is history: the mlx5 driver logs RDMA link
+//     transitions to the kernel journal, a sensor pairs each down with its
+//     next up, and the link-flap check evaluates the outage durations.
+//   - [PortMeasurement] is the present: ibstat reports the current state
+//     of every port on every channel adapter, one measurement per port. No
+//     built-in check consumes it yet.
+//
+// The two schemas are disjoint so a check routes to exactly one of them.
 package infiniband
 
 import "github.com/dsx-ai-factory/health-validation/catalog/health"

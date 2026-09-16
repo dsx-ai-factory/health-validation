@@ -16,10 +16,11 @@
 //		os.Exit(a.Run(os.Args[1:], os.Stdout, os.Stderr))
 //	}
 //
-// Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
-// its own per-domain backend, defaulting to the shared host NVML backend for
-// GPU/node/NVLink, sysfs for CPU and InfiniBand, and the journal for Xid. A
-// With*Backend setter overrides exactly one domain; the
+// Each of the six sensors wired by default (GPU, node, NVLink, CPU, Xid, RDMA
+// link-flap) draws from its own per-domain backend, defaulting to the shared
+// host NVML backend for GPU/node/NVLink, sysfs for CPU, and the journal for Xid
+// and RDMA link-flap. The ibstat sensor and the generic InfiniBand sensor are
+// opt-in. A With*Backend setter overrides exactly one domain; the
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
@@ -85,24 +86,26 @@ type hostBackend interface {
 }
 
 // App is the health-validation CLI, assembled with the builder methods and
-// run with [App.Run]. It wires six sensors (GPU, node, NVLink, CPU, Xid,
-// InfiniBand), each from its own per-domain backend — the shared host NVML
+// run with [App.Run]. It wires six sensors (GPU, node, NVLink, CPU, Xid, RDMA
+// link-flap), each from its own per-domain backend — the shared host NVML
 // backend, sysfs, or the journal by default, or a caller-supplied override.
+// The ibstat and generic InfiniBand sensors are opt-in.
 type App struct {
 	host     hostBackend
 	hostname func() (string, error)
-	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
-	// overrides set by the matching With*Backend setter. A nil override uses the
-	// default: the shared host NVML backend for gpu/node/nvlink,
+	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, ibstat, and ib are per-domain
+	// backend overrides set by the matching With*Backend setter. A nil override
+	// uses the default: the shared host NVML backend for gpu/node/nvlink,
 	// [toolkit.SysfsCPU] for cpu, [toolkit.Journalctl] for xid, and
-	// [toolkit.JournalctlRDMALinkFlap] for rdmaLinkFlap. The generic ib backend
-	// has no default and is opt-in.
+	// [toolkit.JournalctlRDMALinkFlap] for rdmaLinkFlap. ibstat and ib have no
+	// default and are opt-in.
 	gpu          toolkit.GPUBackend
 	node         toolkit.NodeBackend
 	nvlink       toolkit.NVLinkBackend
 	cpu          toolkit.CPUBackend
 	xid          toolkit.XidBackend
 	rdmaLinkFlap toolkit.RDMALinkFlapBackend
+	ibstat       toolkit.IBStatBackend
 	ib           toolkit.IBBackend
 	// prog is the program name used in usage and error-message prefixes. It
 	// defaults to filepath.Base(os.Args[0]); see WithProgramName.
@@ -189,6 +192,16 @@ func (a *App) WithXidBackend(b toolkit.XidBackend) *App {
 // check and runs by default, like the Xid sensor.
 func (a *App) WithRDMALinkFlapBackend(b toolkit.RDMALinkFlapBackend) *App {
 	a.rdmaLinkFlap = b
+	return a
+}
+
+// WithIBStatBackend enables the ibstat sensor, which emits one
+// [infiniband.PortMeasurement] per InfiniBand port. It is opt-in: no built-in
+// check consumes the measurement yet, so it runs only when a consumer supplies
+// a backend (normally [toolkit.IBStat]) along with checks for it via
+// WithChecks.
+func (a *App) WithIBStatBackend(b toolkit.IBStatBackend) *App {
+	a.ibstat = b
 	return a
 }
 
@@ -293,10 +306,10 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 }
 
 // runCommand parses `run` flags, builds the catalog (applying any config
-// overrides and custom checks), and evaluates it against the six domain
-// sensors. Each sensor's backend is the caller's override if set, else the
-// default: the shared host NVML backend for gpu/node/nvlink, sysfs for cpu and
-// infiniband, and the system journal for xid.
+// overrides and custom checks), and evaluates it against the default sensors.
+// Each sensor's backend is the caller's override if set, else the default: the
+// shared host NVML backend for gpu/node/nvlink, sysfs for cpu, and the system
+// journal for xid and rdma link-flap.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -410,10 +423,12 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		toolkit.NewXidSensor(xid),
 		toolkit.NewRDMALinkFlapSensor(rdmaLinkFlap),
 	}
-	// The generic InfiniBand sensor is opt-in: the catalog's built-in
-	// InfiniBand check (rdma_linkflap_fatal) is fed by the link-flap sensor
-	// above, so this one runs only when a consumer supplies a backend (and
-	// its own checks) via WithIBBackend.
+	// The ibstat and generic InfiniBand sensors are opt-in: no built-in check
+	// consumes what they emit, so each runs only when a consumer supplies a
+	// backend (and the checks for it) via its With*Backend setter.
+	if a.ibstat != nil {
+		sensors = append(sensors, toolkit.NewIBStatSensor(a.ibstat))
+	}
 	if a.ib != nil {
 		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
 	}
