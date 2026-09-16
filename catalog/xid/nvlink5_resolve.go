@@ -109,8 +109,20 @@ func resolveNVLink5Event(code int64, era DriverEra, detail NVLink5Detail, action
 	return decoded.Resolution
 }
 
+// NVLink5ResolutionKey is the nvlink5_resolution_counts key for one Xid
+// code resolving to one bucket, e.g. "145.IGNORE".
+//
+// Keyed per code, not per bucket alone, so a per-code check can ask what
+// its own code resolved to. A bucket-only key cannot answer that, which
+// would leave every Xid 144-150 check firing on the bare occurrence and
+// make the table's IGNORE rows unreachable.
+func NVLink5ResolutionKey(code int64, bucket string) string {
+	return fmt.Sprintf("%d.%s", code, bucket)
+}
+
 // NVLink5ResolutionCounts returns how many NVLink5 events in the window
-// resolved to each immediate-action bucket, keyed by bucket.
+// resolved to each immediate-action bucket, keyed by
+// [NVLink5ResolutionKey].
 //
 // This is the join the decode table cannot perform alone. A row
 // resolving to XID_154_EVAL names no action by itself; the action lives
@@ -150,7 +162,7 @@ func nvlink5ResolutionCounts(events []XidEvent, driverVersion string, terminal m
 		if counts == nil {
 			counts = make(map[string]int64)
 		}
-		counts[bucket]++
+		counts[NVLink5ResolutionKey(ev.XidCode, bucket)]++
 	}
 	return counts
 }

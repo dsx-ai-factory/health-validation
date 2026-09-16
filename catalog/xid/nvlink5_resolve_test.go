@@ -9,12 +9,13 @@ import (
 
 // Values below are taken from captured NVRM output. Per NVIDIA's decode
 // table, Xid 145 RLW_SRC_TRACK resolves by ErrorStatus: 0x00000008 defers
-// to Xid 154, while 0x00000020 names RESET_GPU outright. Having one of
-// each from the same subcomponent is what makes the deferral path
-// testable without also exercising subcode matching.
+// to Xid 154, 0x00000020 names RESET_GPU outright, and 0x00000002 says
+// IGNORE. Having all three from one subcomponent makes each path testable
+// without also exercising subcode matching.
 const (
 	deferToXid154 = "0x00000008"
 	resetOutright = "0x00000020"
+	ignoreRow     = "0x00000002"
 )
 
 func srcTrackEvent(pci, errorStatus string) xid.XidEvent {
@@ -30,13 +31,53 @@ func srcTrackEvent(pci, errorStatus string) xid.XidEvent {
 	}
 }
 
+// unmatchedEvent uses a subcomponent NVIDIA's table does not cover, so
+// decoding falls back to the Fatal flag rather than a confirmed row.
+func unmatchedEvent(pci string, fatal bool) xid.XidEvent {
+	return xid.XidEvent{
+		PCIAddress: pci,
+		XidCode:    146,
+		NVLink5: &xid.NVLink5Detail{
+			SubComponent: "TLW_NOT_IN_THE_TABLE",
+			IntrInfo:     "0x04098000",
+			ErrorStatus:  "0x00000040",
+			Fatal:        fatal,
+		},
+	}
+}
+
+// k145 and k146 name the per-code signal keys under test. Keying by code
+// is what lets each gpu_xid_NNN check ask what its own code resolved to.
+func k145(bucket string) string { return xid.NVLink5ResolutionKey(145, bucket) }
+func k146(bucket string) string { return xid.NVLink5ResolutionKey(146, bucket) }
+
 func TestNVLink5ResolutionCounts_TableRowNeedsNo154(t *testing.T) {
 	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 		srcTrackEvent("0019:01:00", resetOutright),
 	}, "575.51.03")
 
-	if got[xid.ResolutionResetGPU] != 1 {
-		t.Errorf("counts = %v, want %s -> 1", got, xid.ResolutionResetGPU)
+	if got[k145(xid.ResolutionResetGPU)] != 1 {
+		t.Errorf("counts = %v, want %s -> 1", got, k145(xid.ResolutionResetGPU))
+	}
+}
+
+// TestNVLink5ResolutionCounts_KeyedPerCode pins the property the per-code
+// checks depend on: two codes resolving to the same bucket must land in
+// separate entries, or gpu_xid_145 fires on gpu_xid_146's fault.
+func TestNVLink5ResolutionCounts_KeyedPerCode(t *testing.T) {
+	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
+		srcTrackEvent("0019:01:00", resetOutright), // 145 -> RESET_GPU
+		unmatchedEvent("0019:01:00", true),         // 146 -> RESET_GPU_UNCONFIRMED
+	}, "575.51.03")
+
+	if got[k145(xid.ResolutionResetGPU)] != 1 {
+		t.Errorf("counts = %v, want %s -> 1", got, k145(xid.ResolutionResetGPU))
+	}
+	if got[k146(xid.ResolutionResetGPUUnconfirmed)] != 1 {
+		t.Errorf("counts = %v, want %s -> 1", got, k146(xid.ResolutionResetGPUUnconfirmed))
+	}
+	if _, ok := got[xid.ResolutionResetGPU]; ok {
+		t.Errorf("counts = %v, a bare bucket key is ambiguous across codes", got)
 	}
 }
 
@@ -47,10 +88,10 @@ func TestNVLink5ResolutionCounts_DeferralUsesThe154(t *testing.T) {
 		toName  string
 		wantKey string
 	}{
-		{"reset required", "0x1", "GPU Reset Required", xid.ResolutionResetGPU},
-		{"drain and reset", "0x4", "Drain and Reset", xid.ResolutionResetGPU},
-		{"none clears it", "0x0", "None", xid.ResolutionIgnore},
-		{"unmapped code is surfaced", "0x9", "Some Future Action", xid.ResolutionXid154Unrecognized},
+		{"reset required", "0x1", "GPU Reset Required", k145(xid.ResolutionResetGPU)},
+		{"drain and reset", "0x4", "Drain and Reset", k145(xid.ResolutionResetGPU)},
+		{"none clears it", "0x0", "None", k145(xid.ResolutionIgnore)},
+		{"unmapped code is surfaced", "0x9", "Some Future Action", k145(xid.ResolutionXid154Unrecognized)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -62,7 +103,7 @@ func TestNVLink5ResolutionCounts_DeferralUsesThe154(t *testing.T) {
 			if got[tc.wantKey] != 1 {
 				t.Errorf("counts = %v, want %s -> 1", got, tc.wantKey)
 			}
-			if _, ok := got[xid.ResolutionXid154Eval]; ok {
+			if _, ok := got[k145(xid.ResolutionXid154Eval)]; ok {
 				t.Errorf("counts = %v, XID_154_EVAL must never survive resolution", got)
 			}
 		})
@@ -78,10 +119,10 @@ func TestNVLink5ResolutionCounts_DeferralWithNo154(t *testing.T) {
 		srcTrackEvent("0019:01:00", deferToXid154),
 	}, "560.35.03")
 
-	if got[xid.ResolutionXid154Missing] != 1 {
-		t.Errorf("counts = %v, want %s -> 1", got, xid.ResolutionXid154Missing)
+	if got[k145(xid.ResolutionXid154Missing)] != 1 {
+		t.Errorf("counts = %v, want %s -> 1", got, k145(xid.ResolutionXid154Missing))
 	}
-	if got[xid.ResolutionIgnore] != 0 {
+	if got[k145(xid.ResolutionIgnore)] != 0 {
 		t.Errorf("counts = %v, a missing 154 must not read as IGNORE", got)
 	}
 }
@@ -98,11 +139,11 @@ func TestNVLink5ResolutionCounts_ResolvedPerGPU(t *testing.T) {
 		recoveryEvent("0019:01:00", "0x0", "None", "0x1", "GPU Reset Required"),
 	}, "575.51.03")
 
-	if got[xid.ResolutionResetGPU] != 1 {
-		t.Errorf("counts = %v, want exactly one %s (0019 only)", got, xid.ResolutionResetGPU)
+	if got[k145(xid.ResolutionResetGPU)] != 1 {
+		t.Errorf("counts = %v, want exactly one %s (0019 only)", got, k145(xid.ResolutionResetGPU))
 	}
-	if got[xid.ResolutionXid154Missing] != 1 {
-		t.Errorf("counts = %v, want exactly one %s (0018 only)", got, xid.ResolutionXid154Missing)
+	if got[k145(xid.ResolutionXid154Missing)] != 1 {
+		t.Errorf("counts = %v, want exactly one %s (0018 only)", got, k145(xid.ResolutionXid154Missing))
 	}
 }
 
@@ -115,8 +156,8 @@ func TestNVLink5ResolutionCounts_CountsEventsNotGPUs(t *testing.T) {
 		srcTrackEvent("0019:01:00", resetOutright),
 	}, "575.51.03")
 
-	if got[xid.ResolutionResetGPU] != 2 {
-		t.Errorf("counts = %v, want %s -> 2", got, xid.ResolutionResetGPU)
+	if got[k145(xid.ResolutionResetGPU)] != 2 {
+		t.Errorf("counts = %v, want %s -> 2", got, k145(xid.ResolutionResetGPU))
 	}
 }
 
@@ -128,6 +169,72 @@ func TestNVLink5ResolutionCounts_IgnoresNonNVLink5Events(t *testing.T) {
 
 	if len(got) != 0 {
 		t.Errorf("counts = %v, want empty: no NVLink5-family events present", got)
+	}
+}
+
+// TestNVLink5ResolutionCounts_UnmatchedFatalIsUnconfirmed separates a
+// reset the table names from one the Fatal flag merely implies. Both
+// escalate, but only one is documented guidance, and a verdict that
+// cannot tell them apart overstates what NVIDIA actually said.
+func TestNVLink5ResolutionCounts_UnmatchedFatalIsUnconfirmed(t *testing.T) {
+	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
+		unmatchedEvent("0019:01:00", true),
+	}, "575.51.03")
+
+	if got[k146(xid.ResolutionResetGPUUnconfirmed)] != 1 {
+		t.Errorf("counts = %v, want %s -> 1", got, k146(xid.ResolutionResetGPUUnconfirmed))
+	}
+	if got[k146(xid.ResolutionResetGPU)] != 0 {
+		t.Errorf("counts = %v, a fallback reset must not report as table-confirmed", got)
+	}
+}
+
+func TestNVLink5ResolutionCounts_UnmatchedNonfatalStaysIgnore(t *testing.T) {
+	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
+		unmatchedEvent("0019:01:00", false),
+	}, "575.51.03")
+
+	if got[k146(xid.ResolutionIgnore)] != 1 {
+		t.Errorf("counts = %v, want %s -> 1", got, k146(xid.ResolutionIgnore))
+	}
+}
+
+// TestNVLink5ResolutionCounts_MatchedResetStaysConfirmed is the other
+// half of the distinction: a row the table does cover must not be
+// downgraded to unconfirmed.
+func TestNVLink5ResolutionCounts_MatchedResetStaysConfirmed(t *testing.T) {
+	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
+		srcTrackEvent("0019:01:00", resetOutright),
+	}, "575.51.03")
+
+	if got[k145(xid.ResolutionResetGPU)] != 1 {
+		t.Errorf("counts = %v, want %s -> 1", got, k145(xid.ResolutionResetGPU))
+	}
+	if _, ok := got[k145(xid.ResolutionResetGPUUnconfirmed)]; ok {
+		t.Errorf("counts = %v, a table-confirmed row must not report as unconfirmed", got)
+	}
+}
+
+// TestNVLink5ResolutionCounts_HexRenderingIsNormalised covers the log
+// format permitting any hex rendering of a recovery-action code. Matching
+// the printed text read "0x01" and "0X1" as codes this catalog does not
+// know, turning a driver-requested reset into an unresolved WARNING.
+func TestNVLink5ResolutionCounts_HexRenderingIsNormalised(t *testing.T) {
+	for _, toCode := range []string{"0x1", "0x01", "0X1", "0x00000001"} {
+		t.Run(toCode, func(t *testing.T) {
+			got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
+				srcTrackEvent("0019:01:00", deferToXid154),
+				recoveryEvent("0019:01:00", "0x0", "None", toCode, "GPU Reset Required"),
+			}, "575.51.03")
+
+			if got[k145(xid.ResolutionResetGPU)] != 1 {
+				t.Errorf("counts = %v, want %s -> 1", got, k145(xid.ResolutionResetGPU))
+			}
+			if _, ok := got[k145(xid.ResolutionXid154Unrecognized)]; ok {
+				t.Errorf("counts = %v, %q is a known action however it is spelled",
+					got, toCode)
+			}
+		})
 	}
 }
 
@@ -152,21 +259,21 @@ func resolutionMeasurement(driverVersion string, events ...xid.XidEvent) resolut
 	return resolutionInput{driverVersion: driverVersion, m: m}
 }
 
-func resolutionVerdict(t *testing.T, in resolutionInput) health.CheckVerdict {
+func codeVerdict(t *testing.T, checkID string, in resolutionInput) health.CheckVerdict {
 	t.Helper()
 	nv, err := hostCatalog(t, in.driverVersion).EvaluateAll(in.m)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	v, ok := checkResult(nv, "gpu_xid_nvlink5_resolution")
+	v, ok := checkResult(nv, checkID)
 	if !ok {
-		t.Fatalf("gpu_xid_nvlink5_resolution verdict not found")
+		t.Fatalf("%s verdict not found", checkID)
 	}
 	return v
 }
 
-func TestNVLink5ResolutionCheck_ResetIsCritical(t *testing.T) {
-	v := resolutionVerdict(t, resolutionMeasurement("575.51.03",
+func TestNVLink5Check_ResolvedResetIsCritical(t *testing.T) {
+	v := codeVerdict(t, "gpu_xid_145", resolutionMeasurement("575.51.03",
 		srcTrackEvent("0019:01:00", resetOutright)))
 
 	if v.Severity != health.Critical {
@@ -178,116 +285,42 @@ func TestNVLink5ResolutionCheck_ResetIsCritical(t *testing.T) {
 	}
 }
 
-// TestNVLink5ResolutionCheck_IgnoreIsPass is the reason this check exists.
-// Roughly half the decode table's rows resolve to IGNORE; escalating them
-// is exactly what reading the table is meant to avoid. The per-code
-// gpu_xid_145 check still fires on the same event, which is the intended
-// division of labour, not a conflict.
-func TestNVLink5ResolutionCheck_IgnoreIsPass(t *testing.T) {
-	ignored := xid.XidEvent{
-		PCIAddress: "0019:01:00",
-		XidCode:    145,
-		NVLink5: &xid.NVLink5Detail{
-			SubComponent: "RLW_SRC_TRACK",
-			IntrInfo:     "0x040988e2",
-			ErrorStatus:  "0x00000002",
-		},
-	}
-	v := resolutionVerdict(t, resolutionMeasurement("575.51.03", ignored))
+// TestNVLink5Check_IgnoreDoesNotEscalate is why the resolution lives
+// inside the per-code check rather than beside it. Roughly half the
+// decode table's rows resolve to IGNORE, and a node's severity is the
+// worst across all its checks — so an IGNORE-class fault only stops
+// escalating if the check owning the code declines to escalate it.
+func TestNVLink5Check_IgnoreDoesNotEscalate(t *testing.T) {
+	v := codeVerdict(t, "gpu_xid_145", resolutionMeasurement("575.51.03",
+		srcTrackEvent("0019:01:00", ignoreRow)))
 
-	if v.Severity != health.Pass {
-		t.Errorf("Severity = %v, want PASS (the table resolves this row to IGNORE)", v.Severity)
+	if v.Severity != health.Info {
+		t.Errorf("Severity = %v, want INFO (the table resolves this row to IGNORE)", v.Severity)
+	}
+	if v.Skipped {
+		t.Errorf("verdict was skipped (%v), want an evaluated verdict", v.SkipReason)
+	}
+	if !v.RecommendedAction.Equal(health.NoAction) {
+		t.Errorf("RecommendedAction = %v, want NoAction", v.RecommendedAction)
 	}
 }
 
-func TestNVLink5ResolutionCheck_MissingXid154IsWarning(t *testing.T) {
-	v := resolutionVerdict(t, resolutionMeasurement("560.35.03",
-		srcTrackEvent("0019:01:00", deferToXid154)))
-
-	if v.Severity != health.Warning {
-		t.Errorf("Severity = %v, want WARNING", v.Severity)
+// TestNVLink5Check_IgnoreDoesNotEscalateAtNodeLevel is the same claim end
+// to end: an ignorable fault leaves the node at INFO, so nothing else in
+// the catalog escalates the event behind the check's back.
+func TestNVLink5Check_IgnoreDoesNotEscalateAtNodeLevel(t *testing.T) {
+	in := resolutionMeasurement("575.51.03", srcTrackEvent("0019:01:00", ignoreRow))
+	nv, err := hostCatalog(t, in.driverVersion).EvaluateAll(in.m)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	if nv.OverallSeverity != health.Info {
+		t.Errorf("OverallSeverity = %v, want INFO for an IGNORE-class fault", nv.OverallSeverity)
 	}
 }
 
-func TestNVLink5ResolutionCheck_UnrecognizedActionIsWarning(t *testing.T) {
-	v := resolutionVerdict(t, resolutionMeasurement("575.51.03",
-		srcTrackEvent("0019:01:00", deferToXid154),
-		recoveryEvent("0019:01:00", "0x0", "None", "0x9", "Some Future Action")))
-
-	if v.Severity != health.Warning {
-		t.Errorf("Severity = %v, want WARNING", v.Severity)
-	}
-}
-
-func TestNVLink5ResolutionCheck_NoNVLink5EventsIsPass(t *testing.T) {
-	v := resolutionVerdict(t, resolutionMeasurement("575.51.03"))
-
-	if v.Severity != health.Pass {
-		t.Errorf("Severity = %v, want PASS", v.Severity)
-	}
-}
-
-// unmatchedEvent uses a subcomponent NVIDIA's table does not cover, so
-// decoding falls back to the Fatal flag rather than a confirmed row.
-func unmatchedEvent(pci string, fatal bool) xid.XidEvent {
-	return xid.XidEvent{
-		PCIAddress: pci,
-		XidCode:    146,
-		NVLink5: &xid.NVLink5Detail{
-			SubComponent: "TLW_NOT_IN_THE_TABLE",
-			IntrInfo:     "0x04098000",
-			ErrorStatus:  "0x00000040",
-			Fatal:        fatal,
-		},
-	}
-}
-
-// TestNVLink5ResolutionCounts_UnmatchedFatalIsUnconfirmed separates a
-// reset the table names from one the Fatal flag merely implies. Both
-// escalate, but only one is documented guidance, and a verdict that
-// cannot tell them apart overstates what NVIDIA actually said.
-func TestNVLink5ResolutionCounts_UnmatchedFatalIsUnconfirmed(t *testing.T) {
-	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
-		unmatchedEvent("0019:01:00", true),
-	}, "575.51.03")
-
-	if got[xid.ResolutionResetGPUUnconfirmed] != 1 {
-		t.Errorf("counts = %v, want %s -> 1", got, xid.ResolutionResetGPUUnconfirmed)
-	}
-	if got[xid.ResolutionResetGPU] != 0 {
-		t.Errorf("counts = %v, a fallback reset must not report as a table-confirmed %s",
-			got, xid.ResolutionResetGPU)
-	}
-}
-
-func TestNVLink5ResolutionCounts_UnmatchedNonfatalStaysIgnore(t *testing.T) {
-	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
-		unmatchedEvent("0019:01:00", false),
-	}, "575.51.03")
-
-	if got[xid.ResolutionIgnore] != 1 {
-		t.Errorf("counts = %v, want %s -> 1", got, xid.ResolutionIgnore)
-	}
-}
-
-// TestNVLink5ResolutionCounts_MatchedResetStaysConfirmed is the other
-// half of the distinction: a row the table does cover must not be
-// downgraded to unconfirmed.
-func TestNVLink5ResolutionCounts_MatchedResetStaysConfirmed(t *testing.T) {
-	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
-		srcTrackEvent("0019:01:00", resetOutright),
-	}, "575.51.03")
-
-	if got[xid.ResolutionResetGPU] != 1 {
-		t.Errorf("counts = %v, want %s -> 1", got, xid.ResolutionResetGPU)
-	}
-	if _, ok := got[xid.ResolutionResetGPUUnconfirmed]; ok {
-		t.Errorf("counts = %v, a table-confirmed row must not report as unconfirmed", got)
-	}
-}
-
-func TestNVLink5ResolutionCheck_UnconfirmedResetIsCritical(t *testing.T) {
-	v := resolutionVerdict(t, resolutionMeasurement("575.51.03",
+func TestNVLink5Check_UnconfirmedResetIsCritical(t *testing.T) {
+	v := codeVerdict(t, "gpu_xid_146", resolutionMeasurement("575.51.03",
 		unmatchedEvent("0019:01:00", true)))
 
 	if v.Severity != health.Critical {
@@ -299,26 +332,48 @@ func TestNVLink5ResolutionCheck_UnconfirmedResetIsCritical(t *testing.T) {
 	}
 }
 
-// TestNVLink5ResolutionCounts_HexRenderingIsNormalised covers the log
-// format permitting any hex rendering of a recovery-action code. Matching
-// the printed text read "0x01" and "0X1" as codes this catalog does not
-// know, turning a driver-requested reset into an unresolved WARNING.
-func TestNVLink5ResolutionCounts_HexRenderingIsNormalised(t *testing.T) {
-	for _, toCode := range []string{"0x1", "0x01", "0X1", "0x00000001"} {
-		t.Run(toCode, func(t *testing.T) {
-			got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
-				srcTrackEvent("0019:01:00", deferToXid154),
-				recoveryEvent("0019:01:00", "0x0", "None", toCode, "GPU Reset Required"),
-			}, "575.51.03")
+func TestNVLink5Check_MissingXid154IsWarning(t *testing.T) {
+	v := codeVerdict(t, "gpu_xid_145", resolutionMeasurement("560.35.03",
+		srcTrackEvent("0019:01:00", deferToXid154)))
 
-			if got[xid.ResolutionResetGPU] != 1 {
-				t.Errorf("counts = %v, want %s -> 1", got, xid.ResolutionResetGPU)
-			}
-			if _, ok := got[xid.ResolutionXid154Unrecognized]; ok {
-				t.Errorf("counts = %v, %q is a known action however it is spelled",
-					got, toCode)
-			}
-		})
+	if v.Severity != health.Warning {
+		t.Errorf("Severity = %v, want WARNING", v.Severity)
+	}
+}
+
+func TestNVLink5Check_UnrecognizedActionIsWarning(t *testing.T) {
+	v := codeVerdict(t, "gpu_xid_145", resolutionMeasurement("575.51.03",
+		srcTrackEvent("0019:01:00", deferToXid154),
+		recoveryEvent("0019:01:00", "0x0", "None", "0x9", "Some Future Action")))
+
+	if v.Severity != health.Warning {
+		t.Errorf("Severity = %v, want WARNING", v.Severity)
+	}
+}
+
+// TestNVLink5Check_OnlyTheOwningCodeFires guards the per-code keying at
+// the check level: a 145 fault must not light up gpu_xid_146.
+func TestNVLink5Check_OnlyTheOwningCodeFires(t *testing.T) {
+	m := resolutionMeasurement("575.51.03", srcTrackEvent("0019:01:00", resetOutright))
+
+	if v := codeVerdict(t, "gpu_xid_145", m); v.Severity != health.Critical {
+		t.Errorf("gpu_xid_145 Severity = %v, want CRITICAL", v.Severity)
+	}
+	if v := codeVerdict(t, "gpu_xid_146", m); v.Severity != health.Pass {
+		t.Errorf("gpu_xid_146 Severity = %v, want PASS (no 146 event occurred)", v.Severity)
+	}
+}
+
+func TestNVLink5Check_NoEventsIsPass(t *testing.T) {
+	v := codeVerdict(t, "gpu_xid_145", resolutionMeasurement("575.51.03"))
+
+	if v.Severity != health.Pass {
+		t.Errorf("Severity = %v, want PASS", v.Severity)
+	}
+	// An empty resolution map still satisfies RequiredSignals; a skip
+	// here would report the same PASS without having evaluated anything.
+	if v.Skipped {
+		t.Errorf("verdict was skipped (%v), want an evaluated PASS", v.SkipReason)
 	}
 }
 

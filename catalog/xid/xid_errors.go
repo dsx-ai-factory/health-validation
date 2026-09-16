@@ -92,10 +92,10 @@ var criticalXids = []criticalXid{
 }
 
 // nvlink5Xid is one Xid code in the NVLink5/NVSwitch fault family
-// (144-150, Blackwell-only). Unlike other Xid codes, NVRM itself marks
-// each occurrence Fatal or Nonfatal in the log line, so the check
-// differentiates severity and action on that basis instead of firing
-// CRITICAL uniformly — see [nvlink5Check].
+// (144-150, Blackwell-only). Unlike other Xid codes, NVIDIA publishes a
+// decode table naming the required action per subcomponent and error
+// status, so the check reports the resolved action rather than firing
+// CRITICAL on every occurrence — see [nvlink5Check].
 type nvlink5Xid struct {
 	description string
 	code        int64
@@ -122,7 +122,7 @@ var nvlink5Xids = []nvlink5Xid{
 //
 // Each one gets its own check (gpu_xid_<subXidCode>, e.g.
 // gpu_xid_149_4), additive to (not a replacement for) [nvlink5Check]'s
-// code-level Fatal/Nonfatal check, so every event on that code still
+// code-level resolution check, so every event on that code still
 // produces at least that baseline verdict. Splitting lets an operator
 // independently disable/override the guidance for one specific fault
 // subtype without touching the rest.
@@ -143,8 +143,7 @@ type nvlink5SubXidCode struct {
 // keeping only digits every row under that code resolves alike (see
 // [nvlink5SubXidCodeResolvesAlike]). A group with only one row, whose
 // rows vary by ErrorStatus instead, or whose digit other rows resolve
-// differently, is left to [nvlink5Check]'s code-level Fatal/Nonfatal
-// check.
+// differently, is left to [nvlink5Check]'s code-level resolution check.
 var nvlink5SubXidCodes = deriveNVLink5SubXidCodes()
 
 // deriveNVLink5SubXidCodes builds [nvlink5SubXidCodes]' value; split
@@ -307,7 +306,7 @@ func Checks() []health.CheckDefinition {
 	for _, class := range warningClasses {
 		warningCount += len(class.codes)
 	}
-	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+3)
+	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+2)
 	for _, c := range criticalXids {
 		checks = append(checks, criticalCheck(c))
 	}
@@ -322,7 +321,7 @@ func Checks() []health.CheckDefinition {
 			checks = append(checks, warningCheck(code, class))
 		}
 	}
-	checks = append(checks, xid45Check(), xid154Check(), nvlink5ResolutionCheck())
+	checks = append(checks, xid45Check(), xid154Check())
 	return checks
 }
 
@@ -375,41 +374,53 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 	def := baseCheck(
 		fmt.Sprintf("gpu_xid_%d", c.code),
 		fmt.Sprintf("GPU Xid %d (%s)", c.code, c.description),
-		fmt.Sprintf("Detects NVRM Xid %d in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.", c.code),
+		fmt.Sprintf("Detects NVRM Xid %d and reports it by the immediate action NVIDIA's Xid 144-150 decode table calls for, resolving rows that defer to Xid 154 through the recovery action the driver reported for the same GPU.", c.code),
 		health.NoAction,
 	)
-	def.RequiredSignals = []string{SignalXidCounts, SignalFatalXidCounts}
-	def.Thresholds = map[string]health.ThresholdSpec{
-		"fatal_occurrences": {
-			Value:       int64(1),
-			ValueType:   health.ThresholdInt64,
-			Category:    health.DefaultThreshold,
-			Description: "Fatal occurrences since boot that trigger the CRITICAL rule.",
-			Unit:        "count",
-		},
-		"nonfatal_occurrences": {
-			Value:       int64(1),
-			ValueType:   health.ThresholdInt64,
-			Category:    health.DefaultThreshold,
-			Description: "Nonfatal occurrences since boot that trigger the WARNING rule.",
-			Unit:        "count",
-		},
-	}
+	def.RequiredSignals = []string{SignalNVLink5ResolutionCounts}
 	// NVLink5 (144-150) is Blackwell-only per NVIDIA's Xid catalog.
 	def.Architectures = slices.Clone(blackwellArchitectures)
+
+	// Each rule fires once this code has resolved to its bucket at least
+	// occurrences times (baseCheck's threshold).
+	key := func(bucket string) string {
+		return fmt.Sprintf("%[1]q in nvlink5_resolution_counts && nvlink5_resolution_counts[%[1]q] >= occurrences", NVLink5ResolutionKey(c.code, bucket))
+	}
+	// IGNORE reports INFO, not WARNING: roughly half the table's rows
+	// resolve to it and NVIDIA's guidance is to take no action, so the
+	// occurrence stays visible without affecting the node's disposition
+	// (INFO exits 0). Escalating on the bare occurrence instead makes
+	// reading the table pointless, because a node's severity is the worst
+	// across its checks and the escalation would stand regardless.
 	def.Rules = []health.Rule{
 		{
-			Expression:        fmt.Sprintf("%[1]d in fatal_xid_counts && fatal_xid_counts[%[1]d] >= fatal_occurrences", c.code),
+			Expression:        key(ResolutionResetGPU),
 			Severity:          health.Critical,
-			Message:           fmt.Sprintf("GPU Xid %d detected: %s (Fatal).", c.code, c.description),
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. NVIDIA's decode table resolves this occurrence to a GPU reset.", c.code, c.description),
 			RecommendedAction: resetAndService(),
 		},
 		{
-			// xid_counts includes Fatal occurrences, so a bare membership
-			// test would report a lone Fatal occurrence as Nonfatal too.
-			Expression: fmt.Sprintf("%[1]d in xid_counts && xid_counts[%[1]d] > (%[1]d in fatal_xid_counts ? fatal_xid_counts[%[1]d] : 0) && xid_counts[%[1]d] - (%[1]d in fatal_xid_counts ? fatal_xid_counts[%[1]d] : 0) >= nonfatal_occurrences", c.code),
-			Severity:   health.Warning,
-			Message:    fmt.Sprintf("GPU Xid %d detected: %s (Nonfatal).", c.code, c.description),
+			Expression:        key(ResolutionResetGPUUnconfirmed),
+			Severity:          health.Critical,
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. NVRM marked it Fatal and NVIDIA's decode table has no confirmed entry for this subcomponent and error status, so the escalation rests on the Fatal flag alone.", c.code, c.description),
+			RecommendedAction: resetAndService(),
+		},
+		{
+			Expression:        key(ResolutionXid154Missing),
+			Severity:          health.Warning,
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to Xid 154, but no Xid 154 was observed for the affected GPU. NVIDIA records that linkage from CUDA 12.7 / driver R565; on an older driver the required action cannot be determined from the log alone.", c.code, c.description),
+			RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
+		},
+		{
+			Expression:        key(ResolutionXid154Unrecognized),
+			Severity:          health.Warning,
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to an Xid 154 reporting a recovery action this catalog does not recognize; treat the fault as unresolved and report the action code.", c.code, c.description),
+			RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
+		},
+		{
+			Expression: key(ResolutionIgnore),
+			Severity:   health.Info,
+			Message:    fmt.Sprintf("GPU Xid %d detected: %s. NVIDIA's decode table resolves this occurrence to no action.", c.code, c.description),
 		},
 	}
 	return def
@@ -506,58 +517,6 @@ func xid154Check() health.CheckDefinition {
 		Severity:   health.Info,
 		Message:    "GPU Xid 154 (GPU recovery action changed) observed. Informational; correlate with the accompanying Xid.",
 	}}
-	return def
-}
-
-// nvlink5ResolutionCheck reports NVLink5 (Xid 144-150) faults by the
-// immediate action NVIDIA's decode table calls for, rather than by the
-// Fatal/Nonfatal flag NVRM stamps on the log line.
-//
-// This is additive to the per-code gpu_xid_144..150 checks, and it can
-// legitimately disagree with them: those fire on any occurrence, while
-// roughly half the table's rows resolve to IGNORE, which produces no rule
-// here and so reports PASS. A fault the table says to ignore is exactly
-// what this check exists not to escalate.
-//
-// There is deliberately no rule for IGNORE. See [NVLink5ResolutionCounts]
-// for how a row that defers to Xid 154 is resolved, for the two buckets
-// that record why a deferral could not be, and for
-// RESET_GPU_UNCONFIRMED, which separates a reset the Fatal flag implies
-// from one the table names.
-func nvlink5ResolutionCheck() health.CheckDefinition {
-	def := baseCheck(
-		"gpu_xid_nvlink5_resolution",
-		"GPU NVLink5 Fault Resolution",
-		"Reports NVLink5 (Xid 144-150) faults by the immediate action NVIDIA's Xid 144-150 decode table calls for, resolving rows that defer to Xid 154 through the recovery action the driver reported for that same GPU.",
-		health.NoAction,
-	)
-	def.RequiredSignals = []string{SignalNVLink5ResolutionCounts}
-	def.Rules = []health.Rule{
-		{
-			Expression:        fmt.Sprintf("%q in nvlink5_resolution_counts", ResolutionResetGPU),
-			Severity:          health.Critical,
-			Message:           "NVLink5 fault resolving to a GPU reset detected (Xid 144-150), either from NVIDIA's decode table directly or through the accompanying Xid 154.",
-			RecommendedAction: resetAndService(),
-		},
-		{
-			Expression:        fmt.Sprintf("%q in nvlink5_resolution_counts", ResolutionResetGPUUnconfirmed),
-			Severity:          health.Critical,
-			Message:           "NVLink5 fault NVRM marked Fatal with no confirmed entry in NVIDIA's Xid 144-150 decode table for this subcomponent and error status. Escalated on the strength of the Fatal flag alone, not on documented guidance.",
-			RecommendedAction: resetAndService(),
-		},
-		{
-			Expression:        fmt.Sprintf("%q in nvlink5_resolution_counts", ResolutionXid154Unrecognized),
-			Severity:          health.Warning,
-			Message:           "NVLink5 fault resolved through an Xid 154 reporting a recovery action this catalog does not recognize. Treat the fault as unresolved and report the action code.",
-			RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
-		},
-		{
-			Expression:        fmt.Sprintf("%q in nvlink5_resolution_counts", ResolutionXid154Missing),
-			Severity:          health.Warning,
-			Message:           "NVLink5 fault whose resolution defers to Xid 154, but no Xid 154 was observed for the affected GPU. NVIDIA records that linkage from CUDA 12.7 / driver R565; on an older driver the required action cannot be determined from the log alone.",
-			RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
-		},
-	}
 	return def
 }
 
