@@ -48,31 +48,21 @@ type Config struct {
 }
 
 // MetricsConfig configures the OTLP/HTTP metrics push performed after a run
-// produces a verdict. Publishing is off unless Enabled is set, and a failure to
-// publish never changes the verdict or the exit code — a health check must not
-// report differently because a collector was unreachable.
+// produces a verdict; see the README for the published metric set.
 //
 //	metrics:
 //	  enabled: true
-//	  endpoint: http://127.0.0.1:44318   # full URL; https for a remote collector
+//	  endpoint: http://127.0.0.1:44318   # full URL, not the collector's host:port form
 //	  timeout_seconds: 10
 //	  headers:
 //	    x-api-key: ...
 //	  resource_attributes:
 //	    cluster: dsx-east
 //
-// Endpoint is a full URL, not the "host:port" form an OTLP collector uses in
-// its own receiver config; the collector snippet's 127.0.0.1:44318 becomes
-// http://127.0.0.1:44318 here. A URL with no path gets /v1/metrics appended.
-//
-// Headers are sent on every OTLP request, for an endpoint that authenticates.
-// ResourceAttributes add fleet context (cluster, region) to every metric; the
-// attributes the publisher owns — service.name and the node/version identity —
-// are merged over them and cannot be overridden.
-//
-// No OTEL_* environment variable is consulted. The config file is the only
-// source, so a stray variable in a node's environment cannot silently redirect
-// health telemetry somewhere else.
+// Publishing is off unless Enabled is set, and a failure to publish never
+// changes the verdict or the exit code. No OTEL_* environment variable is
+// consulted: the config file is the only source, so a stray variable on a node
+// cannot silently redirect health telemetry.
 type MetricsConfig struct {
 	Headers            map[string]string `yaml:"headers"`
 	ResourceAttributes map[string]string `yaml:"resource_attributes"`
@@ -122,16 +112,6 @@ func (mc *MetricsConfig) validate(path string) error {
 	if mc.TimeoutSeconds < 0 || mc.TimeoutSeconds > maxCollectionTimeoutSeconds {
 		return fmt.Errorf("config %s: metrics.timeout_seconds must be between 0 and %d, got %d",
 			path, maxCollectionTimeoutSeconds, mc.TimeoutSeconds)
-	}
-	for _, key := range sortedKeys(mc.Headers) {
-		if strings.TrimSpace(key) == "" {
-			return fmt.Errorf("config %s: metrics.headers contains an empty header name", path)
-		}
-	}
-	for _, key := range sortedKeys(mc.ResourceAttributes) {
-		if strings.TrimSpace(key) == "" {
-			return fmt.Errorf("config %s: metrics.resource_attributes contains an empty attribute name", path)
-		}
 	}
 	return nil
 }

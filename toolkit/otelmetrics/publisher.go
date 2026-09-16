@@ -1,21 +1,19 @@
 // Package otelmetrics publishes a [health.NodeVerdict] to an OTLP/HTTP
 // metrics endpoint.
 //
-// It is built for the one-shot `health-validation run`: a Publisher records
-// every instrument from a single verdict and flushes synchronously, so the
-// process can exit as soon as Publish returns. Nothing here is a background
-// pipeline — there is no periodic collection and no global MeterProvider
+// It is built for the one-shot `health-validation run`: record one verdict,
+// export, exit. There is no background pipeline and no global MeterProvider
 // registration, so an SDK consumer embedding the CLI keeps its own telemetry
-// wiring untouched.
-//
-// Export failures are the caller's to swallow: a health verdict must not
-// change because a collector was unreachable.
+// wiring untouched. Export failures are the caller's to swallow — a health
+// verdict must not change because a collector was unreachable.
 package otelmetrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -33,32 +31,19 @@ import (
 // metric. It is fixed: a downstream collector routes on it.
 const ServiceName = "health-validation"
 
-// scopeName is the instrumentation scope reported with every instrument.
 const scopeName = "github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics"
 
-// Options configures a [Publisher]. Endpoint is required; everything else is
-// optional. It is a plain struct rather than the config type from toolkit/app
-// so this package stays independent of the CLI's YAML shape.
+// Options configures a [Publisher]. Only Endpoint is required. It is a plain
+// struct rather than the CLI's config type so this package stays independent
+// of the YAML shape.
 type Options struct {
-	// Headers are sent on the OTLP request, for endpoints that authenticate
-	// (a vendor or cloud collector); empty for a local collector.
-	Headers map[string]string
-	// ResourceAttributes are operator-supplied resource attributes, merged
-	// under the attributes this package sets — see [New].
-	ResourceAttributes map[string]string
-	// Endpoint is the full OTLP/HTTP URL, e.g. http://127.0.0.1:44318. A URL
-	// with no path gets the conventional /v1/metrics appended; an explicit
-	// path is used verbatim. An https scheme enables TLS.
-	Endpoint string
-	// NodeID identifies the node under test; it becomes service.instance.id.
-	NodeID string
-	// ServiceVersion is the toolkit version, reported as service.version.
-	ServiceVersion string
-	// CatalogVersion is the check-catalog version compiled into the producer.
-	CatalogVersion string
-	// Timeout bounds the export. Retries are disabled, so this is the true
-	// ceiling on how long Publish can block.
-	Timeout time.Duration
+	Headers            map[string]string // sent on the OTLP request, for an endpoint that authenticates
+	ResourceAttributes map[string]string // operator-supplied resource attributes; see [New]
+	Endpoint           string            // full OTLP/HTTP URL; /v1/metrics is appended when the path is empty
+	NodeID             string            // node under test; becomes service.instance.id
+	ServiceVersion     string
+	CatalogVersion     string
+	Timeout            time.Duration // whole export budget: retries are disabled
 }
 
 // Publisher holds the metric pipeline for one process. Build it with [New] and
@@ -67,13 +52,7 @@ type Publisher struct {
 	provider *sdkmetric.MeterProvider
 	reader   *sdkmetric.ManualReader
 	exporter sdkmetric.Exporter
-	inst     instruments
-}
 
-// instruments is the full set of metrics this package reports. Every
-// instrument is created up front so a recording failure cannot be mistaken for
-// an absent metric.
-type instruments struct {
 	nodeSeverity     metric.Int64Gauge
 	domainSeverity   metric.Int64Gauge
 	checkSeverity    metric.Int64Gauge
@@ -84,18 +63,10 @@ type instruments struct {
 
 // New builds a Publisher exporting to opts.Endpoint over OTLP/HTTP.
 //
-// Resource attributes are assembled operator-first: opts.ResourceAttributes is
-// applied first and the attributes this package owns (service.name,
-// service.version, service.instance.id, and the catalog/schema versions) are
-// merged over it, so an operator can add fleet context like a cluster or region
-// but cannot spoof the identity a collector routes on.
-//
-// Deltas, not cumulative sums: each run is a fresh process, so a cumulative
-// counter would restart at 1 every time and read as a reset to the backend.
-//
-// Retries are disabled. The stock exporter retries with backoff for up to a
-// minute, which would let an unreachable collector hold a health check open far
-// past its configured timeout.
+// Retries are disabled: the stock exporter backs off for up to a minute, which
+// would hold a health run open long past opts.Timeout. Sums are delta — each
+// run is a fresh process, so a cumulative counter would restart at 1 every time
+// and read as a reset.
 func New(ctx context.Context, opts Options) (*Publisher, error) {
 	endpoint, err := normalizeEndpoint(opts.Endpoint)
 	if err != nil {
@@ -105,7 +76,6 @@ func New(ctx context.Context, opts Options) (*Publisher, error) {
 	exporterOpts := []otlpmetrichttp.Option{
 		otlpmetrichttp.WithEndpointURL(endpoint),
 		otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{Enabled: false}),
-		otlpmetrichttp.WithTemporalitySelector(deltaTemporality),
 	}
 	if opts.Timeout > 0 {
 		exporterOpts = append(exporterOpts, otlpmetrichttp.WithTimeout(opts.Timeout))
@@ -113,7 +83,6 @@ func New(ctx context.Context, opts Options) (*Publisher, error) {
 	if len(opts.Headers) > 0 {
 		exporterOpts = append(exporterOpts, otlpmetrichttp.WithHeaders(opts.Headers))
 	}
-
 	exporter, err := otlpmetrichttp.New(ctx, exporterOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("build OTLP metrics exporter: %w", err)
@@ -121,38 +90,34 @@ func New(ctx context.Context, opts Options) (*Publisher, error) {
 
 	// A ManualReader, not a PeriodicReader: the reader is collected and
 	// exported exactly once, by Publish. A PeriodicReader flushes again on
-	// Shutdown, which would push a second copy of every gauge at process exit
-	// and double-count the runs counter.
-	reader := sdkmetric.NewManualReader(sdkmetric.WithTemporalitySelector(deltaTemporality))
+	// Shutdown, which would push a second copy of every gauge at process exit.
+	reader := sdkmetric.NewManualReader(sdkmetric.WithTemporalitySelector(deltaSums))
 	provider := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(buildResource(opts)),
 		sdkmetric.WithReader(reader),
 	)
 
-	inst, err := newInstruments(provider.Meter(scopeName))
-	if err != nil {
-		// Drop the pipeline rather than leak the exporter's connection because
-		// instrument creation failed.
+	p := &Publisher{provider: provider, reader: reader, exporter: exporter}
+	if err := p.newInstruments(provider.Meter(scopeName)); err != nil {
 		_ = provider.Shutdown(ctx)
 		_ = exporter.Shutdown(ctx)
 		return nil, err
 	}
-	return &Publisher{provider: provider, reader: reader, exporter: exporter, inst: inst}, nil
+	return p, nil
 }
 
-// deltaTemporality reports sums as deltas and everything else with the SDK
-// default; see [New].
-func deltaTemporality(kind sdkmetric.InstrumentKind) metricdata.Temporality {
+func deltaSums(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 	if kind == sdkmetric.InstrumentKindCounter || kind == sdkmetric.InstrumentKindUpDownCounter {
 		return metricdata.DeltaTemporality
 	}
 	return sdkmetric.DefaultTemporalitySelector(kind)
 }
 
-// normalizeEndpoint validates the endpoint URL and appends the conventional
-// OTLP metrics path when the operator gave only a host. A bare "host:port"
-// (the form the collector's own config uses) parses as a URL with the host as
-// its scheme, so it is rejected with the fix spelled out.
+// normalizeEndpoint validates the URL and appends the conventional OTLP metrics
+// path when the operator gave only a host. A bare "host:port" — the form an
+// OTLP collector's own receiver config uses, so the likeliest mistake — fails
+// url.Parse outright rather than parsing to a bad scheme; both land on the same
+// message, which names the fix.
 func normalizeEndpoint(endpoint string) (string, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -170,6 +135,9 @@ func normalizeEndpoint(endpoint string) (string, error) {
 }
 
 // buildResource assembles the resource attached to every published metric.
+// Operator attributes are applied first and the ones this package owns are
+// merged over them (NewWithAttributes de-duplicates last-wins), so an operator
+// can add fleet context but cannot spoof the identity a collector routes on.
 func buildResource(opts Options) *resource.Resource {
 	attrs := make([]attribute.KeyValue, 0, len(opts.ResourceAttributes)+5)
 	for k, v := range opts.ResourceAttributes {
@@ -188,58 +156,38 @@ func buildResource(opts Options) *resource.Resource {
 	if opts.CatalogVersion != "" {
 		attrs = append(attrs, attribute.String("health_validation.catalog_version", opts.CatalogVersion))
 	}
-	// NewWithAttributes de-duplicates last-wins, which is what puts the
-	// attributes above on top of the operator's.
 	return resource.NewWithAttributes(semconv.SchemaURL, attrs...)
 }
 
-func newInstruments(m metric.Meter) (instruments, error) {
-	var (
-		inst instruments
-		err  error
-	)
-	if inst.nodeSeverity, err = m.Int64Gauge("health_validation.node.severity",
-		metric.WithDescription("Overall node severity as an ordinal: 0 PASS, 1 INFO, 2 WARNING, 3 CRITICAL, 4 UNKNOWN."),
-		metric.WithUnit("1"),
-	); err != nil {
-		return inst, fmt.Errorf("create node severity gauge: %w", err)
+// newInstruments creates every instrument up front so an invalid definition
+// fails at construction — where the CLI logs it and skips publishing — rather
+// than silently no-op'ing at record time.
+func (p *Publisher) newInstruments(m metric.Meter) error {
+	var errs []error
+	gauge := func(name, description string) metric.Int64Gauge {
+		g, err := m.Int64Gauge(name, metric.WithDescription(description), metric.WithUnit("1"))
+		errs = append(errs, err)
+		return g
 	}
-	if inst.domainSeverity, err = m.Int64Gauge("health_validation.domain.severity",
-		metric.WithDescription("Per-domain severity ordinal, one series per check category."),
-		metric.WithUnit("1"),
-	); err != nil {
-		return inst, fmt.Errorf("create domain severity gauge: %w", err)
-	}
-	if inst.checkSeverity, err = m.Int64Gauge("health_validation.check.severity",
-		metric.WithDescription("Per-check severity ordinal for the checks that executed."),
-		metric.WithUnit("1"),
-	); err != nil {
-		return inst, fmt.Errorf("create check severity gauge: %w", err)
-	}
-	if inst.checkSkipped, err = m.Int64Gauge("health_validation.check.skipped",
-		metric.WithDescription("Always 1, emitted once per check that did not execute, labelled with the skip reason."),
-		metric.WithUnit("1"),
-	); err != nil {
-		return inst, fmt.Errorf("create check skipped gauge: %w", err)
-	}
-	if inst.affectedEntities, err = m.Int64Gauge("health_validation.check.affected_entities",
-		metric.WithDescription("Number of entities (GPUs, links, devices) a non-passing check named as affected."),
-		metric.WithUnit("1"),
-	); err != nil {
-		return inst, fmt.Errorf("create affected entities gauge: %w", err)
-	}
-	if inst.runs, err = m.Int64Counter("health_validation.runs",
-		metric.WithDescription("Completed validation runs, labelled with the overall severity they reported."),
-		metric.WithUnit("1"),
-	); err != nil {
-		return inst, fmt.Errorf("create runs counter: %w", err)
-	}
-	return inst, nil
+	runs, err := m.Int64Counter("health_validation.runs", metric.WithUnit("1"),
+		metric.WithDescription("Completed validation runs, labelled with the overall severity they reported."))
+
+	p.nodeSeverity = gauge("health_validation.node.severity",
+		"Overall node severity as an ordinal: 0 PASS, 1 INFO, 2 WARNING, 3 CRITICAL, 4 UNKNOWN.")
+	p.domainSeverity = gauge("health_validation.domain.severity",
+		"Per-domain severity ordinal, one series per check category.")
+	p.checkSeverity = gauge("health_validation.check.severity",
+		"Per-check severity ordinal for the checks that executed.")
+	p.checkSkipped = gauge("health_validation.check.skipped",
+		"Always 1, emitted once per check that did not execute, labelled with the skip reason.")
+	p.affectedEntities = gauge("health_validation.check.affected_entities",
+		"Number of entities (GPUs, links, devices) a check named as affected.")
+	p.runs = runs
+	return errors.Join(append(errs, err)...)
 }
 
-// Publish records every instrument from nv and flushes them to the endpoint.
-// It blocks until the export completes, fails, or the configured timeout
-// expires.
+// Publish records every instrument from nv and exports them. It blocks until
+// the export completes, fails, or opts.Timeout expires.
 func (p *Publisher) Publish(ctx context.Context, nv health.NodeVerdict) error {
 	p.record(ctx, nv)
 
@@ -254,56 +202,46 @@ func (p *Publisher) Publish(ctx context.Context, nv health.NodeVerdict) error {
 }
 
 // record writes one verdict into the instruments. Attribute sets are kept
-// deliberately narrow: node_id and the versions live on the resource, and
-// per-run identifiers (trace_id, span_id) are left out entirely — they are
-// unique every run, so recording them would mint a new time series per
-// execution. They remain available in the JSON verdict.
+// narrow: node ID and versions live on the resource, and the per-run trace_id
+// and span_id are left out entirely — they are unique every run, so recording
+// them would mint a new time series per execution. They stay in the JSON.
 func (p *Publisher) record(ctx context.Context, nv health.NodeVerdict) {
-	p.inst.nodeSeverity.Record(ctx, int64(nv.OverallSeverity))
-	p.inst.runs.Add(ctx, 1, metric.WithAttributes(
+	p.nodeSeverity.Record(ctx, int64(nv.OverallSeverity))
+	p.runs.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("severity", nv.OverallSeverity.String()),
 	))
 
 	for category, severity := range nv.SeverityByDomain {
-		p.inst.domainSeverity.Record(ctx, int64(severity), metric.WithAttributes(
+		p.domainSeverity.Record(ctx, int64(severity), metric.WithAttributes(
 			attribute.String("category", category.String()),
 		))
 	}
 
-	for _, cv := range nv.CheckResults {
-		p.inst.checkSeverity.Record(ctx, int64(cv.Severity), metric.WithAttributes(
+	// Executed and skipped checks are one stream of measurements; which
+	// instrument a verdict lands in is the only thing that differs.
+	for _, cv := range slices.Concat(nv.CheckResults, nv.SkippedChecks) {
+		id := []attribute.KeyValue{
 			attribute.String("check_id", cv.CheckID),
 			attribute.String("category", cv.Category.String()),
+		}
+		if cv.Skipped {
+			p.checkSkipped.Record(ctx, 1, metric.WithAttributes(
+				append(id, attribute.String("skip_reason", cv.SkipReason.String()))...))
+			continue
+		}
+		p.checkSeverity.Record(ctx, int64(cv.Severity), metric.WithAttributes(append(id,
 			attribute.String("condition_scope", cv.ConditionScope.String()),
 			attribute.String("maturity_level", cv.MaturityLevel.String()),
 			attribute.Bool("nvidia_endorsed", cv.NVIDIAEndorsed),
-		))
-		if len(cv.AffectedEntities) > 0 {
-			p.inst.affectedEntities.Record(ctx, int64(len(cv.AffectedEntities)), metric.WithAttributes(
-				attribute.String("check_id", cv.CheckID),
-				attribute.String("category", cv.Category.String()),
-			))
+		)...))
+		if n := len(cv.AffectedEntities); n > 0 {
+			p.affectedEntities.Record(ctx, int64(n), metric.WithAttributes(id...))
 		}
-	}
-
-	for _, cv := range nv.SkippedChecks {
-		p.inst.checkSkipped.Record(ctx, 1, metric.WithAttributes(
-			attribute.String("check_id", cv.CheckID),
-			attribute.String("category", cv.Category.String()),
-			attribute.String("skip_reason", cv.SkipReason.String()),
-		))
 	}
 }
 
 // Shutdown releases the pipeline. It exports nothing: [Publisher.Publish] is
-// the only thing that sends, so a failed publish is reported once, there and
-// not again here.
+// the only thing that sends, so a failed publish is reported once, there.
 func (p *Publisher) Shutdown(ctx context.Context) error {
-	if err := p.provider.Shutdown(ctx); err != nil {
-		return fmt.Errorf("shut down metrics provider: %w", err)
-	}
-	if err := p.exporter.Shutdown(ctx); err != nil {
-		return fmt.Errorf("shut down metrics exporter: %w", err)
-	}
-	return nil
+	return errors.Join(p.provider.Shutdown(ctx), p.exporter.Shutdown(ctx))
 }
