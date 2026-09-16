@@ -176,8 +176,11 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 		health.NoAction,
 	)
 	def.RequiredSignals = []string{SignalXidCounts, SignalFatalXidCounts}
-	// NVLink5 (144-150) is Blackwell-only per NVIDIA's Xid catalog — it
-	// does not occur on H100/A100, unlike baseCheck's default coverage.
+	// Pinned rather than inherited. This currently matches baseCheck, but
+	// for a different reason: baseCheck is GB200/GB300 because H100/A100
+	// support is deprioritized, while NVLink5 (144-150) is Blackwell-only
+	// per NVIDIA's Xid catalog and does not exist on those parts at all.
+	// If baseCheck's coverage ever widens again, this must not follow it.
 	def.Architectures = []string{"GB200", "GB300"}
 	def.Rules = []health.Rule{
 		{
