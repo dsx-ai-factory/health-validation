@@ -10,11 +10,12 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // expressions and must match the RequiredSignals declared in checks
 // that consume Xid measurements.
 const (
-	SignalEvents         = "events"
-	SignalXidCounts      = "xid_counts"
-	SignalFatalXidCounts = "fatal_xid_counts"
-	SignalSince          = "since"
-	SignalEventCount     = "event_count"
+	SignalEvents           = "events"
+	SignalXidCounts        = "xid_counts"
+	SignalFatalXidCounts   = "fatal_xid_counts"
+	SignalSubXidCodeCounts = "sub_xid_code_counts"
+	SignalSince            = "since"
+	SignalEventCount       = "event_count"
 )
 
 // MeasurementSignals lists every signal an XidMeasurement carries.
@@ -25,6 +26,7 @@ var MeasurementSignals = []string{
 	SignalEvents,
 	SignalXidCounts,
 	SignalFatalXidCounts,
+	SignalSubXidCodeCounts,
 	SignalSince,
 	SignalEventCount,
 }
@@ -49,14 +51,24 @@ type XidEvent struct {
 // Every field here is directly available from the log line: IntrInfo,
 // ErrorStatus, and DebugData are the raw hex strings NVRM prints; Fatal
 // and SubComponent are literal text in the log line (not
-// register-decoded).
+// register-decoded); SubXidCode is a fixed 6-bit mask over IntrInfo
+// (see toolkit/xid/nvlink5_decode.go), not a table lookup. Not to be
+// confused with NVIDIA's decode-table guide's "Subcode," which is a
+// bit-encoding of SubComponent (redundant with the text NVRM already
+// prints — see NVIDIA's Customer User Guide tab).
 type NVLink5Detail struct {
-	SubComponent string   `json:"sub_component"`
-	IntrInfo     string   `json:"intr_info,omitempty"`
-	ErrorStatus  string   `json:"error_status,omitempty"`
-	DebugData    []string `json:"debug_data,omitempty"`
-	Link         int64    `json:"link"`
-	Fatal        bool     `json:"fatal"`
+	SubComponent string `json:"sub_component"`
+	IntrInfo     string `json:"intr_info,omitempty"`
+	ErrorStatus  string `json:"error_status,omitempty"`
+	// SubXidCode is "<XidCode>.<hex digit>" (e.g. "149.4", "149.A"),
+	// identifying the specific fault subtype within this Xid code: the
+	// 6-bit field at IntrInfo[25:20]. This bit position is constant
+	// across driver eras (see toolkit/xid/nvlink5_decode.go). Empty
+	// when IntrInfo could not be parsed.
+	SubXidCode string   `json:"sub_xid_code,omitempty"`
+	DebugData  []string `json:"debug_data,omitempty"`
+	Link       int64    `json:"link"`
+	Fatal      bool     `json:"fatal"`
 }
 
 // XidMeasurement is the aggregate of every Xid event observed in the
@@ -69,16 +81,22 @@ type NVLink5Detail struct {
 // FatalXidCounts is the same shape, but counts only occurrences NVRM
 // itself marked Fatal; today that is populated exclusively by the
 // NVLink5 family (Xid 144-150) since no other Xid code's log line
-// carries a fatal/nonfatal distinction. Events preserves the
+// carries a fatal/nonfatal distinction. SubXidCodeCounts is keyed by
+// [NVLink5Detail.SubXidCode] (e.g. "149.4") instead of the bare Xid
+// code, letting a check threshold on a specific documented fault
+// subtype rather than the whole Xid code (e.g.
+// sub_xid_code_counts["149.4"] > xid_149_4_threshold). Populated only
+// for the NVLink5 family, same as FatalXidCounts. Events preserves the
 // full per-occurrence detail — process name, PCI address, pid, and (for
 // 144-150) NVLink5 — for message interpolation and richer rules.
 type XidMeasurement struct {
-	XidCounts      map[int64]int64 `json:"xid_counts"`
-	FatalXidCounts map[int64]int64 `json:"fatal_xid_counts"`
-	Since          string          `json:"since"`
-	Events         []XidEvent      `json:"events"`
-	errors         []health.ErroredMeasurement
-	EventCount     int64 `json:"event_count"`
+	XidCounts        map[int64]int64  `json:"xid_counts"`
+	FatalXidCounts   map[int64]int64  `json:"fatal_xid_counts"`
+	SubXidCodeCounts map[string]int64 `json:"sub_xid_code_counts"`
+	Since            string           `json:"since"`
+	Events           []XidEvent       `json:"events"`
+	errors           []health.ErroredMeasurement
+	EventCount       int64 `json:"event_count"`
 }
 
 // ErroredXid returns an XidMeasurement marked errored for a whole-query

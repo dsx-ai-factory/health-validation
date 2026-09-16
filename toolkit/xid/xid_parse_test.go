@@ -148,6 +148,9 @@ func TestParseXid_NVLink5Fatal(t *testing.T) {
 	if ev.NVLink5.ErrorStatus != "0x00000000" {
 		t.Errorf("ErrorStatus = %q, want 0x00000000", ev.NVLink5.ErrorStatus)
 	}
+	if ev.NVLink5.SubXidCode != "149.4" {
+		t.Errorf("SubXidCode = %q, want 149.4", ev.NVLink5.SubXidCode)
+	}
 	if want := []string{"0x00000001", "0x00000002"}; len(ev.NVLink5.DebugData) != len(want) || ev.NVLink5.DebugData[0] != want[0] || ev.NVLink5.DebugData[1] != want[1] {
 		t.Errorf("DebugData = %v, want %v", ev.NVLink5.DebugData, want)
 	}
