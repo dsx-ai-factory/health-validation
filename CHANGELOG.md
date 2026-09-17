@@ -3,10 +3,10 @@
 All notable changes to NVIDIA Health Validation are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [catalog/v0.2.0-rc1] and [toolkit/v0.2.0-rc1] - 2026-09-15
+## [catalog/v0.2.0] and [toolkit/v0.2.0] - 2026-09-17
 
-Release candidate covering everything since `catalog/v0.1.0` and
-`toolkit/v0.1.0`. Build, CI, and documentation-only changes are omitted.
+Covers everything since `catalog/v0.1.0` and `toolkit/v0.1.0`. Build, CI,
+and documentation-only changes are omitted.
 
 ### Breaking Changes
 
@@ -73,7 +73,7 @@ Release candidate covering everything since `catalog/v0.1.0` and
 - Operator CLI (`health-validation run`) producing structured JSON verdicts.
 - CEL-based rule evaluation engine with operator-configurable threshold overrides.
 
-[catalog/v0.2.0-rc1]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.2.0-rc1
-[toolkit/v0.2.0-rc1]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.2.0-rc1
+[catalog/v0.2.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.2.0
+[toolkit/v0.2.0]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.2.0
 [catalog/v0.1.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.1.0
 [toolkit/v0.1.0]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.1.0
