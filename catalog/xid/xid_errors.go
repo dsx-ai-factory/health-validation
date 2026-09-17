@@ -90,10 +90,12 @@ var nvlink5Xids = []nvlink5Xid{
 // "149.F" doesn't have to affect how "149.4" is handled.
 //
 // Caveat: SubXidCode is computed from IntrInfo bits alone, independent
-// of subcode, so a rare event from a different subcode under the same
-// code that happens to share the same digit will also match here; the
-// message's investigatory guidance is only correct for the intended
-// subcode.
+// of subcode, so an event from a different subcode under the same code
+// that shares the digit also matches here. Severity and action stay
+// right because [nvlink5SubXidCodeResolvesAlike] only keeps digits
+// every such row resolves the same way, but the message's
+// investigatory guidance still names the subcode this check was built
+// from.
 type nvlink5SubXidCode struct {
 	subXidCode    string // e.g. "149.4"
 	subcode       string // e.g. "NETIR_LINK_EVT/NETIR_LINK_DOWN"
@@ -104,9 +106,12 @@ type nvlink5SubXidCode struct {
 // nvlink5SubXidCodes derives every [nvlink5SubXidCode] from
 // [nvlink5DecodeTable]: rows within a (code, subcode) group that share
 // a blank ErrorStatus and are disambiguated purely by their IntrInfo
-// pattern's embedded SubXidCode digit (see [nvlink5SubXidCodeDigit]).
-// A group with only one row, or whose rows vary by ErrorStatus instead,
-// is left to [nvlink5Check]'s code-level Fatal/Nonfatal check.
+// pattern's embedded SubXidCode digit (see [nvlink5SubXidCodeDigit]),
+// keeping only digits every row under that code resolves alike (see
+// [nvlink5SubXidCodeResolvesAlike]). A group with only one row, whose
+// rows vary by ErrorStatus instead, or whose digit other rows resolve
+// differently, is left to [nvlink5Check]'s code-level Fatal/Nonfatal
+// check.
 var nvlink5SubXidCodes = deriveNVLink5SubXidCodes()
 
 // deriveNVLink5SubXidCodes builds [nvlink5SubXidCodes]' value; split
@@ -140,6 +145,9 @@ func deriveNVLink5SubXidCodes() []nvlink5SubXidCode {
 			if !ok {
 				continue
 			}
+			if !nvlink5SubXidCodeResolvesAlike(row.code, digit, row.resolution) {
+				continue
+			}
 			out = append(out, nvlink5SubXidCode{
 				subXidCode:    fmt.Sprintf("%d.%s", row.code, digit),
 				subcode:       row.subcode,
@@ -149,6 +157,39 @@ func deriveNVLink5SubXidCodes() []nvlink5SubXidCode {
 		}
 	}
 	return out
+}
+
+// nvlink5SubXidCodeResolvesAlike reports whether every row under code
+// sharing this SubXidCode digit calls for the same resolution.
+//
+// sub_xid_code_counts is keyed from the Xid code and IntrInfo[25:20]
+// alone (see toolkit/xid's nvlink5SubXidCode), with no knowledge of the
+// SubComponent or ErrorStatus a decode-table row is also matched on.
+// Several rows under one code can therefore share a digit, and where
+// they disagree the signal cannot say which of them occurred. Xid 149
+// digit 0 covers NETIR_LINK_DOWN (RESET_GPU) and NETIR_BER_EVENT
+// (IGNORE) alike, so a check keyed on it would recommend a GPU reset
+// for a bit-error event NVIDIA says to ignore.
+//
+// Such a digit names no single fault subtype, which is the whole
+// premise of a per-subcode check, so it gets no check and its events
+// are left to [nvlink5Check]'s code-level verdict.
+func nvlink5SubXidCodeResolvesAlike(code int64, digit, resolution string) bool {
+	for _, row := range nvlink5DecodeTable {
+		if row.code != code {
+			continue
+		}
+		rowDigit, ok := nvlink5SubXidCodeDigit(row)
+		if ok && rowDigit != digit {
+			continue
+		}
+		// !ok means the row wildcards the digit bits and so matches
+		// every digit under this code, including this one.
+		if row.resolution != resolution {
+			return false
+		}
+	}
+	return true
 }
 
 // nvlink5SubXidCodeDigit extracts row's SubXidCode digit: the literal
