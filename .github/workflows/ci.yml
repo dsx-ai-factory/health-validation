@@ -194,7 +194,9 @@ jobs:
     runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     permissions:
-      contents: read
+      # write: sbom-action attaches the SBOM to the tag's GitHub Release when
+      # one exists, which is the case for toolkit release tags.
+      contents: write
       security-events: write
     steps:
       - uses: actions/checkout@v7
