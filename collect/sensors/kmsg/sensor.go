@@ -173,7 +173,7 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 func appendErrors(batch *observation.ObservationBatch, selected collect.Signals, now *timestamppb.Timestamp, category observation.CollectionErrorCategory, detail string) {
 	for _, signal := range selected {
 		batch.Observations = append(batch.Observations, observation.NewCollectionErrorObservation(
-			signal.ID(), signal.Unit(), source, "ReadAll", nil, now,
+			signal.ID(), signal.Unit(), source, "read", nil, now,
 			&observation.CollectionError{Category: category, Detail: detail},
 		))
 	}

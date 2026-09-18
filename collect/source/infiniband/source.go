@@ -5,6 +5,7 @@
 package infiniband
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -80,11 +81,7 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 	}
 	var deviceSignals, portSignals collect.Signals
 	for _, signal := range selected {
-		file, ok := paths[signal.ID()]
-		if !ok {
-			return nil, fmt.Errorf("unsupported InfiniBand signal %q", signal.ID())
-		}
-		switch file {
+		switch paths[signal.ID()] {
 		case "fw_ver", "board_id", "hca_type":
 			deviceSignals = append(deviceSignals, signal)
 		default:
@@ -125,13 +122,7 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 		slices.SortStableFunc(ports, func(a, b fs.DirEntry) int {
 			x, _ := strconv.ParseUint(a.Name(), 10, 32)
 			y, _ := strconv.ParseUint(b.Name(), 10, 32)
-			if x < y {
-				return -1
-			}
-			if x > y {
-				return 1
-			}
-			return 0
+			return cmp.Compare(x, y)
 		})
 		for _, port := range ports {
 			portNumber, parseErr := strconv.ParseUint(port.Name(), 10, 32)
@@ -139,51 +130,59 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 				continue
 			}
 			portName := strconv.FormatUint(portNumber, 10)
-			counterFiles := make(map[string]fs.DirEntry)
-			counterErrors := make(map[string]error)
-			for _, signal := range portSignals {
-				dir := path.Dir(paths[signal.ID()])
-				if dir == "." {
-					continue
-				}
-				if _, listed := counterErrors[dir]; listed {
-					continue
-				}
-				entries, listErr := fs.ReadDir(s.files, path.Join(device.Name(), "ports", portName, dir))
-				counterErrors[dir] = listErr
-				for _, entry := range entries {
-					counterFiles[path.Join(dir, entry.Name())] = entry
-				}
-			}
+			portPath := path.Join(device.Name(), "ports", portName)
+			entity := &observation.Entity{Type: "infiniband_port", Id: path.Join(device.Name(), portName)}
+			counterErrors := s.counterErrors(portPath, portSignals)
 			for _, signal := range portSignals {
 				if contextErr := ctx.Err(); contextErr != nil {
 					return nil, contextErr
 				}
-				entity := &observation.Entity{Type: "infiniband_port", Id: path.Join(device.Name(), portName)}
-				name := path.Join(device.Name(), "ports", portName, paths[signal.ID()])
 				file := paths[signal.ID()]
-				if dir := path.Dir(file); dir != "." {
-					err := counterErrors[dir]
-					if err == nil {
-						entry, exists := counterFiles[file]
-						if !exists {
-							err = fs.ErrNotExist
-						} else if !entry.Type().IsRegular() {
-							err = syscall.EOPNOTSUPP
-						}
-					}
-					if err != nil {
-						failure := Failure(err)
-						failure.Operation = name
-						readings = append(readings, Reading{Signal: signal, Entity: entity, Failure: failure})
-						continue
-					}
+				name := path.Join(portPath, file)
+				if err := counterErrors[file]; err != nil {
+					failure := Failure(err)
+					failure.Operation = name
+					readings = append(readings, Reading{Signal: signal, Entity: entity, Failure: failure})
+					continue
 				}
 				readings = append(readings, s.readSignal(signal, name, entity, cache))
 			}
 		}
 	}
 	return readings, nil
+}
+
+// counterErrors checks selected counters against directory entries before reading.
+// GPUd skips nonregular files; each selected directory is listed only once.
+func (s *Source) counterErrors(portPath string, signals collect.Signals) map[string]error {
+	failures := make(map[string]error)
+	for _, dir := range []string{"counters", "hw_counters"} {
+		var selected []string
+		for _, signal := range signals {
+			if file := paths[signal.ID()]; path.Dir(file) == dir {
+				selected = append(selected, file)
+			}
+		}
+		if len(selected) == 0 {
+			continue
+		}
+		entries, err := fs.ReadDir(s.files, path.Join(portPath, dir))
+		files := make(map[string]fs.DirEntry, len(entries))
+		for _, entry := range entries {
+			files[entry.Name()] = entry
+		}
+		for _, file := range selected {
+			switch entry := files[path.Base(file)]; {
+			case err != nil:
+				failures[file] = err
+			case entry == nil:
+				failures[file] = fs.ErrNotExist
+			case !entry.Type().IsRegular():
+				failures[file] = syscall.EOPNOTSUPP
+			}
+		}
+	}
+	return failures
 }
 
 func (s *Source) readFile(name string) ([]byte, error) {

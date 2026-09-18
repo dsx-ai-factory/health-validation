@@ -41,8 +41,8 @@ func Parse(bootTime time.Time, record string) (Message, error) {
 	return *msg, nil
 }
 
-// Copied from GPUd watcher.go. Only message field types/names and the duration
-// overflow guard differ; Parse supplies our public error classification.
+// Copied from GPUd watcher.go. Message field types/names, error field labels, and the
+// duration overflow guard differ; Parse supplies our public error classification.
 func parseLine(bootTime time.Time, line string) (*Message, error) {
 	// Format:
 	//   PRIORITY,SEQUENCE_NUM,TIMESTAMP,-;MESSAGE
@@ -67,12 +67,12 @@ func parseLine(bootTime time.Time, line string) (*Message, error) {
 
 	sequenceNum, err := strconv.Atoi(sequence)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse %q as sequence number: %v", priority, err)
+		return nil, fmt.Errorf("could not parse %q as sequence number: %v", sequence, err)
 	}
 
 	timestampUsFromBoot, err := strconv.ParseInt(timestamp, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse %q as timestamp: %v", priority, err)
+		return nil, fmt.Errorf("could not parse %q as timestamp: %v", timestamp, err)
 	}
 	// Keep the upstream parser, but reject multiplication overflow at our boundary.
 	if timestampUsFromBoot > math.MaxInt64/int64(time.Microsecond) || timestampUsFromBoot < math.MinInt64/int64(time.Microsecond) {

@@ -16,16 +16,16 @@ import (
 
 // File names and counter units follow GPUd's InfiniBand class collector.
 var paths = map[string]string{
-	ibsignals.StateName.ID():                       "state",
-	ibsignals.PhysicalStateName.ID():               "phys_state",
-	ibsignals.RateGbps.ID():                        "rate",
 	ibsignals.FirmwareVersion.ID():                 "fw_ver",
 	ibsignals.BoardID.ID():                         "board_id",
 	ibsignals.HCAType.ID():                         "hca_type",
 	ibsignals.State.ID():                           "state",
+	ibsignals.StateName.ID():                       "state",
 	ibsignals.PhysicalState.ID():                   "phys_state",
+	ibsignals.PhysicalStateName.ID():               "phys_state",
 	ibsignals.LinkLayer.ID():                       "link_layer",
 	ibsignals.Rate.ID():                            "rate",
+	ibsignals.RateGbps.ID():                        "rate",
 	ibsignals.ExcessiveBufferOverrunErrors.ID():    "counters/excessive_buffer_overrun_errors",
 	ibsignals.LinkDowned.ID():                      "counters/link_downed",
 	ibsignals.LinkErrorRecovery.ID():               "counters/link_error_recovery",

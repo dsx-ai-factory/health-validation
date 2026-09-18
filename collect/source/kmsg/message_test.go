@@ -4,6 +4,7 @@
 package kmsg
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,6 +21,18 @@ func TestParse(t *testing.T) {
 	for _, raw := range []string{"missing", "1,2;body", "1,2,18446744073709551615;body", "1,2,-9223372036854775808;body", "1,2,9223372036854775807;body", "x,2,3;body"} {
 		if _, parseErr := Parse(boot, raw); parseErr == nil {
 			t.Errorf("accepted %q", raw)
+		}
+	}
+}
+
+func TestParseErrorField(t *testing.T) {
+	for _, tc := range []struct{ record, detail string }{
+		{"6,bad-sequence,1;body", `"bad-sequence" as sequence number`},
+		{"6,1,bad-time;body", `"bad-time" as timestamp`},
+	} {
+		_, err := Parse(time.Unix(1000, 0), tc.record)
+		if err == nil || !strings.Contains(err.Error(), tc.detail) {
+			t.Errorf("Parse(%q) error = %v, want %q", tc.record, err, tc.detail)
 		}
 	}
 }
