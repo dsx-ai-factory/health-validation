@@ -103,15 +103,18 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	if cycle == nil {
 		return nil, fmt.Errorf("collection cycle is required")
 	}
-	batch := &observation.ObservationBatch{CollectionId: cycle.CollectionID()}
 	now := timestamppb.New(cycle.StartedAt())
-	messages, err := collect.Run(ctx, cycle, source, func(ctx context.Context) ([]kmsgsource.Message, error) {
+	batch, err := collect.Run(ctx, cycle, source, func(ctx context.Context) (*observation.ObservationBatch, error) {
 		if !s.mu.TryLock() {
 			return nil, errInUse
 		}
 		defer s.mu.Unlock()
-		return s.read(ctx)
+		return s.measure(ctx, selected, now)
 	})
+	if batch == nil {
+		batch = &observation.ObservationBatch{}
+	}
+	batch.CollectionId = cycle.CollectionID()
 	if err != nil {
 		category := observation.CollectionErrorCategorySourceError
 		switch {
@@ -126,9 +129,20 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		case errors.Is(err, fs.ErrNotExist), errors.Is(err, fs.ErrClosed), errors.Is(err, context.Canceled), errors.Is(err, collect.ErrCollectionCanceled), errors.Is(err, errInUse):
 			category = observation.CollectionErrorCategoryUnavailable
 		}
-		appendErrors(batch, selected, now, category, err.Error())
+		failures := &observation.ObservationBatch{}
+		appendErrors(failures, selected, now, category, err.Error())
+		batch.Observations = append(failures.Observations, batch.Observations...)
 	}
+	return batch, nil
+}
+
+func (s *sensor) measure(ctx context.Context, selected collect.Signals, now *timestamppb.Timestamp) (*observation.ObservationBatch, error) {
+	messages, readErr := s.read(ctx)
+	batch := &observation.ObservationBatch{}
 	for _, message := range messages {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		// Injected readers must provide the same boot-scoped identity as ReadAll.
 		if strings.TrimSpace(message.BootID) == "" || message.Timestamp.IsZero() || timestamppb.New(message.Timestamp).CheckValid() != nil {
 			appendErrors(batch, selected, now, observation.CollectionErrorCategoryParseError, "kernel record requires a boot ID and valid timestamp")
@@ -136,6 +150,9 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		}
 		matches := make(map[string]string)
 		for id, pattern := range s.patterns {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			if pattern.MatchString(message.Body) {
 				matches[id] = pattern.String()
 			}
@@ -167,7 +184,7 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 			})
 		}
 	}
-	return batch, nil
+	return batch, readErr
 }
 
 func appendErrors(batch *observation.ObservationBatch, selected collect.Signals, now *timestamppb.Timestamp, category observation.CollectionErrorCategory, detail string) {

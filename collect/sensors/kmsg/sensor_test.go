@@ -6,6 +6,7 @@ package kmsg
 import (
 	"context"
 	"io/fs"
+	"strings"
 	"testing"
 	"time"
 
@@ -222,5 +223,29 @@ func TestDefaultPatterns(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTimeoutIncludesMatching(t *testing.T) {
+	now := time.Now()
+	messages := make([]kmsgsource.Message, 20000)
+	body := strings.Repeat("a", 8192)
+	for i := range messages {
+		messages[i] = kmsgsource.Message{BootID: "boot", Timestamp: now, Sequence: i, Body: body}
+	}
+	s, err := New(func(context.Context) ([]kmsgsource.Message, error) { return messages, nil }, Pattern{SignalID: "slow", Regex: `a.*z`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cycle, err := collect.NewCycleWithTimeout("matching", now, 10*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID("slow"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batch.Observations) != 1 || batch.Observations[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
+		t.Fatalf("matching escaped the collection deadline: %v", batch)
 	}
 }
