@@ -140,3 +140,38 @@ func TestRejectGPUInventory(t *testing.T) {
 		t.Fatal("Measure() accepted unsupported GPU inventory request")
 	}
 }
+
+// A concurrent successful Refresh can clear InitError between sensor reads.
+type recoveringInstance struct {
+	fakeInstance
+	errorReads int
+}
+
+func (f *recoveringInstance) InitError() error {
+	f.errorReads++
+	if f.errorReads == 1 {
+		return errors.New("enumeration failed")
+	}
+	return nil
+}
+
+func TestMeasureConcurrentRecovery(t *testing.T) {
+	inst := &recoveringInstance{fakeInstance: fakeInstance{exists: true}}
+	sensor := New(inst)
+	batch, err := sensor.Measure(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batch.Observations) != len(sensor.Signals()) {
+		t.Fatalf("got %d observations", len(batch.Observations))
+	}
+	for _, obs := range batch.Observations {
+		failure := obs.GetCollectionError()
+		if failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || failure.GetDetail() != "enumeration failed" {
+			t.Fatalf("lost enumeration error during recovery: %v", obs)
+		}
+	}
+	if inst.errorReads != 1 {
+		t.Fatalf("read mutable initialization error %d times", inst.errorReads)
+	}
+}

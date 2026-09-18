@@ -109,12 +109,12 @@ func (s *sensor) measure(ctx context.Context, op *collect.Op, selected collect.S
 			// every selected signal is unavailable, attributed to the source.
 			return allSignalsFailed(selected, now, "GetDevices", observation.CollectionErrorCategoryUnavailable, err.Error()), nil
 		}
-	} else if len(s.inst.Devices()) == 0 && s.inst.InitError() != nil {
+	} else if initErr := s.inst.InitError(); initErr != nil && len(s.inst.Devices()) == 0 {
 		// The instantiation-time enumeration failed and no refresh has
 		// recovered it, so there is no static list to measure. An empty
 		// batch would read as "no GPUs, nothing wrong"; report every
 		// selected signal unavailable instead.
-		return allSignalsFailed(selected, now, "GetDevices", observation.CollectionErrorCategoryUnavailable, s.inst.InitError().Error()), nil
+		return allSignalsFailed(selected, now, "GetDevices", observation.CollectionErrorCategoryUnavailable, initErr.Error()), nil
 	}
 	devices := s.inst.Devices()
 	if len(devices) == 0 {
