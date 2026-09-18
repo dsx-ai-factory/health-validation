@@ -190,13 +190,17 @@ jobs:
   # failure mode loud. amd64 only: both images share the same Ubuntu base, so
   # arm64 reports the same base-image CVEs.
   scan:
+    # This job builds and tests whatever the triggering branch contains,
+    # including pull-request/* branches mirroring untrusted fork PRs (see the
+    # `on.push` comment above), so its token stays read-only. Attaching the
+    # SBOM to a release needs contents: write; that happens in the
+    # attach-sbom-to-release job below, which only runs for trusted toolkit
+    # release tags and never builds PR-controlled code.
     if: github.repository == 'dsx-ai-factory/health-validation'
     runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     permissions:
-      # write: sbom-action attaches the SBOM to the tag's GitHub Release when
-      # one exists, which is the case for toolkit release tags.
-      contents: write
+      contents: read
       security-events: write
     steps:
       - uses: actions/checkout@v7
@@ -230,6 +234,7 @@ jobs:
           fail-on: critical
           fail-build: 'false'
           generate-sbom: 'true'
+          sbom-artifact-name: container.spdx.json
           upload-sarif: 'true'
           sarif-category: grype-health-validation
 
@@ -251,6 +256,30 @@ jobs:
           jq -e
           '[.matches[] | select(.vulnerability.severity == "Critical" and .vulnerability.fix.state == "fixed")] | length == 0'
           "${{ steps.scan.outputs.report_json }}"
+
+  # Attach the SBOM the scan job already generated to the tag's GitHub
+  # Release. Gated to toolkit release tags, which only a maintainer can push
+  # and which never run PR-controlled code, so the write-capable token here
+  # can't be reached from an untrusted branch.
+  attach-sbom-to-release:
+    if: >-
+      github.repository == 'dsx-ai-factory/health-validation' &&
+      startsWith(github.ref, 'refs/tags/toolkit/v')
+    needs: scan
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download the SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: container.spdx.json
+
+      - name: Attach the SBOM to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" container.spdx.json --clobber --repo "${{ github.repository }}"
 
   # Publish one OCI index containing linux/amd64 and linux/arm64. Main advances
   # both its immutable pseudo-version and latest; toolkit release tags publish
