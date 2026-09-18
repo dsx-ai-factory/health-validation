@@ -183,20 +183,22 @@ jobs:
             exit 1
           fi
 
-  # Scan the packaged image for known CVEs. The shared action inspects the local
-  # Docker daemon and never pulls, so the image must be loaded first — a sibling
-  # repo skipped that, silently scanned nothing, and reported green for weeks.
-  # The explicit `docker image inspect` and the status check below make that
-  # failure mode loud. amd64 only: both images share the same Ubuntu base, so
-  # arm64 reports the same base-image CVEs.
+  # Scan the packaged image for known CVEs and generate its SBOM (shared
+  # scan-image action). amd64 only: both images share the same Ubuntu base,
+  # so arm64 reports the same base-image CVEs.
+  #
+  # Split into scan/scan-release because scan-image's SBOM step attaches to
+  # the tag's GitHub Release when one exists, which needs contents: write.
+  # scan builds and tests whatever the triggering branch contains, including
+  # pull-request/* branches mirroring untrusted fork PRs (see the `on.push`
+  # comment above), so it keeps a read-only token and never attempts the
+  # attach (no release exists for a PR or main commit). Toolkit release tags
+  # — which only a maintainer can push, and which never run PR-controlled
+  # code — get the write-capable scan-release job instead.
   scan:
-    # This job builds and tests whatever the triggering branch contains,
-    # including pull-request/* branches mirroring untrusted fork PRs (see the
-    # `on.push` comment above), so its token stays read-only. Attaching the
-    # SBOM to a release needs contents: write; that happens in the
-    # attach-sbom-to-release job below, which only runs for trusted toolkit
-    # release tags and never builds PR-controlled code.
-    if: github.repository == 'dsx-ai-factory/health-validation'
+    if: >-
+      github.repository == 'dsx-ai-factory/health-validation' &&
+      !startsWith(github.ref, 'refs/tags/toolkit/v')
     runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     permissions:
@@ -210,76 +212,51 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
-      # Exercise both platform transitions and the OCI index assembly on every
-      # workflow run, including pull-request branches that never publish.
-      - name: Build the multi-architecture image index
-        run: bazel build --config=ci //toolkit/cmd/health-validation:health-validation.image.index
+      - uses: ./.github/actions/scan-image
 
-      - name: Build and load the amd64 image for scanning
-        run: |
-          bazel build --config=ci --platforms=//build/platforms:linux_amd64 \
-            //toolkit/cmd/health-validation:health-validation.image.tar
-          docker load -i \
-            bazel-bin/toolkit/cmd/health-validation/health-validation.image.local_load/tarball.tar
-          docker image inspect health-validation:latest > /dev/null
-
-      # Emits the SBOM, JSON/SARIF/table reports, and a step summary. SARIF goes
-      # to the Security tab, which is the advisory channel here — every High is
-      # visible there without failing the build.
-      - name: Grype vulnerability scan
-        id: scan
-        uses: dsx-ai-factory/dsx-github-actions/.github/actions/security-container-scan@d15d46d22d09f7111177a6f5e9f7ae9933e067b2 # v1.20.0
-        with:
-          image: health-validation:latest
-          fail-on: critical
-          fail-build: 'false'
-          generate-sbom: 'true'
-          sbom-artifact-name: container.spdx.json
-          upload-sarif: 'true'
-          sarif-category: grype-health-validation
-
-      # `ok` and `high_or_error` are the two statuses that mean Grype actually
-      # ran. Anything else (image_not_found, sbom_failed, pull_failed) means the
-      # scan produced no verdict, which must not pass as a clean result.
-      - name: Verify the scan ran
-        if: steps.scan.outputs.status != 'ok' && steps.scan.outputs.status != 'high_or_error'
-        run: |
-          echo "::error::scan did not run: ${{ steps.scan.outputs.status }} — ${{ steps.scan.outputs.detail }}"
-          exit 1
-
-      # The action has no --only-fixed, so the fixable-only gate is applied here.
-      # An unfixable Critical cannot be cleared from this repo and would wedge
-      # CI; a fixable one means bump the base image or raise the Go version for
-      # stdlib findings.
-      - name: Block on Criticals with a fix available
-        run: >
-          jq -e
-          '[.matches[] | select(.vulnerability.severity == "Critical" and .vulnerability.fix.state == "fixed")] | length == 0'
-          "${{ steps.scan.outputs.report_json }}"
-
-  # Attach the SBOM the scan job already generated to the tag's GitHub
-  # Release. Gated to toolkit release tags, which only a maintainer can push
-  # and which never run PR-controlled code, so the write-capable token here
-  # can't be reached from an untrusted branch.
-  attach-sbom-to-release:
+  scan-release:
     if: >-
       github.repository == 'dsx-ai-factory/health-validation' &&
       startsWith(github.ref, 'refs/tags/toolkit/v')
-    needs: scan
     runs-on: linux-amd64-cpu4
-    timeout-minutes: 5
+    timeout-minutes: 30
     permissions:
       contents: write
+      security-events: write
     steps:
-      - name: Download the SBOM
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
         with:
-          name: container.spdx.json
+          persist-credentials: false
 
-      - name: Attach the SBOM to the release
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - uses: ./.github/actions/scan-image
+
+  # scan and scan-release are mutually exclusive, so exactly one is always
+  # 'skipped'. Folding that into a single pass/fail job here lets
+  # publish-image depend on a plain `needs: [..., scan-status]` instead of
+  # spelling out per-job result checks in its own `if`.
+  scan-status:
+    if: always() && github.repository == 'dsx-ai-factory/health-validation'
+    needs:
+      - scan
+      - scan-release
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 1
+    steps:
+      - name: Check scan/scan-release results
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" container.spdx.json --clobber --repo "${{ github.repository }}"
+          SCAN_RESULT: ${{ needs.scan.result }}
+          SCAN_RELEASE_RESULT: ${{ needs.scan-release.result }}
+        run: |
+          for result in "$SCAN_RESULT" "$SCAN_RELEASE_RESULT"; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "::error::scan/scan-release did not succeed: scan=$SCAN_RESULT scan-release=$SCAN_RELEASE_RESULT" >&2
+              exit 1
+            fi
+          done
 
   # Publish one OCI index containing linux/amd64 and linux/arm64. Main advances
   # both its immutable pseudo-version and latest; toolkit release tags publish
@@ -297,7 +274,7 @@ jobs:
       - test
       - build-amd64
       - build-arm64
-      - scan
+      - scan-status
     runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     permissions:
