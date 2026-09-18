@@ -15,6 +15,8 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
+	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
+	kmsgsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/kmsg"
 	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
@@ -46,12 +48,17 @@ func run() error {
 		return fmt.Errorf("init DCGM sensor: %w", err)
 	}
 
+	kmsgSensor, err := kmsgsensor.New(nil)
+	if err != nil {
+		return fmt.Errorf("init kmsg sensor: %w", err)
+	}
+
 	currentCycle, err := collect.NewCycle(uuid.NewString(), time.Now().UTC())
 	if err != nil {
 		return fmt.Errorf("create collection cycle: %w", err)
 	}
 	batch := &observation.ObservationBatch{CollectionId: currentCycle.CollectionID()}
-	for _, sensor := range []collect.Sensor{nvmlsensor.New(nvmlInst), dcgmSensor} {
+	for _, sensor := range []collect.Sensor{nvmlsensor.New(nvmlInst), dcgmSensor, ibsensor.New(nil), kmsgSensor} {
 		measured, measureErr := sensor.Measure(context.Background(), collect.WithCycle(currentCycle))
 		if measureErr != nil {
 			return fmt.Errorf("measure sensor %q: %w", sensor.ID(), measureErr)

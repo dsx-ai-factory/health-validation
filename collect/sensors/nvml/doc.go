@@ -1,7 +1,7 @@
-// Package nvml is the NVML-sourced GPU sensor: temperature readings per
+// Package nvml is the NVML-sourced GPU sensor: power and temperature readings per
 // device. Single-source sensors group by their source. The NVML queries
-// follow gpud's temperature component: temperature.go mirrors
-// components/accelerator/nvidia/temperature.
+// follow GPUd's power and temperature components. Power is converted from
+// milliwatts to the canonical watt signals shared with DCGM.
 //
 // gpud's supported-flag sentinels become per-signal CollectionError
 // observations carrying the native NVML return code: sensors normalize,

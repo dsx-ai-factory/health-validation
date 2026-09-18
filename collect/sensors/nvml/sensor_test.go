@@ -18,10 +18,11 @@ type fakeInstance struct {
 	refreshed  bool
 }
 
-func (f *fakeInstance) NVMLExists() bool                  { return f.exists }
-func (f *fakeInstance) Devices() map[string]device.Device { return f.devices }
-func (f *fakeInstance) Shutdown() error                   { return nil }
-func (f *fakeInstance) InitError() error                  { return f.initErr }
+func (f *fakeInstance) NVMLExists() bool                                     { return f.exists }
+func (f *fakeInstance) Devices() map[string]device.Device                    { return f.devices }
+func (f *fakeInstance) Read(read func(map[string]device.Device) error) error { return read(f.devices) }
+func (f *fakeInstance) Shutdown() error                                      { return nil }
+func (f *fakeInstance) InitError() error                                     { return f.initErr }
 
 func (f *fakeInstance) Refresh() error {
 	f.refreshed = true
@@ -106,9 +107,9 @@ func TestMeasureRefresh(t *testing.T) {
 				}
 				return
 			}
-			if len(batch.Observations) != len(temperatureSignals()) {
+			if len(batch.Observations) != len(sensor.Signals()) {
 				t.Fatalf("Measure() emitted %d observations, want one per signal (%d)",
-					len(batch.Observations), len(temperatureSignals()))
+					len(batch.Observations), len(sensor.Signals()))
 			}
 			for _, obs := range batch.Observations {
 				failure := obs.GetCollectionError()

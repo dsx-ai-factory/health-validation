@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "kmsg",
+    srcs = ["sensor.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/sensors/kmsg",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/kernel",
+        "//collect/source/kmsg",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ],
+)
+
+go_test(
+    name = "kmsg_test",
+    srcs = ["sensor_test.go"],
+    embed = [":kmsg"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/kernel",
+        "//collect/source/kmsg",
+    ],
+)

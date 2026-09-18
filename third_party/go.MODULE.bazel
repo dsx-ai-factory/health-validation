@@ -40,5 +40,6 @@ use_repo(
     "io_opentelemetry_go_proto_otlp",
     "org_golang_google_grpc",
     "org_golang_google_protobuf",
+    "org_golang_x_sys",
     "org_golang_x_tools",
 )

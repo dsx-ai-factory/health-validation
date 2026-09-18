@@ -2,13 +2,16 @@ package nvml
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
+	"github.com/dsx-ai-factory/health-validation/collect/source/nvml/device"
 )
 
 var _ collect.Sensor = (*sensor)(nil)
@@ -16,9 +19,10 @@ var _ collect.Sensor = (*sensor)(nil)
 // ID identifies the NVML-backed GPU sensor.
 const ID = "gpu.nvml"
 
-// sensor reads GPU temperature through the NVML source client.
+// sensor reads GPU power and temperature through the NVML source client.
 type sensor struct {
 	inst nvmlsource.Instance
+	mu   sync.Mutex
 }
 
 // New returns a sensor over the given NVML instance.
@@ -29,16 +33,13 @@ func New(inst nvmlsource.Instance) collect.Sensor {
 func (s *sensor) ID() string { return ID }
 
 func (s *sensor) Signals() collect.Signals {
-	return temperatureSignals()
+	return append(temperatureSignals(), powerSignals()...)
 }
 
-// Measure emits one observation per selected (signal, GPU), or one no-target
-// observation per signal when no GPUs are present. The device list captured at
-// instantiation is used unless WithRefresh(true) re-enumerates it.
-//
-// TODO: run the NVML calls through collect.Run, as the DCGM source does. A
-// hung NVML cgo call currently blocks Measure with no timeout.
-func (s *sensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+// Measure reads selected fields. WithCycle applies the shared collection timeout;
+// calls without a cycle retain the synchronous API. Reuse one sensor per instance
+// and shut the instance down only after in-flight native calls have completed.
+func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	op := collect.NewOp(opts...)
 	if op.GPUInventory() {
 		return nil, fmt.Errorf("NVML sensor GPU inventory is not supported yet")
@@ -47,10 +48,59 @@ func (s *sensor) Measure(_ context.Context, opts ...collect.OpOption) (*observat
 	if err != nil {
 		return nil, fmt.Errorf("select NVML signals: %w", err)
 	}
+	if ctx == nil {
+		return nil, fmt.Errorf("collection context is required")
+	}
 	now := timestamppb.Now()
+	cycle := op.Cycle()
+	if cycle != nil {
+		now = timestamppb.New(cycle.StartedAt())
+	}
+	batch := &observation.ObservationBatch{CollectionId: cycle.CollectionID()}
+	if len(selected) == 0 {
+		return batch, nil
+	}
+	if s.inst == nil {
+		return nil, fmt.Errorf("NVML instance is required")
+	}
+	read := func(ctx context.Context) (*observation.ObservationBatch, error) {
+		if !s.mu.TryLock() {
+			return nil, errInUse
+		}
+		defer s.mu.Unlock()
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		return s.measure(ctx, op, selected, now)
+	}
+	if cycle == nil {
+		batch, err = read(ctx)
+	} else {
+		batch, err = collect.Run(ctx, cycle, source, read)
+	}
+	if err != nil {
+		category := observation.CollectionErrorCategorySourceError
+		switch {
+		case errors.Is(err, collect.ErrCollectionTimeout), errors.Is(err, context.DeadlineExceeded):
+			category = observation.CollectionErrorCategoryTimeout
+		case errors.Is(err, collect.ErrCollectionCanceled), errors.Is(err, context.Canceled), errors.Is(err, errInUse), errors.Is(err, nvmlsource.ErrInUse):
+			category = observation.CollectionErrorCategoryUnavailable
+		}
+		batch = allSignalsFailed(selected, now, "Measure", category, err.Error())
+	}
+	batch.CollectionId = cycle.CollectionID()
+	return batch, nil
+}
+
+var errInUse = errors.New("NVML read already in progress")
+
+func (s *sensor) measure(ctx context.Context, op *collect.Op, selected collect.Signals, now *timestamppb.Timestamp) (*observation.ObservationBatch, error) {
 	batch := &observation.ObservationBatch{}
 
 	if !s.inst.NVMLExists() {
+		if initErr := s.inst.InitError(); initErr != nil {
+			return allSignalsFailed(selected, now, "Init", observation.CollectionErrorCategoryUnavailable, initErr.Error()), nil
+		}
 		return allSignalsFailed(selected, now, "Init", observation.CollectionErrorCategoryUnsupported, "NVML library not found"), nil
 	}
 	if op.Refresh() {
@@ -76,9 +126,19 @@ func (s *sensor) Measure(_ context.Context, opts ...collect.OpOption) (*observat
 	for _, definition := range selected {
 		want[definition.ID()] = true
 	}
-	for uuid, dev := range devices {
-		target := observation.GPUTarget(uuid)
-		measureTemperature(batch, now, target, dev, want)
+	err := s.inst.Read(func(devices map[string]device.Device) error {
+		for uuid, dev := range devices {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return contextErr
+			}
+			target := observation.GPUTarget(uuid)
+			ret := measureTemperature(ctx, batch, now, target, dev, want)
+			measurePower(ctx, batch, now, target, dev, want, ret)
+		}
+		return ctx.Err()
+	})
+	if err != nil {
+		return nil, err
 	}
 	return batch, nil
 }

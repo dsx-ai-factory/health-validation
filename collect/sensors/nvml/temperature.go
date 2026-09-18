@@ -1,6 +1,8 @@
 package nvml
 
 import (
+	"context"
+
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -36,7 +38,7 @@ const temperatureSensorMemory nvml.TemperatureSensors = 1
 // for one device. A GPU-lost or requires-reset return aborts the remaining
 // reads for the device (parity with gpud's GetTemperature short-circuit) and
 // marks every uncollected selected signal of the family unavailable.
-func measureTemperature(batch *observation.ObservationBatch, now *timestamppb.Timestamp, target *observation.ObservationTarget, dev device.Device, want map[string]bool) {
+func measureTemperature(ctx context.Context, batch *observation.ObservationBatch, now *timestamppb.Timestamp, target *observation.ObservationTarget, dev device.Device, want map[string]bool) nvml.Return {
 	reads := temperatureReads{
 		batch:     batch,
 		now:       now,
@@ -47,18 +49,24 @@ func measureTemperature(batch *observation.ObservationBatch, now *timestamppb.Ti
 
 	// ref. https://docs.nvidia.com/deploy/nvml-api/group__nvmlDeviceQueries.html#group__nvmlDeviceQueries_1g92d1c5182a14dd4be7090e3c1480b121
 	if want[gpusignals.TemperatureCelsius.ID()] {
+		if ctx.Err() != nil {
+			return nvml.SUCCESS
+		}
 		temp, ret := dev.GetTemperature(nvml.TEMPERATURE_GPU)
 		reads.record(gpusignals.TemperatureCelsius, "GetTemperature", ret, int64(temp))
 		if reads.deviceUnreadable(ret) {
-			return
+			return ret
 		}
 	}
 
 	if want[gpusignals.TemperatureHBMCelsius.ID()] {
+		if ctx.Err() != nil {
+			return nvml.SUCCESS
+		}
 		tempHBM, ret := dev.GetTemperature(temperatureSensorMemory)
 		reads.record(gpusignals.TemperatureHBMCelsius, "GetTemperature(memory)", ret, int64(tempHBM))
 		if reads.deviceUnreadable(ret) {
-			return
+			return ret
 		}
 	}
 
@@ -68,10 +76,13 @@ func measureTemperature(batch *observation.ObservationBatch, now *timestamppb.Ti
 	// wrapper gates the call on driver >= 570, returning ERROR_NOT_SUPPORTED below it.
 	// ref. https://docs.nvidia.com/deploy/nvml-api/group__nvmlDeviceQueries.html#group__nvmlDeviceQueries_1g42db93dc04fc99d253eadc2037a5232d
 	if want[gpusignals.TemperatureSlowdownMarginCelsius.ID()] {
+		if ctx.Err() != nil {
+			return nvml.SUCCESS
+		}
 		margin, ret := dev.GetMarginTemperature()
 		reads.record(gpusignals.TemperatureSlowdownMarginCelsius, "GetMarginTemperature", ret, int64(margin.MarginTemperature))
 		if reads.deviceUnreadable(ret) {
-			return
+			return ret
 		}
 	}
 
@@ -92,12 +103,16 @@ func measureTemperature(batch *observation.ObservationBatch, now *timestamppb.Ti
 		if !want[th.definition.ID()] {
 			continue
 		}
+		if ctx.Err() != nil {
+			return nvml.SUCCESS
+		}
 		limit, ret := dev.GetTemperatureThreshold(th.threshold)
 		reads.record(th.definition, "GetTemperatureThreshold", ret, int64(limit))
 		if reads.deviceUnreadable(ret) {
-			return
+			return ret
 		}
 	}
+	return nvml.SUCCESS
 }
 
 // temperatureReads carries one device's read state through the temperature
@@ -130,7 +145,7 @@ func (r *temperatureReads) record(definition collect.Signal, operation string, r
 		return
 	}
 	r.batch.Observations = append(r.batch.Observations, errorObservation(
-		r.now, r.target, definition, operation, categorizeTemperatureFailure(definition, ret),
+		r.now, r.target, definition, operation, categorizeFailure(definition, ret),
 		returnName(ret), nvml.ErrorString(ret)))
 }
 
@@ -153,11 +168,15 @@ func (r *temperatureReads) deviceUnreadable(ret nvml.Return) bool {
 	return true
 }
 
-// categorizeTemperatureFailure maps a failed temperature read to its
+// categorizeFailure maps a failed NVML read to its
 // collection-error category.
-func categorizeTemperatureFailure(definition collect.Signal, ret nvml.Return) observation.CollectionErrorCategory {
+func categorizeFailure(definition collect.Signal, ret nvml.Return) observation.CollectionErrorCategory {
 	switch {
-	case ret == nvml.ERROR_NOT_SUPPORTED:
+	case ret == nvml.ERROR_NO_PERMISSION:
+		return observation.CollectionErrorCategoryPermissionDenied
+	case ret == nvml.ERROR_TIMEOUT:
+		return observation.CollectionErrorCategoryTimeout
+	case ret == nvml.ERROR_NOT_SUPPORTED || ret == nvml.ERROR_FUNCTION_NOT_FOUND:
 		return observation.CollectionErrorCategoryUnsupported
 	case ret == nvml.ERROR_INVALID_ARGUMENT &&
 		(definition == gpusignals.TemperatureHBMCelsius || definition == gpusignals.TemperatureSlowdownMarginCelsius):

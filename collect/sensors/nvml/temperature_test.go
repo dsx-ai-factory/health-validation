@@ -24,21 +24,24 @@ func newTemperatureReads(want map[string]bool) *temperatureReads {
 	}
 }
 
-func TestCategorizeTemperatureFailure(t *testing.T) {
+func TestCategorizeFailure(t *testing.T) {
 	tests := []struct {
 		definition collect.Signal
 		ret        nvml.Return
 		want       observation.CollectionErrorCategory
 	}{
 		{gpusignals.TemperatureCelsius, nvml.ERROR_NOT_SUPPORTED, observation.CollectionErrorCategoryUnsupported},
+		{gpusignals.PowerDraw, nvml.ERROR_NO_PERMISSION, observation.CollectionErrorCategoryPermissionDenied},
+		{gpusignals.PowerDraw, nvml.ERROR_TIMEOUT, observation.CollectionErrorCategoryTimeout},
+		{gpusignals.PowerDraw, nvml.ERROR_FUNCTION_NOT_FOUND, observation.CollectionErrorCategoryUnsupported},
 		{gpusignals.TemperatureHBMCelsius, nvml.ERROR_INVALID_ARGUMENT, observation.CollectionErrorCategoryUnsupported},
 		{gpusignals.TemperatureSlowdownMarginCelsius, nvml.ERROR_INVALID_ARGUMENT, observation.CollectionErrorCategoryUnsupported},
 		{gpusignals.TemperatureCelsius, nvml.ERROR_INVALID_ARGUMENT, observation.CollectionErrorCategorySourceError},
 		{gpusignals.TemperatureCelsius, nvml.ERROR_GPU_IS_LOST, observation.CollectionErrorCategorySourceError},
 	}
 	for _, test := range tests {
-		if got := categorizeTemperatureFailure(test.definition, test.ret); got != test.want {
-			t.Errorf("categorizeTemperatureFailure(%s, %s) = %v, want %v",
+		if got := categorizeFailure(test.definition, test.ret); got != test.want {
+			t.Errorf("categorizeFailure(%s, %s) = %v, want %v",
 				test.definition.ID(), returnName(test.ret), got, test.want)
 		}
 	}

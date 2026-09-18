@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "observe.go",
+        "power.go",
         "sensor.go",
         "temperature.go",
     ],
@@ -24,6 +25,8 @@ go_library(
 go_test(
     name = "nvml_test",
     srcs = [
+        "cycle_test.go",
+        "power_test.go",
         "sensor_test.go",
         "temperature_test.go",
     ],

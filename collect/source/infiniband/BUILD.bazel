@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "infiniband",
+    srcs = [
+        "fields.go",
+        "source.go",
+    ],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/source/infiniband",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/infiniband",
+    ],
+)
+
+go_test(
+    name = "infiniband_test",
+    srcs = ["source_test.go"],
+    embed = [":infiniband"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/infiniband",
+    ],
+)

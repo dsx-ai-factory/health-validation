@@ -9,8 +9,11 @@ go_library(
     deps = [
         "//agentkit/server",
         "//collect/sensors/dcgm",
+        "//collect/sensors/infiniband",
+        "//collect/sensors/kmsg",
         "//collect/sensors/nvml",
         "//collect/source/dcgm",
+        "//collect/source/kmsg",
         "//collect/source/nvml",
     ],
 )
