@@ -22,7 +22,6 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
@@ -32,6 +31,18 @@ import (
 const ServiceName = "health-validation"
 
 const scopeName = "github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics"
+
+// The three semantic-convention resource attributes this package sets, spelled
+// out rather than taken from otel/semconv. The keys are stable across
+// convention releases, and importing the versioned package would pin the whole
+// build to a directory named after a version (semconv/v1.37.0) — a moving
+// target on every OTel bump, for four string constants.
+const (
+	schemaURL         = "https://opentelemetry.io/schemas/1.37.0"
+	attrServiceName   = "service.name"
+	attrServiceVer    = "service.version"
+	attrServiceInstID = "service.instance.id"
+)
 
 // Options configures a [Publisher]. Only Endpoint is required. It is a plain
 // struct rather than the CLI's config type so this package stays independent
@@ -144,19 +155,19 @@ func buildResource(opts Options) *resource.Resource {
 		attrs = append(attrs, attribute.String(k, v))
 	}
 	attrs = append(attrs,
-		semconv.ServiceName(ServiceName),
+		attribute.String(attrServiceName, ServiceName),
 		attribute.String("health_validation.schema_version", health.NodeVerdictSchemaVersion),
 	)
 	if opts.ServiceVersion != "" {
-		attrs = append(attrs, semconv.ServiceVersion(opts.ServiceVersion))
+		attrs = append(attrs, attribute.String(attrServiceVer, opts.ServiceVersion))
 	}
 	if opts.NodeID != "" {
-		attrs = append(attrs, semconv.ServiceInstanceID(opts.NodeID))
+		attrs = append(attrs, attribute.String(attrServiceInstID, opts.NodeID))
 	}
 	if opts.CatalogVersion != "" {
 		attrs = append(attrs, attribute.String("health_validation.catalog_version", opts.CatalogVersion))
 	}
-	return resource.NewWithAttributes(semconv.SchemaURL, attrs...)
+	return resource.NewWithAttributes(schemaURL, attrs...)
 }
 
 // newInstruments creates every instrument up front so an invalid definition

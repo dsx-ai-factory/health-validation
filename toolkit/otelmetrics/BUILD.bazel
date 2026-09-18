@@ -8,7 +8,6 @@ go_library(
     deps = [
         "//catalog/health",
         "@io_opentelemetry_go_otel//attribute",
-        "@io_opentelemetry_go_otel//semconv/v1.37.0:semconv",
         "@io_opentelemetry_go_otel_exporters_otlp_otlpmetric_otlpmetrichttp//:otlpmetrichttp",
         "@io_opentelemetry_go_otel_metric//:metric",
         "@io_opentelemetry_go_otel_sdk//resource",

@@ -62,6 +62,20 @@ SYFT_FALSE_POSITIVES = {
     # cel-go ships exactly one license file (LICENSE, Apache-2.0). syft
     # concludes both Apache-2.0 and BSD-3-Clause from that same file.
     ("github.com/google/cel-go", "BSD-3-Clause"),
+    # The OpenTelemetry modules hit the same classifier quirk: each ships one
+    # LICENSE (Apache-2.0) with SPDX-License-Identifier: Apache-2.0 on every
+    # source file, and syft concludes BSD-3-Clause alongside it. otel/metric and
+    # otel/trace contain no occurrence of the string "BSD" at all, which rules
+    # out a stray vendored file and leaves the LICENSE text itself as the source.
+    ("go.opentelemetry.io/otel", "BSD-3-Clause"),
+    (
+        "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp",
+        "BSD-3-Clause",
+    ),
+    ("go.opentelemetry.io/otel/metric", "BSD-3-Clause"),
+    ("go.opentelemetry.io/otel/sdk", "BSD-3-Clause"),
+    ("go.opentelemetry.io/otel/sdk/metric", "BSD-3-Clause"),
+    ("go.opentelemetry.io/otel/trace", "BSD-3-Clause"),
 }
 
 # syft emits LicenseRef-<sha256> for a license file it could not identify. The
