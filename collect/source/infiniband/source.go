@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -98,8 +99,9 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 		return nil, err
 	}
 	var readings []Reading
+	cache := make(map[string]fileResult)
 	for _, device := range devices {
-		if s.excluded[device.Name()] || strings.HasPrefix(device.Name(), ".") {
+		if s.excluded[device.Name()] || !strings.HasPrefix(device.Name(), "mlx") {
 			continue
 		}
 		entity := &observation.Entity{Type: "infiniband_device", Id: device.Name()}
@@ -107,7 +109,7 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr
 			}
-			readings = append(readings, s.readSignal(signal, path.Join(device.Name(), paths[signal.ID()]), entity))
+			readings = append(readings, s.readSignal(signal, path.Join(device.Name(), paths[signal.ID()]), entity, cache))
 		}
 		if len(portSignals) == 0 {
 			continue
@@ -119,17 +121,65 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 			}
 			continue
 		}
+		// GPUd orders ports numerically, not lexicographically.
+		slices.SortStableFunc(ports, func(a, b fs.DirEntry) int {
+			x, _ := strconv.ParseUint(a.Name(), 10, 32)
+			y, _ := strconv.ParseUint(b.Name(), 10, 32)
+			if x < y {
+				return -1
+			}
+			if x > y {
+				return 1
+			}
+			return 0
+		})
 		for _, port := range ports {
-			if _, parseErr := strconv.ParseUint(port.Name(), 10, 32); parseErr != nil {
+			portNumber, parseErr := strconv.ParseUint(port.Name(), 10, 32)
+			if parseErr != nil {
 				continue
+			}
+			portName := strconv.FormatUint(portNumber, 10)
+			counterFiles := make(map[string]fs.DirEntry)
+			counterErrors := make(map[string]error)
+			for _, signal := range portSignals {
+				dir := path.Dir(paths[signal.ID()])
+				if dir == "." {
+					continue
+				}
+				if _, listed := counterErrors[dir]; listed {
+					continue
+				}
+				entries, listErr := fs.ReadDir(s.files, path.Join(device.Name(), "ports", portName, dir))
+				counterErrors[dir] = listErr
+				for _, entry := range entries {
+					counterFiles[path.Join(dir, entry.Name())] = entry
+				}
 			}
 			for _, signal := range portSignals {
 				if contextErr := ctx.Err(); contextErr != nil {
 					return nil, contextErr
 				}
-				entity := &observation.Entity{Type: "infiniband_port", Id: path.Join(device.Name(), port.Name())}
-				name := path.Join(device.Name(), "ports", port.Name(), paths[signal.ID()])
-				readings = append(readings, s.readSignal(signal, name, entity))
+				entity := &observation.Entity{Type: "infiniband_port", Id: path.Join(device.Name(), portName)}
+				name := path.Join(device.Name(), "ports", portName, paths[signal.ID()])
+				file := paths[signal.ID()]
+				if dir := path.Dir(file); dir != "." {
+					err := counterErrors[dir]
+					if err == nil {
+						entry, exists := counterFiles[file]
+						if !exists {
+							err = fs.ErrNotExist
+						} else if !entry.Type().IsRegular() {
+							err = syscall.EOPNOTSUPP
+						}
+					}
+					if err != nil {
+						failure := Failure(err)
+						failure.Operation = name
+						readings = append(readings, Reading{Signal: signal, Entity: entity, Failure: failure})
+						continue
+					}
+				}
+				readings = append(readings, s.readSignal(signal, name, entity, cache))
 			}
 		}
 	}
@@ -142,7 +192,7 @@ func (s *Source) readFile(name string) ([]byte, error) {
 	}
 	raw, err := fs.ReadFile(s.files, name)
 	// Repeated EINVAL reads on restricted PFs generate ACCESS_REG kernel errors.
-	if errors.Is(err, syscall.EINVAL) {
+	if group := path.Base(path.Dir(name)); errors.Is(err, syscall.EINVAL) && (group == "counters" || group == "hw_counters") {
 		s.restricted[name] = err
 	}
 	return raw, err
@@ -156,7 +206,7 @@ func Failure(err error) *observation.CollectionError {
 		category = observation.CollectionErrorCategoryTimeout
 	case errors.Is(err, fs.ErrPermission):
 		category = observation.CollectionErrorCategoryPermissionDenied
-	case errors.Is(err, syscall.EINVAL), errors.Is(err, syscall.EOPNOTSUPP):
+	case errors.Is(err, syscall.EINVAL), errors.Is(err, syscall.EOPNOTSUPP), errors.Is(err, fs.ErrInvalid), err.Error() == "operation not supported":
 		category = observation.CollectionErrorCategoryUnsupported
 	case errors.Is(err, fs.ErrNotExist), errors.Is(err, context.Canceled), errors.Is(err, collect.ErrCollectionCanceled), errors.Is(err, ErrInUse):
 		category = observation.CollectionErrorCategoryUnavailable
@@ -164,13 +214,23 @@ func Failure(err error) *observation.CollectionError {
 	return &observation.CollectionError{Category: category, Detail: err.Error()}
 }
 
-func (s *Source) readSignal(signal collect.Signal, name string, entity *observation.Entity) Reading {
+type fileResult struct {
+	err error
+	raw []byte
+}
+
+func (s *Source) readSignal(signal collect.Signal, name string, entity *observation.Entity, cache map[string]fileResult) Reading {
 	reading := Reading{Signal: signal, Entity: entity}
-	raw, err := s.readFile(name)
+	result, cached := cache[name]
+	if !cached {
+		result.raw, result.err = s.readFile(name)
+		cache[name] = result
+	}
+	raw, err := result.raw, result.err
 	switch {
 	case err != nil:
 		reading.Failure = Failure(err)
-	case strings.HasPrefix(strings.TrimSpace(string(raw)), "N/A"):
+	case path.Dir(paths[signal.ID()]) != "." && strings.Contains(string(raw), "N/A (no PMA)"):
 		reading.Failure = &observation.CollectionError{Category: observation.CollectionErrorCategoryUnsupported, Reason: observation.CollectionErrorReasonValueReportedUnsupported, Detail: strings.TrimSpace(string(raw))}
 	default:
 		reading.Value, err = parse(signal, string(raw))

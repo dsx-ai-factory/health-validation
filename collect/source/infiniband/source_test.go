@@ -76,7 +76,7 @@ func TestRestrictedFilesAndSelection(t *testing.T) {
 }
 
 func TestParseBoundaries(t *testing.T) {
-	for _, raw := range []string{"NaN Gb/sec", "+Inf Gb/sec", "-1 Gb/sec", "400 bogus", "", "1e100 Gb/sec"} {
+	for _, raw := range []string{"NaN Gb/sec", "+Inf Gb/sec", "-1 Gb/sec", "", "1e100 Gb/sec"} {
 		if _, err := parse(ibsignals.Rate, raw); err == nil {
 			t.Errorf("accepted %q", raw)
 		}
@@ -86,8 +86,8 @@ func TestParseBoundaries(t *testing.T) {
 			t.Errorf("accepted %q", raw)
 		}
 	}
-	if _, err := parse(ibsignals.State, "4:"); err == nil {
-		t.Error("accepted empty state")
+	if _, err := parse(ibsignals.State, "4:ACTIVE:extra"); err == nil {
+		t.Error("accepted extra state delimiter")
 	}
 	if len(paths) != len(ibsignals.All()) {
 		t.Fatal("signal/source coverage mismatch")

@@ -12,6 +12,9 @@ var (
 	FirmwareVersion                 = collect.NewSignal("infiniband.firmware_version", "")
 	BoardID                         = collect.NewSignal("infiniband.board_id", "")
 	HCAType                         = collect.NewSignal("infiniband.hca_type", "")
+	StateName                       = collect.NewSignal("infiniband.state_name", "")
+	PhysicalStateName               = collect.NewSignal("infiniband.phys_state_name", "")
+	RateGbps                        = collect.NewSignal("infiniband.rate_gbps", "gigabits_per_second")
 	State                           = collect.NewSignal("infiniband.state", "1")
 	PhysicalState                   = collect.NewSignal("infiniband.phys_state", "1")
 	LinkLayer                       = collect.NewSignal("infiniband.link_layer", "")
@@ -75,9 +78,12 @@ func All() collect.Signals {
 	return collect.Signals{
 		FirmwareVersion, BoardID, HCAType,
 		State,
+		StateName,
 		PhysicalState,
+		PhysicalStateName,
 		LinkLayer,
 		Rate,
+		RateGbps,
 		ExcessiveBufferOverrunErrors,
 		LinkDowned,
 		LinkErrorRecovery,

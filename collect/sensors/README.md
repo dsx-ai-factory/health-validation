@@ -135,3 +135,24 @@ Overwrites in the kernel ring remain visible as sticky `EPIPE` errors alongside
 retained records. Terminal reader errors remain visible; the stream does not
 silently restart. `Close` interrupts reading and waits for the goroutine to exit.
 The one-off example continues to use the snapshot reader.
+
+### InfiniBand GPUd collection coverage
+
+The source follows GPUd's InfiniBand class collector at
+`ea5ab612abad200c7793220f0e7955bb7c8f6302`: `mlx` device filtering, exclusions,
+numeric port ordering, inventory, numeric and textual states, link layer, link
+capacity in both Gb/s and bytes/s, and all 22 standard plus 30 hardware counters.
+State/rate parsing is copied from GPUd; counter parsing uses the same base-0
+integer convention. Data counters retain its four-octet-to-byte conversion.
+Only regular counter files are read; EINVAL failures are cached across calls.
+
+The nine-device GPUd sysfs fixture is stored as a lossless path/content JSON map.
+Expected results were generated with GPUd's `class.LoadDevices`, and a regression
+compares every field with its observation equivalent. Missing/unsupported values
+become explicit per-signal errors instead of nil counters; one failed field does
+not discard other readings. Signed-wire overflow and nonfinite/negative link
+rates are rejected. Signal selection avoids reading unrequested fields.
+
+This ports sysfs collection, not GPUd's whole health component: SQLite, event
+persistence, threshold verdicts, drop/flap history, sticky health, and repair
+reporting remain outside the sensor, as does time-series analysis.

@@ -16,6 +16,9 @@ import (
 
 // File names and counter units follow GPUd's InfiniBand class collector.
 var paths = map[string]string{
+	ibsignals.StateName.ID():                       "state",
+	ibsignals.PhysicalStateName.ID():               "phys_state",
+	ibsignals.RateGbps.ID():                        "rate",
 	ibsignals.FirmwareVersion.ID():                 "fw_ver",
 	ibsignals.BoardID.ID():                         "board_id",
 	ibsignals.HCAType.ID():                         "hca_type",
@@ -81,28 +84,30 @@ func parse(definition collect.Signal, raw string) (*observation.Value, error) {
 	raw = strings.TrimSpace(raw)
 	switch definition {
 	case ibsignals.LinkLayer, ibsignals.FirmwareVersion, ibsignals.BoardID, ibsignals.HCAType:
-		if raw == "" {
-			return nil, fmt.Errorf("empty text field")
-		}
 		return &observation.Value{Kind: &observation.Value_StringValue{StringValue: raw}}, nil
-	case ibsignals.State, ibsignals.PhysicalState:
-		id, name, ok := strings.Cut(raw, ":")
-		if !ok || strings.TrimSpace(name) == "" {
-			return nil, fmt.Errorf("invalid port state %q", raw)
+	case ibsignals.State, ibsignals.PhysicalState, ibsignals.StateName, ibsignals.PhysicalStateName:
+		id, name, err := parseState(raw)
+		if err != nil {
+			return nil, err
 		}
-		raw = strings.TrimSpace(id)
-	case ibsignals.Rate:
-		parts := strings.Fields(raw)
-		if len(parts) < 2 || parts[1] != "Gb/sec" {
-			return nil, fmt.Errorf("invalid port rate %q", raw)
+		if definition == ibsignals.StateName || definition == ibsignals.PhysicalStateName {
+			return &observation.Value{Kind: &observation.Value_StringValue{StringValue: name}}, nil
 		}
-		rate, err := strconv.ParseFloat(parts[0], 64)
-		if err != nil || math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0 || rate*125000000 >= float64(math.MaxInt64) {
-			return nil, fmt.Errorf("invalid port rate %q", raw)
+		return &observation.Value{Kind: &observation.Value_IntValue{IntValue: int64(id)}}, nil
+	case ibsignals.Rate, ibsignals.RateGbps:
+		gbps, rate, err := parseRate(raw)
+		if err != nil {
+			return nil, err
 		}
-		return &observation.Value{Kind: &observation.Value_IntValue{IntValue: int64(rate * 125000000)}}, nil
+		if definition == ibsignals.RateGbps {
+			return &observation.Value{Kind: &observation.Value_DoubleValue{DoubleValue: gbps}}, nil
+		}
+		if rate > math.MaxInt64 {
+			return nil, fmt.Errorf("port rate exceeds int64")
+		}
+		return &observation.Value{Kind: &observation.Value_IntValue{IntValue: int64(rate)}}, nil
 	}
-	value, err := strconv.ParseUint(raw, 10, 64)
+	value, err := strconv.ParseUint(raw, 0, 64)
 	if err != nil {
 		return nil, err
 	}
