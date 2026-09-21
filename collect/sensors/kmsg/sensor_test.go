@@ -231,7 +231,7 @@ func TestTimeoutIncludesMatching(t *testing.T) {
 	messages := make([]kmsgsource.Message, 20000)
 	body := strings.Repeat("a", 8192)
 	for i := range messages {
-		messages[i] = kmsgsource.Message{BootID: "boot", Timestamp: now, Sequence: i, Body: body}
+		messages[i] = kmsgsource.Message{BootID: "boot", Timestamp: now, Sequence: int64(i), Body: body}
 	}
 	s, err := New(func(context.Context) ([]kmsgsource.Message, error) { return messages, nil }, Pattern{SignalID: "slow", Regex: `a.*z`})
 	if err != nil {
@@ -247,5 +247,23 @@ func TestTimeoutIncludesMatching(t *testing.T) {
 	}
 	if len(batch.Observations) != 1 || batch.Observations[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
 		t.Fatalf("matching escaped the collection deadline: %v", batch)
+	}
+}
+
+func TestEmptySelectionRequiresCycle(t *testing.T) {
+	s, err := New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, measureErr := s.Measure(context.Background(), collect.WithSignalID()); measureErr == nil {
+		t.Fatal("accepted missing cycle")
+	}
+	cycle, err := collect.NewCycle("empty", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID())
+	if err != nil || batch.GetCollectionId() != "empty" || len(batch.GetObservations()) != 0 {
+		t.Fatalf("empty selection: %v / %v", batch, err)
 	}
 }

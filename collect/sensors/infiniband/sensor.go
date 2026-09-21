@@ -37,12 +37,12 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	if err != nil {
 		return nil, err
 	}
-	if len(selected) == 0 {
-		return &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}, nil
-	}
 	cycle := op.Cycle()
 	if cycle == nil {
 		return nil, fmt.Errorf("collection cycle is required")
+	}
+	if len(selected) == 0 {
+		return &observation.ObservationBatch{CollectionId: cycle.CollectionID()}, nil
 	}
 	now := timestamppb.New(cycle.StartedAt())
 	batch := &observation.ObservationBatch{CollectionId: cycle.CollectionID()}

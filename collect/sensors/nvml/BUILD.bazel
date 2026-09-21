@@ -35,6 +35,7 @@ go_test(
         "//collect",
         "//collect/observation",
         "//collect/signals/gpu",
+        "//collect/source/nvml",
         "//collect/source/nvml/device",
         "@com_github_nvidia_go_nvml//pkg/nvml",
         "@org_golang_google_protobuf//types/known/timestamppb",

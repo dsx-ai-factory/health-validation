@@ -27,7 +27,7 @@ type Message struct {
 	Timestamp time.Time
 	BootID    string
 	Body      string
-	Sequence  int
+	Sequence  int64
 	Priority  int
 }
 
@@ -65,7 +65,7 @@ func parseLine(bootTime time.Time, line string) (*Message, error) {
 		return nil, fmt.Errorf("could not parse %q as priority: %v", priority, err)
 	}
 
-	sequenceNum, err := strconv.Atoi(sequence)
+	sequenceNum, err := strconv.ParseInt(sequence, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse %q as sequence number: %v", sequence, err)
 	}

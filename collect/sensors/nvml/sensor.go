@@ -83,7 +83,7 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		switch {
 		case errors.Is(err, collect.ErrCollectionTimeout), errors.Is(err, context.DeadlineExceeded):
 			category = observation.CollectionErrorCategoryTimeout
-		case errors.Is(err, collect.ErrCollectionCanceled), errors.Is(err, context.Canceled), errors.Is(err, errInUse), errors.Is(err, nvmlsource.ErrInUse):
+		case errors.Is(err, collect.ErrCollectionCanceled), errors.Is(err, context.Canceled), errors.Is(err, errInUse), errors.Is(err, nvmlsource.ErrInUse), errors.Is(err, nvmlsource.ErrClosed):
 			category = observation.CollectionErrorCategoryUnavailable
 		}
 		batch = allSignalsFailed(selected, now, "Measure", category, err.Error())

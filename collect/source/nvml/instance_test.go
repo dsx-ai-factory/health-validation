@@ -46,10 +46,10 @@ func TestNativeLifecycleGate(t *testing.T) {
 	if lib.shutdowns != 1 {
 		t.Fatalf("shutdown count: %d", lib.shutdowns)
 	}
-	if readErr := inst.Read(func(map[string]device.Device) error { t.Fatal("read closed instance"); return nil }); !errors.Is(readErr, errClosed) {
+	if readErr := inst.Read(func(map[string]device.Device) error { t.Fatal("read closed instance"); return nil }); !errors.Is(readErr, ErrClosed) {
 		t.Fatalf("closed read: %v", readErr)
 	}
-	if refreshErr := inst.Refresh(); !errors.Is(refreshErr, errClosed) {
+	if refreshErr := inst.Refresh(); !errors.Is(refreshErr, ErrClosed) {
 		t.Fatalf("closed refresh: %v", refreshErr)
 	}
 }

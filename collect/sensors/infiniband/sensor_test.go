@@ -44,3 +44,18 @@ func TestMeasure(t *testing.T) {
 		t.Fatalf("cancellation: %v / %v", batch, err)
 	}
 }
+
+func TestEmptySelectionRequiresCycle(t *testing.T) {
+	s := New(nil)
+	if _, err := s.Measure(context.Background(), collect.WithSignalID()); err == nil {
+		t.Fatal("accepted missing cycle")
+	}
+	cycle, err := collect.NewCycle("empty", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID())
+	if err != nil || batch.GetCollectionId() != "empty" || len(batch.GetObservations()) != 0 {
+		t.Fatalf("empty selection: %v / %v", batch, err)
+	}
+}

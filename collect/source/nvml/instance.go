@@ -17,8 +17,9 @@ var _ Instance = &instance{}
 // ErrInUse means another native operation is still running, possibly after
 // its collection timeout. Callers may retry shutdown after that operation ends.
 var (
-	ErrInUse  = errors.New("NVML native call already in progress")
-	errClosed = errors.New("NVML instance is closed")
+	ErrInUse = errors.New("NVML native call already in progress")
+	// ErrClosed means the instance has been shut down.
+	ErrClosed = errors.New("NVML instance is closed")
 )
 
 // NVML library lifetime is process-wide, like the DCGM source's native gate.
@@ -170,7 +171,7 @@ func (inst *instance) Read(read func(map[string]device.Device) error) error {
 	}
 	defer nativeCallMu.Unlock()
 	if inst.closed {
-		return errClosed
+		return ErrClosed
 	}
 	devices := inst.Devices()
 	if len(devices) == 0 && inst.InitError() != nil {
@@ -185,7 +186,7 @@ func (inst *instance) Refresh() error {
 	}
 	defer nativeCallMu.Unlock()
 	if inst.closed {
-		return errClosed
+		return ErrClosed
 	}
 	return inst.refresh()
 }

@@ -75,11 +75,23 @@ kernel failure.
 
 ```go
 sensor, err := kmsg.New(nil) // defaults
+if err != nil {
+    return err
+}
 custom := kmsg.Pattern{SignalID: "my_driver.failure", Regex: `my_driver: .*failed`}
 sensor, err = kmsg.New(nil, custom) // replace defaults
+if err != nil {
+    return err
+}
 patterns := append(kmsg.DefaultPatterns(), custom)
 sensor, err = kmsg.New(nil, patterns...) // extend defaults
+if err != nil {
+    return err
+}
 sensor, err = kmsg.New(nil, kmsg.Pattern{SignalID: "kernel.all", Regex: `(?s).*`})
+if err != nil {
+    return err
+}
 ```
 
 Handle constructor errors before registering the sensor. Patterns compile once;
@@ -116,9 +128,14 @@ this example requires Linux and permission to read the host kernel log.
 
 ```go
 stream, err := kmsgsource.NewStream(4096)
-// Handle err before using stream.
+if err != nil {
+    return err
+}
 defer stream.Close()
 sensor, err := kmsgsensor.New(stream.Read, patterns...)
+if err != nil {
+    return err
+}
 ```
 
 One continuous reader handles the existing kernel ring and future records.

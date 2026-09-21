@@ -7,6 +7,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
 	"github.com/dsx-ai-factory/health-validation/collect/source/nvml/device"
 )
 
@@ -14,15 +15,21 @@ type fakeInstance struct {
 	devices    map[string]device.Device
 	initErr    error
 	refreshErr error
+	readErr    error
 	exists     bool
 	refreshed  bool
 }
 
-func (f *fakeInstance) NVMLExists() bool                                     { return f.exists }
-func (f *fakeInstance) Devices() map[string]device.Device                    { return f.devices }
-func (f *fakeInstance) Read(read func(map[string]device.Device) error) error { return read(f.devices) }
-func (f *fakeInstance) Shutdown() error                                      { return nil }
-func (f *fakeInstance) InitError() error                                     { return f.initErr }
+func (f *fakeInstance) NVMLExists() bool                  { return f.exists }
+func (f *fakeInstance) Devices() map[string]device.Device { return f.devices }
+func (f *fakeInstance) Read(read func(map[string]device.Device) error) error {
+	if f.readErr != nil {
+		return f.readErr
+	}
+	return read(f.devices)
+}
+func (f *fakeInstance) Shutdown() error  { return nil }
+func (f *fakeInstance) InitError() error { return f.initErr }
 
 func (f *fakeInstance) Refresh() error {
 	f.refreshed = true
@@ -173,5 +180,21 @@ func TestMeasureConcurrentRecovery(t *testing.T) {
 	}
 	if inst.errorReads != 1 {
 		t.Fatalf("read mutable initialization error %d times", inst.errorReads)
+	}
+}
+
+func TestClosedInstanceUnavailable(t *testing.T) {
+	s := New(&fakeInstance{exists: true, readErr: nvmlsource.ErrClosed})
+	batch, err := s.Measure(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batch.GetObservations()) == 0 {
+		t.Fatal("missing failures")
+	}
+	for _, obs := range batch.GetObservations() {
+		if obs.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryUnavailable {
+			t.Fatalf("closed instance: %v", obs)
+		}
 	}
 }

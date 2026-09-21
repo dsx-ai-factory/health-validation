@@ -60,7 +60,7 @@ func Test_Parse(t *testing.T) {
 
 	assert.Equal(t, msg.Body, "docker0: port 2(vethc1bb733) entered blocking state")
 	assert.Equal(t, msg.Priority, 6)
-	assert.Equal(t, msg.Sequence, 2565)
+	assert.Equal(t, msg.Sequence, int64(2565))
 	assert.Equal(t, msg.Timestamp, (bootTime.Add(102258085667 * time.Microsecond)))
 }
 
@@ -258,7 +258,7 @@ func Test_parseLineEdgeCases(t *testing.T) {
 		input := "1,-100,5000,-;Negative sequence message"
 		msg, err := Parse(bootTime, input)
 		require.NoError(t, err)
-		assert.Equal(t, -100, msg.Sequence)
+		assert.Equal(t, int64(-100), msg.Sequence)
 	})
 
 	// Test with empty message
