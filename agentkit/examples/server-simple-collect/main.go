@@ -54,7 +54,7 @@ func run() error {
 		return fmt.Errorf("start kmsg stream: %w", err)
 	}
 	defer func() { _ = kmsgStream.Close() }()
-	kmsgSensor, err := kmsgsensor.New(kmsgStream.Read, kmsgsignals.DefaultPatterns()...)
+	kmsgSensor, err := kmsgsensor.New(kmsgStream.Read, kmsgsignals.DefaultPatterns())
 	if err != nil {
 		return fmt.Errorf("init kmsg sensor: %w", err)
 	}

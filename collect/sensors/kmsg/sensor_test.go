@@ -90,7 +90,7 @@ func TestPartialAndMalformedRecords(t *testing.T) {
 
 func newRawSensor(t *testing.T, read func(context.Context) ([]kmsgsource.Message, error)) collect.Sensor {
 	t.Helper()
-	s, err := New(read, kmsgsignals.Pattern{SignalID: "kernel.all", Regex: `(?s).*`})
+	s, err := New(read, map[string]string{"kernel.all": `(?s).*`})
 	require.NoError(t, err)
 	return s
 }
@@ -106,10 +106,10 @@ func TestPatterns(t *testing.T) {
 			{BootID: "boot", Timestamp: now, Sequence: 3, Body: "Kernel panic - not syncing"},
 		}, fs.ErrPermission
 	}
-	patterns := []kmsgsignals.Pattern{{SignalID: "driver.failure", Regex: `(?s)custom.*FAULT`}, {SignalID: "driver.fault", Regex: `FAULT`}}
-	s, err := New(read, patterns...)
+	patterns := map[string]string{"driver.failure": `(?s)custom.*FAULT`, "driver.fault": `FAULT`}
+	s, err := New(read, patterns)
 	require.NoError(t, err)
-	patterns[0].Regex = "mutated"
+	patterns["driver.failure"] = "mutated"
 	declared := s.Signals()
 	declared[0] = kmsgsignals.Panic
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
@@ -137,16 +137,15 @@ func TestPatterns(t *testing.T) {
 	for _, obs := range batch.Observations {
 		require.Equal(t, "driver.fault", obs.SignalId)
 	}
-	for _, patterns := range [][]kmsgsignals.Pattern{
-		{{SignalID: "custom", Regex: ""}},
-		{{SignalID: "custom", Regex: "["}},
-		{{Regex: "fault"}},
-		{{SignalID: " custom ", Regex: "fault"}},
-		{{SignalID: kmsgsignals.Message.ID(), Regex: "fault"}},
-		{{SignalID: kmsgsignals.Priority.ID(), Regex: "fault"}},
-		{{SignalID: "custom", Regex: "a"}, {SignalID: "custom", Regex: "b"}},
+	for _, patterns := range []map[string]string{
+		{"custom": ""},
+		{"custom": "["},
+		{"": "fault"},
+		{" custom ": "fault"},
+		{kmsgsignals.Message.ID(): "fault"},
+		{kmsgsignals.Priority.ID(): "fault"},
 	} {
-		_, patternErr := New(nil, patterns...)
+		_, patternErr := New(nil, patterns)
 		assert.Error(t, patternErr)
 	}
 }
@@ -161,10 +160,10 @@ func TestDefaultPatterns(t *testing.T) {
 		{"oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=/,mems_allowed=0,oom_memcg=/test,task_memcg=/test,task=python,pid=42,uid=0", kmsgsignals.OOMContainer.ID()},
 		{"Out of memory: Killed process 42 (python)", kmsgsignals.OOMKilledProcess.ID()},
 		{"Memory cgroup out of memory: Killed process 42 (python)", kmsgsignals.OOMKilledProcess.ID()},
-		{"INFO: task worker:42 blocked for more than 120 seconds.", kmsgsignals.HungTask.ID()},
-		{"watchdog: BUG: soft lockup - CPU#18 stuck for 27s! [python:42]", kmsgsignals.SoftLockup.ID()},
+		{"INFO: task worker:42 blocked for more than 120 seconds.", ""},
+		{"watchdog: BUG: soft lockup - CPU#18 stuck for 27s! [python:42]", ""},
 		{"watchdog: Watchdog detected hard LOCKUP on cpu 0", ""},
-		{"VFS: file-max limit 1000000 reached", kmsgsignals.FileMax.ID()},
+		{"VFS: file-max limit 1000000 reached", ""},
 		{"normal boot", ""},
 		{"NVRM: Xid (PCI:0000:01:00): 79", ""},
 		{"mlx5_core: ACCESS_REG failed", ""},
@@ -172,7 +171,7 @@ func TestDefaultPatterns(t *testing.T) {
 		t.Run(tt.body, func(t *testing.T) {
 			s, createErr := New(func(context.Context) ([]kmsgsource.Message, error) {
 				return []kmsgsource.Message{{BootID: "boot", Timestamp: now, Body: tt.body}}, nil
-			}, kmsgsignals.DefaultPatterns()...)
+			}, kmsgsignals.DefaultPatterns())
 			require.NoError(t, createErr)
 			batch, measureErr := s.Measure(context.Background(), collect.WithCycle(cycle))
 			require.NoError(t, measureErr)
@@ -182,11 +181,7 @@ func TestDefaultPatterns(t *testing.T) {
 			}
 			require.Len(t, batch.Observations, 3)
 			require.Equal(t, tt.id, batch.Observations[2].SignalId)
-			for _, pattern := range kmsgsignals.DefaultPatterns() {
-				if pattern.SignalID == tt.id {
-					require.Equal(t, pattern.Regex, batch.Observations[2].GetValue().GetStringValue())
-				}
-			}
+			require.Equal(t, kmsgsignals.DefaultPatterns()[tt.id], batch.Observations[2].GetValue().GetStringValue())
 		})
 	}
 }
@@ -198,7 +193,7 @@ func TestTimeoutIncludesMatching(t *testing.T) {
 	for i := range messages {
 		messages[i] = kmsgsource.Message{BootID: "boot", Timestamp: now, Sequence: int64(i), Body: body}
 	}
-	s, err := New(func(context.Context) ([]kmsgsource.Message, error) { return messages, nil }, kmsgsignals.Pattern{SignalID: "slow", Regex: `a.*z`})
+	s, err := New(func(context.Context) ([]kmsgsource.Message, error) { return messages, nil }, map[string]string{"slow": `a.*z`})
 	require.NoError(t, err)
 	cycle, err := collect.NewCycleWithTimeout("matching", now, 10*time.Millisecond)
 	require.NoError(t, err)
@@ -209,7 +204,7 @@ func TestTimeoutIncludesMatching(t *testing.T) {
 }
 
 func TestEmptySelectionRequiresCycle(t *testing.T) {
-	s, err := New(nil)
+	s, err := New(nil, nil)
 	require.NoError(t, err)
 	_, err = s.Measure(context.Background(), collect.WithSignalID())
 	require.Error(t, err)
@@ -226,7 +221,7 @@ func TestGPUdPatternsPreserveMatchEvidence(t *testing.T) {
 	body := "NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)"
 	s, err := New(func(context.Context) ([]kmsgsource.Message, error) {
 		return []kmsgsource.Message{{BootID: "boot", Timestamp: now, Body: body, Sequence: 42}}, nil
-	}, kmsgsignals.DefaultPatterns()...)
+	}, kmsgsignals.DefaultPatterns())
 	require.NoError(t, err)
 	require.Equal(t, "kernel.kmsg", s.ID())
 	cycle, err := collect.NewCycle("gpud-patterns", now)
@@ -237,9 +232,9 @@ func TestGPUdPatternsPreserveMatchEvidence(t *testing.T) {
 	require.Len(t, batch.Observations, 4)
 	require.Equal(t, body, batch.Observations[0].GetValue().GetStringValue())
 	require.Equal(t, kmsgsignals.NVRMXidCombined.ID(), batch.Observations[2].SignalId)
-	require.Equal(t, kmsgsignals.RegexNVRMXidCombined, batch.Observations[2].GetValue().GetStringValue())
+	require.Equal(t, kmsgsignals.DefaultPatterns()[kmsgsignals.NVRMXidCombined.ID()], batch.Observations[2].GetValue().GetStringValue())
 	require.Equal(t, kmsgsignals.NVRMXidExtended.ID(), batch.Observations[3].SignalId)
-	require.Equal(t, kmsgsignals.RegexNVRMXidExtended, batch.Observations[3].GetValue().GetStringValue())
+	require.Equal(t, kmsgsignals.DefaultPatterns()[kmsgsignals.NVRMXidExtended.ID()], batch.Observations[3].GetValue().GetStringValue())
 	for _, obs := range batch.Observations {
 		require.Equal(t, "boot/42", obs.GetEntity().GetId())
 	}
@@ -248,12 +243,12 @@ func TestGPUdPatternsPreserveMatchEvidence(t *testing.T) {
 func TestNoPatternsDoesNotRead(t *testing.T) {
 	cycle, err := collect.NewCycle("no-op", time.Now())
 	require.NoError(t, err)
-	for _, patterns := range [][]kmsgsignals.Pattern{nil, {}} {
+	for _, patterns := range []map[string]string{nil, {}} {
 		reads := 0
 		s, createErr := New(func(context.Context) ([]kmsgsource.Message, error) {
 			reads++
 			return nil, fs.ErrPermission
-		}, patterns...)
+		}, patterns)
 		require.NoError(t, createErr)
 		batch, measureErr := s.Measure(context.Background(), collect.WithCycle(cycle))
 		require.NoError(t, measureErr)

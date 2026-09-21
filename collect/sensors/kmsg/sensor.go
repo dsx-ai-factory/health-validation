@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,25 +41,31 @@ type sensor struct {
 // and does not read the source. Pass kmsgsignals.DefaultPatterns() to opt in.
 // Signal IDs must be unique and cannot reuse kernel.message or kernel.priority.
 // Empty or invalid patterns are rejected. Reader lifetime remains with the caller.
-func New(read func(context.Context) ([]kmsgsource.Message, error), patterns ...kmsgsignals.Pattern) (collect.Sensor, error) {
+func New(read func(context.Context) ([]kmsgsource.Message, error), patterns map[string]string) (collect.Sensor, error) {
 	signals := collect.Signals{kmsgsignals.Message, kmsgsignals.Priority}
 	compiled := make(map[string]*regexp.Regexp, len(patterns))
-	for i, pattern := range patterns {
-		if strings.TrimSpace(pattern.SignalID) == "" || strings.TrimSpace(pattern.SignalID) != pattern.SignalID {
-			return nil, fmt.Errorf("kmsg pattern %d requires a nonempty signal ID without surrounding whitespace", i)
+	ids := make([]string, 0, len(patterns))
+	for id := range patterns {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		expression := patterns[id]
+		if strings.TrimSpace(id) == "" || strings.TrimSpace(id) != id {
+			return nil, fmt.Errorf("kmsg pattern %q requires a nonempty signal ID without surrounding whitespace", id)
 		}
-		if pattern.SignalID == kmsgsignals.Message.ID() || pattern.SignalID == kmsgsignals.Priority.ID() || compiled[pattern.SignalID] != nil {
-			return nil, fmt.Errorf("kmsg pattern %d repeats signal ID %q", i, pattern.SignalID)
+		if id == kmsgsignals.Message.ID() || id == kmsgsignals.Priority.ID() {
+			return nil, fmt.Errorf("kmsg pattern uses reserved signal ID %q", id)
 		}
-		if strings.TrimSpace(pattern.Regex) == "" {
-			return nil, fmt.Errorf("kmsg pattern %d is empty", i)
+		if strings.TrimSpace(expression) == "" {
+			return nil, fmt.Errorf("kmsg pattern %q is empty", id)
 		}
-		re, err := regexp.Compile(pattern.Regex)
+		re, err := regexp.Compile(expression)
 		if err != nil {
-			return nil, fmt.Errorf("compile kmsg pattern %d: %w", i, err)
+			return nil, fmt.Errorf("compile kmsg pattern %q: %w", id, err)
 		}
-		compiled[pattern.SignalID] = re
-		signals = append(signals, collect.NewSignal(pattern.SignalID, ""))
+		compiled[id] = re
+		signals = append(signals, collect.NewSignal(id, ""))
 	}
 	if read == nil {
 		read = kmsgsource.ReadAll

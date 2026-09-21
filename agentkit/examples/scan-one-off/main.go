@@ -49,7 +49,7 @@ func run() error {
 		return fmt.Errorf("init DCGM sensor: %w", err)
 	}
 
-	kmsgSensor, err := kmsgsensor.New(nil, kmsgsignals.DefaultPatterns()...)
+	kmsgSensor, err := kmsgsensor.New(nil, kmsgsignals.DefaultPatterns())
 	if err != nil {
 		return fmt.Errorf("init kmsg sensor: %w", err)
 	}
