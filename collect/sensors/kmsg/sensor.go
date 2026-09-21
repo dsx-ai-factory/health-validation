@@ -18,7 +18,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
-	"github.com/dsx-ai-factory/health-validation/collect/signals/kernel"
+	kmsgsignals "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg"
 	kmsgsource "github.com/dsx-ai-factory/health-validation/collect/source/kmsg"
 )
 
@@ -31,10 +31,7 @@ var errInUse = errors.New("kmsg read already in progress")
 
 // Pattern assigns a stable signal ID to a regular expression. A match emits the
 // exact expression as a string value on the original kernel-record entity.
-type Pattern struct {
-	SignalID string
-	Regex    string
-}
+type Pattern = kmsgsignals.Pattern
 
 type sensor struct {
 	read     func(context.Context) ([]kmsgsource.Message, error)
@@ -43,16 +40,8 @@ type sensor struct {
 	mu       sync.Mutex
 }
 
-// DefaultPatterns selects generic kernel faults without assigning health severity.
-func DefaultPatterns() []Pattern {
-	return []Pattern{
-		{SignalID: kernel.Panic.ID(), Regex: `Kernel [Pp]anic`},
-		{SignalID: kernel.OOM.ID(), Regex: `invoked oom-killer:|oom-kill:|(?:Out of memory|Memory cgroup out of memory): Killed process`},
-		{SignalID: kernel.HungTask.ID(), Regex: `task [^:]+:\d+ .*blocked for more than \d+ seconds`},
-		{SignalID: kernel.Lockup.ID(), Regex: `(?:soft lockup - CPU#\d+ stuck|[Hh]ard LOCKUP|hard lockup)`},
-		{SignalID: kernel.FileMax.ID(), Regex: `VFS: file-max limit \d+ reached`},
-	}
-}
+// DefaultPatterns returns the shared GPUd-derived kernel-log patterns.
+func DefaultPatterns() []Pattern { return kmsgsignals.DefaultPatterns() }
 
 // New uses ReadAll when read is nil and DefaultPatterns when patterns is omitted.
 // Custom patterns replace the defaults. Signal IDs must be unique and cannot
@@ -62,13 +51,13 @@ func New(read func(context.Context) ([]kmsgsource.Message, error), patterns ...P
 	if len(patterns) == 0 {
 		patterns = DefaultPatterns()
 	}
-	signals := collect.Signals{kernel.Message, kernel.Priority}
+	signals := collect.Signals{kmsgsignals.Message, kmsgsignals.Priority}
 	compiled := make(map[string]*regexp.Regexp, len(patterns))
 	for i, pattern := range patterns {
 		if strings.TrimSpace(pattern.SignalID) == "" || strings.TrimSpace(pattern.SignalID) != pattern.SignalID {
 			return nil, fmt.Errorf("kmsg pattern %d requires a nonempty signal ID without surrounding whitespace", i)
 		}
-		if pattern.SignalID == kernel.Message.ID() || pattern.SignalID == kernel.Priority.ID() || compiled[pattern.SignalID] != nil {
+		if pattern.SignalID == kmsgsignals.Message.ID() || pattern.SignalID == kmsgsignals.Priority.ID() || compiled[pattern.SignalID] != nil {
 			return nil, fmt.Errorf("kmsg pattern %d repeats signal ID %q", i, pattern.SignalID)
 		}
 		if strings.TrimSpace(pattern.Regex) == "" {
@@ -164,8 +153,8 @@ func (s *sensor) measure(ctx context.Context, selected collect.Signals, now *tim
 		for _, signal := range selected {
 			value := &observation.Value{Kind: &observation.Value_StringValue{StringValue: message.Body}}
 			switch signal.ID() {
-			case kernel.Message.ID():
-			case kernel.Priority.ID():
+			case kmsgsignals.Message.ID():
+			case kmsgsignals.Priority.ID():
 				value = &observation.Value{Kind: &observation.Value_IntValue{IntValue: int64(message.Priority)}}
 			default:
 				pattern, matched := matches[signal.ID()]

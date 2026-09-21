@@ -1,0 +1,16 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "kmsg",
+    srcs = ["signals.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg",
+    visibility = ["//visibility:public"],
+    deps = ["//collect"],
+)
+
+go_test(
+    name = "kmsg_test",
+    srcs = ["signals_test.go"],
+    embed = [":kmsg"],
+    deps = ["@com_github_stretchr_testify//require"],
+)

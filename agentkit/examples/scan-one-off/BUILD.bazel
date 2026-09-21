@@ -13,6 +13,7 @@ go_library(
         "//collect/sensors/infiniband",
         "//collect/sensors/kmsg",
         "//collect/sensors/nvml",
+        "//collect/signals/kmsg",
         "//collect/source/dcgm",
         "//collect/source/nvml",
         "@com_github_google_uuid//:uuid",

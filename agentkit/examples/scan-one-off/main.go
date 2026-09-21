@@ -18,6 +18,7 @@ import (
 	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	kmsgsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/kmsg"
 	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
+	kmsgsignals "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg"
 	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
 )
@@ -48,12 +49,7 @@ func run() error {
 		return fmt.Errorf("init DCGM sensor: %w", err)
 	}
 
-	// Custom patterns replace the defaults; nil reads a snapshot of /dev/kmsg.
-	// Each match emits the regex under its signal ID, plus kernel.message and kernel.priority.
-	kmsgSensor, err := kmsgsensor.New(nil,
-		kmsgsensor.Pattern{SignalID: "example.gpu.xid", Regex: `NVRM: Xid.*: \d+,`},
-		kmsgsensor.Pattern{SignalID: "example.disk.io_error", Regex: `(?i)\bI/O error\b`},
-	)
+	kmsgSensor, err := kmsgsensor.New(nil, kmsgsignals.DefaultPatterns()...)
 	if err != nil {
 		return fmt.Errorf("init kmsg sensor: %w", err)
 	}

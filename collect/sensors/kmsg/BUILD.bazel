@@ -8,7 +8,7 @@ go_library(
     deps = [
         "//collect",
         "//collect/observation",
-        "//collect/signals/kernel",
+        "//collect/signals/kmsg",
         "//collect/source/kmsg",
         "@org_golang_google_protobuf//types/known/timestamppb",
     ],
@@ -21,7 +21,7 @@ go_test(
     deps = [
         "//collect",
         "//collect/observation",
-        "//collect/signals/kernel",
+        "//collect/signals/kmsg",
         "//collect/source/kmsg",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",

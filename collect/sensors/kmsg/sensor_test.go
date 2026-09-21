@@ -15,7 +15,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
-	"github.com/dsx-ai-factory/health-validation/collect/signals/kernel"
+	kmsgsignals "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg"
 	kmsgsource "github.com/dsx-ai-factory/health-validation/collect/source/kmsg"
 )
 
@@ -37,7 +37,7 @@ func TestMeasure(t *testing.T) {
 	require.Equal(t, "boot/1", batch.Observations[0].GetEntity().GetId())
 	require.Equal(t, "boot/2", batch.Observations[3].GetEntity().GetId())
 	require.Equal(t, int64(6), batch.Observations[1].GetValue().GetIntValue())
-	batch, err = s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(kernel.Message.ID()))
+	batch, err = s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(kmsgsignals.Message.ID()))
 	require.NoError(t, err)
 	require.Len(t, batch.GetObservations(), 2)
 	_, err = s.Measure(context.Background())
@@ -76,7 +76,7 @@ func TestPartialAndMalformedRecords(t *testing.T) {
 			{Timestamp: now, Sequence: 2, Body: "missing boot ID"},
 		}, kmsgsource.ErrMalformedRecord
 	})
-	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(kernel.Message.ID()))
+	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(kmsgsignals.Message.ID()))
 	require.NoError(t, err)
 	require.Len(t, batch.Observations, 3)
 	require.Equal(t, observation.CollectionErrorCategoryParseError, batch.Observations[0].GetCollectionError().GetCategory())
@@ -111,7 +111,7 @@ func TestPatterns(t *testing.T) {
 	require.NoError(t, err)
 	patterns[0].Regex = "mutated"
 	declared := s.Signals()
-	declared[0] = kernel.Panic
+	declared[0] = kmsgsignals.Panic
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
 	require.NoError(t, err)
 	require.NoError(t, observation.ValidateBatch(batch))
@@ -121,7 +121,7 @@ func TestPatterns(t *testing.T) {
 	}
 	for _, offset := range []int{4, 8} {
 		msg, priority, first, second := batch.Observations[offset], batch.Observations[offset+1], batch.Observations[offset+2], batch.Observations[offset+3]
-		require.Equal(t, kernel.Message.ID(), msg.SignalId)
+		require.Equal(t, kmsgsignals.Message.ID(), msg.SignalId)
 		require.Equal(t, "custom\nFAULT", msg.GetValue().GetStringValue())
 		require.Equal(t, int64(3), priority.GetValue().GetIntValue())
 		require.Equal(t, "driver.failure", first.SignalId)
@@ -142,8 +142,8 @@ func TestPatterns(t *testing.T) {
 		{{SignalID: "custom", Regex: "["}},
 		{{Regex: "fault"}},
 		{{SignalID: " custom ", Regex: "fault"}},
-		{{SignalID: kernel.Message.ID(), Regex: "fault"}},
-		{{SignalID: kernel.Priority.ID(), Regex: "fault"}},
+		{{SignalID: kmsgsignals.Message.ID(), Regex: "fault"}},
+		{{SignalID: kmsgsignals.Priority.ID(), Regex: "fault"}},
 		{{SignalID: "custom", Regex: "a"}, {SignalID: "custom", Regex: "b"}},
 	} {
 		_, patternErr := New(nil, patterns...)
@@ -156,15 +156,15 @@ func TestDefaultPatterns(t *testing.T) {
 	cycle, err := collect.NewCycle("defaults", now)
 	require.NoError(t, err)
 	for _, tt := range []struct{ body, id string }{
-		{"Kernel panic - not syncing: fatal exception", kernel.Panic.ID()},
-		{"python invoked oom-killer: gfp_mask=0x0", kernel.OOM.ID()},
-		{"oom-kill:constraint=CONSTRAINT_MEMCG,task=python,pid=42", kernel.OOM.ID()},
-		{"Out of memory: Killed process 42 (python)", kernel.OOM.ID()},
-		{"Memory cgroup out of memory: Killed process 42 (python)", kernel.OOM.ID()},
-		{"INFO: task worker:42 blocked for more than 120 seconds.", kernel.HungTask.ID()},
-		{"watchdog: BUG: soft lockup - CPU#18 stuck for 27s!", kernel.Lockup.ID()},
-		{"watchdog: Watchdog detected hard LOCKUP on cpu 0", kernel.Lockup.ID()},
-		{"VFS: file-max limit 1000000 reached", kernel.FileMax.ID()},
+		{"Kernel panic - not syncing: fatal exception", kmsgsignals.Panic.ID()},
+		{"python invoked oom-killer: gfp_mask=0x0", kmsgsignals.OOM.ID()},
+		{"oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=/,mems_allowed=0,oom_memcg=/test,task_memcg=/test,task=python,pid=42,uid=0", kmsgsignals.OOMContainer.ID()},
+		{"Out of memory: Killed process 42 (python)", kmsgsignals.OOMKilledProcess.ID()},
+		{"Memory cgroup out of memory: Killed process 42 (python)", kmsgsignals.OOMKilledProcess.ID()},
+		{"INFO: task worker:42 blocked for more than 120 seconds.", kmsgsignals.HungTask.ID()},
+		{"watchdog: BUG: soft lockup - CPU#18 stuck for 27s! [python:42]", kmsgsignals.SoftLockup.ID()},
+		{"watchdog: Watchdog detected hard LOCKUP on cpu 0", ""},
+		{"VFS: file-max limit 1000000 reached", kmsgsignals.FileMax.ID()},
 		{"normal boot", ""},
 		{"NVRM: Xid (PCI:0000:01:00): 79", ""},
 		{"mlx5_core: ACCESS_REG failed", ""},
@@ -219,4 +219,28 @@ func TestEmptySelectionRequiresCycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "empty", batch.GetCollectionId())
 	require.Empty(t, batch.GetObservations())
+}
+
+func TestGPUdPatternsPreserveMatchEvidence(t *testing.T) {
+	now := time.Now()
+	body := "NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)"
+	s, err := New(func(context.Context) ([]kmsgsource.Message, error) {
+		return []kmsgsource.Message{{BootID: "boot", Timestamp: now, Body: body, Sequence: 42}}, nil
+	}, kmsgsignals.DefaultPatterns()...)
+	require.NoError(t, err)
+	require.Equal(t, "kernel.kmsg", s.ID())
+	cycle, err := collect.NewCycle("gpud-patterns", now)
+	require.NoError(t, err)
+	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
+	require.NoError(t, err)
+	require.NoError(t, observation.ValidateBatch(batch))
+	require.Len(t, batch.Observations, 4)
+	require.Equal(t, body, batch.Observations[0].GetValue().GetStringValue())
+	require.Equal(t, kmsgsignals.NVRMXidCombined.ID(), batch.Observations[2].SignalId)
+	require.Equal(t, kmsgsignals.RegexNVRMXidCombined, batch.Observations[2].GetValue().GetStringValue())
+	require.Equal(t, kmsgsignals.NVRMXidExtended.ID(), batch.Observations[3].SignalId)
+	require.Equal(t, kmsgsignals.RegexNVRMXidExtended, batch.Observations[3].GetValue().GetStringValue())
+	for _, obs := range batch.Observations {
+		require.Equal(t, "boot/42", obs.GetEntity().GetId())
+	}
 }
