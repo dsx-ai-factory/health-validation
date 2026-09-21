@@ -97,7 +97,7 @@ func TestGPUdFixtureParity(t *testing.T) {
 				require.Equal(t, n, reading.Value.GetIntValue(), key)
 			}
 		default:
-			t.Fatalf("unexpected GPUd value for %s: %T", key, want)
+			require.FailNowf(t, "unexpected GPUd value", "%s: %T", key, want)
 		}
 	}
 	require.Len(t, readings, 9*len(ibsignals.All()))

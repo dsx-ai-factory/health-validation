@@ -10,6 +10,9 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
@@ -27,31 +30,25 @@ func TestRead(t *testing.T) {
 	s := New(files)
 	signals := collect.Signals{ibsignals.State, ibsignals.Rate, ibsignals.PortRcvData, ibsignals.PortXmitData, ibsignals.HardwareOutOfBuffer}
 	readings, err := s.Read(context.Background(), signals)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(readings) != 10 {
-		t.Fatalf("readings: %v", readings)
-	}
+	require.NoError(t, err)
+	require.Len(t, readings, 10)
 	for i, want := range []int64{4, 312500000, 492} {
-		if readings[i].Value.GetIntValue() != want || readings[i].Failure != nil {
-			t.Fatalf("reading %d: %+v", i, readings[i])
-		}
+		require.Equal(t, want, readings[i].Value.GetIntValue())
+		require.Nil(t, readings[i].Failure)
 	}
-	if readings[3].Failure.GetCategory() != observation.CollectionErrorCategoryParseError || readings[4].Failure.GetCategory() != observation.CollectionErrorCategoryUnsupported || readings[5].Failure.GetCategory() != observation.CollectionErrorCategoryParseError || readings[6].Failure.GetCategory() != observation.CollectionErrorCategoryUnavailable {
-		t.Fatalf("failure normalization: %+v", readings)
-	}
+	require.Equal(t, observation.CollectionErrorCategoryParseError, readings[3].Failure.GetCategory())
+	require.Equal(t, observation.CollectionErrorCategoryUnsupported, readings[4].Failure.GetCategory())
+	require.Equal(t, observation.CollectionErrorCategoryParseError, readings[5].Failure.GetCategory())
+	require.Equal(t, observation.CollectionErrorCategoryUnavailable, readings[6].Failure.GetCategory())
 	s = New(files, "mlx5_1")
 	readings, err = s.Read(context.Background(), collect.Signals{ibsignals.State})
-	if err != nil || len(readings) != 1 {
-		t.Fatalf("excluded: %+v / %v", readings, err)
-	}
+	require.NoError(t, err)
+	require.Len(t, readings, 1)
 	// Re-enumeration discovers newly added ports without rebuilding the source.
 	files["mlx5_0/ports/2/state"] = &fstest.MapFile{Data: []byte("1: DOWN")}
 	readings, err = s.Read(context.Background(), collect.Signals{ibsignals.State})
-	if err != nil || len(readings) != 2 {
-		t.Fatalf("refresh: %+v / %v", readings, err)
-	}
+	require.NoError(t, err)
+	require.Len(t, readings, 2)
 }
 
 type restrictedFS struct {
@@ -66,45 +63,37 @@ func TestRestrictedFilesAndSelection(t *testing.T) {
 	s := New(files)
 	for range 2 {
 		readings, err := s.Read(context.Background(), collect.Signals{ibsignals.LinkDowned})
-		if err != nil || len(readings) != 1 || readings[0].Failure.GetCategory() != observation.CollectionErrorCategoryUnsupported {
-			t.Fatalf("restricted: %+v / %v", readings, err)
-		}
+		require.NoError(t, err)
+		require.Len(t, readings, 1)
+		require.Equal(t, observation.CollectionErrorCategoryUnsupported, readings[0].Failure.GetCategory())
 	}
-	if files.reads != 1 {
-		t.Fatalf("read %d times, want once; unselected state must not be read", files.reads)
-	}
+	require.Equal(t, 1, files.reads)
 }
 
 func TestParseBoundaries(t *testing.T) {
 	for _, raw := range []string{"NaN Gb/sec", "+Inf Gb/sec", "-1 Gb/sec", "", "1e100 Gb/sec"} {
-		if _, err := parse(ibsignals.Rate, raw); err == nil {
-			t.Errorf("accepted %q", raw)
-		}
+		_, err := parse(ibsignals.Rate, raw)
+		assert.Error(t, err)
 	}
 	for _, raw := range []string{"-1", "18446744073709551615", "2305843009213693952", "invalid"} {
-		if _, err := parse(ibsignals.PortRcvData, raw); err == nil {
-			t.Errorf("accepted %q", raw)
-		}
+		_, err := parse(ibsignals.PortRcvData, raw)
+		assert.Error(t, err)
 	}
-	if _, err := parse(ibsignals.State, "4:ACTIVE:extra"); err == nil {
-		t.Error("accepted extra state delimiter")
-	}
-	if len(paths) != len(ibsignals.All()) {
-		t.Fatal("signal/source coverage mismatch")
-	}
+	_, err := parse(ibsignals.State, "4:ACTIVE:extra")
+	assert.Error(t, err)
+	require.Len(t, paths, len(ibsignals.All()))
 	for _, signal := range ibsignals.All() {
-		if paths[signal.ID()] == "" {
-			t.Errorf("no source mapping: %s", signal.ID())
-		}
+		assert.NotEqual(t, "", paths[signal.ID()])
 	}
 }
 
 func TestDeviceInventoryWithoutPorts(t *testing.T) {
 	s := New(fstest.MapFS{"mlx5_0/fw_ver": {Data: []byte("28.41.1000\n")}, "mlx5_0/board_id": {Data: []byte("board")}})
 	readings, err := s.Read(context.Background(), collect.Signals{ibsignals.FirmwareVersion, ibsignals.BoardID})
-	if err != nil || len(readings) != 2 || readings[0].Value.GetStringValue() != "28.41.1000" || readings[0].Entity.GetType() != "infiniband_device" {
-		t.Fatalf("inventory: %+v / %v", readings, err)
-	}
+	require.NoError(t, err)
+	require.Len(t, readings, 2)
+	require.Equal(t, "28.41.1000", readings[0].Value.GetStringValue())
+	require.Equal(t, "infiniband_device", readings[0].Entity.GetType())
 }
 
 // A consumer's Signal need not be comparable or use the library's concrete type.
@@ -117,7 +106,8 @@ func TestCanonicalSelection(t *testing.T) {
 	s := New(fstest.MapFS{"mlx5_0/ports/1/counters/port_rcv_data": {Data: []byte("10")}})
 	definition := externalSignal{ibsignals.PortRcvData.ID()}
 	readings, err := s.Read(context.Background(), collect.Signals{definition, definition})
-	if err != nil || len(readings) != 1 || readings[0].Value.GetIntValue() != 40 || *readings[0].Signal.Unit() != "bytes" {
-		t.Fatalf("canonical reading: %+v / %v", readings, err)
-	}
+	require.NoError(t, err)
+	require.Len(t, readings, 1)
+	require.Equal(t, int64(40), readings[0].Value.GetIntValue())
+	require.Equal(t, "bytes", *readings[0].Signal.Unit())
 }

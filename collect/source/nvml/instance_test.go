@@ -4,8 +4,10 @@
 package nvml
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"github.com/dsx-ai-factory/health-validation/collect/source/nvml/device"
@@ -24,32 +26,17 @@ func TestNativeLifecycleGate(t *testing.T) {
 	inst := &instance{nvmlLib: lib}
 	other := &instance{}
 	err := inst.Read(func(map[string]device.Device) error {
-		if readErr := other.Read(func(map[string]device.Device) error { t.Fatal("entered native read twice"); return nil }); !errors.Is(readErr, ErrInUse) {
-			t.Errorf("overlap: %v", readErr)
-		}
-		if refreshErr := inst.Refresh(); !errors.Is(refreshErr, ErrInUse) {
-			t.Errorf("refresh during read: %v", refreshErr)
-		}
-		if shutdownErr := inst.Shutdown(); !errors.Is(shutdownErr, ErrInUse) {
-			t.Errorf("shutdown during read: %v", shutdownErr)
-		}
+		assert.ErrorIs(t, other.Read(func(map[string]device.Device) error { require.FailNow(t, "entered native read twice"); return nil }), ErrInUse)
+		assert.ErrorIs(t, inst.Refresh(), ErrInUse)
+		assert.ErrorIs(t, inst.Shutdown(), ErrInUse)
 		return nil
 	})
-	if err != nil || lib.shutdowns != 0 {
-		t.Fatalf("unsafe shutdown: %d / %v", lib.shutdowns, err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 0, lib.shutdowns)
 	for range 2 {
-		if shutdownErr := inst.Shutdown(); shutdownErr != nil {
-			t.Fatal(shutdownErr)
-		}
+		require.NoError(t, inst.Shutdown())
 	}
-	if lib.shutdowns != 1 {
-		t.Fatalf("shutdown count: %d", lib.shutdowns)
-	}
-	if readErr := inst.Read(func(map[string]device.Device) error { t.Fatal("read closed instance"); return nil }); !errors.Is(readErr, ErrClosed) {
-		t.Fatalf("closed read: %v", readErr)
-	}
-	if refreshErr := inst.Refresh(); !errors.Is(refreshErr, ErrClosed) {
-		t.Fatalf("closed refresh: %v", refreshErr)
-	}
+	require.Equal(t, 1, lib.shutdowns)
+	require.ErrorIs(t, inst.Read(func(map[string]device.Device) error { require.FailNow(t, "read closed instance"); return nil }), ErrClosed)
+	require.ErrorIs(t, inst.Refresh(), ErrClosed)
 }

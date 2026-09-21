@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/collect/signals/kernel"
@@ -19,9 +22,7 @@ import (
 func TestMeasure(t *testing.T) {
 	now := time.Now()
 	cycle, err := collect.NewCycle("cycle", now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	s := newRawSensor(t, func(context.Context) ([]kmsgsource.Message, error) {
 		return []kmsgsource.Message{
 			{Timestamp: now, BootID: "boot", Body: "same", Sequence: 1, Priority: 6},
@@ -29,30 +30,24 @@ func TestMeasure(t *testing.T) {
 		}, nil
 	})
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if validationErr := observation.ValidateBatch(batch); validationErr != nil {
-		t.Fatal(validationErr)
-	}
-	if batch.CollectionId != "cycle" || len(batch.Observations) != 6 || batch.Observations[0].GetEntity().GetId() != "boot/1" || batch.Observations[3].GetEntity().GetId() != "boot/2" || batch.Observations[1].GetValue().GetIntValue() != 6 {
-		t.Fatalf("batch: %v", batch)
-	}
+	require.NoError(t, err)
+	require.NoError(t, observation.ValidateBatch(batch))
+	require.Equal(t, "cycle", batch.CollectionId)
+	require.Len(t, batch.Observations, 6)
+	require.Equal(t, "boot/1", batch.Observations[0].GetEntity().GetId())
+	require.Equal(t, "boot/2", batch.Observations[3].GetEntity().GetId())
+	require.Equal(t, int64(6), batch.Observations[1].GetValue().GetIntValue())
 	batch, err = s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(kernel.Message.ID()))
-	if err != nil || len(batch.GetObservations()) != 2 {
-		t.Fatalf("selection: %v / %v", batch, err)
-	}
-	if _, measureErr := s.Measure(context.Background()); measureErr == nil {
-		t.Fatal("accepted missing cycle")
-	}
-	if _, measureErr := s.Measure(context.Background(), collect.WithSignalID("unknown")); measureErr == nil {
-		t.Fatal("accepted unknown signal")
-	}
+	require.NoError(t, err)
+	require.Len(t, batch.GetObservations(), 2)
+	_, err = s.Measure(context.Background())
+	require.Error(t, err)
+	_, err = s.Measure(context.Background(), collect.WithSignalID("unknown"))
+	require.Error(t, err)
 	s = newRawSensor(t, func(context.Context) ([]kmsgsource.Message, error) { return nil, fs.ErrPermission })
 	batch, err = s.Measure(context.Background(), collect.WithCycle(cycle))
-	if err != nil || batch.Observations[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryPermissionDenied {
-		t.Fatalf("permission: %v / %v", batch, err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, observation.CollectionErrorCategoryPermissionDenied, batch.Observations[0].GetCollectionError().GetCategory())
 }
 
 func TestTimeoutDoesNotStartAnotherRead(t *testing.T) {
@@ -60,29 +55,21 @@ func TestTimeoutDoesNotStartAnotherRead(t *testing.T) {
 	defer close(release)
 	s := newRawSensor(t, func(context.Context) ([]kmsgsource.Message, error) { <-release; return nil, nil })
 	cycle, err := collect.NewCycleWithTimeout("first", time.Now(), 10*time.Millisecond)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
-	if err != nil || batch.Observations[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
-		t.Fatalf("timeout: %v / %v", batch, err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, observation.CollectionErrorCategoryTimeout, batch.Observations[0].GetCollectionError().GetCategory())
 	cycle, err = collect.NewCycle("second", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	batch, err = s.Measure(context.Background(), collect.WithCycle(cycle))
-	if err != nil || batch.Observations[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryUnavailable {
-		t.Fatalf("overlapping read: %v / %v", batch, err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, observation.CollectionErrorCategoryUnavailable, batch.Observations[0].GetCollectionError().GetCategory())
 }
 
 func TestPartialAndMalformedRecords(t *testing.T) {
 	now := time.Now()
 	cycle, err := collect.NewCycle("partial", now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	s := newRawSensor(t, func(context.Context) ([]kmsgsource.Message, error) {
 		return []kmsgsource.Message{
 			{BootID: "boot", Timestamp: now, Sequence: 1, Body: "valid"},
@@ -90,33 +77,28 @@ func TestPartialAndMalformedRecords(t *testing.T) {
 		}, kmsgsource.ErrMalformedRecord
 	})
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(kernel.Message.ID()))
-	if err != nil || len(batch.Observations) != 3 {
-		t.Fatalf("partial: %v / %v", batch, err)
-	}
-	if batch.Observations[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryParseError || batch.Observations[1].GetValue().GetStringValue() != "valid" || batch.Observations[2].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryParseError {
-		t.Fatalf("partial outcomes: %v", batch)
-	}
+	require.NoError(t, err)
+	require.Len(t, batch.Observations, 3)
+	require.Equal(t, observation.CollectionErrorCategoryParseError, batch.Observations[0].GetCollectionError().GetCategory())
+	require.Equal(t, "valid", batch.Observations[1].GetValue().GetStringValue())
+	require.Equal(t, observation.CollectionErrorCategoryParseError, batch.Observations[2].GetCollectionError().GetCategory())
 	batch, err = s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID())
-	if err != nil || len(batch.Observations) != 0 || batch.CollectionId != "partial" {
-		t.Fatalf("empty batch identity: %v / %v", batch, err)
-	}
+	require.NoError(t, err)
+	require.Empty(t, batch.Observations)
+	require.Equal(t, "partial", batch.CollectionId)
 }
 
 func newRawSensor(t *testing.T, read func(context.Context) ([]kmsgsource.Message, error)) collect.Sensor {
 	t.Helper()
 	s, err := New(read, Pattern{SignalID: "kernel.all", Regex: `(?s).*`})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return s
 }
 
 func TestPatterns(t *testing.T) {
 	now := time.Now()
 	cycle, err := collect.NewCycle("patterns", now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	read := func(context.Context) ([]kmsgsource.Message, error) {
 		return []kmsgsource.Message{
 			{BootID: "boot", Timestamp: now, Sequence: 1, Body: "custom\nFAULT", Priority: 3},
@@ -126,41 +108,34 @@ func TestPatterns(t *testing.T) {
 	}
 	patterns := []Pattern{{SignalID: "driver.failure", Regex: `(?s)custom.*FAULT`}, {SignalID: "driver.fault", Regex: `FAULT`}}
 	s, err := New(read, patterns...)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	patterns[0].Regex = "mutated"
 	declared := s.Signals()
 	declared[0] = kernel.Panic
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if validationErr := observation.ValidateBatch(batch); validationErr != nil {
-		t.Fatal(validationErr)
-	}
-	if len(batch.Observations) != 12 {
-		t.Fatalf("batch: %v", batch)
-	}
+	require.NoError(t, err)
+	require.NoError(t, observation.ValidateBatch(batch))
+	require.Len(t, batch.Observations, 12)
 	for i := range 4 {
-		if batch.Observations[i].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryPermissionDenied {
-			t.Fatalf("lost partial-read error: %v", batch)
-		}
+		require.Equal(t, observation.CollectionErrorCategoryPermissionDenied, batch.Observations[i].GetCollectionError().GetCategory())
 	}
 	for _, offset := range []int{4, 8} {
 		msg, priority, first, second := batch.Observations[offset], batch.Observations[offset+1], batch.Observations[offset+2], batch.Observations[offset+3]
-		if msg.SignalId != kernel.Message.ID() || msg.GetValue().GetStringValue() != "custom\nFAULT" || priority.GetValue().GetIntValue() != 3 || first.SignalId != "driver.failure" || first.GetValue().GetStringValue() != `(?s)custom.*FAULT` || second.SignalId != "driver.fault" || second.GetValue().GetStringValue() != `FAULT` || first.Entity.Id != msg.Entity.Id || !first.ObservedAt.AsTime().Equal(now) {
-			t.Fatalf("match evidence: %v", batch)
-		}
+		require.Equal(t, kernel.Message.ID(), msg.SignalId)
+		require.Equal(t, "custom\nFAULT", msg.GetValue().GetStringValue())
+		require.Equal(t, int64(3), priority.GetValue().GetIntValue())
+		require.Equal(t, "driver.failure", first.SignalId)
+		require.Equal(t, `(?s)custom.*FAULT`, first.GetValue().GetStringValue())
+		require.Equal(t, "driver.fault", second.SignalId)
+		require.Equal(t, `FAULT`, second.GetValue().GetStringValue())
+		require.Equal(t, msg.Entity.Id, first.Entity.Id)
+		require.True(t, first.ObservedAt.AsTime().Equal(now))
 	}
 	batch, err = s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID("driver.fault"))
-	if err != nil || len(batch.GetObservations()) != 3 {
-		t.Fatalf("selection: %v / %v", batch, err)
-	}
+	require.NoError(t, err)
+	require.Len(t, batch.GetObservations(), 3)
 	for _, obs := range batch.Observations {
-		if obs.SignalId != "driver.fault" {
-			t.Fatalf("unexpected signal: %v", obs)
-		}
+		require.Equal(t, "driver.fault", obs.SignalId)
 	}
 	for _, patterns := range [][]Pattern{
 		{{SignalID: "custom", Regex: ""}},
@@ -171,18 +146,15 @@ func TestPatterns(t *testing.T) {
 		{{SignalID: kernel.Priority.ID(), Regex: "fault"}},
 		{{SignalID: "custom", Regex: "a"}, {SignalID: "custom", Regex: "b"}},
 	} {
-		if _, patternErr := New(nil, patterns...); patternErr == nil {
-			t.Errorf("accepted invalid patterns: %v", patterns)
-		}
+		_, patternErr := New(nil, patterns...)
+		assert.Error(t, patternErr)
 	}
 }
 
 func TestDefaultPatterns(t *testing.T) {
 	now := time.Now()
 	cycle, err := collect.NewCycle("defaults", now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, tt := range []struct{ body, id string }{
 		{"Kernel panic - not syncing: fatal exception", kernel.Panic.ID()},
 		{"python invoked oom-killer: gfp_mask=0x0", kernel.OOM.ID()},
@@ -201,25 +173,18 @@ func TestDefaultPatterns(t *testing.T) {
 			s, createErr := New(func(context.Context) ([]kmsgsource.Message, error) {
 				return []kmsgsource.Message{{BootID: "boot", Timestamp: now, Body: tt.body}}, nil
 			})
-			if createErr != nil {
-				t.Fatal(createErr)
-			}
+			require.NoError(t, createErr)
 			batch, measureErr := s.Measure(context.Background(), collect.WithCycle(cycle))
-			if measureErr != nil {
-				t.Fatal(measureErr)
-			}
+			require.NoError(t, measureErr)
 			if tt.id == "" {
-				if len(batch.Observations) != 0 {
-					t.Fatalf("unexpected match: %v", batch)
-				}
+				require.Empty(t, batch.Observations)
 				return
 			}
-			if len(batch.Observations) != 3 || batch.Observations[2].SignalId != tt.id {
-				t.Fatalf("default match: %v", batch)
-			}
+			require.Len(t, batch.Observations, 3)
+			require.Equal(t, tt.id, batch.Observations[2].SignalId)
 			for _, pattern := range DefaultPatterns() {
-				if pattern.SignalID == tt.id && batch.Observations[2].GetValue().GetStringValue() != pattern.Regex {
-					t.Fatalf("regex not preserved: %v", batch)
+				if pattern.SignalID == tt.id {
+					require.Equal(t, pattern.Regex, batch.Observations[2].GetValue().GetStringValue())
 				}
 			}
 		})
@@ -234,36 +199,24 @@ func TestTimeoutIncludesMatching(t *testing.T) {
 		messages[i] = kmsgsource.Message{BootID: "boot", Timestamp: now, Sequence: int64(i), Body: body}
 	}
 	s, err := New(func(context.Context) ([]kmsgsource.Message, error) { return messages, nil }, Pattern{SignalID: "slow", Regex: `a.*z`})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cycle, err := collect.NewCycleWithTimeout("matching", now, 10*time.Millisecond)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID("slow"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(batch.Observations) != 1 || batch.Observations[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
-		t.Fatalf("matching escaped the collection deadline: %v", batch)
-	}
+	require.NoError(t, err)
+	require.Len(t, batch.Observations, 1)
+	require.Equal(t, observation.CollectionErrorCategoryTimeout, batch.Observations[0].GetCollectionError().GetCategory())
 }
 
 func TestEmptySelectionRequiresCycle(t *testing.T) {
 	s, err := New(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, measureErr := s.Measure(context.Background(), collect.WithSignalID()); measureErr == nil {
-		t.Fatal("accepted missing cycle")
-	}
+	require.NoError(t, err)
+	_, err = s.Measure(context.Background(), collect.WithSignalID())
+	require.Error(t, err)
 	cycle, err := collect.NewCycle("empty", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID())
-	if err != nil || batch.GetCollectionId() != "empty" || len(batch.GetObservations()) != 0 {
-		t.Fatalf("empty selection: %v / %v", batch, err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "empty", batch.GetCollectionId())
+	require.Empty(t, batch.GetObservations())
 }

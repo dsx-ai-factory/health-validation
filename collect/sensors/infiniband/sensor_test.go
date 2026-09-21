@@ -9,6 +9,8 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
@@ -17,45 +19,35 @@ import (
 
 func TestMeasure(t *testing.T) {
 	cycle, err := collect.NewCycle("cycle", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	s := New(ibsource.New(fstest.MapFS{"mlx5_0/ports/1/state": {Data: []byte("4: ACTIVE")}}))
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(ibsignals.State.ID(), ibsignals.Rate.ID()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if validationErr := observation.ValidateBatch(batch); validationErr != nil {
-		t.Fatal(validationErr)
-	}
-	if batch.CollectionId != "cycle" || len(batch.Observations) != 2 || batch.Observations[0].GetEntity().GetId() != "mlx5_0/1" || batch.Observations[0].GetValue().GetIntValue() != 4 || batch.Observations[1].GetCollectionError() == nil {
-		t.Fatalf("batch: %v", batch)
-	}
-	if _, measureErr := s.Measure(context.Background()); measureErr == nil {
-		t.Fatal("accepted missing cycle")
-	}
-	if _, measureErr := s.Measure(context.Background(), collect.WithSignalID("unknown")); measureErr == nil {
-		t.Fatal("accepted unknown signal")
-	}
+	require.NoError(t, err)
+	require.NoError(t, observation.ValidateBatch(batch))
+	require.Equal(t, "cycle", batch.CollectionId)
+	require.Len(t, batch.Observations, 2)
+	require.Equal(t, "mlx5_0/1", batch.Observations[0].GetEntity().GetId())
+	require.Equal(t, int64(4), batch.Observations[0].GetValue().GetIntValue())
+	require.NotNil(t, batch.Observations[1].GetCollectionError())
+	_, err = s.Measure(context.Background())
+	require.Error(t, err)
+	_, err = s.Measure(context.Background(), collect.WithSignalID("unknown"))
+	require.Error(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	batch, err = s.Measure(ctx, collect.WithCycle(cycle), collect.WithSignalID(ibsignals.State.ID()))
-	if err != nil || batch.Observations[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryUnavailable {
-		t.Fatalf("cancellation: %v / %v", batch, err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, observation.CollectionErrorCategoryUnavailable, batch.Observations[0].GetCollectionError().GetCategory())
 }
 
 func TestEmptySelectionRequiresCycle(t *testing.T) {
 	s := New(nil)
-	if _, err := s.Measure(context.Background(), collect.WithSignalID()); err == nil {
-		t.Fatal("accepted missing cycle")
-	}
+	_, err := s.Measure(context.Background(), collect.WithSignalID())
+	require.Error(t, err)
 	cycle, err := collect.NewCycle("empty", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID())
-	if err != nil || batch.GetCollectionId() != "empty" || len(batch.GetObservations()) != 0 {
-		t.Fatalf("empty selection: %v / %v", batch, err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "empty", batch.GetCollectionId())
+	require.Empty(t, batch.GetObservations())
 }

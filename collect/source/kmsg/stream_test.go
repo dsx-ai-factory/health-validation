@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -112,7 +113,7 @@ func TestReadFollowGPUdBehavior(t *testing.T) {
 	}
 	r := &streamReader{packets: make(chan streamPacket, 1), closed: make(chan struct{})}
 	r.packets <- streamPacket{body: "malformed"}
-	err := readFollow(r, time.Now(), "boot", func(Message) { t.Fatal("emitted invalid record") }, func(error) {})
+	err := readFollow(r, time.Now(), "boot", func(Message) { require.FailNow(t, "emitted invalid record") }, func(error) {})
 	require.ErrorIs(t, err, ErrMalformedRecord)
 }
 
@@ -127,7 +128,7 @@ func TestStreamCloseInterruptsIdleRead(t *testing.T) {
 	case closeErr := <-done:
 		require.NoError(t, closeErr)
 	case <-time.After(time.Second):
-		t.Fatal("Close did not interrupt idle read")
+		require.FailNow(t, "Close did not interrupt idle read")
 	}
 }
 
@@ -146,9 +147,7 @@ func TestStreamConcurrentSnapshots(t *testing.T) {
 				ready.Done()
 				<-start
 				_, err := s.Read(context.Background())
-				if err != nil {
-					t.Error(err)
-				}
+				assert.NoError(t, err)
 			})
 		}
 		done.Go(func() {

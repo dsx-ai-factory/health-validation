@@ -5,10 +5,12 @@ package kmsg
 
 import (
 	"context"
-	"errors"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReadRecords(t *testing.T) {
@@ -31,21 +33,19 @@ func TestReadRecords(t *testing.T) {
 				return 0, end
 			}
 		})
-		if len(messages) != 2 || messages[0].BootID != "boot" || messages[1].Sequence != 2 || calls != 7 {
-			t.Fatalf("records: %+v, calls: %d", messages, calls)
-		}
-		if !errors.Is(err, syscall.EPIPE) {
-			t.Fatalf("lost records hidden: %v", err)
-		}
-		if end == syscall.EIO && !errors.Is(err, syscall.EIO) {
-			t.Fatalf("read failure hidden: %v", err)
+		require.Len(t, messages, 2)
+		require.Equal(t, "boot", messages[0].BootID)
+		require.Equal(t, int64(2), messages[1].Sequence)
+		require.Equal(t, 7, calls)
+		require.ErrorIs(t, err, syscall.EPIPE)
+		if end == syscall.EIO {
+			require.ErrorIs(t, err, syscall.EIO)
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := readRecords(ctx, time.Now(), "boot", func([]byte) (int, error) { t.Fatal("read after cancellation"); return 0, nil }); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancellation: %v", err)
-	}
+	_, err := readRecords(ctx, time.Now(), "boot", func([]byte) (int, error) { require.FailNow(t, "read after cancellation"); return 0, nil })
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestReadRecordsTermination(t *testing.T) {
@@ -64,30 +64,22 @@ func TestReadRecordsTermination(t *testing.T) {
 				}
 				return 0, tt.end
 			})
-			if len(messages) != 0 {
-				t.Fatalf("unexpected records: %v", messages)
-			}
+			require.Empty(t, messages)
 			if tt.end == syscall.EAGAIN {
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				return
 			}
-			if !errors.Is(err, tt.end) {
-				t.Fatalf("error: %v, want %v", err, tt.end)
-			}
+			require.ErrorIs(t, err, tt.end)
 		})
 	}
 }
 
 func TestBootTime(t *testing.T) {
 	boot, err := parseBootTime("cpu 1 2 3\nintr 4\nbtime 1700000000\nprocesses 5\n")
-	if err != nil || !boot.Equal(time.Unix(1700000000, 0)) {
-		t.Fatalf("boot time: %v / %v", boot, err)
-	}
+	require.NoError(t, err)
+	require.True(t, boot.Equal(time.Unix(1700000000, 0)))
 	for _, input := range []string{"", "btime", "btime 1 2", "btime -1", "btime invalid"} {
-		if _, parseErr := parseBootTime(input); parseErr == nil {
-			t.Errorf("accepted %q", input)
-		}
+		_, parseErr := parseBootTime(input)
+		assert.Error(t, parseErr)
 	}
 }

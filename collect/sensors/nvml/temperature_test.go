@@ -6,6 +6,8 @@ package nvml
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -40,10 +42,8 @@ func TestCategorizeFailure(t *testing.T) {
 		{gpusignals.TemperatureCelsius, nvml.ERROR_GPU_IS_LOST, observation.CollectionErrorCategorySourceError},
 	}
 	for _, test := range tests {
-		if got := categorizeFailure(test.definition, test.ret); got != test.want {
-			t.Errorf("categorizeFailure(%s, %s) = %v, want %v",
-				test.definition.ID(), returnName(test.ret), got, test.want)
-		}
+		got := categorizeFailure(test.definition, test.ret)
+		assert.Equal(t, test.want, got)
 	}
 }
 

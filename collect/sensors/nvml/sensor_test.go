@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
@@ -166,35 +168,22 @@ func TestMeasureConcurrentRecovery(t *testing.T) {
 	inst := &recoveringInstance{fakeInstance: fakeInstance{exists: true}}
 	sensor := New(inst)
 	batch, err := sensor.Measure(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(batch.Observations) != len(sensor.Signals()) {
-		t.Fatalf("got %d observations", len(batch.Observations))
-	}
+	require.NoError(t, err)
+	require.Len(t, batch.Observations, len(sensor.Signals()))
 	for _, obs := range batch.Observations {
 		failure := obs.GetCollectionError()
-		if failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || failure.GetDetail() != "enumeration failed" {
-			t.Fatalf("lost enumeration error during recovery: %v", obs)
-		}
+		require.Equal(t, observation.CollectionErrorCategoryUnavailable, failure.GetCategory())
+		require.Equal(t, "enumeration failed", failure.GetDetail())
 	}
-	if inst.errorReads != 1 {
-		t.Fatalf("read mutable initialization error %d times", inst.errorReads)
-	}
+	require.Equal(t, 1, inst.errorReads)
 }
 
 func TestClosedInstanceUnavailable(t *testing.T) {
 	s := New(&fakeInstance{exists: true, readErr: nvmlsource.ErrClosed})
 	batch, err := s.Measure(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(batch.GetObservations()) == 0 {
-		t.Fatal("missing failures")
-	}
+	require.NoError(t, err)
+	require.NotEqualValues(t, 0, len(batch.GetObservations()))
 	for _, obs := range batch.GetObservations() {
-		if obs.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryUnavailable {
-			t.Fatalf("closed instance: %v", obs)
-		}
+		require.Equal(t, observation.CollectionErrorCategoryUnavailable, obs.GetCollectionError().GetCategory())
 	}
 }

@@ -23,5 +23,6 @@ go_test(
         "//collect/observation",
         "//collect/signals/infiniband",
         "//collect/source/infiniband",
+        "@com_github_stretchr_testify//require",
     ],
 )

@@ -38,6 +38,8 @@ go_test(
         "//collect/source/nvml",
         "//collect/source/nvml/device",
         "@com_github_nvidia_go_nvml//pkg/nvml",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
         "@org_golang_google_protobuf//types/known/timestamppb",
     ],
 )
