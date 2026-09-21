@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-var compiledRegexNVRMXidCombined = regexp.MustCompile(DefaultPatterns()["kernel.nvrm_xid_combined"])
+var compiledRegexNVRMXidCombined = regexp.MustCompile(DefaultPatterns()[NVRMXidCombined])
 
 // ExtractNVRMXidInfo extracts the explicit Xid number and PCI device identifier
 // from raw kernel message text. It returns (0, "") when no number is found.
