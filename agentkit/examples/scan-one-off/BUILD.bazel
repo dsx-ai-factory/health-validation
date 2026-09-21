@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 load("//build/rules/go:defs.bzl", "go_binary")
 
 go_library(
@@ -13,7 +13,10 @@ go_library(
         "//collect/sensors/infiniband",
         "//collect/sensors/kmsg",
         "//collect/sensors/nvml",
+        "//collect/signals/infiniband",
         "//collect/signals/kmsg",
+        "//collect/signals/kmsg/memory",
+        "//collect/signals/kmsg/xid",
         "//collect/source/dcgm",
         "//collect/source/nvml",
         "@com_github_google_uuid//:uuid",
@@ -25,4 +28,21 @@ go_binary(
     name = "scan-one-off",
     embed = [":scan-one-off_lib"],
     visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "scan-one-off_test",
+    srcs = ["main_test.go"],
+    embed = [":scan-one-off_lib"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/sensors/infiniband",
+        "//collect/sensors/kmsg",
+        "//collect/signals/infiniband",
+        "//collect/signals/kmsg/xid",
+        "//collect/source/infiniband",
+        "//collect/source/kmsg",
+        "@com_github_stretchr_testify//require",
+    ],
 )

@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "memory",
+    srcs = ["signals.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/memory",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "memory_test",
+    srcs = ["signals_test.go"],
+    embed = [":memory"],
+    deps = ["@com_github_stretchr_testify//require"],
+)

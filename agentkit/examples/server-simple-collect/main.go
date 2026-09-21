@@ -1,19 +1,22 @@
 // server-simple-collect serves one collection cycle per request over gRPC and
 // HTTP on a single port. Built-in sensors are registered here as they land
-// in collect/sensors.
+// in collect/sensors. See scan-one-off for consumer-side Xid parsing and
+// InfiniBand port-down reporting from the returned observations.
 package main
 
 import (
 	"flag"
 	"fmt"
 	"log"
+	"maps"
 
 	"github.com/dsx-ai-factory/health-validation/agentkit/server"
 	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
 	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	kmsgsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/kmsg"
 	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
-	kmsgsignals "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg"
+	kmsgmemory "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/memory"
+	kmsgxid "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/xid"
 	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
 	kmsgsource "github.com/dsx-ai-factory/health-validation/collect/source/kmsg"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
@@ -54,7 +57,9 @@ func run() error {
 		return fmt.Errorf("start kmsg stream: %w", err)
 	}
 	defer func() { _ = kmsgStream.Close() }()
-	kmsgSensor, err := kmsgsensor.New(kmsgStream.Read, kmsgsignals.DefaultPatterns())
+	patterns := kmsgmemory.DefaultPatterns()
+	maps.Copy(patterns, kmsgxid.DefaultPatterns())
+	kmsgSensor, err := kmsgsensor.New(kmsgStream.Read, patterns)
 	if err != nil {
 		return fmt.Errorf("init kmsg sensor: %w", err)
 	}

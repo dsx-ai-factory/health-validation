@@ -38,7 +38,7 @@ type sensor struct {
 }
 
 // New uses ReadAll when read is nil. Without patterns, collection is a no-op
-// and does not read the source. Pass kmsgsignals.DefaultPatterns() to opt in.
+// and does not read the source. Pass a signal-ID-to-regex map to opt in.
 // Signal IDs must be unique and cannot reuse kernel.message or kernel.priority.
 // Empty or invalid patterns are rejected. Reader lifetime remains with the caller.
 func New(read func(context.Context) ([]kmsgsource.Message, error), patterns map[string]string) (collect.Sensor, error) {

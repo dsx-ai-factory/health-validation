@@ -6,6 +6,7 @@ package kmsg
 import (
 	"context"
 	"io/fs"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	kmsgsignals "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg"
+	kmsgmemory "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/memory"
+	kmsgxid "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/xid"
 	kmsgsource "github.com/dsx-ai-factory/health-validation/collect/source/kmsg"
 )
 
@@ -152,6 +155,8 @@ func TestPatterns(t *testing.T) {
 
 func TestDefaultPatterns(t *testing.T) {
 	now := time.Now()
+	patterns := kmsgmemory.DefaultPatterns()
+	maps.Copy(patterns, kmsgxid.DefaultPatterns())
 	cycle, err := collect.NewCycle("defaults", now)
 	require.NoError(t, err)
 	for _, tt := range []struct{ body, id string }{
@@ -171,7 +176,7 @@ func TestDefaultPatterns(t *testing.T) {
 		t.Run(tt.body, func(t *testing.T) {
 			s, createErr := New(func(context.Context) ([]kmsgsource.Message, error) {
 				return []kmsgsource.Message{{BootID: "boot", Timestamp: now, Body: tt.body}}, nil
-			}, kmsgsignals.DefaultPatterns())
+			}, patterns)
 			require.NoError(t, createErr)
 			batch, measureErr := s.Measure(context.Background(), collect.WithCycle(cycle))
 			require.NoError(t, measureErr)
@@ -181,7 +186,7 @@ func TestDefaultPatterns(t *testing.T) {
 			}
 			require.Len(t, batch.Observations, 3)
 			require.Equal(t, tt.id, batch.Observations[2].SignalId)
-			require.Equal(t, kmsgsignals.DefaultPatterns()[tt.id], batch.Observations[2].GetValue().GetStringValue())
+			require.Equal(t, patterns[tt.id], batch.Observations[2].GetValue().GetStringValue())
 		})
 	}
 }
@@ -221,7 +226,7 @@ func TestGPUdPatternsPreserveMatchEvidence(t *testing.T) {
 	body := "NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)"
 	s, err := New(func(context.Context) ([]kmsgsource.Message, error) {
 		return []kmsgsource.Message{{BootID: "boot", Timestamp: now, Body: body, Sequence: 42}}, nil
-	}, kmsgsignals.DefaultPatterns())
+	}, kmsgxid.DefaultPatterns())
 	require.NoError(t, err)
 	require.Equal(t, "kernel.kmsg", s.ID())
 	cycle, err := collect.NewCycle("gpud-patterns", now)
@@ -232,9 +237,9 @@ func TestGPUdPatternsPreserveMatchEvidence(t *testing.T) {
 	require.Len(t, batch.Observations, 4)
 	require.Equal(t, body, batch.Observations[0].GetValue().GetStringValue())
 	require.Equal(t, "kernel.nvrm_xid_combined", batch.Observations[2].SignalId)
-	require.Equal(t, kmsgsignals.DefaultPatterns()["kernel.nvrm_xid_combined"], batch.Observations[2].GetValue().GetStringValue())
+	require.Equal(t, kmsgxid.DefaultPatterns()["kernel.nvrm_xid_combined"], batch.Observations[2].GetValue().GetStringValue())
 	require.Equal(t, "kernel.nvrm_xid_extended", batch.Observations[3].SignalId)
-	require.Equal(t, kmsgsignals.DefaultPatterns()["kernel.nvrm_xid_extended"], batch.Observations[3].GetValue().GetStringValue())
+	require.Equal(t, kmsgxid.DefaultPatterns()["kernel.nvrm_xid_extended"], batch.Observations[3].GetValue().GetStringValue())
 	for _, obs := range batch.Observations {
 		require.Equal(t, "boot/42", obs.GetEntity().GetId())
 	}

@@ -1,12 +1,14 @@
 // scan-one-off runs one collection cycle over the built-in sensors, prints
 // the observation batch, and exits. It is the one-off counterpart of
-// server-simple-collect: no server, no config file.
+// server-simple-collect: no server, no config file. Xid and current port-down
+// events are logged to stderr; stdout retains the complete observation batch.
 package main
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +20,10 @@ import (
 	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	kmsgsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/kmsg"
 	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	kmsgsignals "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg"
+	kmsgmemory "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/memory"
+	kmsgxid "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/xid"
 	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
 )
@@ -49,7 +54,9 @@ func run() error {
 		return fmt.Errorf("init DCGM sensor: %w", err)
 	}
 
-	kmsgSensor, err := kmsgsensor.New(nil, kmsgsignals.DefaultPatterns())
+	patterns := kmsgmemory.DefaultPatterns()
+	maps.Copy(patterns, kmsgxid.DefaultPatterns())
+	kmsgSensor, err := kmsgsensor.New(nil, patterns)
 	if err != nil {
 		return fmt.Errorf("init kmsg sensor: %w", err)
 	}
@@ -72,10 +79,32 @@ func run() error {
 	if validationErr := observation.ValidateBatch(batch); validationErr != nil {
 		return fmt.Errorf("validate observation batch: %w", validationErr)
 	}
+	logEvents(log.Default(), batch)
 	out, err := protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("marshal batch: %w", err)
 	}
 	fmt.Println(string(out))
 	return nil
+}
+
+// logEvents demonstrates consumer-side interpretation without changing observations.
+// A port-down event reports the current sysfs state, not a detected transition.
+func logEvents(logger *log.Logger, batch *observation.ObservationBatch) {
+	for _, obs := range batch.GetObservations() {
+		if obs.GetValue() == nil {
+			continue
+		}
+		switch obs.GetSignalId() {
+		case kmsgsignals.Message.ID():
+			// Parse the original message once, even when multiple regexes matched it.
+			if xid := kmsgxid.ExtractNVRMXid(obs.GetValue().GetStringValue()); xid != 0 {
+				logger.Printf("event=xid record=%s xid=%d", obs.GetEntity().GetId(), xid)
+			}
+		case ibsignals.State.ID():
+			if obs.GetValue().GetIntValue() == 1 { // Linux InfiniBand state 1 is DOWN.
+				logger.Printf("event=infiniband_port_down port=%s", obs.GetEntity().GetId())
+			}
+		}
+	}
 }
