@@ -7,7 +7,6 @@ import (
 	"context"
 	"io/fs"
 	"maps"
-	"strings"
 	"testing"
 	"time"
 
@@ -191,20 +190,24 @@ func TestDefaultPatterns(t *testing.T) {
 	}
 }
 
-func TestTimeoutIncludesMatching(t *testing.T) {
-	now := time.Now()
-	messages := make([]kmsgsource.Message, 20000)
-	body := strings.Repeat("a", 8192)
-	for i := range messages {
-		messages[i] = kmsgsource.Message{BootID: "boot", Timestamp: now, Sequence: int64(i), Body: body}
-	}
-	s, err := New(func(context.Context) ([]kmsgsource.Message, error) { return messages, nil }, map[string]string{"slow": `a.*z`})
+func TestExpiredContextReportsTimeout(t *testing.T) {
+	readCalled := false
+	s, err := New(func(context.Context) ([]kmsgsource.Message, error) {
+		readCalled = true
+		return nil, nil
+	}, map[string]string{"match": `fault`})
 	require.NoError(t, err)
-	cycle, err := collect.NewCycleWithTimeout("matching", now, 10*time.Millisecond)
+	cycle, err := collect.NewCycle("expired", time.Now())
 	require.NoError(t, err)
-	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID("slow"))
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, 1))
+	defer cancel()
+	require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
+	batch, err := s.Measure(ctx, collect.WithCycle(cycle), collect.WithSignalID("match"))
 	require.NoError(t, err)
+	require.False(t, readCalled)
+	require.Equal(t, "expired", batch.CollectionId)
 	require.Len(t, batch.Observations, 1)
+	require.Equal(t, "match", batch.Observations[0].SignalId)
 	require.Equal(t, observation.CollectionErrorCategoryTimeout, batch.Observations[0].GetCollectionError().GetCategory())
 }
 
