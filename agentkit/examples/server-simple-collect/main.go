@@ -53,7 +53,12 @@ func run() error {
 		return fmt.Errorf("start kmsg stream: %w", err)
 	}
 	defer func() { _ = kmsgStream.Close() }()
-	kmsgSensor, err := kmsgsensor.New(kmsgStream.Read)
+	// Append custom patterns to retain the generic defaults. All patterns share one stream.
+	patterns := append(kmsgsensor.DefaultPatterns(),
+		kmsgsensor.Pattern{SignalID: "example.gpu.xid", Regex: `NVRM: Xid.*: \d+,`},
+		kmsgsensor.Pattern{SignalID: "example.disk.io_error", Regex: `(?i)\bI/O error\b`},
+	)
+	kmsgSensor, err := kmsgsensor.New(kmsgStream.Read, patterns...)
 	if err != nil {
 		return fmt.Errorf("init kmsg sensor: %w", err)
 	}
