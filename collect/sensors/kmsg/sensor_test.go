@@ -111,7 +111,7 @@ func TestPatterns(t *testing.T) {
 	require.NoError(t, err)
 	patterns["driver.failure"] = "mutated"
 	declared := s.Signals()
-	declared[0] = kmsgsignals.Panic
+	declared[0] = collect.NewSignal("mutated", "")
 	batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
 	require.NoError(t, err)
 	require.NoError(t, observation.ValidateBatch(batch))
@@ -155,11 +155,11 @@ func TestDefaultPatterns(t *testing.T) {
 	cycle, err := collect.NewCycle("defaults", now)
 	require.NoError(t, err)
 	for _, tt := range []struct{ body, id string }{
-		{"Kernel panic - not syncing: fatal exception", kmsgsignals.Panic.ID()},
-		{"python invoked oom-killer: gfp_mask=0x0", kmsgsignals.OOM.ID()},
-		{"oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=/,mems_allowed=0,oom_memcg=/test,task_memcg=/test,task=python,pid=42,uid=0", kmsgsignals.OOMContainer.ID()},
-		{"Out of memory: Killed process 42 (python)", kmsgsignals.OOMKilledProcess.ID()},
-		{"Memory cgroup out of memory: Killed process 42 (python)", kmsgsignals.OOMKilledProcess.ID()},
+		{"Kernel panic - not syncing: fatal exception", "kernel.panic"},
+		{"python invoked oom-killer: gfp_mask=0x0", "kernel.oom"},
+		{"oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=/,mems_allowed=0,oom_memcg=/test,task_memcg=/test,task=python,pid=42,uid=0", "kernel.oom_container"},
+		{"Out of memory: Killed process 42 (python)", "kernel.oom_killed_process"},
+		{"Memory cgroup out of memory: Killed process 42 (python)", "kernel.oom_killed_process"},
 		{"INFO: task worker:42 blocked for more than 120 seconds.", ""},
 		{"watchdog: BUG: soft lockup - CPU#18 stuck for 27s! [python:42]", ""},
 		{"watchdog: Watchdog detected hard LOCKUP on cpu 0", ""},
@@ -231,10 +231,10 @@ func TestGPUdPatternsPreserveMatchEvidence(t *testing.T) {
 	require.NoError(t, observation.ValidateBatch(batch))
 	require.Len(t, batch.Observations, 4)
 	require.Equal(t, body, batch.Observations[0].GetValue().GetStringValue())
-	require.Equal(t, kmsgsignals.NVRMXidCombined.ID(), batch.Observations[2].SignalId)
-	require.Equal(t, kmsgsignals.DefaultPatterns()[kmsgsignals.NVRMXidCombined.ID()], batch.Observations[2].GetValue().GetStringValue())
-	require.Equal(t, kmsgsignals.NVRMXidExtended.ID(), batch.Observations[3].SignalId)
-	require.Equal(t, kmsgsignals.DefaultPatterns()[kmsgsignals.NVRMXidExtended.ID()], batch.Observations[3].GetValue().GetStringValue())
+	require.Equal(t, "kernel.nvrm_xid_combined", batch.Observations[2].SignalId)
+	require.Equal(t, kmsgsignals.DefaultPatterns()["kernel.nvrm_xid_combined"], batch.Observations[2].GetValue().GetStringValue())
+	require.Equal(t, "kernel.nvrm_xid_extended", batch.Observations[3].SignalId)
+	require.Equal(t, kmsgsignals.DefaultPatterns()["kernel.nvrm_xid_extended"], batch.Observations[3].GetValue().GetStringValue())
 	for _, obs := range batch.Observations {
 		require.Equal(t, "boot/42", obs.GetEntity().GetId())
 	}
