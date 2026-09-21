@@ -90,7 +90,7 @@ func TestPartialAndMalformedRecords(t *testing.T) {
 
 func newRawSensor(t *testing.T, read func(context.Context) ([]kmsgsource.Message, error)) collect.Sensor {
 	t.Helper()
-	s, err := New(read, Pattern{SignalID: "kernel.all", Regex: `(?s).*`})
+	s, err := New(read, kmsgsignals.Pattern{SignalID: "kernel.all", Regex: `(?s).*`})
 	require.NoError(t, err)
 	return s
 }
@@ -106,7 +106,7 @@ func TestPatterns(t *testing.T) {
 			{BootID: "boot", Timestamp: now, Sequence: 3, Body: "Kernel panic - not syncing"},
 		}, fs.ErrPermission
 	}
-	patterns := []Pattern{{SignalID: "driver.failure", Regex: `(?s)custom.*FAULT`}, {SignalID: "driver.fault", Regex: `FAULT`}}
+	patterns := []kmsgsignals.Pattern{{SignalID: "driver.failure", Regex: `(?s)custom.*FAULT`}, {SignalID: "driver.fault", Regex: `FAULT`}}
 	s, err := New(read, patterns...)
 	require.NoError(t, err)
 	patterns[0].Regex = "mutated"
@@ -137,7 +137,7 @@ func TestPatterns(t *testing.T) {
 	for _, obs := range batch.Observations {
 		require.Equal(t, "driver.fault", obs.SignalId)
 	}
-	for _, patterns := range [][]Pattern{
+	for _, patterns := range [][]kmsgsignals.Pattern{
 		{{SignalID: "custom", Regex: ""}},
 		{{SignalID: "custom", Regex: "["}},
 		{{Regex: "fault"}},
@@ -172,7 +172,7 @@ func TestDefaultPatterns(t *testing.T) {
 		t.Run(tt.body, func(t *testing.T) {
 			s, createErr := New(func(context.Context) ([]kmsgsource.Message, error) {
 				return []kmsgsource.Message{{BootID: "boot", Timestamp: now, Body: tt.body}}, nil
-			})
+			}, kmsgsignals.DefaultPatterns()...)
 			require.NoError(t, createErr)
 			batch, measureErr := s.Measure(context.Background(), collect.WithCycle(cycle))
 			require.NoError(t, measureErr)
@@ -182,7 +182,7 @@ func TestDefaultPatterns(t *testing.T) {
 			}
 			require.Len(t, batch.Observations, 3)
 			require.Equal(t, tt.id, batch.Observations[2].SignalId)
-			for _, pattern := range DefaultPatterns() {
+			for _, pattern := range kmsgsignals.DefaultPatterns() {
 				if pattern.SignalID == tt.id {
 					require.Equal(t, pattern.Regex, batch.Observations[2].GetValue().GetStringValue())
 				}
@@ -198,7 +198,7 @@ func TestTimeoutIncludesMatching(t *testing.T) {
 	for i := range messages {
 		messages[i] = kmsgsource.Message{BootID: "boot", Timestamp: now, Sequence: int64(i), Body: body}
 	}
-	s, err := New(func(context.Context) ([]kmsgsource.Message, error) { return messages, nil }, Pattern{SignalID: "slow", Regex: `a.*z`})
+	s, err := New(func(context.Context) ([]kmsgsource.Message, error) { return messages, nil }, kmsgsignals.Pattern{SignalID: "slow", Regex: `a.*z`})
 	require.NoError(t, err)
 	cycle, err := collect.NewCycleWithTimeout("matching", now, 10*time.Millisecond)
 	require.NoError(t, err)
@@ -242,5 +242,23 @@ func TestGPUdPatternsPreserveMatchEvidence(t *testing.T) {
 	require.Equal(t, kmsgsignals.RegexNVRMXidExtended, batch.Observations[3].GetValue().GetStringValue())
 	for _, obs := range batch.Observations {
 		require.Equal(t, "boot/42", obs.GetEntity().GetId())
+	}
+}
+
+func TestNoPatternsDoesNotRead(t *testing.T) {
+	cycle, err := collect.NewCycle("no-op", time.Now())
+	require.NoError(t, err)
+	for _, patterns := range [][]kmsgsignals.Pattern{nil, {}} {
+		reads := 0
+		s, createErr := New(func(context.Context) ([]kmsgsource.Message, error) {
+			reads++
+			return nil, fs.ErrPermission
+		}, patterns...)
+		require.NoError(t, createErr)
+		batch, measureErr := s.Measure(context.Background(), collect.WithCycle(cycle))
+		require.NoError(t, measureErr)
+		require.Equal(t, "no-op", batch.GetCollectionId())
+		require.Empty(t, batch.GetObservations())
+		require.Zero(t, reads)
 	}
 }

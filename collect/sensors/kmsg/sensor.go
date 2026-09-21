@@ -29,10 +29,6 @@ const (
 
 var errInUse = errors.New("kmsg read already in progress")
 
-// Pattern assigns a stable signal ID to a regular expression. A match emits the
-// exact expression as a string value on the original kernel-record entity.
-type Pattern = kmsgsignals.Pattern
-
 type sensor struct {
 	read     func(context.Context) ([]kmsgsource.Message, error)
 	patterns map[string]*regexp.Regexp
@@ -40,17 +36,11 @@ type sensor struct {
 	mu       sync.Mutex
 }
 
-// DefaultPatterns returns the shared GPUd-derived kernel-log patterns.
-func DefaultPatterns() []Pattern { return kmsgsignals.DefaultPatterns() }
-
-// New uses ReadAll when read is nil and DefaultPatterns when patterns is omitted.
-// Custom patterns replace the defaults. Signal IDs must be unique and cannot
-// reuse kernel.message or kernel.priority. Empty or invalid patterns are rejected.
-// Reader lifetime remains with the caller.
-func New(read func(context.Context) ([]kmsgsource.Message, error), patterns ...Pattern) (collect.Sensor, error) {
-	if len(patterns) == 0 {
-		patterns = DefaultPatterns()
-	}
+// New uses ReadAll when read is nil. Without patterns, collection is a no-op
+// and does not read the source. Pass kmsgsignals.DefaultPatterns() to opt in.
+// Signal IDs must be unique and cannot reuse kernel.message or kernel.priority.
+// Empty or invalid patterns are rejected. Reader lifetime remains with the caller.
+func New(read func(context.Context) ([]kmsgsource.Message, error), patterns ...kmsgsignals.Pattern) (collect.Sensor, error) {
 	signals := collect.Signals{kmsgsignals.Message, kmsgsignals.Priority}
 	compiled := make(map[string]*regexp.Regexp, len(patterns))
 	for i, pattern := range patterns {
@@ -89,7 +79,7 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	if cycle == nil {
 		return nil, fmt.Errorf("collection cycle is required")
 	}
-	if len(selected) == 0 {
+	if len(selected) == 0 || len(s.patterns) == 0 {
 		return &observation.ObservationBatch{CollectionId: cycle.CollectionID()}, nil
 	}
 	now := timestamppb.New(cycle.StartedAt())
