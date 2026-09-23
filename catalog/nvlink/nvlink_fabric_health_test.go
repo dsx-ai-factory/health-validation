@@ -22,12 +22,12 @@ func fabricCatalog(opts ...catalog.Option) *catalog.Catalog {
 
 func TestNVLinkFabricHealth(t *testing.T) {
 	tests := []struct {
-		name                string
 		cat                 func() *catalog.Catalog
 		measurement         func() nvlink.NVLinkMeasurement
+		name                string
 		wantSeverity        health.Severity
-		wantSkipped         bool
 		wantSkipReason      health.SkipReason
+		wantSkipped         bool
 		checkNVIDIAEndorsed bool
 	}{
 		{

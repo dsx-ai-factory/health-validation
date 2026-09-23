@@ -16,14 +16,14 @@ func healthyLinks() nvlink.NVLinkMeasurement {
 
 func TestNVLinkBandwidthCountSpeed(t *testing.T) {
 	tests := []struct {
-		name             string
 		cat              func() *catalog.Catalog
 		measurement      func() nvlink.NVLinkMeasurement
-		wantSeverity     health.Severity
-		wantSkipped      bool
-		wantSkipReason   health.SkipReason
-		wantAction       health.RecommendedAction
+		name             string
 		wantMessageParts []string
+		wantAction       health.RecommendedAction
+		wantSeverity     health.Severity
+		wantSkipReason   health.SkipReason
+		wantSkipped      bool
 	}{
 		{
 			name:         "healthy",
