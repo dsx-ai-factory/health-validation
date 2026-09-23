@@ -97,47 +97,56 @@ func TestNUMANodeCountDefinition(t *testing.T) {
 	}
 }
 
-func TestNUMANodeCount_MatchesExpected(t *testing.T) {
-	verdict, err := numaCatalog().Evaluate("numa_node_count", cpu.CPUMeasurement{NUMANodeCount: 34})
-	if err != nil {
-		t.Fatal(err)
+func TestNUMANodeCount(t *testing.T) {
+	tests := []struct {
+		name         string
+		nodeCount    int64
+		wantSeverity health.Severity
+		wantAction   health.RecommendedAction
+		wantMessages []string
+	}{
+		{
+			name:         "matches expected",
+			nodeCount:    34,
+			wantSeverity: health.Pass,
+			wantAction:   health.NoAction,
+		},
+		{
+			name:         "fewer than expected",
+			nodeCount:    33,
+			wantSeverity: health.Critical,
+			wantAction:   health.GenericDrain(),
+			wantMessages: []string{"Expected 34 NUMA nodes online, found 33."},
+		},
+		{
+			// The rule is an equality, not a budget: an extra node fails
+			// exactly like a missing one.
+			name:         "more than expected",
+			nodeCount:    35,
+			wantSeverity: health.Critical,
+			wantAction:   health.GenericDrain(),
+			wantMessages: []string{"Expected 34 NUMA nodes online, found 35."},
+		},
 	}
-	if verdict.Skipped || verdict.Severity != health.Pass {
-		t.Fatalf("skipped=%v severity=%v, want evaluated PASS (34 == GB200 default)", verdict.Skipped, verdict.Severity)
-	}
-	if !verdict.RecommendedAction.Equal(health.NoAction) {
-		t.Errorf("RecommendedAction = %v, want NoAction", verdict.RecommendedAction)
-	}
-}
 
-func TestNUMANodeCount_FewerThanExpected(t *testing.T) {
-	verdict, err := numaCatalog().Evaluate("numa_node_count", cpu.CPUMeasurement{NUMANodeCount: 33})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if verdict.Skipped || verdict.Severity != health.Critical {
-		t.Fatalf("skipped=%v severity=%v, want evaluated CRITICAL (33 != 34)", verdict.Skipped, verdict.Severity)
-	}
-	if !verdict.RecommendedAction.Equal(health.GenericDrain()) {
-		t.Errorf("RecommendedAction = %v, want generic reset/restart/escalate ladder", verdict.RecommendedAction)
-	}
-	if got, want := verdict.Messages, []string{"Expected 34 NUMA nodes online, found 33."}; !slices.Equal(got, want) {
-		t.Errorf("Messages = %q, want %q", got, want)
-	}
-}
-
-// The rule is an equality, not a budget: an extra node fails exactly like a
-// missing one.
-func TestNUMANodeCount_MoreThanExpected(t *testing.T) {
-	verdict, err := numaCatalog().Evaluate("numa_node_count", cpu.CPUMeasurement{NUMANodeCount: 35})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if verdict.Skipped || verdict.Severity != health.Critical {
-		t.Fatalf("skipped=%v severity=%v, want evaluated CRITICAL (35 != 34)", verdict.Skipped, verdict.Severity)
-	}
-	if got, want := verdict.Messages, []string{"Expected 34 NUMA nodes online, found 35."}; !slices.Equal(got, want) {
-		t.Errorf("Messages = %q, want %q", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			verdict, err := numaCatalog().Evaluate("numa_node_count", cpu.CPUMeasurement{NUMANodeCount: tt.nodeCount})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if verdict.Skipped || verdict.Severity != tt.wantSeverity {
+				t.Fatalf("skipped=%v severity=%v, want evaluated %v", verdict.Skipped, verdict.Severity, tt.wantSeverity)
+			}
+			if !verdict.RecommendedAction.Equal(tt.wantAction) {
+				t.Errorf("RecommendedAction = %v, want %v", verdict.RecommendedAction, tt.wantAction)
+			}
+			if tt.wantMessages != nil {
+				if got := verdict.Messages; !slices.Equal(got, tt.wantMessages) {
+					t.Errorf("Messages = %q, want %q", got, tt.wantMessages)
+				}
+			}
+		})
 	}
 }
 
