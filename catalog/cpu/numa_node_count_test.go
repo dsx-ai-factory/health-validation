@@ -100,8 +100,8 @@ func TestNUMANodeCountDefinition(t *testing.T) {
 func TestNUMANodeCount(t *testing.T) {
 	tests := []struct {
 		name         string
-		wantAction   health.RecommendedAction
 		wantMessages []string
+		wantAction   health.RecommendedAction
 		nodeCount    int64
 		wantSeverity health.Severity
 	}{
