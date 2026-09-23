@@ -43,111 +43,142 @@ func fabricMask(degradedBW, routeRecovery, routeUnhealthy, accessTimeout uint32)
 		accessTimeout<<gonvml.GPU_FABRIC_HEALTH_MASK_SHIFT_ACCESS_TIMEOUT_RECOVERY
 }
 
-func TestMeasureDeviceFabric_HealthyMask(t *testing.T) {
-	// Every field reports _FALSE — the GPU is on the fabric and all
-	// health parameters are nominal.
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{
-		State:  gonvml.GPU_FABRIC_STATE_COMPLETED,
-		Status: uint32(gonvml.SUCCESS),
-		HealthMask: fabricMask(
-			gonvml.GPU_FABRIC_HEALTH_MASK_DEGRADED_BW_FALSE,
-			gonvml.GPU_FABRIC_HEALTH_MASK_ROUTE_RECOVERY_FALSE,
-			gonvml.GPU_FABRIC_HEALTH_MASK_ROUTE_UNHEALTHY_FALSE,
-			gonvml.GPU_FABRIC_HEALTH_MASK_ACCESS_TIMEOUT_RECOVERY_FALSE,
-		),
-	}, gonvml.SUCCESS)
-
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
-
-	if m.FabricBandwidthDegraded || m.FabricRouteRecoveryInProgress ||
-		m.FabricRouteUnhealthy || m.FabricAccessTimeoutRecovery {
-		t.Errorf("expected all fabric signals healthy, got %+v", m)
+func TestMeasureDeviceFabric_HealthAndRegistration(t *testing.T) {
+	tests := []struct {
+		name                        string
+		info                        gonvml.GpuFabricInfo_v3
+		ret                         gonvml.Return
+		wantBandwidthDegraded       bool
+		wantRouteRecoveryInProgress bool
+		wantRouteUnhealthy          bool
+		wantAccessTimeoutRecovery   bool
+		wantRegistrationIncomplete  bool
+		wantRegistrationFailed      bool
+	}{
+		{
+			// Every health-mask field reports _FALSE — the GPU is on the
+			// fabric and all health parameters are nominal.
+			name: "healthy mask",
+			info: gonvml.GpuFabricInfo_v3{
+				State:  gonvml.GPU_FABRIC_STATE_COMPLETED,
+				Status: uint32(gonvml.SUCCESS),
+				HealthMask: fabricMask(
+					gonvml.GPU_FABRIC_HEALTH_MASK_DEGRADED_BW_FALSE,
+					gonvml.GPU_FABRIC_HEALTH_MASK_ROUTE_RECOVERY_FALSE,
+					gonvml.GPU_FABRIC_HEALTH_MASK_ROUTE_UNHEALTHY_FALSE,
+					gonvml.GPU_FABRIC_HEALTH_MASK_ACCESS_TIMEOUT_RECOVERY_FALSE,
+				),
+			},
+			ret: gonvml.SUCCESS,
+		},
+		{
+			name:                  "bandwidth degraded",
+			info:                  gonvml.GpuFabricInfo_v3{HealthMask: fabricMask(gonvml.GPU_FABRIC_HEALTH_MASK_DEGRADED_BW_TRUE, 0, 0, 0)},
+			ret:                   gonvml.SUCCESS,
+			wantBandwidthDegraded: true,
+		},
+		{
+			name:                        "route recovery in progress",
+			info:                        gonvml.GpuFabricInfo_v3{HealthMask: fabricMask(0, gonvml.GPU_FABRIC_HEALTH_MASK_ROUTE_RECOVERY_TRUE, 0, 0)},
+			ret:                         gonvml.SUCCESS,
+			wantRouteRecoveryInProgress: true,
+		},
+		{
+			name:               "route unhealthy",
+			info:               gonvml.GpuFabricInfo_v3{HealthMask: fabricMask(0, 0, gonvml.GPU_FABRIC_HEALTH_MASK_ROUTE_UNHEALTHY_TRUE, 0)},
+			ret:                gonvml.SUCCESS,
+			wantRouteUnhealthy: true,
+		},
+		{
+			name:                      "access timeout recovery",
+			info:                      gonvml.GpuFabricInfo_v3{HealthMask: fabricMask(0, 0, 0, gonvml.GPU_FABRIC_HEALTH_MASK_ACCESS_TIMEOUT_RECOVERY_TRUE)},
+			ret:                       gonvml.SUCCESS,
+			wantAccessTimeoutRecovery: true,
+		},
+		{
+			// ERROR_NOT_SUPPORTED means the fabric-info query is unavailable.
+			// On GB200 that is a registration failure, so the incomplete
+			// signal is set while the health-mask signals stay neutral.
+			name:                       "not supported",
+			info:                       gonvml.GpuFabricInfo_v3{},
+			ret:                        gonvml.ERROR_NOT_SUPPORTED,
+			wantRegistrationIncomplete: true,
+		},
+		{
+			name: "registration complete",
+			info: gonvml.GpuFabricInfo_v3{
+				State:  gonvml.GPU_FABRIC_STATE_COMPLETED,
+				Status: uint32(gonvml.SUCCESS),
+			},
+			ret: gonvml.SUCCESS,
+		},
+		{
+			name:                       "registration incomplete",
+			info:                       gonvml.GpuFabricInfo_v3{State: gonvml.GPU_FABRIC_STATE_IN_PROGRESS},
+			ret:                        gonvml.SUCCESS,
+			wantRegistrationIncomplete: true,
+		},
+		{
+			name: "registration failed",
+			info: gonvml.GpuFabricInfo_v3{
+				State:  gonvml.GPU_FABRIC_STATE_COMPLETED,
+				Status: uint32(gonvml.ERROR_TIMEOUT),
+			},
+			ret:                    gonvml.SUCCESS,
+			wantRegistrationFailed: true,
+		},
+		{
+			// A probe that has not completed carries an undefined Status;
+			// the failed signal must stay false rather than fold that
+			// undefined value.
+			name: "registration status ignored when incomplete",
+			info: gonvml.GpuFabricInfo_v3{
+				State:  gonvml.GPU_FABRIC_STATE_IN_PROGRESS,
+				Status: uint32(gonvml.ERROR_TIMEOUT),
+			},
+			ret:                        gonvml.SUCCESS,
+			wantRegistrationIncomplete: true,
+		},
+		{
+			// State NOT_SUPPORTED from a SUCCESS query means the GPU is not
+			// on the fabric. On GB200 that is a registration failure — the
+			// same verdict as an ERROR_NOT_SUPPORTED return.
+			name:                       "registration state not supported",
+			info:                       gonvml.GpuFabricInfo_v3{State: gonvml.GPU_FABRIC_STATE_NOT_SUPPORTED},
+			ret:                        gonvml.SUCCESS,
+			wantRegistrationIncomplete: true,
+		},
 	}
-	if m.FabricRegistrationIncomplete || m.FabricRegistrationFailed {
-		t.Errorf("expected healthy registration signals, got %+v", m)
-	}
-	if len(m.Errors()) != 0 {
-		t.Errorf("Errors() = %v, want none", m.Errors())
-	}
-}
 
-func TestMeasureDeviceFabric_BandwidthDegraded(t *testing.T) {
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{HealthMask: fabricMask(
-		gonvml.GPU_FABRIC_HEALTH_MASK_DEGRADED_BW_TRUE, 0, 0, 0,
-	)}, gonvml.SUCCESS)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withFabricInfo(t, tt.info, tt.ret)
 
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
+			var m nvlink.NVLinkMeasurement
+			measureDeviceFabric(nil, &m)
 
-	if !m.FabricBandwidthDegraded {
-		t.Error("FabricBandwidthDegraded = false, want true")
-	}
-	if m.FabricRouteRecoveryInProgress || m.FabricRouteUnhealthy || m.FabricAccessTimeoutRecovery {
-		t.Errorf("only bandwidth should be flagged, got %+v", m)
-	}
-}
-
-func TestMeasureDeviceFabric_RouteRecoveryInProgress(t *testing.T) {
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{HealthMask: fabricMask(
-		0, gonvml.GPU_FABRIC_HEALTH_MASK_ROUTE_RECOVERY_TRUE, 0, 0,
-	)}, gonvml.SUCCESS)
-
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
-
-	if !m.FabricRouteRecoveryInProgress {
-		t.Error("FabricRouteRecoveryInProgress = false, want true")
-	}
-}
-
-func TestMeasureDeviceFabric_RouteUnhealthy(t *testing.T) {
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{HealthMask: fabricMask(
-		0, 0, gonvml.GPU_FABRIC_HEALTH_MASK_ROUTE_UNHEALTHY_TRUE, 0,
-	)}, gonvml.SUCCESS)
-
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
-
-	if !m.FabricRouteUnhealthy {
-		t.Error("FabricRouteUnhealthy = false, want true")
-	}
-}
-
-func TestMeasureDeviceFabric_AccessTimeoutRecovery(t *testing.T) {
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{HealthMask: fabricMask(
-		0, 0, 0, gonvml.GPU_FABRIC_HEALTH_MASK_ACCESS_TIMEOUT_RECOVERY_TRUE,
-	)}, gonvml.SUCCESS)
-
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
-
-	if !m.FabricAccessTimeoutRecovery {
-		t.Error("FabricAccessTimeoutRecovery = false, want true")
-	}
-}
-
-// ERROR_NOT_SUPPORTED means the fabric-info query is unavailable. On GB200
-// that is a registration failure, so the incomplete signal is set while the
-// health-mask signals stay neutral and no error is recorded.
-func TestMeasureDeviceFabric_NotSupported(t *testing.T) {
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{}, gonvml.ERROR_NOT_SUPPORTED)
-
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
-
-	if m.FabricBandwidthDegraded || m.FabricRouteRecoveryInProgress ||
-		m.FabricRouteUnhealthy || m.FabricAccessTimeoutRecovery {
-		t.Errorf("expected neutral health-mask signals on NOT_SUPPORTED, got %+v", m)
-	}
-	if !m.FabricRegistrationIncomplete {
-		t.Error("FabricRegistrationIncomplete = false, want true on NOT_SUPPORTED")
-	}
-	if m.FabricRegistrationFailed {
-		t.Error("FabricRegistrationFailed = true, want false on NOT_SUPPORTED")
-	}
-	if len(m.Errors()) != 0 {
-		t.Errorf("Errors() = %v, want none on NOT_SUPPORTED", m.Errors())
+			if m.FabricBandwidthDegraded != tt.wantBandwidthDegraded {
+				t.Errorf("FabricBandwidthDegraded = %v, want %v", m.FabricBandwidthDegraded, tt.wantBandwidthDegraded)
+			}
+			if m.FabricRouteRecoveryInProgress != tt.wantRouteRecoveryInProgress {
+				t.Errorf("FabricRouteRecoveryInProgress = %v, want %v", m.FabricRouteRecoveryInProgress, tt.wantRouteRecoveryInProgress)
+			}
+			if m.FabricRouteUnhealthy != tt.wantRouteUnhealthy {
+				t.Errorf("FabricRouteUnhealthy = %v, want %v", m.FabricRouteUnhealthy, tt.wantRouteUnhealthy)
+			}
+			if m.FabricAccessTimeoutRecovery != tt.wantAccessTimeoutRecovery {
+				t.Errorf("FabricAccessTimeoutRecovery = %v, want %v", m.FabricAccessTimeoutRecovery, tt.wantAccessTimeoutRecovery)
+			}
+			if m.FabricRegistrationIncomplete != tt.wantRegistrationIncomplete {
+				t.Errorf("FabricRegistrationIncomplete = %v, want %v", m.FabricRegistrationIncomplete, tt.wantRegistrationIncomplete)
+			}
+			if m.FabricRegistrationFailed != tt.wantRegistrationFailed {
+				t.Errorf("FabricRegistrationFailed = %v, want %v", m.FabricRegistrationFailed, tt.wantRegistrationFailed)
+			}
+			if len(m.Errors()) != 0 {
+				t.Errorf("Errors() = %v, want none", m.Errors())
+			}
+		})
 	}
 }
 
@@ -185,96 +216,5 @@ func TestMeasureDeviceFabric_HardFailure(t *testing.T) {
 		if !slices.Contains(errs[0].FailedSignals(), sig) {
 			t.Errorf("FailedSignals missing %q (got %v)", sig, errs[0].FailedSignals())
 		}
-	}
-}
-
-func TestMeasureDeviceFabric_RegistrationComplete(t *testing.T) {
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{
-		State:  gonvml.GPU_FABRIC_STATE_COMPLETED,
-		Status: uint32(gonvml.SUCCESS),
-	}, gonvml.SUCCESS)
-
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
-
-	if m.FabricRegistrationIncomplete || m.FabricRegistrationFailed {
-		t.Errorf("expected healthy registration signals, got %+v", m)
-	}
-	if len(m.Errors()) != 0 {
-		t.Errorf("Errors() = %v, want none", m.Errors())
-	}
-}
-
-func TestMeasureDeviceFabric_RegistrationIncomplete(t *testing.T) {
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{
-		State: gonvml.GPU_FABRIC_STATE_IN_PROGRESS,
-	}, gonvml.SUCCESS)
-
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
-
-	if !m.FabricRegistrationIncomplete {
-		t.Error("FabricRegistrationIncomplete = false, want true (state != COMPLETED)")
-	}
-	if m.FabricRegistrationFailed {
-		t.Error("FabricRegistrationFailed = true, want false (status not evaluated until COMPLETED)")
-	}
-}
-
-func TestMeasureDeviceFabric_RegistrationFailed(t *testing.T) {
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{
-		State:  gonvml.GPU_FABRIC_STATE_COMPLETED,
-		Status: uint32(gonvml.ERROR_TIMEOUT),
-	}, gonvml.SUCCESS)
-
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
-
-	if !m.FabricRegistrationFailed {
-		t.Error("FabricRegistrationFailed = false, want true (completed with non-success status)")
-	}
-	if m.FabricRegistrationIncomplete {
-		t.Error("FabricRegistrationIncomplete = true, want false (state is COMPLETED)")
-	}
-}
-
-// A probe that has not completed carries an undefined Status; the failed
-// signal must stay false rather than fold that undefined value.
-func TestMeasureDeviceFabric_RegistrationStatusIgnoredWhenIncomplete(t *testing.T) {
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{
-		State:  gonvml.GPU_FABRIC_STATE_IN_PROGRESS,
-		Status: uint32(gonvml.ERROR_TIMEOUT),
-	}, gonvml.SUCCESS)
-
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
-
-	if !m.FabricRegistrationIncomplete {
-		t.Error("FabricRegistrationIncomplete = false, want true")
-	}
-	if m.FabricRegistrationFailed {
-		t.Error("FabricRegistrationFailed = true, want false (status undefined while incomplete)")
-	}
-}
-
-// State NOT_SUPPORTED from a SUCCESS query means the GPU is not on the
-// fabric. On GB200 that is a registration failure — the same verdict as an
-// ERROR_NOT_SUPPORTED return — so the incomplete signal is set.
-func TestMeasureDeviceFabric_RegistrationStateNotSupported(t *testing.T) {
-	withFabricInfo(t, gonvml.GpuFabricInfo_v3{
-		State: gonvml.GPU_FABRIC_STATE_NOT_SUPPORTED,
-	}, gonvml.SUCCESS)
-
-	var m nvlink.NVLinkMeasurement
-	measureDeviceFabric(nil, &m)
-
-	if !m.FabricRegistrationIncomplete {
-		t.Error("FabricRegistrationIncomplete = false, want true for State=NOT_SUPPORTED")
-	}
-	if m.FabricRegistrationFailed {
-		t.Error("FabricRegistrationFailed = true, want false for State=NOT_SUPPORTED")
-	}
-	if len(m.Errors()) != 0 {
-		t.Errorf("Errors() = %v, want none", m.Errors())
 	}
 }
