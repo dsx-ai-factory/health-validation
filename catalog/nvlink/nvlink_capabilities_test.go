@@ -25,15 +25,75 @@ func healthyCapabilities() nvlink.NVLinkMeasurement {
 	}
 }
 
-func TestNVLinkCapabilities_Healthy(t *testing.T) {
-	cat := fabricCatalog()
-
-	v, err := cat.Evaluate("nvlink_capabilities", healthyCapabilities())
-	if err != nil {
-		t.Fatal(err)
+func TestNVLinkCapabilities(t *testing.T) {
+	tests := []struct {
+		name             string
+		cat              func() *catalog.Catalog
+		measurement      func() nvlink.NVLinkMeasurement
+		wantSeverity     health.Severity
+		wantSkipped      bool
+		wantSkipReason   health.SkipReason
+		wantAction       health.RecommendedAction
+		wantMessageParts []string
+	}{
+		{
+			name:         "healthy",
+			cat:          func() *catalog.Catalog { return fabricCatalog() },
+			measurement:  healthyCapabilities,
+			wantSeverity: health.Pass,
+		},
+		{
+			name: "skipped on wrong architecture",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("H100"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement:    healthyCapabilities,
+			wantSkipped:    true,
+			wantSkipReason: health.ArchitectureUnsupported,
+		},
+		{
+			// A GPU whose capability state could not be collected propagates
+			// to Critical regardless of the rules, since the data the check
+			// needs is unavailable.
+			name: "errored GPU forces critical",
+			cat:  func() *catalog.Catalog { return fabricCatalog() },
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.ErroredNVLink("GPU-0", errors.New("nvml capability query failed"), nvlink.SignalAllLinksSupportP2P)
+			},
+			wantSeverity:     health.Critical,
+			wantAction:       health.Drain(health.RemediationActionCheckCollection),
+			wantMessageParts: []string{"measurement unavailable"},
+		},
 	}
-	if v.Severity != health.Pass {
-		t.Errorf("severity = %v, want PASS (all capabilities supported)", v.Severity)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := tt.cat().Evaluate("nvlink_capabilities", tt.measurement())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Skipped != tt.wantSkipped || v.SkipReason != tt.wantSkipReason {
+				t.Fatalf("skipped=%v reason=%v, want skipped=%v reason=%v", v.Skipped, v.SkipReason, tt.wantSkipped, tt.wantSkipReason)
+			}
+			if tt.wantSkipped {
+				return
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Fatalf("severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if !tt.wantAction.IsZero() && !v.RecommendedAction.Equal(tt.wantAction) {
+				t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, tt.wantAction)
+			}
+			msg := strings.Join(v.Messages, " ")
+			for _, want := range tt.wantMessageParts {
+				if !strings.Contains(msg, want) {
+					t.Errorf("Messages = %q, want %q interpolated", v.Messages, want)
+				}
+			}
+		})
 	}
 }
 
@@ -74,43 +134,6 @@ func TestNVLinkCapabilities_CapabilityUnsupported(t *testing.T) {
 				t.Errorf("RecommendedAction = %v, want Drain/retest_hardware", v.RecommendedAction)
 			}
 		})
-	}
-}
-
-func TestNVLinkCapabilities_SkippedOnWrongArchitecture(t *testing.T) {
-	cat := catalog.New(
-		catalog.WithArchitecture("H100"),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-
-	v, err := cat.Evaluate("nvlink_capabilities", healthyCapabilities())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !v.Skipped || v.SkipReason != health.ArchitectureUnsupported {
-		t.Errorf("expected skipped with ArchitectureUnsupported, got skipped=%v reason=%v", v.Skipped, v.SkipReason)
-	}
-}
-
-// A GPU whose capability state could not be collected propagates to
-// Critical regardless of the rules, since the data the check needs is
-// unavailable.
-func TestNVLinkCapabilities_ErroredGPU(t *testing.T) {
-	cat := fabricCatalog()
-
-	m := nvlink.ErroredNVLink("GPU-0", errors.New("nvml capability query failed"), nvlink.SignalAllLinksSupportP2P)
-	v, err := cat.Evaluate("nvlink_capabilities", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL (errored GPU)", v.Severity)
-	}
-	if len(v.Messages) != 1 || !strings.Contains(v.Messages[0], "measurement unavailable") {
-		t.Errorf("Messages = %q, want one measurement-unavailable message", v.Messages)
-	}
-	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckCollection)) {
-		t.Errorf("RecommendedAction = %v, want Drain/check_collection", v.RecommendedAction)
 	}
 }
 
