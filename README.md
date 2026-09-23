@@ -158,7 +158,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 }
 ```
 
-The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
+The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/audit/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
 
 The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers. `catalog_version` names the catalog module that produced the verdict, so consumers can verify which check logic and default thresholds were available when the run occurred.
 
@@ -375,6 +375,10 @@ a typo fails the run rather than leaving the check quietly enabled. Because
 skipped checks are excluded from `overall_severity`, a disable narrows the
 minimum bar the node is held to — read `skipped_checks`, not just the exit code,
 to know what actually ran.
+
+Each threshold override is also recorded in the host's systemd journal, and the
+run exits `2` if it cannot be. See
+[docs/INTEGRATION.md](docs/INTEGRATION.md#audit-trail-for-overrides).
 
 ## Where to go for more
 

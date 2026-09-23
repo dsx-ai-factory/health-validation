@@ -8,7 +8,7 @@ The exit code is a coarse health signal:
 |---|---|
 | `0` | Verdict is PASS, INFO, or WARNING — the node may remain in service. (WARNING maps to 0 today; this may become configurable.) |
 | `1` | Verdict is CRITICAL or UNKNOWN — the node should be removed from service, or its health could not be assessed. |
-| `2` | The tool could not run to a verdict at all — a config error, backend/sensor initialization failure, collection failure, or output write error. No verdict was produced. |
+| `2` | The tool could not run to a verdict at all — a config error, backend/sensor initialization failure, collection failure, threshold-override audit failure (journald socket unavailable or a write failed), or output write error. No verdict was produced. |
 
 The exit code does not distinguish CRITICAL from UNKNOWN or INFO from WARNING. For the precise level, read `overall_severity` from the JSON — Slurm prolog scripts that need more than the coarse signal should do so.
 
@@ -69,7 +69,7 @@ It depends on the `ThresholdCategory`:
 - **ADJUSTABLE**: Operator can override within documented bounds.
 - **FIXED**: Non-overridable. Attempting to override returns an error before the check runs.
 
-All active overrides appear in `thresholds[name].overridden: true` in the output, alongside the original NVIDIA value in `thresholds[name].original_value`.
+Overrides on checks that ran appear in the output as `thresholds[name].overridden: true`, next to the catalog default in `thresholds[name].original_value`. Every override in the config, including ones on disabled or skipped checks, is also recorded in the host's systemd journal; see [Audit trail for overrides](INTEGRATION.md#audit-trail-for-overrides).
 
 ## What Go version is required?
 

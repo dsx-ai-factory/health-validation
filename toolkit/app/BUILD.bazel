@@ -7,6 +7,8 @@ go_library(
         "backend_linux.go",
         "backend_other.go",
         "config.go",
+        "journald.go",
+        "override_audit.go",
         "version.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/app",
@@ -30,6 +32,8 @@ go_test(
     srcs = [
         "app_test.go",
         "config_test.go",
+        "journald_test.go",
+        "override_audit_test.go",
         "version_test.go",
     ],
     embed = [":app"],

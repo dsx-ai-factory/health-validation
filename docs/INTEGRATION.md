@@ -13,10 +13,12 @@ monitoring daemon. One invocation:
 
 - collects the current hardware/driver state of **one** node,
 - evaluates it against the check catalog,
+- records any threshold overrides in the host's systemd journal (see
+  [Audit trail for overrides](#audit-trail-for-overrides)),
 - writes a single JSON `NodeVerdict` to stdout, and
 - exits.
 
-It holds no state between runs, streams nothing, and does no cross-node
+It reads no state from earlier runs, streams nothing, and does no cross-node
 correlation — [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) covers the data flow.
 Two consequences shape everything below:
 
@@ -76,6 +78,7 @@ docker run --rm \
   -v /run/log/journal:/run/log/journal:ro \
   -v /var/log/journal:/var/log/journal:ro \
   -v /etc/machine-id:/etc/machine-id:ro \
+  -v /run/systemd/journal/socket:/run/systemd/journal/socket:ro \
   -v /usr/bin/journalctl:/usr/bin/journalctl:ro \
   -v <journalctl ldd dependencies, one -v per .so, excluding libc/libpthread/libm> \
   ghcr.io/dsx-ai-factory/health-validation:<tag> \
@@ -89,9 +92,13 @@ docker run --rm \
 - The journal, machine-id, `journalctl`, and its shared-library mounts are
   required for both `gpu_xid_*` and `rdma_linkflap_fatal`; without them the
   journal-backed checks report a collection failure rather than a false PASS.
+- The journald socket mount is required when `--config` overrides thresholds:
+  each override is recorded in the host journal, and the run exits `2` if it
+  cannot be. A read-only bind still lets the tool send entries.
 
-The wrapper includes the complete mount set for journal-backed checks;
-`gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host.
+The wrapper includes the complete mount set for journal-backed checks, plus the
+journald socket when the host has one; `gpu_xid_*` and `rdma_linkflap_fatal`
+need a systemd journal on the host.
 
 ### Static binary (bare metal, Slurm)
 
@@ -166,10 +173,11 @@ The NVIDIA device-plugin allocation must expose all node GPUs to the pod for
 1. **Explicit read-only hostPaths (least host exposure).** Mount the host's
    journal directories, `/etc/machine-id`, `journalctl`, and every non-glibc
    dependency reported by `ldd $(command -v journalctl)` at the same paths in
-   the container. This is the Kubernetes equivalent of
-   `scripts/health-validation-run.sh`; it requires no change to the image. The
-   dependency paths are host-specific, so this profile is described rather
-   than represented by a portable manifest below.
+   the container. With threshold overrides, also mount the journald socket
+   `/run/systemd/journal/socket` (`hostPath` type `Socket`). This is the
+   Kubernetes equivalent of `scripts/health-validation-run.sh`; it requires no
+   change to the image. The dependency paths are host-specific, so this
+   profile is described rather than represented by a portable manifest below.
 2. **Read-only host root plus a `journalctl` chroot shim (simpler operations).**
    Mount the host root at `/host` read-only. Put an executable named
    `journalctl` ahead of `/usr/bin` in the container's `PATH` that contains:
@@ -184,6 +192,9 @@ The NVIDIA device-plugin allocation must expose all node GPUs to the pod for
    supplied by a small image overlay or another executable volume: the stock
    image deliberately does not include `journalctl`. Run this pod as UID 0
    with `SYS_CHROOT`; it does not need `hostPID`, `nsenter`, or `privileged`.
+   With threshold overrides, also mount `/run/systemd/journal/socket` as its
+   own `hostPath` (type `Socket`) at the same path: the binary, not the shim,
+   writes the audit entries.
 
 Both options use `hostPath`, which Kubernetes Pod Security Baseline and
 Restricted policies prohibit. Keep every hostPath read-only, place this
@@ -202,6 +213,9 @@ does **not** mean the pod needs `privileged: true`. The intended profiles are:
 | Kubernetes explicit mounts | The same read-only paths as the wrapper. `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities, `privileged`, host PID namespace, or host networking. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
 | Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, host PID namespace, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
 | GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | GPU/NVLink and CPU/NUMA checks can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
+
+With threshold overrides configured, every profile also needs the host's
+journald socket at `/run/systemd/journal/socket`; without it the run exits `2`.
 
 The image runs as root by default. An explicitly non-root Docker user or pod
 may be viable only when its host-mapped UID/GID has journal-read permission;
@@ -322,8 +336,8 @@ Two signals, coarse then precise.
 
 **Exit code** (for shell gating): `0` = PASS/INFO/WARNING, `1` =
 CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict (config/backend/
-collection/output failure — stdout is empty, error on stderr). It does **not**
-distinguish CRITICAL from UNKNOWN or INFO from WARNING.
+collection/audit/output failure — stdout is empty, error on stderr). It does
+**not** distinguish CRITICAL from UNKNOWN or INFO from WARNING.
 
 **The JSON `NodeVerdict`** (for anything precise) — a versioned contract you can
 validate against the published
@@ -427,6 +441,43 @@ Maintain one config per node-class (GB200 vs H100, expected GPU counts) and
 select it at invocation. To turn a check off entirely, disable it
 (programmatically via `catalog.WithDisabledChecks`, when embedding the library) —
 it then appears in `skipped_checks` with `skip_reason: CHECK_DISABLED`.
+
+### Audit trail for overrides
+
+Each run records every threshold override from its config in the host's
+systemd journal, one entry per override, before it prints the verdict. That
+includes overrides on checks that were disabled or skipped. Nothing is written
+when the config has no overrides, when the config is invalid, or when the
+architecture cannot be discovered. If the entries cannot be written, the run
+exits `2` with nothing on stdout.
+
+Each entry carries:
+
+| Field | Value |
+| --- | --- |
+| `CHECK_ID`, `THRESHOLD_NAME` | The overridden threshold. |
+| `ORIGINAL_VALUE` | The catalog default for the node's architecture, as JSON. |
+| `OVERRIDE_VALUE` | The value from the config, as JSON. |
+| `PROVENANCE` | Who authored the check: `nvidia` for built-ins. |
+| `TIMESTAMP` | The verdict's timestamp, RFC 3339 in UTC. |
+| `TRACE_ID`, `NODE_ID`, `CATALOG_VERSION` | The same values as the verdict, to join the two. |
+
+Read them with:
+
+```shell
+journalctl MESSAGE_ID=e5a478e586994730854b18982d557053 -o json
+journalctl MESSAGE_ID=e5a478e586994730854b18982d557053 TRACE_ID=<trace_id>
+```
+
+health-validation only sends entries to journald's socket and never opens the
+journal files for writing, so it cannot alter or remove an entry once written.
+journald adds fields a sender cannot set (`_PID`, `_UID`,
+`__REALTIME_TIMESTAMP`). This
+does not protect entries from host root, who can rotate or delete journal
+files: enable Forward Secure Sealing (`journalctl --setup-keys`, then
+`journalctl --verify`) to detect tampering, and forward the journal off the node
+to prevent loss. journald can also drop an entry after accepting it, for
+example under rate limiting or when its storage is full.
 
 ## 6. Add a check the catalog doesn't have
 

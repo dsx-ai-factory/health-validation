@@ -305,7 +305,7 @@ func TestEvaluatePassingNode(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := evaluate(cat, toolkit.DefaultSensorTimeout, "health-validation", testNodeID, &stdout, &stderr, sensors...)
+	code := evaluate(cat, toolkit.DefaultSensorTimeout, "health-validation", testNodeID, nil, &stdout, &stderr, sensors...)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -333,7 +333,7 @@ func TestBuildCatalogAppliesConfigOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, _, err := buildCatalog(path, nil, "GB200")
+	cat, _, _, err := buildCatalog(path, nil, "GB200")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, timeout, err := buildCatalog(path, nil, "GB200")
+	cat, timeout, _, err := buildCatalog(path, nil, "GB200")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -389,7 +389,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := evaluate(cat, timeout, "health-validation", testNodeID, &stdout, &stderr, sensors...)
+	code := evaluate(cat, timeout, "health-validation", testNodeID, nil, &stdout, &stderr, sensors...)
 	if code != exitOK {
 		t.Fatalf("exit code = %d, want %d (a disabled check must not reach the verdict); stderr=%q",
 			code, exitOK, stderr.String())
@@ -438,7 +438,7 @@ func TestEvaluateGPUCountMismatch(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := evaluate(cat, toolkit.DefaultSensorTimeout, "health-validation", testNodeID, &stdout, &stderr, sensors...)
+	code := evaluate(cat, toolkit.DefaultSensorTimeout, "health-validation", testNodeID, nil, &stdout, &stderr, sensors...)
 	if code != exitUnhealthy {
 		t.Fatalf("exit code = %d, want %d (CRITICAL propagated); stderr=%q", code, exitUnhealthy, stderr.String())
 	}
@@ -516,7 +516,7 @@ func TestBuildCatalogResolvesTimeout(t *testing.T) {
 	if err := os.WriteFile(path, []byte("collection_timeout_seconds: 45\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, timeout, err := buildCatalog(path, nil, "")
+	_, timeout, _, err := buildCatalog(path, nil, "")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -524,7 +524,7 @@ func TestBuildCatalogResolvesTimeout(t *testing.T) {
 		t.Errorf("timeout = %v, want 45s", timeout)
 	}
 
-	_, timeout, err = buildCatalog("", nil, "")
+	_, timeout, _, err = buildCatalog("", nil, "")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}

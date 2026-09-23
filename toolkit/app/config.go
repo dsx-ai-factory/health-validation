@@ -94,30 +94,40 @@ func (cfg *Config) CollectionTimeout() time.Duration {
 // Checks and parameters are validated in sorted order so the first error
 // is deterministic.
 func (cfg *Config) Overrides(cat *catalog.Catalog) (catalog.OverrideSet, error) {
+	overrides, err := cfg.overrideList(cat)
+	if err != nil {
+		return catalog.OverrideSet{}, err
+	}
+	return catalog.NewOverrideSet(overrides...), nil
+}
+
+// overrideList validates the config's check parameters as [Config.Overrides]
+// does and returns them sorted by check ID, then parameter name.
+func (cfg *Config) overrideList(cat *catalog.Catalog) ([]catalog.Override, error) {
 	var overrides []catalog.Override
 
 	for _, checkID := range sortedKeys(cfg.Checks) {
 		cd, err := cat.Get(checkID)
 		if err != nil {
-			return catalog.OverrideSet{}, fmt.Errorf("config: unknown check %q", checkID)
+			return nil, fmt.Errorf("config: unknown check %q", checkID)
 		}
 
 		params := cfg.Checks[checkID]
 		for _, name := range sortedKeys(params) {
 			spec, ok := cd.Thresholds[name]
 			if !ok {
-				return catalog.OverrideSet{}, fmt.Errorf(
+				return nil, fmt.Errorf(
 					"config: check %q has no parameter %q", checkID, name)
 			}
 			if spec.Category == health.FixedThreshold {
-				return catalog.OverrideSet{}, fmt.Errorf(
+				return nil, fmt.Errorf(
 					"config: parameter %q on check %q is fixed and cannot be overridden",
 					name, checkID)
 			}
 
 			value, err := coerce(params[name], spec.Value)
 			if err != nil {
-				return catalog.OverrideSet{}, fmt.Errorf(
+				return nil, fmt.Errorf(
 					"config: check %q parameter %q: %w", checkID, name, err)
 			}
 
@@ -129,7 +139,7 @@ func (cfg *Config) Overrides(cat *catalog.Catalog) (catalog.OverrideSet, error) 
 		}
 	}
 
-	return catalog.NewOverrideSet(overrides...), nil
+	return overrides, nil
 }
 
 // DisabledCheckIDs validates the config's disabled_checks against the

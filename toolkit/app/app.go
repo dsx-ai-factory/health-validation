@@ -85,8 +85,9 @@ type hostBackend interface {
 // InfiniBand), each from its own per-domain backend — the shared host NVML
 // backend, sysfs, or the journal by default, or a caller-supplied override.
 type App struct {
-	host     hostBackend
-	hostname func() (string, error)
+	host        hostBackend
+	hostname    func() (string, error)
+	openJournal func() (io.WriteCloser, error)
 	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
 	// overrides set by the matching With*Backend setter. A nil override uses the
 	// default: the shared host NVML backend for gpu/node/nvlink,
@@ -116,8 +117,9 @@ type App struct {
 // an App is safe on a host without a GPU/driver, and `version` runs there.
 func New() *App {
 	return &App{
-		host:     newHostBackend(),
-		hostname: os.Hostname,
+		host:        newHostBackend(),
+		hostname:    os.Hostname,
+		openJournal: func() (io.WriteCloser, error) { return dialJournal(journalSocket) },
 	}
 }
 
@@ -339,10 +341,26 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return writeVerdict(discoveryFailureVerdict(err), a.prog, resolvedNodeID, stdout, stderr)
 	}
 
-	cat, timeout, err := buildCatalog(*configPath, a.customChecks, arch)
+	cat, timeout, records, err := buildCatalog(*configPath, a.customChecks, arch)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
+	}
+
+	// Every active override is recorded in the journal or the run fails. Dial
+	// before collection so a missing journald socket fails fast; send after, so
+	// each entry carries the trace ID of the verdict it fed.
+	var audit func(health.NodeVerdict) error
+	if len(records) > 0 {
+		journal, err := a.openJournal()
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: audit threshold overrides: %v\n", a.prog, err)
+			return exitError
+		}
+		defer journal.Close()
+		audit = func(v health.NodeVerdict) error {
+			return writeOverrideAudit(journal, records, v, resolvedNodeID, a.prog)
+		}
 	}
 
 	gpu := a.gpu
@@ -385,7 +403,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	if a.ib != nil {
 		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
 	}
-	return evaluate(cat, timeout, a.prog, resolvedNodeID, stdout, stderr, sensors...)
+	return evaluate(cat, timeout, a.prog, resolvedNodeID, audit, stdout, stderr, sensors...)
 }
 
 func (a *App) resolveNodeID(value string, supplied bool) (string, error) {
@@ -419,8 +437,9 @@ func usage(prog string) string {
 // validated against the full check set (built-ins + custom) and applied as
 // threshold overrides and disables — so a config may target a custom check
 // too — and its collection_timeout_seconds (if set) is the timeout;
-// otherwise the toolkit default is used.
-func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch string) (*catalog.Catalog, time.Duration, error) {
+// otherwise the toolkit default is used. It also returns an audit record for
+// each override.
+func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch string) (*catalog.Catalog, time.Duration, []overrideRecord, error) {
 	// register adds the caller-supplied checks to a freshly built catalog.
 	// Classification is passed through untouched; the only failure is the
 	// catalog's duplicate-ID guard.
@@ -445,14 +464,14 @@ func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch
 	if configPath == "" {
 		c := catalog.New(opts...)
 		if err := register(c); err != nil {
-			return nil, 0, err
+			return nil, 0, nil, err
 		}
-		return c, toolkit.DefaultSensorTimeout, nil
+		return c, toolkit.DefaultSensorTimeout, nil, nil
 	}
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 
 	// Validate the config against a catalog that already includes the custom
@@ -460,37 +479,48 @@ func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch
 	// real catalog with the resolved overrides and re-register.
 	validation := catalog.New(opts...)
 	if err = register(validation); err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
-	overrides, err := cfg.Overrides(validation)
+	overrides, err := cfg.overrideList(validation)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
+	}
+	records, err := overrideRecords(validation, overrides, arch)
+	if err != nil {
+		return nil, 0, nil, err
 	}
 
 	// Validate that the checks ids we are disabling actually exist. Then
 	// add an option to the final build to remove them
 	disabledCheckIDs, err := cfg.DisabledCheckIDs(validation)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	opts = append(opts, catalog.WithDisabledChecks(disabledCheckIDs...))
 
-	final := catalog.New(append([]catalog.Option{catalog.WithOverrides(overrides)}, opts...)...)
+	final := catalog.New(append([]catalog.Option{catalog.WithOverrides(catalog.NewOverrideSet(overrides...))}, opts...)...)
 	if err = register(final); err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
-	return final, cfg.CollectionTimeout(), nil
+	return final, cfg.CollectionTimeout(), records, nil
 }
 
 // evaluate runs the sensors through the catalog under the given per-sensor
 // timeout, prints the node verdict as indented JSON, and returns the process
-// exit code. It takes the timeout and sensors as arguments so tests can
-// inject mock sensors without hardware.
-func evaluate(cat *catalog.Catalog, timeout time.Duration, prog, nodeID string, stdout, stderr io.Writer, sensors ...toolkit.Sensor) int {
+// exit code. A non-nil audit runs on the verdict before it is printed; its
+// failure returns [exitError] with nothing on stdout. It takes the timeout and
+// sensors as arguments so tests can inject mock sensors without hardware.
+func evaluate(cat *catalog.Catalog, timeout time.Duration, prog, nodeID string, audit func(health.NodeVerdict) error, stdout, stderr io.Writer, sensors ...toolkit.Sensor) int {
 	verdict, err := toolkit.CollectWithTimeout(cat, timeout, sensors...)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 		return exitError
+	}
+	if audit != nil {
+		if err := audit(verdict); err != nil {
+			fmt.Fprintf(stderr, "%s: audit threshold overrides: %v\n", prog, err)
+			return exitError
+		}
 	}
 	return writeVerdict(verdict, prog, nodeID, stdout, stderr)
 }

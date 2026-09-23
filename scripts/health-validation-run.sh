@@ -33,6 +33,13 @@ while read -r lib; do
 	mounts+=(-v "$lib:$lib:ro")
 done < <(awk '$3 ~ /^\// && $1 !~ /^(lib(c|pthread|dl|rt|m)\.so)/ {print $3}' <<<"$ldd_output")
 
+# Threshold overrides are recorded through the host's journald socket, and a
+# run with overrides exits 2 without it. Mount it only when present so runs
+# without overrides still work on hosts that lack it.
+if [[ -S /run/systemd/journal/socket ]]; then
+	mounts+=(-v /run/systemd/journal/socket:/run/systemd/journal/socket:ro)
+fi
+
 exec docker run --rm \
 	--gpus all \
 	-e NVIDIA_DRIVER_CAPABILITIES=utility \

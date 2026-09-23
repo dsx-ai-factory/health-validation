@@ -36,12 +36,12 @@ This file provides guidance to AI coding agents when working with code in this r
 
 - Health Validation emits verdicts. It does not take action. The binary exits after writing JSON. What happens to the node is the downstream system's decision.
 - Health Validation is node-local. Each run evaluates one node's measurements. There is no cross-node analysis, fleet correlation, or pattern detection.
-- Health Validation is not a monitoring system. It runs on demand and produces one verdict per invocation. It does not maintain state between runs or stream signals continuously.
+- Health Validation is not a monitoring system. It runs on demand and produces one verdict per invocation. It reads no state from earlier runs and does not stream signals continuously; its only write outside stdout/stderr is one systemd-journal entry per threshold override.
 - Health Validation is not a host security boundary. It does not authenticate workload submitters, enforce tenant isolation, or attest to host compliance.
 
 ### Common operator misreads
 
-- "Exit code reflects verdict severity." Only coarsely. The binary exits 0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, and 2 when it could not run to a verdict at all (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN, or INFO from WARNING — `overall_severity` in the JSON is still what callers must read for the precise level.
+- "Exit code reflects verdict severity." Only coarsely. The binary exits 0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, and 2 when it could not run to a verdict at all (config/backend/collection/audit/output failure). It does not distinguish CRITICAL from UNKNOWN, or INFO from WARNING — `overall_severity` in the JSON is still what callers must read for the precise level.
 - "Zero skipped checks means full coverage." Skipped checks are excluded from `overall_severity`. Partial coverage from `SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL` skips does not surface in the top-level verdict. Inspect `skipped_checks`.
 - "PASS means the node is healthy until the next run." The verdict is a point-in-time snapshot. Hardware state can change. Run before every job dispatch.
 - "I can filter by scheduling cadence in the CLI." The CLI does not yet support cadence filtering. All registered checks run on every invocation of `health-validation run`.
@@ -182,7 +182,7 @@ Sensor.Measure() → []Measurement
   → AggregateNodeVerdict() → NodeVerdict
 ```
 
-The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, 2 when the tool could not run to a verdict (config/backend/collection/output failure). The precise level lives in `overall_severity` in the JSON. Note the catalog library's `health.NodeVerdict.ExitCode()` (0=PASS/INFO, 1=CRITICAL, 2=UNKNOWN, 3=WARNING) is a separate, unused-by-the-CLI scheme.
+The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, 2 when the tool could not run to a verdict (config/backend/collection/audit/output failure). The precise level lives in `overall_severity` in the JSON. Note the catalog library's `health.NodeVerdict.ExitCode()` (0=PASS/INFO, 1=CRITICAL, 2=UNKNOWN, 3=WARNING) is a separate, unused-by-the-CLI scheme.
 
 #### Adding a check
 
@@ -210,7 +210,7 @@ To plug a new data source into an existing sensor (e.g. a DCGM-based GPU backend
 
 #### The operator CLI (`toolkit/cmd/health-validation`)
 
-`toolkit/cmd/health-validation` is the operator-facing binary (`health-validation [--verbose] run [--node-id <id>] [--config <path>]`); a `version` subcommand also exists). It loads an optional YAML config, builds the catalog, runs the GPU, Node, NVLink, CPU, and Xid sensors through `toolkit.CollectWithTimeout`, and prints the `NodeVerdict` as JSON. The InfiniBand sensor is opt-in and is not wired by the stock CLI: it runs only when a consumer supplies an IB backend via `WithIBBackend`. `node_id` defaults to the hostname reported by the operating system without DNS canonicalization; `--node-id` overrides it. The config parameterizes and disables checks: each `checks.<id>.<param>` becomes a `catalog.Override` (config values are coerced to each `ThresholdSpec`'s declared Go type because CEL is type-sensitive), and each entry in the `disabled_checks` list becomes a `catalog.WithDisabledChecks` ID. Both are validated against the registered checks before the catalog is built, so a typo'd ID is an error rather than a silently-still-running check. It is the repo's first production binary and first cgo binary.
+`toolkit/cmd/health-validation` is the operator-facing binary (`health-validation [--verbose] run [--node-id <id>] [--config <path>]`); a `version` subcommand also exists). It loads an optional YAML config, builds the catalog, runs the GPU, Node, NVLink, CPU, and Xid sensors through `toolkit.CollectWithTimeout`, and prints the `NodeVerdict` as JSON. The InfiniBand sensor is opt-in and is not wired by the stock CLI: it runs only when a consumer supplies an IB backend via `WithIBBackend`. `node_id` defaults to the hostname reported by the operating system without DNS canonicalization; `--node-id` overrides it. The config parameterizes and disables checks: each `checks.<id>.<param>` becomes a `catalog.Override` (config values are coerced to each `ThresholdSpec`'s declared Go type because CEL is type-sensitive), and each entry in the `disabled_checks` list becomes a `catalog.WithDisabledChecks` ID. Both are validated against the registered checks before the catalog is built, so a typo'd ID is an error rather than a silently-still-running check. Every validated override is also recorded in the systemd journal (`toolkit/app/override_audit.go`) before the verdict is printed; if the journal cannot be opened or written, `run` exits 2 with empty stdout. It is the repo's first production binary and first cgo binary.
 The logic lives in `toolkit/app/`; `toolkit/cmd/health-validation/main.go` is a thin shim over `app.New().Run(...)`. The backend is wired through a **platform split** so the command stays buildable and unit-testable everywhere:
 
 - `toolkit/app/backend_linux.go` (`//go:build linux`) — `newBackend()` returns the NVML (cgo) backend.

@@ -43,7 +43,7 @@ func customCheck() health.CheckDefinition {
 // TestWithChecksRegistersCustomCheck confirms a check supplied via the
 // WithChecks SPI is registered into the catalog alongside the built-ins.
 func TestWithChecksRegistersCustomCheck(t *testing.T) {
-	cat, _, err := buildCatalog("", []health.CheckDefinition{customCheck()}, "")
+	cat, _, _, err := buildCatalog("", []health.CheckDefinition{customCheck()}, "")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	canonical := customCheck()
 	canonical.Provenance = health.NVIDIA
 
-	cat, _, err := buildCatalog("", []health.CheckDefinition{canonical}, "")
+	cat, _, _, err := buildCatalog("", []health.CheckDefinition{canonical}, "")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 	collide := customCheck()
 	collide.ID = "gpu_count" // collides with a built-in
 
-	_, _, err := buildCatalog("", []health.CheckDefinition{collide}, "")
+	_, _, _, err := buildCatalog("", []health.CheckDefinition{collide}, "")
 	if err == nil {
 		t.Fatal("expected duplicate-ID error, got nil")
 	}
@@ -93,7 +93,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 // wired into the catalog: a check skips on an architecture it does not cover
 // (A100 here) instead of running with the wrong thresholds.
 func TestBuildCatalogAppliesArchitecture(t *testing.T) {
-	cat, _, err := buildCatalog("", nil, "A100")
+	cat, _, _, err := buildCatalog("", nil, "A100")
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -596,7 +596,7 @@ func TestEvaluateExitCodes(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := evaluate(nodeCatalog(t), toolkit.DefaultSensorTimeout, "test", testNodeID, &stdout, &stderr, c.sensor)
+			code := evaluate(nodeCatalog(t), toolkit.DefaultSensorTimeout, "test", testNodeID, nil, &stdout, &stderr, c.sensor)
 			if code != c.want {
 				t.Fatalf("evaluate = %d, want %d; stderr=%q", code, c.want, stderr.String())
 			}
