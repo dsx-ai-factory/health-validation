@@ -43,59 +43,25 @@ func TestNew_FilterByCategory(t *testing.T) {
 	}
 }
 
-func TestNew_RegistersNVLinkActive(t *testing.T) {
-	cat := catalog.New()
-	if _, err := cat.Get("nvlink_active"); err != nil {
-		t.Errorf("Get(nvlink_active) = %v, want check to ship in builtinChecks()", err)
+func TestNew_RegistersBuiltinCheck(t *testing.T) {
+	ids := []string{
+		"nvlink_active",
+		"gpu_power_state",
+		"gpu_power_limit",
+		"gpu_average_power_draw",
+		"cpu_count",
+		"numa_node_count",
+		"nvlink_capabilities",
+		"nvlink_fabric",
 	}
-}
 
-func TestNew_RegistersGPUPowerState(t *testing.T) {
 	cat := catalog.New()
-	if _, err := cat.Get("gpu_power_state"); err != nil {
-		t.Errorf("Get(gpu_power_state) = %v, want check to ship in builtinChecks()", err)
-	}
-}
-
-func TestNew_RegistersGPUPowerLimit(t *testing.T) {
-	cat := catalog.New()
-	if _, err := cat.Get("gpu_power_limit"); err != nil {
-		t.Errorf("Get(gpu_power_limit) = %v, want check to ship in builtinChecks()", err)
-	}
-}
-
-func TestNew_RegistersGPUAveragePowerDraw(t *testing.T) {
-	cat := catalog.New()
-	if _, err := cat.Get("gpu_average_power_draw"); err != nil {
-		t.Errorf("Get(gpu_average_power_draw) = %v, want check to ship in builtinChecks()", err)
-	}
-}
-
-func TestNew_RegistersCPUCount(t *testing.T) {
-	cat := catalog.New()
-	if _, err := cat.Get("cpu_count"); err != nil {
-		t.Errorf("Get(cpu_count) = %v, want check to ship in builtinChecks()", err)
-	}
-}
-
-func TestNew_RegistersNUMANodeCount(t *testing.T) {
-	cat := catalog.New()
-	if _, err := cat.Get("numa_node_count"); err != nil {
-		t.Errorf("Get(numa_node_count) = %v, want check to ship in builtinChecks()", err)
-	}
-}
-
-func TestNew_RegistersNVLinkCapabilities(t *testing.T) {
-	cat := catalog.New()
-	if _, err := cat.Get("nvlink_capabilities"); err != nil {
-		t.Errorf("Get(nvlink_capabilities) = %v, want check to ship in builtinChecks()", err)
-	}
-}
-
-func TestNew_RegistersNVLinkFabric(t *testing.T) {
-	cat := catalog.New()
-	if _, err := cat.Get("nvlink_fabric"); err != nil {
-		t.Errorf("Get(nvlink_fabric) = %v, want check to ship in builtinChecks()", err)
+	for _, id := range ids {
+		t.Run(id, func(t *testing.T) {
+			if _, err := cat.Get(id); err != nil {
+				t.Errorf("Get(%s) = %v, want check to ship in builtinChecks()", id, err)
+			}
+		})
 	}
 }
 
