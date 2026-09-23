@@ -245,3 +245,69 @@ func TestDerivedSignalChecks_IgnoreNonDerivers(t *testing.T) {
 		t.Errorf("CheckDerivedSignalKeysStable rejected a non-deriving measurement: %v", err)
 	}
 }
+
+// optionOnlyMeasurement tags its field with options but no name, so its
+// signal takes the Go field name, as encoding/json does — and a derived
+// signal of that name shadows it.
+type optionOnlyMeasurement struct {
+	Count int64 `json:",omitempty"`
+}
+
+func (optionOnlyMeasurement) Category() health.Category           { return health.Node }
+func (optionOnlyMeasurement) Errors() []health.ErroredMeasurement { return nil }
+func (optionOnlyMeasurement) DerivedSignals() map[string]any {
+	return map[string]any{"Count": int64(0)}
+}
+
+func TestCheckDerivedSignals_OptionOnlyTagKeepsFieldName(t *testing.T) {
+	err := catalog.CheckDerivedSignals(optionOnlyMeasurement{})
+	if err == nil {
+		t.Fatal("expected a collision on Count, got nil: an option-only tag was keyed as an empty name")
+	}
+	if !strings.Contains(err.Error(), `"Count"`) {
+		t.Errorf("error = %q, want it to name the shadowed signal Count", err.Error())
+	}
+}
+
+// A pointer to a measurement with value-receiver methods satisfies
+// health.Measurement too. The schema checks must treat it as the value
+// it points to rather than panic in reflection.
+func TestSignalChecks_AcceptPointerMeasurements(t *testing.T) {
+	if err := catalog.CheckSignalUniqueness(&node.NodeMeasurement{}); err != nil {
+		t.Errorf("CheckSignalUniqueness(pointer) = %v, want nil", err)
+	}
+	err := catalog.CheckDerivedSignals(&shadowingMeasurement{})
+	if err == nil || !strings.Contains(err.Error(), "widget_count") {
+		t.Errorf("CheckDerivedSignals(pointer) = %v, want the widget_count collision it reports for the value", err)
+	}
+}
+
+// A type passed once by value and once by pointer is still one type; it
+// must not be reported as carrying the same signals as itself.
+func TestCheckSignalUniqueness_ValueAndPointerAreOneType(t *testing.T) {
+	if err := catalog.CheckSignalUniqueness(node.NodeMeasurement{}, &node.NodeMeasurement{}); err != nil {
+		t.Errorf("value and pointer of one type reported as colliding: %v", err)
+	}
+}
+
+// TestEvaluateAll_PointerMeasurement covers the public path: evaluating a
+// pointer must produce the verdict its value does, not a reflection panic.
+func TestEvaluateAll_PointerMeasurement(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	m := node.NodeMeasurement{GPUCount: 3}
+
+	byValue, err := cat.EvaluateAll(m)
+	if err != nil {
+		t.Fatalf("EvaluateAll(value): %v", err)
+	}
+	byPointer, err := cat.EvaluateAll(&m)
+	if err != nil {
+		t.Fatalf("EvaluateAll(pointer): %v", err)
+	}
+	if byPointer.OverallSeverity != byValue.OverallSeverity {
+		t.Errorf("OverallSeverity: pointer %v, value %v", byPointer.OverallSeverity, byValue.OverallSeverity)
+	}
+	if len(byPointer.CheckResults) != len(byValue.CheckResults) {
+		t.Errorf("CheckResults: pointer %d, value %d", len(byPointer.CheckResults), len(byValue.CheckResults))
+	}
+}

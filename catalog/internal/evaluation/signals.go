@@ -7,11 +7,12 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
 
-// ToSignals converts a typed measurement struct into the map[string]any
-// that CEL evaluation expects. Keys are derived from json struct tags,
-// plus anything the measurement computes via [health.DerivedSignaler].
+// ToSignals converts a typed measurement struct, or a pointer to one,
+// into the map[string]any that CEL evaluation expects. Keys are derived
+// from json struct tags, plus anything the measurement computes via
+// [health.DerivedSignaler].
 func ToSignals(m any) map[string]any {
-	v := reflect.ValueOf(m)
+	v := reflect.Indirect(reflect.ValueOf(m))
 	t := v.Type()
 
 	out := make(map[string]any, t.NumField())
@@ -39,6 +40,11 @@ func fieldSignalKey(f reflect.StructField) (string, bool) {
 		return "", false
 	}
 	key, _, _ := strings.Cut(tag, ",")
+	if key == "" {
+		// A tag carrying only options (`json:",omitempty"`) keeps the Go
+		// field name, as encoding/json does.
+		key = f.Name
+	}
 	return key, true
 }
 
@@ -49,6 +55,9 @@ func fieldSignalKey(f reflect.StructField) (string, bool) {
 // caller detect a derived name shadowing a field.
 func FieldKeys(m any) []string {
 	t := reflect.TypeOf(m)
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
 	keys := make([]string, 0, t.NumField())
 	for i := range t.NumField() {
 		if key, ok := fieldSignalKey(t.Field(i)); ok {

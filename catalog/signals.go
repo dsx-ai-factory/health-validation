@@ -26,7 +26,7 @@ func CheckSignalUniqueness(measurements ...health.Measurement) error {
 	owners := make(map[health.Category]map[string]string)
 	for _, m := range measurements {
 		cat := m.Category()
-		typeName := fmt.Sprintf("%T", m)
+		typeName := measurementTypeName(m)
 		byCategory := owners[cat]
 		if byCategory == nil {
 			byCategory = make(map[string]string)
@@ -43,6 +43,17 @@ func CheckSignalUniqueness(measurements ...health.Measurement) error {
 		}
 	}
 	return nil
+}
+
+// measurementTypeName names m's struct type the same way whether m is
+// passed by value or by pointer, so a type is never reported as
+// colliding with itself.
+func measurementTypeName(m health.Measurement) string {
+	t := reflect.TypeOf(m)
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	return t.String()
 }
 
 // CheckDerivedSignals verifies that no measurement implementing
