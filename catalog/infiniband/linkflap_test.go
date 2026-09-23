@@ -105,66 +105,75 @@ func TestRDMALinkFlapFatal_OneFatalOutage(t *testing.T) {
 	}
 }
 
-// Raising fatal_flap_threshold tolerates a lone fatal outage but still
-// fails once the count reaches the new threshold.
-func TestRDMALinkFlapFatal_ThresholdOverride(t *testing.T) {
-	cat := linkflapCatalog(thresholdOverride("fatal_flap_threshold", int64(2)))
+func TestRDMALinkFlapFatal(t *testing.T) {
+	tests := []struct {
+		name           string
+		cat            func() *catalog.Catalog
+		measurement    infiniband.LinkFlapMeasurement
+		wantSeverity   health.Severity
+		wantSkipped    bool
+		wantSkipReason health.SkipReason
+	}{
+		{
+			// Raising fatal_flap_threshold tolerates a lone fatal outage.
+			name:         "threshold override tolerates one fatal outage",
+			cat:          func() *catalog.Catalog { return linkflapCatalog(thresholdOverride("fatal_flap_threshold", int64(2))) },
+			measurement:  outages(114),
+			wantSeverity: health.Pass,
+		},
+		{
+			// ...but still fails once the count reaches the new threshold.
+			name:         "threshold override still fails at the new threshold",
+			cat:          func() *catalog.Catalog { return linkflapCatalog(thresholdOverride("fatal_flap_threshold", int64(2))) },
+			measurement:  outages(114, 200),
+			wantSeverity: health.Critical,
+		},
+		{
+			// Lowering min_outage_seconds makes shorter outages count as fatal.
+			name:         "window override makes a short outage fatal",
+			cat:          func() *catalog.Catalog { return linkflapCatalog(thresholdOverride("min_outage_seconds", int64(5))) },
+			measurement:  outages(10),
+			wantSeverity: health.Critical,
+		},
+		{
+			// A journal read that failed entirely must fail the check, not
+			// pass it: the required signal is unavailable.
+			name:         "errored journal forces critical",
+			cat:          func() *catalog.Catalog { return linkflapCatalog() },
+			measurement:  infiniband.ErroredLinkFlap("boot", errors.New("journal unreadable"), infiniband.MeasurementSignals...),
+			wantSeverity: health.Critical,
+		},
+		{
+			// The check is scoped to GB200/GB300: on another architecture it
+			// skips rather than evaluating, even when a fatal outage is present.
+			name: "skips off architecture",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("A100"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement:    outages(114),
+			wantSkipped:    true,
+			wantSkipReason: health.ArchitectureUnsupported,
+		},
+	}
 
-	v, err := cat.Evaluate("rdma_linkflap_fatal", outages(114))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Pass {
-		t.Errorf("one fatal outage, threshold 2: severity = %v, want PASS", v.Severity)
-	}
-
-	v, err = cat.Evaluate("rdma_linkflap_fatal", outages(114, 200))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("two fatal outages, threshold 2: severity = %v, want CRITICAL", v.Severity)
-	}
-}
-
-// Lowering min_outage_seconds makes shorter outages count as fatal.
-func TestRDMALinkFlapFatal_WindowOverride(t *testing.T) {
-	cat := linkflapCatalog(thresholdOverride("min_outage_seconds", int64(5)))
-	v, err := cat.Evaluate("rdma_linkflap_fatal", outages(10))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("10s outage, 5s window: severity = %v, want CRITICAL", v.Severity)
-	}
-}
-
-// A journal read that failed entirely must fail the check, not pass it:
-// the required signal is unavailable.
-func TestRDMALinkFlapFatal_Errored(t *testing.T) {
-	m := infiniband.ErroredLinkFlap("boot", errors.New("journal unreadable"), infiniband.MeasurementSignals...)
-	v, err := linkflapCatalog().Evaluate("rdma_linkflap_fatal", m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Skipped || v.Severity != health.Critical {
-		t.Fatalf("skipped=%v severity=%v, want CRITICAL on unreadable journal", v.Skipped, v.Severity)
-	}
-}
-
-// The check is scoped to GB200/GB300: on another architecture it skips
-// rather than evaluating, even when a fatal outage is present.
-func TestRDMALinkFlapFatal_SkipsOffArchitecture(t *testing.T) {
-	cat := catalog.New(
-		catalog.WithArchitecture("A100"),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-	v, err := cat.Evaluate("rdma_linkflap_fatal", outages(114))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !v.Skipped || v.SkipReason != health.ArchitectureUnsupported {
-		t.Errorf("skipped=%v reason=%v, want skipped with SIGNAL_UNAVAILABLE_ARCHITECTURE on A100",
-			v.Skipped, v.SkipReason)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := tt.cat().Evaluate("rdma_linkflap_fatal", tt.measurement)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Skipped != tt.wantSkipped || v.SkipReason != tt.wantSkipReason {
+				t.Fatalf("skipped=%v reason=%v, want skipped=%v reason=%v", v.Skipped, v.SkipReason, tt.wantSkipped, tt.wantSkipReason)
+			}
+			if tt.wantSkipped {
+				return
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Fatalf("severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+		})
 	}
 }
