@@ -24,13 +24,13 @@ func throttleCatalog(opts ...catalog.Option) *catalog.Catalog {
 
 func TestGPUSensorThrottle(t *testing.T) {
 	tests := []struct {
-		name           string
 		cat            *catalog.Catalog
 		measurement    func() gpu.GPUMeasurement
-		wantSeverity   health.Severity
-		wantSkipped    bool
-		wantSkipReason health.SkipReason
+		name           string
 		wantAction     health.RecommendedAction
+		wantSeverity   health.Severity
+		wantSkipReason health.SkipReason
+		wantSkipped    bool
 	}{
 		{
 			name:         "healthy",

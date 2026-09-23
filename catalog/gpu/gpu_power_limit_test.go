@@ -65,14 +65,14 @@ func TestGPUPowerLimit_UsesArchitectureDefault(t *testing.T) {
 
 func TestGPUPowerLimit_Scenarios(t *testing.T) {
 	tests := []struct {
-		name             string
 		cat              func() *catalog.Catalog
 		measurement      func() gpu.GPUMeasurement
-		wantSeverity     health.Severity
-		wantSkipped      bool
-		wantSkipReason   health.SkipReason
-		wantAction       health.RecommendedAction
+		name             string
 		wantMessageParts []string
+		wantAction       health.RecommendedAction
+		wantSeverity     health.Severity
+		wantSkipReason   health.SkipReason
+		wantSkipped      bool
 	}{
 		{
 			name: "current limit mismatch",

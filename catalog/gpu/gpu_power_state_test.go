@@ -38,14 +38,14 @@ func wrongArchitectureCatalog() *catalog.Catalog {
 
 func TestGPUPowerState(t *testing.T) {
 	tests := []struct {
-		name             string
 		cat              func() *catalog.Catalog
+		name             string
+		wantMessageParts []string
+		wantAction       health.RecommendedAction
 		measurement      gpu.GPUMeasurement
 		wantSeverity     health.Severity
-		wantSkipped      bool
 		wantSkipReason   health.SkipReason
-		wantAction       health.RecommendedAction
-		wantMessageParts []string
+		wantSkipped      bool
 	}{
 		{
 			name:         "at expected pstate",
