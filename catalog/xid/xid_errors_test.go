@@ -1,7 +1,10 @@
 package xid_test
 
 import (
+	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
@@ -208,15 +211,32 @@ func TestXidErrors_NVLink5_FatalAndNonfatalReportsBoth(t *testing.T) {
 // nvlink5SubXidCodeMeasurementFor builds an XidMeasurement for one Xid 149
 // NETIR_LINK_EVT/NETIR_LINK_DOWN event carrying the given subcode, the way
 // toolkit/xid.ParseXid would after decoding the extended log format.
+// intrInfoForSubXidCode builds an IntrInfo register value whose
+// fault-subtype bits (IntrInfo[25:20]) encode subcode's digit, e.g.
+// "149.4" -> "0x00400000", so a test measurement carries the raw field
+// a sensor would and sub_xid_code_counts is derived from it.
+func intrInfoForSubXidCode(subcode string) string {
+	_, digit, _ := strings.Cut(subcode, ".")
+	v, err := strconv.ParseUint(digit, 16, 8)
+	if err != nil {
+		panic("intrInfoForSubXidCode: bad subcode " + subcode)
+	}
+	return fmt.Sprintf("0x%08x", v<<20)
+}
+
 func nvlink5SubXidCodeMeasurementFor(subcode string, fatal bool) xid.XidMeasurement {
 	m := xid.XidMeasurement{
-		Since:            "boot",
-		XidCounts:        map[int64]int64{149: 1},
-		SubXidCodeCounts: map[string]int64{subcode: 1},
+		Since:     "boot",
+		XidCounts: map[int64]int64{149: 1},
 		Events: []xid.XidEvent{{
 			PCIAddress: "0000:01:00",
 			XidCode:    149,
-			NVLink5:    &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", Fatal: fatal, Link: 8, SubXidCode: subcode},
+			NVLink5: &xid.NVLink5Detail{
+				SubComponent: "NETIR_LINK_EVT",
+				IntrInfo:     intrInfoForSubXidCode(subcode),
+				Fatal:        fatal,
+				Link:         8,
+			},
 		}},
 		EventCount: 1,
 	}

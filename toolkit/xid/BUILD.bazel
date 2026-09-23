@@ -2,10 +2,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "xid",
-    srcs = [
-        "nvlink5_decode.go",
-        "xid_parse.go",
-    ],
+    srcs = ["xid_parse.go"],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/xid",
     visibility = ["//visibility:public"],
     deps = ["//catalog/xid"],
@@ -13,10 +10,9 @@ go_library(
 
 go_test(
     name = "xid_test",
-    srcs = [
-        "nvlink5_decode_test.go",
-        "xid_parse_test.go",
+    srcs = ["xid_parse_test.go"],
+    deps = [
+        ":xid",
+        "//catalog/health",
     ],
-    embed = [":xid"],
-    deps = ["//catalog/health"],
 )

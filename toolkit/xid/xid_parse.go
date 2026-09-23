@@ -56,9 +56,9 @@ var xidNVLink5RE = regexp.MustCompile(
 // non-nil meaning even with zero events: EventCount is 0 and XidCounts
 // is nil, which a check reads as "no Xid faults observed".
 //
-// Every field this parses comes straight from the log line (or, for
-// SubXidCode, a fixed bit-mask over a field the log line carries) — no
-// NVIDIA decode-table lookup happens here.
+// Every field this parses comes straight from the log line. Reading
+// meaning out of those fields — register bits, the decode table — is
+// the catalog's job, so every source of Xid events shares it.
 func ParseXid(since string, lines []string) xid.XidMeasurement {
 	m := xid.XidMeasurement{Since: since}
 	for _, line := range lines {
@@ -81,12 +81,6 @@ func ParseXid(since string, lines []string) xid.XidMeasurement {
 				m.FatalXidCounts = make(map[int64]int64)
 			}
 			m.FatalXidCounts[ev.XidCode]++
-		}
-		if ev.NVLink5 != nil && ev.NVLink5.SubXidCode != "" {
-			if m.SubXidCodeCounts == nil {
-				m.SubXidCodeCounts = make(map[string]int64)
-			}
-			m.SubXidCodeCounts[ev.NVLink5.SubXidCode]++
 		}
 	}
 	return m
@@ -143,10 +137,6 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 			detail.DebugData = tail[2:]
 		}
 	}
-	if subXidCode, ok := nvlink5SubXidCode(code, detail.IntrInfo); ok {
-		detail.SubXidCode = subXidCode
-	}
-
 	// pid/name are optional here but carry the same meaning as on any
 	// other Xid line, so they populate the same event fields.
 	pid, _ := strconv.ParseInt(groups[3], 10, 64)
