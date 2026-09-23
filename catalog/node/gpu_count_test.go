@@ -19,12 +19,12 @@ func newCatalog(opts ...catalog.Option) *catalog.Catalog {
 
 func TestGPUCount(t *testing.T) {
 	tests := []struct {
-		name           string
 		cat            func() *catalog.Catalog
 		measurement    func() node.NodeMeasurement
+		name           string
 		wantSeverity   health.Severity
-		wantSkipped    bool
 		wantSkipReason health.SkipReason
+		wantSkipped    bool
 	}{
 		{
 			name:         "matches default expected count",
