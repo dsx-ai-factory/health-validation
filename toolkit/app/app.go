@@ -327,7 +327,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	var cadence *health.SchedulingCadence
 	if cadenceSet {
-		sc, parseErr := health.ParseSchedulingCadence(*cadenceFlag)
+		sc, parseErr := health.SchedulingCadenceFromName(strings.ToUpper(strings.TrimSpace(*cadenceFlag)))
 		if parseErr != nil {
 			fmt.Fprintf(stderr, "%s: --cadence: %v\n", a.prog, parseErr)
 			return exitError

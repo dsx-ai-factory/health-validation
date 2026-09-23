@@ -797,6 +797,25 @@ func TestRunCommandRejectsInvalidCadence(t *testing.T) {
 	}
 }
 
+func TestRunCommandCadenceAcceptsFoldedAndPaddedNames(t *testing.T) {
+	a := cadenceRunApp()
+	for _, name := range []string{"continuous", "  CONTINUOUS  "} {
+		t.Run(name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := a.runCommand([]string{"--node-id", testNodeID, "--cadence", name}, &stdout, &stderr); code == exitError {
+				t.Fatalf("runCommand --cadence %q exit = %d; stderr = %q", name, code, stderr.String())
+			}
+			var v health.NodeVerdict
+			if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+				t.Fatalf("unmarshal: %v; stdout = %s", err, stdout.String())
+			}
+			if !verdictHasCheck(v, "gpu_count") {
+				t.Error("missing Continuous check gpu_count")
+			}
+		})
+	}
+}
+
 func TestRunCommandDefaultIncludesPrologChecks(t *testing.T) {
 	a := cadenceRunApp()
 	var stdout, stderr bytes.Buffer

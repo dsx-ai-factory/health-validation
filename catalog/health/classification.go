@@ -2,7 +2,6 @@ package health
 
 import (
 	"fmt"
-	"strings"
 )
 
 // --- Severity ---
@@ -225,13 +224,12 @@ func (sc SchedulingCadence) Covers(requested SchedulingCadence) bool {
 	return cadenceFrequency[sc] >= cadenceFrequency[requested]
 }
 
-// ParseSchedulingCadence maps a CONTINUOUS / PROLOG / MAINTENANCE name to
-// the enum. Comparison is case-insensitive after trim; unknown names error.
-func ParseSchedulingCadence(s string) (SchedulingCadence, error) {
-	name := strings.ToUpper(strings.TrimSpace(s))
+// SchedulingCadenceFromName maps a wire name (CONTINUOUS, PROLOG,
+// MAINTENANCE) to the enum. The match is exact; unknown names error.
+func SchedulingCadenceFromName(name string) (SchedulingCadence, error) {
 	v, ok := schedulingCadenceFromName[name]
 	if !ok {
-		return 0, fmt.Errorf("unknown scheduling cadence %q", s)
+		return 0, fmt.Errorf("unknown scheduling cadence %q", name)
 	}
 	return v, nil
 }
