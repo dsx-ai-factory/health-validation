@@ -72,49 +72,61 @@ func cadenceCatalog() *catalog.Catalog {
 	return cat
 }
 
-func evaluatedIDs(t *testing.T, cat *catalog.Catalog, cadence *health.SchedulingCadence) []string {
+func evaluatedVerdicts(t *testing.T, cat *catalog.Catalog, cadence *health.SchedulingCadence) map[string]health.CheckVerdict {
 	t.Helper()
-	verdicts, err := cat.EvaluateAllRaw(cadence, node.NodeMeasurement{GPUCount: 1})
+	verdicts, err := cat.EvaluateAllRawWithOptions(
+		catalog.EvaluationOptions{Cadence: cadence},
+		node.NodeMeasurement{GPUCount: 1},
+	)
 	if err != nil {
-		t.Fatalf("EvaluateAllRaw: %v", err)
+		t.Fatalf("EvaluateAllRawWithOptions: %v", err)
 	}
-	ids := make([]string, len(verdicts))
-	for i, v := range verdicts {
-		ids[i] = v.CheckID
+	got := make(map[string]health.CheckVerdict, len(verdicts))
+	for _, v := range verdicts {
+		got[v.CheckID] = v
 	}
-	slices.Sort(ids)
-	return ids
+	return got
 }
 
-func TestEvaluateAll_FiltersByCadenceHierarchy(t *testing.T) {
+func TestEvaluateAllWithOptions_SkipsByCadenceHierarchy(t *testing.T) {
 	cat := cadenceCatalog()
 	tests := []struct {
-		name    string
-		want    []string
-		cadence health.SchedulingCadence
+		name        string
+		wantSkipped []string
+		cadence     health.SchedulingCadence
 	}{
-		{name: "continuous evaluates only continuous", cadence: health.Continuous, want: []string{"cont"}},
-		{name: "prolog evaluates continuous and prolog", cadence: health.Prolog, want: []string{"cont", "prolog"}},
-		{name: "maintenance evaluates every check", cadence: health.MaintenanceWindow, want: []string{"cont", "maint", "prolog"}},
+		{name: "continuous skips prolog and maintenance", cadence: health.Continuous, wantSkipped: []string{"maint", "prolog"}},
+		{name: "prolog skips maintenance", cadence: health.Prolog, wantSkipped: []string{"maint"}},
+		{name: "maintenance skips none", cadence: health.MaintenanceWindow},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := tt.cadence
-			got := evaluatedIDs(t, cat, &c)
-			if !slices.Equal(got, tt.want) {
-				t.Errorf("EvaluateAll cadence=%v = %v, want %v", tt.cadence, got, tt.want)
+			got := evaluatedVerdicts(t, cat, &c)
+			var skipped []string
+			for id, v := range got {
+				if v.Skipped {
+					if v.SkipReason != health.CadenceMismatch {
+						t.Errorf("%s skip reason = %v, want CADENCE_MISMATCH", id, v.SkipReason)
+					}
+					skipped = append(skipped, id)
+				}
+			}
+			slices.Sort(skipped)
+			if !slices.Equal(skipped, tt.wantSkipped) {
+				t.Errorf("skipped at cadence %v = %v, want %v", tt.cadence, skipped, tt.wantSkipped)
 			}
 		})
 	}
 
-	got := evaluatedIDs(t, cat, nil)
-	want := []string{"cont", "maint", "prolog"}
-	if !slices.Equal(got, want) {
-		t.Errorf("EvaluateAll unset cadence = %v, want %v", got, want)
+	for id, v := range evaluatedVerdicts(t, cat, nil) {
+		if v.Skipped {
+			t.Errorf("EvaluateAll unset cadence skipped %s with %v", id, v.SkipReason)
+		}
 	}
 }
 
-func TestEvaluate_IgnoresCadenceFilter(t *testing.T) {
+func TestEvaluate_IgnoresCadenceOptions(t *testing.T) {
 	cat := cadenceCatalog()
 	v, err := cat.Evaluate("prolog", node.NodeMeasurement{GPUCount: 1})
 	if err != nil {
@@ -122,5 +134,23 @@ func TestEvaluate_IgnoresCadenceFilter(t *testing.T) {
 	}
 	if v.Skipped {
 		t.Fatalf("Evaluate(prolog) skipped with %v; single-ID Evaluate is not cadence-filtered", v.SkipReason)
+	}
+}
+
+func TestEvaluateAllWithOptions_CadenceSkipCascadesToDependent(t *testing.T) {
+	cat := catalog.NewEmpty(catalog.WithArchitecture(catalogtest.DummyArchitecture))
+	base := cadenceCheck("prolog", health.Prolog)
+	dependent := cadenceCheck("continuous", health.Continuous)
+	dependent.Dependencies = []string{"prolog"}
+	cat.MustRegister(base)
+	cat.MustRegister(dependent)
+
+	cadence := health.Continuous
+	got := evaluatedVerdicts(t, cat, &cadence)
+	if got["prolog"].SkipReason != health.CadenceMismatch {
+		t.Errorf("prolog skip reason = %v, want CADENCE_MISMATCH", got["prolog"].SkipReason)
+	}
+	if got["continuous"].SkipReason != health.DependencySkipped {
+		t.Errorf("continuous skip reason = %v, want DEPENDENCY_SKIPPED", got["continuous"].SkipReason)
 	}
 }

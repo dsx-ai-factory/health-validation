@@ -19,7 +19,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
   "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
@@ -48,7 +48,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
@@ -260,8 +260,8 @@ Run a one-shot check:
 The verdict's `node_id` defaults to the configured system hostname. Use
 `--node-id <id>` to supply a scheduler or inventory identifier instead.
 Optional `--cadence CONTINUOUS|PROLOG|MAINTENANCE`
-narrows which registered checks evaluate; omit it to run the full stock
-catalog.
+runs checks scheduled for that window and reports the others as
+`CADENCE_MISMATCH` skips; omit it to run the full stock catalog.
 
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 
@@ -315,7 +315,7 @@ cat := catalog.New(
 
 m := node.NodeMeasurement{GPUCount: 4}
 
-verdict, err := cat.EvaluateAll(nil, m)
+verdict, err := cat.EvaluateAll(m)
 if err != nil {
     log.Fatal(err)
 }
@@ -346,7 +346,7 @@ cpuSensor := toolkit.NewCPUSensor(toolkit.SysfsCPU())
 // The Xid sensor reads the system journal, so it takes its own backend rather
 // than the GPU one: toolkit.Journalctl() in production, toolkit.MockXid(...) in tests.
 xidSensor := toolkit.NewXidSensor(toolkit.Journalctl())
-verdict, err := toolkit.Collect(cat, nil, gpuSensor, nodeSensor, cpuSensor, xidSensor)
+verdict, err := toolkit.Collect(cat, gpuSensor, nodeSensor, cpuSensor, xidSensor)
 ```
 
 Disable a specific check:

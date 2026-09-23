@@ -52,7 +52,7 @@ func TestBuildNVLinkMeasurementsPreservesFieldFailure(t *testing.T) {
 
 	validationCatalog, err := newValidationCatalog("GB200")
 	require.NoError(t, err)
-	verdict, err := validationCatalog.EvaluateAll(nil, measurements...)
+	verdict, err := validationCatalog.EvaluateAll(measurements...)
 	require.NoError(t, err)
 
 	byID := make(map[string]health.CheckVerdict, len(verdict.CheckResults))
@@ -104,7 +104,7 @@ func TestBuildNVLinkMeasurementsLeavesReportedUnsupportedNeutral(t *testing.T) {
 
 			validationCatalog, err := newValidationCatalog("GB200")
 			require.NoError(t, err)
-			verdict, err := validationCatalog.EvaluateAll(nil, measurements...)
+			verdict, err := validationCatalog.EvaluateAll(measurements...)
 			require.NoError(t, err)
 
 			byID := make(map[string]health.CheckVerdict, len(verdict.CheckResults))

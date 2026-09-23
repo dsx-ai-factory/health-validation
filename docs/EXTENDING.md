@@ -193,7 +193,7 @@ cat := catalog.New(
 	})),
 )
 _ = cat.Register(mychecks.GPUClockCapped())
-verdict, err := cat.EvaluateAll(nil, measurements...) // measurements you produced yourself
+verdict, err := cat.EvaluateAll(measurements...) // measurements you produced yourself
 ```
 
 ## A recommended consumer layout

@@ -34,6 +34,13 @@ type Catalog struct {
 // Option configures a Catalog during construction.
 type Option func(*Catalog)
 
+// EvaluationOptions configures one batch evaluation. Its zero value requests
+// no cadence window.
+type EvaluationOptions struct {
+	// Cadence selects the run window; nil evaluates every registered check.
+	Cadence *health.SchedulingCadence
+}
+
 // WithOverrides supplies operator threshold overrides.
 func WithOverrides(os OverrideSet) Option {
 	return func(c *Catalog) { c.overrides = os }
@@ -191,10 +198,12 @@ func (c *Catalog) Len() int {
 // construction-time configuration, so these fields are treated as read-only
 // once the catalog is in use. Under that convention, one snapshot under
 // RLock is equivalent to re-reading the catalog per check and avoids O(n)
-// lock round-trips on the batch path.
+// lock round-trips on the batch path. Per-run fields such as cadence are
+// set on a local copy for that evaluation; they are not stored on Catalog.
 type paramsSnapshot struct {
-	overrides        OverrideSet
+	cadence          *health.SchedulingCadence
 	disabledChecks   map[string]bool
+	overrides        OverrideSet
 	architecture     string
 	executionContext health.ExecutionContext
 }
@@ -210,6 +219,7 @@ func (s paramsSnapshot) forCheck(checkID string) evaluation.Params {
 		ExecutionContext: s.executionContext,
 		Disabled:         s.disabledChecks[checkID],
 		Overrides:        s.overrides.ForCheck(checkID),
+		Cadence:          s.cadence,
 	}
 }
 
@@ -266,10 +276,15 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 // OverallSeverity untouched but marks the check as unassessed in
 // SkippedChecks. Supply the measurements for every category
 // in [Catalog.Categories], or register only the checks you intend to feed.
-// cadence is forwarded to [Catalog.EvaluateAllRaw]; nil evaluates every
-// registered check.
-func (c *Catalog) EvaluateAll(cadence *health.SchedulingCadence, measurements ...health.Measurement) (health.NodeVerdict, error) {
-	verdicts, err := c.EvaluateAllRaw(cadence, measurements...)
+func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVerdict, error) {
+	return c.EvaluateAllWithOptions(EvaluationOptions{}, measurements...)
+}
+
+// EvaluateAllWithOptions is [Catalog.EvaluateAll] with per-run evaluation
+// configuration. A zero-value EvaluationOptions evaluates every registered
+// check.
+func (c *Catalog) EvaluateAllWithOptions(opts EvaluationOptions, measurements ...health.Measurement) (health.NodeVerdict, error) {
+	verdicts, err := c.EvaluateAllRawWithOptions(opts, measurements...)
 	if err != nil {
 		return health.NodeVerdict{}, err
 	}
@@ -303,15 +318,15 @@ func (c *Catalog) EvaluateAll(cadence *health.SchedulingCadence, measurements ..
 // skips for the others. That is a report, not a failure: skips do not
 // affect OverallSeverity. Register only the checks you intend to feed if
 // you want a narrower verdict.
-//
-// cadence, when non-nil, drops checks whose declared cadence does not
-// cover that window before this routing. Those checks produce no verdict
-// (not a skip): they were out of this window, matching [Catalog.List].
-// A nil cadence evaluates every registered check. Continuous is the enum
-// zero value, so the pointer distinguishes unfiltered from
-// filter-to-Continuous. [Catalog.Evaluate] of an explicit ID is not
-// cadence-filtered.
-func (c *Catalog) EvaluateAllRaw(cadence *health.SchedulingCadence, measurements ...health.Measurement) ([]health.CheckVerdict, error) {
+func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.CheckVerdict, error) {
+	return c.EvaluateAllRawWithOptions(EvaluationOptions{}, measurements...)
+}
+
+// EvaluateAllRawWithOptions is [Catalog.EvaluateAllRaw] with per-run
+// evaluation configuration. A requested cadence skips checks whose declared
+// cadence does not cover that window; dependents then skip through the normal
+// dependency cascade. A nil cadence evaluates every registered check.
+func (c *Catalog) EvaluateAllRawWithOptions(opts EvaluationOptions, measurements ...health.Measurement) ([]health.CheckVerdict, error) {
 	if err := c.requireArchitecture(); err != nil {
 		return nil, err
 	}
@@ -319,12 +334,10 @@ func (c *Catalog) EvaluateAllRaw(cadence *health.SchedulingCadence, measurements
 	c.mu.RLock()
 	checks := make(map[string]*health.CheckDefinition, len(c.checks))
 	for k, v := range c.checks {
-		if cadence != nil && !v.SchedulingCadence.Covers(*cadence) {
-			continue
-		}
 		checks[k] = v
 	}
 	snap := paramsSnapshot{
+		cadence:          opts.Cadence,
 		overrides:        c.overrides,
 		disabledChecks:   c.disabledChecks,
 		architecture:     c.architecture,

@@ -305,7 +305,7 @@ func TestEvaluatePassingNode(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := evaluate(cat, toolkit.DefaultSensorTimeout, nil, "health-validation", testNodeID, &stdout, &stderr, sensors...)
+	code := evaluate(cat, toolkit.CollectionOptions{}, "health-validation", testNodeID, &stdout, &stderr, sensors...)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -340,7 +340,7 @@ func TestBuildCatalogAppliesConfigOverrides(t *testing.T) {
 
 	// 8 visible GPUs: Critical at the default expected count of 4,
 	// PASS once the threshold is raised to 8 from config.
-	verdicts, err := cat.EvaluateAllRaw(nil, node.NodeMeasurement{GPUCount: 8})
+	verdicts, err := cat.EvaluateAllRaw(node.NodeMeasurement{GPUCount: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +389,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := evaluate(cat, timeout, nil, "health-validation", testNodeID, &stdout, &stderr, sensors...)
+	code := evaluate(cat, toolkit.CollectionOptions{Timeout: timeout}, "health-validation", testNodeID, &stdout, &stderr, sensors...)
 	if code != exitOK {
 		t.Fatalf("exit code = %d, want %d (a disabled check must not reach the verdict); stderr=%q",
 			code, exitOK, stderr.String())
@@ -438,7 +438,7 @@ func TestEvaluateGPUCountMismatch(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := evaluate(cat, toolkit.DefaultSensorTimeout, nil, "health-validation", testNodeID, &stdout, &stderr, sensors...)
+	code := evaluate(cat, toolkit.CollectionOptions{}, "health-validation", testNodeID, &stdout, &stderr, sensors...)
 	if code != exitUnhealthy {
 		t.Fatalf("exit code = %d, want %d (CRITICAL propagated); stderr=%q", code, exitUnhealthy, stderr.String())
 	}

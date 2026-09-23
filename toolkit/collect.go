@@ -18,21 +18,26 @@ import (
 // instead of hanging the run.
 const DefaultSensorTimeout = 60 * time.Second
 
-// Collect runs the provided sensors with the default per-sensor timeout,
-// evaluates the catalog against the collected measurements, and
-// aggregates results into a node-level verdict. cadence is forwarded to
-// [catalog.Catalog.EvaluateAll]; nil evaluates every registered check.
-// It is a thin wrapper over [CollectWithTimeout]; see it for collection
-// and degradation semantics.
-func Collect(cat *catalog.Catalog, cadence *health.SchedulingCadence, sensors ...Sensor) (health.NodeVerdict, error) {
-	return CollectWithTimeout(cat, DefaultSensorTimeout, cadence, sensors...)
+// CollectionOptions configures one collection and evaluation run. Its zero
+// value uses DefaultSensorTimeout and requests no cadence window.
+type CollectionOptions struct {
+	// Cadence selects the run window; nil evaluates every registered check.
+	Cadence *health.SchedulingCadence
+	// Timeout bounds each sensor; zero uses DefaultSensorTimeout.
+	Timeout time.Duration
 }
 
-// CollectWithTimeout is [Collect] with an explicit per-sensor collection
-// timeout (used directly mainly by tests, which cannot wait the full
-// default, and by the CLI when YAML sets collection_timeout_seconds).
-// cadence is forwarded to [catalog.Catalog.EvaluateAll]; nil evaluates
-// every registered check. Each sensor is bounded independently and runs sequentially:
+// Collect runs the provided sensors with the default per-sensor timeout,
+// evaluates the catalog against the collected measurements, and
+// aggregates results into a node-level verdict. It is a thin wrapper over
+// [CollectWithOptions]; see it for collection and degradation semantics.
+func Collect(cat *catalog.Catalog, sensors ...Sensor) (health.NodeVerdict, error) {
+	return CollectWithOptions(cat, CollectionOptions{}, sensors...)
+}
+
+// CollectWithOptions is [Collect] with per-run collection and evaluation
+// configuration. A zero timeout uses DefaultSensorTimeout; a nil cadence
+// evaluates every registered check. Each sensor is bounded independently and runs sequentially:
 // if a sensor's Measure does not return within timeout, or returns an
 // error, the failure is degraded into errored measurements (via
 // [Sensor.Errored]) so the catalog fails exactly the dependent checks
@@ -43,9 +48,14 @@ func Collect(cat *catalog.Catalog, cadence *health.SchedulingCadence, sensors ..
 // Sensors that share a backend (see [resourceKeyed]) are short-circuited:
 // once one of them times out, the rest sharing that backend are skipped
 // and degraded without re-entering the presumed-wedged data source.
-// CollectWithTimeout returns an error only when evaluation itself fails,
+// CollectWithOptions returns an error only when evaluation itself fails,
 // never for a sensor failure.
-func CollectWithTimeout(cat *catalog.Catalog, timeout time.Duration, cadence *health.SchedulingCadence, sensors ...Sensor) (health.NodeVerdict, error) {
+func CollectWithOptions(cat *catalog.Catalog, opts CollectionOptions, sensors ...Sensor) (health.NodeVerdict, error) {
+	timeout := opts.Timeout
+	if timeout == 0 {
+		timeout = DefaultSensorTimeout
+	}
+
 	// Backend resource keys whose collection timed out; sensors sharing one
 	// are skipped rather than re-entering a presumed-wedged data source.
 	wedged := make(map[string]bool)
@@ -81,7 +91,7 @@ func CollectWithTimeout(cat *catalog.Catalog, timeout time.Duration, cadence *he
 		}
 	}
 
-	nv, err := cat.EvaluateAll(cadence, all...)
+	nv, err := cat.EvaluateAllWithOptions(catalog.EvaluationOptions{Cadence: opts.Cadence}, all...)
 	if err != nil {
 		return nv, err
 	}
@@ -112,7 +122,7 @@ func warnMissingSensors(nv health.NodeVerdict) {
 }
 
 // resourceKeyed is implemented by sensors that share a data source with
-// other sensors. CollectWithTimeout uses the key to short-circuit: once a
+// other sensors. CollectWithOptions uses the key to short-circuit: once a
 // sensor with a given key times out, the rest sharing it are skipped
 // (their source is presumed wedged) and degraded immediately instead of
 // each waiting the full timeout. Sensors that don't implement it are

@@ -62,7 +62,7 @@ func TestBuildGPUMeasurementsPreservesPerSignalFailure(t *testing.T) {
 
 	validationCatalog, err := newValidationCatalog("H100")
 	require.NoError(t, err)
-	verdict, err := validationCatalog.EvaluateAll(nil, measurements...)
+	verdict, err := validationCatalog.EvaluateAll(measurements...)
 	require.NoError(t, err)
 	require.Len(t, verdict.CheckResults, 3)
 

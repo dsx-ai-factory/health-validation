@@ -116,7 +116,7 @@ func run(cfg config) error {
 	if err != nil {
 		return err
 	}
-	verdict, err := validationCatalog.EvaluateAll(nil, measurements...)
+	verdict, err := validationCatalog.EvaluateAll(measurements...)
 	if err != nil {
 		return fmt.Errorf("evaluate measurements: %w", err)
 	}

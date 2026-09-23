@@ -596,7 +596,7 @@ func TestEvaluateExitCodes(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := evaluate(nodeCatalog(t), toolkit.DefaultSensorTimeout, nil, "test", testNodeID, &stdout, &stderr, c.sensor)
+			code := evaluate(nodeCatalog(t), toolkit.CollectionOptions{}, "test", testNodeID, &stdout, &stderr, c.sensor)
 			if code != c.want {
 				t.Fatalf("evaluate = %d, want %d; stderr=%q", code, c.want, stderr.String())
 			}
@@ -814,7 +814,7 @@ func TestRunCommandDefaultIncludesPrologChecks(t *testing.T) {
 	}
 }
 
-func TestRunCommandCadenceContinuousDropsPrologChecks(t *testing.T) {
+func TestRunCommandCadenceContinuousSkipsPrologChecks(t *testing.T) {
 	a := cadenceRunApp()
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand([]string{"--node-id", testNodeID, "--cadence", "CONTINUOUS"}, &stdout, &stderr); code == exitError {
@@ -825,8 +825,15 @@ func TestRunCommandCadenceContinuousDropsPrologChecks(t *testing.T) {
 		t.Fatalf("unmarshal: %v; stdout = %s", err, stdout.String())
 	}
 	for _, id := range []string{"gpu_power_limit", "gpu_sensor_throttle"} {
-		if verdictHasCheck(v, id) {
-			t.Errorf("CONTINUOUS run included Prolog check %s", id)
+		var reason health.SkipReason
+		for _, skipped := range v.SkippedChecks {
+			if skipped.CheckID == id {
+				reason = skipped.SkipReason
+				break
+			}
+		}
+		if reason != health.CadenceMismatch {
+			t.Errorf("%s skip reason = %v, want CADENCE_MISMATCH", id, reason)
 		}
 	}
 	if !verdictHasCheck(v, "gpu_count") {

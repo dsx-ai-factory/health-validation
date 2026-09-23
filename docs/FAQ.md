@@ -34,6 +34,7 @@ The check did not execute. The `skip_reason` field says why:
 | DEPENDENCY_SKIPPED | A prerequisite check was skipped or failed. | Investigate the dependency. |
 | INSUFFICIENT_HISTORY | Time-window data not yet available. Not triggered by any currently registered check. | Re-run after the window accumulates. |
 | THRESHOLD_UNCONFIGURED | A required-override threshold (one the operator must supply, with no universal default) was not configured. | Set it in the config file for this fleet; `skip_detail` names the threshold. |
+| CADENCE_MISMATCH | Check is not scheduled for the requested run window. | None. This check belongs to another cadence. |
 
 Skipped checks are excluded from `overall_severity`. A node where every check is skipped does not produce PASS; that requires investigation.
 
@@ -51,7 +52,7 @@ Each ID is validated against the registered checks, so a typo is an error rather
 
 The equivalent for a consumer building their own binary is `catalog.WithDisabledChecks()` at catalog construction time. There is still no positive filter (no "run only these"); disabling is subtractive.
 
-For scheduling cadence, checks declare a `SchedulingCadence` field (CONTINUOUS, PROLOG, MAINTENANCE). The CLI optional `--cadence` flag applies the catalog nest (CONTINUOUS > PROLOG > MAINTENANCE): filtering to PROLOG also yields CONTINUOUS checks, and filtering to MAINTENANCE yields every check. **Omit it and every registered check still runs**, including Prolog checks such as `gpu_power_limit`. Job-time integrators that must not run Prolog checks pass `--cadence=CONTINUOUS`. Cadence is not a YAML config field: one cluster config can serve every window.
+For scheduling cadence, checks declare a `SchedulingCadence` field (CONTINUOUS, PROLOG, MAINTENANCE). The CLI optional `--cadence` flag applies the catalog nest (CONTINUOUS > PROLOG > MAINTENANCE): selecting PROLOG runs CONTINUOUS and PROLOG checks, while selecting MAINTENANCE runs every check. Checks outside the requested window appear in `skipped_checks` with `skip_reason: CADENCE_MISMATCH`. **Omit the flag and every registered check still runs**, including Prolog checks such as `gpu_power_limit`. Job-time integrators that must not run Prolog checks pass `--cadence=CONTINUOUS`. Cadence is not a YAML config field: one cluster config can serve every window.
 
 ## Can I add custom checks?
 
@@ -79,10 +80,10 @@ Go 1.27.0. This is declared in each module's `go.mod` (the repo is split into th
 
 The catalog currently centers on GB200 and GB300 GPU nodes, with some checks scoped to further NVIDIA architectures, plus host CPU availability and topology. Registered checks cover host CPU (possible-versus-online logical CPU count and online NUMA node count), GPU power (power limit and power state), GPU count, NVLink (active links, fabric health, fabric status, bandwidth/count/speed, capabilities, and peer-to-peer), fatal mlx5 RDMA link flaps, and a set of XID-driven GPU events (a CRITICAL check per critical Xid code, a consolidated Xid warning check, and the Xid 154 INFO check). See the README's GB300 support note — GB200 coverage has been validated, GB300 coverage has not yet completed the same validation pass.
 
-The sensor interface is extensible. Partners can implement `toolkit.GPUBackend` for other GPU types and supply measurements directly to `cat.EvaluateAll(nil, m)` without modifying catalog source (`nil` cadence is unfiltered). NVIDIA does not author or validate checks for non-NVIDIA hardware.
+The sensor interface is extensible. Partners can implement `toolkit.GPUBackend` for other GPU types and supply measurements directly to `cat.EvaluateAll(m)` without modifying catalog source. NVIDIA does not author or validate checks for non-NVIDIA hardware.
 
 ## Can I test without a GPU?
 
-Yes. The toolkit ships mock constructors: `toolkit.MockGPU(measurements...)` returns a `GPUBackend`, and `toolkit.MockCPU(measurement)` returns a `CPUBackend`. Pass them to their matching sensor constructors and call `toolkit.Collect(cat, nil, sensor)` normally (`nil` cadence is unfiltered).
+Yes. The toolkit ships mock constructors: `toolkit.MockGPU(measurements...)` returns a `GPUBackend`, and `toolkit.MockCPU(measurement)` returns a `CPUBackend`. Pass them to their matching sensor constructors and call `toolkit.Collect(cat, sensor)` normally.
 
-The catalog itself has no hardware dependency. Populate `gpu.GPUMeasurement` directly and call `cat.EvaluateAll(nil, m)` for fully in-process testing.
+The catalog itself has no hardware dependency. Populate `gpu.GPUMeasurement` directly and call `cat.EvaluateAll(m)` for fully in-process testing.

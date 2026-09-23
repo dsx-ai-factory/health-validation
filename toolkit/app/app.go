@@ -400,7 +400,10 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	if a.ib != nil {
 		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
 	}
-	return evaluate(cat, timeout, cadence, a.prog, resolvedNodeID, stdout, stderr, sensors...)
+	return evaluate(cat, toolkit.CollectionOptions{
+		Cadence: cadence,
+		Timeout: timeout,
+	}, a.prog, resolvedNodeID, stdout, stderr, sensors...)
 }
 
 func (a *App) resolveNodeID(value string, supplied bool) (string, error) {
@@ -497,13 +500,12 @@ func buildCatalog(configPath string, customChecks []health.CheckDefinition, arch
 	return final, cfg.CollectionTimeout(), nil
 }
 
-// evaluate runs the sensors through the catalog under the given per-sensor
-// timeout, prints the node verdict as indented JSON, and returns the process
-// exit code. It takes the timeout, cadence, and sensors as arguments so tests
-// can inject mock sensors without hardware. A nil cadence evaluates every
-// registered check.
-func evaluate(cat *catalog.Catalog, timeout time.Duration, cadence *health.SchedulingCadence, prog, nodeID string, stdout, stderr io.Writer, sensors ...toolkit.Sensor) int {
-	verdict, err := toolkit.CollectWithTimeout(cat, timeout, cadence, sensors...)
+// evaluate runs the sensors through the catalog, prints the node verdict as
+// indented JSON, and returns the process exit code. It takes the collection
+// options and sensors as arguments so tests can inject per-run configuration
+// and mock sensors without hardware.
+func evaluate(cat *catalog.Catalog, opts toolkit.CollectionOptions, prog, nodeID string, stdout, stderr io.Writer, sensors ...toolkit.Sensor) int {
+	verdict, err := toolkit.CollectWithOptions(cat, opts, sensors...)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 		return exitError

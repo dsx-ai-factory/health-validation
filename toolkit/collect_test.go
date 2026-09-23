@@ -17,7 +17,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 )
 
-func TestCollect_HealthyNode(t *testing.T) {
+func TestCollectWithOptions_ZeroValueHealthyNode(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -27,7 +27,7 @@ func TestCollect_HealthyNode(t *testing.T) {
 		node.NodeMeasurement{GPUCount: 4},
 	))
 
-	nv, err := toolkit.Collect(cat, nil, sensor)
+	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{}, sensor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestCollect_FailingNode(t *testing.T) {
 		node.NodeMeasurement{GPUCount: 3},
 	))
 
-	nv, err := toolkit.Collect(cat, nil, sensor)
+	nv, err := toolkit.Collect(cat, sensor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestCollect_FailingNode(t *testing.T) {
 	}
 }
 
-func TestCollect_ContinuousCadenceDropsPrologChecks(t *testing.T) {
+func TestCollectWithOptions_ContinuousCadenceSkipsPrologChecks(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -71,22 +71,21 @@ func TestCollect_ContinuousCadenceDropsPrologChecks(t *testing.T) {
 		gpu.GPUMeasurement{GPUID: "GPU-0"},
 	))
 	cadence := health.Continuous
-	nv, err := toolkit.Collect(cat, &cadence, sensor)
+	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Cadence: &cadence}, sensor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seen := map[string]bool{}
-	for _, v := range nv.CheckResults {
-		seen[v.CheckID] = true
-	}
+	skipped := map[string]health.SkipReason{}
 	for _, v := range nv.SkippedChecks {
-		seen[v.CheckID] = true
+		skipped[v.CheckID] = v.SkipReason
 	}
-	if seen["gpu_power_limit"] || seen["gpu_sensor_throttle"] {
-		t.Errorf("CONTINUOUS Collect included Prolog checks: %v", seen)
+	for _, id := range []string{"gpu_power_limit", "gpu_sensor_throttle"} {
+		if skipped[id] != health.CadenceMismatch {
+			t.Errorf("%s skip reason = %v, want CADENCE_MISMATCH", id, skipped[id])
+		}
 	}
-	if !seen["gpu_power_state"] {
-		t.Error("CONTINUOUS Collect missing Continuous check gpu_power_state")
+	if _, ok := skipped["gpu_power_state"]; ok {
+		t.Error("CONTINUOUS Collect unexpectedly skipped Continuous check gpu_power_state")
 	}
 }
 
@@ -113,7 +112,7 @@ func TestCollect_MissingSensorSurfacesAsSkip(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	nv, err := toolkit.Collect(cat, nil, emptySensor{name: "node"})
+	nv, err := toolkit.Collect(cat, emptySensor{name: "node"})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -154,7 +153,7 @@ func TestCollect_MissingSensorWarns(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	if _, err := toolkit.Collect(cat, nil, emptySensor{name: "node"}); err != nil {
+	if _, err := toolkit.Collect(cat, emptySensor{name: "node"}); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 
@@ -208,7 +207,7 @@ func TestCollect_SensorErrorDegradesToCritical(t *testing.T) {
 		},
 	}
 
-	nv, err := toolkit.Collect(cat, nil, sensor)
+	nv, err := toolkit.Collect(cat, sensor)
 	if err != nil {
 		t.Fatalf("Collect returned error, want graceful degrade: %v", err)
 	}
@@ -254,7 +253,7 @@ func TestCollect_FailingSensorDoesNotMaskHealthy(t *testing.T) {
 		},
 	}
 
-	nv, err := toolkit.Collect(cat, nil, healthy, failing)
+	nv, err := toolkit.Collect(cat, healthy, failing)
 	if err != nil {
 		t.Fatalf("Collect returned error: %v", err)
 	}
@@ -309,11 +308,11 @@ func (s *blockingSensor) Measure(ctx context.Context) ([]health.Measurement, err
 
 func (s *blockingSensor) Errored(err error) []health.Measurement { return s.errored(err) }
 
-// TestCollectWithTimeout_UninterruptibleSensorDoesNotHang is the core
+// TestCollectWithOptions_UninterruptibleSensorDoesNotHang is the core
 // safety property: a sensor whose Measure ignores cancellation (as a
 // wedged cgo call would) must not hang the run — the watchdog ends the
 // wait and degrades the sensor to Critical.
-func TestCollectWithTimeout_UninterruptibleSensorDoesNotHang(t *testing.T) {
+func TestCollectWithOptions_UninterruptibleSensorDoesNotHang(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -331,7 +330,7 @@ func TestCollectWithTimeout_UninterruptibleSensorDoesNotHang(t *testing.T) {
 
 	done := make(chan health.NodeVerdict, 1)
 	go func() {
-		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, s)
+		nv, _ := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, s)
 		done <- nv
 	}()
 
@@ -341,15 +340,15 @@ func TestCollectWithTimeout_UninterruptibleSensorDoesNotHang(t *testing.T) {
 			t.Errorf("overall = %v, want CRITICAL", nv.OverallSeverity)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("CollectWithTimeout hung on a sensor that ignores cancellation")
+		t.Fatal("CollectWithOptions hung on a sensor that ignores cancellation")
 	}
 }
 
-// TestCollectWithTimeout_TimeoutDegradesToCritical verifies a timed-out
+// TestCollectWithOptions_TimeoutDegradesToCritical verifies a timed-out
 // sensor produces a Critical verdict whose message surfaces the deadline,
 // so a timeout is distinguishable from a healthy or otherwise-failed
 // check.
-func TestCollectWithTimeout_TimeoutDegradesToCritical(t *testing.T) {
+func TestCollectWithOptions_TimeoutDegradesToCritical(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -364,9 +363,9 @@ func TestCollectWithTimeout_TimeoutDegradesToCritical(t *testing.T) {
 	}
 	defer close(s.release)
 
-	nv, err := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, s)
+	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, s)
 	if err != nil {
-		t.Fatalf("CollectWithTimeout returned error, want graceful degrade: %v", err)
+		t.Fatalf("CollectWithOptions returned error, want graceful degrade: %v", err)
 	}
 	if nv.OverallSeverity != health.Critical {
 		t.Fatalf("overall = %v, want CRITICAL", nv.OverallSeverity)
@@ -390,9 +389,9 @@ func TestCollectWithTimeout_TimeoutDegradesToCritical(t *testing.T) {
 	}
 }
 
-// TestCollectWithTimeout_TimeoutDoesNotMaskHealthy verifies a timed-out
+// TestCollectWithOptions_TimeoutDoesNotMaskHealthy verifies a timed-out
 // sensor in one domain does not suppress a healthy sensor in another.
-func TestCollectWithTimeout_TimeoutDoesNotMaskHealthy(t *testing.T) {
+func TestCollectWithOptions_TimeoutDoesNotMaskHealthy(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -410,9 +409,9 @@ func TestCollectWithTimeout_TimeoutDoesNotMaskHealthy(t *testing.T) {
 	}
 	defer close(slow.release)
 
-	nv, err := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, healthy, slow)
+	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, healthy, slow)
 	if err != nil {
-		t.Fatalf("CollectWithTimeout returned error: %v", err)
+		t.Fatalf("CollectWithOptions returned error: %v", err)
 	}
 	if got := nv.SeverityByDomain[health.Node]; got != health.Pass {
 		t.Errorf("node domain = %v, want PASS (healthy sensor must not be masked)", got)
@@ -422,10 +421,10 @@ func TestCollectWithTimeout_TimeoutDoesNotMaskHealthy(t *testing.T) {
 	}
 }
 
-// TestCollectWithTimeout_CircuitBreakerSkipsWedgedResource verifies that
+// TestCollectWithOptions_CircuitBreakerSkipsWedgedResource verifies that
 // once a sensor times out, a later sensor sharing the same backend
 // resource is skipped — its Measure never runs — and degraded directly.
-func TestCollectWithTimeout_CircuitBreakerSkipsWedgedResource(t *testing.T) {
+func TestCollectWithOptions_CircuitBreakerSkipsWedgedResource(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -462,7 +461,7 @@ func TestCollectWithTimeout_CircuitBreakerSkipsWedgedResource(t *testing.T) {
 
 	done := make(chan health.NodeVerdict, 1)
 	go func() {
-		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, first, second)
+		nv, _ := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, first, second)
 		done <- nv
 	}()
 
@@ -480,14 +479,14 @@ func TestCollectWithTimeout_CircuitBreakerSkipsWedgedResource(t *testing.T) {
 			t.Errorf("nvlink domain = %v, want CRITICAL (skipped via circuit breaker)", got)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("CollectWithTimeout hung")
+		t.Fatal("CollectWithOptions hung")
 	}
 }
 
-// TestCollectWithTimeout_CircuitBreakerScopedToResource verifies the
+// TestCollectWithOptions_CircuitBreakerScopedToResource verifies the
 // breaker is per-resource: a wedged backend does not skip a sensor on a
 // different backend, which still collects normally.
-func TestCollectWithTimeout_CircuitBreakerScopedToResource(t *testing.T) {
+func TestCollectWithOptions_CircuitBreakerScopedToResource(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -512,7 +511,7 @@ func TestCollectWithTimeout_CircuitBreakerScopedToResource(t *testing.T) {
 
 	done := make(chan health.NodeVerdict, 1)
 	go func() {
-		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, nil, wedged, healthy)
+		nv, _ := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, wedged, healthy)
 		done <- nv
 	}()
 
@@ -525,7 +524,7 @@ func TestCollectWithTimeout_CircuitBreakerScopedToResource(t *testing.T) {
 			t.Errorf("node domain = %v, want PASS (different resource must still be collected)", got)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("CollectWithTimeout hung")
+		t.Fatal("CollectWithOptions hung")
 	}
 }
 
@@ -576,9 +575,9 @@ func (s panicSensor) Measure(context.Context) ([]health.Measurement, error) {
 
 func (s panicSensor) Errored(err error) []health.Measurement { return s.errored(err) }
 
-// TestCollectWithTimeout_SensorPanicDegradesToCritical verifies a panicking
+// TestCollectWithOptions_SensorPanicDegradesToCritical verifies a panicking
 // Measure is recovered and degraded, not allowed to crash the process.
-func TestCollectWithTimeout_SensorPanicDegradesToCritical(t *testing.T) {
+func TestCollectWithOptions_SensorPanicDegradesToCritical(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -590,9 +589,9 @@ func TestCollectWithTimeout_SensorPanicDegradesToCritical(t *testing.T) {
 		},
 	}
 
-	nv, err := toolkit.CollectWithTimeout(cat, time.Second, nil, s)
+	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: time.Second}, s)
 	if err != nil {
-		t.Fatalf("CollectWithTimeout returned error, want graceful degrade: %v", err)
+		t.Fatalf("CollectWithOptions returned error, want graceful degrade: %v", err)
 	}
 	if nv.OverallSeverity != health.Critical {
 		t.Fatalf("overall = %v, want CRITICAL", nv.OverallSeverity)

@@ -314,9 +314,10 @@ stdout to your log shipper is a complete integration for non-scheduler fleets.
 
 > **Cadence note.** Omit `--cadence` and all registered
 > checks run on every invocation. Pass `--cadence=CONTINUOUS|PROLOG|MAINTENANCE`
-> to evaluate only checks whose declared cadence covers that window (Continuous
-> ⊂ Prolog ⊂ Maintenance). A job-time run that must not evaluate Prolog
-> checks uses `--cadence=CONTINUOUS`.
+> to run checks whose declared cadence covers that window (Continuous
+> ⊂ Prolog ⊂ Maintenance); checks outside it are reported as
+> `CADENCE_MISMATCH` skips. A job-time run that must not evaluate Prolog checks
+> uses `--cadence=CONTINUOUS`.
 
 ## 3. Read and act on the verdict
 

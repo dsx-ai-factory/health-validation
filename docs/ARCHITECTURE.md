@@ -5,14 +5,14 @@
 | Package | Role |
 |---|---|
 | `catalog/health` | Shared vocabulary and node-verdict aggregation. Defines all domain types: `CheckDefinition`, `CheckVerdict`, `NodeVerdict`, the `Measurement` interface, and all enums. It depends on the leaf `catalog/version` package for verdict provenance and does not import check-domain or evaluation packages. |
-| `catalog` | Check registry and evaluation entry point. `Catalog` is a thread-safe registry that holds check definitions and exposes `EvaluateAll(cadence, measurements...)`. Built-in checks are registered in `checks.go`. |
+| `catalog` | Check registry and evaluation entry point. `Catalog` is a thread-safe registry that holds check definitions and exposes `EvaluateAll(measurements...)` plus per-run configuration through `EvaluateAllWithOptions`. Built-in checks are registered in `checks.go`. |
 | `catalog/cpu` | `cpu.CPUMeasurement` and the host-wide `CPUCount` and `NUMANodeCount` check definitions. |
 | `catalog/gpu` | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPowerState` check definitions. |
 | `catalog/node` | `node.NodeMeasurement` struct and the node-level `GPUCount` check definition. |
 | `catalog/nvlink` | `nvlink.NVLinkMeasurement` struct and its NVLink check definitions (`NVLinkActive`, `NVLinkFabricHealth`, `NVLinkFabric`, `NVLinkBandwidthCountSpeed`, `NVLinkCapabilities`, `NVLinkP2P`). |
 | `catalog/infiniband` | `infiniband.LinkFlapMeasurement` struct and the `RDMALinkFlapFatal` check definition (category `infiniband`). |
 | `catalog/xid` | `xid.XidMeasurement` struct and the XID check factory `xid.Checks()`, which returns one CRITICAL check per critical Xid code, a consolidated WARNING check (`gpu_xid_warning`), and the INFO `gpu_xid_154` check. |
-| `toolkit` | Sensor and per-domain backend interfaces, `Collect()` / `CollectWithTimeout()`, production backends including `SysfsCPU`, and mock helpers. |
+| `toolkit` | Sensor and per-domain backend interfaces, `Collect()` / `CollectWithOptions()`, production backends including `SysfsCPU`, and mock helpers. |
 | `catalog/internal/celeval` | Evaluates CEL expressions from check `Rule` definitions against signal values and resolved thresholds. Not a public API. |
 | `catalog/internal/evaluation` | Orchestrates a single check evaluation: filters by architecture/context, resolves threshold overrides, calls CEL, returns `CheckVerdict`. Not a public API. |
 | `toolkit/cmd/health-validation` | Binary entry point. Subcommands: `run`, `version`. |
@@ -54,7 +54,7 @@ To add a sensor for a new hardware domain: define a measurement struct in `catal
 | `catalog.WithDisabledChecks("check_id", ...)` | Named checks are skipped with `CHECK_DISABLED`. Built from a config file's `disabled_checks:` via `Config.DisabledCheckIDs()`. |
 | `catalog.WithOverrides(overrides)` | Applies operator threshold overrides. Built from a config file via `Config.Overrides()`. |
 
-Scheduling cadence is not a construction option. Pass a `*health.SchedulingCadence` into `EvaluateAll` / `Collect` / `CollectWithTimeout` (nil evaluates every registered check). One catalog can serve Continuous, Prolog, and Maintenance windows.
+Scheduling cadence is not a construction option. Set `Cadence` in per-run `catalog.EvaluationOptions` or `toolkit.CollectionOptions`; either zero value evaluates every registered check, and zero-value collection options also use the default timeout. Checks outside the requested window are reported with `CADENCE_MISMATCH`, allowing dependent checks to follow the normal `DEPENDENCY_SKIPPED` cascade. One catalog can serve Continuous, Prolog, and Maintenance windows.
 
 ## Execution contexts
 
@@ -66,7 +66,7 @@ Scheduling cadence is not a construction option. Pass a `*health.SchedulingCaden
 
 ## Output schema
 
-The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (currently `"0.2"`, from `NodeVerdictSchemaVersion` in `catalog/health/verdict.go`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
+The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (`health.NodeVerdictSchemaVersion` in `catalog/health/verdict.go`, mirrored by `catalog/health/node-verdict.schema.json`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
 
 ### NodeVerdict
 
@@ -134,7 +134,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 
 1. Add any new signal fields to the measurement struct in `catalog/<domain>/measurement.go`. Add matching `Signal*` string constants.
 2. Write a `CheckDefinition` factory in `catalog/<domain>/`. Declare `RequiredSignals`, `Thresholds`, and `Rules` (CEL expressions referencing signal names and threshold names).
-3. Register it in `catalog/checks.go` via `builtinChecks()` so `catalog.New()` and the stock CLI run it. Declare `SchedulingCadence` on the check. Omit `--cadence` (or pass a nil cadence into `EvaluateAll` / `Collect` / `CollectWithTimeout`) to evaluate every registered check; pass a window to keep only checks whose cadence covers it (Continuous ⊂ Prolog ⊂ Maintenance).
+3. Register it in `catalog/checks.go` via `builtinChecks()` so `catalog.New()` and the stock CLI run it. Declare `SchedulingCadence` on the check. Omit `--cadence` (or use a zero-value evaluation/collection context) to evaluate every registered check; set a cadence to run checks whose cadence covers that window (Continuous ⊂ Prolog ⊂ Maintenance) and report the others as skipped.
 4. Add a test covering the PASS path, at least one non-PASS path, and the skipped path (errored measurement).
 
 ## Build
