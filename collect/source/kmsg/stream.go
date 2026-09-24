@@ -60,6 +60,8 @@ func startStream(file io.ReadCloser, bootTime time.Time, bootID string, capacity
 				s.records = append(s.records, msg)
 				return
 			}
+			// Sensors match after Read. A new raw record can evict a match
+			// before the next collection; eviction does not set an error.
 			s.records[s.next] = msg
 			s.next = (s.next + 1) % len(s.records)
 		}, func(err error) {
@@ -76,7 +78,8 @@ func startStream(file io.ReadCloser, bootTime time.Time, bootID string, capacity
 
 // Read returns an independent snapshot, oldest first, without consuming records.
 // It can be empty during startup. After Close or reader failure, retained records
-// are returned with the error. Eviction keeps only the newest capacity records.
+// are returned with the error. This is a window, not a lossless event queue:
+// eviction keeps only the newest capacity records.
 func (s *Stream) Read(ctx context.Context) ([]Message, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
