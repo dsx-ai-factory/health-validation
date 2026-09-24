@@ -13,6 +13,7 @@ go_library(
         "entity.go",
         "enum.go",
         "errors.go",
+        "host.go",
         "measurement.go",
         "threshold.go",
         "verdict.go",

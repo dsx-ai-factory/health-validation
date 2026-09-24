@@ -39,7 +39,7 @@ func NewEvaluationEngine() *EvaluationEngine {
 type Params struct {
 	Overrides        map[string]any
 	Cadence          *health.SchedulingCadence
-	Architecture     string
+	Host             health.Host
 	ExecutionContext health.ExecutionContext
 	Disabled         bool
 }
@@ -369,9 +369,9 @@ func checkLevelSkip(cd *health.CheckDefinition, p Params, now time.Time) (health
 			fmt.Sprintf("check cadence %s does not cover requested cadence %s", cd.SchedulingCadence, *p.Cadence)), true
 	}
 
-	if p.Architecture != "" && len(cd.Architectures) > 0 && !slices.Contains(cd.Architectures, p.Architecture) {
+	if p.Host.Architecture != "" && len(cd.Architectures) > 0 && !slices.Contains(cd.Architectures, p.Host.Architecture) {
 		return skippedVerdict(cd, now, health.ArchitectureUnsupported,
-			fmt.Sprintf("check requires %v, running on %s", cd.Architectures, p.Architecture)), true
+			fmt.Sprintf("check requires %v, running on %s", cd.Architectures, p.Host.Architecture)), true
 	}
 
 	if len(cd.ExecutionContexts) > 0 && !slices.Contains(cd.ExecutionContexts, p.ExecutionContext) {
@@ -417,7 +417,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		return withEntity(ErroredVerdict(cd, now, detail, action), entity), nil
 	}
 
-	resolved, err := resolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
+	resolved, err := resolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Host.Architecture)
 	if err != nil {
 		return health.CheckVerdict{}, err
 	}
