@@ -6,6 +6,7 @@ package infiniband
 import (
 	"context"
 	"io/fs"
+	"strings"
 	"syscall"
 	"testing"
 	"testing/fstest"
@@ -20,11 +21,13 @@ import (
 
 func TestRead(t *testing.T) {
 	files := fstest.MapFS{
+		"mlx5_0/ports/1/link_layer":                {Data: []byte("InfiniBand")},
 		"mlx5_0/ports/1/state":                     {Data: []byte("4: ACTIVE\n")},
 		"mlx5_0/ports/1/rate":                      {Data: []byte("2.5 Gb/sec (1X SDR)\n")},
 		"mlx5_0/ports/1/counters/port_rcv_data":    {Data: []byte("123\n")},
 		"mlx5_0/ports/1/counters/port_xmit_data":   {Data: []byte("18446744073709551615")},
 		"mlx5_0/ports/1/hw_counters/out_of_buffer": {Data: []byte("N/A (no PMA)")},
+		"mlx5_1/ports/1/link_layer":                {Data: []byte("InfiniBand")},
 		"mlx5_1/ports/1/state":                     {Data: []byte("bad state")},
 	}
 	s := New(files)
@@ -45,6 +48,7 @@ func TestRead(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, readings, 1)
 	// Re-enumeration discovers newly added ports without rebuilding the source.
+	files["mlx5_0/ports/2/link_layer"] = &fstest.MapFile{Data: []byte("InfiniBand")}
 	files["mlx5_0/ports/2/state"] = &fstest.MapFile{Data: []byte("1: DOWN")}
 	readings, err = s.Read(context.Background(), collect.Signals{ibsignals.State})
 	require.NoError(t, err)
@@ -56,10 +60,16 @@ type restrictedFS struct {
 	reads int
 }
 
-func (f *restrictedFS) ReadFile(string) ([]byte, error) { f.reads++; return nil, syscall.EINVAL }
+func (f *restrictedFS) ReadFile(name string) ([]byte, error) {
+	if strings.HasSuffix(name, "/link_layer") {
+		return fs.ReadFile(f.FS, name)
+	}
+	f.reads++
+	return nil, syscall.EINVAL
+}
 
 func TestRestrictedFilesAndSelection(t *testing.T) {
-	files := &restrictedFS{FS: fstest.MapFS{"mlx5_0/ports/1/state": {}, "mlx5_0/ports/1/counters/link_downed": {}}}
+	files := &restrictedFS{FS: fstest.MapFS{"mlx5_0/ports/1/link_layer": {Data: []byte("InfiniBand")}, "mlx5_0/ports/1/state": {}, "mlx5_0/ports/1/counters/link_downed": {}}}
 	s := New(files)
 	for range 2 {
 		readings, err := s.Read(context.Background(), collect.Signals{ibsignals.LinkDowned})
@@ -103,11 +113,29 @@ func (s externalSignal) ID() string    { return s[0] }
 func (s externalSignal) Unit() *string { unit := "wrong"; return &unit }
 
 func TestCanonicalSelection(t *testing.T) {
-	s := New(fstest.MapFS{"mlx5_0/ports/1/counters/port_rcv_data": {Data: []byte("10")}})
+	s := New(fstest.MapFS{"mlx5_0/ports/1/link_layer": {Data: []byte("InfiniBand")}, "mlx5_0/ports/1/counters/port_rcv_data": {Data: []byte("10")}})
 	definition := externalSignal{ibsignals.PortRcvData.ID()}
 	readings, err := s.Read(context.Background(), collect.Signals{definition, definition})
 	require.NoError(t, err)
 	require.Len(t, readings, 1)
 	require.Equal(t, int64(40), readings[0].Value.GetIntValue())
 	require.Equal(t, "bytes", *readings[0].Signal.Unit())
+}
+
+func TestPortReadAlwaysIncludesLinkLayer(t *testing.T) {
+	for _, layer := range []string{" InfiniBand\n", "Ethernet", "Unknown", ""} {
+		t.Run(layer, func(t *testing.T) {
+			s := New(fstest.MapFS{
+				"mlx5_0/ports/1/link_layer": {Data: []byte(layer)},
+				"mlx5_0/ports/1/state":      {Data: []byte("4: ACTIVE")},
+			})
+			readings, err := s.Read(context.Background(), collect.Signals{ibsignals.State})
+			require.NoError(t, err)
+			require.Len(t, readings, 1)
+			require.Nil(t, readings[0].Failure)
+			require.NotNil(t, readings[0].LinkLayer)
+			require.Equal(t, strings.TrimSpace(layer), *readings[0].LinkLayer)
+			require.Equal(t, int64(4), readings[0].Value.GetIntValue())
+		})
+	}
 }

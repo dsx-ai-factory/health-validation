@@ -58,10 +58,14 @@ type Reading struct {
 	Value   *observation.Value
 	Failure *observation.CollectionError
 	Entity  *observation.Entity
+	// LinkLayer accompanies every port reading, even when not selected as a signal.
+	// Nil means link_layer could not be read, or this is a device reading.
+	LinkLayer *string
 }
 
 // Read re-enumerates ports on every call and preserves successful fields when
-// a sibling field or device fails. Only selected files are read.
+// a sibling field or device fails. Port reads always include link_layer, as GPUd
+// does; all other files are read only when selected.
 func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("collection context is required")
@@ -125,6 +129,9 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 			return cmp.Compare(x, y)
 		})
 		for _, port := range ports {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			portNumber, parseErr := strconv.ParseUint(port.Name(), 10, 32)
 			if parseErr != nil {
 				continue
@@ -132,6 +139,15 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 			portName := strconv.FormatUint(portNumber, 10)
 			portPath := path.Join(device.Name(), "ports", portName)
 			entity := &observation.Entity{Type: "infiniband_port", Id: path.Join(device.Name(), portName)}
+			// GPUd's class collector requires link_layer before reading port values.
+			layer := s.readSignal(ibsignals.LinkLayer, path.Join(portPath, "link_layer"), entity, cache)
+			if layer.Failure != nil {
+				for _, signal := range portSignals {
+					readings = append(readings, Reading{Signal: signal, Entity: entity, Failure: layer.Failure})
+				}
+				continue
+			}
+			linkLayer := layer.Value.GetStringValue()
 			counterErrors := s.counterErrors(portPath, portSignals)
 			for _, signal := range portSignals {
 				if contextErr := ctx.Err(); contextErr != nil {
@@ -142,10 +158,12 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 				if err := counterErrors[file]; err != nil {
 					failure := Failure(err)
 					failure.Operation = name
-					readings = append(readings, Reading{Signal: signal, Entity: entity, Failure: failure})
+					readings = append(readings, Reading{Signal: signal, Entity: entity, Failure: failure, LinkLayer: &linkLayer})
 					continue
 				}
-				readings = append(readings, s.readSignal(signal, name, entity, cache))
+				reading := s.readSignal(signal, name, entity, cache)
+				reading.LinkLayer = &linkLayer
+				readings = append(readings, reading)
 			}
 		}
 	}

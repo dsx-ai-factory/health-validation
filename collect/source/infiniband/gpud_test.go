@@ -105,7 +105,9 @@ func TestGPUdFixtureParity(t *testing.T) {
 
 func TestGPUdDiscoveryAndCounterParsing(t *testing.T) {
 	files := fstest.MapFS{
+		"mlx5_0/ports/10/link_layer":    {Data: []byte("InfiniBand")},
 		"mlx5_0/ports/10/state":         {Data: []byte("4: ACTIVE")},
+		"mlx5_0/ports/2/link_layer":     {Data: []byte("InfiniBand")},
 		"mlx5_0/ports/2/state":          {Data: []byte("1: DOWN")},
 		"mlx5_0/ports/not-a-port/state": {},
 		"renamed/ports/1/state":         {},
@@ -259,6 +261,7 @@ func TestParseRate(t *testing.T) {
 
 func TestGPUdOptionalValues(t *testing.T) {
 	files := fstest.MapFS{
+		"mlx5_0/ports/1/link_layer":                {Data: []byte("InfiniBand")},
 		"mlx5_0/board_id":                          {},
 		"mlx5_0/ports/1/counters/link_downed":      {Data: []byte("prefix N/A (no PMA)")},
 		"mlx5_0/ports/1/hw_counters/out_of_buffer": {Data: []byte("N/A (not available)")},

@@ -7,6 +7,7 @@ package infiniband
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -21,6 +22,7 @@ const ID = "infiniband.sysfs"
 type sensor struct{ source *ibsource.Source }
 
 // New returns a sensor using the supplied source, or the host sysfs when nil.
+// Like GPUd, it excludes ports whose link layer is not InfiniBand.
 func New(source *ibsource.Source) collect.Sensor {
 	if source == nil {
 		source = ibsource.New(nil)
@@ -55,6 +57,11 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	}
 	for _, reading := range readings {
 		entity := reading.Entity
+		// GPUd components/accelerator/nvidia/infiniband/types.IBPort.IsIBPort.
+		// Preserve failures when link_layer itself could not be read.
+		if reading.LinkLayer != nil && !strings.EqualFold(*reading.LinkLayer, "infiniband") {
+			continue
+		}
 		if reading.Failure != nil {
 			batch.Observations = append(batch.Observations, observation.NewCollectionErrorObservation(reading.Signal.ID(), reading.Signal.Unit(), ibsource.Name, "read", entity, now, reading.Failure))
 			continue
