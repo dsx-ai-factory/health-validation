@@ -6,9 +6,11 @@ package xid
 import (
 	"strings"
 	"testing"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
 
-func TestDriverEraFromVersion(t *testing.T) {
+func TestDriverEraFrom(t *testing.T) {
 	tests := []struct {
 		version string
 		want    DriverEra
@@ -17,15 +19,28 @@ func TestDriverEraFromVersion(t *testing.T) {
 		{"576.02.01", DriverEraV2},
 		{"574.99.99", DriverEraV1},
 		{"570.86.10", DriverEraV1},
-		{"", DriverEraUnknown},
-		{"not-a-version", DriverEraUnknown},
+		// The threshold is inclusive on the major version alone, so a
+		// .0 minor on the boundary release is still V2.
+		{"575.0", DriverEraV2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.version, func(t *testing.T) {
-			if got := DriverEraFromVersion(tt.version); got != tt.want {
-				t.Errorf("DriverEraFromVersion(%q) = %v, want %v", tt.version, got, tt.want)
+			v, ok := health.ParseDriverVersion(tt.version)
+			if !ok {
+				t.Fatalf("ParseDriverVersion(%q) failed", tt.version)
+			}
+			if got := DriverEraFrom(v); got != tt.want {
+				t.Errorf("DriverEraFrom(%s) = %v, want %v", tt.version, got, tt.want)
 			}
 		})
+	}
+}
+
+// An unknown version must not be guessed into an era: decoding under the
+// wrong bit layout matches an unrelated row.
+func TestDriverEraFrom_UnknownVersion(t *testing.T) {
+	if got := DriverEraFrom(health.DriverVersion{}); got != DriverEraUnknown {
+		t.Errorf("DriverEraFrom(unknown) = %v, want DriverEraUnknown", got)
 	}
 }
 

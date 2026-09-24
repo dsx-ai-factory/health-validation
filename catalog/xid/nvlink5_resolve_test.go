@@ -18,6 +18,21 @@ const (
 	ignoreRow     = "0x00000002"
 )
 
+// Driver versions either side of R565, where NVIDIA's Xid 154 linkage
+// for this family begins.
+var (
+	driver575 = mustDriverVersion("575.51.03")
+	driver560 = mustDriverVersion("560.35.03")
+)
+
+func mustDriverVersion(raw string) health.DriverVersion {
+	v, ok := health.ParseDriverVersion(raw)
+	if !ok {
+		panic("mustDriverVersion: unparseable " + raw)
+	}
+	return v
+}
+
 func srcTrackEvent(pci, errorStatus string) xid.XidEvent {
 	return xid.XidEvent{
 		PCIAddress: pci,
@@ -54,7 +69,7 @@ func k146(bucket string) string { return xid.NVLink5ResolutionKey(146, bucket) }
 func TestNVLink5ResolutionCounts_TableRowNeedsNo154(t *testing.T) {
 	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 		srcTrackEvent("0019:01:00", resetOutright),
-	}, "575.51.03")
+	}, driver575)
 
 	if got[k145(xid.ResolutionResetGPU)] != 1 {
 		t.Errorf("counts = %v, want %s -> 1", got, k145(xid.ResolutionResetGPU))
@@ -68,7 +83,7 @@ func TestNVLink5ResolutionCounts_KeyedPerCode(t *testing.T) {
 	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 		srcTrackEvent("0019:01:00", resetOutright), // 145 -> RESET_GPU
 		unmatchedEvent("0019:01:00", true),         // 146 -> RESET_GPU_UNCONFIRMED
-	}, "575.51.03")
+	}, driver575)
 
 	if got[k145(xid.ResolutionResetGPU)] != 1 {
 		t.Errorf("counts = %v, want %s -> 1", got, k145(xid.ResolutionResetGPU))
@@ -98,7 +113,7 @@ func TestNVLink5ResolutionCounts_DeferralUsesThe154(t *testing.T) {
 			got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 				srcTrackEvent("0019:01:00", deferToXid154),
 				recoveryEvent("0019:01:00", "0x0", "None", tc.toCode, tc.toName),
-			}, "575.51.03")
+			}, driver575)
 
 			if got[tc.wantKey] != 1 {
 				t.Errorf("counts = %v, want %s -> 1", got, tc.wantKey)
@@ -117,7 +132,7 @@ func TestNVLink5ResolutionCounts_DeferralUsesThe154(t *testing.T) {
 func TestNVLink5ResolutionCounts_DeferralWithNo154(t *testing.T) {
 	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 		srcTrackEvent("0019:01:00", deferToXid154),
-	}, "560.35.03")
+	}, driver560)
 
 	if got[k145(xid.ResolutionXid154Missing)] != 1 {
 		t.Errorf("counts = %v, want %s -> 1", got, k145(xid.ResolutionXid154Missing))
@@ -137,7 +152,7 @@ func TestNVLink5ResolutionCounts_ResolvedPerGPU(t *testing.T) {
 		srcTrackEvent("0018:01:00", deferToXid154),
 		srcTrackEvent("0019:01:00", deferToXid154),
 		recoveryEvent("0019:01:00", "0x0", "None", "0x1", "GPU Reset Required"),
-	}, "575.51.03")
+	}, driver575)
 
 	if got[k145(xid.ResolutionResetGPU)] != 1 {
 		t.Errorf("counts = %v, want exactly one %s (0019 only)", got, k145(xid.ResolutionResetGPU))
@@ -154,7 +169,7 @@ func TestNVLink5ResolutionCounts_CountsEventsNotGPUs(t *testing.T) {
 	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 		srcTrackEvent("0019:01:00", resetOutright),
 		srcTrackEvent("0019:01:00", resetOutright),
-	}, "575.51.03")
+	}, driver575)
 
 	if got[k145(xid.ResolutionResetGPU)] != 2 {
 		t.Errorf("counts = %v, want %s -> 2", got, k145(xid.ResolutionResetGPU))
@@ -165,7 +180,7 @@ func TestNVLink5ResolutionCounts_IgnoresNonNVLink5Events(t *testing.T) {
 	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 		{PCIAddress: "0019:01:00", XidCode: 79, ProcessName: "python3"},
 		recoveryEvent("0019:01:00", "0x0", "None", "0x1", "GPU Reset Required"),
-	}, "575.51.03")
+	}, driver575)
 
 	if len(got) != 0 {
 		t.Errorf("counts = %v, want empty: no NVLink5-family events present", got)
@@ -179,7 +194,7 @@ func TestNVLink5ResolutionCounts_IgnoresNonNVLink5Events(t *testing.T) {
 func TestNVLink5ResolutionCounts_UnmatchedFatalIsUnconfirmed(t *testing.T) {
 	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 		unmatchedEvent("0019:01:00", true),
-	}, "575.51.03")
+	}, driver575)
 
 	if got[k146(xid.ResolutionResetGPUUnconfirmed)] != 1 {
 		t.Errorf("counts = %v, want %s -> 1", got, k146(xid.ResolutionResetGPUUnconfirmed))
@@ -192,7 +207,7 @@ func TestNVLink5ResolutionCounts_UnmatchedFatalIsUnconfirmed(t *testing.T) {
 func TestNVLink5ResolutionCounts_UnmatchedNonfatalStaysIgnore(t *testing.T) {
 	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 		unmatchedEvent("0019:01:00", false),
-	}, "575.51.03")
+	}, driver575)
 
 	if got[k146(xid.ResolutionIgnore)] != 1 {
 		t.Errorf("counts = %v, want %s -> 1", got, k146(xid.ResolutionIgnore))
@@ -205,7 +220,7 @@ func TestNVLink5ResolutionCounts_UnmatchedNonfatalStaysIgnore(t *testing.T) {
 func TestNVLink5ResolutionCounts_MatchedResetStaysConfirmed(t *testing.T) {
 	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 		srcTrackEvent("0019:01:00", resetOutright),
-	}, "575.51.03")
+	}, driver575)
 
 	if got[k145(xid.ResolutionResetGPU)] != 1 {
 		t.Errorf("counts = %v, want %s -> 1", got, k145(xid.ResolutionResetGPU))
@@ -225,7 +240,7 @@ func TestNVLink5ResolutionCounts_HexRenderingIsNormalised(t *testing.T) {
 			got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
 				srcTrackEvent("0019:01:00", deferToXid154),
 				recoveryEvent("0019:01:00", "0x0", "None", toCode, "GPU Reset Required"),
-			}, "575.51.03")
+			}, driver575)
 
 			if got[k145(xid.ResolutionResetGPU)] != 1 {
 				t.Errorf("counts = %v, want %s -> 1", got, k145(xid.ResolutionResetGPU))

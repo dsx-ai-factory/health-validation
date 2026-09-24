@@ -1,6 +1,10 @@
 package xid
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
+)
 
 // Immediate-action buckets NVIDIA's Xid 144-150 decode table assigns.
 // IGNORE and RESET_GPU are actions; the rest describe what happened when
@@ -130,24 +134,25 @@ func NVLink5ResolutionKey(code int64, bucket string) string {
 // resolution needs both the table and [TerminalRecoveryActions] rather
 // than the table alone.
 //
-// driverVersion is the host's raw driver version, classified into the
-// era that decides which IntrInfo bit layout the table is read against;
-// an unparseable or empty version limits matching to rows NVIDIA's table
-// disambiguates by ErrorStatus alone rather than guessing a layout.
+// driverVersion is the host's driver version (see [health.Host]),
+// classified into the era that decides which IntrInfo bit layout the
+// table is read against; an unknown version limits matching to rows
+// NVIDIA's table disambiguates by ErrorStatus alone rather than guessing
+// a layout.
 //
 // Counts are per event, not per GPU: two faults on one GPU that both
 // resolve to RESET_GPU count twice, because each is a separate
 // occurrence to investigate. That differs deliberately from
 // recovery_action_counts, which counts GPUs.
-func NVLink5ResolutionCounts(events []XidEvent, driverVersion string) map[string]int64 {
+func NVLink5ResolutionCounts(events []XidEvent, driverVersion health.DriverVersion) map[string]int64 {
 	return nvlink5ResolutionCounts(events, driverVersion, TerminalRecoveryActions(events))
 }
 
 // nvlink5ResolutionCounts is [NVLink5ResolutionCounts] with the terminal
 // recovery actions supplied, so a caller that has already derived them
 // does not derive them a second time.
-func nvlink5ResolutionCounts(events []XidEvent, driverVersion string, terminal map[string]RecoveryAction) map[string]int64 {
-	era := DriverEraFromVersion(driverVersion)
+func nvlink5ResolutionCounts(events []XidEvent, driverVersion health.DriverVersion, terminal map[string]RecoveryAction) map[string]int64 {
+	era := DriverEraFrom(driverVersion)
 
 	var counts map[string]int64
 	for _, ev := range events {

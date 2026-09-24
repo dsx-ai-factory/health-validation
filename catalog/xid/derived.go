@@ -16,7 +16,7 @@ func (m XidMeasurement) DerivedSignals(host health.Host) map[string]any {
 	// fault needs the same per-GPU actions, and two independent
 	// derivations of one thing can drift apart.
 	terminal := TerminalRecoveryActions(m.Events)
-	resolutions := nvlink5ResolutionCounts(m.Events, host.DriverVersion.Raw, terminal)
+	resolutions := nvlink5ResolutionCounts(m.Events, host.DriverVersion, terminal)
 	if resolutions == nil {
 		resolutions = make(map[string]int64)
 	}

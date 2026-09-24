@@ -4,9 +4,9 @@
 package xid
 
 import (
-	"regexp"
-	"strconv"
 	"strings"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
 
 // DriverEra distinguishes the two IntrInfo bit layouts NVIDIA's Xid
@@ -43,30 +43,15 @@ func (e DriverEra) String() string {
 // V2 IntrInfo[6:0] encoding.
 const nvidiaDriverEraThreshold = 575
 
-// driverVersionRE extracts a dotted major.minor(.patch) version token
-// (e.g. "575.51.03") from a driver version string.
-var driverVersionRE = regexp.MustCompile(`\d+(?:\.\d+)+`)
-
-// DriverEraFromVersion classifies a raw driver version string (e.g.
-// "575.51.03", the text of the host's [health.DriverVersion]) by its
-// major version number against NVIDIA's Xid 144-150 decode-table
-// threshold. Returns DriverEraUnknown if the version isn't parseable.
-func DriverEraFromVersion(version string) DriverEra {
-	major := driverVersionRE.FindString(version)
-	if major == "" {
+// DriverEraFrom classifies the host's driver version against NVIDIA's
+// Xid 144-150 decode-table threshold. An unknown version is
+// DriverEraUnknown, so it narrows what this package will match rather
+// than guessing a bit layout.
+func DriverEraFrom(v health.DriverVersion) DriverEra {
+	if !v.Known() {
 		return DriverEraUnknown
 	}
-	// driverVersionRE's own match may include minor/patch segments;
-	// take just the leading numeric run for the major version.
-	end := 0
-	for end < len(major) && major[end] >= '0' && major[end] <= '9' {
-		end++
-	}
-	n, err := strconv.Atoi(major[:end])
-	if err != nil {
-		return DriverEraUnknown
-	}
-	if n >= nvidiaDriverEraThreshold {
+	if v.AtLeast(nvidiaDriverEraThreshold, 0, 0) {
 		return DriverEraV2
 	}
 	return DriverEraV1
@@ -247,7 +232,7 @@ type NVLink5Resolution struct {
 // log line by toolkit/xid.ParseXid, e.g. via one of
 // [xid.XidMeasurement.Events]) against NVIDIA's Xid 144-150 decode
 // table for the given Xid code and driver era. era must come from
-// classifying the host's driver version (see [DriverEraFromVersion] and
+// classifying the host's driver version (see [DriverEraFrom] and
 // [health.Host]) —
 // passing [DriverEraUnknown] limits matching to subcodes NVIDIA's
 // table disambiguates by ErrorStatus alone, since pre-/post-R575
