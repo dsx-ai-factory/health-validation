@@ -115,6 +115,15 @@ func TestOverridesRejectsBadConfig(t *testing.T) {
 			checks:  map[string]map[string]any{"gpu_count": {"expected_gpu_count": 3.5}},
 			wantErr: `expected an integer, got 3.5`,
 		},
+		{
+			// Regression for #85: gpu_power_limit's expected_power_limit_w
+			// threshold has no flat Value, only PerArchitecture entries, so
+			// coerce must still validate against their type instead of
+			// letting ref==nil pass anything through unchecked.
+			name:    "non-coercible value for PerArchitecture-only threshold",
+			checks:  map[string]map[string]any{"gpu_power_limit": {"expected_power_limit_w": "not-a-number"}},
+			wantErr: `expected a number, got string`,
+		},
 	}
 
 	for _, tt := range tests {
