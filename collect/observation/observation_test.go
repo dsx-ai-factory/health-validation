@@ -4,8 +4,11 @@
 package observation
 
 import (
+	"os"
 	"strings"
 	"testing"
+
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestGPURefNamesAndFallback(t *testing.T) {
@@ -155,6 +158,148 @@ func TestValidateBatchReportsInvalidObservation(t *testing.T) {
 	}})
 	if err == nil || !strings.Contains(err.Error(), `observation 1: observation "gpu.invalid" has no outcome`) {
 		t.Fatalf("ValidateBatch() error = %v", err)
+	}
+}
+
+func TestGPUInventoryExample(t *testing.T) {
+	data, err := os.ReadFile("testdata/gpu_inventory.json")
+	if err != nil {
+		t.Fatalf("read GPU inventory example: %v", err)
+	}
+
+	batch := &ObservationBatch{}
+	if err := protojson.Unmarshal(data, batch); err != nil {
+		t.Fatalf("unmarshal GPU inventory example: %v", err)
+	}
+
+	snapshots := batch.GetInventory().GetGpuSnapshots()
+	if len(snapshots) != 1 {
+		t.Fatalf("GPU snapshots = %d, want 1", len(snapshots))
+	}
+	snapshot := snapshots[0]
+	if snapshot.GetSource() != "dcgm" {
+		t.Fatalf("snapshot source = %q, want %q", snapshot.GetSource(), "dcgm")
+	}
+	entries := snapshot.GetInventory().GetEntries()
+	if len(entries) != 2 {
+		t.Fatalf("GPU entries = %d, want 2", len(entries))
+	}
+	if snapshot.GetCollectedAt() == nil {
+		t.Fatal("GPU snapshot collection time is absent")
+	}
+	if entries[0].GetSourceIndex() != 0 || entries[0].GetDevice().GetId() != "GPU-123" {
+		t.Fatalf("first GPU entry = %v, want source index 0 and ID GPU-123", entries[0])
+	}
+	if entries[1].GetSourceIndex() != 1 || entries[1].GetCollectionError() == nil {
+		t.Fatalf("second GPU entry = %v, want source index 1 and collection error", entries[1])
+	}
+	if err := ValidateBatch(batch); err != nil {
+		t.Fatalf("ValidateBatch() error = %v", err)
+	}
+}
+
+func TestValidateBatchRequiresGPUInventoryEntryOutcome(t *testing.T) {
+	tests := []struct {
+		entry     *GPUInventoryEntry
+		name      string
+		wantError string
+	}{
+		{
+			name: "device",
+			entry: &GPUInventoryEntry{SourceIndex: 0, Outcome: &GPUInventoryEntry_Device{
+				Device: &GPUDevice{},
+			}},
+		},
+		{
+			name: "collection error",
+			entry: &GPUInventoryEntry{SourceIndex: 1, Outcome: &GPUInventoryEntry_CollectionError{
+				CollectionError: &CollectionError{Category: CollectionErrorCategoryUnavailable},
+			}},
+		},
+		{
+			name:      "device outcome without payload",
+			entry:     &GPUInventoryEntry{SourceIndex: 2, Outcome: &GPUInventoryEntry_Device{}},
+			wantError: "source index 2 has a device outcome with no payload",
+		},
+		{
+			name:      "collection error outcome without payload",
+			entry:     &GPUInventoryEntry{SourceIndex: 3, Outcome: &GPUInventoryEntry_CollectionError{}},
+			wantError: "source index 3 has a collection-error outcome with no payload",
+		},
+		{name: "missing outcome", entry: &GPUInventoryEntry{SourceIndex: 4}, wantError: "source index 4 has no outcome"},
+		{name: "nil entry", wantError: "entry is required"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateBatch(&ObservationBatch{Inventory: &HardwareInventory{
+				GpuSnapshots: []*GPUInventorySnapshot{{
+					Source: "dcgm",
+					Outcome: &GPUInventorySnapshot_Inventory{Inventory: &GPUInventory{
+						Entries: []*GPUInventoryEntry{test.entry},
+					}},
+				}},
+			}})
+			if test.wantError == "" {
+				if err != nil {
+					t.Fatalf("ValidateBatch() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("ValidateBatch() error = %v, want text %q", err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestValidateBatchRequiresGPUInventoryOutcome(t *testing.T) {
+	tests := []struct {
+		snapshot  *GPUInventorySnapshot
+		name      string
+		wantError string
+	}{
+		{
+			name: "empty successful inventory",
+			snapshot: &GPUInventorySnapshot{Source: "dcgm", Outcome: &GPUInventorySnapshot_Inventory{
+				Inventory: &GPUInventory{},
+			}},
+		},
+		{
+			name: "collection error",
+			snapshot: &GPUInventorySnapshot{Source: "dcgm", Outcome: &GPUInventorySnapshot_CollectionError{
+				CollectionError: &CollectionError{Category: CollectionErrorCategoryUnavailable},
+			}},
+		},
+		{
+			name:      "inventory outcome without payload",
+			snapshot:  &GPUInventorySnapshot{Source: "dcgm", Outcome: &GPUInventorySnapshot_Inventory{}},
+			wantError: `source "dcgm" has an inventory outcome with no payload`,
+		},
+		{
+			name:      "collection error outcome without payload",
+			snapshot:  &GPUInventorySnapshot{Source: "dcgm", Outcome: &GPUInventorySnapshot_CollectionError{}},
+			wantError: `source "dcgm" has a collection-error outcome with no payload`,
+		},
+		{name: "missing outcome", snapshot: &GPUInventorySnapshot{Source: "dcgm"}, wantError: `source "dcgm" has no outcome`},
+		{name: "nil snapshot", wantError: "snapshot is required"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateBatch(&ObservationBatch{Inventory: &HardwareInventory{
+				GpuSnapshots: []*GPUInventorySnapshot{test.snapshot},
+			}})
+			if test.wantError == "" {
+				if err != nil {
+					t.Fatalf("ValidateBatch() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("ValidateBatch() error = %v, want text %q", err, test.wantError)
+			}
+		})
 	}
 }
 

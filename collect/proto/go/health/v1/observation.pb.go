@@ -7,13 +7,12 @@
 package healthv1
 
 import (
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
 )
 
 const (
@@ -145,6 +144,7 @@ type ObservationBatch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CollectionId  string                 `protobuf:"bytes,1,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
 	Observations  []*Observation         `protobuf:"bytes,2,rep,name=observations,proto3" json:"observations,omitempty"`
+	Inventory     *HardwareInventory     `protobuf:"bytes,3,opt,name=inventory,proto3" json:"inventory,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -193,6 +193,370 @@ func (x *ObservationBatch) GetObservations() []*Observation {
 	return nil
 }
 
+func (x *ObservationBatch) GetInventory() *HardwareInventory {
+	if x != nil {
+		return x.Inventory
+	}
+	return nil
+}
+
+// HardwareInventory carries structured entity information separately from
+// metric and event observations. Additional inventory domains can be added
+// without representing their records as scalar signals.
+type HardwareInventory struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// One snapshot per source that collected GPU inventory. An absent snapshot
+	// means GPU inventory was not collected from that source.
+	GpuSnapshots  []*GpuInventorySnapshot `protobuf:"bytes,1,rep,name=gpu_snapshots,json=gpuSnapshots,proto3" json:"gpu_snapshots,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HardwareInventory) Reset() {
+	*x = HardwareInventory{}
+	mi := &file_health_v1_observation_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HardwareInventory) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HardwareInventory) ProtoMessage() {}
+
+func (x *HardwareInventory) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HardwareInventory.ProtoReflect.Descriptor instead.
+func (*HardwareInventory) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *HardwareInventory) GetGpuSnapshots() []*GpuInventorySnapshot {
+	if x != nil {
+		return x.GpuSnapshots
+	}
+	return nil
+}
+
+// GpuInventorySnapshot is one source's GPU inventory contribution for this
+// collection cycle. Exactly one outcome must be selected. A successful
+// inventory with no entries means the source found no GPUs.
+type GpuInventorySnapshot struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Source      string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	CollectedAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=collected_at,json=collectedAt,proto3" json:"collected_at,omitempty"`
+	// Types that are valid to be assigned to Outcome:
+	//
+	//	*GpuInventorySnapshot_Inventory
+	//	*GpuInventorySnapshot_CollectionError
+	Outcome       isGpuInventorySnapshot_Outcome `protobuf_oneof:"outcome"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GpuInventorySnapshot) Reset() {
+	*x = GpuInventorySnapshot{}
+	mi := &file_health_v1_observation_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GpuInventorySnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GpuInventorySnapshot) ProtoMessage() {}
+
+func (x *GpuInventorySnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GpuInventorySnapshot.ProtoReflect.Descriptor instead.
+func (*GpuInventorySnapshot) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GpuInventorySnapshot) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *GpuInventorySnapshot) GetCollectedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CollectedAt
+	}
+	return nil
+}
+
+func (x *GpuInventorySnapshot) GetOutcome() isGpuInventorySnapshot_Outcome {
+	if x != nil {
+		return x.Outcome
+	}
+	return nil
+}
+
+func (x *GpuInventorySnapshot) GetInventory() *GpuInventory {
+	if x != nil {
+		if x, ok := x.Outcome.(*GpuInventorySnapshot_Inventory); ok {
+			return x.Inventory
+		}
+	}
+	return nil
+}
+
+func (x *GpuInventorySnapshot) GetCollectionError() *CollectionError {
+	if x != nil {
+		if x, ok := x.Outcome.(*GpuInventorySnapshot_CollectionError); ok {
+			return x.CollectionError
+		}
+	}
+	return nil
+}
+
+type isGpuInventorySnapshot_Outcome interface {
+	isGpuInventorySnapshot_Outcome()
+}
+
+type GpuInventorySnapshot_Inventory struct {
+	Inventory *GpuInventory `protobuf:"bytes,3,opt,name=inventory,proto3,oneof"`
+}
+
+type GpuInventorySnapshot_CollectionError struct {
+	CollectionError *CollectionError `protobuf:"bytes,4,opt,name=collection_error,json=collectionError,proto3,oneof"`
+}
+
+func (*GpuInventorySnapshot_Inventory) isGpuInventorySnapshot_Outcome() {}
+
+func (*GpuInventorySnapshot_CollectionError) isGpuInventorySnapshot_Outcome() {}
+
+type GpuInventory struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entries       []*GpuInventoryEntry   `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GpuInventory) Reset() {
+	*x = GpuInventory{}
+	mi := &file_health_v1_observation_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GpuInventory) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GpuInventory) ProtoMessage() {}
+
+func (x *GpuInventory) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GpuInventory.ProtoReflect.Descriptor instead.
+func (*GpuInventory) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GpuInventory) GetEntries() []*GpuInventoryEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+// GpuInventoryEntry preserves every enumerated source-local GPU. A failed
+// device-information lookup affects only that entry; healthy GPUs remain in
+// the same inventory snapshot.
+type GpuInventoryEntry struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	SourceIndex uint32                 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
+	// Types that are valid to be assigned to Outcome:
+	//
+	//	*GpuInventoryEntry_Device
+	//	*GpuInventoryEntry_CollectionError
+	Outcome       isGpuInventoryEntry_Outcome `protobuf_oneof:"outcome"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GpuInventoryEntry) Reset() {
+	*x = GpuInventoryEntry{}
+	mi := &file_health_v1_observation_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GpuInventoryEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GpuInventoryEntry) ProtoMessage() {}
+
+func (x *GpuInventoryEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GpuInventoryEntry.ProtoReflect.Descriptor instead.
+func (*GpuInventoryEntry) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GpuInventoryEntry) GetSourceIndex() uint32 {
+	if x != nil {
+		return x.SourceIndex
+	}
+	return 0
+}
+
+func (x *GpuInventoryEntry) GetOutcome() isGpuInventoryEntry_Outcome {
+	if x != nil {
+		return x.Outcome
+	}
+	return nil
+}
+
+func (x *GpuInventoryEntry) GetDevice() *GpuDevice {
+	if x != nil {
+		if x, ok := x.Outcome.(*GpuInventoryEntry_Device); ok {
+			return x.Device
+		}
+	}
+	return nil
+}
+
+func (x *GpuInventoryEntry) GetCollectionError() *CollectionError {
+	if x != nil {
+		if x, ok := x.Outcome.(*GpuInventoryEntry_CollectionError); ok {
+			return x.CollectionError
+		}
+	}
+	return nil
+}
+
+type isGpuInventoryEntry_Outcome interface {
+	isGpuInventoryEntry_Outcome()
+}
+
+type GpuInventoryEntry_Device struct {
+	Device *GpuDevice `protobuf:"bytes,2,opt,name=device,proto3,oneof"`
+}
+
+type GpuInventoryEntry_CollectionError struct {
+	CollectionError *CollectionError `protobuf:"bytes,3,opt,name=collection_error,json=collectionError,proto3,oneof"`
+}
+
+func (*GpuInventoryEntry_Device) isGpuInventoryEntry_Outcome() {}
+
+func (*GpuInventoryEntry_CollectionError) isGpuInventoryEntry_Outcome() {}
+
+// GpuDevice is one successfully collected structured GPU inventory record.
+// Optional fields may be absent when the source legitimately has no value.
+type GpuDevice struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
+	Model         *string                `protobuf:"bytes,2,opt,name=model,proto3,oneof" json:"model,omitempty"`
+	Serial        *string                `protobuf:"bytes,3,opt,name=serial,proto3,oneof" json:"serial,omitempty"`
+	PciBusId      *string                `protobuf:"bytes,4,opt,name=pci_bus_id,json=pciBusId,proto3,oneof" json:"pci_bus_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GpuDevice) Reset() {
+	*x = GpuDevice{}
+	mi := &file_health_v1_observation_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GpuDevice) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GpuDevice) ProtoMessage() {}
+
+func (x *GpuDevice) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GpuDevice.ProtoReflect.Descriptor instead.
+func (*GpuDevice) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GpuDevice) GetId() string {
+	if x != nil && x.Id != nil {
+		return *x.Id
+	}
+	return ""
+}
+
+func (x *GpuDevice) GetModel() string {
+	if x != nil && x.Model != nil {
+		return *x.Model
+	}
+	return ""
+}
+
+func (x *GpuDevice) GetSerial() string {
+	if x != nil && x.Serial != nil {
+		return *x.Serial
+	}
+	return ""
+}
+
+func (x *GpuDevice) GetPciBusId() string {
+	if x != nil && x.PciBusId != nil {
+		return *x.PciBusId
+	}
+	return ""
+}
+
 type Observation struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	SignalId   string                 `protobuf:"bytes,1,opt,name=signal_id,json=signalId,proto3" json:"signal_id,omitempty"`
@@ -217,7 +581,7 @@ type Observation struct {
 
 func (x *Observation) Reset() {
 	*x = Observation{}
-	mi := &file_health_v1_observation_proto_msgTypes[1]
+	mi := &file_health_v1_observation_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -229,7 +593,7 @@ func (x *Observation) String() string {
 func (*Observation) ProtoMessage() {}
 
 func (x *Observation) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[1]
+	mi := &file_health_v1_observation_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -242,7 +606,7 @@ func (x *Observation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Observation.ProtoReflect.Descriptor instead.
 func (*Observation) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{1}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Observation) GetSignalId() string {
@@ -353,7 +717,7 @@ type ObservationTarget struct {
 
 func (x *ObservationTarget) Reset() {
 	*x = ObservationTarget{}
-	mi := &file_health_v1_observation_proto_msgTypes[2]
+	mi := &file_health_v1_observation_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -365,7 +729,7 @@ func (x *ObservationTarget) String() string {
 func (*ObservationTarget) ProtoMessage() {}
 
 func (x *ObservationTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[2]
+	mi := &file_health_v1_observation_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -378,7 +742,7 @@ func (x *ObservationTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObservationTarget.ProtoReflect.Descriptor instead.
 func (*ObservationTarget) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{2}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ObservationTarget) GetKind() isObservationTarget_Kind {
@@ -461,7 +825,7 @@ type NodeRef struct {
 
 func (x *NodeRef) Reset() {
 	*x = NodeRef{}
-	mi := &file_health_v1_observation_proto_msgTypes[3]
+	mi := &file_health_v1_observation_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -473,7 +837,7 @@ func (x *NodeRef) String() string {
 func (*NodeRef) ProtoMessage() {}
 
 func (x *NodeRef) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[3]
+	mi := &file_health_v1_observation_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -486,7 +850,7 @@ func (x *NodeRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeRef.ProtoReflect.Descriptor instead.
 func (*NodeRef) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{3}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *NodeRef) GetId() string {
@@ -508,7 +872,7 @@ type GpuRef struct {
 
 func (x *GpuRef) Reset() {
 	*x = GpuRef{}
-	mi := &file_health_v1_observation_proto_msgTypes[4]
+	mi := &file_health_v1_observation_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -520,7 +884,7 @@ func (x *GpuRef) String() string {
 func (*GpuRef) ProtoMessage() {}
 
 func (x *GpuRef) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[4]
+	mi := &file_health_v1_observation_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -533,7 +897,7 @@ func (x *GpuRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GpuRef.ProtoReflect.Descriptor instead.
 func (*GpuRef) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{4}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GpuRef) GetUuid() string {
@@ -555,14 +919,14 @@ func (x *GpuRef) GetSourceLocalId() string {
 type NvLinkEndpointRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Gpu           *GpuRef                `protobuf:"bytes,1,opt,name=gpu,proto3" json:"gpu,omitempty"`
+	LinkIndex     uint32                 `protobuf:"varint,2,opt,name=link_index,json=linkIndex,proto3" json:"link_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
-	LinkIndex     uint32 `protobuf:"varint,2,opt,name=link_index,json=linkIndex,proto3" json:"link_index,omitempty"`
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *NvLinkEndpointRef) Reset() {
 	*x = NvLinkEndpointRef{}
-	mi := &file_health_v1_observation_proto_msgTypes[5]
+	mi := &file_health_v1_observation_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -574,7 +938,7 @@ func (x *NvLinkEndpointRef) String() string {
 func (*NvLinkEndpointRef) ProtoMessage() {}
 
 func (x *NvLinkEndpointRef) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[5]
+	mi := &file_health_v1_observation_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -587,7 +951,7 @@ func (x *NvLinkEndpointRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NvLinkEndpointRef.ProtoReflect.Descriptor instead.
 func (*NvLinkEndpointRef) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{5}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *NvLinkEndpointRef) GetGpu() *GpuRef {
@@ -616,7 +980,7 @@ type GpuPairRef struct {
 
 func (x *GpuPairRef) Reset() {
 	*x = GpuPairRef{}
-	mi := &file_health_v1_observation_proto_msgTypes[6]
+	mi := &file_health_v1_observation_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -628,7 +992,7 @@ func (x *GpuPairRef) String() string {
 func (*GpuPairRef) ProtoMessage() {}
 
 func (x *GpuPairRef) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[6]
+	mi := &file_health_v1_observation_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -641,7 +1005,7 @@ func (x *GpuPairRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GpuPairRef.ProtoReflect.Descriptor instead.
 func (*GpuPairRef) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{6}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GpuPairRef) GetSourceGpu() *GpuRef {
@@ -674,7 +1038,7 @@ type Value struct {
 
 func (x *Value) Reset() {
 	*x = Value{}
-	mi := &file_health_v1_observation_proto_msgTypes[7]
+	mi := &file_health_v1_observation_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -686,7 +1050,7 @@ func (x *Value) String() string {
 func (*Value) ProtoMessage() {}
 
 func (x *Value) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[7]
+	mi := &file_health_v1_observation_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -699,7 +1063,7 @@ func (x *Value) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Value.ProtoReflect.Descriptor instead.
 func (*Value) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{7}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Value) GetKind() isValue_Kind {
@@ -779,19 +1143,19 @@ func (*Value_BoolValue) isValue_Kind() {}
 // It carries no health severity; each consumer decides what a failed
 // observation means for its own result.
 type CollectionError struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Operation     string                 `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
-	SourceError   string                 `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
-	Detail        string                 `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
-	unknownFields protoimpl.UnknownFields
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Source        string                  `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Operation     string                  `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
+	SourceError   string                  `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
+	Detail        string                  `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
 	Category      CollectionErrorCategory `protobuf:"varint,3,opt,name=category,proto3,enum=health.v1.CollectionErrorCategory" json:"category,omitempty"`
+	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CollectionError) Reset() {
 	*x = CollectionError{}
-	mi := &file_health_v1_observation_proto_msgTypes[8]
+	mi := &file_health_v1_observation_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -803,7 +1167,7 @@ func (x *CollectionError) String() string {
 func (*CollectionError) ProtoMessage() {}
 
 func (x *CollectionError) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[8]
+	mi := &file_health_v1_observation_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -816,7 +1180,7 @@ func (x *CollectionError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectionError.ProtoReflect.Descriptor instead.
 func (*CollectionError) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{8}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CollectionError) GetSource() string {
@@ -859,16 +1223,16 @@ func (x *CollectionError) GetCategory() CollectionErrorCategory {
 // source status that is itself the observed value.
 type NoValue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Reason        NoValueReason          `protobuf:"varint,1,opt,name=reason,proto3,enum=health.v1.NoValueReason" json:"reason,omitempty"`
 	Detail        string                 `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"`
 	SourceStatus  string                 `protobuf:"bytes,3,opt,name=source_status,json=sourceStatus,proto3" json:"source_status,omitempty"`
 	unknownFields protoimpl.UnknownFields
-	Reason        NoValueReason `protobuf:"varint,1,opt,name=reason,proto3,enum=health.v1.NoValueReason" json:"reason,omitempty"`
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *NoValue) Reset() {
 	*x = NoValue{}
-	mi := &file_health_v1_observation_proto_msgTypes[9]
+	mi := &file_health_v1_observation_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -880,7 +1244,7 @@ func (x *NoValue) String() string {
 func (*NoValue) ProtoMessage() {}
 
 func (x *NoValue) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[9]
+	mi := &file_health_v1_observation_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -893,7 +1257,7 @@ func (x *NoValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NoValue.ProtoReflect.Descriptor instead.
 func (*NoValue) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{9}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *NoValue) GetReason() NoValueReason {
@@ -921,10 +1285,36 @@ var File_health_v1_observation_proto protoreflect.FileDescriptor
 
 const file_health_v1_observation_proto_rawDesc = "" +
 	"\n" +
-	"\x1bhealth/v1/observation.proto\x12\thealth.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"s\n" +
+	"\x1bhealth/v1/observation.proto\x12\thealth.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xaf\x01\n" +
 	"\x10ObservationBatch\x12#\n" +
 	"\rcollection_id\x18\x01 \x01(\tR\fcollectionId\x12:\n" +
-	"\fobservations\x18\x02 \x03(\v2\x16.health.v1.ObservationR\fobservations\"\x86\x03\n" +
+	"\fobservations\x18\x02 \x03(\v2\x16.health.v1.ObservationR\fobservations\x12:\n" +
+	"\tinventory\x18\x03 \x01(\v2\x1c.health.v1.HardwareInventoryR\tinventory\"Y\n" +
+	"\x11HardwareInventory\x12D\n" +
+	"\rgpu_snapshots\x18\x01 \x03(\v2\x1f.health.v1.GpuInventorySnapshotR\fgpuSnapshots\"\xfa\x01\n" +
+	"\x14GpuInventorySnapshot\x12\x16\n" +
+	"\x06source\x18\x01 \x01(\tR\x06source\x12=\n" +
+	"\fcollected_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\vcollectedAt\x127\n" +
+	"\tinventory\x18\x03 \x01(\v2\x17.health.v1.GpuInventoryH\x00R\tinventory\x12G\n" +
+	"\x10collection_error\x18\x04 \x01(\v2\x1a.health.v1.CollectionErrorH\x00R\x0fcollectionErrorB\t\n" +
+	"\aoutcome\"F\n" +
+	"\fGpuInventory\x126\n" +
+	"\aentries\x18\x01 \x03(\v2\x1c.health.v1.GpuInventoryEntryR\aentries\"\xba\x01\n" +
+	"\x11GpuInventoryEntry\x12!\n" +
+	"\fsource_index\x18\x01 \x01(\rR\vsourceIndex\x12.\n" +
+	"\x06device\x18\x02 \x01(\v2\x14.health.v1.GpuDeviceH\x00R\x06device\x12G\n" +
+	"\x10collection_error\x18\x03 \x01(\v2\x1a.health.v1.CollectionErrorH\x00R\x0fcollectionErrorB\t\n" +
+	"\aoutcome\"\xa6\x01\n" +
+	"\tGpuDevice\x12\x13\n" +
+	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x19\n" +
+	"\x05model\x18\x02 \x01(\tH\x01R\x05model\x88\x01\x01\x12\x1b\n" +
+	"\x06serial\x18\x03 \x01(\tH\x02R\x06serial\x88\x01\x01\x12!\n" +
+	"\n" +
+	"pci_bus_id\x18\x04 \x01(\tH\x03R\bpciBusId\x88\x01\x01B\x05\n" +
+	"\x03_idB\b\n" +
+	"\x06_modelB\t\n" +
+	"\a_serialB\r\n" +
+	"\v_pci_bus_id\"\x86\x03\n" +
 	"\vObservation\x12\x1b\n" +
 	"\tsignal_id\x18\x01 \x01(\tR\bsignalId\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x124\n" +
@@ -1000,47 +1390,57 @@ func file_health_v1_observation_proto_rawDescGZIP() []byte {
 	return file_health_v1_observation_proto_rawDescData
 }
 
-var (
-	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 10)
-	file_health_v1_observation_proto_goTypes   = []any{
-		(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
-		(NoValueReason)(0),            // 1: health.v1.NoValueReason
-		(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
-		(*Observation)(nil),           // 3: health.v1.Observation
-		(*ObservationTarget)(nil),     // 4: health.v1.ObservationTarget
-		(*NodeRef)(nil),               // 5: health.v1.NodeRef
-		(*GpuRef)(nil),                // 6: health.v1.GpuRef
-		(*NvLinkEndpointRef)(nil),     // 7: health.v1.NvLinkEndpointRef
-		(*GpuPairRef)(nil),            // 8: health.v1.GpuPairRef
-		(*Value)(nil),                 // 9: health.v1.Value
-		(*CollectionError)(nil),       // 10: health.v1.CollectionError
-		(*NoValue)(nil),               // 11: health.v1.NoValue
-		(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
-	}
-)
-
+var file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_health_v1_observation_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_health_v1_observation_proto_goTypes = []any{
+	(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
+	(NoValueReason)(0),            // 1: health.v1.NoValueReason
+	(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
+	(*HardwareInventory)(nil),     // 3: health.v1.HardwareInventory
+	(*GpuInventorySnapshot)(nil),  // 4: health.v1.GpuInventorySnapshot
+	(*GpuInventory)(nil),          // 5: health.v1.GpuInventory
+	(*GpuInventoryEntry)(nil),     // 6: health.v1.GpuInventoryEntry
+	(*GpuDevice)(nil),             // 7: health.v1.GpuDevice
+	(*Observation)(nil),           // 8: health.v1.Observation
+	(*ObservationTarget)(nil),     // 9: health.v1.ObservationTarget
+	(*NodeRef)(nil),               // 10: health.v1.NodeRef
+	(*GpuRef)(nil),                // 11: health.v1.GpuRef
+	(*NvLinkEndpointRef)(nil),     // 12: health.v1.NvLinkEndpointRef
+	(*GpuPairRef)(nil),            // 13: health.v1.GpuPairRef
+	(*Value)(nil),                 // 14: health.v1.Value
+	(*CollectionError)(nil),       // 15: health.v1.CollectionError
+	(*NoValue)(nil),               // 16: health.v1.NoValue
+	(*timestamppb.Timestamp)(nil), // 17: google.protobuf.Timestamp
+}
 var file_health_v1_observation_proto_depIdxs = []int32{
-	3,  // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
-	4,  // 1: health.v1.Observation.target:type_name -> health.v1.ObservationTarget
-	12, // 2: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
-	9,  // 3: health.v1.Observation.value:type_name -> health.v1.Value
-	10, // 4: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
-	11, // 5: health.v1.Observation.no_value:type_name -> health.v1.NoValue
-	5,  // 6: health.v1.ObservationTarget.node:type_name -> health.v1.NodeRef
-	6,  // 7: health.v1.ObservationTarget.gpu:type_name -> health.v1.GpuRef
-	7,  // 8: health.v1.ObservationTarget.nv_link_endpoint:type_name -> health.v1.NvLinkEndpointRef
-	8,  // 9: health.v1.ObservationTarget.gpu_pair:type_name -> health.v1.GpuPairRef
-	6,  // 10: health.v1.NvLinkEndpointRef.gpu:type_name -> health.v1.GpuRef
-	6,  // 11: health.v1.GpuPairRef.source_gpu:type_name -> health.v1.GpuRef
-	6,  // 12: health.v1.GpuPairRef.peer_gpu:type_name -> health.v1.GpuRef
-	0,  // 13: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
-	1,  // 14: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	8,  // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
+	3,  // 1: health.v1.ObservationBatch.inventory:type_name -> health.v1.HardwareInventory
+	4,  // 2: health.v1.HardwareInventory.gpu_snapshots:type_name -> health.v1.GpuInventorySnapshot
+	17, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
+	5,  // 4: health.v1.GpuInventorySnapshot.inventory:type_name -> health.v1.GpuInventory
+	15, // 5: health.v1.GpuInventorySnapshot.collection_error:type_name -> health.v1.CollectionError
+	6,  // 6: health.v1.GpuInventory.entries:type_name -> health.v1.GpuInventoryEntry
+	7,  // 7: health.v1.GpuInventoryEntry.device:type_name -> health.v1.GpuDevice
+	15, // 8: health.v1.GpuInventoryEntry.collection_error:type_name -> health.v1.CollectionError
+	9,  // 9: health.v1.Observation.target:type_name -> health.v1.ObservationTarget
+	17, // 10: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
+	14, // 11: health.v1.Observation.value:type_name -> health.v1.Value
+	15, // 12: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
+	16, // 13: health.v1.Observation.no_value:type_name -> health.v1.NoValue
+	10, // 14: health.v1.ObservationTarget.node:type_name -> health.v1.NodeRef
+	11, // 15: health.v1.ObservationTarget.gpu:type_name -> health.v1.GpuRef
+	12, // 16: health.v1.ObservationTarget.nv_link_endpoint:type_name -> health.v1.NvLinkEndpointRef
+	13, // 17: health.v1.ObservationTarget.gpu_pair:type_name -> health.v1.GpuPairRef
+	11, // 18: health.v1.NvLinkEndpointRef.gpu:type_name -> health.v1.GpuRef
+	11, // 19: health.v1.GpuPairRef.source_gpu:type_name -> health.v1.GpuRef
+	11, // 20: health.v1.GpuPairRef.peer_gpu:type_name -> health.v1.GpuRef
+	0,  // 21: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
+	1,  // 22: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
+	23, // [23:23] is the sub-list for method output_type
+	23, // [23:23] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_health_v1_observation_proto_init() }
@@ -1048,18 +1448,27 @@ func file_health_v1_observation_proto_init() {
 	if File_health_v1_observation_proto != nil {
 		return
 	}
-	file_health_v1_observation_proto_msgTypes[1].OneofWrappers = []any{
+	file_health_v1_observation_proto_msgTypes[2].OneofWrappers = []any{
+		(*GpuInventorySnapshot_Inventory)(nil),
+		(*GpuInventorySnapshot_CollectionError)(nil),
+	}
+	file_health_v1_observation_proto_msgTypes[4].OneofWrappers = []any{
+		(*GpuInventoryEntry_Device)(nil),
+		(*GpuInventoryEntry_CollectionError)(nil),
+	}
+	file_health_v1_observation_proto_msgTypes[5].OneofWrappers = []any{}
+	file_health_v1_observation_proto_msgTypes[6].OneofWrappers = []any{
 		(*Observation_Value)(nil),
 		(*Observation_CollectionError)(nil),
 		(*Observation_NoValue)(nil),
 	}
-	file_health_v1_observation_proto_msgTypes[2].OneofWrappers = []any{
+	file_health_v1_observation_proto_msgTypes[7].OneofWrappers = []any{
 		(*ObservationTarget_Node)(nil),
 		(*ObservationTarget_Gpu)(nil),
 		(*ObservationTarget_NvLinkEndpoint)(nil),
 		(*ObservationTarget_GpuPair)(nil),
 	}
-	file_health_v1_observation_proto_msgTypes[7].OneofWrappers = []any{
+	file_health_v1_observation_proto_msgTypes[12].OneofWrappers = []any{
 		(*Value_IntValue)(nil),
 		(*Value_DoubleValue)(nil),
 		(*Value_StringValue)(nil),
@@ -1071,7 +1480,7 @@ func file_health_v1_observation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_health_v1_observation_proto_rawDesc), len(file_health_v1_observation_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   10,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

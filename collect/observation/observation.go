@@ -20,6 +20,11 @@ type (
 	GPURef                  = healthv1.GpuRef
 	NVLinkEndpointRef       = healthv1.NvLinkEndpointRef
 	GPUPairRef              = healthv1.GpuPairRef
+	HardwareInventory       = healthv1.HardwareInventory
+	GPUInventorySnapshot    = healthv1.GpuInventorySnapshot
+	GPUInventory            = healthv1.GpuInventory
+	GPUInventoryEntry       = healthv1.GpuInventoryEntry
+	GPUDevice               = healthv1.GpuDevice
 	Value                   = healthv1.Value
 	CollectionError         = healthv1.CollectionError
 	CollectionErrorCategory = healthv1.CollectionErrorCategory
@@ -29,17 +34,21 @@ type (
 
 // Oneof wrappers for Observation.outcome and Value.kind.
 type (
-	ObservationTarget_Node           = healthv1.ObservationTarget_Node
-	ObservationTarget_GPU            = healthv1.ObservationTarget_Gpu
-	ObservationTarget_NVLinkEndpoint = healthv1.ObservationTarget_NvLinkEndpoint
-	ObservationTarget_GPUPair        = healthv1.ObservationTarget_GpuPair
-	Observation_Value                = healthv1.Observation_Value
-	Observation_CollectionError      = healthv1.Observation_CollectionError
-	Observation_NoValue              = healthv1.Observation_NoValue
-	Value_IntValue                   = healthv1.Value_IntValue
-	Value_DoubleValue                = healthv1.Value_DoubleValue
-	Value_StringValue                = healthv1.Value_StringValue
-	Value_BoolValue                  = healthv1.Value_BoolValue
+	ObservationTarget_Node               = healthv1.ObservationTarget_Node
+	ObservationTarget_GPU                = healthv1.ObservationTarget_Gpu
+	ObservationTarget_NVLinkEndpoint     = healthv1.ObservationTarget_NvLinkEndpoint
+	ObservationTarget_GPUPair            = healthv1.ObservationTarget_GpuPair
+	Observation_Value                    = healthv1.Observation_Value
+	Observation_CollectionError          = healthv1.Observation_CollectionError
+	Observation_NoValue                  = healthv1.Observation_NoValue
+	Value_IntValue                       = healthv1.Value_IntValue
+	Value_DoubleValue                    = healthv1.Value_DoubleValue
+	Value_StringValue                    = healthv1.Value_StringValue
+	Value_BoolValue                      = healthv1.Value_BoolValue
+	GPUInventorySnapshot_Inventory       = healthv1.GpuInventorySnapshot_Inventory
+	GPUInventorySnapshot_CollectionError = healthv1.GpuInventorySnapshot_CollectionError
+	GPUInventoryEntry_Device             = healthv1.GpuInventoryEntry_Device
+	GPUInventoryEntry_CollectionError    = healthv1.GpuInventoryEntry_CollectionError
 )
 
 const (
@@ -105,6 +114,56 @@ func ValidateBatch(batch *ObservationBatch) error {
 		if err := validate(current); err != nil {
 			return fmt.Errorf("observation %d: %w", index, err)
 		}
+	}
+	if inventory := batch.GetInventory(); inventory != nil {
+		for index, snapshot := range inventory.GetGpuSnapshots() {
+			if err := validateGPUInventorySnapshot(snapshot); err != nil {
+				return fmt.Errorf("GPU inventory snapshot %d: %w", index, err)
+			}
+		}
+	}
+	return nil
+}
+
+func validateGPUInventorySnapshot(snapshot *GPUInventorySnapshot) error {
+	if snapshot == nil {
+		return fmt.Errorf("snapshot is required")
+	}
+	switch outcome := snapshot.GetOutcome().(type) {
+	case *GPUInventorySnapshot_Inventory:
+		if outcome == nil || outcome.Inventory == nil {
+			return fmt.Errorf("source %q has an inventory outcome with no payload", snapshot.GetSource())
+		}
+		for index, entry := range outcome.Inventory.GetEntries() {
+			if err := validateGPUInventoryEntry(entry); err != nil {
+				return fmt.Errorf("entry %d: %w", index, err)
+			}
+		}
+	case *GPUInventorySnapshot_CollectionError:
+		if outcome == nil || outcome.CollectionError == nil {
+			return fmt.Errorf("source %q has a collection-error outcome with no payload", snapshot.GetSource())
+		}
+	default:
+		return fmt.Errorf("source %q has no outcome", snapshot.GetSource())
+	}
+	return nil
+}
+
+func validateGPUInventoryEntry(entry *GPUInventoryEntry) error {
+	if entry == nil {
+		return fmt.Errorf("entry is required")
+	}
+	switch outcome := entry.GetOutcome().(type) {
+	case *GPUInventoryEntry_Device:
+		if outcome == nil || outcome.Device == nil {
+			return fmt.Errorf("source index %d has a device outcome with no payload", entry.GetSourceIndex())
+		}
+	case *GPUInventoryEntry_CollectionError:
+		if outcome == nil || outcome.CollectionError == nil {
+			return fmt.Errorf("source index %d has a collection-error outcome with no payload", entry.GetSourceIndex())
+		}
+	default:
+		return fmt.Errorf("source index %d has no outcome", entry.GetSourceIndex())
 	}
 	return nil
 }

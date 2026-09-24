@@ -12,6 +12,54 @@ option go_package = "github.com/dsx-ai-factory/health-validation/collect/proto/g
 message ObservationBatch {
   string collection_id = 1;
   repeated Observation observations = 2;
+  HardwareInventory inventory = 3;
+}
+
+// HardwareInventory carries structured entity information separately from
+// metric and event observations. Additional inventory domains can be added
+// without representing their records as scalar signals.
+message HardwareInventory {
+  // One snapshot per source that collected GPU inventory. An absent snapshot
+  // means GPU inventory was not collected from that source.
+  repeated GpuInventorySnapshot gpu_snapshots = 1;
+}
+
+// GpuInventorySnapshot is one source's GPU inventory contribution for this
+// collection cycle. Exactly one outcome must be selected. A successful
+// inventory with no entries means the source found no GPUs.
+message GpuInventorySnapshot {
+  string source = 1;
+  google.protobuf.Timestamp collected_at = 2;
+
+  oneof outcome {
+    GpuInventory inventory = 3;
+    CollectionError collection_error = 4;
+  }
+}
+
+message GpuInventory {
+  repeated GpuInventoryEntry entries = 1;
+}
+
+// GpuInventoryEntry preserves every enumerated source-local GPU. A failed
+// device-information lookup affects only that entry; healthy GPUs remain in
+// the same inventory snapshot.
+message GpuInventoryEntry {
+  uint32 source_index = 1;
+
+  oneof outcome {
+    GpuDevice device = 2;
+    CollectionError collection_error = 3;
+  }
+}
+
+// GpuDevice is one successfully collected structured GPU inventory record.
+// Optional fields may be absent when the source legitimately has no value.
+message GpuDevice {
+  optional string id = 1;
+  optional string model = 2;
+  optional string serial = 3;
+  optional string pci_bus_id = 4;
 }
 
 message Observation {

@@ -18,5 +18,7 @@ go_library(
 go_test(
     name = "observation_test",
     srcs = ["observation_test.go"],
+    data = ["testdata/gpu_inventory.json"],
     embed = [":observation"],
+    deps = ["@org_golang_google_protobuf//encoding/protojson"],
 )
