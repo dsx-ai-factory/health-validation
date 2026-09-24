@@ -24,6 +24,8 @@ go_test(
     embed = [":dcgm"],
     deps = [
         "//collect",
+        "//collect/observation",
         "//collect/signals/gpu",
+        "//collect/source/dcgm",
     ],
 )

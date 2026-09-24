@@ -7,12 +7,13 @@
 package healthv1
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -546,8 +547,8 @@ func (x *GpuRef) GetId() string {
 type NvLinkEndpointRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Gpu           *GpuRef                `protobuf:"bytes,1,opt,name=gpu,proto3" json:"gpu,omitempty"`
-	LinkIndex     uint32                 `protobuf:"varint,2,opt,name=link_index,json=linkIndex,proto3" json:"link_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
+	LinkIndex     uint32 `protobuf:"varint,2,opt,name=link_index,json=linkIndex,proto3" json:"link_index,omitempty"`
 	sizeCache     protoimpl.SizeCache
 }
 
@@ -770,13 +771,13 @@ func (*Value_BoolValue) isValue_Kind() {}
 // It carries no health severity; each consumer decides what a failed
 // observation means for its own result.
 type CollectionError struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Source        string                  `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Operation     string                  `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
-	SourceError   string                  `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
-	Detail        string                  `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
-	Category      CollectionErrorCategory `protobuf:"varint,3,opt,name=category,proto3,enum=health.v1.CollectionErrorCategory" json:"category,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Operation     string                 `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
+	SourceError   string                 `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
+	Detail        string                 `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
 	unknownFields protoimpl.UnknownFields
+	Category      CollectionErrorCategory `protobuf:"varint,3,opt,name=category,proto3,enum=health.v1.CollectionErrorCategory" json:"category,omitempty"`
 	sizeCache     protoimpl.SizeCache
 }
 
@@ -850,10 +851,10 @@ func (x *CollectionError) GetCategory() CollectionErrorCategory {
 // source status that is itself the observed value.
 type NoValue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Reason        NoValueReason          `protobuf:"varint,1,opt,name=reason,proto3,enum=health.v1.NoValueReason" json:"reason,omitempty"`
 	Detail        string                 `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"`
 	SourceStatus  string                 `protobuf:"bytes,3,opt,name=source_status,json=sourceStatus,proto3" json:"source_status,omitempty"`
 	unknownFields protoimpl.UnknownFields
+	Reason        NoValueReason `protobuf:"varint,1,opt,name=reason,proto3,enum=health.v1.NoValueReason" json:"reason,omitempty"`
 	sizeCache     protoimpl.SizeCache
 }
 
@@ -990,23 +991,26 @@ func file_health_v1_observation_proto_rawDescGZIP() []byte {
 	return file_health_v1_observation_proto_rawDescData
 }
 
-var file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_health_v1_observation_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
-var file_health_v1_observation_proto_goTypes = []any{
-	(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
-	(NoValueReason)(0),            // 1: health.v1.NoValueReason
-	(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
-	(*Observation)(nil),           // 3: health.v1.Observation
-	(*ObservationTarget)(nil),     // 4: health.v1.ObservationTarget
-	(*NodeRef)(nil),               // 5: health.v1.NodeRef
-	(*GpuRef)(nil),                // 6: health.v1.GpuRef
-	(*NvLinkEndpointRef)(nil),     // 7: health.v1.NvLinkEndpointRef
-	(*GpuPairRef)(nil),            // 8: health.v1.GpuPairRef
-	(*Value)(nil),                 // 9: health.v1.Value
-	(*CollectionError)(nil),       // 10: health.v1.CollectionError
-	(*NoValue)(nil),               // 11: health.v1.NoValue
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
-}
+var (
+	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 10)
+	file_health_v1_observation_proto_goTypes   = []any{
+		(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
+		(NoValueReason)(0),            // 1: health.v1.NoValueReason
+		(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
+		(*Observation)(nil),           // 3: health.v1.Observation
+		(*ObservationTarget)(nil),     // 4: health.v1.ObservationTarget
+		(*NodeRef)(nil),               // 5: health.v1.NodeRef
+		(*GpuRef)(nil),                // 6: health.v1.GpuRef
+		(*NvLinkEndpointRef)(nil),     // 7: health.v1.NvLinkEndpointRef
+		(*GpuPairRef)(nil),            // 8: health.v1.GpuPairRef
+		(*Value)(nil),                 // 9: health.v1.Value
+		(*CollectionError)(nil),       // 10: health.v1.CollectionError
+		(*NoValue)(nil),               // 11: health.v1.NoValue
+		(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
+	}
+)
+
 var file_health_v1_observation_proto_depIdxs = []int32{
 	3,  // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
 	4,  // 1: health.v1.Observation.target:type_name -> health.v1.ObservationTarget
