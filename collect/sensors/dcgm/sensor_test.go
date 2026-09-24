@@ -6,9 +6,12 @@ package dcgm
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
+	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
 )
 
 func TestResolveSignalsToWatch(t *testing.T) {
@@ -51,5 +54,56 @@ func TestResolveSignalsToWatch(t *testing.T) {
 func TestSensorID(t *testing.T) {
 	if got := (&sensor{}).ID(); got != "gpu.dcgm" {
 		t.Fatalf("Sensor.ID() = %q, want %q", got, "gpu.dcgm")
+	}
+}
+
+func TestAppendNoTargetObservations(t *testing.T) {
+	sensor := &sensor{source: dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{})}
+	selected := collect.Signals{gpusignals.PowerDraw, gpusignals.TemperatureCelsius}
+	batch := &observation.ObservationBatch{}
+
+	sensor.appendNoTargetObservations(batch, selected, time.Now())
+
+	if len(batch.GetObservations()) != len(selected) {
+		t.Fatalf("observations = %d, want %d", len(batch.GetObservations()), len(selected))
+	}
+	for index, current := range batch.GetObservations() {
+		if current.GetSignalId() != selected[index].ID() {
+			t.Errorf("observation %d signal = %q, want %q", index, current.GetSignalId(), selected[index].ID())
+		}
+		if current.GetTarget() != nil {
+			t.Errorf("observation %d target = %v, want nil", index, current.GetTarget())
+		}
+		if current.GetNoValue().GetReason() != observation.NoValueReasonNoTargets {
+			t.Errorf("observation %d reason = %v, want %v", index, current.GetNoValue().GetReason(), observation.NoValueReasonNoTargets)
+		}
+	}
+}
+
+func TestAppendFieldPreservesNoValue(t *testing.T) {
+	sensor := &sensor{source: dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{})}
+	batch := &observation.ObservationBatch{}
+
+	sensor.appendField(
+		batch,
+		gpusignals.NVLinkFabricRouteUnhealthy,
+		observation.GPUTarget("GPU-0"),
+		dcgmsource.FieldValue{NoValue: &observation.NoValue{
+			Reason:       observation.NoValueReasonNotSupported,
+			SourceStatus: "mask condition unsupported",
+			Detail:       "fabric condition is not supported",
+		}},
+		time.Now(),
+	)
+
+	if len(batch.GetObservations()) != 1 {
+		t.Fatalf("observations = %d, want 1", len(batch.GetObservations()))
+	}
+	noValue := batch.GetObservations()[0].GetNoValue()
+	if noValue.GetReason() != observation.NoValueReasonNotSupported {
+		t.Fatalf("reason = %v, want %v", noValue.GetReason(), observation.NoValueReasonNotSupported)
+	}
+	if noValue.GetSourceStatus() != "mask condition unsupported" {
+		t.Errorf("source status = %q, want %q", noValue.GetSourceStatus(), "mask condition unsupported")
 	}
 }

@@ -17,24 +17,55 @@ message ObservationBatch {
 message Observation {
   string signal_id = 1;
   string source = 2;
-  Entity entity = 3;
+  ObservationTarget target = 3;
   google.protobuf.Timestamp observed_at = 4;
 
   // Optional because inventory and event signals may not have a unit.
   optional string unit = 5;
 
-  // Exactly one outcome: a value, or the reason collection failed.
-  // Collection status never lives in the value — no sentinel values.
+  // Exactly one outcome: a value, the reason collection failed, or a
+  // successful collection that produced no value. Collection status never
+  // lives in the value -- no sentinel values.
   oneof outcome {
     Value value = 6;
     CollectionError collection_error = 7;
+    NoValue no_value = 8;
   }
 }
 
-// Entity identifies what an observation is about.
-message Entity {
-  string type = 1; // "node", "gpu", "link"
-  string id = 2;   // e.g. the GPU UUID
+// ObservationTarget identifies exactly what an observation describes.
+// New canonical target kinds can be added without relying on string keys.
+message ObservationTarget {
+  oneof kind {
+    NodeRef node = 1;
+    GpuRef gpu = 2;
+    NvLinkEndpointRef nv_link_endpoint = 3;
+    GpuPairRef gpu_pair = 4;
+  }
+}
+
+message NodeRef {
+  string id = 1;
+}
+
+// GpuRef normally carries a GPU UUID. A source-local ID may be used when UUID
+// collection itself failed so the error remains attributable to one GPU.
+message GpuRef {
+  string id = 1;
+}
+
+// NvLinkEndpointRef identifies one local NVLink endpoint on a physical GPU.
+// It does not claim which remote entity is connected to that endpoint.
+message NvLinkEndpointRef {
+  GpuRef gpu = 1;
+  uint32 link_index = 2;
+}
+
+// GpuPairRef identifies an ordered source/peer GPU pair. It describes P2P
+// capability and does not imply a direct physical NVLink.
+message GpuPairRef {
+  GpuRef source_gpu = 1;
+  GpuRef peer_gpu = 2;
 }
 
 // Value is a typed observed value.
@@ -58,7 +89,15 @@ message CollectionError {
   string source_error = 4;
   string detail = 5;
   CollectionErrorCategory category = 3;
-  CollectionErrorReason reason = 6;
+}
+
+// NoValue records a successful collection that has no value for the requested
+// signal or target. This is distinct from a collection failure and from a
+// source status that is itself the observed value.
+message NoValue {
+  NoValueReason reason = 1;
+  string detail = 2;
+  string source_status = 3;
 }
 
 enum CollectionErrorCategory {
@@ -72,9 +111,10 @@ enum CollectionErrorCategory {
   COLLECTION_ERROR_CATEGORY_SOURCE_ERROR = 7;
 }
 
-enum CollectionErrorReason {
-  COLLECTION_ERROR_REASON_UNSPECIFIED = 0;
-  // Collection succeeded, but the returned data explicitly reports that the
-  // requested signal or part of it is unsupported.
-  COLLECTION_ERROR_REASON_VALUE_REPORTED_UNSUPPORTED = 1;
+enum NoValueReason {
+  NO_VALUE_REASON_UNSPECIFIED = 0;
+  // The target reported that this value is not supported.
+  NO_VALUE_REASON_NOT_SUPPORTED = 1;
+  // Collection succeeded, but there were no targets for this signal.
+  NO_VALUE_REASON_NO_TARGETS = 2;
 }

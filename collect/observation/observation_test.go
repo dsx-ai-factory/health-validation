@@ -33,6 +33,15 @@ func TestValidateObservationRequiresOutcome(t *testing.T) {
 			},
 		},
 		{
+			name: "no value",
+			observation: &Observation{
+				SignalId: "gpu.test",
+				Outcome: &Observation_NoValue{
+					NoValue: &NoValue{Reason: NoValueReasonNoTargets},
+				},
+			},
+		},
+		{
 			name: "nil value outcome",
 			observation: &Observation{
 				SignalId: "gpu.test",
@@ -47,6 +56,14 @@ func TestValidateObservationRequiresOutcome(t *testing.T) {
 				Outcome:  &Observation_CollectionError{},
 			},
 			wantError: "has an empty collection-error outcome",
+		},
+		{
+			name: "nil no value outcome",
+			observation: &Observation{
+				SignalId: "gpu.test",
+				Outcome:  &Observation_NoValue{},
+			},
+			wantError: "has an empty no-value outcome",
 		},
 		{name: "missing outcome", observation: &Observation{SignalId: "gpu.test"}, wantError: "has no outcome"},
 		{name: "nil observation", wantError: "observation is required"},
@@ -63,6 +80,57 @@ func TestValidateObservationRequiresOutcome(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), test.wantError) {
 				t.Fatalf("ValidateObservation() error = %v, want text %q", err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestValidateObservationTarget(t *testing.T) {
+	tests := []struct {
+		target    *ObservationTarget
+		name      string
+		wantError string
+	}{
+		{name: "source level", target: nil},
+		{name: "node", target: NodeTarget("node-0")},
+		{name: "GPU", target: GPUTarget("GPU-0")},
+		{name: "NVLink endpoint", target: NVLinkEndpointTarget("GPU-0", 3)},
+		{name: "GPU pair", target: GPUPairTarget("GPU-0", "GPU-1")},
+		{name: "missing kind", target: &ObservationTarget{}, wantError: "target has no kind"},
+		{
+			name: "incomplete NVLink endpoint",
+			target: &ObservationTarget{Kind: &ObservationTarget_NVLinkEndpoint{
+				NvLinkEndpoint: &NVLinkEndpointRef{},
+			}},
+			wantError: "target has an incomplete NVLink endpoint payload",
+		},
+		{
+			name: "incomplete GPU pair",
+			target: &ObservationTarget{Kind: &ObservationTarget_GPUPair{
+				GpuPair: &GPUPairRef{SourceGpu: &GPURef{Id: "GPU-0"}},
+			}},
+			wantError: "target has an incomplete GPU pair payload",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			current := &Observation{
+				SignalId: "gpu.test",
+				Target:   test.target,
+				Outcome: &Observation_Value{Value: &Value{
+					Kind: &Value_IntValue{IntValue: 1},
+				}},
+			}
+			err := validate(current)
+			if test.wantError == "" {
+				if err != nil {
+					t.Fatalf("validate() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("validate() error = %v, want text %q", err, test.wantError)
 			}
 		})
 	}
@@ -115,5 +183,26 @@ func TestNewCollectionErrorObservationPreservesSourceMetadata(t *testing.T) {
 	if got.GetSource() != "native" || got.GetOperation() != "read" {
 		t.Fatalf("metadata = (%q, %q), want (%q, %q)",
 			got.GetSource(), got.GetOperation(), "native", "read")
+	}
+}
+
+func TestNewNoValueObservationOwnsNoValue(t *testing.T) {
+	noValue := &NoValue{
+		Reason:       NoValueReasonNotSupported,
+		Detail:       "field is not supported",
+		SourceStatus: "DCGM_FT_NOT_SUPPORTED",
+	}
+
+	first := NewNoValueObservation("gpu.test", nil, "dcgm", GPUTarget("GPU-0"), nil, noValue)
+	second := NewNoValueObservation("gpu.test", nil, "dcgm", GPUTarget("GPU-0"), nil, noValue)
+	firstNoValue := first.GetNoValue()
+	secondNoValue := second.GetNoValue()
+
+	if firstNoValue == noValue || secondNoValue == noValue || firstNoValue == secondNoValue {
+		t.Fatal("no-value observations share mutable NoValue storage")
+	}
+	firstNoValue.Detail = "changed"
+	if secondNoValue.GetDetail() != "field is not supported" {
+		t.Fatalf("mutating first no-value changed second no-value to %q", secondNoValue.GetDetail())
 	}
 }

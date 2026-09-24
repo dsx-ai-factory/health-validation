@@ -41,7 +41,7 @@ func TestBuildGPUMeasurementsPreservesPerSignalFailure(t *testing.T) {
 	failed := &observation.Observation{
 		SignalId:   gpusignals.PerformanceState.ID(),
 		Source:     "dcgm",
-		Entity:     &observation.Entity{Type: "gpu", Id: "GPU-0"},
+		Target:     observation.GPUTarget("GPU-0"),
 		ObservedAt: timestamppb.Now(),
 		Outcome: &observation.Observation_CollectionError{CollectionError: &observation.CollectionError{
 			Source:    "dcgm",
@@ -79,11 +79,33 @@ func TestBuildGPUMeasurementsPreservesPerSignalFailure(t *testing.T) {
 	require.True(t, errors.Is(measurement.Errors()[0].Err(), health.ErrCollectionTimeout))
 }
 
+func TestBuildGPUMeasurementsPreservesNoTargets(t *testing.T) {
+	noTargets := observation.NewNoValueObservation(
+		gpusignals.PerformanceState.ID(),
+		nil,
+		"dcgm",
+		nil,
+		timestamppb.Now(),
+		&observation.NoValue{
+			Reason: observation.NoValueReasonNoTargets,
+			Detail: "No GPUs detected",
+		},
+	)
+
+	measurements := buildGPUMeasurements([]*observation.Observation{noTargets})
+
+	require.Len(t, measurements, 1)
+	measurement := measurements[0].(cataloggpu.GPUMeasurement)
+	require.Equal(t, "gpu", measurement.GPUID)
+	require.NotEmpty(t, measurement.Errors())
+	require.Contains(t, measurement.Errors()[0].Err().Error(), "NO_VALUE_REASON_NO_TARGETS")
+}
+
 func valueObservation(signalID string, value *observation.Value, unit *string) *observation.Observation {
 	return &observation.Observation{
 		SignalId:   signalID,
 		Source:     "dcgm",
-		Entity:     &observation.Entity{Type: "gpu", Id: "GPU-0"},
+		Target:     observation.GPUTarget("GPU-0"),
 		ObservedAt: timestamppb.Now(),
 		Unit:       unit,
 		Outcome:    &observation.Observation_Value{Value: value},

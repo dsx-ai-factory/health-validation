@@ -30,12 +30,12 @@ func TestClockEventTransforms(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, failure := test.transform(value)
-			if failure != nil {
-				t.Fatalf("transform() collection error = %v", failure)
+			got := test.transform(value)
+			if got.CollectionError != nil {
+				t.Fatalf("transform() collection error = %v", got.CollectionError)
 			}
-			if got.GetBoolValue() != test.want {
-				t.Errorf("transform() = %v, want %v", got.GetBoolValue(), test.want)
+			if got.Value.GetBoolValue() != test.want {
+				t.Errorf("transform() = %v, want %v", got.Value.GetBoolValue(), test.want)
 			}
 		})
 	}
@@ -57,30 +57,24 @@ func TestFabricHealthTransform(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, failure := fabricHealthFlag(test.shift)(intField(mask))
-			if failure != nil {
-				t.Fatalf("fabricHealthFlag() collection error = %v", failure)
+			got := fabricHealthFlag(test.shift)(intField(mask))
+			if got.CollectionError != nil {
+				t.Fatalf("fabricHealthFlag() collection error = %v", got.CollectionError)
 			}
-			if got.GetBoolValue() != test.want {
-				t.Errorf("fabricHealthFlag() = %v, want %v", got.GetBoolValue(), test.want)
+			if got.Value.GetBoolValue() != test.want {
+				t.Errorf("fabricHealthFlag() = %v, want %v", got.Value.GetBoolValue(), test.want)
 			}
 		})
 	}
 }
 
 func TestFabricHealthTransformPreservesUnsupported(t *testing.T) {
-	_, failure := fabricHealthFlag(0)(intField(0))
-	if failure == nil {
-		t.Fatal("fabricHealthFlag() returned no collection error")
+	got := fabricHealthFlag(0)(intField(0))
+	if got.CollectionError != nil || got.Value != nil || got.NoValue == nil {
+		t.Fatalf("fabricHealthFlag() = %+v, want no-value only", got)
 	}
-	if failure.GetCategory() != observation.CollectionErrorCategoryUnsupported {
-		t.Errorf("category = %v, want %v", failure.GetCategory(), observation.CollectionErrorCategoryUnsupported)
-	}
-	if failure.GetReason() != observation.CollectionErrorReasonValueReportedUnsupported {
-		t.Errorf("reason = %v, want %v", failure.GetReason(), observation.CollectionErrorReasonValueReportedUnsupported)
-	}
-	if failure.GetSourceError() != "" {
-		t.Errorf("source error = %q, want empty", failure.GetSourceError())
+	if got.NoValue.GetReason() != observation.NoValueReasonNotSupported {
+		t.Errorf("reason = %v, want %v", got.NoValue.GetReason(), observation.NoValueReasonNotSupported)
 	}
 }
 

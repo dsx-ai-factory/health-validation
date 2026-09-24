@@ -18,7 +18,7 @@ func newTemperatureReads(want map[string]bool) *temperatureReads {
 	return &temperatureReads{
 		batch:     &observation.ObservationBatch{},
 		now:       timestamppb.Now(),
-		entity:    observation.GPUEntity("test-gpu"),
+		target:    observation.GPUTarget("test-gpu"),
 		want:      want,
 		collected: make(map[string]bool, len(temperatureSignals())),
 	}

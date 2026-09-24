@@ -16,7 +16,7 @@ const source = "nvml"
 // errorObservation builds the collection-error observation for one failed
 // signal read. The native error name survives next to the normalized
 // category; there are no sentinel values.
-func errorObservation(now *timestamppb.Timestamp, entity *observation.Entity, definition collect.Signal, operation string, category observation.CollectionErrorCategory, sourceError, detail string) *observation.Observation {
+func errorObservation(now *timestamppb.Timestamp, target *observation.ObservationTarget, definition collect.Signal, operation string, category observation.CollectionErrorCategory, sourceError, detail string) *observation.Observation {
 	failure := observation.CollectionError{
 		Source:      source,
 		Operation:   operation,
@@ -25,7 +25,7 @@ func errorObservation(now *timestamppb.Timestamp, entity *observation.Entity, de
 		Detail:      detail,
 	}
 	return observation.NewCollectionErrorObservation(
-		definition.ID(), definition.Unit(), source, operation, entity, now, &failure,
+		definition.ID(), definition.Unit(), source, operation, target, now, &failure,
 	)
 }
 

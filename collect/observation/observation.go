@@ -15,21 +15,31 @@ import (
 type (
 	ObservationBatch        = healthv1.ObservationBatch
 	Observation             = healthv1.Observation
-	Entity                  = healthv1.Entity
+	ObservationTarget       = healthv1.ObservationTarget
+	NodeRef                 = healthv1.NodeRef
+	GPURef                  = healthv1.GpuRef
+	NVLinkEndpointRef       = healthv1.NvLinkEndpointRef
+	GPUPairRef              = healthv1.GpuPairRef
 	Value                   = healthv1.Value
 	CollectionError         = healthv1.CollectionError
 	CollectionErrorCategory = healthv1.CollectionErrorCategory
-	CollectionErrorReason   = healthv1.CollectionErrorReason
+	NoValue                 = healthv1.NoValue
+	NoValueReason           = healthv1.NoValueReason
 )
 
 // Oneof wrappers for Observation.outcome and Value.kind.
 type (
-	Observation_Value           = healthv1.Observation_Value
-	Observation_CollectionError = healthv1.Observation_CollectionError
-	Value_IntValue              = healthv1.Value_IntValue
-	Value_DoubleValue           = healthv1.Value_DoubleValue
-	Value_StringValue           = healthv1.Value_StringValue
-	Value_BoolValue             = healthv1.Value_BoolValue
+	ObservationTarget_Node           = healthv1.ObservationTarget_Node
+	ObservationTarget_GPU            = healthv1.ObservationTarget_Gpu
+	ObservationTarget_NVLinkEndpoint = healthv1.ObservationTarget_NvLinkEndpoint
+	ObservationTarget_GPUPair        = healthv1.ObservationTarget_GpuPair
+	Observation_Value                = healthv1.Observation_Value
+	Observation_CollectionError      = healthv1.Observation_CollectionError
+	Observation_NoValue              = healthv1.Observation_NoValue
+	Value_IntValue                   = healthv1.Value_IntValue
+	Value_DoubleValue                = healthv1.Value_DoubleValue
+	Value_StringValue                = healthv1.Value_StringValue
+	Value_BoolValue                  = healthv1.Value_BoolValue
 )
 
 const (
@@ -45,17 +55,39 @@ const (
 	// not fit a more specific, portable category.
 	CollectionErrorCategoryOther = CollectionErrorCategorySourceError
 
-	CollectionErrorReasonUnspecified              = healthv1.CollectionErrorReason_COLLECTION_ERROR_REASON_UNSPECIFIED
-	CollectionErrorReasonValueReportedUnsupported = healthv1.CollectionErrorReason_COLLECTION_ERROR_REASON_VALUE_REPORTED_UNSUPPORTED
+	NoValueReasonUnspecified  = healthv1.NoValueReason_NO_VALUE_REASON_UNSPECIFIED
+	NoValueReasonNotSupported = healthv1.NoValueReason_NO_VALUE_REASON_NOT_SUPPORTED
+	NoValueReasonNoTargets    = healthv1.NoValueReason_NO_VALUE_REASON_NO_TARGETS
 )
 
-// EntityTypeGPU identifies a whole physical GPU. Its stable ID is the GPU
-// UUID; source-local IDs are reserved for identity-collection errors.
-const EntityTypeGPU = "gpu"
+// NodeTarget identifies one node.
+func NodeTarget(id string) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_Node{Node: &NodeRef{Id: id}}}
+}
 
-// GPUEntity returns the canonical identity envelope for a whole GPU.
-func GPUEntity(id string) *Entity {
-	return &Entity{Type: EntityTypeGPU, Id: id}
+// GPUTarget identifies one physical GPU.
+func GPUTarget(id string) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_GPU{Gpu: &GPURef{Id: id}}}
+}
+
+// NVLinkEndpointTarget identifies one local NVLink endpoint on a GPU.
+func NVLinkEndpointTarget(gpuID string, linkIndex uint32) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_NVLinkEndpoint{
+		NvLinkEndpoint: &NVLinkEndpointRef{
+			Gpu:       &GPURef{Id: gpuID},
+			LinkIndex: linkIndex,
+		},
+	}}
+}
+
+// GPUPairTarget identifies an ordered source/peer GPU pair.
+func GPUPairTarget(sourceGPUID, peerGPUID string) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_GPUPair{
+		GpuPair: &GPUPairRef{
+			SourceGpu: &GPURef{Id: sourceGPUID},
+			PeerGpu:   &GPURef{Id: peerGPUID},
+		},
+	}}
 }
 
 // ValidateBatch verifies every observation before a batch crosses a service
@@ -79,6 +111,9 @@ func validate(current *Observation) error {
 	if current == nil {
 		return fmt.Errorf("observation is required")
 	}
+	if err := validateTarget(current.GetTarget()); err != nil {
+		return fmt.Errorf("observation %q: %w", current.GetSignalId(), err)
+	}
 	switch outcome := current.GetOutcome().(type) {
 	case *Observation_Value:
 		if outcome == nil || outcome.Value == nil {
@@ -88,10 +123,70 @@ func validate(current *Observation) error {
 		if outcome == nil || outcome.CollectionError == nil {
 			return fmt.Errorf("observation %q has an empty collection-error outcome", current.GetSignalId())
 		}
+	case *Observation_NoValue:
+		if outcome == nil || outcome.NoValue == nil {
+			return fmt.Errorf("observation %q has an empty no-value outcome", current.GetSignalId())
+		}
 	default:
 		return fmt.Errorf("observation %q has no outcome", current.GetSignalId())
 	}
 	return nil
+}
+
+func validateTarget(target *ObservationTarget) error {
+	if target == nil {
+		return nil
+	}
+	switch kind := target.GetKind().(type) {
+	case *ObservationTarget_Node:
+		if kind == nil || kind.Node == nil {
+			return fmt.Errorf("target has an empty node payload")
+		}
+	case *ObservationTarget_GPU:
+		if kind == nil || kind.Gpu == nil {
+			return fmt.Errorf("target has an empty GPU payload")
+		}
+	case *ObservationTarget_NVLinkEndpoint:
+		if kind == nil || kind.NvLinkEndpoint == nil || kind.NvLinkEndpoint.Gpu == nil {
+			return fmt.Errorf("target has an incomplete NVLink endpoint payload")
+		}
+	case *ObservationTarget_GPUPair:
+		if kind == nil || kind.GpuPair == nil || kind.GpuPair.SourceGpu == nil || kind.GpuPair.PeerGpu == nil {
+			return fmt.Errorf("target has an incomplete GPU pair payload")
+		}
+	default:
+		return fmt.Errorf("target has no kind")
+	}
+	return nil
+}
+
+// NewNoValueObservation builds an observation for a successful collection
+// that produced no value for the requested signal or target.
+func NewNoValueObservation(
+	signalID string,
+	unit *string,
+	source string,
+	target *ObservationTarget,
+	observedAt *timestamppb.Timestamp,
+	noValue *NoValue,
+) *Observation {
+	if observedAt == nil {
+		observedAt = timestamppb.Now()
+	}
+	ownedNoValue := &NoValue{}
+	if noValue != nil {
+		ownedNoValue = proto.Clone(noValue).(*NoValue)
+	}
+	return &Observation{
+		SignalId:   signalID,
+		Source:     source,
+		Target:     target,
+		ObservedAt: observedAt,
+		Unit:       unit,
+		Outcome: &Observation_NoValue{
+			NoValue: ownedNoValue,
+		},
+	}
 }
 
 // NewErrorObservation builds an observation carrying a CollectionError for
@@ -127,7 +222,7 @@ func NewCollectionErrorObservation(
 	signalID string,
 	unit *string,
 	source, operation string,
-	entity *Entity,
+	target *ObservationTarget,
 	observedAt *timestamppb.Timestamp,
 	failure *CollectionError,
 ) *Observation {
@@ -147,7 +242,7 @@ func NewCollectionErrorObservation(
 	return &Observation{
 		SignalId:   signalID,
 		Source:     source,
-		Entity:     entity,
+		Target:     target,
 		ObservedAt: observedAt,
 		Unit:       unit,
 		Outcome: &Observation_CollectionError{

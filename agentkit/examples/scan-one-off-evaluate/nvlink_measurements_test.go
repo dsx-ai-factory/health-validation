@@ -63,7 +63,7 @@ func TestBuildNVLinkMeasurementsPreservesFieldFailure(t *testing.T) {
 	require.Equal(t, health.Critical, byID["nvlink_fabric_health"].Severity)
 }
 
-func TestBuildNVLinkMeasurementsLeavesReportedUnsupportedNeutral(t *testing.T) {
+func TestBuildNVLinkMeasurementsLeavesNoValueUnsupportedNeutral(t *testing.T) {
 	tests := []struct {
 		name              string
 		wantSeverity      health.Severity
@@ -75,20 +75,17 @@ func TestBuildNVLinkMeasurementsLeavesReportedUnsupportedNeutral(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			unsupported := valueObservation(
+			unsupported := observation.NewNoValueObservation(
 				gpusignals.NVLinkFabricAccessTimeoutRecovery.ID(),
-				booleanValue(false),
 				nil,
-			)
-			unsupported.Outcome = &observation.Observation_CollectionError{
-				CollectionError: &observation.CollectionError{
-					Source:    "dcgm",
-					Operation: "metrics",
-					Category:  observation.CollectionErrorCategoryUnsupported,
-					Reason:    observation.CollectionErrorReasonValueReportedUnsupported,
-					Detail:    "fabric condition is not supported",
+				"dcgm",
+				observation.GPUTarget("GPU-0"),
+				nil,
+				&observation.NoValue{
+					Reason: observation.NoValueReasonNotSupported,
+					Detail: "fabric condition is not supported",
 				},
-			}
+			)
 
 			measurements := buildNVLinkMeasurements([]*observation.Observation{
 				valueObservation(gpusignals.NVLinkFabricBandwidthDegraded.ID(), booleanValue(test.bandwidthDegraded), nil),

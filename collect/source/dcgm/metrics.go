@@ -14,10 +14,11 @@ import (
 )
 
 // FieldValue is one DCGM field returned by a device read. The sensor adds the
-// signal metadata, entity, and source before emitting an observation.
+// signal metadata, target, and source before emitting an observation.
 type FieldValue struct {
 	ObservedAt      time.Time
 	Value           *observation.Value
+	NoValue         *observation.NoValue
 	CollectionError *observation.CollectionError
 }
 

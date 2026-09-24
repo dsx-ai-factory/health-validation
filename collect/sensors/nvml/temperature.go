@@ -36,11 +36,11 @@ const temperatureSensorMemory nvml.TemperatureSensors = 1
 // for one device. A GPU-lost or requires-reset return aborts the remaining
 // reads for the device (parity with gpud's GetTemperature short-circuit) and
 // marks every uncollected selected signal of the family unavailable.
-func measureTemperature(batch *observation.ObservationBatch, now *timestamppb.Timestamp, entity *observation.Entity, dev device.Device, want map[string]bool) {
+func measureTemperature(batch *observation.ObservationBatch, now *timestamppb.Timestamp, target *observation.ObservationTarget, dev device.Device, want map[string]bool) {
 	reads := temperatureReads{
 		batch:     batch,
 		now:       now,
-		entity:    entity,
+		target:    target,
 		want:      want,
 		collected: make(map[string]bool, len(temperatureSignals())),
 	}
@@ -108,7 +108,7 @@ type temperatureReads struct {
 	collected map[string]bool
 	batch     *observation.ObservationBatch
 	now       *timestamppb.Timestamp
-	entity    *observation.Entity
+	target    *observation.ObservationTarget
 }
 
 // record appends the observation for one temperature read: the value on
@@ -120,7 +120,7 @@ func (r *temperatureReads) record(definition collect.Signal, operation string, r
 		r.batch.Observations = append(r.batch.Observations, &observation.Observation{
 			SignalId:   signalID,
 			Source:     source,
-			Entity:     r.entity,
+			Target:     r.target,
 			ObservedAt: r.now,
 			Unit:       definition.Unit(),
 			Outcome: &observation.Observation_Value{Value: &observation.Value{
@@ -130,7 +130,7 @@ func (r *temperatureReads) record(definition collect.Signal, operation string, r
 		return
 	}
 	r.batch.Observations = append(r.batch.Observations, errorObservation(
-		r.now, r.entity, definition, operation, categorizeTemperatureFailure(definition, ret),
+		r.now, r.target, definition, operation, categorizeTemperatureFailure(definition, ret),
 		returnName(ret), nvml.ErrorString(ret)))
 }
 
@@ -146,7 +146,7 @@ func (r *temperatureReads) deviceUnreadable(ret nvml.Return) bool {
 		signalID := definition.ID()
 		if r.want[signalID] && !r.collected[signalID] {
 			r.batch.Observations = append(r.batch.Observations, errorObservation(
-				r.now, r.entity, definition, "temperature",
+				r.now, r.target, definition, "temperature",
 				observation.CollectionErrorCategoryUnavailable, returnName(ret), nvml.ErrorString(ret)))
 		}
 	}

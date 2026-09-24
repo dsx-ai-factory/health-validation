@@ -32,10 +32,9 @@ func (s *sensor) Signals() collect.Signals {
 	return temperatureSignals()
 }
 
-// Measure emits one observation per selected (signal, GPU). Unselected
-// signals are never queried. By default the device list captured at
-// instantiation is measured as-is; WithRefresh(true) re-enumerates devices
-// for this call (the per-cycle shared read until the coordinator lands).
+// Measure emits one observation per selected (signal, GPU), or one no-target
+// observation per signal when no GPUs are present. The device list captured at
+// instantiation is used unless WithRefresh(true) re-enumerates it.
 //
 // TODO: run the NVML calls through collect.Run, as the DCGM source does. A
 // hung NVML cgo call currently blocks Measure with no timeout.
@@ -64,16 +63,37 @@ func (s *sensor) Measure(_ context.Context, opts ...collect.OpOption) (*observat
 		// selected signal unavailable instead.
 		return allSignalsFailed(selected, now, "GetDevices", observation.CollectionErrorCategoryUnavailable, s.inst.InitError().Error()), nil
 	}
+	devices := s.inst.Devices()
+	if len(devices) == 0 {
+		appendNoTargetObservations(batch, selected, now)
+		return batch, nil
+	}
 
 	want := make(map[string]bool, len(selected))
 	for _, definition := range selected {
 		want[definition.ID()] = true
 	}
-	for uuid, dev := range s.inst.Devices() {
-		entity := &observation.Entity{Type: "gpu", Id: uuid}
-		measureTemperature(batch, now, entity, dev, want)
+	for uuid, dev := range devices {
+		target := observation.GPUTarget(uuid)
+		measureTemperature(batch, now, target, dev, want)
 	}
 	return batch, nil
+}
+
+func appendNoTargetObservations(batch *observation.ObservationBatch, selected collect.Signals, now *timestamppb.Timestamp) {
+	for _, definition := range selected {
+		batch.Observations = append(batch.Observations, observation.NewNoValueObservation(
+			definition.ID(),
+			definition.Unit(),
+			source,
+			nil,
+			now,
+			&observation.NoValue{
+				Reason: observation.NoValueReasonNoTargets,
+				Detail: "No GPUs detected",
+			},
+		))
+	}
 }
 
 // allSignalsFailed emits a collection-error observation for every selected

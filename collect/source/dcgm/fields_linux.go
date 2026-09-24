@@ -14,7 +14,7 @@ import (
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 )
 
-type fieldTransform func(*observation.Value) (observation.Value, *observation.CollectionError)
+type fieldTransform func(*observation.Value) FieldValue
 
 type fieldMapping struct {
 	transform fieldTransform
@@ -135,12 +135,12 @@ func indexFieldMappings(mappings []fieldMapping) map[string]fieldMapping {
 
 // bitSet turns one bit in a DCGM integer field into a canonical boolean.
 func bitSet(mask int64) fieldTransform {
-	return func(value *observation.Value) (observation.Value, *observation.CollectionError) {
+	return func(value *observation.Value) FieldValue {
 		integer, failure := int64Field(value)
 		if failure != nil {
-			return observation.Value{}, failure
+			return FieldValue{CollectionError: failure}
 		}
-		return boolField(integer&mask != 0), nil
+		return FieldValue{Value: boolField(integer&mask != 0)}
 	}
 }
 
@@ -148,25 +148,24 @@ func bitSet(mask int64) fieldTransform {
 // inactive, and 0 means that the returned data reports the condition as
 // unsupported. Preserve that outcome rather than reporting it as inactive.
 func fabricHealthFlag(shift uint) fieldTransform {
-	return func(value *observation.Value) (observation.Value, *observation.CollectionError) {
+	return func(value *observation.Value) FieldValue {
 		integer, failure := int64Field(value)
 		if failure != nil {
-			return observation.Value{}, failure
+			return FieldValue{CollectionError: failure}
 		}
 		state := (integer >> shift) & fabricHealthValueMask
 		switch state {
 		case 0:
-			return observation.Value{}, &observation.CollectionError{
-				Category: observation.CollectionErrorCategoryUnsupported,
-				Reason:   observation.CollectionErrorReasonValueReportedUnsupported,
-				Detail:   "DCGM fabric health condition is not supported",
-			}
+			return FieldValue{NoValue: &observation.NoValue{
+				Reason: observation.NoValueReasonNotSupported,
+				Detail: "DCGM fabric health condition is not supported",
+			}}
 		case fabricHealthValueTrue:
-			return boolField(true), nil
+			return FieldValue{Value: boolField(true)}
 		case 2:
-			return boolField(false), nil
+			return FieldValue{Value: boolField(false)}
 		default:
-			return observation.Value{}, parseFieldError(fmt.Sprintf("DCGM fabric health state %d is invalid", state))
+			return FieldValue{CollectionError: parseFieldError(fmt.Sprintf("DCGM fabric health state %d is invalid", state))}
 		}
 	}
 }
@@ -179,8 +178,8 @@ func int64Field(value *observation.Value) (int64, *observation.CollectionError) 
 	return integer.IntValue, nil
 }
 
-func boolField(value bool) observation.Value {
-	return observation.Value{Kind: &observation.Value_BoolValue{BoolValue: value}}
+func boolField(value bool) *observation.Value {
+	return &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: value}}
 }
 
 func parseFieldError(detail string) *observation.CollectionError {

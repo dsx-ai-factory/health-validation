@@ -39,7 +39,7 @@ func buildGPUMeasurements(observations []*observation.Observation) []health.Meas
 			continue
 		}
 
-		gpuID, entityErr := observationGPUID(current)
+		gpuID, targetErr := observationGPUID(current)
 		measurement := byGPU[gpuID]
 		if measurement == nil {
 			measurement = &cataloggpu.GPUMeasurement{GPUID: gpuID}
@@ -56,12 +56,16 @@ func buildGPUMeasurements(observations []*observation.Observation) []health.Meas
 		}
 		seenByGPU[gpuID][current.GetSignalId()] = struct{}{}
 
-		if entityErr != nil {
-			measurement.AddError(entityErr, cataloggpu.SignalGPUID, catalogSignal)
+		if targetErr != nil {
+			measurement.AddError(targetErr, cataloggpu.SignalGPUID, catalogSignal)
 			continue
 		}
 		if failure := current.GetCollectionError(); failure != nil {
 			measurement.AddError(collectionFailure(failure), catalogSignal)
+			continue
+		}
+		if noValue := current.GetNoValue(); noValue != nil {
+			measurement.AddError(noValueFailure(current.GetSource(), noValue), catalogSignal)
 			continue
 		}
 		if err := applyGPUValue(measurement, current); err != nil {
@@ -101,25 +105,30 @@ func buildGPUMeasurements(observations []*observation.Observation) []health.Meas
 }
 
 func observationGPUID(current *observation.Observation) (string, error) {
-	entity := current.GetEntity()
-	if entity == nil {
+	target := current.GetTarget()
+	if target == nil {
 		// Source-level failures have no GPU identity. Group them into one
 		// domain measurement so the affected checks still receive the errors.
-		if current.GetCollectionError() != nil {
+		if current.GetCollectionError() != nil || current.GetNoValue() != nil {
 			return "gpu", nil
 		}
-		return "gpu", fmt.Errorf("signal %q has no GPU entity", current.GetSignalId())
+		return "gpu", fmt.Errorf("signal %q has no GPU target", current.GetSignalId())
 	}
-	if entity.GetType() != "gpu" {
-		return entity.GetId(), fmt.Errorf(
-			"signal %q has entity type %q, expected %q",
-			current.GetSignalId(), entity.GetType(), "gpu",
-		)
+	var gpuID string
+	switch {
+	case target.GetGpu() != nil:
+		gpuID = target.GetGpu().GetId()
+	case target.GetNvLinkEndpoint() != nil:
+		gpuID = target.GetNvLinkEndpoint().GetGpu().GetId()
+	case target.GetGpuPair() != nil:
+		gpuID = target.GetGpuPair().GetSourceGpu().GetId()
+	default:
+		return "gpu", fmt.Errorf("signal %q does not identify a GPU target", current.GetSignalId())
 	}
-	if entity.GetId() == "" {
+	if gpuID == "" {
 		return "gpu", fmt.Errorf("signal %q has no GPU identifier", current.GetSignalId())
 	}
-	return entity.GetId(), nil
+	return gpuID, nil
 }
 
 func applyGPUValue(measurement *cataloggpu.GPUMeasurement, current *observation.Observation) error {
@@ -231,6 +240,17 @@ func collectionFailure(failure *observation.CollectionError) error {
 	}
 	if failure.GetCategory() == observation.CollectionErrorCategoryTimeout {
 		return fmt.Errorf("%w: %s", health.ErrCollectionTimeout, detail)
+	}
+	return errors.New(detail)
+}
+
+func noValueFailure(source string, noValue *observation.NoValue) error {
+	detail := fmt.Sprintf("%s returned no value (%s)", source, noValue.GetReason())
+	if noValue.GetSourceStatus() != "" {
+		detail += fmt.Sprintf(" (%s)", noValue.GetSourceStatus())
+	}
+	if noValue.GetDetail() != "" {
+		detail += ": " + noValue.GetDetail()
 	}
 	return errors.New(detail)
 }

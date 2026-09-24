@@ -97,11 +97,15 @@ func (sensor *sensor) Measure(
 		sensor.appendErrors(batch, selected, nil, startedAt, "devices", failure)
 		return batch, nil
 	}
+	if len(devices) == 0 {
+		sensor.appendNoTargetObservations(batch, selected, startedAt)
+		return batch, nil
+	}
 
 	for _, device := range devices {
-		entity := deviceEntity(device)
+		target := deviceTarget(device)
 		if device.CollectionError != nil {
-			sensor.appendErrors(batch, selected, entity, startedAt, "device_info", device.CollectionError)
+			sensor.appendErrors(batch, selected, target, startedAt, "device_info", device.CollectionError)
 			continue
 		}
 
@@ -110,33 +114,53 @@ func (sensor *sensor) Measure(
 			signalID := definition.ID()
 			field, exists := values[signalID]
 			if !exists {
-				sensor.appendError(batch, definition, entity, startedAt, "metrics",
+				sensor.appendError(batch, definition, target, startedAt, "metrics",
 					&observation.CollectionError{
 						Category: observation.CollectionErrorCategorySourceError,
 						Detail:   fmt.Sprintf("DCGM returned no field for signal %q", signalID),
 					})
 				continue
 			}
-			sensor.appendField(batch, definition, entity, field, startedAt)
+			sensor.appendField(batch, definition, target, field, startedAt)
 		}
 	}
 	return batch, nil
 }
 
-// deviceEntity uses the DCGM index when UUID collection failed, preserving
+// deviceTarget uses the DCGM index when UUID collection failed, preserving
 // enough identity to report a device-specific collection error.
-func deviceEntity(device dcgmsource.Device) *observation.Entity {
+func deviceTarget(device dcgmsource.Device) *observation.ObservationTarget {
 	id := device.UUID
 	if id == "" {
 		id = fmt.Sprintf("dcgm-index-%d", device.Index)
 	}
-	return observation.GPUEntity(id)
+	return observation.GPUTarget(id)
+}
+
+func (sensor *sensor) appendNoTargetObservations(
+	batch *observation.ObservationBatch,
+	definitions collect.Signals,
+	observedAt time.Time,
+) {
+	for _, definition := range definitions {
+		batch.Observations = append(batch.Observations, observation.NewNoValueObservation(
+			definition.ID(),
+			definition.Unit(),
+			sensor.source.ID(),
+			nil,
+			timestamppb.New(observedAt),
+			&observation.NoValue{
+				Reason: observation.NoValueReasonNoTargets,
+				Detail: "No GPUs detected",
+			},
+		))
+	}
 }
 
 func (sensor *sensor) appendField(
 	batch *observation.ObservationBatch,
 	definition collect.Signal,
-	entity *observation.Entity,
+	target *observation.ObservationTarget,
 	field dcgmsource.FieldValue,
 	fallbackTime time.Time,
 ) {
@@ -146,9 +170,18 @@ func (sensor *sensor) appendField(
 	}
 	switch {
 	case field.CollectionError != nil:
-		sensor.appendError(batch, definition, entity, observedAt, "metrics", field.CollectionError)
+		sensor.appendError(batch, definition, target, observedAt, "metrics", field.CollectionError)
+	case field.NoValue != nil:
+		batch.Observations = append(batch.Observations, observation.NewNoValueObservation(
+			definition.ID(),
+			definition.Unit(),
+			sensor.source.ID(),
+			target,
+			timestamppb.New(observedAt),
+			field.NoValue,
+		))
 	case field.Value == nil || field.Value.Kind == nil:
-		sensor.appendError(batch, definition, entity, observedAt, "metrics",
+		sensor.appendError(batch, definition, target, observedAt, "metrics",
 			&observation.CollectionError{
 				Category: observation.CollectionErrorCategoryParseError,
 				Detail:   "DCGM field has no value",
@@ -157,7 +190,7 @@ func (sensor *sensor) appendField(
 		batch.Observations = append(batch.Observations, &observation.Observation{
 			SignalId:   definition.ID(),
 			Source:     sensor.source.ID(),
-			Entity:     entity,
+			Target:     target,
 			ObservedAt: timestamppb.New(observedAt),
 			Unit:       definition.Unit(),
 			Outcome:    &observation.Observation_Value{Value: field.Value},
@@ -168,20 +201,20 @@ func (sensor *sensor) appendField(
 func (sensor *sensor) appendErrors(
 	batch *observation.ObservationBatch,
 	definitions collect.Signals,
-	entity *observation.Entity,
+	target *observation.ObservationTarget,
 	observedAt time.Time,
 	operation string,
 	failure *observation.CollectionError,
 ) {
 	for _, definition := range definitions {
-		sensor.appendError(batch, definition, entity, observedAt, operation, failure)
+		sensor.appendError(batch, definition, target, observedAt, operation, failure)
 	}
 }
 
 func (sensor *sensor) appendError(
 	batch *observation.ObservationBatch,
 	definition collect.Signal,
-	entity *observation.Entity,
+	target *observation.ObservationTarget,
 	observedAt time.Time,
 	operation string,
 	failure *observation.CollectionError,
@@ -192,7 +225,7 @@ func (sensor *sensor) appendError(
 			definition.Unit(),
 			sensor.source.ID(),
 			operation,
-			entity,
+			target,
 			timestamppb.New(observedAt),
 			failure,
 		),

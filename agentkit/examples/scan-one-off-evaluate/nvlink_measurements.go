@@ -34,7 +34,7 @@ func buildNVLinkMeasurements(observations []*observation.Observation) []health.M
 			continue
 		}
 
-		gpuID, entityErr := observationGPUID(current)
+		gpuID, targetErr := observationGPUID(current)
 		measurement := byGPU[gpuID]
 		if measurement == nil {
 			measurement = &catalognvlink.NVLinkMeasurement{GPUID: gpuID}
@@ -51,15 +51,19 @@ func buildNVLinkMeasurements(observations []*observation.Observation) []health.M
 		}
 		seenByGPU[gpuID][current.GetSignalId()] = struct{}{}
 
-		if entityErr != nil {
+		if targetErr != nil {
 			measurement.AddError(
-				entityErr,
+				targetErr,
 				append([]string{catalognvlink.SignalGPUID}, catalogSignals...)...,
 			)
 			continue
 		}
 		if failure := current.GetCollectionError(); failure != nil {
-			if failure.GetReason() == observation.CollectionErrorReasonValueReportedUnsupported {
+			measurement.AddError(collectionFailure(failure), catalogSignals...)
+			continue
+		}
+		if noValue := current.GetNoValue(); noValue != nil {
+			if noValue.GetReason() == observation.NoValueReasonNotSupported {
 				switch current.GetSignalId() {
 				case gpusignals.NVLinkFabricBandwidthDegraded.ID(),
 					gpusignals.NVLinkFabricRouteRecoveryActive.ID(),
@@ -68,7 +72,7 @@ func buildNVLinkMeasurements(observations []*observation.Observation) []health.M
 					continue
 				}
 			}
-			measurement.AddError(collectionFailure(failure), catalogSignals...)
+			measurement.AddError(noValueFailure(current.GetSource(), noValue), catalogSignals...)
 			continue
 		}
 		if err := applyNVLinkValue(measurement, current); err != nil {

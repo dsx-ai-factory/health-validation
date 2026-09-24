@@ -43,10 +43,12 @@ func TestMeasureRefresh(t *testing.T) {
 		opts          []collect.OpOption
 		wantCategory  observation.CollectionErrorCategory
 		wantRefreshed bool
+		wantNoTargets bool
 	}{
 		{
-			name: "default measures the instantiation-time device list",
-			inst: &fakeInstance{exists: true, devices: map[string]device.Device{}},
+			name:          "default measures the instantiation-time device list",
+			inst:          &fakeInstance{exists: true, devices: map[string]device.Device{}},
+			wantNoTargets: true,
 		},
 		{
 			name:          "default reports a failed instantiation-time enumeration",
@@ -59,6 +61,7 @@ func TestMeasureRefresh(t *testing.T) {
 			inst:          &fakeInstance{exists: true, devices: map[string]device.Device{}},
 			opts:          []collect.OpOption{collect.WithRefresh(true)},
 			wantRefreshed: true,
+			wantNoTargets: true,
 		},
 		{
 			name:          "failed refresh marks every signal unavailable",
@@ -88,9 +91,18 @@ func TestMeasureRefresh(t *testing.T) {
 				t.Errorf("Refresh() called = %t, want %t", test.inst.refreshed, test.wantRefreshed)
 			}
 
-			if test.wantOperation == "" {
-				if len(batch.Observations) != 0 {
-					t.Fatalf("Measure() emitted %d observations, want 0", len(batch.Observations))
+			if test.wantNoTargets {
+				if len(batch.Observations) != len(temperatureSignals()) {
+					t.Fatalf("Measure() emitted %d observations, want one per signal (%d)",
+						len(batch.Observations), len(temperatureSignals()))
+				}
+				for _, current := range batch.Observations {
+					if current.GetTarget() != nil {
+						t.Errorf("signal %q: target = %v, want nil", current.GetSignalId(), current.GetTarget())
+					}
+					if current.GetNoValue().GetReason() != observation.NoValueReasonNoTargets {
+						t.Errorf("signal %q: reason = %v, want %v", current.GetSignalId(), current.GetNoValue().GetReason(), observation.NoValueReasonNoTargets)
+					}
 				}
 				return
 			}

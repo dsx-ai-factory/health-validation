@@ -200,10 +200,9 @@ func decodeMetricValue(mapping fieldMapping, value godcgm.FieldValue_v1) FieldVa
 		return FieldValue{CollectionError: failure}
 	}
 	if mapping.transform != nil {
-		decoded, failure = mapping.transform(&decoded)
-		if failure != nil {
-			return FieldValue{CollectionError: failure}
-		}
+		transformed := mapping.transform(&decoded)
+		transformed.ObservedAt = time.UnixMicro(value.TS).UTC()
+		return transformed
 	}
 	return FieldValue{
 		ObservedAt: time.UnixMicro(value.TS).UTC(),
