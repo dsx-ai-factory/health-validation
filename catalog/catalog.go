@@ -363,7 +363,7 @@ func (c *Catalog) evaluateAllRaw(opts EvaluationOptions, measurements ...health.
 		return nil, err
 	}
 	checks, snap := c.batchSnapshot(opts)
-	return c.evaluationEngine.EvaluateBatch(checks, measurements, snap.forCheck)
+	return c.evaluationEngine.EvaluateBatch(checks, measurements, snap.host, snap.forCheck)
 }
 
 // RunnableChecks returns the registered checks that [Catalog.EvaluateAllWithOptions]
