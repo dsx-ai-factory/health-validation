@@ -11,7 +11,7 @@ var _ health.DerivedSignaler = XidMeasurement{}
 // computed from Events rather than collected, so any sensor that yields
 // Xid events gets them interpreted the same way instead of each
 // reimplementing the NVIDIA-specific parts.
-func (m XidMeasurement) DerivedSignals() map[string]any {
+func (m XidMeasurement) DerivedSignals(health.Host) map[string]any {
 	return map[string]any{
 		SignalSubXidCodeCounts: subXidCodeCounts(m.Events),
 	}

@@ -238,7 +238,7 @@ func TestXIDAdapterMixedTimeoutAndParseError(t *testing.T) {
 func TestXIDAdapterFailureCoversDerivedSignals(t *testing.T) {
 	m := only[xid.XidMeasurement](t, XID().Build(nil))
 	failed := m.Errors()[0].FailedSignals()
-	for key := range (xid.XidMeasurement{}).DerivedSignals() {
+	for key := range (xid.XidMeasurement{}).DerivedSignals(health.Host{}) {
 		if !slices.Contains(failed, key) {
 			t.Fatalf("derived signal %q not failed: %v", key, failed)
 		}

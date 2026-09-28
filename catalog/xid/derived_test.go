@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/internal/evaluation"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
@@ -18,7 +19,7 @@ func TestXidMeasurement_DerivedSignalContract(t *testing.T) {
 	populated := xid.XidMeasurement{Events: []xid.XidEvent{
 		{XidCode: 149, NVLink5: &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: "0x004505c6"}},
 	}}
-	if err := catalog.CheckDerivedSignalKeysStable(populated); err != nil {
+	if err := catalog.CheckDerivedSignalKeysStable(populated, health.Host{Architecture: "GB200"}); err != nil {
 		t.Error(err)
 	}
 	if err := catalog.CheckDerivedSignals(xid.XidMeasurement{}); err != nil {
@@ -33,7 +34,7 @@ func TestSubXidCodeCounts_ReachesCEL(t *testing.T) {
 	m := xid.XidMeasurement{Events: []xid.XidEvent{
 		{XidCode: 149, NVLink5: &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: "0x004505c6"}},
 	}}
-	counts, ok := evaluation.ToSignals(m)[xid.SignalSubXidCodeCounts].(map[string]int64)
+	counts, ok := evaluation.ToSignals(m, health.Host{})[xid.SignalSubXidCodeCounts].(map[string]int64)
 	if !ok {
 		t.Fatalf("%s missing or wrong type in CEL signals", xid.SignalSubXidCodeCounts)
 	}
