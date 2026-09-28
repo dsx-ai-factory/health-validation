@@ -74,15 +74,18 @@ func cadenceCatalog() *catalog.Catalog {
 
 func evaluatedVerdicts(t *testing.T, cat *catalog.Catalog, cadence *health.SchedulingCadence) map[string]health.CheckVerdict {
 	t.Helper()
-	verdicts, err := cat.EvaluateAllRawWithOptions(
+	nv, err := cat.EvaluateAllWithOptions(
 		catalog.EvaluationOptions{Cadence: cadence},
 		node.NodeMeasurement{GPUCount: 1},
 	)
 	if err != nil {
-		t.Fatalf("EvaluateAllRawWithOptions: %v", err)
+		t.Fatalf("EvaluateAllWithOptions: %v", err)
 	}
-	got := make(map[string]health.CheckVerdict, len(verdicts))
-	for _, v := range verdicts {
+	got := make(map[string]health.CheckVerdict, len(nv.CheckResults)+len(nv.SkippedChecks))
+	for _, v := range nv.CheckResults {
+		got[v.CheckID] = v
+	}
+	for _, v := range nv.SkippedChecks {
 		got[v.CheckID] = v
 	}
 	return got

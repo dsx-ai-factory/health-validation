@@ -340,13 +340,13 @@ func TestBuildCatalogAppliesConfigOverrides(t *testing.T) {
 
 	// 8 visible GPUs: Critical at the default expected count of 4,
 	// PASS once the threshold is raised to 8 from config.
-	verdicts, err := cat.EvaluateAllRaw(node.NodeMeasurement{GPUCount: 8})
+	nv, err := cat.EvaluateAll(node.NodeMeasurement{GPUCount: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var checked bool
-	for _, v := range verdicts {
+	for _, v := range nv.CheckResults {
 		if v.CheckID != "gpu_count" {
 			continue
 		}

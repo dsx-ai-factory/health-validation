@@ -56,9 +56,9 @@ func WithDisabledChecks(ids ...string) Option {
 	}
 }
 
-// ErrArchitectureUnset is returned by [Catalog.Evaluate], [Catalog.EvaluateAll],
-// and [Catalog.EvaluateAllRaw] when the catalog was constructed without
-// [WithArchitecture]. List, Get, and Register do not require it.
+// ErrArchitectureUnset is returned by [Catalog.Evaluate] and [Catalog.EvaluateAll]
+// when the catalog was constructed without [WithArchitecture]. List, Get, and
+// Register do not require it.
 var ErrArchitectureUnset = errors.New("architecture must be set via WithArchitecture")
 
 // WithArchitecture sets the current GPU architecture for filtering.
@@ -209,9 +209,9 @@ type paramsSnapshot struct {
 }
 
 // forCheck specializes the snapshot for a single check. Both the
-// single-check Evaluate and the batch EvaluateAllRaw build their Params
-// through this one method so the two paths cannot drift; a divergence
-// here is exactly what let the batch path silently ignore overrides and
+// single-check Evaluate and the batch path build their Params through
+// this one method so the two paths cannot drift; a divergence here is
+// exactly what let the batch path silently ignore overrides and
 // disabled checks.
 func (s paramsSnapshot) forCheck(checkID string) evaluation.Params {
 	return evaluation.Params{
@@ -272,28 +272,29 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 //
 // Every registered check produces a verdict, a result or a skip. A check
 // whose category supplied no measurement is skipped
-// [health.SensorMissing] — see [Catalog.EvaluateAllRaw] — which leaves
-// OverallSeverity untouched but marks the check as unassessed in
-// SkippedChecks. Supply the measurements for every category
-// in [Catalog.Categories], or register only the checks you intend to feed.
+// [health.SensorMissing], which leaves OverallSeverity untouched but marks
+// the check as unassessed in SkippedChecks. Supply the measurements for
+// every category in [Catalog.Categories], or register only the checks you
+// intend to feed.
 func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVerdict, error) {
 	return c.EvaluateAllWithOptions(EvaluationOptions{}, measurements...)
 }
 
 // EvaluateAllWithOptions is [Catalog.EvaluateAll] with per-run evaluation
 // configuration. A zero-value EvaluationOptions evaluates every registered
-// check.
+// check. A requested cadence skips checks whose declared cadence does not
+// cover that window; dependents then skip through the normal dependency
+// cascade.
 func (c *Catalog) EvaluateAllWithOptions(opts EvaluationOptions, measurements ...health.Measurement) (health.NodeVerdict, error) {
-	verdicts, err := c.EvaluateAllRawWithOptions(opts, measurements...)
+	verdicts, err := c.evaluateAllRaw(opts, measurements...)
 	if err != nil {
 		return health.NodeVerdict{}, err
 	}
 	return health.AggregateNodeVerdict(verdicts), nil
 }
 
-// EvaluateAllRaw routes the provided measurements to the checks they can
-// feed and returns the flat list of verdicts before node-level
-// aggregation.
+// evaluateAllRaw routes the provided measurements to the checks they can
+// feed and returns the flat list of verdicts before node-level aggregation.
 //
 // A measurement feeds a check when they share a Category and the
 // measurement's schema carries every one of the check's RequiredSignals.
@@ -318,15 +319,7 @@ func (c *Catalog) EvaluateAllWithOptions(opts EvaluationOptions, measurements ..
 // skips for the others. That is a report, not a failure: skips do not
 // affect OverallSeverity. Register only the checks you intend to feed if
 // you want a narrower verdict.
-func (c *Catalog) EvaluateAllRaw(measurements ...health.Measurement) ([]health.CheckVerdict, error) {
-	return c.EvaluateAllRawWithOptions(EvaluationOptions{}, measurements...)
-}
-
-// EvaluateAllRawWithOptions is [Catalog.EvaluateAllRaw] with per-run
-// evaluation configuration. A requested cadence skips checks whose declared
-// cadence does not cover that window; dependents then skip through the normal
-// dependency cascade. A nil cadence evaluates every registered check.
-func (c *Catalog) EvaluateAllRawWithOptions(opts EvaluationOptions, measurements ...health.Measurement) ([]health.CheckVerdict, error) {
+func (c *Catalog) evaluateAllRaw(opts EvaluationOptions, measurements ...health.Measurement) ([]health.CheckVerdict, error) {
 	if err := c.requireArchitecture(); err != nil {
 		return nil, err
 	}

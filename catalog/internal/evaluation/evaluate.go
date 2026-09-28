@@ -31,8 +31,8 @@ func NewEvaluationEngine() *EvaluationEngine {
 // particular measurement: how the host is configured, which thresholds
 // the operator has overridden, whether checks have been disabled.
 // Per-measurement state (signal values, the errored-entity placeholder)
-// is supplied via the Measurement passed to EvaluateCheck and
-// EvaluateAllRaw, not through this struct.
+// is supplied via the Measurement passed to EvaluateCheck and the batch
+// path, not through this struct.
 type Params struct {
 	Overrides        map[string]any
 	Cadence          *health.SchedulingCadence
