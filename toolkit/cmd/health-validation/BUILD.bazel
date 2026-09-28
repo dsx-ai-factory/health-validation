@@ -63,7 +63,7 @@ genrule(
     name = "recorded_modules",
     srcs = ["SHIPPED_MODULES.txt"],
     outs = ["recorded_modules.txt"],
-    cmd = "grep -E '^[^#[:space:]]' $< | cut -f1 > $@",
+    cmd = "set -o pipefail; grep -E '^[^#[:space:]]' $< | cut -f1 > $@",
 )
 
 diff_test(

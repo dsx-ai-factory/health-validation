@@ -113,7 +113,7 @@ def _go_linked_modules_impl(ctx):
         outputs = [out],
         command = """set -euo pipefail
 awk -v first_party="$4" '
-  NR == FNR { mods[++n] = $0; next }
+  FILENAME == vocab { mods[++n] = $0; next }
   $1 == first_party { next }
   {
     best = ""
@@ -127,8 +127,14 @@ awk -v first_party="$4" '
     owner[best] = $1
     seen[best] = 1
   }
-  END { for (m in seen) print m }
-' "$2" "$1" | LC_ALL=C sort -u > "$3"
+  END {
+    if (n == 0 && NR > 0) {
+      print "NO RECORDED MODULES: " vocab " is empty but the binary links Go modules" > "/dev/stderr"
+      exit 1
+    }
+    for (m in seen) print m
+  }
+' vocab="$2" "$2" "$1" | LC_ALL=C sort -u > "$3"
 """,
         arguments = [paths.path, ctx.file.recorded.path, out.path, ctx.attr.first_party_repo],
         mnemonic = "GoLinkedModules",

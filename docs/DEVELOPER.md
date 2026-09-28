@@ -33,9 +33,17 @@ bazel run //toolkit/cmd/health-validation:shipped_modules_update
 
 `bazel test //...` fails when it drifts from the binary, and
 `//toolkit/cmd/health-validation:shipped_modules_cross_check` separately checks it
-against the module set the Bazel graph says is linked. `NOTICE` is gated
-by `bazel run //tools:check_notice`. Regenerate both in the same change as any
-dependency bump that moves a linked version.
+against the module set the Bazel graph says is linked.
+
+`NOTICE` records the same dependency versions and is gated by its own check:
+
+```bash
+bazel run //tools:check_notice              # check
+bazel run //tools:check_notice -- --write   # regenerate, then review the diff
+```
+
+Regenerate both files in the same change as any dependency bump that moves a
+linked version.
 
 ## Module Layout
 
