@@ -28,7 +28,7 @@ type FieldValue struct {
 func (source *Source) ReadMetrics(
 	ctx context.Context,
 	currentCycle *collect.Cycle,
-	device Device,
+	deviceID uint,
 	signalIDs []string,
 ) map[string]FieldValue {
 	// The first read fixes the field watch. Report signals outside that watch
@@ -68,7 +68,7 @@ func (source *Source) ReadMetrics(
 			return nil, err
 		}
 
-		return source.native.ReadMetrics(device.Index, watched)
+		return source.native.ReadMetrics(deviceID, watched)
 	})
 	if err != nil {
 		// One failure message is shared by every watched signal: the content

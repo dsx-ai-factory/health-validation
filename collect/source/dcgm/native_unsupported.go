@@ -13,8 +13,8 @@ func newNative(StandaloneOptions) nativeAPI { return unsupportedNative{} }
 
 func (unsupportedNative) Init() (func(), error)             { return nil, unsupportedError() }
 func (unsupportedNative) SupportedDevices() ([]uint, error) { return nil, unsupportedError() }
-func (unsupportedNative) DeviceUUID(uint) (string, error) {
-	return "", unsupportedError()
+func (unsupportedNative) ReadInventory([]uint) (map[uint]*observation.GPUDevice, error) {
+	return nil, unsupportedError()
 }
 
 func (unsupportedNative) WatchMetrics([]string) (func() error, error) {

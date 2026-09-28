@@ -49,14 +49,6 @@ func (*nativeLibrary) SupportedDevices() ([]uint, error) {
 	return devices, nil
 }
 
-func (*nativeLibrary) DeviceUUID(deviceID uint) (string, error) {
-	device, err := godcgm.GetDeviceInfo(deviceID)
-	if err != nil {
-		return "", dcgmErrorFromError(err)
-	}
-	return device.UUID, nil
-}
-
 func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, error) {
 	// One field group lets DCGM watch every configured metric together.
 	mappings, err := fieldMappingsFor(signalIDs)

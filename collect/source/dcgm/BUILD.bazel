@@ -3,11 +3,12 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "dcgm",
     srcs = [
-        "devices.go",
         "doc.go",
         "errors.go",
         "errors_linux.go",
         "fields_linux.go",
+        "inventory.go",
+        "inventory_linux.go",
         "metrics.go",
         "native.go",
         "native_linux.go",
@@ -19,6 +20,7 @@ go_library(
     deps = [
         "//collect",
         "//collect/observation",
+        "@org_golang_google_protobuf//types/known/timestamppb",
     ] + select({
         "@rules_go//go/platform:android": [
             "//collect/signals/gpu",
@@ -38,6 +40,7 @@ go_test(
         "errors_linux_test.go",
         "errors_test.go",
         "fields_linux_test.go",
+        "inventory_linux_test.go",
         "source_test.go",
     ],
     embed = [":dcgm"],

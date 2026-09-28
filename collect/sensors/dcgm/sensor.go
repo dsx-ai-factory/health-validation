@@ -92,24 +92,26 @@ func (sensor *sensor) Measure(
 	}
 	startedAt := currentCycle.StartedAt()
 	batch := &observation.ObservationBatch{CollectionId: currentCycle.CollectionID()}
-	devices, failure := sensor.source.Devices(ctx, currentCycle)
+	snapshot := sensor.source.Inventory(ctx, currentCycle)
+	batch.Inventory = &observation.HardwareInventory{GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot}}
+	failure := snapshot.GetCollectionError()
 	if failure != nil {
-		sensor.appendErrors(batch, selected, nil, startedAt, "devices", failure)
+		sensor.appendErrors(batch, selected, nil, startedAt, failure.Operation, failure)
 		return batch, nil
 	}
-	if len(devices) == 0 {
+	if len(snapshot.GetInventory().GetEntries()) == 0 {
 		sensor.appendNoTargetObservations(batch, selected, startedAt)
 		return batch, nil
 	}
 
-	for _, device := range devices {
-		target := deviceTarget(device)
-		if device.CollectionError != nil {
-			sensor.appendErrors(batch, selected, target, startedAt, "device_info", device.CollectionError)
+	for _, entry := range snapshot.GetInventory().GetEntries() {
+		target := inventoryEntryTarget(entry)
+		if failure := entry.GetCollectionError(); failure != nil {
+			sensor.appendErrors(batch, selected, target, startedAt, "inventory", failure)
 			continue
 		}
 
-		values := sensor.source.ReadMetrics(ctx, currentCycle, device, selected.IDs())
+		values := sensor.source.ReadMetrics(ctx, currentCycle, uint(entry.GetSourceIndex()), selected.IDs())
 		for _, definition := range selected {
 			signalID := definition.ID()
 			field, exists := values[signalID]
@@ -127,13 +129,13 @@ func (sensor *sensor) Measure(
 	return batch, nil
 }
 
-// deviceTarget uses the DCGM index when UUID collection failed, preserving
+// inventoryEntryTarget uses the DCGM index when UUID collection failed, preserving
 // enough identity to report a device-specific collection error.
-func deviceTarget(device dcgmsource.Device) *observation.ObservationTarget {
-	if device.UUID == "" {
-		return observation.GPUSourceLocalTarget(fmt.Sprintf("dcgm-index-%d", device.Index))
+func inventoryEntryTarget(entry *observation.GPUInventoryEntry) *observation.ObservationTarget {
+	if entry.GetDevice().GetId() == "" {
+		return observation.GPUSourceLocalTarget(fmt.Sprintf("dcgm-index-%d", entry.GetSourceIndex()))
 	}
-	return observation.GPUTarget(device.UUID)
+	return observation.GPUTarget(entry.GetDevice().GetId())
 }
 
 func (sensor *sensor) appendNoTargetObservations(

@@ -398,8 +398,9 @@ func (x *GpuInventory) GetEntries() []*GpuInventoryEntry {
 // device-information lookup affects only that entry; healthy GPUs remain in
 // the same inventory snapshot.
 type GpuInventoryEntry struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	SourceIndex uint32                 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The source's enumeration index (the DCGM device ID for a DCGM snapshot).
+	SourceIndex uint32 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
 	// Types that are valid to be assigned to Outcome:
 	//
 	//	*GpuInventoryEntry_Device
@@ -490,13 +491,24 @@ func (*GpuInventoryEntry_CollectionError) isGpuInventoryEntry_Outcome() {}
 // GpuDevice is one successfully collected structured GPU inventory record.
 // Optional fields may be absent when the source legitimately has no value.
 type GpuDevice struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
-	Model         *string                `protobuf:"bytes,2,opt,name=model,proto3,oneof" json:"model,omitempty"`
-	Serial        *string                `protobuf:"bytes,3,opt,name=serial,proto3,oneof" json:"serial,omitempty"`
-	PciBusId      *string                `protobuf:"bytes,4,opt,name=pci_bus_id,json=pciBusId,proto3,oneof" json:"pci_bus_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	Id                     *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
+	Model                  *string                `protobuf:"bytes,2,opt,name=model,proto3,oneof" json:"model,omitempty"`
+	Serial                 *string                `protobuf:"bytes,3,opt,name=serial,proto3,oneof" json:"serial,omitempty"`
+	PciBusId               *string                `protobuf:"bytes,4,opt,name=pci_bus_id,json=pciBusId,proto3,oneof" json:"pci_bus_id,omitempty"`
+	Brand                  *string                `protobuf:"bytes,5,opt,name=brand,proto3,oneof" json:"brand,omitempty"`
+	VbiosVersion           *string                `protobuf:"bytes,6,opt,name=vbios_version,json=vbiosVersion,proto3,oneof" json:"vbios_version,omitempty"`
+	ChassisSerial          *string                `protobuf:"bytes,7,opt,name=chassis_serial,json=chassisSerial,proto3,oneof" json:"chassis_serial,omitempty"`
+	MinorNumber            *int64                 `protobuf:"varint,8,opt,name=minor_number,json=minorNumber,proto3,oneof" json:"minor_number,omitempty"`
+	FabricClusterUuid      *string                `protobuf:"bytes,9,opt,name=fabric_cluster_uuid,json=fabricClusterUuid,proto3,oneof" json:"fabric_cluster_uuid,omitempty"`
+	FabricCliqueId         *uint32                `protobuf:"varint,10,opt,name=fabric_clique_id,json=fabricCliqueId,proto3,oneof" json:"fabric_clique_id,omitempty"`
+	ComputeCapabilityMajor *uint32                `protobuf:"varint,11,opt,name=compute_capability_major,json=computeCapabilityMajor,proto3,oneof" json:"compute_capability_major,omitempty"`
+	ComputeCapabilityMinor *uint32                `protobuf:"varint,12,opt,name=compute_capability_minor,json=computeCapabilityMinor,proto3,oneof" json:"compute_capability_minor,omitempty"`
+	FramebufferTotalBytes  *uint64                `protobuf:"varint,13,opt,name=framebuffer_total_bytes,json=framebufferTotalBytes,proto3,oneof" json:"framebuffer_total_bytes,omitempty"`
+	DriverVersion          *string                `protobuf:"bytes,14,opt,name=driver_version,json=driverVersion,proto3,oneof" json:"driver_version,omitempty"`
+	CudaDriverVersion      *string                `protobuf:"bytes,15,opt,name=cuda_driver_version,json=cudaDriverVersion,proto3,oneof" json:"cuda_driver_version,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *GpuDevice) Reset() {
@@ -553,6 +565,83 @@ func (x *GpuDevice) GetSerial() string {
 func (x *GpuDevice) GetPciBusId() string {
 	if x != nil && x.PciBusId != nil {
 		return *x.PciBusId
+	}
+	return ""
+}
+
+func (x *GpuDevice) GetBrand() string {
+	if x != nil && x.Brand != nil {
+		return *x.Brand
+	}
+	return ""
+}
+
+func (x *GpuDevice) GetVbiosVersion() string {
+	if x != nil && x.VbiosVersion != nil {
+		return *x.VbiosVersion
+	}
+	return ""
+}
+
+func (x *GpuDevice) GetChassisSerial() string {
+	if x != nil && x.ChassisSerial != nil {
+		return *x.ChassisSerial
+	}
+	return ""
+}
+
+func (x *GpuDevice) GetMinorNumber() int64 {
+	if x != nil && x.MinorNumber != nil {
+		return *x.MinorNumber
+	}
+	return 0
+}
+
+func (x *GpuDevice) GetFabricClusterUuid() string {
+	if x != nil && x.FabricClusterUuid != nil {
+		return *x.FabricClusterUuid
+	}
+	return ""
+}
+
+func (x *GpuDevice) GetFabricCliqueId() uint32 {
+	if x != nil && x.FabricCliqueId != nil {
+		return *x.FabricCliqueId
+	}
+	return 0
+}
+
+func (x *GpuDevice) GetComputeCapabilityMajor() uint32 {
+	if x != nil && x.ComputeCapabilityMajor != nil {
+		return *x.ComputeCapabilityMajor
+	}
+	return 0
+}
+
+func (x *GpuDevice) GetComputeCapabilityMinor() uint32 {
+	if x != nil && x.ComputeCapabilityMinor != nil {
+		return *x.ComputeCapabilityMinor
+	}
+	return 0
+}
+
+func (x *GpuDevice) GetFramebufferTotalBytes() uint64 {
+	if x != nil && x.FramebufferTotalBytes != nil {
+		return *x.FramebufferTotalBytes
+	}
+	return 0
+}
+
+func (x *GpuDevice) GetDriverVersion() string {
+	if x != nil && x.DriverVersion != nil {
+		return *x.DriverVersion
+	}
+	return ""
+}
+
+func (x *GpuDevice) GetCudaDriverVersion() string {
+	if x != nil && x.CudaDriverVersion != nil {
+		return *x.CudaDriverVersion
 	}
 	return ""
 }
@@ -1304,17 +1393,41 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\fsource_index\x18\x01 \x01(\rR\vsourceIndex\x12.\n" +
 	"\x06device\x18\x02 \x01(\v2\x14.health.v1.GpuDeviceH\x00R\x06device\x12G\n" +
 	"\x10collection_error\x18\x03 \x01(\v2\x1a.health.v1.CollectionErrorH\x00R\x0fcollectionErrorB\t\n" +
-	"\aoutcome\"\xa6\x01\n" +
+	"\aoutcome\"\xad\a\n" +
 	"\tGpuDevice\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x19\n" +
 	"\x05model\x18\x02 \x01(\tH\x01R\x05model\x88\x01\x01\x12\x1b\n" +
 	"\x06serial\x18\x03 \x01(\tH\x02R\x06serial\x88\x01\x01\x12!\n" +
 	"\n" +
-	"pci_bus_id\x18\x04 \x01(\tH\x03R\bpciBusId\x88\x01\x01B\x05\n" +
+	"pci_bus_id\x18\x04 \x01(\tH\x03R\bpciBusId\x88\x01\x01\x12\x19\n" +
+	"\x05brand\x18\x05 \x01(\tH\x04R\x05brand\x88\x01\x01\x12(\n" +
+	"\rvbios_version\x18\x06 \x01(\tH\x05R\fvbiosVersion\x88\x01\x01\x12*\n" +
+	"\x0echassis_serial\x18\a \x01(\tH\x06R\rchassisSerial\x88\x01\x01\x12&\n" +
+	"\fminor_number\x18\b \x01(\x03H\aR\vminorNumber\x88\x01\x01\x123\n" +
+	"\x13fabric_cluster_uuid\x18\t \x01(\tH\bR\x11fabricClusterUuid\x88\x01\x01\x12-\n" +
+	"\x10fabric_clique_id\x18\n" +
+	" \x01(\rH\tR\x0efabricCliqueId\x88\x01\x01\x12=\n" +
+	"\x18compute_capability_major\x18\v \x01(\rH\n" +
+	"R\x16computeCapabilityMajor\x88\x01\x01\x12=\n" +
+	"\x18compute_capability_minor\x18\f \x01(\rH\vR\x16computeCapabilityMinor\x88\x01\x01\x12;\n" +
+	"\x17framebuffer_total_bytes\x18\r \x01(\x04H\fR\x15framebufferTotalBytes\x88\x01\x01\x12*\n" +
+	"\x0edriver_version\x18\x0e \x01(\tH\rR\rdriverVersion\x88\x01\x01\x123\n" +
+	"\x13cuda_driver_version\x18\x0f \x01(\tH\x0eR\x11cudaDriverVersion\x88\x01\x01B\x05\n" +
 	"\x03_idB\b\n" +
 	"\x06_modelB\t\n" +
 	"\a_serialB\r\n" +
-	"\v_pci_bus_id\"\x86\x03\n" +
+	"\v_pci_bus_idB\b\n" +
+	"\x06_brandB\x10\n" +
+	"\x0e_vbios_versionB\x11\n" +
+	"\x0f_chassis_serialB\x0f\n" +
+	"\r_minor_numberB\x16\n" +
+	"\x14_fabric_cluster_uuidB\x13\n" +
+	"\x11_fabric_clique_idB\x1b\n" +
+	"\x19_compute_capability_majorB\x1b\n" +
+	"\x19_compute_capability_minorB\x1a\n" +
+	"\x18_framebuffer_total_bytesB\x11\n" +
+	"\x0f_driver_versionB\x16\n" +
+	"\x14_cuda_driver_version\"\x86\x03\n" +
 	"\vObservation\x12\x1b\n" +
 	"\tsignal_id\x18\x01 \x01(\tR\bsignalId\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x124\n" +

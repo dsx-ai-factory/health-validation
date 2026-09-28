@@ -13,7 +13,18 @@
                 "id": "GPU-123",
                 "model": "H100",
                 "serial": "032451000001",
-                "pciBusId": "0000:31:00.0"
+                "pciBusId": "0000:31:00.0",
+                "brand": "NVIDIA",
+                "vbiosVersion": "96.00.00.00.01",
+                "chassisSerial": "chassis-example",
+                "minorNumber": "0",
+                "fabricClusterUuid": "cluster-example",
+                "fabricCliqueId": 0,
+                "computeCapabilityMajor": 9,
+                "computeCapabilityMinor": 0,
+                "framebufferTotalBytes": "85899345920",
+                "driverVersion": "550.54.14",
+                "cudaDriverVersion": "12.4"
               }
             },
             {
