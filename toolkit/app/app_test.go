@@ -826,7 +826,11 @@ func TestRunCommandDefaultIncludesPrologChecks(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
 		t.Fatalf("unmarshal: %v; stdout = %s", err, stdout.String())
 	}
-	for _, id := range []string{"gpu_power_limit", "gpu_sensor_throttle"} {
+	prolog := catalogtest.CheckIDsAtCadence(catalog.New(), health.Prolog)
+	if len(prolog) == 0 {
+		t.Fatal("builtin catalog has no Prolog checks")
+	}
+	for _, id := range prolog {
 		if !verdictHasCheck(v, id) {
 			t.Errorf("default run missing %s; unfiltered default evaluates all registered checks", id)
 		}
@@ -843,7 +847,11 @@ func TestRunCommandCadenceContinuousSkipsPrologChecks(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
 		t.Fatalf("unmarshal: %v; stdout = %s", err, stdout.String())
 	}
-	for _, id := range []string{"gpu_power_limit", "gpu_sensor_throttle"} {
+	prolog := catalogtest.CheckIDsAtCadence(catalog.New(), health.Prolog)
+	if len(prolog) == 0 {
+		t.Fatal("builtin catalog has no Prolog checks")
+	}
+	for _, id := range prolog {
 		var reason health.SkipReason
 		for _, skipped := range v.SkippedChecks {
 			if skipped.CheckID == id {

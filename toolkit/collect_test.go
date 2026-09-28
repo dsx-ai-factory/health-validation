@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
@@ -79,7 +80,11 @@ func TestCollectWithOptions_ContinuousCadenceSkipsPrologChecks(t *testing.T) {
 	for _, v := range nv.SkippedChecks {
 		skipped[v.CheckID] = v.SkipReason
 	}
-	for _, id := range []string{"gpu_power_limit", "gpu_sensor_throttle"} {
+	prolog := catalogtest.CheckIDsAtCadence(cat, health.Prolog)
+	if len(prolog) == 0 {
+		t.Fatal("catalog has no Prolog checks")
+	}
+	for _, id := range prolog {
 		if skipped[id] != health.CadenceMismatch {
 			t.Errorf("%s skip reason = %v, want CADENCE_MISMATCH", id, skipped[id])
 		}

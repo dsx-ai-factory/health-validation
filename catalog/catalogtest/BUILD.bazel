@@ -5,4 +5,8 @@ go_library(
     srcs = ["catalogtest.go"],
     importpath = "github.com/dsx-ai-factory/health-validation/catalog/catalogtest",
     visibility = ["//visibility:public"],
+    deps = [
+        "//catalog",
+        "//catalog/health",
+    ],
 )
