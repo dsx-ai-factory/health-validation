@@ -10,10 +10,10 @@
             {
               "sourceIndex": 0,
               "device": {
-                "id": "GPU-123",
+                "uuid": "GPU-123",
                 "model": "H100",
                 "serial": "032451000001",
-                "pciBusId": "0000:31:00.0",
+                "busId": "0000:31:00.0",
                 "brand": "NVIDIA",
                 "vbiosVersion": "96.00.00.00.01",
                 "chassisSerial": "chassis-example",

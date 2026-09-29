@@ -58,13 +58,13 @@ func decodeInventory(ids []uint, values []godcgm.FieldValue_v2) map[uint]*observ
 		if value, ok := inventoryString(field); ok {
 			switch field.FieldID {
 			case godcgm.DCGM_FI_DEV_UUID:
-				device.Id = &value
+				device.Uuid = &value
 			case godcgm.DCGM_FI_DEV_NAME:
 				device.Model = &value
 			case godcgm.DCGM_FI_DEV_SERIAL:
 				device.Serial = &value
 			case godcgm.DCGM_FI_DEV_PCI_BUSID:
-				device.PciBusId = &value
+				device.BusId = &value
 			case godcgm.DCGM_FI_DEV_BRAND:
 				device.Brand = &value
 			case godcgm.DCGM_FI_DEV_VBIOS_VERSION:

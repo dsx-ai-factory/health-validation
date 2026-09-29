@@ -36,7 +36,7 @@ func TestDecodeInventory(t *testing.T) {
 	}
 	devices := decodeInventory([]uint{7, 8}, fields)
 	device := devices[7]
-	if device.GetId() != "GPU-7" || device.GetModel() != "H100" || device.GetPciBusId() != "0000:53:00.0" {
+	if device.GetUuid() != "GPU-7" || device.GetModel() != "H100" || device.GetBusId() != "0000:53:00.0" {
 		t.Fatalf("identity fields: %+v", device)
 	}
 	if device.MinorNumber == nil || *device.MinorNumber != 0 || device.FabricCliqueId == nil || *device.FabricCliqueId != 0 {
@@ -45,7 +45,7 @@ func TestDecodeInventory(t *testing.T) {
 	if device.GetComputeCapabilityMajor() != 9 || device.GetComputeCapabilityMinor() != 0 || device.GetFramebufferTotalBytes() != 81920*1024*1024 || device.GetCudaDriverVersion() != "12.8" {
 		t.Fatalf("derived fields: %+v", device)
 	}
-	if devices[8].Id != nil {
+	if devices[8].Uuid != nil {
 		t.Fatalf("DCGM sentinel was retained: %+v", devices[8])
 	}
 }

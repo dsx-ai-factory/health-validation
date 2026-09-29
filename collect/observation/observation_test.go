@@ -187,11 +187,11 @@ func TestGPUInventoryExample(t *testing.T) {
 	if snapshot.GetCollectedAt() == nil {
 		t.Fatal("GPU snapshot collection time is absent")
 	}
-	if entries[0].GetSourceIndex() != 0 || entries[0].GetDevice().GetId() != "GPU-123" {
+	if entries[0].GetSourceIndex() != 0 || entries[0].GetDevice().GetUuid() != "GPU-123" {
 		t.Fatalf("first GPU entry = %v, want source index 0 and ID GPU-123", entries[0])
 	}
 	device := entries[0].GetDevice()
-	if device.GetPciBusId() != "0000:31:00.0" || device.GetMinorNumber() != 0 || device.MinorNumber == nil ||
+	if device.GetBusId() != "0000:31:00.0" || device.GetMinorNumber() != 0 || device.MinorNumber == nil ||
 		device.GetFabricCliqueId() != 0 || device.FabricCliqueId == nil ||
 		device.GetComputeCapabilityMajor() != 9 || device.GetFramebufferTotalBytes() != 85899345920 ||
 		device.GetDriverVersion() != "550.54.14" || device.GetCudaDriverVersion() != "12.4" {

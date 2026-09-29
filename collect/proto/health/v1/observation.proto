@@ -57,10 +57,10 @@ message GpuInventoryEntry {
 // GpuDevice is one successfully collected structured GPU inventory record.
 // Optional fields may be absent when the source legitimately has no value.
 message GpuDevice {
-  optional string id = 1;
+  optional string uuid = 1;
   optional string model = 2;
   optional string serial = 3;
-  optional string pci_bus_id = 4;
+  optional string bus_id = 4;
   optional string brand = 5;
   optional string vbios_version = 6;
   optional string chassis_serial = 7;

@@ -60,7 +60,7 @@ func (native *fakeNative) ReadInventory(ids []uint) (map[uint]*observation.GPUDe
 	devices := make(map[uint]*observation.GPUDevice, len(ids))
 	for _, index := range ids {
 		id := fmt.Sprintf("GPU-%d", index)
-		devices[index] = &observation.GPUDevice{Id: &id}
+		devices[index] = &observation.GPUDevice{Uuid: &id}
 	}
 	return devices, nil
 }
@@ -139,7 +139,7 @@ func TestInventoryUsesOneRead(t *testing.T) {
 	cycle := newTestCycle(t, "inventory")
 	snapshot := source.Inventory(context.Background(), cycle)
 	entries := snapshot.GetInventory().GetEntries()
-	if len(entries) != 2 || entries[0].GetSourceIndex() != 0 || entries[0].GetDevice().GetId() != "GPU-0" || entries[1].GetSourceIndex() != 1 || entries[1].GetDevice().GetId() != "GPU-1" {
+	if len(entries) != 2 || entries[0].GetSourceIndex() != 0 || entries[0].GetDevice().GetUuid() != "GPU-0" || entries[1].GetSourceIndex() != 1 || entries[1].GetDevice().GetUuid() != "GPU-1" {
 		t.Fatalf("Inventory() = %+v", snapshot)
 	}
 	if got := native.inventoryCalls.Load(); got != 1 {
@@ -156,11 +156,11 @@ func TestInventoryPreservesMissingUUIDPerDevice(t *testing.T) {
 	id := "GPU-0"
 	native := &fakeNative{
 		deviceIDs: []uint{0, 1},
-		inventory: map[uint]*observation.GPUDevice{0: {Id: &id}, 1: {}},
+		inventory: map[uint]*observation.GPUDevice{0: {Uuid: &id}, 1: {}},
 	}
 	snapshot := newSource(native, &sync.Mutex{}).Inventory(context.Background(), newTestCycle(t, "missing-uuid"))
 	entries := snapshot.GetInventory().GetEntries()
-	if len(entries) != 2 || entries[0].GetDevice().GetId() != id || entries[1].GetCollectionError() == nil {
+	if len(entries) != 2 || entries[0].GetDevice().GetUuid() != id || entries[1].GetCollectionError() == nil {
 		t.Fatalf("Inventory() = %+v", snapshot)
 	}
 }

@@ -74,7 +74,7 @@ func (source *Source) Inventory(ctx context.Context, currentCycle *collect.Cycle
 	for _, id := range read.ids {
 		entry := &observation.GPUInventoryEntry{SourceIndex: uint32(id)}
 		device := read.devices[id]
-		if device == nil || device.GetId() == "" {
+		if device == nil || device.GetUuid() == "" {
 			entry.Outcome = &observation.GPUInventoryEntry_CollectionError{CollectionError: &observation.CollectionError{
 				Source:    source.ID(),
 				Operation: "inventory",

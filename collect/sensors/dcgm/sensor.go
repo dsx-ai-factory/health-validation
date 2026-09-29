@@ -132,10 +132,10 @@ func (sensor *sensor) Measure(
 // inventoryEntryTarget uses the DCGM index when UUID collection failed, preserving
 // enough identity to report a device-specific collection error.
 func inventoryEntryTarget(entry *observation.GPUInventoryEntry) *observation.ObservationTarget {
-	if entry.GetDevice().GetId() == "" {
+	if entry.GetDevice().GetUuid() == "" {
 		return observation.GPUSourceLocalTarget(fmt.Sprintf("dcgm-index-%d", entry.GetSourceIndex()))
 	}
-	return observation.GPUTarget(entry.GetDevice().GetId())
+	return observation.GPUTarget(entry.GetDevice().GetUuid())
 }
 
 func (sensor *sensor) appendNoTargetObservations(

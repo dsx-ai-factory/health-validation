@@ -492,10 +492,10 @@ func (*GpuInventoryEntry_CollectionError) isGpuInventoryEntry_Outcome() {}
 // Optional fields may be absent when the source legitimately has no value.
 type GpuDevice struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
-	Id                     *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
+	Uuid                   *string                `protobuf:"bytes,1,opt,name=uuid,proto3,oneof" json:"uuid,omitempty"`
 	Model                  *string                `protobuf:"bytes,2,opt,name=model,proto3,oneof" json:"model,omitempty"`
 	Serial                 *string                `protobuf:"bytes,3,opt,name=serial,proto3,oneof" json:"serial,omitempty"`
-	PciBusId               *string                `protobuf:"bytes,4,opt,name=pci_bus_id,json=pciBusId,proto3,oneof" json:"pci_bus_id,omitempty"`
+	BusId                  *string                `protobuf:"bytes,4,opt,name=bus_id,json=busId,proto3,oneof" json:"bus_id,omitempty"`
 	Brand                  *string                `protobuf:"bytes,5,opt,name=brand,proto3,oneof" json:"brand,omitempty"`
 	VbiosVersion           *string                `protobuf:"bytes,6,opt,name=vbios_version,json=vbiosVersion,proto3,oneof" json:"vbios_version,omitempty"`
 	ChassisSerial          *string                `protobuf:"bytes,7,opt,name=chassis_serial,json=chassisSerial,proto3,oneof" json:"chassis_serial,omitempty"`
@@ -541,9 +541,9 @@ func (*GpuDevice) Descriptor() ([]byte, []int) {
 	return file_health_v1_observation_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *GpuDevice) GetId() string {
-	if x != nil && x.Id != nil {
-		return *x.Id
+func (x *GpuDevice) GetUuid() string {
+	if x != nil && x.Uuid != nil {
+		return *x.Uuid
 	}
 	return ""
 }
@@ -562,9 +562,9 @@ func (x *GpuDevice) GetSerial() string {
 	return ""
 }
 
-func (x *GpuDevice) GetPciBusId() string {
-	if x != nil && x.PciBusId != nil {
-		return *x.PciBusId
+func (x *GpuDevice) GetBusId() string {
+	if x != nil && x.BusId != nil {
+		return *x.BusId
 	}
 	return ""
 }
@@ -1393,13 +1393,12 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\fsource_index\x18\x01 \x01(\rR\vsourceIndex\x12.\n" +
 	"\x06device\x18\x02 \x01(\v2\x14.health.v1.GpuDeviceH\x00R\x06device\x12G\n" +
 	"\x10collection_error\x18\x03 \x01(\v2\x1a.health.v1.CollectionErrorH\x00R\x0fcollectionErrorB\t\n" +
-	"\aoutcome\"\xad\a\n" +
-	"\tGpuDevice\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x19\n" +
+	"\aoutcome\"\xa8\a\n" +
+	"\tGpuDevice\x12\x17\n" +
+	"\x04uuid\x18\x01 \x01(\tH\x00R\x04uuid\x88\x01\x01\x12\x19\n" +
 	"\x05model\x18\x02 \x01(\tH\x01R\x05model\x88\x01\x01\x12\x1b\n" +
-	"\x06serial\x18\x03 \x01(\tH\x02R\x06serial\x88\x01\x01\x12!\n" +
-	"\n" +
-	"pci_bus_id\x18\x04 \x01(\tH\x03R\bpciBusId\x88\x01\x01\x12\x19\n" +
+	"\x06serial\x18\x03 \x01(\tH\x02R\x06serial\x88\x01\x01\x12\x1a\n" +
+	"\x06bus_id\x18\x04 \x01(\tH\x03R\x05busId\x88\x01\x01\x12\x19\n" +
 	"\x05brand\x18\x05 \x01(\tH\x04R\x05brand\x88\x01\x01\x12(\n" +
 	"\rvbios_version\x18\x06 \x01(\tH\x05R\fvbiosVersion\x88\x01\x01\x12*\n" +
 	"\x0echassis_serial\x18\a \x01(\tH\x06R\rchassisSerial\x88\x01\x01\x12&\n" +
@@ -1412,11 +1411,11 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x18compute_capability_minor\x18\f \x01(\rH\vR\x16computeCapabilityMinor\x88\x01\x01\x12;\n" +
 	"\x17framebuffer_total_bytes\x18\r \x01(\x04H\fR\x15framebufferTotalBytes\x88\x01\x01\x12*\n" +
 	"\x0edriver_version\x18\x0e \x01(\tH\rR\rdriverVersion\x88\x01\x01\x123\n" +
-	"\x13cuda_driver_version\x18\x0f \x01(\tH\x0eR\x11cudaDriverVersion\x88\x01\x01B\x05\n" +
-	"\x03_idB\b\n" +
+	"\x13cuda_driver_version\x18\x0f \x01(\tH\x0eR\x11cudaDriverVersion\x88\x01\x01B\a\n" +
+	"\x05_uuidB\b\n" +
 	"\x06_modelB\t\n" +
-	"\a_serialB\r\n" +
-	"\v_pci_bus_idB\b\n" +
+	"\a_serialB\t\n" +
+	"\a_bus_idB\b\n" +
 	"\x06_brandB\x10\n" +
 	"\x0e_vbios_versionB\x11\n" +
 	"\x0f_chassis_serialB\x0f\n" +
