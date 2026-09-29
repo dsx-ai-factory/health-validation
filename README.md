@@ -19,7 +19,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
   "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
@@ -48,7 +48,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
@@ -259,6 +259,9 @@ Run a one-shot check:
 
 The verdict's `node_id` defaults to the configured system hostname. Use
 `--node-id <id>` to supply a scheduler or inventory identifier instead.
+Optional `--cadence CONTINUOUS|PROLOG|MAINTENANCE`
+runs checks scheduled for that window and reports the others as
+`CADENCE_MISMATCH` skips; omit it to run the full stock catalog.
 
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 
@@ -482,6 +485,11 @@ authoring, and PR guidelines. All participation is governed by our
 
 Use of this software is governed by the NVIDIA Software and Model Evaluation License. See [LICENSE](LICENSE).
 
-## Reporting issues
+## Support
 
-File an issue at <https://github.com/dsx-ai-factory/health-validation/issues> with the check ID, observed behavior, hardware platform, driver version, and NVML version.
+[GitHub Issues](https://github.com/dsx-ai-factory/health-validation/issues) is the
+public support channel for bug reports and feature requests. See
+[SUPPORT.md](SUPPORT.md) for other help options and response expectations.
+
+Report security vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md). Do not file a public issue.

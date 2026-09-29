@@ -22,7 +22,7 @@ func xidCatalog(t *testing.T) *catalog.Catalog {
 
 // measurementFor builds an XidMeasurement directly from raw Xid codes —
 // the catalog-native way, with no dmesg parsing. Parsing "NVRM: Xid …"
-// log lines is the toolkit's concern (toolkit.ParseXid) and is tested
+// log lines is the toolkit's concern (toolkit/xid.ParseXid) and is tested
 // there; the catalog only needs the aggregated XidCounts/EventCount.
 func measurementFor(codes ...int64) xid.XidMeasurement {
 	m := xid.XidMeasurement{Since: "boot"}
@@ -56,7 +56,6 @@ func TestXidErrors_SeverityByBucket(t *testing.T) {
 		{"fell off bus (79)", 79, health.Critical},
 		{"memory remapping failure (64)", 64, health.Critical},
 		{"double bit ECC error (48)", 48, health.Critical},
-		{"nvlink5 (146)", 146, health.Critical},
 		{"app fault (11)", 11, health.Warning},
 		{"graphics engine exception (13)", 13, health.Warning},
 		{"memory page fault (31)", 31, health.Warning},
@@ -72,6 +71,75 @@ func TestXidErrors_SeverityByBucket(t *testing.T) {
 			}
 		})
 	}
+}
+
+// nvlink5MeasurementFor builds an XidMeasurement for one NVLink5-family
+// event (144-150), the way toolkit/xid.ParseXid would after decoding the
+// extended Fatal/Nonfatal log format.
+func nvlink5MeasurementFor(code int64, fatal bool) xid.XidMeasurement {
+	m := xid.XidMeasurement{
+		Since:     "boot",
+		XidCounts: map[int64]int64{code: 1},
+		Events: []xid.XidEvent{{
+			PCIAddress: "0000:01:00",
+			XidCode:    code,
+			NVLink5:    &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", Fatal: fatal, Link: 8},
+		}},
+		EventCount: 1,
+	}
+	if fatal {
+		m.FatalXidCounts = map[int64]int64{code: 1}
+	}
+	return m
+}
+
+func TestXidErrors_NVLink5_FatalIsCritical(t *testing.T) {
+	nv, err := xidCatalog(t).EvaluateAll(nvlink5MeasurementFor(146, true))
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	if nv.OverallSeverity != health.Critical {
+		t.Errorf("OverallSeverity = %v, want CRITICAL", nv.OverallSeverity)
+	}
+	v, ok := checkResult(nv, "gpu_xid_146")
+	if !ok {
+		t.Fatalf("gpu_xid_146 verdict not found")
+	}
+	if v.Severity != health.Critical {
+		t.Errorf("gpu_xid_146 severity = %v, want CRITICAL", v.Severity)
+	}
+	if want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionContactSupport); !v.RecommendedAction.Equal(want) {
+		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
+	}
+}
+
+func TestXidErrors_NVLink5_NonfatalIsWarningNoAction(t *testing.T) {
+	nv, err := xidCatalog(t).EvaluateAll(nvlink5MeasurementFor(146, false))
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	if nv.OverallSeverity != health.Warning {
+		t.Errorf("OverallSeverity = %v, want WARNING", nv.OverallSeverity)
+	}
+	v, ok := checkResult(nv, "gpu_xid_146")
+	if !ok {
+		t.Fatalf("gpu_xid_146 verdict not found")
+	}
+	if v.Severity != health.Warning {
+		t.Errorf("gpu_xid_146 severity = %v, want WARNING", v.Severity)
+	}
+	if !v.RecommendedAction.Equal(health.NoAction) {
+		t.Errorf("RecommendedAction = %v, want NoAction", v.RecommendedAction)
+	}
+}
+
+func checkResult(nv health.NodeVerdict, checkID string) (health.CheckVerdict, bool) {
+	for _, v := range nv.CheckResults {
+		if v.CheckID == checkID {
+			return v, true
+		}
+	}
+	return health.CheckVerdict{}, false
 }
 
 func TestXidErrors_IgnoredCode_Pass(t *testing.T) {

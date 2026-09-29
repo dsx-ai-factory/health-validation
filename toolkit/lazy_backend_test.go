@@ -54,7 +54,7 @@ func TestLazyGPUBackend_HungInitDoesNotHang(t *testing.T) {
 
 	done := make(chan health.NodeVerdict, 1)
 	go func() {
-		nv, _ := toolkit.CollectWithTimeout(cat, 20*time.Millisecond, sensors...)
+		nv, _ := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, sensors...)
 		done <- nv
 	}()
 
@@ -70,7 +70,7 @@ func TestLazyGPUBackend_HungInitDoesNotHang(t *testing.T) {
 			t.Errorf("xid domain = %v, want PASS (independent of NVML init)", got)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("CollectWithTimeout hung on a backend whose init blocks")
+		t.Fatal("CollectWithOptions hung on a backend whose init blocks")
 	}
 }
 
@@ -92,9 +92,9 @@ func TestLazyGPUBackend_InitErrorDegrades(t *testing.T) {
 		toolkit.NewXidSensor(toolkit.MockXid()),
 	}
 
-	nv, err := toolkit.CollectWithTimeout(cat, time.Second, sensors...)
+	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: time.Second}, sensors...)
 	if err != nil {
-		t.Fatalf("CollectWithTimeout returned error, want graceful degrade: %v", err)
+		t.Fatalf("CollectWithOptions returned error, want graceful degrade: %v", err)
 	}
 	if got := nv.SeverityByDomain[health.Node]; got != health.Critical {
 		t.Errorf("node domain = %v, want CRITICAL (init failed)", got)
@@ -138,13 +138,13 @@ func TestLazyGPUBackend_SkipsCloseWhileMeasureInFlight(t *testing.T) {
 	// Time out MeasureNode so its goroutine stays parked inside the backend.
 	done := make(chan struct{})
 	go func() {
-		_, _ = toolkit.CollectWithTimeout(cat, 20*time.Millisecond, toolkit.NewNodeSensor(backend))
+		_, _ = toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, toolkit.NewNodeSensor(backend))
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("CollectWithTimeout hung")
+		t.Fatal("CollectWithOptions hung")
 	}
 
 	if err := backend.(io.Closer).Close(); err != nil {

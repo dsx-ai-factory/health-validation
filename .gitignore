@@ -1,9 +1,17 @@
 bazel-*
 node_modules/
-0
 .bazelrc.user
 public
 .DS_Store
+
+# Claude Code's per-developer workspace state: worktrees, checkpoints, local
+# agent state. Nothing here is tracked today. Ignoring the whole directory is
+# the broad choice; narrow it if the repo ever wants to share config from it.
+.claude/
+
+# Formatter cache (ruff). Ruff also writes a .gitignore inside it, but say so
+# here too rather than depending on a tool's internals to keep it untracked.
+.ruff_cache/
 
 # Locally built/downloaded binaries. Keep these out of the repo root.
 /bin/

@@ -5,6 +5,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
+	xidparse "github.com/dsx-ai-factory/health-validation/toolkit/xid"
 )
 
 // XidBackend is a single data source for NVRM Xid events. The concrete
@@ -69,7 +70,7 @@ func (b *journalctlBackend) Measure(ctx context.Context) ([]health.Measurement, 
 	return readJournal(ctx, b.run, journalMatcher{
 		args:    []string{"--output=cat", "--grep=Xid"},
 		subject: "Xid state",
-		parse:   func(lines []string) health.Measurement { return ParseXid(sinceBoot, lines) },
+		parse:   func(lines []string) health.Measurement { return xidparse.ParseXid(sinceBoot, lines) },
 		errored: func(err error) health.Measurement {
 			return xid.ErroredXid(sinceBoot, err, xid.MeasurementSignals...)
 		},
@@ -94,5 +95,5 @@ type mockXidBackend struct {
 }
 
 func (m *mockXidBackend) Measure(_ context.Context) ([]health.Measurement, error) {
-	return []health.Measurement{ParseXid(sinceBoot, m.lines)}, nil
+	return []health.Measurement{xidparse.ParseXid(sinceBoot, m.lines)}, nil
 }

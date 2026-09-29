@@ -21,6 +21,30 @@ bazel run //tools/format  # format (gofumpt + buildifier)
 bazel run //tools/gazelle # sync BUILD files after import changes
 ```
 
+## Shipped module inventory
+
+`toolkit/cmd/health-validation/SHIPPED_MODULES.txt` records the third-party Go
+modules the linker embeds in the shipped `linux/amd64` binary. It is generated,
+not hand-edited:
+
+```bash
+bazel run //toolkit/cmd/health-validation:shipped_modules_update
+```
+
+`bazel test //...` fails when it drifts from the binary, and
+`//toolkit/cmd/health-validation:shipped_modules_cross_check` separately checks it
+against the module set the Bazel graph says is linked.
+
+`NOTICE` records the same dependency versions and is gated by its own check:
+
+```bash
+bazel run //tools:check_notice              # check
+bazel run //tools:check_notice -- --write   # regenerate, then review the diff
+```
+
+Regenerate both files in the same change as any dependency bump that moves a
+linked version.
+
 ## Module Layout
 
 The repo contains four Go modules, joined by a root `go.work`:

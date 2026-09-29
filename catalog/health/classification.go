@@ -1,6 +1,8 @@
 package health
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // --- Severity ---
 
@@ -222,6 +224,16 @@ func (sc SchedulingCadence) Covers(requested SchedulingCadence) bool {
 	return cadenceFrequency[sc] >= cadenceFrequency[requested]
 }
 
+// SchedulingCadenceFromName maps a wire name (CONTINUOUS, PROLOG,
+// MAINTENANCE) to the enum. The match is exact; unknown names error.
+func SchedulingCadenceFromName(name string) (SchedulingCadence, error) {
+	v, ok := schedulingCadenceFromName[name]
+	if !ok {
+		return 0, fmt.Errorf("unknown scheduling cadence %q", name)
+	}
+	return v, nil
+}
+
 func (sc SchedulingCadence) String() string {
 	if name, ok := schedulingCadenceNames[sc]; ok {
 		return name
@@ -324,6 +336,7 @@ const (
 	// but no measurement carried this check's required signals, and from
 	// a Critical errored verdict, which means the sensor ran and failed.
 	SensorMissing
+	CadenceMismatch // Check is not scheduled for the requested cadence.
 )
 
 var skipReasonNames = map[SkipReason]string{
@@ -331,7 +344,7 @@ var skipReasonNames = map[SkipReason]string{
 	DeploymentUnsupported: "SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL", CheckDisabled: "CHECK_DISABLED",
 	DependencySkipped: "DEPENDENCY_SKIPPED", InsufficientHistory: "INSUFFICIENT_HISTORY",
 	ThresholdUnconfigured: "THRESHOLD_UNCONFIGURED", NoApplicableMeasurement: "NO_APPLICABLE_MEASUREMENT",
-	SensorMissing: "SENSOR_MISSING",
+	CadenceMismatch: "CADENCE_MISMATCH", SensorMissing: "SENSOR_MISSING",
 }
 
 var skipReasonFromName = map[string]SkipReason{
@@ -339,7 +352,7 @@ var skipReasonFromName = map[string]SkipReason{
 	"SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL": DeploymentUnsupported, "CHECK_DISABLED": CheckDisabled,
 	"DEPENDENCY_SKIPPED": DependencySkipped, "INSUFFICIENT_HISTORY": InsufficientHistory,
 	"THRESHOLD_UNCONFIGURED": ThresholdUnconfigured, "NO_APPLICABLE_MEASUREMENT": NoApplicableMeasurement,
-	"SENSOR_MISSING": SensorMissing,
+	"CADENCE_MISMATCH": CadenceMismatch, "SENSOR_MISSING": SensorMissing,
 }
 
 func (sr SkipReason) String() string {

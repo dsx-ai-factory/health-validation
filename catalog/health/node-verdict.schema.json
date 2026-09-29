@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/dsx-ai-factory/health-validation/-/raw/main/catalog/health/node-verdict.schema.json",
   "title": "NodeVerdict",
-  "description": "The JSON a health-validation run emits: one node-level health verdict aggregating per-check results. This file documents schema_version 0.2; keep it in sync with health.NodeVerdictSchemaVersion.",
-  "$comment": "Describes NodeVerdict schema_version 0.2 (health.NodeVerdictSchemaVersion). MAJOR bumps on breaking shape changes; MINOR on additive fields/enum values.",
+  "description": "The JSON a health-validation run emits: one node-level health verdict aggregating per-check results. Keep properties.schema_version.const in sync with health.NodeVerdictSchemaVersion.",
+  "$comment": "The pinned schema_version is properties.schema_version.const (health.NodeVerdictSchemaVersion). MAJOR bumps on breaking shape changes; MINOR on additive fields/enum values.",
   "type": "object",
   "required": [
     "schema_version",
@@ -17,7 +17,7 @@
   "properties": {
     "schema_version": {
       "description": "MAJOR.MINOR contract version. Consumers must check this before acting on a verdict; an unrecognised or missing value is untrusted output.",
-      "const": "0.2"
+      "const": "0.3"
     },
     "catalog_version": {
       "description": "Catalog module version that produced this verdict: a release or pseudo-version on stamped builds, or dev/dev+<commit> on unstamped local builds. Overrides and custom checks do not change it.",
@@ -215,6 +215,7 @@
         "INSUFFICIENT_HISTORY",
         "THRESHOLD_UNCONFIGURED",
         "NO_APPLICABLE_MEASUREMENT",
+        "CADENCE_MISMATCH",
         "SENSOR_MISSING"
       ]
     },

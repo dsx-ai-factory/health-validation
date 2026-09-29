@@ -45,9 +45,9 @@ func TestEvaluate_ArchitectureUnset(t *testing.T) {
 	if !errors.Is(err, catalog.ErrArchitectureUnset) {
 		t.Fatalf("Evaluate error = %v, want ErrArchitectureUnset", err)
 	}
-	_, err = cat.EvaluateAllRaw()
+	_, err = cat.EvaluateAll()
 	if !errors.Is(err, catalog.ErrArchitectureUnset) {
-		t.Fatalf("EvaluateAllRaw error = %v, want ErrArchitectureUnset", err)
+		t.Fatalf("EvaluateAll error = %v, want ErrArchitectureUnset", err)
 	}
 }
 
@@ -123,24 +123,22 @@ func TestEvaluateAll_RoutesByRequiredSignals_NoCrossMeasurementSkips(t *testing.
 	cat.MustRegister(inventory)
 	cat.MustRegister(perDevice)
 
-	verdicts, err := cat.EvaluateAllRaw(
+	nv, err := cat.EvaluateAll(
 		inventoryMeasurement{Names: []string{"dev0", "dev1"}},
 		deviceMeasurement{Device: "dev0", Metric: 0.5},
 		deviceMeasurement{Device: "dev1", Metric: 0.5},
 	)
 	if err != nil {
-		t.Fatalf("EvaluateAllRaw: %v", err)
+		t.Fatalf("EvaluateAll: %v", err)
 	}
 
 	// The inventory measurement feeds inventory_check once; the two device
 	// measurements feed per_device_check twice. Nothing is skipped.
+	if len(nv.SkippedChecks) != 0 {
+		t.Errorf("skipped = %+v, want none; signal-subset routing should feed both checks", nv.SkippedChecks)
+	}
 	byCheck := map[string]int{}
-	for _, v := range verdicts {
-		if v.Skipped {
-			t.Errorf("CheckID %q skipped (%v); signal-subset routing should feed both checks",
-				v.CheckID, v.SkipReason)
-			continue
-		}
+	for _, v := range nv.CheckResults {
 		if v.Severity != health.Pass {
 			t.Errorf("CheckID %q severity = %v, want PASS", v.CheckID, v.Severity)
 		}
@@ -177,18 +175,22 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	verdicts, err := cat.EvaluateAllRaw(m)
+	nv, err := cat.EvaluateAll(m)
 	if err != nil {
-		t.Fatalf("EvaluateAllRaw: %v", err)
+		t.Fatalf("EvaluateAll: %v", err)
 	}
 
-	seen := make(map[string]bool, len(verdicts))
-	for _, v := range verdicts {
+	seen := make(map[string]bool, len(nv.CheckResults)+len(nv.SkippedChecks))
+	for _, v := range nv.CheckResults {
+		seen[v.CheckID] = true
+		if v.Category != health.Xid {
+			t.Errorf("CheckID %q (category %v) ran, want a skip for the uncollected domain", v.CheckID, v.Category)
+		}
+	}
+	for _, v := range nv.SkippedChecks {
 		seen[v.CheckID] = true
 		if v.Category == health.Xid {
-			if v.SkipReason == health.SensorMissing {
-				t.Errorf("CheckID %q: collected category reported SENSOR_MISSING", v.CheckID)
-			}
+			t.Errorf("CheckID %q: collected category skipped with %v", v.CheckID, v.SkipReason)
 			continue
 		}
 		// An uncollected domain's checks may skip SENSOR_MISSING in their own
@@ -201,8 +203,8 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 			}
 		case health.DependencySkipped:
 		default:
-			t.Errorf("CheckID %q (category %v): skipped=%v reason=%v, want SENSOR_MISSING",
-				v.CheckID, v.Category, v.Skipped, v.SkipReason)
+			t.Errorf("CheckID %q (category %v) skip reason = %v, want SENSOR_MISSING",
+				v.CheckID, v.Category, v.SkipReason)
 		}
 	}
 
@@ -238,14 +240,17 @@ func TestEvaluateAll_DisabledOutranksSensorMissing(t *testing.T) {
 	cat.MustRegister(disabled)
 
 	// No measurements at all: the Node sensor never reported.
-	verdicts, err := cat.EvaluateAllRaw()
+	nv, err := cat.EvaluateAll()
 	if err != nil {
-		t.Fatalf("EvaluateAllRaw: %v", err)
+		t.Fatalf("EvaluateAll: %v", err)
 	}
-	if len(verdicts) != 1 {
-		t.Fatalf("verdicts = %d, want 1", len(verdicts))
+	if len(nv.CheckResults) != 0 {
+		t.Errorf("check results = %+v, want none", nv.CheckResults)
 	}
-	if got := verdicts[0].SkipReason; got != health.CheckDisabled {
+	if len(nv.SkippedChecks) != 1 {
+		t.Fatalf("skipped = %d, want 1", len(nv.SkippedChecks))
+	}
+	if got := nv.SkippedChecks[0].SkipReason; got != health.CheckDisabled {
 		t.Errorf("skip reason = %v, want CHECK_DISABLED", got)
 	}
 }
@@ -331,13 +336,16 @@ func TestEvaluateAll_SensorMissingCascadesToDependents(t *testing.T) {
 	cat.MustRegister(base)
 	cat.MustRegister(dependent)
 
-	verdicts, err := cat.EvaluateAllRaw()
+	nv, err := cat.EvaluateAll()
 	if err != nil {
-		t.Fatalf("EvaluateAllRaw: %v", err)
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	if len(nv.CheckResults) != 0 {
+		t.Errorf("check results = %+v, want none", nv.CheckResults)
 	}
 
 	got := map[string]health.SkipReason{}
-	for _, v := range verdicts {
+	for _, v := range nv.SkippedChecks {
 		got[v.CheckID] = v.SkipReason
 	}
 	if got["gpu_base"] != health.SensorMissing {
@@ -401,36 +409,27 @@ func TestEvaluateAll_ErroredMeasurement(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	verdicts, err := cat.EvaluateAllRaw(
+	nv, err := cat.EvaluateAll(
 		xid.ErroredXid("boot", errors.New("journal unavailable: ERROR_READ_FAILED"),
 			xid.MeasurementSignals...),
 	)
 	if err != nil {
-		t.Fatalf("EvaluateAllRaw: %v", err)
-	}
-	if len(verdicts) == 0 {
-		t.Fatal("no verdicts produced for errored xid measurement")
+		t.Fatalf("EvaluateAll: %v", err)
 	}
 	// Every xid check the measurement feeds must fail Critical with the
 	// sensor error detail surfaced — XidMeasurement carries all xid signals.
-	// Checks in other categories the measurement does not feed skip (no
-	// applicable measurement, or an unconfigured threshold); they are not
-	// collateral failures, so a skip is fine, a non-Critical verdict is not.
-	var failed int
-	for _, v := range verdicts {
-		if v.Skipped {
-			continue
-		}
-		failed++
+	// Checks in other categories the measurement does not feed are skips, not
+	// collateral failures.
+	if len(nv.CheckResults) == 0 {
+		t.Fatal("errored xid measurement produced no verdicts for the checks it feeds")
+	}
+	for _, v := range nv.CheckResults {
 		if v.Severity != health.Critical {
 			t.Errorf("CheckID %q: Severity = %v, want CRITICAL", v.CheckID, v.Severity)
 		}
 		if !strings.Contains(strings.Join(v.Messages, " "), "ERROR_READ_FAILED") {
 			t.Errorf("CheckID %q: Messages = %q, want sensor detail surfaced", v.CheckID, v.Messages)
 		}
-	}
-	if failed == 0 {
-		t.Error("errored xid measurement produced no failed verdicts for the checks it feeds")
 	}
 }
 
@@ -472,39 +471,19 @@ func TestEvaluateAll_ErroredMeasurement_GatesOnRequiredSignals(t *testing.T) {
 	cat.MustRegister(standard)
 	cat.MustRegister(thermal)
 
-	verdicts, err := cat.EvaluateAllRaw(gpu.ErroredGPU("GPU-4", errors.New("GPU is lost"),
+	nv, err := cat.EvaluateAll(gpu.ErroredGPU("GPU-4", errors.New("GPU is lost"),
 		gpu.MeasurementSignals...))
 	if err != nil {
-		t.Fatalf("EvaluateAllRaw: %v", err)
+		t.Fatalf("EvaluateAll: %v", err)
 	}
 
-	var critical, thermalSkipped int
-	for _, v := range verdicts {
-		switch {
-		case v.Skipped:
-			if v.CheckID != "gpu_thermal" {
-				t.Errorf("unexpected skip on %q", v.CheckID)
-				break
-			}
-			thermalSkipped++
-			if v.SkipReason != health.NoApplicableMeasurement {
-				t.Errorf("gpu_thermal SkipReason = %v, want NO_APPLICABLE_MEASUREMENT (signal not in schema)",
-					v.SkipReason)
-			}
-		case v.Severity == health.Critical:
-			critical++
-			if v.CheckID == "gpu_thermal" {
-				t.Errorf("Critical verdict on gpu_thermal; thermal_temp not in GPUMeasurement schema")
-			}
-		}
-	}
-	if critical != 1 {
-		t.Errorf("got %d Critical verdicts, want 1 (gpu_standard)", critical)
+	if len(nv.CheckResults) != 1 || nv.CheckResults[0].CheckID != "gpu_standard" || nv.CheckResults[0].Severity != health.Critical {
+		t.Errorf("check results = %+v, want one CRITICAL gpu_standard", nv.CheckResults)
 	}
 	// gpu_thermal requires thermal_temp, outside the GPUMeasurement
 	// schema, so it skips exactly once.
-	if thermalSkipped != 1 {
-		t.Errorf("got %d gpu_thermal skips, want 1 (signal outside schema)", thermalSkipped)
+	if len(nv.SkippedChecks) != 1 || nv.SkippedChecks[0].CheckID != "gpu_thermal" || nv.SkippedChecks[0].SkipReason != health.NoApplicableMeasurement {
+		t.Errorf("skipped = %+v, want one NO_APPLICABLE_MEASUREMENT gpu_thermal", nv.SkippedChecks)
 	}
 }
 
@@ -550,18 +529,21 @@ func TestEvaluateAll_ErroredMeasurement_PartialFailureSparesUnaffectedChecks(t *
 	m := twoSignalMeasurement{First: 4}
 	m.AddError(errors.New("second-signal query: ERROR_UNKNOWN"), "second")
 
-	verdicts, err := cat.EvaluateAllRaw(m)
+	nv, err := cat.EvaluateAll(m)
 	if err != nil {
-		t.Fatalf("EvaluateAllRaw: %v", err)
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	if len(nv.SkippedChecks) != 0 {
+		t.Errorf("skipped = %+v, want none", nv.SkippedChecks)
 	}
 
 	var firstVerdict, secondVerdict *health.CheckVerdict
-	for i := range verdicts {
-		switch verdicts[i].CheckID {
+	for i := range nv.CheckResults {
+		switch nv.CheckResults[i].CheckID {
 		case "node_first_only":
-			firstVerdict = &verdicts[i]
+			firstVerdict = &nv.CheckResults[i]
 		case "node_second_only":
-			secondVerdict = &verdicts[i]
+			secondVerdict = &nv.CheckResults[i]
 		}
 	}
 	if firstVerdict == nil || secondVerdict == nil {
@@ -613,19 +595,19 @@ func TestEvaluateAll_ErroredMeasurement_JoinsMatchingErrorDetails(t *testing.T) 
 	m.AddError(errors.New("first-signal query: ERROR_UNKNOWN"), "first")
 	m.AddError(errors.New("second-signal query: ERROR_UNKNOWN"), "second")
 
-	verdicts, err := cat.EvaluateAllRaw(m)
+	nv, err := cat.EvaluateAll(m)
 	if err != nil {
-		t.Fatalf("EvaluateAllRaw: %v", err)
+		t.Fatalf("EvaluateAll: %v", err)
 	}
 	var v health.CheckVerdict
-	for _, vv := range verdicts {
+	for _, vv := range nv.CheckResults {
 		if vv.CheckID == "node_both" {
 			v = vv
 			break
 		}
 	}
 	if v.CheckID == "" {
-		t.Fatalf("no node_both verdict in %d results", len(verdicts))
+		t.Fatalf("no node_both verdict in %d results", len(nv.CheckResults))
 	}
 	if v.Severity != health.Critical {
 		t.Fatalf("Severity = %v, want CRITICAL", v.Severity)
@@ -933,13 +915,9 @@ func TestEvaluateAll_AppliesOverrides(t *testing.T) {
 		t.Errorf("overall = %v, want PASS (override not applied on the batch path)", nv.OverallSeverity)
 	}
 
-	// And the resolved threshold must record the override and its provenance.
-	verdicts, err := cat.EvaluateAllRaw(m)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The resolved threshold on the check result records the override.
 	var checked bool
-	for _, v := range verdicts {
+	for _, v := range nv.CheckResults {
 		if v.CheckID != "gpu_count" {
 			continue
 		}
@@ -961,7 +939,7 @@ func TestEvaluateAll_AppliesOverrides(t *testing.T) {
 }
 
 // Disabled checks must also be honored by the batch path; like overrides
-// they were dropped from the engine Params built by EvaluateAllRaw.
+// they were dropped from the engine Params built for that path.
 func TestEvaluateAll_HonorsDisabledChecks(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
@@ -969,7 +947,7 @@ func TestEvaluateAll_HonorsDisabledChecks(t *testing.T) {
 		catalog.WithDisabledChecks("gpu_xid_79"),
 	)
 
-	verdicts, err := cat.EvaluateAllRaw(xid.XidMeasurement{
+	nv, err := cat.EvaluateAll(xid.XidMeasurement{
 		XidCounts: map[int64]int64{79: 1}, Since: "boot", EventCount: 1,
 	})
 	if err != nil {
@@ -977,14 +955,13 @@ func TestEvaluateAll_HonorsDisabledChecks(t *testing.T) {
 	}
 
 	var checked bool
-	for _, v := range verdicts {
+	for _, v := range nv.SkippedChecks {
 		if v.CheckID != "gpu_xid_79" {
 			continue
 		}
 		checked = true
-		if !v.Skipped || v.SkipReason != health.CheckDisabled {
-			t.Errorf("gpu_xid_79: skipped=%v reason=%v, want skipped=true CHECK_DISABLED",
-				v.Skipped, v.SkipReason)
+		if v.SkipReason != health.CheckDisabled {
+			t.Errorf("gpu_xid_79 skip reason = %v, want CHECK_DISABLED", v.SkipReason)
 		}
 	}
 	if !checked {

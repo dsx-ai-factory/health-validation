@@ -137,15 +137,15 @@ func TestCPUSensor_ErroredAttributesAllSignals(t *testing.T) {
 	}
 }
 
-func TestCollectWithTimeout_CPUTimeoutDegradesToCritical(t *testing.T) {
+func TestCollectWithOptions_CPUTimeoutDegradesToCritical(t *testing.T) {
 	sensor := toolkit.NewCPUSensor(cpuBackendFunc(func(ctx context.Context) (cpu.CPUMeasurement, error) {
 		<-ctx.Done()
 		return cpu.CPUMeasurement{}, ctx.Err()
 	}))
 
-	verdict, err := toolkit.CollectWithTimeout(cpuCatalog(), 20*time.Millisecond, sensor)
+	verdict, err := toolkit.CollectWithOptions(cpuCatalog(), toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, sensor)
 	if err != nil {
-		t.Fatalf("CollectWithTimeout returned error: %v", err)
+		t.Fatalf("CollectWithOptions returned error: %v", err)
 	}
 	if verdict.OverallSeverity != health.Critical {
 		t.Fatalf("overall = %v, want CRITICAL", verdict.OverallSeverity)
@@ -168,15 +168,15 @@ func TestCollectWithTimeout_CPUTimeoutDegradesToCritical(t *testing.T) {
 	}
 }
 
-func TestCollectWithTimeout_CPUBackendFailureProducesResult(t *testing.T) {
+func TestCollectWithOptions_CPUBackendFailureProducesResult(t *testing.T) {
 	cause := errors.New("CPU backend unavailable")
 	sensor := toolkit.NewCPUSensor(cpuBackendFunc(func(context.Context) (cpu.CPUMeasurement, error) {
 		return cpu.CPUMeasurement{}, cause
 	}))
 
-	verdict, err := toolkit.CollectWithTimeout(cpuCatalog(), time.Second, sensor)
+	verdict, err := toolkit.CollectWithOptions(cpuCatalog(), toolkit.CollectionOptions{Timeout: time.Second}, sensor)
 	if err != nil {
-		t.Fatalf("CollectWithTimeout returned error: %v", err)
+		t.Fatalf("CollectWithOptions returned error: %v", err)
 	}
 	if verdict.OverallSeverity != health.Critical {
 		t.Fatalf("overall = %v, want CRITICAL", verdict.OverallSeverity)

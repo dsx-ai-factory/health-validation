@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "xid",
+    srcs = ["xid_parse.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/toolkit/xid",
+    visibility = ["//visibility:public"],
+    deps = ["//catalog/xid"],
+)
+
+go_test(
+    name = "xid_test",
+    srcs = ["xid_parse_test.go"],
+    deps = [
+        ":xid",
+        "//catalog/health",
+    ],
+)

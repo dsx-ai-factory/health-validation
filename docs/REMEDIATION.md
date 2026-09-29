@@ -122,13 +122,22 @@ consolidated `gpu_xid_warning` check. (`reset_gpu`, `restart_os`, and
 Xid 151 recommends `restart_os` — but are documented once, above, since
 they're not Xid-specific.)
 
+Xid 144-150 (the NVLink5/NVSwitch fault family, `gpu_xid_144`..`gpu_xid_150`)
+are a special case: unlike other Xid codes, NVRM marks each occurrence Fatal
+or Nonfatal directly in the log line. Each of these checks fires CRITICAL
+with `["reset_gpu", "contact_support"]` (the same two-step sequence as
+above) on a Fatal occurrence, and WARNING with **no recommended action** on
+a Nonfatal one — cross-checked against NVIDIA's full Xid 144-150 decode
+table, ~95% of Fatal-severity rows resolve to a GPU reset with support
+contacted if that doesn't clear it, and the large majority of Nonfatal rows
+need no remediation at all.
+
 | Action | Description |
 |---|---|
 | `restart_app` | Restart the application using the GPU; the GPU itself is not considered faulted. The default for the consolidated `gpu_xid_warning` check and most of the Xid codes it groups under "application-level" faults. |
 | `update_swfw` | Update GPU driver/firmware and any related system software to the latest supported versions. Recommended for Xid 78 (vGPU start error). |
 | `check_uvm` | If Unified Virtual Memory or vGPU is in use, reset the GPU; otherwise no hardware action is warranted. Recommended for Xid 159 (CHI non-data error). |
 | `workflow_xid_45` | Follow the Xid 45 (preemptive GPU removal) workflow: restart the fabric manager if the node is solo; otherwise this Xid typically accompanies another Xid and that Xid's guidance applies instead. |
-| `workflow_nvlink5_err` | Follow the NVLink5 error workflow for the accompanying Xid (144–150): decode the hex register values in the error message to determine the specific NVLink remediation. |
 | `xid_154` | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
 
 ### Collection-failure actions

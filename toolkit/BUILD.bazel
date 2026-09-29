@@ -26,7 +26,6 @@ go_library(
         "sysfs_cpu_backend.go",
         "sysfs_list.go",
         "xid_backend.go",
-        "xid_parse.go",
         "xid_sensor.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit",
@@ -40,6 +39,7 @@ go_library(
         "//catalog/node",
         "//catalog/nvlink",
         "//catalog/xid",
+        "//toolkit/xid",
     ],
 )
 
@@ -59,7 +59,6 @@ go_test(
         "sysfs_cpu_backend_internal_test.go",
         "sysfs_list_test.go",
         "xid_backend_internal_test.go",
-        "xid_parse_test.go",
         "xid_sensor_test.go",
     ],
     embed = [":toolkit"],
