@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -666,16 +668,21 @@ func TestDisabledMetricsSkipValidation(t *testing.T) {
 	}
 }
 
-// TestPublishMetricsSurvivesDeadCollector is the load-bearing guarantee: an
-// unreachable collector must not change the verdict or the exit code. It calls
-// publishMetrics directly against a port nothing is listening on.
-func TestPublishMetricsSurvivesDeadCollector(t *testing.T) {
-	cfg := MetricsConfig{
-		Enabled: true,
-		// Reserved as "discard" by RFC 6890; nothing accepts here.
-		Endpoint:       "http://192.0.2.1:44318",
-		TimeoutSeconds: 1,
-	}
+// closedCollectorURL returns an already-shut-down httptest server's URL. A
+// local closed port beats a literal address: guaranteed dead, and independent
+// of how the environment routes a reserved range.
+func closedCollectorURL(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	url := srv.URL
+	srv.Close()
+	return url
+}
+
+// mustNotHang is a hang detector, not a latency assertion: the budget sits far
+// above the configured timeout.
+func mustNotHang(t *testing.T, cfg MetricsConfig) {
+	t.Helper()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -684,13 +691,95 @@ func TestPublishMetricsSurvivesDeadCollector(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(20 * time.Second):
-		t.Fatal("publishMetrics did not return; a dead collector must not hang the run")
+		t.Fatal("publishMetrics did not return; a bad collector must not hang the run")
 	}
+}
+
+// TestPublishMetricsSurvivesUnreachableCollector is the load-bearing guarantee:
+// an unreachable collector changes neither the verdict nor the exit code.
+func TestPublishMetricsSurvivesUnreachableCollector(t *testing.T) {
+	mustNotHang(t, MetricsConfig{
+		Enabled:        true,
+		Endpoint:       closedCollectorURL(t),
+		TimeoutSeconds: 1,
+	})
+}
+
+// TestPublishMetricsSurvivesRejectingCollector covers the other failure shape:
+// reachable, but answering with an error.
+func TestPublishMetricsSurvivesRejectingCollector(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	mustNotHang(t, MetricsConfig{Enabled: true, Endpoint: srv.URL, TimeoutSeconds: 1})
 }
 
 // TestPublishMetricsDisabledIsNoop guards the default: an operator who never
 // configures metrics must not pay for a network attempt.
 func TestPublishMetricsDisabledIsNoop(t *testing.T) {
-	publishMetrics(MetricsConfig{Endpoint: "http://192.0.2.1:44318"},
+	publishMetrics(MetricsConfig{Endpoint: closedCollectorURL(t)},
 		health.NodeVerdict{OverallSeverity: health.Pass}, "node-1")
+}
+
+// TestValidateStoresTrimmedEndpoint guards validating one value and publishing
+// another: a quoted endpoint would pass validation and fail at publish time.
+func TestValidateStoresTrimmedEndpoint(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := "metrics:\n  enabled: true\n  endpoint: \"  http://127.0.0.1:44318  \"\n"
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if got := cfg.Metrics.Endpoint; got != "http://127.0.0.1:44318" {
+		t.Errorf("endpoint = %q, want it stored trimmed", got)
+	}
+}
+
+// TestRedactEndpoint keeps credentials out of the captured stderr log while
+// leaving enough to diagnose with.
+func TestRedactEndpoint(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		want     string
+	}{
+		{
+			name:     "userinfo removed",
+			endpoint: "https://user:hunter2@collector.example:4318/v1/metrics",
+			want:     "https://redacted@collector.example:4318/v1/metrics",
+		},
+		{
+			name:     "query dropped",
+			endpoint: "https://collector.example/v1/metrics?api_key=secret",
+			want:     "https://collector.example/v1/metrics",
+		},
+		{
+			name:     "plain endpoint kept intact",
+			endpoint: "http://127.0.0.1:44318/v1/metrics",
+			want:     "http://127.0.0.1:44318/v1/metrics",
+		},
+		{
+			name:     "unparseable is not echoed",
+			endpoint: "127.0.0.1:44318",
+			want:     "[unparseable]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := redactEndpoint(tt.endpoint)
+			if got != tt.want {
+				t.Errorf("redactEndpoint(%q) = %q, want %q", tt.endpoint, got, tt.want)
+			}
+			if strings.Contains(got, "hunter2") || strings.Contains(got, "secret") {
+				t.Errorf("redactEndpoint(%q) = %q, which still carries a credential", tt.endpoint, got)
+			}
+		})
+	}
 }

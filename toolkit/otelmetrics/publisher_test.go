@@ -245,9 +245,42 @@ func TestPublishEmitsEveryInstrument(t *testing.T) {
 	}
 }
 
-// TestPublishRecordsSeverityOrdinals guards the wire contract downstream
-// dashboards read: the gauge value is the severity ordinal.
-func TestPublishRecordsSeverityOrdinals(t *testing.T) {
+// allSeverityNames is every value health.Severity can take; each severity
+// gauge reports all of them per subject.
+var allSeverityNames = []string{"PASS", "INFO", "WARNING", "CRITICAL", "UNKNOWN"}
+
+// activeSeverity returns the severity at 1, failing unless exactly one is and
+// the rest are 0.
+func activeSeverity(t *testing.T, points []*metricspb.NumberDataPoint, subject string) string {
+	t.Helper()
+	var active []string
+	seen := map[string]bool{}
+	for _, dp := range points {
+		name := attrs(dp.GetAttributes())["severity"]
+		seen[name] = true
+		switch dp.GetAsInt() {
+		case 1:
+			active = append(active, name)
+		case 0:
+		default:
+			t.Errorf("%s: severity %q = %d, want 0 or 1", subject, name, dp.GetAsInt())
+		}
+	}
+	for _, name := range allSeverityNames {
+		if !seen[name] {
+			t.Errorf("%s: no point for severity %q; a recovered subject would keep "+
+				"reading at its old severity", subject, name)
+		}
+	}
+	if len(active) != 1 {
+		t.Fatalf("%s: severities at 1 = %v, want exactly one", subject, active)
+	}
+	return active[0]
+}
+
+// TestPublishRecordsSeverityAsLabel guards the wire contract dashboards read:
+// severity is a name on the point, not an ordinal in its value.
+func TestPublishRecordsSeverityAsLabel(t *testing.T) {
 	srv, cap := newCollector(t, http.StatusOK)
 
 	if err := publish(t, srv.URL, otelmetrics.Options{}); err != nil {
@@ -256,30 +289,52 @@ func TestPublishRecordsSeverityOrdinals(t *testing.T) {
 	metrics := cap.metricsByName(t)
 
 	node := metrics["health_validation.node.severity"].GetGauge().GetDataPoints()
-	if len(node) != 1 {
-		t.Fatalf("node severity points = %d, want 1", len(node))
-	}
-	if got := node[0].GetAsInt(); got != int64(health.Critical) {
-		t.Errorf("node severity = %d, want %d (CRITICAL)", got, int64(health.Critical))
+	if got := activeSeverity(t, node, "node"); got != "CRITICAL" {
+		t.Errorf("node severity = %q, want CRITICAL", got)
 	}
 
+	byCheck := map[string][]*metricspb.NumberDataPoint{}
 	for _, dp := range metrics["health_validation.check.severity"].GetGauge().GetDataPoints() {
 		a := attrs(dp.GetAttributes())
-		switch a["check_id"] {
-		case "gpu_ecc_errors":
-			if got := dp.GetAsInt(); got != int64(health.Critical) {
-				t.Errorf("gpu_ecc_errors severity = %d, want CRITICAL", got)
-			}
-			if a["category"] != health.GPU.String() || a["nvidia_endorsed"] != "true" {
-				t.Errorf("gpu_ecc_errors attributes = %v", a)
-			}
-		case "gpu_count":
-			if got := dp.GetAsInt(); got != int64(health.Pass) {
-				t.Errorf("gpu_count severity = %d, want PASS", got)
-			}
-		default:
-			t.Errorf("unexpected check_id %q", a["check_id"])
+		byCheck[a["check_id"]] = append(byCheck[a["check_id"]], dp)
+		if a["severity"] == "" {
+			t.Errorf("check %q point carries no severity attribute", a["check_id"])
 		}
+	}
+	if len(byCheck) != 2 {
+		t.Fatalf("checks reported = %d, want 2", len(byCheck))
+	}
+	if got := activeSeverity(t, byCheck["gpu_ecc_errors"], "gpu_ecc_errors"); got != "CRITICAL" {
+		t.Errorf("gpu_ecc_errors severity = %q, want CRITICAL", got)
+	}
+	if got := activeSeverity(t, byCheck["gpu_count"], "gpu_count"); got != "PASS" {
+		t.Errorf("gpu_count severity = %q, want PASS", got)
+	}
+
+	a := attrs(byCheck["gpu_ecc_errors"][0].GetAttributes())
+	if a["category"] != health.GPU.String() || a["nvidia_endorsed"] != "true" {
+		t.Errorf("gpu_ecc_errors attributes = %v", a)
+	}
+}
+
+// TestPublishRecordsDomainSeverityAsLabel covers the gauge keyed by category.
+func TestPublishRecordsDomainSeverityAsLabel(t *testing.T) {
+	srv, cap := newCollector(t, http.StatusOK)
+
+	if err := publish(t, srv.URL, otelmetrics.Options{}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	byCategory := map[string][]*metricspb.NumberDataPoint{}
+	for _, dp := range cap.metricsByName(t)["health_validation.domain.severity"].GetGauge().GetDataPoints() {
+		category := attrs(dp.GetAttributes())["category"]
+		byCategory[category] = append(byCategory[category], dp)
+	}
+	if got := activeSeverity(t, byCategory[health.GPU.String()], "gpu domain"); got != "CRITICAL" {
+		t.Errorf("gpu domain severity = %q, want CRITICAL", got)
+	}
+	if got := activeSeverity(t, byCategory[health.Node.String()], "node domain"); got != "PASS" {
+		t.Errorf("node domain severity = %q, want PASS", got)
 	}
 }
 
@@ -423,5 +478,59 @@ func TestNewRejectsBadEndpoint(t *testing.T) {
 		if _, err := otelmetrics.New(context.Background(), otelmetrics.Options{Endpoint: endpoint}); err == nil {
 			t.Errorf("New(%q): got nil error, want a rejection", endpoint)
 		}
+	}
+}
+
+// TestPublishTrimsEndpoint covers the quoted-YAML case: url.Parse rejects
+// surrounding whitespace, so an endpoint that passed config validation would
+// otherwise fail at publish time.
+func TestPublishTrimsEndpoint(t *testing.T) {
+	srv, cap := newCollector(t, http.StatusOK)
+
+	if err := publish(t, "  "+srv.URL+"  ", otelmetrics.Options{}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if len(cap.paths) != 1 || cap.paths[0] != "/v1/metrics" {
+		t.Errorf("paths = %v, want one /v1/metrics", cap.paths)
+	}
+}
+
+// TestEnvHeadersDoNotLeak is the regression guard for a credential leak: the
+// exporter applies OTEL_EXPORTER_OTLP_* before the options it is given, so an
+// unset option inherits the node's environment. Both variables are asserted
+// because the signal-specific one is read independently of the generic one.
+func TestEnvHeadersDoNotLeak(t *testing.T) {
+	for _, envVar := range []string{"OTEL_EXPORTER_OTLP_HEADERS", "OTEL_EXPORTER_OTLP_METRICS_HEADERS"} {
+		t.Run(envVar, func(t *testing.T) {
+			t.Setenv(envVar, "x-leaked-token=super-secret")
+			srv, cap := newCollector(t, http.StatusOK)
+
+			// No Headers in Options: where an unset option would inherit the variable.
+			if err := publish(t, srv.URL, otelmetrics.Options{}); err != nil {
+				t.Fatalf("Publish: %v", err)
+			}
+			if len(cap.headers) != 1 {
+				t.Fatalf("got %d exports, want 1", len(cap.headers))
+			}
+			if got := cap.headers[0].Get("X-Leaked-Token"); got != "" {
+				t.Errorf("%s leaked into the request as %q; configured headers must "+
+					"replace the environment, not fall back to it", envVar, got)
+			}
+		})
+	}
+}
+
+// TestEnvEndpointDoesNotOverride pins the other half: a stray variable cannot
+// redirect a node's telemetry elsewhere.
+func TestEnvEndpointDoesNotOverride(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://192.0.2.1:4318")
+	t.Setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://192.0.2.1:4318")
+	srv, cap := newCollector(t, http.StatusOK)
+
+	if err := publish(t, srv.URL, otelmetrics.Options{}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if len(cap.requests) != 1 {
+		t.Errorf("configured collector saw %d exports, want 1", len(cap.requests))
 	}
 }

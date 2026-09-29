@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -432,7 +433,7 @@ func publishMetrics(cfg MetricsConfig, verdict health.NodeVerdict, nodeID string
 		Timeout:            timeout,
 	})
 	if err != nil {
-		slog.Warn("metrics publishing skipped", "endpoint", cfg.Endpoint, "err", err)
+		slog.Warn("metrics publishing skipped", "endpoint", redactEndpoint(cfg.Endpoint), "err", err)
 		return
 	}
 	defer func() {
@@ -442,10 +443,25 @@ func publishMetrics(cfg MetricsConfig, verdict health.NodeVerdict, nodeID string
 	}()
 
 	if err := publisher.Publish(ctx, verdict); err != nil {
-		slog.Warn("metrics publishing failed", "endpoint", cfg.Endpoint, "err", err)
+		slog.Warn("metrics publishing failed", "endpoint", redactEndpoint(cfg.Endpoint), "err", err)
 		return
 	}
-	slog.Debug("metrics published", "endpoint", cfg.Endpoint)
+	slog.Debug("metrics published", "endpoint", redactEndpoint(cfg.Endpoint))
+}
+
+// redactEndpoint reduces a metrics endpoint to scheme, host, and path for
+// logging, which operators capture alongside the verdict. Userinfo and the
+// whole query string go: providers pass tokens in both.
+func redactEndpoint(endpoint string) string {
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil || u.Host == "" {
+		return "[unparseable]"
+	}
+	redacted := url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}
+	if u.User != nil {
+		redacted.User = url.User("redacted")
+	}
+	return redacted.String()
 }
 
 func (a *App) resolveNodeID(value string, supplied bool) (string, error) {

@@ -60,9 +60,14 @@ type Config struct {
 //	    cluster: dsx-east
 //
 // Publishing is off unless Enabled is set, and a failure to publish never
-// changes the verdict or the exit code. No OTEL_* environment variable is
-// consulted: the config file is the only source, so a stray variable on a node
-// cannot silently redirect health telemetry.
+// changes the verdict or the exit code.
+//
+// Destination and credentials come only from this config: the OTLP exporter
+// applies OTEL_EXPORTER_OTLP_* before the options it is given, so
+// [otelmetrics.New] passes each of them explicitly to overwrite the
+// environment. TLS trust material (OTEL_EXPORTER_OTLP_CERTIFICATE and the
+// client-cert variables) is the deliberate exception — it is the only way to
+// reach a collector behind a private CA, and this config has no field for it.
 type MetricsConfig struct {
 	Headers            map[string]string `yaml:"headers"`
 	ResourceAttributes map[string]string `yaml:"resource_attributes"`
@@ -93,7 +98,11 @@ func (mc *MetricsConfig) validate(path string) error {
 	if !mc.Enabled {
 		return nil
 	}
+	// Store the trimmed value, not just validate it: url.Parse rejects
+	// surrounding whitespace, so keeping the original would let a quoted
+	// " http://host:4318 " pass here and fail at publish time.
 	endpoint := strings.TrimSpace(mc.Endpoint)
+	mc.Endpoint = endpoint
 	if endpoint == "" {
 		return fmt.Errorf("config %s: metrics.endpoint is required when metrics.enabled is true", path)
 	}

@@ -1,11 +1,11 @@
 // Package otelmetrics publishes a [health.NodeVerdict] to an OTLP/HTTP
 // metrics endpoint.
 //
-// It is built for the one-shot `health-validation run`: record one verdict,
-// export, exit. There is no background pipeline and no global MeterProvider
-// registration, so an SDK consumer embedding the CLI keeps its own telemetry
-// wiring untouched. Export failures are the caller's to swallow — a health
-// verdict must not change because a collector was unreachable.
+// Built for the one-shot `health-validation run`: record one verdict, export,
+// exit. It does not register a global MeterProvider, so an SDK consumer
+// embedding the CLI keeps its own telemetry wiring. Export failures are the
+// caller's to swallow — a health verdict must not change because a collector
+// was unreachable.
 package otelmetrics
 
 import (
@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -26,17 +27,26 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
 
-// ServiceName is the service.name resource attribute on every published
-// metric. It is fixed: a downstream collector routes on it.
+// ServiceName is fixed: downstream collectors route on it.
 const ServiceName = "health-validation"
 
 const scopeName = "github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics"
 
-// The three semantic-convention resource attributes this package sets, spelled
-// out rather than taken from otel/semconv. The keys are stable across
-// convention releases, and importing the versioned package would pin the whole
-// build to a directory named after a version (semconv/v1.37.0) — a moving
-// target on every OTel bump, for four string constants.
+// defaultTimeout is the whole export budget, not one attempt's: retries are
+// disabled in [New].
+const defaultTimeout = 10 * time.Second
+
+// severities is reported in full on every severity gauge — 1 for the severity
+// in effect, 0 for the rest. Emitting only the active one would leave the
+// previous run's point sitting at 1 with nothing to contradict it, so a
+// recovered node would still read as CRITICAL.
+var severities = []health.Severity{
+	health.Pass, health.Info, health.Warning, health.Critical, health.Unknown,
+}
+
+// Spelled out rather than imported from otel/semconv: the keys are stable, and
+// the versioned package would pin the Bazel label to semconv/v1.37.0, a moving
+// target on every OTel bump.
 const (
 	schemaURL         = "https://opentelemetry.io/schemas/1.37.0"
 	attrServiceName   = "service.name"
@@ -45,20 +55,18 @@ const (
 )
 
 // Options configures a [Publisher]. Only Endpoint is required. It is a plain
-// struct rather than the CLI's config type so this package stays independent
-// of the YAML shape.
+// struct rather than the CLI's config type so this package does not depend on
+// the YAML shape.
 type Options struct {
-	Headers            map[string]string // sent on the OTLP request, for an endpoint that authenticates
-	ResourceAttributes map[string]string // operator-supplied resource attributes; see [New]
-	Endpoint           string            // full OTLP/HTTP URL; /v1/metrics is appended when the path is empty
-	NodeID             string            // node under test; becomes service.instance.id
+	Headers            map[string]string
+	ResourceAttributes map[string]string
+	Endpoint           string // full OTLP/HTTP URL; /v1/metrics is appended when the path is empty
+	NodeID             string // becomes service.instance.id
 	ServiceVersion     string
 	CatalogVersion     string
-	Timeout            time.Duration // whole export budget: retries are disabled
+	Timeout            time.Duration // whole export budget; see defaultTimeout
 }
 
-// Publisher holds the metric pipeline for one process. Build it with [New] and
-// release it with [Publisher.Shutdown].
 type Publisher struct {
 	provider *sdkmetric.MeterProvider
 	reader   *sdkmetric.ManualReader
@@ -76,32 +84,36 @@ type Publisher struct {
 //
 // Retries are disabled: the stock exporter backs off for up to a minute, which
 // would hold a health run open long past opts.Timeout. Sums are delta — each
-// run is a fresh process, so a cumulative counter would restart at 1 every time
-// and read as a reset.
+// run is a fresh process, so a cumulative counter would restart at 1 and read
+// as a reset.
 func New(ctx context.Context, opts Options) (*Publisher, error) {
 	endpoint, err := normalizeEndpoint(opts.Endpoint)
 	if err != nil {
 		return nil, err
 	}
 
-	exporterOpts := []otlpmetrichttp.Option{
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = defaultTimeout
+	}
+
+	// Every option is passed unconditionally, empty values included. The
+	// exporter applies the OTEL_EXPORTER_OTLP_* environment variables *before*
+	// these options (oconf.NewHTTPConfig), so any option left unset silently
+	// inherits whatever the node's environment carries.
+	exporter, err := otlpmetrichttp.New(ctx,
 		otlpmetrichttp.WithEndpointURL(endpoint),
+		otlpmetrichttp.WithHeaders(opts.Headers),
+		otlpmetrichttp.WithTimeout(timeout),
+		otlpmetrichttp.WithCompression(otlpmetrichttp.NoCompression),
 		otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{Enabled: false}),
-	}
-	if opts.Timeout > 0 {
-		exporterOpts = append(exporterOpts, otlpmetrichttp.WithTimeout(opts.Timeout))
-	}
-	if len(opts.Headers) > 0 {
-		exporterOpts = append(exporterOpts, otlpmetrichttp.WithHeaders(opts.Headers))
-	}
-	exporter, err := otlpmetrichttp.New(ctx, exporterOpts...)
+	)
 	if err != nil {
 		return nil, fmt.Errorf("build OTLP metrics exporter: %w", err)
 	}
 
-	// A ManualReader, not a PeriodicReader: the reader is collected and
-	// exported exactly once, by Publish. A PeriodicReader flushes again on
-	// Shutdown, which would push a second copy of every gauge at process exit.
+	// ManualReader, not PeriodicReader: the latter flushes again on Shutdown,
+	// pushing a second copy of every point at process exit.
 	reader := sdkmetric.NewManualReader(sdkmetric.WithTemporalitySelector(deltaSums))
 	provider := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(buildResource(opts)),
@@ -124,12 +136,14 @@ func deltaSums(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 	return sdkmetric.DefaultTemporalitySelector(kind)
 }
 
-// normalizeEndpoint validates the URL and appends the conventional OTLP metrics
-// path when the operator gave only a host. A bare "host:port" — the form an
-// OTLP collector's own receiver config uses, so the likeliest mistake — fails
-// url.Parse outright rather than parsing to a bad scheme; both land on the same
-// message, which names the fix.
+// normalizeEndpoint validates the URL and appends the OTLP metrics path when
+// only a host was given. A bare "host:port" — the form a collector's own
+// receiver config uses, so the likeliest mistake — fails url.Parse rather than
+// parsing to a bad scheme, so both cases share one message naming the fix.
 func normalizeEndpoint(endpoint string) (string, error) {
+	// url.Parse rejects surrounding whitespace, so trim here too or an endpoint
+	// that passed the config's trimmed validation fails at publish time.
+	endpoint = strings.TrimSpace(endpoint)
 	u, err := url.Parse(endpoint)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return "", fmt.Errorf(
@@ -145,10 +159,9 @@ func normalizeEndpoint(endpoint string) (string, error) {
 	return u.String(), nil
 }
 
-// buildResource assembles the resource attached to every published metric.
-// Operator attributes are applied first and the ones this package owns are
-// merged over them (NewWithAttributes de-duplicates last-wins), so an operator
-// can add fleet context but cannot spoof the identity a collector routes on.
+// buildResource applies operator attributes first so the ones set here win
+// (NewWithAttributes is last-wins): fleet context is welcome, spoofing the
+// identity a collector routes on is not.
 func buildResource(opts Options) *resource.Resource {
 	attrs := make([]attribute.KeyValue, 0, len(opts.ResourceAttributes)+5)
 	for k, v := range opts.ResourceAttributes {
@@ -170,9 +183,9 @@ func buildResource(opts Options) *resource.Resource {
 	return resource.NewWithAttributes(schemaURL, attrs...)
 }
 
-// newInstruments creates every instrument up front so an invalid definition
-// fails at construction — where the CLI logs it and skips publishing — rather
-// than silently no-op'ing at record time.
+// newInstruments creates everything up front so a bad definition fails at
+// construction, where the CLI logs it and skips publishing, rather than
+// no-op'ing at record time.
 func (p *Publisher) newInstruments(m metric.Meter) error {
 	var errs []error
 	gauge := func(name, description string) metric.Int64Gauge {
@@ -184,11 +197,11 @@ func (p *Publisher) newInstruments(m metric.Meter) error {
 		metric.WithDescription("Completed validation runs, labelled with the overall severity they reported."))
 
 	p.nodeSeverity = gauge("health_validation.node.severity",
-		"Overall node severity as an ordinal: 0 PASS, 1 INFO, 2 WARNING, 3 CRITICAL, 4 UNKNOWN.")
+		"1 for the severity the node reported, 0 for every other severity.")
 	p.domainSeverity = gauge("health_validation.domain.severity",
-		"Per-domain severity ordinal, one series per check category.")
+		"1 for the severity a domain reported, 0 for every other severity.")
 	p.checkSeverity = gauge("health_validation.check.severity",
-		"Per-check severity ordinal for the checks that executed.")
+		"1 for the severity a check reported, 0 for every other severity.")
 	p.checkSkipped = gauge("health_validation.check.skipped",
 		"Always 1, emitted once per check that did not execute, labelled with the skip reason.")
 	p.affectedEntities = gauge("health_validation.check.affected_entities",
@@ -197,8 +210,8 @@ func (p *Publisher) newInstruments(m metric.Meter) error {
 	return errors.Join(append(errs, err)...)
 }
 
-// Publish records every instrument from nv and exports them. It blocks until
-// the export completes, fails, or opts.Timeout expires.
+// Publish records nv and exports it, blocking until the export completes,
+// fails, or opts.Timeout expires.
 func (p *Publisher) Publish(ctx context.Context, nv health.NodeVerdict) error {
 	p.record(ctx, nv)
 
@@ -212,24 +225,20 @@ func (p *Publisher) Publish(ctx context.Context, nv health.NodeVerdict) error {
 	return nil
 }
 
-// record writes one verdict into the instruments. Attribute sets are kept
-// narrow: node ID and versions live on the resource, and the per-run trace_id
-// and span_id are left out entirely — they are unique every run, so recording
-// them would mint a new time series per execution. They stay in the JSON.
+// record writes one verdict into the instruments. trace_id and span_id are
+// deliberately omitted: they are unique per run, so recording them would mint a
+// new time series every execution. They stay in the JSON verdict.
 func (p *Publisher) record(ctx context.Context, nv health.NodeVerdict) {
-	p.nodeSeverity.Record(ctx, int64(nv.OverallSeverity))
+	recordSeverity(ctx, p.nodeSeverity, nv.OverallSeverity)
 	p.runs.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("severity", nv.OverallSeverity.String()),
 	))
 
 	for category, severity := range nv.SeverityByDomain {
-		p.domainSeverity.Record(ctx, int64(severity), metric.WithAttributes(
-			attribute.String("category", category.String()),
-		))
+		recordSeverity(ctx, p.domainSeverity, severity,
+			attribute.String("category", category.String()))
 	}
 
-	// Executed and skipped checks are one stream of measurements; which
-	// instrument a verdict lands in is the only thing that differs.
 	for _, cv := range slices.Concat(nv.CheckResults, nv.SkippedChecks) {
 		id := []attribute.KeyValue{
 			attribute.String("check_id", cv.CheckID),
@@ -240,19 +249,35 @@ func (p *Publisher) record(ctx context.Context, nv health.NodeVerdict) {
 				append(id, attribute.String("skip_reason", cv.SkipReason.String()))...))
 			continue
 		}
-		p.checkSeverity.Record(ctx, int64(cv.Severity), metric.WithAttributes(append(id,
+		recordSeverity(ctx, p.checkSeverity, cv.Severity, append(id,
 			attribute.String("condition_scope", cv.ConditionScope.String()),
 			attribute.String("maturity_level", cv.MaturityLevel.String()),
 			attribute.Bool("nvidia_endorsed", cv.NVIDIAEndorsed),
-		)...))
+		)...)
 		if n := len(cv.AffectedEntities); n > 0 {
 			p.affectedEntities.Record(ctx, int64(n), metric.WithAttributes(id...))
 		}
 	}
 }
 
-// Shutdown releases the pipeline. It exports nothing: [Publisher.Publish] is
-// the only thing that sends, so a failed publish is reported once, there.
+// recordSeverity reports one subject's severity as a name rather than an
+// ordinal; see [severities] for why all of them are emitted.
+func recordSeverity(ctx context.Context, g metric.Int64Gauge, active health.Severity, extra ...attribute.KeyValue) {
+	for _, s := range severities {
+		attrs := make([]attribute.KeyValue, 0, len(extra)+1)
+		attrs = append(attrs, extra...)
+		attrs = append(attrs, attribute.String("severity", s.String()))
+
+		var value int64
+		if s == active {
+			value = 1
+		}
+		g.Record(ctx, value, metric.WithAttributes(attrs...))
+	}
+}
+
+// Shutdown releases the pipeline without exporting: [Publisher.Publish] is the
+// only thing that sends, so a failed publish is reported once, there.
 func (p *Publisher) Shutdown(ctx context.Context) error {
 	return errors.Join(p.provider.Shutdown(ctx), p.exporter.Shutdown(ctx))
 }
