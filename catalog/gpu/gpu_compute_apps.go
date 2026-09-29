@@ -7,7 +7,12 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 //
 // The check fires Critical when compute_process_count is greater than
 // zero. Intended for exclusive-node pre/post-job windows: leftover CUDA
-// processes, not graphics or scheduler-owned user-process cleanup.
+// processes, not graphics or scheduler-owned user-process cleanup. It
+// runs only in the guest: a host or control-plane VM cannot see the
+// guest's compute processes, so an empty host list would pass while a
+// job was still holding the GPU. A process still holds the GPU, so a
+// GPU reset cannot run; the recommendation is to restart the node, then
+// escalate.
 func GPUComputeApps() health.CheckDefinition {
 	return health.CheckDefinition{
 		ID:          "gpu_compute_apps",
@@ -22,14 +27,14 @@ func GPUComputeApps() health.CheckDefinition {
 		},
 
 		ExecutionClass:    health.Passive,
-		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
+		ExecutionContexts: []health.ExecutionContext{health.TenantGuest},
 		SchedulingCadence: health.Prolog,
 		Architectures:     []string{"GB200", "GB300", "H100", "A100"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.RemediationActionResetGPU),
+		RecommendedAction: health.Drain(health.RemediationActionRestartOS, health.RemediationActionContactSupport),
 
 		Rules: []health.Rule{
 			{

@@ -83,6 +83,10 @@ two-step variant of this same pattern — `["reset_gpu", "service_required"]`,
 skipping the host-restart step — for faults where a host restart isn't
 expected to add anything a GPU reset wouldn't already cover.
 
+`gpu_compute_apps` skips `reset_gpu`. The failing condition is a process
+still holding the GPU, and `reset_gpu` requires that no process is using it.
+Its sequence is `restart_os`, then `contact_support`.
+
 | Action | Description |
 |---|---|
 | `reset_gpu` | Reset the GPU: `nvidia-smi --gpu-reset` (no active processes may be using the GPU). |

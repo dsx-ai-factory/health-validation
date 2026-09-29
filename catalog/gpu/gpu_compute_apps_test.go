@@ -13,7 +13,7 @@ import (
 func computeAppsCatalog(opts ...catalog.Option) *catalog.Catalog {
 	defaults := []catalog.Option{
 		catalog.WithArchitecture("GB200"),
-		catalog.WithExecutionContext(health.OperatorInfra),
+		catalog.WithExecutionContext(health.TenantGuest),
 	}
 	c := catalog.NewEmpty(append(defaults, opts...)...)
 	c.MustRegister(gpu.GPUComputeApps())
@@ -46,7 +46,7 @@ func TestGPUComputeApps_ProcessFails(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("Severity = %v, want CRITICAL", v.Severity)
 	}
-	want := health.Drain(health.RemediationActionResetGPU)
+	want := health.Drain(health.RemediationActionRestartOS, health.RemediationActionContactSupport)
 	if !v.RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
 	}
@@ -93,6 +93,17 @@ func TestGPUComputeApps_ErroredSignal(t *testing.T) {
 	want := health.Drain(health.RemediationActionCheckCollection)
 	if !v.RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
+	}
+}
+
+func TestGPUComputeApps_OperatorInfraSkipped(t *testing.T) {
+	cat := computeAppsCatalog(catalog.WithExecutionContext(health.OperatorInfra))
+	v, err := cat.Evaluate("gpu_compute_apps", gpu.GPUMeasurement{GPUID: "GPU-0"})
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if !v.Skipped || v.SkipReason != health.DeploymentUnsupported {
+		t.Errorf("skipped = %v, reason = %v, want DeploymentUnsupported", v.Skipped, v.SkipReason)
 	}
 }
 
