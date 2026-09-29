@@ -195,13 +195,15 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 		}
 		// An uncollected domain's checks may skip SENSOR_MISSING in their own
 		// right, or DEPENDENCY_SKIPPED when a prerequisite already did.
+		// A context mismatch is decided first, so a check that does not
+		// apply to this catalog does not read as a sensor hole.
 		switch v.SkipReason {
 		case health.SensorMissing:
 			if !strings.Contains(v.SkipDetail, v.Category.String()) {
 				t.Errorf("CheckID %q skip detail %q does not name the missing category",
 					v.CheckID, v.SkipDetail)
 			}
-		case health.DependencySkipped:
+		case health.DependencySkipped, health.DeploymentUnsupported:
 		default:
 			t.Errorf("CheckID %q (category %v) skip reason = %v, want SENSOR_MISSING",
 				v.CheckID, v.Category, v.SkipReason)
