@@ -178,6 +178,16 @@ type measurementSchema struct {
 // uncovered check, in ID order for a stable message. Consumers typically
 // assert on it in a test alongside [CheckSignalUniqueness].
 func (c *Catalog) CheckCoverage(measurements ...health.Measurement) error {
+	// Registered accumulators' outputs are measurement types the catalog
+	// produces itself, so a check reading only derived signals is covered
+	// without the caller naming them.
+	measurements = slices.Clone(measurements)
+	c.mu.RLock()
+	for _, a := range c.accumulators {
+		measurements = append(measurements, a.Outputs()...)
+	}
+	c.mu.RUnlock()
+
 	schemas := make([]measurementSchema, 0, len(measurements))
 	for _, m := range measurements {
 		keys := make(map[string]struct{})

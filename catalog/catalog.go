@@ -30,6 +30,7 @@ type Catalog struct {
 	evaluationEngine *evaluation.EvaluationEngine
 	overrides        OverrideSet
 	architecture     string
+	accumulators     []health.Accumulator
 	executionContext health.ExecutionContext
 	mu               sync.RWMutex
 }
@@ -108,6 +109,11 @@ func New(opts ...Option) *Catalog {
 	for _, cd := range builtinChecks() {
 		c.MustRegister(cd)
 	}
+	for _, a := range builtinAccumulators() {
+		if err := c.RegisterAccumulator(a); err != nil {
+			panic(err)
+		}
+	}
 	for _, opt := range opts {
 		opt(c)
 	}
@@ -136,6 +142,37 @@ func (c *Catalog) Register(cd health.CheckDefinition) error {
 	stored := cloneDefinition(cd)
 	c.checks[cd.ID] = &stored
 	return nil
+}
+
+// RegisterAccumulator adds an accumulator whose outputs every batch
+// evaluation feeds to the checks alongside the collected measurements.
+// Names must be unique.
+func (c *Catalog) RegisterAccumulator(a health.Accumulator) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, existing := range c.accumulators {
+		if existing.Name() == a.Name() {
+			return fmt.Errorf("accumulator %q already registered", a.Name())
+		}
+	}
+	c.accumulators = append(c.accumulators, a)
+	return nil
+}
+
+// accumulate runs each accumulator over the collected measurements and
+// returns everything they derived. Each sees only what was collected, not
+// another accumulator's outputs, so registration order cannot change the
+// result.
+func accumulate(accumulators []health.Accumulator, measurements []health.Measurement) ([]health.Measurement, error) {
+	var derived []health.Measurement
+	for _, a := range accumulators {
+		out, err := a.Accumulate(measurements)
+		if err != nil {
+			return nil, fmt.Errorf("accumulator %s: %w", a.Name(), err)
+		}
+		derived = append(derived, out...)
+	}
+	return derived, nil
 }
 
 // MustRegister is like Register but panics on error.
@@ -363,7 +400,16 @@ func (c *Catalog) evaluateAllRaw(opts EvaluationOptions, measurements ...health.
 		return nil, err
 	}
 	checks, snap := c.batchSnapshot(opts)
-	return c.evaluationEngine.EvaluateBatch(checks, measurements, snap.forCheck)
+	c.mu.RLock()
+	accumulators := slices.Clone(c.accumulators)
+	c.mu.RUnlock()
+
+	derived, err := accumulate(accumulators, measurements)
+	if err != nil {
+		return nil, err
+	}
+	all := append(slices.Clone(measurements), derived...)
+	return c.evaluationEngine.EvaluateBatch(checks, all, snap.forCheck)
 }
 
 // RunnableChecks returns the registered checks that [Catalog.EvaluateAllWithOptions]

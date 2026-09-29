@@ -38,3 +38,9 @@ func builtinChecks() []health.CheckDefinition {
 	checks = append(checks, xid.Checks()...)
 	return checks
 }
+
+// builtinAccumulators returns the accumulators shipped with the catalog.
+// Their outputs are evaluated alongside collected measurements.
+func builtinAccumulators() []health.Accumulator {
+	return nil
+}
