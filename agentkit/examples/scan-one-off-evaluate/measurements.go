@@ -117,11 +117,11 @@ func observationGPUID(current *observation.Observation) (string, error) {
 	var gpuID string
 	switch {
 	case target.GetGpu() != nil:
-		gpuID = target.GetGpu().GetId()
+		gpuID = gpuRefID(target.GetGpu())
 	case target.GetNvLinkEndpoint() != nil:
-		gpuID = target.GetNvLinkEndpoint().GetGpu().GetId()
+		gpuID = gpuRefID(target.GetNvLinkEndpoint().GetGpu())
 	case target.GetGpuPair() != nil:
-		gpuID = target.GetGpuPair().GetSourceGpu().GetId()
+		gpuID = gpuRefID(target.GetGpuPair().GetSourceGpu())
 	default:
 		return "gpu", fmt.Errorf("signal %q does not identify a GPU target", current.GetSignalId())
 	}
@@ -129,6 +129,13 @@ func observationGPUID(current *observation.Observation) (string, error) {
 		return "gpu", fmt.Errorf("signal %q has no GPU identifier", current.GetSignalId())
 	}
 	return gpuID, nil
+}
+
+func gpuRefID(ref *observation.GPURef) string {
+	if ref.GetUuid() != "" {
+		return ref.GetUuid()
+	}
+	return ref.GetSourceLocalId()
 }
 
 func applyGPUValue(measurement *cataloggpu.GPUMeasurement, current *observation.Observation) error {

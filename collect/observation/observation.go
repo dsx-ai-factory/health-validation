@@ -66,26 +66,31 @@ func NodeTarget(id string) *ObservationTarget {
 }
 
 // GPUTarget identifies one physical GPU.
-func GPUTarget(id string) *ObservationTarget {
-	return &ObservationTarget{Kind: &ObservationTarget_GPU{Gpu: &GPURef{Id: id}}}
+func GPUTarget(uuid string) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_GPU{Gpu: &GPURef{Uuid: uuid}}}
+}
+
+// GPUSourceLocalTarget identifies a GPU when its UUID could not be collected.
+func GPUSourceLocalTarget(sourceLocalID string) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_GPU{Gpu: &GPURef{SourceLocalId: sourceLocalID}}}
 }
 
 // NVLinkEndpointTarget identifies one local NVLink endpoint on a GPU.
-func NVLinkEndpointTarget(gpuID string, linkIndex uint32) *ObservationTarget {
+func NVLinkEndpointTarget(gpuUUID string, linkIndex uint32) *ObservationTarget {
 	return &ObservationTarget{Kind: &ObservationTarget_NVLinkEndpoint{
 		NvLinkEndpoint: &NVLinkEndpointRef{
-			Gpu:       &GPURef{Id: gpuID},
+			Gpu:       &GPURef{Uuid: gpuUUID},
 			LinkIndex: linkIndex,
 		},
 	}}
 }
 
 // GPUPairTarget identifies an ordered source/peer GPU pair.
-func GPUPairTarget(sourceGPUID, peerGPUID string) *ObservationTarget {
+func GPUPairTarget(sourceGPUUUID, peerGPUUUID string) *ObservationTarget {
 	return &ObservationTarget{Kind: &ObservationTarget_GPUPair{
 		GpuPair: &GPUPairRef{
-			SourceGpu: &GPURef{Id: sourceGPUID},
-			PeerGpu:   &GPURef{Id: peerGPUID},
+			SourceGpu: &GPURef{Uuid: sourceGPUUUID},
+			PeerGpu:   &GPURef{Uuid: peerGPUUUID},
 		},
 	}}
 }

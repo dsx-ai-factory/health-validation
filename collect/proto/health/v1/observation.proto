@@ -48,10 +48,11 @@ message NodeRef {
   string id = 1;
 }
 
-// GpuRef normally carries a GPU UUID. A source-local ID may be used when UUID
-// collection itself failed so the error remains attributable to one GPU.
+// GpuRef identifies a GPU by UUID when available. A source-local ID keeps a
+// failed UUID lookup attributable to one GPU without presenting it as a UUID.
 message GpuRef {
-  string id = 1;
+  string uuid = 1;
+  string source_local_id = 2;
 }
 
 // NvLinkEndpointRef identifies one local NVLink endpoint on a physical GPU.

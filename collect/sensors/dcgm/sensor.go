@@ -130,11 +130,10 @@ func (sensor *sensor) Measure(
 // deviceTarget uses the DCGM index when UUID collection failed, preserving
 // enough identity to report a device-specific collection error.
 func deviceTarget(device dcgmsource.Device) *observation.ObservationTarget {
-	id := device.UUID
-	if id == "" {
-		id = fmt.Sprintf("dcgm-index-%d", device.Index)
+	if device.UUID == "" {
+		return observation.GPUSourceLocalTarget(fmt.Sprintf("dcgm-index-%d", device.Index))
 	}
-	return observation.GPUTarget(id)
+	return observation.GPUTarget(device.UUID)
 }
 
 func (sensor *sensor) appendNoTargetObservations(

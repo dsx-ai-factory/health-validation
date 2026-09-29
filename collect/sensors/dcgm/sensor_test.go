@@ -57,6 +57,13 @@ func TestSensorID(t *testing.T) {
 	}
 }
 
+func TestDeviceTargetDoesNotLabelSourceIndexAsUUID(t *testing.T) {
+	target := deviceTarget(dcgmsource.Device{Index: 7})
+	if target.GetGpu().GetUuid() != "" || target.GetGpu().GetSourceLocalId() != "dcgm-index-7" {
+		t.Fatalf("device target = %v", target)
+	}
+}
+
 func TestAppendNoTargetObservations(t *testing.T) {
 	sensor := &sensor{source: dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{})}
 	selected := collect.Signals{gpusignals.PowerDraw, gpusignals.TemperatureCelsius}

@@ -8,6 +8,18 @@ import (
 	"testing"
 )
 
+func TestGPURefNamesAndFallback(t *testing.T) {
+	target := GPUTarget("GPU-0")
+	ref := target.GetGpu()
+	if ref.GetUuid() != "GPU-0" {
+		t.Fatalf("GPU target = %v", target)
+	}
+	fallback := GPUSourceLocalTarget("dcgm-index-1").GetGpu()
+	if fallback.GetUuid() != "" || fallback.GetSourceLocalId() != "dcgm-index-1" {
+		t.Fatalf("GPU fallback = %v", fallback)
+	}
+}
+
 func TestValidateObservationRequiresOutcome(t *testing.T) {
 	tests := []struct {
 		observation *Observation
@@ -107,7 +119,7 @@ func TestValidateObservationTarget(t *testing.T) {
 		{
 			name: "incomplete GPU pair",
 			target: &ObservationTarget{Kind: &ObservationTarget_GPUPair{
-				GpuPair: &GPUPairRef{SourceGpu: &GPURef{Id: "GPU-0"}},
+				GpuPair: &GPUPairRef{SourceGpu: &GPURef{Uuid: "GPU-0"}},
 			}},
 			wantError: "target has an incomplete GPU pair payload",
 		},
