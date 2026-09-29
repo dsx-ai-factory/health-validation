@@ -135,7 +135,7 @@ need no remediation at all.
 
 | Action | Description |
 |---|---|
-| `restart_app` | Restart the application using the GPU; the GPU itself is not considered faulted. The default for the consolidated `gpu_xid_warning` check and most of the Xid codes it groups under "application-level" faults. |
+| `restart_app` | Restart the application using the GPU; the GPU itself is not considered faulted. The default for the consolidated `gpu_xid_warning` check and most of the Xid codes it groups under "application-level" faults, where it is followed by `service_required` (`["restart_app", "service_required"]`) should the error persist after the restart. |
 | `update_swfw` | Update GPU driver/firmware and any related system software to the latest supported versions. Recommended for Xid 78 (vGPU start error). |
 | `check_uvm` | If Unified Virtual Memory or vGPU is in use, reset the GPU; otherwise no hardware action is warranted. Recommended for Xid 159 (CHI non-data error). |
 | `workflow_xid_45` | Follow the Xid 45 (preemptive GPU removal) workflow: restart the fabric manager if the node is solo; otherwise this Xid typically accompanies another Xid and that Xid's guidance applies instead. |

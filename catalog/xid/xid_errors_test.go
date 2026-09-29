@@ -73,6 +73,31 @@ func TestXidErrors_SeverityByBucket(t *testing.T) {
 	}
 }
 
+func TestXidErrors_WarningActionByBucket(t *testing.T) {
+	tests := []struct {
+		name string
+		want health.RecommendedAction
+		code int64
+	}{
+		{"app fault (13)", health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired), 13},
+		{"memory page fault (31)", health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired), 31},
+		{"preemptive removal (45)", health.Drain(health.RemediationActionWorkflowXid45), 45},
+		{"vgpu start (78)", health.Drain(health.RemediationActionUpdateSWFW), 78},
+		{"key rotation (151)", health.Drain(health.RemediationActionRestartOS), 151},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, ok := checkResult(evalXid(t, tc.code), "gpu_xid_warning")
+			if !ok {
+				t.Fatalf("gpu_xid_warning verdict not found")
+			}
+			if !v.RecommendedAction.Equal(tc.want) {
+				t.Errorf("code %d: RecommendedAction = %v, want %v", tc.code, v.RecommendedAction, tc.want)
+			}
+		})
+	}
+}
+
 // nvlink5MeasurementFor builds an XidMeasurement for one NVLink5-family
 // event (144-150), the way toolkit/xid.ParseXid would after decoding the
 // extended Fatal/Nonfatal log format.

@@ -84,8 +84,8 @@ type warningClass struct {
 
 var warningClasses = []warningClass{
 	{
-		action:  health.Drain(health.RemediationActionRestartApp),
-		message: "Application-level GPU Xid error detected. Restart the faulting application; the GPU itself remains healthy.",
+		action:  health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+		message: "Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.",
 		codes: []int64{
 			8, 11, 13, 25, 31, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77,
 			82, 83, 84, 85, 86, 88, 89, 94, 96, 97, 98, 99, 100, 101, 102, 103,
@@ -205,7 +205,7 @@ func warningCheck() health.CheckDefinition {
 		"gpu_xid_warning",
 		"GPU Xid Warnings",
 		"Detects application-level and otherwise recoverable NVRM Xid errors in the system journal since boot, grouped by their NVIDIA Xid-catalog immediate-action resolution bucket.",
-		health.Drain(health.RemediationActionRestartApp),
+		health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
 	)
 	rules := make([]health.Rule, 0, len(warningClasses))
 	for _, w := range warningClasses {
