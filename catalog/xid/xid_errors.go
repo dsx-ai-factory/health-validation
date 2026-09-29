@@ -19,36 +19,36 @@ type criticalXid struct {
 	code        int64
 }
 
-// resetAndContactSupport is the remediation sequence for a Xid code
+// resetAndService is the remediation sequence for a Xid code
 // whose immediate-action bucket is a GPU-only reset: attempt the reset,
-// then escalate directly to support rather than the generic
+// then hand the node to service, skipping the generic
 // [health.GenericDrain] ladder's intermediate host-restart step.
-func resetAndContactSupport() health.RecommendedAction {
-	return health.Drain(health.RemediationActionResetGPU, health.RemediationActionContactSupport)
+func resetAndService() health.RecommendedAction {
+	return health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
 }
 
 // criticalXids lists every critical Xid code, ordered by code. action
 // is the immediate-action bucket; codes whose action is IGNORE/empty or
 // that are marked Unused are excluded entirely.
 var criticalXids = []criticalXid{
-	{code: 46, action: resetAndContactSupport(), description: "GPU stopped processing"},
-	{code: 48, action: resetAndContactSupport(), description: "double bit ECC error"},
-	{code: 62, action: resetAndContactSupport(), description: "internal micro-controller halt"},
-	{code: 64, action: resetAndContactSupport(), description: "GPU memory remapping failure"},
-	{code: 79, action: resetAndContactSupport(), description: "GPU has fallen off the bus"},
-	{code: 95, action: resetAndContactSupport(), description: "uncontained memory error"},
-	{code: 109, action: resetAndContactSupport(), description: "context switch timeout error"},
-	{code: 110, action: resetAndContactSupport(), description: "security fault error"},
-	{code: 119, action: resetAndContactSupport(), description: "GSP RPC timeout"},
-	{code: 120, action: resetAndContactSupport(), description: "GSP error"},
-	{code: 140, action: resetAndContactSupport(), description: "ECC unrecovered error"},
-	{code: 142, action: health.Drain(health.RemediationActionContactSupport), description: "NVENC3 error"},
-	{code: 143, action: resetAndContactSupport(), description: "GPU initialization error"},
+	{code: 46, action: resetAndService(), description: "GPU stopped processing"},
+	{code: 48, action: resetAndService(), description: "double bit ECC error"},
+	{code: 62, action: resetAndService(), description: "internal micro-controller halt"},
+	{code: 64, action: resetAndService(), description: "GPU memory remapping failure"},
+	{code: 79, action: resetAndService(), description: "GPU has fallen off the bus"},
+	{code: 95, action: resetAndService(), description: "uncontained memory error"},
+	{code: 109, action: resetAndService(), description: "context switch timeout error"},
+	{code: 110, action: resetAndService(), description: "security fault error"},
+	{code: 119, action: resetAndService(), description: "GSP RPC timeout"},
+	{code: 120, action: resetAndService(), description: "GSP error"},
+	{code: 140, action: resetAndService(), description: "ECC unrecovered error"},
+	{code: 142, action: health.Drain(health.RemediationActionServiceRequired), description: "NVENC3 error"},
+	{code: 143, action: resetAndService(), description: "GPU initialization error"},
 	// 144-150 (NVLink5/NETIR family) are not listed here: they get their
 	// own severity-differentiated checks below, built by nvlink5Check.
-	{code: 155, action: resetAndContactSupport(), description: "NVLink SW-defined error"},
-	{code: 156, action: resetAndContactSupport(), description: "resource retirement event"},
-	{code: 158, action: resetAndContactSupport(), description: "GPU fatal timeout"},
+	{code: 155, action: resetAndService(), description: "NVLink SW-defined error"},
+	{code: 156, action: resetAndService(), description: "resource retirement event"},
+	{code: 158, action: resetAndService(), description: "GPU fatal timeout"},
 	{code: 159, action: health.Drain(health.RemediationActionCheckUVM), description: "CHI non-data error"},
 }
 
@@ -154,9 +154,9 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 // NVIDIA's Xid 144-150 decode table: Non-fatal-severity rows resolve to
 // IGNORE in the overwhelming majority of cases).
 //
-// The Fatal rule uses [resetAndContactSupport]: filtering NVIDIA's Xid
+// The Fatal rule uses [resetAndService]: filtering NVIDIA's Xid
 // 144-150 decode table to Fatal-severity rows only, ~95% (37 of 39)
-// resolve to a GPU reset with support contacted if it doesn't clear —
+// resolve to a GPU reset, then service if the reset doesn't clear it:
 // exactly this sequence. The rare exceptions that resolve to IGNORE
 // despite Fatal severity aren't distinguishable from a static per-check
 // action (they depend on the specific IntrInfo fault variant, only
@@ -187,7 +187,7 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 			Expression:        fmt.Sprintf("%d in fatal_xid_counts", c.code),
 			Severity:          health.Critical,
 			Message:           fmt.Sprintf("GPU Xid %d detected: %s (Fatal).", c.code, c.description),
-			RecommendedAction: resetAndContactSupport(),
+			RecommendedAction: resetAndService(),
 		},
 		{
 			Expression: fmt.Sprintf("%d in xid_counts", c.code),

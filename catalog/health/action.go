@@ -66,14 +66,18 @@ func (s *OperationalState) UnmarshalJSON(data []byte) error {
 type RemediationAction string
 
 const (
-	RemediationActionContactSupport RemediationAction = "contact_support"
-	RemediationActionResetGPU       RemediationAction = "reset_gpu"
-	RemediationActionRestartApp     RemediationAction = "restart_app"
-	RemediationActionRestartOS      RemediationAction = "restart_os"
-	RemediationActionUpdateSWFW     RemediationAction = "update_swfw"
-	RemediationActionCheckUVM       RemediationAction = "check_uvm"
-	RemediationActionWorkflowXid45  RemediationAction = "workflow_xid_45"
-	RemediationActionXid154         RemediationAction = "xid_154"
+	// RemediationActionServiceRequired is the last step in a sequence: no
+	// automated remediation remains, and the node needs hardware or
+	// software investigation through the operator's own service path.
+	RemediationActionServiceRequired RemediationAction = "service_required"
+
+	RemediationActionResetGPU      RemediationAction = "reset_gpu"
+	RemediationActionRestartApp    RemediationAction = "restart_app"
+	RemediationActionRestartOS     RemediationAction = "restart_os"
+	RemediationActionUpdateSWFW    RemediationAction = "update_swfw"
+	RemediationActionCheckUVM      RemediationAction = "check_uvm"
+	RemediationActionWorkflowXid45 RemediationAction = "workflow_xid_45"
+	RemediationActionXid154        RemediationAction = "xid_154"
 
 	// RemediationActionHold marks a node as drained but not yet
 	// individually remediated: hold it out of scheduling until a
@@ -155,7 +159,7 @@ func Drain(actions ...RemediationAction) RecommendedAction {
 // then escalate. Checks with confirmed engine-specific handling should
 // use [Drain] directly instead.
 func GenericDrain() RecommendedAction {
-	return Drain(RemediationActionResetGPU, RemediationActionRestartOS, RemediationActionContactSupport)
+	return Drain(RemediationActionResetGPU, RemediationActionRestartOS, RemediationActionServiceRequired)
 }
 
 // Monitor is the canonical "keep in service, watch the trend"

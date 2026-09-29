@@ -344,20 +344,20 @@ validate against the published
   common healthy-check case), so treat its absence as "no action" and guard
   for it before reading into it — don't assume it's there. When present it is
   `{operational_state, remediation_actions}` (e.g.
-  `{"operational_state":"drain","remediation_actions":["reset_gpu","restart_os","contact_support"]}`):
+  `{"operational_state":"drain","remediation_actions":["reset_gpu","restart_os","service_required"]}`):
   `operational_state` is `monitor` or `drain` (never `none` — that case is the
   omitted field), and `remediation_actions` is an **ordered sequence** of
   remediation steps, present only when `operational_state` is `drain` — feed
   it to your remediation engine in order. `remediation_actions` entries are an
   open string set, not a closed enum (`reset_gpu`, `restart_os`,
-  `contact_support`, … from this repo's own checks, but a custom catalog may
+  `service_required`, … from this repo's own checks, but a custom catalog may
   add its own); treat an unrecognized value as an opaque step, not an error. Since
   each check carries its own remediation sequence and there is no single
   node-level ranking across them, walk `check_results` for a full remediation
   picture. See [`docs/REMEDIATION.md`](REMEDIATION.md) for the full action
   catalog and how to prioritize across multiple failing checks and work
   through a sequence (re-run the whole suite after each step; a
-  `contact_support` step, then severity, decides which failing check to act
+  `service_required` step, then severity, decides which failing check to act
   on next).
 - **`affected_components`** / **`severity_by_domain`** — which domain and which
   `check_ids`/entities failed, so you route (GPU vs NVLink vs Xid) without

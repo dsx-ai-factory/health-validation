@@ -808,7 +808,7 @@ func TestEvaluate_MultiMatchPicksTopPriorityOverride(t *testing.T) {
 				Expression:        "first == 4",
 				Severity:          health.Info,
 				Message:           "first is four (informational)",
-				RecommendedAction: health.Drain(health.RemediationActionContactSupport),
+				RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
 			},
 			{
 				Expression:        "second > 0",

@@ -31,6 +31,7 @@ health_schema(
 go_test(
     name = "health_test",
     srcs = [
+        "action_test.go",
         "cadence_test.go",
         "classification_test.go",
         "severity_test.go",

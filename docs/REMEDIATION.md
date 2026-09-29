@@ -26,10 +26,10 @@ by weighing the current set of failing checks against each other:
 2. If everything passes, **stop** — the node is healthy.
 3. Otherwise, look at every currently-failing check with `operational_state:
    drain` and choose which one to act on next:
-   - **A check whose next remediation step is `contact_support` takes
+   - **A check whose next remediation step is `service_required` takes
      precedence over everything else**, regardless of the other failing
-     checks' severity. There's no further self-service step to try for it,
-     so get a human involved before spending time on other checks' actions.
+     checks' severity. No automated step is left to try for it, so get a
+     human involved before spending time on other checks' actions.
    - Otherwise, **the highest-severity failing check takes precedence**
      (`CRITICAL` before `WARNING`). Among checks tied at the same severity,
      use judgment — e.g. prefer the action that's also recommended by the
@@ -47,7 +47,7 @@ by weighing the current set of failing checks against each other:
    disruptive step on a check that a different check's remediation already
    fixed.
 7. If a check's `remediation_actions` is exhausted and it's still failing,
-   treat it the same as reaching a `contact_support` step: escalate, don't
+   treat it the same as reaching a `service_required` step: escalate, don't
    keep retrying.
 
 **Do not** perform every action in a sequence unconditionally, and do not
@@ -73,13 +73,13 @@ architecture-discovery failure — all recommend the same default sequence
 (`health.GenericDrain()`):
 
 ```json
-"remediation_actions": ["reset_gpu", "restart_os", "contact_support"]
+"remediation_actions": ["reset_gpu", "restart_os", "service_required"]
 ```
 
 Attempt a GPU-only reset first (the lightest-touch step; a remediation engine
 that doesn't implement one simply no-ops through it), fall back to a
 host-level restart, then escalate. Several Xid checks (below) use a shorter
-two-step variant of this same pattern — `["reset_gpu", "contact_support"]`,
+two-step variant of this same pattern — `["reset_gpu", "service_required"]`,
 skipping the host-restart step — for faults where a host restart isn't
 expected to add anything a GPU reset wouldn't already cover.
 
@@ -87,12 +87,12 @@ expected to add anything a GPU reset wouldn't already cover.
 |---|---|
 | `reset_gpu` | Reset the GPU: `nvidia-smi --gpu-reset` (no active processes may be using the GPU). |
 | `restart_os` | Restart the affected node's operating system — a VM reboot on a virtualized GPU, a host-level reboot on bare metal. |
-| `contact_support` | Escalate to your cluster's support path for further investigation (i.e. your CSP if CSP-managed, or your organization's support path if on-prem); the end of the line for self-service remediation. |
+| `service_required` | A person needs to investigate the node, for a hardware or a software cause, through your cluster's own service path (your CSP if CSP-managed, or your organization's service process if on-prem). No automated step remains after this one. |
 
 ### Domain-hold action
 
 `nvlink_fabric_health` is the one exception to the generic sequence's final
-`contact_support` step:
+`service_required` step:
 
 ```json
 "remediation_actions": ["reset_gpu", "restart_os", "hold"]
@@ -105,11 +105,11 @@ expected to add anything a GPU reset wouldn't already cover.
 An NVLink fabric/route problem (`fabric_route_unhealthy` and friends) is often
 a symptom of a shared upstream component — a switch or rack-level NVLink
 issue — rather than something local to one GPU. Escalating on the first held
-node risks opening a support case per node for what turns out to be one
+node risks opening a service request per node for what turns out to be one
 underlying fault. Holding and counting first lets the pattern (multiple nodes
-in the same domain failing the same way) confirm itself before involving
-support, and gives a remediation engine the chance to fix the whole domain in
-one pass once it does.
+in the same domain failing the same way) confirm itself before anyone
+investigates, and gives a remediation engine the chance to fix the whole
+domain in one pass once it does.
 
 ### Xid-catalog actions
 
@@ -118,18 +118,19 @@ above, they map to the "immediate action" resolution buckets in NVIDIA's
 [Xid Errors documentation](https://docs.nvidia.com/deploy/xid-errors/latest/analyzing-xid-catalog.html),
 and are recommended by the per-code `gpu_xid_<code>` checks and the
 consolidated `gpu_xid_warning` check. (`reset_gpu`, `restart_os`, and
-`contact_support` also appear in several of these checks' sequences — e.g.
-Xid 151 recommends `restart_os` — but are documented once, above, since
-they're not Xid-specific.)
+`service_required` also appear in several of these checks' sequences, e.g.
+Xid 151 recommends `restart_os` and Xid 142 recommends `service_required`
+alone, but are documented once, above. `service_required` is this repo's
+name for the bucket NVIDIA's Xid catalog calls `CONTACT_SUPPORT`.)
 
 Xid 144-150 (the NVLink5/NVSwitch fault family, `gpu_xid_144`..`gpu_xid_150`)
 are a special case: unlike other Xid codes, NVRM marks each occurrence Fatal
 or Nonfatal directly in the log line. Each of these checks fires CRITICAL
-with `["reset_gpu", "contact_support"]` (the same two-step sequence as
+with `["reset_gpu", "service_required"]` (the same two-step sequence as
 above) on a Fatal occurrence, and WARNING with **no recommended action** on
 a Nonfatal one — cross-checked against NVIDIA's full Xid 144-150 decode
-table, ~95% of Fatal-severity rows resolve to a GPU reset with support
-contacted if that doesn't clear it, and the large majority of Nonfatal rows
+table, ~95% of Fatal-severity rows resolve to a GPU reset, then service if
+the reset doesn't clear it, and the large majority of Nonfatal rows
 need no remediation at all.
 
 | Action | Description |

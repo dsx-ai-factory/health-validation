@@ -43,10 +43,10 @@ func NVLinkFabricHealth() health.CheckDefinition {
 		Provenance:     health.NVIDIA,
 		MaturityLevel:  health.Stable,
 		// Unlike the generic ladder, the last step is hold rather than
-		// contact_support: an NVLink fabric/route fault is often a
+		// service_required: an NVLink fabric/route fault is often a
 		// shared-switch problem, not a single-node one, so escalation
 		// should wait for enough held nodes in the domain to confirm
-		// that before involving support — see RemediationActionHold.
+		// that before the node goes to service. See RemediationActionHold.
 		RecommendedAction: health.Drain(health.RemediationActionResetGPU, health.RemediationActionRestartOS, health.RemediationActionHold),
 
 		Rules: []health.Rule{

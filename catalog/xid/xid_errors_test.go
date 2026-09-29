@@ -108,7 +108,7 @@ func TestXidErrors_NVLink5_FatalIsCritical(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("gpu_xid_146 severity = %v, want CRITICAL", v.Severity)
 	}
-	if want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionContactSupport); !v.RecommendedAction.Equal(want) {
+	if want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired); !v.RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
 	}
 }
@@ -184,7 +184,7 @@ func TestXidErrors_PerCodeCriticalCheck(t *testing.T) {
 	if critical[0].CheckID != "gpu_xid_79" {
 		t.Errorf("CheckID = %q, want gpu_xid_79", critical[0].CheckID)
 	}
-	if want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionContactSupport); !critical[0].RecommendedAction.Equal(want) {
+	if want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired); !critical[0].RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", critical[0].RecommendedAction, want)
 	}
 }
