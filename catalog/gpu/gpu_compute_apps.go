@@ -34,7 +34,7 @@ func GPUComputeApps() health.CheckDefinition {
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
 		MaturityLevel:     health.Stable,
-		RecommendedAction: health.Drain(health.RemediationActionRestartOS, health.RemediationActionContactSupport),
+		RecommendedAction: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired),
 
 		Rules: []health.Rule{
 			{

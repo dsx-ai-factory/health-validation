@@ -85,7 +85,7 @@ expected to add anything a GPU reset wouldn't already cover.
 
 `gpu_compute_apps` skips `reset_gpu`. The failing condition is a process
 still holding the GPU, and `reset_gpu` requires that no process is using it.
-Its sequence is `restart_os`, then `contact_support`.
+Its sequence is `restart_os`, then `service_required`.
 
 | Action | Description |
 |---|---|

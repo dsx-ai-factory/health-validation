@@ -46,7 +46,7 @@ func TestGPUComputeApps_ProcessFails(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("Severity = %v, want CRITICAL", v.Severity)
 	}
-	want := health.Drain(health.RemediationActionRestartOS, health.RemediationActionContactSupport)
+	want := health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired)
 	if !v.RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
 	}
