@@ -21,8 +21,8 @@ type criticalXid struct {
 
 // resetAndService is the remediation sequence for a Xid code
 // whose immediate-action bucket is a GPU-only reset: attempt the reset,
-// then hand the node to service, skipping the generic
-// [health.GenericDrain] ladder's intermediate host-restart step.
+// then hand the node to the operator to be serviced, skipping the
+// generic [health.GenericDrain] ladder's intermediate host-restart step.
 func resetAndService() health.RecommendedAction {
 	return health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
 }

@@ -46,7 +46,8 @@ func NVLinkFabricHealth() health.CheckDefinition {
 		// service_required: an NVLink fabric/route fault is often a
 		// shared-switch problem, not a single-node one, so escalation
 		// should wait for enough held nodes in the domain to confirm
-		// that before the node goes to service. See RemediationActionHold.
+		// that before the node is sent to be serviced by the operator.
+		// See RemediationActionHold.
 		RecommendedAction: health.Drain(health.RemediationActionResetGPU, health.RemediationActionRestartOS, health.RemediationActionHold),
 
 		Rules: []health.Rule{
