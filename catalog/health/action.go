@@ -13,9 +13,9 @@ import (
 type OperationalState int
 
 const (
-	// OperationalNone is the zero value: no node-level action
-	// recommended.
-	OperationalNone OperationalState = iota
+	// OperationalReady is the zero value: the node stays ready for work
+	// and no node-level action is recommended.
+	OperationalReady OperationalState = iota
 
 	// OperationalMonitor keeps the node in service but flags the
 	// finding for trending; no action required right now.
@@ -28,13 +28,13 @@ const (
 )
 
 var operationalStateNames = map[OperationalState]string{
-	OperationalNone:    "none",
+	OperationalReady:   "ready",
 	OperationalMonitor: "monitor",
 	OperationalDrain:   "drain",
 }
 
 var operationalStateFromName = map[string]OperationalState{
-	"none":    OperationalNone,
+	"ready":   OperationalReady,
 	"monitor": OperationalMonitor,
 	"drain":   OperationalDrain,
 }
@@ -126,10 +126,10 @@ func (r RecommendedAction) Equal(other RecommendedAction) bool {
 // IsZero reports whether this RecommendedAction carries no
 // recommendation. Container types use it via the `omitzero` JSON tag
 // to elide the field entirely when no action applies. A non-zero
-// OperationalState (anything other than [OperationalNone]) makes the
+// OperationalState (anything other than [OperationalReady]) makes the
 // recommendation non-zero regardless of RemediationActions.
 func (r RecommendedAction) IsZero() bool {
-	return r.OperationalState == OperationalNone
+	return r.OperationalState == OperationalReady
 }
 
 // MarshalJSON enforces the invariant that RemediationActions is emitted

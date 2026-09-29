@@ -118,7 +118,7 @@
           "items": { "type": "string" }
         },
         "recommended_action": {
-          "description": "Remediation for this check, including the ordered sequence of remediation steps a remediation engine should attempt. Omitted when none (operational_state none).",
+          "description": "Remediation for this check, including the ordered sequence of remediation steps a remediation engine should attempt. Omitted when no action applies (operational_state ready).",
           "$ref": "#/$defs/recommendedAction"
         },
         "affected_entities": {
@@ -232,7 +232,7 @@
     "operationalState": {
       "description": "What to do with the node.",
       "type": "string",
-      "enum": ["none", "monitor", "drain"]
+      "enum": ["ready", "monitor", "drain"]
     }
   }
 }

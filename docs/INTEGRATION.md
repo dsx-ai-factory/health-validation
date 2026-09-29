@@ -345,7 +345,7 @@ validate against the published
   for it before reading into it — don't assume it's there. When present it is
   `{operational_state, remediation_actions}` (e.g.
   `{"operational_state":"drain","remediation_actions":["reset_gpu","restart_os","service_required"]}`):
-  `operational_state` is `monitor` or `drain` (never `none` — that case is the
+  `operational_state` is `monitor` or `drain` (never `ready` — that case is the
   omitted field), and `remediation_actions` is an **ordered sequence** of
   remediation steps, present only when `operational_state` is `drain` — feed
   it to your remediation engine in order. `remediation_actions` entries are an
