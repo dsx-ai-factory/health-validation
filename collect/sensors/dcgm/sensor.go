@@ -20,8 +20,15 @@ const ID = "gpu.dcgm"
 
 // sensor turns a configured set of DCGM GPU fields into observations.
 type sensor struct {
-	source  *dcgmsource.Source
+	source  gpuSource
 	signals collect.Signals
+}
+
+type gpuSource interface {
+	ID() string
+	GPUIdentities(context.Context, *collect.Cycle) ([]dcgmsource.GPUIdentityEntry, *observation.CollectionError)
+	GPUInventory(context.Context, *collect.Cycle) *observation.GPUInventorySnapshot
+	ReadMetrics(context.Context, *collect.Cycle, uint, []string) map[string]dcgmsource.FieldValue
 }
 
 // New creates a DCGM sensor and registers its metrics with the source. An empty
@@ -71,6 +78,7 @@ func (sensor *sensor) Signals() collect.Signals {
 }
 
 // Measure enumerates GPUs once and reads all selected fields for each GPU.
+// WithSignalID() and WithGPUInventory() together request inventory only.
 // Device and field failures become observations without hiding successful
 // results.
 func (sensor *sensor) Measure(
@@ -82,36 +90,44 @@ func (sensor *sensor) Measure(
 	if err != nil {
 		return nil, fmt.Errorf("select DCGM signals: %w", err)
 	}
-	if len(selected) == 0 {
-		return &observation.ObservationBatch{}, nil
-	}
-
 	currentCycle := op.Cycle()
 	if currentCycle == nil {
 		return nil, fmt.Errorf("collection cycle is required")
 	}
 	startedAt := currentCycle.StartedAt()
 	batch := &observation.ObservationBatch{CollectionId: currentCycle.CollectionID()}
-	snapshot := sensor.source.Inventory(ctx, currentCycle)
-	batch.Inventory = &observation.HardwareInventory{GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot}}
-	failure := snapshot.GetCollectionError()
+	if len(selected) == 0 && !op.GPUInventory() {
+		return batch, nil
+	}
+	var identities []dcgmsource.GPUIdentityEntry
+	var failure *observation.CollectionError
+	if op.GPUInventory() {
+		snapshot := sensor.source.GPUInventory(ctx, currentCycle)
+		batch.Inventory = &observation.HardwareInventory{GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot}}
+		identities, failure = identitiesFromInventory(snapshot)
+	} else {
+		identities, failure = sensor.source.GPUIdentities(ctx, currentCycle)
+	}
+	if len(selected) == 0 {
+		return batch, nil
+	}
 	if failure != nil {
 		sensor.appendErrors(batch, selected, nil, startedAt, failure.Operation, failure)
 		return batch, nil
 	}
-	if len(snapshot.GetInventory().GetEntries()) == 0 {
+	if len(identities) == 0 {
 		sensor.appendNoTargetObservations(batch, selected, startedAt)
 		return batch, nil
 	}
 
-	for _, entry := range snapshot.GetInventory().GetEntries() {
-		target := inventoryEntryTarget(entry)
-		if failure := entry.GetCollectionError(); failure != nil {
-			sensor.appendErrors(batch, selected, target, startedAt, "inventory", failure)
+	for _, entry := range identities {
+		target := identityEntryTarget(entry)
+		if failure := entry.CollectionError; failure != nil {
+			sensor.appendErrors(batch, selected, target, startedAt, failure.Operation, failure)
 			continue
 		}
 
-		values := sensor.source.ReadMetrics(ctx, currentCycle, uint(entry.GetSourceIndex()), selected.IDs())
+		values := sensor.source.ReadMetrics(ctx, currentCycle, entry.Index, selected.IDs())
 		for _, definition := range selected {
 			signalID := definition.ID()
 			field, exists := values[signalID]
@@ -129,13 +145,25 @@ func (sensor *sensor) Measure(
 	return batch, nil
 }
 
-// inventoryEntryTarget uses the DCGM index when UUID collection failed, preserving
-// enough identity to report a device-specific collection error.
-func inventoryEntryTarget(entry *observation.GPUInventoryEntry) *observation.ObservationTarget {
-	if entry.GetDevice().GetUuid() == "" {
-		return observation.GPUSourceLocalTarget(fmt.Sprintf("dcgm-index-%d", entry.GetSourceIndex()))
+func identitiesFromInventory(snapshot *observation.GPUInventorySnapshot) ([]dcgmsource.GPUIdentityEntry, *observation.CollectionError) {
+	identities := make([]dcgmsource.GPUIdentityEntry, 0, len(snapshot.GetInventory().GetEntries()))
+	for _, entry := range snapshot.GetInventory().GetEntries() {
+		identities = append(identities, dcgmsource.GPUIdentityEntry{
+			Index:           uint(entry.GetSourceIndex()),
+			UUID:            entry.GetDevice().GetUuid(),
+			CollectionError: entry.GetCollectionError(),
+		})
 	}
-	return observation.GPUTarget(entry.GetDevice().GetUuid())
+	return identities, snapshot.GetCollectionError()
+}
+
+// identityEntryTarget uses the DCGM index when UUID collection failed, preserving
+// enough identity to report a device-specific collection error.
+func identityEntryTarget(entry dcgmsource.GPUIdentityEntry) *observation.ObservationTarget {
+	if entry.UUID == "" {
+		return observation.GPUSourceLocalTarget(fmt.Sprintf("dcgm-index-%d", entry.Index))
+	}
+	return observation.GPUTarget(entry.UUID)
 }
 
 func (sensor *sensor) appendNoTargetObservations(

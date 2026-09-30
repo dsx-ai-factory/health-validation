@@ -10,7 +10,8 @@ import "github.com/dsx-ai-factory/health-validation/collect/observation"
 type nativeAPI interface {
 	Init() (func(), error)
 	SupportedDevices() ([]uint, error)
-	ReadInventory([]uint) (map[uint]*observation.GPUDevice, error)
+	ReadGPUUUIDs([]uint) (map[uint]string, error)
+	ReadGPUInventory([]uint) (map[uint]*observation.GPUDevice, error)
 	WatchMetrics([]string) (func() error, error)
 	ReadMetrics(uint, []string) (map[string]FieldValue, error)
 }

@@ -1,0 +1,7 @@
+{
+  "fieldalignment": {
+    "exclude_files": {
+      "(^|/)collect/proto/go/health/v1/observation\\.pb\\.go$": "Generated protobuf messages require MessageState as the first field"
+    }
+  }
+}

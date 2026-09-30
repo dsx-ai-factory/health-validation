@@ -30,16 +30,46 @@ var inventoryFields = []godcgm.Short{
 	godcgm.DCGM_FI_CUDA_DRIVER_VERSION,
 }
 
-func (*nativeLibrary) ReadInventory(ids []uint) (map[uint]*observation.GPUDevice, error) {
+func (*nativeLibrary) ReadGPUInventory(ids []uint) (map[uint]*observation.GPUDevice, error) {
+	values, err := readGPUFields(ids, inventoryFields)
+	if err != nil {
+		return nil, err
+	}
+	return decodeInventory(ids, values), nil
+}
+
+func (*nativeLibrary) ReadGPUUUIDs(ids []uint) (map[uint]string, error) {
+	values, err := readGPUFields(ids, []godcgm.Short{godcgm.DCGM_FI_DEV_UUID})
+	if err != nil {
+		return nil, err
+	}
+	return decodeGPUUUIDs(values), nil
+}
+
+func decodeGPUUUIDs(values []godcgm.FieldValue_v2) map[uint]string {
+	uuids := make(map[uint]string, len(values))
+	for _, field := range values {
+		if field.EntityGroupId != godcgm.FE_GPU || field.FieldID != godcgm.DCGM_FI_DEV_UUID || field.Status != godcgm.DCGM_ST_OK {
+			continue
+		}
+		if uuid, ok := inventoryString(field); ok {
+			uuids[field.EntityID] = uuid
+		}
+	}
+	return uuids
+}
+
+func readGPUFields(ids []uint, fields []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
 	entities := make([]godcgm.GroupEntityPair, len(ids))
 	for index, id := range ids {
 		entities[index] = godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: id}
 	}
-	values, err := godcgm.EntitiesGetLatestValues(entities, inventoryFields, godcgm.DCGM_FV_FLAG_LIVE_DATA)
+	// UUID and inventory fields are not watched, so the cache may have no sample.
+	values, err := godcgm.EntitiesGetLatestValues(entities, fields, godcgm.DCGM_FV_FLAG_LIVE_DATA)
 	if err != nil {
 		return nil, dcgmErrorFromError(err)
 	}
-	return decodeInventory(ids, values), nil
+	return values, nil
 }
 
 func decodeInventory(ids []uint, values []godcgm.FieldValue_v2) map[uint]*observation.GPUDevice {

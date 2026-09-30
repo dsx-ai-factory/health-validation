@@ -13,7 +13,10 @@ func newNative(StandaloneOptions) nativeAPI { return unsupportedNative{} }
 
 func (unsupportedNative) Init() (func(), error)             { return nil, unsupportedError() }
 func (unsupportedNative) SupportedDevices() ([]uint, error) { return nil, unsupportedError() }
-func (unsupportedNative) ReadInventory([]uint) (map[uint]*observation.GPUDevice, error) {
+func (unsupportedNative) ReadGPUUUIDs([]uint) (map[uint]string, error) {
+	return nil, unsupportedError()
+}
+func (unsupportedNative) ReadGPUInventory([]uint) (map[uint]*observation.GPUDevice, error) {
 	return nil, unsupportedError()
 }
 

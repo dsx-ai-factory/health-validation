@@ -40,6 +40,9 @@ func (s *sensor) Signals() collect.Signals {
 // hung NVML cgo call currently blocks Measure with no timeout.
 func (s *sensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	op := collect.NewOp(opts...)
+	if op.GPUInventory() {
+		return nil, fmt.Errorf("NVML sensor GPU inventory is not supported yet")
+	}
 	selected, err := op.Signals(s.Signals())
 	if err != nil {
 		return nil, fmt.Errorf("select NVML signals: %w", err)

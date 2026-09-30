@@ -27,12 +27,15 @@ type fakeNative struct {
 	readStarted  chan struct{}
 	releaseRead  chan struct{}
 	deviceIDs    []uint
+	uuids        map[uint]string
+	uuidErr      error
 	inventory    map[uint]*observation.GPUDevice
 	inventoryErr error
 
 	cleanupCalls      atomic.Int32
 	initCalls         atomic.Int32
 	inventoryCalls    atomic.Int32
+	uuidCalls         atomic.Int32
 	readCalls         atomic.Int32
 	watchCleanupCalls atomic.Int32
 	watchCalls        atomic.Int32
@@ -49,7 +52,21 @@ func (native *fakeNative) SupportedDevices() ([]uint, error) {
 	}
 	return []uint{0}, nil
 }
-func (native *fakeNative) ReadInventory(ids []uint) (map[uint]*observation.GPUDevice, error) {
+func (native *fakeNative) ReadGPUUUIDs(ids []uint) (map[uint]string, error) {
+	native.uuidCalls.Add(1)
+	if native.uuidErr != nil {
+		return nil, native.uuidErr
+	}
+	if native.uuids != nil {
+		return native.uuids, nil
+	}
+	uuids := make(map[uint]string, len(ids))
+	for _, index := range ids {
+		uuids[index] = fmt.Sprintf("GPU-%d", index)
+	}
+	return uuids, nil
+}
+func (native *fakeNative) ReadGPUInventory(ids []uint) (map[uint]*observation.GPUDevice, error) {
 	native.inventoryCalls.Add(1)
 	if native.inventoryErr != nil {
 		return nil, native.inventoryErr
@@ -137,7 +154,7 @@ func TestInventoryUsesOneRead(t *testing.T) {
 	native := &fakeNative{deviceIDs: []uint{0, 1}}
 	source := newSource(native, &sync.Mutex{})
 	cycle := newTestCycle(t, "inventory")
-	snapshot := source.Inventory(context.Background(), cycle)
+	snapshot := source.GPUInventory(context.Background(), cycle)
 	entries := snapshot.GetInventory().GetEntries()
 	if len(entries) != 2 || entries[0].GetSourceIndex() != 0 || entries[0].GetDevice().GetUuid() != "GPU-0" || entries[1].GetSourceIndex() != 1 || entries[1].GetDevice().GetUuid() != "GPU-1" {
 		t.Fatalf("Inventory() = %+v", snapshot)
@@ -145,10 +162,50 @@ func TestInventoryUsesOneRead(t *testing.T) {
 	if got := native.inventoryCalls.Load(); got != 1 {
 		t.Fatalf("inventory read calls = %d, want 1", got)
 	}
+	if got := native.uuidCalls.Load(); got != 0 {
+		t.Fatalf("UUID read calls = %d, want 0", got)
+	}
 	if err := observation.ValidateBatch(&observation.ObservationBatch{Inventory: &observation.HardwareInventory{
 		GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot},
 	}}); err != nil {
 		t.Fatalf("inventory snapshot is invalid: %v", err)
+	}
+}
+
+func TestGPUIdentitiesReadsOnlyUUIDs(t *testing.T) {
+	native := &fakeNative{deviceIDs: []uint{0, 1}, uuids: map[uint]string{0: "GPU-0"}}
+	entries, failure := newSource(native, &sync.Mutex{}).GPUIdentities(context.Background(), newTestCycle(t, "identities"))
+	if failure != nil || len(entries) != 2 || entries[0].UUID != "GPU-0" || entries[1].CollectionError == nil {
+		t.Fatalf("GPUIdentities() = %+v, %v", entries, failure)
+	}
+	if native.uuidCalls.Load() != 1 || native.inventoryCalls.Load() != 0 {
+		t.Fatalf("UUID calls = %d, inventory calls = %d", native.uuidCalls.Load(), native.inventoryCalls.Load())
+	}
+}
+
+func TestGPUIdentitiesReportsReadFailure(t *testing.T) {
+	native := &fakeNative{uuidErr: errors.New("DCGM read failed")}
+	entries, failure := newSource(native, &sync.Mutex{}).GPUIdentities(context.Background(), newTestCycle(t, "identity-error"))
+	if failure == nil || failure.Operation != "identity" || len(entries) != 0 {
+		t.Fatalf("GPUIdentities() = %+v, %v", entries, failure)
+	}
+}
+
+func TestGPUIdentitiesReenumeratesOnEachCycle(t *testing.T) {
+	native := &fakeNative{deviceIDs: []uint{0}, uuids: map[uint]string{0: "GPU-0"}}
+	source := newSource(native, &sync.Mutex{})
+	first, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "first-identities"))
+	if failure != nil || len(first) != 1 || first[0].UUID != "GPU-0" {
+		t.Fatalf("first GPUIdentities() = %+v, %v", first, failure)
+	}
+	native.deviceIDs = []uint{1}
+	native.uuids = map[uint]string{1: "GPU-1"}
+	second, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "second-identities"))
+	if failure != nil || len(second) != 1 || second[0].Index != 1 || second[0].UUID != "GPU-1" {
+		t.Fatalf("second GPUIdentities() = %+v, %v", second, failure)
+	}
+	if native.uuidCalls.Load() != 2 || native.inventoryCalls.Load() != 0 {
+		t.Fatalf("UUID calls = %d, inventory calls = %d", native.uuidCalls.Load(), native.inventoryCalls.Load())
 	}
 }
 
@@ -158,7 +215,7 @@ func TestInventoryPreservesMissingUUIDPerDevice(t *testing.T) {
 		deviceIDs: []uint{0, 1},
 		inventory: map[uint]*observation.GPUDevice{0: {Uuid: &id}, 1: {}},
 	}
-	snapshot := newSource(native, &sync.Mutex{}).Inventory(context.Background(), newTestCycle(t, "missing-uuid"))
+	snapshot := newSource(native, &sync.Mutex{}).GPUInventory(context.Background(), newTestCycle(t, "missing-uuid"))
 	entries := snapshot.GetInventory().GetEntries()
 	if len(entries) != 2 || entries[0].GetDevice().GetUuid() != id || entries[1].GetCollectionError() == nil {
 		t.Fatalf("Inventory() = %+v", snapshot)
@@ -167,7 +224,7 @@ func TestInventoryPreservesMissingUUIDPerDevice(t *testing.T) {
 
 func TestInventoryEmptyEnumerationSkipsQuery(t *testing.T) {
 	native := &fakeNative{deviceIDs: []uint{}}
-	snapshot := newSource(native, &sync.Mutex{}).Inventory(context.Background(), newTestCycle(t, "empty-inventory"))
+	snapshot := newSource(native, &sync.Mutex{}).GPUInventory(context.Background(), newTestCycle(t, "empty-inventory"))
 	if snapshot.GetInventory() == nil || len(snapshot.GetInventory().GetEntries()) != 0 || native.inventoryCalls.Load() != 0 {
 		t.Fatalf("Inventory() = %+v, inventory calls = %d", snapshot, native.inventoryCalls.Load())
 	}
@@ -175,7 +232,7 @@ func TestInventoryEmptyEnumerationSkipsQuery(t *testing.T) {
 
 func TestInventoryReportsQueryFailure(t *testing.T) {
 	native := &fakeNative{inventoryErr: errors.New("DCGM read failed")}
-	snapshot := newSource(native, &sync.Mutex{}).Inventory(context.Background(), newTestCycle(t, "inventory-error"))
+	snapshot := newSource(native, &sync.Mutex{}).GPUInventory(context.Background(), newTestCycle(t, "inventory-error"))
 	if failure := snapshot.GetCollectionError(); failure == nil || failure.Operation != "inventory" {
 		t.Fatalf("Inventory() = %+v", snapshot)
 	}

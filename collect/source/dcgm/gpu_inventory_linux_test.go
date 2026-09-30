@@ -12,6 +12,25 @@ import (
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
 )
 
+func TestDecodeGPUUUIDs(t *testing.T) {
+	field := func(id uint, fieldID godcgm.Short, value string) godcgm.FieldValue_v2 {
+		result := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, EntityID: id, FieldID: fieldID, FieldType: godcgm.DCGM_FT_STRING, Status: godcgm.DCGM_ST_OK}
+		copy(result.Value[:], value)
+		return result
+	}
+	badStatus := field(2, godcgm.DCGM_FI_DEV_UUID, "GPU-2")
+	badStatus.Status = godcgm.DCGM_ST_GENERIC_ERROR
+	uuids := decodeGPUUUIDs([]godcgm.FieldValue_v2{
+		field(1, godcgm.DCGM_FI_DEV_UUID, "GPU-1"),
+		field(1, godcgm.DCGM_FI_DEV_NAME, "H100"),
+		badStatus,
+		field(3, godcgm.DCGM_FI_DEV_UUID, "<<<Not Found>>>"),
+	})
+	if len(uuids) != 1 || uuids[1] != "GPU-1" {
+		t.Fatalf("decodeGPUUUIDs() = %v, want only GPU-1", uuids)
+	}
+}
+
 func TestDecodeInventory(t *testing.T) {
 	stringField := func(id uint, fieldID godcgm.Short, value string) godcgm.FieldValue_v2 {
 		field := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, EntityID: id, FieldID: fieldID, FieldType: godcgm.DCGM_FT_STRING, Status: godcgm.DCGM_ST_OK}

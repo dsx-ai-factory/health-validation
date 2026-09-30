@@ -54,6 +54,11 @@ func TestOpSignals(t *testing.T) {
 			want:     declared,
 		},
 		{
+			name:     "selects no signals",
+			op:       collect.NewOp(collect.WithSignalID()),
+			declared: declared,
+		},
+		{
 			name:        "rejects unknown requested signal",
 			op:          collect.NewOp(collect.WithSignalID(second.ID(), "gpu.unknown")),
 			declared:    declared,

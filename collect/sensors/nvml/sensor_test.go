@@ -132,3 +132,10 @@ func TestSensorID(t *testing.T) {
 		t.Fatalf("Sensor.ID() = %q, want %q", got, "gpu.nvml")
 	}
 }
+
+func TestRejectGPUInventory(t *testing.T) {
+	_, err := New(&fakeInstance{exists: true}).Measure(context.Background(), collect.WithGPUInventory())
+	if err == nil {
+		t.Fatal("Measure() accepted unsupported GPU inventory request")
+	}
+}

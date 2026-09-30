@@ -159,6 +159,7 @@ STATICCHECK_ANALYZERS = [
 
 nogo(
     name = "nogo",
+    config = "nogo.json",
     visibility = ["//visibility:public"],
     deps = X_TOOLS_ANALYZERS + STATICCHECK_ANALYZERS,
 )

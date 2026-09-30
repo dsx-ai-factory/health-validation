@@ -23,6 +23,8 @@ type Sensor interface {
 	// Measure returns one observation per (signal, entity). WithCycle provides
 	// collection identity, start time, and collection timeout. WithSignalID
 	// restricts the measurement to a signal subset (all signals when unset).
+	// WithSignalID() selects no signals. WithGPUInventory requests a GPU
+	// inventory snapshot from sensors that support it.
 	// WithRefresh requests per-call device re-enumeration from sources that
 	// support optional refresh. The DCGM sensor re-enumerates every cycle.
 	Measure(ctx context.Context, opts ...OpOption) (*observation.ObservationBatch, error)
@@ -46,7 +48,8 @@ type Op struct {
 	// nil means no selection: collect every signal the sensor produces.
 	signalIDs map[string]struct{}
 
-	refresh bool
+	refresh      bool
+	gpuInventory bool
 }
 
 // OpOption configures a Measure call.
@@ -70,7 +73,7 @@ func WithCycle(cycle *Cycle) OpOption {
 
 // WithSignalID restricts the measurement to the given signal IDs; repeated
 // calls union. When no WithSignalID option is given, the sensor collects
-// everything it can produce.
+// everything it can produce. WithSignalID() selects no signals.
 func WithSignalID(ids ...string) OpOption {
 	return func(op *Op) {
 		if op.signalIDs == nil {
@@ -79,6 +82,14 @@ func WithSignalID(ids ...string) OpOption {
 		for _, id := range ids {
 			op.signalIDs[id] = struct{}{}
 		}
+	}
+}
+
+// WithGPUInventory requests a GPU inventory snapshot in the returned batch.
+// Sensors that cannot produce one reject the request.
+func WithGPUInventory() OpOption {
+	return func(op *Op) {
+		op.gpuInventory = true
 	}
 }
 
@@ -106,6 +117,11 @@ func (op *Op) Cycle() *Cycle {
 // Refresh reports whether this Measure call re-enumerates devices.
 func (op *Op) Refresh() bool {
 	return op.refresh
+}
+
+// GPUInventory reports whether this call requests a GPU inventory snapshot.
+func (op *Op) GPUInventory() bool {
+	return op.gpuInventory
 }
 
 // Signals returns the subset of the sensor's declared definitions selected by
