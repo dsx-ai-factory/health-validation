@@ -13,32 +13,32 @@ import (
 )
 
 func TestDecodeGPUUUIDs(t *testing.T) {
-	field := func(id uint, fieldID godcgm.Short, value string) godcgm.FieldValue_v2 {
-		result := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, EntityID: id, FieldID: fieldID, FieldType: godcgm.DCGM_FT_STRING, Status: godcgm.DCGM_ST_OK}
+	field := func(gpuIndex uint, fieldID godcgm.Short, value string) godcgm.FieldValue_v2 {
+		result := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, EntityID: gpuIndex, FieldID: fieldID, FieldType: godcgm.DCGM_FT_STRING, Status: godcgm.DCGM_ST_OK}
 		copy(result.Value[:], value)
 		return result
 	}
 	badStatus := field(2, godcgm.DCGM_FI_DEV_UUID, "GPU-2")
 	badStatus.Status = godcgm.DCGM_ST_GENERIC_ERROR
-	uuids := decodeGPUUUIDs([]godcgm.FieldValue_v2{
+	gpuUUIDs := decodeGPUUUIDs([]godcgm.FieldValue_v2{
 		field(1, godcgm.DCGM_FI_DEV_UUID, "GPU-1"),
 		field(1, godcgm.DCGM_FI_DEV_NAME, "H100"),
 		badStatus,
 		field(3, godcgm.DCGM_FI_DEV_UUID, "<<<Not Found>>>"),
 	})
-	if len(uuids) != 1 || uuids[1] != "GPU-1" {
-		t.Fatalf("decodeGPUUUIDs() = %v, want only GPU-1", uuids)
+	if len(gpuUUIDs) != 1 || gpuUUIDs[1] != "GPU-1" {
+		t.Fatalf("decodeGPUUUIDs() = %v, want only GPU-1", gpuUUIDs)
 	}
 }
 
 func TestDecodeInventory(t *testing.T) {
-	stringField := func(id uint, fieldID godcgm.Short, value string) godcgm.FieldValue_v2 {
-		field := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, EntityID: id, FieldID: fieldID, FieldType: godcgm.DCGM_FT_STRING, Status: godcgm.DCGM_ST_OK}
+	stringField := func(gpuIndex uint, fieldID godcgm.Short, value string) godcgm.FieldValue_v2 {
+		field := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, EntityID: gpuIndex, FieldID: fieldID, FieldType: godcgm.DCGM_FT_STRING, Status: godcgm.DCGM_ST_OK}
 		copy(field.Value[:], value)
 		return field
 	}
-	integerField := func(id uint, fieldID godcgm.Short, value int64) godcgm.FieldValue_v2 {
-		field := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, EntityID: id, FieldID: fieldID, FieldType: godcgm.DCGM_FT_INT64, Status: godcgm.DCGM_ST_OK}
+	integerField := func(gpuIndex uint, fieldID godcgm.Short, value int64) godcgm.FieldValue_v2 {
+		field := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, EntityID: gpuIndex, FieldID: fieldID, FieldType: godcgm.DCGM_FT_INT64, Status: godcgm.DCGM_ST_OK}
 		binary.LittleEndian.PutUint64(field.Value[:], uint64(value))
 		return field
 	}
@@ -53,18 +53,18 @@ func TestDecodeInventory(t *testing.T) {
 		integerField(7, godcgm.DCGM_FI_CUDA_DRIVER_VERSION, 12080),
 		stringField(8, godcgm.DCGM_FI_DEV_UUID, "<<<Not Found>>>"),
 	}
-	devices := decodeInventory([]uint{7, 8}, fields)
-	device := devices[7]
-	if device.GetUuid() != "GPU-7" || device.GetModel() != "H100" || device.GetBusId() != "0000:53:00.0" {
-		t.Fatalf("identity fields: %+v", device)
+	gpus := decodeGPUInventory([]uint{7, 8}, fields)
+	gpu := gpus[7]
+	if gpu.GetUuid() != "GPU-7" || gpu.GetModel() != "H100" || gpu.GetBusId() != "0000:53:00.0" {
+		t.Fatalf("identity fields: %+v", gpu)
 	}
-	if device.MinorNumber == nil || *device.MinorNumber != 0 || device.FabricCliqueId == nil || *device.FabricCliqueId != 0 {
-		t.Fatalf("zero-valued optional fields were lost: %+v", device)
+	if gpu.MinorNumber == nil || *gpu.MinorNumber != 0 || gpu.FabricCliqueId == nil || *gpu.FabricCliqueId != 0 {
+		t.Fatalf("zero-valued optional fields were lost: %+v", gpu)
 	}
-	if device.GetComputeCapabilityMajor() != 9 || device.GetComputeCapabilityMinor() != 0 || device.GetFramebufferTotalBytes() != 81920*1024*1024 || device.GetCudaDriverVersion() != "12.8" {
-		t.Fatalf("derived fields: %+v", device)
+	if gpu.GetComputeCapabilityMajor() != 9 || gpu.GetComputeCapabilityMinor() != 0 || gpu.GetFramebufferTotalBytes() != 81920*1024*1024 || gpu.GetCudaDriverVersion() != "12.8" {
+		t.Fatalf("derived fields: %+v", gpu)
 	}
-	if devices[8].Uuid != nil {
-		t.Fatalf("DCGM sentinel was retained: %+v", devices[8])
+	if gpus[8].Uuid != nil {
+		t.Fatalf("DCGM sentinel was retained: %+v", gpus[8])
 	}
 }

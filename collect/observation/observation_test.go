@@ -187,15 +187,15 @@ func TestGPUInventoryExample(t *testing.T) {
 	if snapshot.GetCollectedAt() == nil {
 		t.Fatal("GPU snapshot collection time is absent")
 	}
-	if entries[0].GetSourceIndex() != 0 || entries[0].GetDevice().GetUuid() != "GPU-123" {
-		t.Fatalf("first GPU entry = %v, want source index 0 and ID GPU-123", entries[0])
+	if entries[0].GetSourceIndex() != 0 || entries[0].GetGpu().GetUuid() != "GPU-123" {
+		t.Fatalf("first GPU entry = %v, want source index 0 and UUID GPU-123", entries[0])
 	}
-	device := entries[0].GetDevice()
-	if device.GetBusId() != "0000:31:00.0" || device.GetMinorNumber() != 0 || device.MinorNumber == nil ||
-		device.GetFabricCliqueId() != 0 || device.FabricCliqueId == nil ||
-		device.GetComputeCapabilityMajor() != 9 || device.GetFramebufferTotalBytes() != 85899345920 ||
-		device.GetDriverVersion() != "550.54.14" || device.GetCudaDriverVersion() != "12.4" {
-		t.Fatalf("GPU inventory lost fleet-required fields: %v", device)
+	gpu := entries[0].GetGpu()
+	if gpu.GetBusId() != "0000:31:00.0" || gpu.GetMinorNumber() != 0 || gpu.MinorNumber == nil ||
+		gpu.GetFabricCliqueId() != 0 || gpu.FabricCliqueId == nil ||
+		gpu.GetComputeCapabilityMajor() != 9 || gpu.GetFramebufferTotalBytes() != 85899345920 ||
+		gpu.GetDriverVersion() != "550.54.14" || gpu.GetCudaDriverVersion() != "12.4" {
+		t.Fatalf("GPU inventory lost fleet-required fields: %v", gpu)
 	}
 	if entries[1].GetSourceIndex() != 1 || entries[1].GetCollectionError() == nil {
 		t.Fatalf("second GPU entry = %v, want source index 1 and collection error", entries[1])
@@ -212,9 +212,9 @@ func TestValidateBatchRequiresGPUInventoryEntryOutcome(t *testing.T) {
 		wantError string
 	}{
 		{
-			name: "device",
-			entry: &GPUInventoryEntry{SourceIndex: 0, Outcome: &GPUInventoryEntry_Device{
-				Device: &GPUDevice{},
+			name: "GPU",
+			entry: &GPUInventoryEntry{SourceIndex: 0, Outcome: &GPUInventoryEntry_GPU{
+				Gpu: &GPUDevice{},
 			}},
 		},
 		{
@@ -224,9 +224,9 @@ func TestValidateBatchRequiresGPUInventoryEntryOutcome(t *testing.T) {
 			}},
 		},
 		{
-			name:      "device outcome without payload",
-			entry:     &GPUInventoryEntry{SourceIndex: 2, Outcome: &GPUInventoryEntry_Device{}},
-			wantError: "source index 2 has a device outcome with no payload",
+			name:      "GPU outcome without payload",
+			entry:     &GPUInventoryEntry{SourceIndex: 2, Outcome: &GPUInventoryEntry_GPU{}},
+			wantError: "source index 2 has a GPU outcome with no payload",
 		},
 		{
 			name:      "collection error outcome without payload",
@@ -314,7 +314,7 @@ func TestNewCollectionErrorObservationOwnsFailure(t *testing.T) {
 	unit := "1"
 	failure := &CollectionError{
 		Category: CollectionErrorCategoryUnavailable,
-		Detail:   "device unavailable",
+		Detail:   "gpu unavailable",
 	}
 
 	first := NewCollectionErrorObservation("gpu.test", &unit, "dcgm", "metrics", nil, nil, failure)
@@ -334,7 +334,7 @@ func TestNewCollectionErrorObservationOwnsFailure(t *testing.T) {
 	}
 
 	firstFailure.Detail = "changed"
-	if secondFailure.GetDetail() != "device unavailable" {
+	if secondFailure.GetDetail() != "gpu unavailable" {
 		t.Fatalf("mutating first error changed second error to %q", secondFailure.GetDetail())
 	}
 }

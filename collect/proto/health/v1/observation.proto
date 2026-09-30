@@ -37,24 +37,25 @@ message GpuInventorySnapshot {
   }
 }
 
+// GpuInventory contains the per-GPU results of a successful enumeration.
 message GpuInventory {
   repeated GpuInventoryEntry entries = 1;
 }
 
 // GpuInventoryEntry preserves every enumerated source-local GPU. A failed
-// device-information lookup affects only that entry; healthy GPUs remain in
+// GPU information lookup affects only that entry; healthy GPUs remain in
 // the same inventory snapshot.
 message GpuInventoryEntry {
-  // The source's enumeration index (the DCGM device ID for a DCGM snapshot).
+  // The GPU index assigned by this snapshot's source.
   uint32 source_index = 1;
 
   oneof outcome {
-    GpuDevice device = 2;
+    GpuDevice gpu = 2;
     CollectionError collection_error = 3;
   }
 }
 
-// GpuDevice is one successfully collected structured GPU inventory record.
+// GpuDevice contains the inventory attributes of one GPU.
 // Optional fields may be absent when the source legitimately has no value.
 message GpuDevice {
   optional string uuid = 1;

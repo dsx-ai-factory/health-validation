@@ -87,7 +87,7 @@ func (*Source) ID() string { return Name }
 
 // AddMetricsToWatch registers metrics before collection begins. Sensors may
 // call it more than once during setup; duplicate signals are ignored. The
-// first ReadMetrics call freezes the set and creates the DCGM watch lazily.
+// first ReadGPUMetrics call freezes the set and creates the DCGM watch lazily.
 //
 // AddMetricsToWatch must not run concurrently with collection or Close.
 func (source *Source) AddMetricsToWatch(signalIDs []string) error {

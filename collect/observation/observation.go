@@ -47,7 +47,7 @@ type (
 	Value_BoolValue                      = healthv1.Value_BoolValue
 	GPUInventorySnapshot_Inventory       = healthv1.GpuInventorySnapshot_Inventory
 	GPUInventorySnapshot_CollectionError = healthv1.GpuInventorySnapshot_CollectionError
-	GPUInventoryEntry_Device             = healthv1.GpuInventoryEntry_Device
+	GPUInventoryEntry_GPU                = healthv1.GpuInventoryEntry_Gpu
 	GPUInventoryEntry_CollectionError    = healthv1.GpuInventoryEntry_CollectionError
 )
 
@@ -154,9 +154,9 @@ func validateGPUInventoryEntry(entry *GPUInventoryEntry) error {
 		return fmt.Errorf("entry is required")
 	}
 	switch outcome := entry.GetOutcome().(type) {
-	case *GPUInventoryEntry_Device:
-		if outcome == nil || outcome.Device == nil {
-			return fmt.Errorf("source index %d has a device outcome with no payload", entry.GetSourceIndex())
+	case *GPUInventoryEntry_GPU:
+		if outcome == nil || outcome.Gpu == nil {
+			return fmt.Errorf("source index %d has a GPU outcome with no payload", entry.GetSourceIndex())
 		}
 	case *GPUInventoryEntry_CollectionError:
 		if outcome == nil || outcome.CollectionError == nil {

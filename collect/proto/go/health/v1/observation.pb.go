@@ -350,6 +350,7 @@ func (*GpuInventorySnapshot_Inventory) isGpuInventorySnapshot_Outcome() {}
 
 func (*GpuInventorySnapshot_CollectionError) isGpuInventorySnapshot_Outcome() {}
 
+// GpuInventory contains the per-GPU results of a successful enumeration.
 type GpuInventory struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Entries       []*GpuInventoryEntry   `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
@@ -395,15 +396,15 @@ func (x *GpuInventory) GetEntries() []*GpuInventoryEntry {
 }
 
 // GpuInventoryEntry preserves every enumerated source-local GPU. A failed
-// device-information lookup affects only that entry; healthy GPUs remain in
+// GPU information lookup affects only that entry; healthy GPUs remain in
 // the same inventory snapshot.
 type GpuInventoryEntry struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The source's enumeration index (the DCGM device ID for a DCGM snapshot).
+	// The GPU index assigned by this snapshot's source.
 	SourceIndex uint32 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
 	// Types that are valid to be assigned to Outcome:
 	//
-	//	*GpuInventoryEntry_Device
+	//	*GpuInventoryEntry_Gpu
 	//	*GpuInventoryEntry_CollectionError
 	Outcome       isGpuInventoryEntry_Outcome `protobuf_oneof:"outcome"`
 	unknownFields protoimpl.UnknownFields
@@ -454,10 +455,10 @@ func (x *GpuInventoryEntry) GetOutcome() isGpuInventoryEntry_Outcome {
 	return nil
 }
 
-func (x *GpuInventoryEntry) GetDevice() *GpuDevice {
+func (x *GpuInventoryEntry) GetGpu() *GpuDevice {
 	if x != nil {
-		if x, ok := x.Outcome.(*GpuInventoryEntry_Device); ok {
-			return x.Device
+		if x, ok := x.Outcome.(*GpuInventoryEntry_Gpu); ok {
+			return x.Gpu
 		}
 	}
 	return nil
@@ -476,19 +477,19 @@ type isGpuInventoryEntry_Outcome interface {
 	isGpuInventoryEntry_Outcome()
 }
 
-type GpuInventoryEntry_Device struct {
-	Device *GpuDevice `protobuf:"bytes,2,opt,name=device,proto3,oneof"`
+type GpuInventoryEntry_Gpu struct {
+	Gpu *GpuDevice `protobuf:"bytes,2,opt,name=gpu,proto3,oneof"`
 }
 
 type GpuInventoryEntry_CollectionError struct {
 	CollectionError *CollectionError `protobuf:"bytes,3,opt,name=collection_error,json=collectionError,proto3,oneof"`
 }
 
-func (*GpuInventoryEntry_Device) isGpuInventoryEntry_Outcome() {}
+func (*GpuInventoryEntry_Gpu) isGpuInventoryEntry_Outcome() {}
 
 func (*GpuInventoryEntry_CollectionError) isGpuInventoryEntry_Outcome() {}
 
-// GpuDevice is one successfully collected structured GPU inventory record.
+// GpuDevice contains the inventory attributes of one GPU.
 // Optional fields may be absent when the source legitimately has no value.
 type GpuDevice struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
@@ -1388,10 +1389,10 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x10collection_error\x18\x04 \x01(\v2\x1a.health.v1.CollectionErrorH\x00R\x0fcollectionErrorB\t\n" +
 	"\aoutcome\"F\n" +
 	"\fGpuInventory\x126\n" +
-	"\aentries\x18\x01 \x03(\v2\x1c.health.v1.GpuInventoryEntryR\aentries\"\xba\x01\n" +
+	"\aentries\x18\x01 \x03(\v2\x1c.health.v1.GpuInventoryEntryR\aentries\"\xb4\x01\n" +
 	"\x11GpuInventoryEntry\x12!\n" +
-	"\fsource_index\x18\x01 \x01(\rR\vsourceIndex\x12.\n" +
-	"\x06device\x18\x02 \x01(\v2\x14.health.v1.GpuDeviceH\x00R\x06device\x12G\n" +
+	"\fsource_index\x18\x01 \x01(\rR\vsourceIndex\x12(\n" +
+	"\x03gpu\x18\x02 \x01(\v2\x14.health.v1.GpuDeviceH\x00R\x03gpu\x12G\n" +
 	"\x10collection_error\x18\x03 \x01(\v2\x1a.health.v1.CollectionErrorH\x00R\x0fcollectionErrorB\t\n" +
 	"\aoutcome\"\xa8\a\n" +
 	"\tGpuDevice\x12\x17\n" +
@@ -1532,7 +1533,7 @@ var file_health_v1_observation_proto_depIdxs = []int32{
 	5,  // 4: health.v1.GpuInventorySnapshot.inventory:type_name -> health.v1.GpuInventory
 	15, // 5: health.v1.GpuInventorySnapshot.collection_error:type_name -> health.v1.CollectionError
 	6,  // 6: health.v1.GpuInventory.entries:type_name -> health.v1.GpuInventoryEntry
-	7,  // 7: health.v1.GpuInventoryEntry.device:type_name -> health.v1.GpuDevice
+	7,  // 7: health.v1.GpuInventoryEntry.gpu:type_name -> health.v1.GpuDevice
 	15, // 8: health.v1.GpuInventoryEntry.collection_error:type_name -> health.v1.CollectionError
 	9,  // 9: health.v1.Observation.target:type_name -> health.v1.ObservationTarget
 	17, // 10: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
@@ -1565,7 +1566,7 @@ func file_health_v1_observation_proto_init() {
 		(*GpuInventorySnapshot_CollectionError)(nil),
 	}
 	file_health_v1_observation_proto_msgTypes[4].OneofWrappers = []any{
-		(*GpuInventoryEntry_Device)(nil),
+		(*GpuInventoryEntry_Gpu)(nil),
 		(*GpuInventoryEntry_CollectionError)(nil),
 	}
 	file_health_v1_observation_proto_msgTypes[5].OneofWrappers = []any{}

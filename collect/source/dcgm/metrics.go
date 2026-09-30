@@ -13,7 +13,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
-// FieldValue is one DCGM field returned by a device read. The sensor adds the
+// FieldValue is one DCGM field returned by a GPU read. The sensor adds the
 // signal metadata, target, and source before emitting an observation.
 type FieldValue struct {
 	ObservedAt      time.Time
@@ -22,13 +22,13 @@ type FieldValue struct {
 	CollectionError *observation.CollectionError
 }
 
-// ReadMetrics reads the requested fields for one GPU in a single DCGM call.
+// ReadGPUMetrics reads the requested fields for one GPU in a single DCGM call.
 // It returns field-level failures alongside successful fields so the sensor
-// can emit every available observation from the device.
-func (source *Source) ReadMetrics(
+// can emit every available observation from the GPU.
+func (source *Source) ReadGPUMetrics(
 	ctx context.Context,
 	currentCycle *collect.Cycle,
-	deviceID uint,
+	gpuIndex uint,
 	signalIDs []string,
 ) map[string]FieldValue {
 	// The first read fixes the field watch. Report signals outside that watch
@@ -68,7 +68,7 @@ func (source *Source) ReadMetrics(
 			return nil, err
 		}
 
-		return source.native.ReadMetrics(deviceID, watched)
+		return source.native.ReadGPUMetrics(gpuIndex, watched)
 	})
 	if err != nil {
 		// One failure message is shared by every watched signal: the content

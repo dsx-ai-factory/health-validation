@@ -30,16 +30,16 @@ var inventoryFields = []godcgm.Short{
 	godcgm.DCGM_FI_CUDA_DRIVER_VERSION,
 }
 
-func (*nativeLibrary) ReadGPUInventory(ids []uint) (map[uint]*observation.GPUDevice, error) {
-	values, err := readGPUFields(ids, inventoryFields)
+func (*nativeLibrary) ReadGPUInventory(gpuIndices []uint) (map[uint]*observation.GPUDevice, error) {
+	values, err := readGPUFields(gpuIndices, inventoryFields)
 	if err != nil {
 		return nil, err
 	}
-	return decodeInventory(ids, values), nil
+	return decodeGPUInventory(gpuIndices, values), nil
 }
 
-func (*nativeLibrary) ReadGPUUUIDs(ids []uint) (map[uint]string, error) {
-	values, err := readGPUFields(ids, []godcgm.Short{godcgm.DCGM_FI_DEV_UUID})
+func (*nativeLibrary) ReadGPUUUIDs(gpuIndices []uint) (map[uint]string, error) {
+	values, err := readGPUFields(gpuIndices, []godcgm.Short{godcgm.DCGM_FI_DEV_UUID})
 	if err != nil {
 		return nil, err
 	}
@@ -47,22 +47,22 @@ func (*nativeLibrary) ReadGPUUUIDs(ids []uint) (map[uint]string, error) {
 }
 
 func decodeGPUUUIDs(values []godcgm.FieldValue_v2) map[uint]string {
-	uuids := make(map[uint]string, len(values))
+	gpuUUIDs := make(map[uint]string, len(values))
 	for _, field := range values {
 		if field.EntityGroupId != godcgm.FE_GPU || field.FieldID != godcgm.DCGM_FI_DEV_UUID || field.Status != godcgm.DCGM_ST_OK {
 			continue
 		}
-		if uuid, ok := inventoryString(field); ok {
-			uuids[field.EntityID] = uuid
+		if gpuUUID, ok := inventoryString(field); ok {
+			gpuUUIDs[field.EntityID] = gpuUUID
 		}
 	}
-	return uuids
+	return gpuUUIDs
 }
 
-func readGPUFields(ids []uint, fields []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
-	entities := make([]godcgm.GroupEntityPair, len(ids))
-	for index, id := range ids {
-		entities[index] = godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: id}
+func readGPUFields(gpuIndices []uint, fields []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
+	entities := make([]godcgm.GroupEntityPair, len(gpuIndices))
+	for position, gpuIndex := range gpuIndices {
+		entities[position] = godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: gpuIndex}
 	}
 	// UUID and inventory fields are not watched, so the cache may have no sample.
 	values, err := godcgm.EntitiesGetLatestValues(entities, fields, godcgm.DCGM_FV_FLAG_LIVE_DATA)
@@ -72,39 +72,39 @@ func readGPUFields(ids []uint, fields []godcgm.Short) ([]godcgm.FieldValue_v2, e
 	return values, nil
 }
 
-func decodeInventory(ids []uint, values []godcgm.FieldValue_v2) map[uint]*observation.GPUDevice {
-	devices := make(map[uint]*observation.GPUDevice, len(ids))
-	for _, id := range ids {
-		devices[id] = &observation.GPUDevice{}
+func decodeGPUInventory(gpuIndices []uint, values []godcgm.FieldValue_v2) map[uint]*observation.GPUDevice {
+	gpus := make(map[uint]*observation.GPUDevice, len(gpuIndices))
+	for _, gpuIndex := range gpuIndices {
+		gpus[gpuIndex] = &observation.GPUDevice{}
 	}
 	for _, field := range values {
 		if field.EntityGroupId != godcgm.FE_GPU || field.Status != godcgm.DCGM_ST_OK {
 			continue
 		}
-		device := devices[field.EntityID]
-		if device == nil {
+		gpu := gpus[field.EntityID]
+		if gpu == nil {
 			continue
 		}
 		if value, ok := inventoryString(field); ok {
 			switch field.FieldID {
 			case godcgm.DCGM_FI_DEV_UUID:
-				device.Uuid = &value
+				gpu.Uuid = &value
 			case godcgm.DCGM_FI_DEV_NAME:
-				device.Model = &value
+				gpu.Model = &value
 			case godcgm.DCGM_FI_DEV_SERIAL:
-				device.Serial = &value
+				gpu.Serial = &value
 			case godcgm.DCGM_FI_DEV_PCI_BUSID:
-				device.BusId = &value
+				gpu.BusId = &value
 			case godcgm.DCGM_FI_DEV_BRAND:
-				device.Brand = &value
+				gpu.Brand = &value
 			case godcgm.DCGM_FI_DEV_VBIOS_VERSION:
-				device.VbiosVersion = &value
+				gpu.VbiosVersion = &value
 			case godcgm.DCGM_FI_DEV_PLATFORM_CHASSIS_SERIAL_NUMBER:
-				device.ChassisSerial = &value
+				gpu.ChassisSerial = &value
 			case godcgm.DCGM_FI_DEV_FABRIC_CLUSTER_UUID:
-				device.FabricClusterUuid = &value
+				gpu.FabricClusterUuid = &value
 			case godcgm.DCGM_FI_DRIVER_VERSION:
-				device.DriverVersion = &value
+				gpu.DriverVersion = &value
 			}
 			continue
 		}
@@ -115,34 +115,34 @@ func decodeInventory(ids []uint, values []godcgm.FieldValue_v2) map[uint]*observ
 		switch field.FieldID {
 		case godcgm.DCGM_FI_DEV_MINOR_NUMBER:
 			if value >= 0 {
-				device.MinorNumber = &value
+				gpu.MinorNumber = &value
 			}
 		case godcgm.DCGM_FI_DEV_FABRIC_CLIQUE_ID:
 			if value >= 0 && uint64(value) <= uint64(^uint32(0)) {
-				id := uint32(value)
-				device.FabricCliqueId = &id
+				cliqueID := uint32(value)
+				gpu.FabricCliqueId = &cliqueID
 			}
 		case godcgm.DCGM_FI_DEV_CUDA_COMPUTE_CAPABILITY:
 			if value > 0 {
 				major := uint32(uint64(value) >> 16)
 				minor := uint32(uint64(value) & 0xffff)
-				device.ComputeCapabilityMajor = &major
-				device.ComputeCapabilityMinor = &minor
+				gpu.ComputeCapabilityMajor = &major
+				gpu.ComputeCapabilityMinor = &minor
 			}
 		case godcgm.DCGM_FI_DEV_FB_TOTAL:
 			const bytesPerMiB = 1024 * 1024
 			if value > 0 && uint64(value) <= ^uint64(0)/bytesPerMiB {
 				bytes := uint64(value) * bytesPerMiB
-				device.FramebufferTotalBytes = &bytes
+				gpu.FramebufferTotalBytes = &bytes
 			}
 		case godcgm.DCGM_FI_CUDA_DRIVER_VERSION:
 			if value > 0 {
 				version := fmt.Sprintf("%d.%d", value/1000, (value%1000)/10)
-				device.CudaDriverVersion = &version
+				gpu.CudaDriverVersion = &version
 			}
 		}
 	}
-	return devices
+	return gpus
 }
 
 func inventoryString(field godcgm.FieldValue_v2) (string, bool) {

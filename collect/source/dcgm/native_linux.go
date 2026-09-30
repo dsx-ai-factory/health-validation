@@ -41,12 +41,12 @@ func (library *nativeLibrary) Init() (func(), error) {
 	return cleanup, nil
 }
 
-func (*nativeLibrary) SupportedDevices() ([]uint, error) {
-	devices, err := godcgm.GetSupportedDevices()
+func (*nativeLibrary) SupportedGPUIndices() ([]uint, error) {
+	gpuIndices, err := godcgm.GetSupportedDevices()
 	if err != nil {
 		return nil, dcgmErrorFromError(err)
 	}
-	return devices, nil
+	return gpuIndices, nil
 }
 
 func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, error) {
@@ -68,11 +68,11 @@ func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, er
 	// DCGM_GROUP_ALL_GPUS follows GPU attachment changes, matching the source's
 	// per-collection enumeration. This group is scoped to GPU field metrics;
 	// health and other entity types require separate purpose-specific groups.
-	deviceGroup := godcgm.GroupAllGPUs()
-	if err := godcgm.WatchFieldsWithGroup(fieldGroup, deviceGroup); err != nil {
+	gpuGroup := godcgm.GroupAllGPUs()
+	if err := godcgm.WatchFieldsWithGroup(fieldGroup, gpuGroup); err != nil {
 		return nil, errors.Join(
 			dcgmErrorFromError(err),
-			unwatchFields(fieldGroup, deviceGroup),
+			unwatchFields(fieldGroup, gpuGroup),
 			destroyFieldGroup(fieldGroup),
 		)
 	}
@@ -80,14 +80,14 @@ func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, er
 	// DCGM owns the special all-GPU group; release only our watch and field group.
 	return func() error {
 		return errors.Join(
-			unwatchFields(fieldGroup, deviceGroup),
+			unwatchFields(fieldGroup, gpuGroup),
 			destroyFieldGroup(fieldGroup),
 		)
 	}, nil
 }
 
-func (*nativeLibrary) ReadMetrics(
-	deviceID uint,
+func (*nativeLibrary) ReadGPUMetrics(
+	gpuIndex uint,
 	signalIDs []string,
 ) (map[string]FieldValue, error) {
 	// Validate and resolve signal IDs before making the read call.
@@ -102,7 +102,7 @@ func (*nativeLibrary) ReadMetrics(
 	}
 
 	// Read every selected field for this GPU in one DCGM call.
-	values, err := godcgm.GetLatestValuesForFields(deviceID, fieldIDs)
+	values, err := godcgm.GetLatestValuesForFields(gpuIndex, fieldIDs)
 	if err != nil {
 		return nil, dcgmErrorFromError(err)
 	}
@@ -226,8 +226,8 @@ func decodeObservationValue(value godcgm.FieldValue_v1) (observation.Value, *obs
 	}
 }
 
-func unwatchFields(fieldGroup godcgm.FieldHandle, deviceGroup godcgm.GroupHandle) error {
-	if err := godcgm.UnwatchFields(fieldGroup, deviceGroup); err != nil {
+func unwatchFields(fieldGroup godcgm.FieldHandle, gpuGroup godcgm.GroupHandle) error {
+	if err := godcgm.UnwatchFields(fieldGroup, gpuGroup); err != nil {
 		return fmt.Errorf("unwatch DCGM metric fields: %w", err)
 	}
 	return nil

@@ -35,7 +35,7 @@ func (source *fakeInventorySource) GPUIdentities(context.Context, *collect.Cycle
 	return source.identities, nil
 }
 
-func (source *fakeInventorySource) ReadMetrics(context.Context, *collect.Cycle, uint, []string) map[string]dcgmsource.FieldValue {
+func (source *fakeInventorySource) ReadGPUMetrics(context.Context, *collect.Cycle, uint, []string) map[string]dcgmsource.FieldValue {
 	source.metricReads++
 	return nil
 }
@@ -108,12 +108,12 @@ func TestMeasureMetricsAndInventoryUseOneInventoryRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	uuid := "GPU-1"
+	gpuUUID := "GPU-1"
 	source := &fakeInventorySource{snapshot: &observation.GPUInventorySnapshot{
 		Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: &observation.GPUInventory{
 			Entries: []*observation.GPUInventoryEntry{{
 				SourceIndex: 1,
-				Outcome:     &observation.GPUInventoryEntry_Device{Device: &observation.GPUDevice{Uuid: &uuid}},
+				Outcome:     &observation.GPUInventoryEntry_GPU{Gpu: &observation.GPUDevice{Uuid: &gpuUUID}},
 			}},
 		}},
 	}}

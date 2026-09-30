@@ -9,7 +9,7 @@
           "entries": [
             {
               "sourceIndex": 0,
-              "device": {
+              "gpu": {
                 "uuid": "GPU-123",
                 "model": "H100",
                 "serial": "032451000001",
@@ -31,7 +31,7 @@
               "sourceIndex": 1,
               "collectionError": {
                 "source": "dcgm",
-                "operation": "device_info",
+                "operation": "inventory",
                 "category": "COLLECTION_ERROR_CATEGORY_SOURCE_ERROR",
                 "sourceError": "DCGM_ST_GENERIC_ERROR",
                 "detail": "GPU static information is unavailable"

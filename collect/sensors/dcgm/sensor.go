@@ -28,7 +28,7 @@ type gpuSource interface {
 	ID() string
 	GPUIdentities(context.Context, *collect.Cycle) ([]dcgmsource.GPUIdentityEntry, *observation.CollectionError)
 	GPUInventory(context.Context, *collect.Cycle) *observation.GPUInventorySnapshot
-	ReadMetrics(context.Context, *collect.Cycle, uint, []string) map[string]dcgmsource.FieldValue
+	ReadGPUMetrics(context.Context, *collect.Cycle, uint, []string) map[string]dcgmsource.FieldValue
 }
 
 // New creates a DCGM sensor and registers its metrics with the source. An empty
@@ -79,7 +79,7 @@ func (sensor *sensor) Signals() collect.Signals {
 
 // Measure enumerates GPUs once and reads all selected fields for each GPU.
 // WithSignalID() and WithGPUInventory() together request inventory only.
-// Device and field failures become observations without hiding successful
+// GPU and field failures become observations without hiding successful
 // results.
 func (sensor *sensor) Measure(
 	ctx context.Context,
@@ -127,7 +127,7 @@ func (sensor *sensor) Measure(
 			continue
 		}
 
-		values := sensor.source.ReadMetrics(ctx, currentCycle, entry.Index, selected.IDs())
+		values := sensor.source.ReadGPUMetrics(ctx, currentCycle, entry.Index, selected.IDs())
 		for _, definition := range selected {
 			signalID := definition.ID()
 			field, exists := values[signalID]
@@ -150,7 +150,7 @@ func identitiesFromInventory(snapshot *observation.GPUInventorySnapshot) ([]dcgm
 	for _, entry := range snapshot.GetInventory().GetEntries() {
 		identities = append(identities, dcgmsource.GPUIdentityEntry{
 			Index:           uint(entry.GetSourceIndex()),
-			UUID:            entry.GetDevice().GetUuid(),
+			UUID:            entry.GetGpu().GetUuid(),
 			CollectionError: entry.GetCollectionError(),
 		})
 	}
