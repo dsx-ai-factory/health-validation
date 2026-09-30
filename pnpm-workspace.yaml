@@ -19,9 +19,8 @@ overrides:
   # moved to svgo 4 in 7.1.0. Drop this once Docusaurus resolves postcss-svgo
   # >= 7.1.0.
   svgo: 3.3.5
-  # CVE-2026-69152 (high): brace-expansion's expand() does not apply maxLength
-  # to comma-alternative arrays or padded sequences, so crafted input can
-  # exhaust memory or block the event loop. Build-time only, reaching us through
-  # serve-handler under @docusaurus/core, and serve-handler pins minimatch 3.1.5.
-  # Drop this once serve-handler moves off minimatch 3.
-  'minimatch@3>brace-expansion': 1.1.18
+  # CVE-2026-69152 (high) and four related brace-expansion DoS advisories, all
+  # fixed in 1.1.21. Build-time only, reaching us through serve-handler under
+  # @docusaurus/core, and serve-handler pins minimatch 3.1.5. Drop this once
+  # serve-handler moves off minimatch 3.
+  'minimatch@3>brace-expansion': 1.1.21
