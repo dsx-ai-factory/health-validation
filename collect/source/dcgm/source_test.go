@@ -24,14 +24,13 @@ var (
 )
 
 type fakeNative struct {
-	readStarted  chan struct{}
-	releaseRead  chan struct{}
-	deviceIDs    []uint
-	uuids        map[uint]string
-	uuidErr      error
-	inventory    map[uint]*observation.GPUDevice
-	inventoryErr error
-
+	uuidErr           error
+	inventoryErr      error
+	uuids             map[uint]string
+	readStarted       chan struct{}
+	inventory         map[uint]*observation.GPUDevice
+	releaseRead       chan struct{}
+	deviceIDs         []uint
 	cleanupCalls      atomic.Int32
 	initCalls         atomic.Int32
 	inventoryCalls    atomic.Int32
