@@ -25,8 +25,9 @@ message HardwareInventory {
 }
 
 // GpuInventorySnapshot is one source's GPU inventory contribution for this
-// collection cycle. Exactly one outcome must be selected. A successful
-// inventory with no entries means the source found no GPUs.
+// collection cycle. A snapshot error means GPU enumeration failed.
+// Once enumerated, inventory retains every GPU, including failed UUID reads.
+// An inventory with no entries means the source found no GPUs.
 message GpuInventorySnapshot {
   string source = 1;
   google.protobuf.Timestamp collected_at = 2;
@@ -49,14 +50,21 @@ message GpuInventoryEntry {
   // The GPU index assigned by this snapshot's source.
   uint32 source_index = 1;
 
-  oneof outcome {
-    GpuDevice gpu = 2;
-    CollectionError collection_error = 3;
-  }
+  // Known identity and successfully read attributes, including partial records.
+  GpuDevice gpu = 2;
+  // Failure of the enrichment query; known identity is still retained in gpu.
+  CollectionError collection_error = 3;
+
+  // Errors for attempted attributes, keyed by GpuDevice proto field name
+  // (e.g. "bus_id"). May accompany gpu; an errored field has no value.
+  // An absent value without an error means the attribute was not attempted.
+  // collection_error means the entire enrichment query failed.
+  map<string, CollectionError> field_errors = 4;
 }
 
 // GpuDevice contains the inventory attributes of one GPU.
-// Optional fields may be absent when the source legitimately has no value.
+// Available attributes are retained even if UUID or another attribute fails.
+// Consult the entry field_errors for attempted attributes without a value.
 message GpuDevice {
   optional string uuid = 1;
   optional string model = 2;

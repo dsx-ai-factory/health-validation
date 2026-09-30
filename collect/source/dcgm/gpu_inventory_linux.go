@@ -14,7 +14,6 @@ import (
 )
 
 var inventoryFields = []godcgm.Short{
-	godcgm.DCGM_FI_DEV_UUID,
 	godcgm.DCGM_FI_DEV_NAME,
 	godcgm.DCGM_FI_DEV_SERIAL,
 	godcgm.DCGM_FI_DEV_PCI_BUSID,
@@ -30,33 +29,47 @@ var inventoryFields = []godcgm.Short{
 	godcgm.DCGM_FI_CUDA_DRIVER_VERSION,
 }
 
-func (*nativeLibrary) ReadGPUInventory(gpuIndices []uint) (map[uint]*observation.GPUDevice, error) {
+func (*nativeLibrary) ReadGPUInventory(gpuIndices []uint) (map[uint]*observation.GPUInventoryEntry, error) {
 	values, err := readGPUFields(gpuIndices, inventoryFields)
 	if err != nil {
 		return nil, err
 	}
-	return decodeGPUInventory(gpuIndices, values), nil
+	return decodeGPUInventoryFields(gpuIndices, inventoryFields, values), nil
 }
 
-func (*nativeLibrary) ReadGPUUUIDs(gpuIndices []uint) (map[uint]string, error) {
+func (*nativeLibrary) ReadGPUUUIDs(gpuIndices []uint) (map[uint]GPUIdentityEntry, error) {
 	values, err := readGPUFields(gpuIndices, []godcgm.Short{godcgm.DCGM_FI_DEV_UUID})
 	if err != nil {
 		return nil, err
 	}
-	return decodeGPUUUIDs(values), nil
+	return decodeGPUUUIDs(gpuIndices, values), nil
 }
 
-func decodeGPUUUIDs(values []godcgm.FieldValue_v2) map[uint]string {
-	gpuUUIDs := make(map[uint]string, len(values))
-	for _, field := range values {
-		if field.EntityGroupId != godcgm.FE_GPU || field.FieldID != godcgm.DCGM_FI_DEV_UUID || field.Status != godcgm.DCGM_ST_OK {
-			continue
-		}
-		if gpuUUID, ok := inventoryString(field); ok {
-			gpuUUIDs[field.EntityID] = gpuUUID
+func decodeGPUUUIDs(gpuIndices []uint, values []godcgm.FieldValue_v2) map[uint]GPUIdentityEntry {
+	byGPU := make(map[uint]*godcgm.FieldValue_v2, len(gpuIndices))
+	for i := range values {
+		field := &values[i]
+		if field.EntityGroupId == godcgm.FE_GPU && field.FieldID == godcgm.DCGM_FI_DEV_UUID {
+			byGPU[field.EntityID] = field
 		}
 	}
-	return gpuUUIDs
+	identities := make(map[uint]GPUIdentityEntry, len(gpuIndices))
+	for _, gpuIndex := range gpuIndices {
+		var uuid string
+		var failure *observation.CollectionError
+		if field := byGPU[gpuIndex]; field != nil {
+			uuid, failure = decodeGPUString(field)
+		} else {
+			missing := fieldErrorFromStatus(godcgm.DCGM_ST_NO_DATA, fmt.Sprintf("DCGM returned no UUID for GPU index %d", gpuIndex))
+			failure = &missing
+		}
+		if failure != nil {
+			failure.Source = Name
+			failure.Operation = "identity"
+		}
+		identities[gpuIndex] = GPUIdentityEntry{Index: gpuIndex, UUID: uuid, UUIDError: failure}
+	}
+	return identities
 }
 
 func readGPUFields(gpuIndices []uint, fields []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
@@ -72,97 +85,179 @@ func readGPUFields(gpuIndices []uint, fields []godcgm.Short) ([]godcgm.FieldValu
 	return values, nil
 }
 
-func decodeGPUInventory(gpuIndices []uint, values []godcgm.FieldValue_v2) map[uint]*observation.GPUDevice {
-	gpus := make(map[uint]*observation.GPUDevice, len(gpuIndices))
-	for _, gpuIndex := range gpuIndices {
-		gpus[gpuIndex] = &observation.GPUDevice{}
+// Maps DCGM field identifiers to portable GpuDevice field names.
+var inventoryFieldNames = map[godcgm.Short][]string{
+	godcgm.DCGM_FI_DEV_UUID:                           {"uuid"},
+	godcgm.DCGM_FI_DEV_NAME:                           {"model"},
+	godcgm.DCGM_FI_DEV_SERIAL:                         {"serial"},
+	godcgm.DCGM_FI_DEV_PCI_BUSID:                      {"bus_id"},
+	godcgm.DCGM_FI_DEV_BRAND:                          {"brand"},
+	godcgm.DCGM_FI_DEV_VBIOS_VERSION:                  {"vbios_version"},
+	godcgm.DCGM_FI_DEV_PLATFORM_CHASSIS_SERIAL_NUMBER: {"chassis_serial"},
+	godcgm.DCGM_FI_DEV_MINOR_NUMBER:                   {"minor_number"},
+	godcgm.DCGM_FI_DEV_FABRIC_CLUSTER_UUID:            {"fabric_cluster_uuid"},
+	godcgm.DCGM_FI_DEV_FABRIC_CLIQUE_ID:               {"fabric_clique_id"},
+	godcgm.DCGM_FI_DEV_CUDA_COMPUTE_CAPABILITY:        {"compute_capability_major", "compute_capability_minor"},
+	godcgm.DCGM_FI_DEV_FB_TOTAL:                       {"framebuffer_total_bytes"},
+	godcgm.DCGM_FI_DRIVER_VERSION:                     {"driver_version"},
+	godcgm.DCGM_FI_CUDA_DRIVER_VERSION:                {"cuda_driver_version"},
+}
+
+func decodeGPUInventoryFields(gpuIndices []uint, requested []godcgm.Short, values []godcgm.FieldValue_v2) map[uint]*observation.GPUInventoryEntry {
+	byGPU := make(map[uint]map[godcgm.Short]*godcgm.FieldValue_v2, len(gpuIndices))
+	for i := range values {
+		field := &values[i]
+		if field.EntityGroupId != godcgm.FE_GPU {
+			continue
+		}
+		if byGPU[field.EntityID] == nil {
+			byGPU[field.EntityID] = make(map[godcgm.Short]*godcgm.FieldValue_v2)
+		}
+		byGPU[field.EntityID][field.FieldID] = field
 	}
-	for _, field := range values {
-		if field.EntityGroupId != godcgm.FE_GPU || field.Status != godcgm.DCGM_ST_OK {
-			continue
+	entries := make(map[uint]*observation.GPUInventoryEntry, len(gpuIndices))
+	for _, gpuIndex := range gpuIndices {
+		gpu := &observation.GPUDevice{}
+		entry := &observation.GPUInventoryEntry{
+			SourceIndex: uint32(gpuIndex),
+			Gpu:         gpu,
 		}
-		gpu := gpus[field.EntityID]
-		if gpu == nil {
-			continue
-		}
-		if value, ok := inventoryString(field); ok {
-			switch field.FieldID {
-			case godcgm.DCGM_FI_DEV_UUID:
-				gpu.Uuid = &value
-			case godcgm.DCGM_FI_DEV_NAME:
-				gpu.Model = &value
-			case godcgm.DCGM_FI_DEV_SERIAL:
-				gpu.Serial = &value
-			case godcgm.DCGM_FI_DEV_PCI_BUSID:
-				gpu.BusId = &value
-			case godcgm.DCGM_FI_DEV_BRAND:
-				gpu.Brand = &value
-			case godcgm.DCGM_FI_DEV_VBIOS_VERSION:
-				gpu.VbiosVersion = &value
-			case godcgm.DCGM_FI_DEV_PLATFORM_CHASSIS_SERIAL_NUMBER:
-				gpu.ChassisSerial = &value
-			case godcgm.DCGM_FI_DEV_FABRIC_CLUSTER_UUID:
-				gpu.FabricClusterUuid = &value
-			case godcgm.DCGM_FI_DRIVER_VERSION:
-				gpu.DriverVersion = &value
+		for _, fieldID := range requested {
+			field, exists := byGPU[gpuIndex][fieldID]
+			var failure *observation.CollectionError
+			if !exists {
+				missing := fieldErrorFromStatus(godcgm.DCGM_ST_NO_DATA, fmt.Sprintf("DCGM returned no inventory field %d for GPU index %d", fieldID, gpuIndex))
+				failure = &missing
+			} else {
+				failure = applyInventoryField(gpu, field)
 			}
-			continue
+			if failure != nil {
+				failure.Source = Name
+				failure.Operation = "inventory"
+				if entry.FieldErrors == nil {
+					entry.FieldErrors = make(map[string]*observation.CollectionError)
+				}
+				for _, name := range inventoryFieldNames[fieldID] {
+					entry.FieldErrors[name] = failure
+				}
+			}
 		}
-		value, ok := inventoryInteger(field)
-		if !ok {
-			continue
+		entries[gpuIndex] = entry
+	}
+	return entries
+}
+
+func validateGPUField(field *godcgm.FieldValue_v2) *observation.CollectionError {
+	if field.Status != godcgm.DCGM_ST_OK {
+		failure := fieldErrorFromStatus(field.Status, fmt.Sprintf("DCGM field %d status %d", field.FieldID, field.Status))
+		return &failure
+	}
+	value := godcgm.FieldValue_v1{FieldType: field.FieldType, Value: field.Value}
+	if field.StringValue != nil {
+		value.Value = [4096]byte{}
+		copy(value.Value[:], *field.StringValue)
+	}
+	if sentinel, found := checkSentinel(value); found {
+		failure := fieldErrorFromSentinel(sentinel)
+		return &failure
+	}
+	return nil
+}
+
+func decodeGPUString(field *godcgm.FieldValue_v2) (string, *observation.CollectionError) {
+	if failure := validateGPUField(field); failure != nil {
+		return "", failure
+	}
+	if field.FieldType != godcgm.DCGM_FT_STRING {
+		return "", &observation.CollectionError{
+			Category: observation.CollectionErrorCategoryParseError,
+			Detail:   fmt.Sprintf("DCGM field %d has an invalid type for a string", field.FieldID),
 		}
+	}
+	var text string
+	if field.StringValue != nil {
+		text = *field.StringValue
+	} else {
+		text = field.String()
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		failure := fieldErrorFromStatus(godcgm.DCGM_ST_NO_DATA, fmt.Sprintf("DCGM field %d is empty", field.FieldID))
+		return "", &failure
+	}
+	return text, nil
+}
+
+func applyInventoryField(gpu *observation.GPUDevice, field *godcgm.FieldValue_v2) *observation.CollectionError {
+	var textTarget **string
+	switch field.FieldID {
+	case godcgm.DCGM_FI_DEV_UUID:
+		textTarget = &gpu.Uuid
+	case godcgm.DCGM_FI_DEV_NAME:
+		textTarget = &gpu.Model
+	case godcgm.DCGM_FI_DEV_SERIAL:
+		textTarget = &gpu.Serial
+	case godcgm.DCGM_FI_DEV_PCI_BUSID:
+		textTarget = &gpu.BusId
+	case godcgm.DCGM_FI_DEV_BRAND:
+		textTarget = &gpu.Brand
+	case godcgm.DCGM_FI_DEV_VBIOS_VERSION:
+		textTarget = &gpu.VbiosVersion
+	case godcgm.DCGM_FI_DEV_PLATFORM_CHASSIS_SERIAL_NUMBER:
+		textTarget = &gpu.ChassisSerial
+	case godcgm.DCGM_FI_DEV_FABRIC_CLUSTER_UUID:
+		textTarget = &gpu.FabricClusterUuid
+	case godcgm.DCGM_FI_DRIVER_VERSION:
+		textTarget = &gpu.DriverVersion
+	}
+	if textTarget != nil {
+		text, failure := decodeGPUString(field)
+		if failure != nil {
+			return failure
+		}
+		*textTarget = &text
+		return nil
+	}
+	if failure := validateGPUField(field); failure != nil {
+		return failure
+	}
+	if field.FieldType == godcgm.DCGM_FT_INT64 {
+		integer := field.Int64()
 		switch field.FieldID {
 		case godcgm.DCGM_FI_DEV_MINOR_NUMBER:
-			if value >= 0 {
-				gpu.MinorNumber = &value
+			if integer >= 0 && integer < godcgm.DCGM_FT_INT64_BLANK {
+				gpu.MinorNumber = &integer
+				return nil
 			}
 		case godcgm.DCGM_FI_DEV_FABRIC_CLIQUE_ID:
-			if value >= 0 && uint64(value) <= uint64(^uint32(0)) {
-				cliqueID := uint32(value)
+			if integer >= 0 && uint64(integer) <= uint64(^uint32(0)) {
+				cliqueID := uint32(integer)
 				gpu.FabricCliqueId = &cliqueID
+				return nil
 			}
 		case godcgm.DCGM_FI_DEV_CUDA_COMPUTE_CAPABILITY:
-			if value > 0 {
-				major := uint32(uint64(value) >> 16)
-				minor := uint32(uint64(value) & 0xffff)
-				gpu.ComputeCapabilityMajor = &major
-				gpu.ComputeCapabilityMinor = &minor
+			if integer > 0 && uint64(integer) <= uint64(^uint32(0)) {
+				major, minor := uint32(uint64(integer)>>16), uint32(uint64(integer)&0xffff)
+				gpu.ComputeCapabilityMajor, gpu.ComputeCapabilityMinor = &major, &minor
+				return nil
 			}
 		case godcgm.DCGM_FI_DEV_FB_TOTAL:
 			const bytesPerMiB = 1024 * 1024
-			if value > 0 && uint64(value) <= ^uint64(0)/bytesPerMiB {
-				bytes := uint64(value) * bytesPerMiB
+			if integer > 0 && uint64(integer) <= ^uint64(0)/bytesPerMiB {
+				bytes := uint64(integer) * bytesPerMiB
 				gpu.FramebufferTotalBytes = &bytes
+				return nil
 			}
 		case godcgm.DCGM_FI_CUDA_DRIVER_VERSION:
-			if value > 0 {
-				version := fmt.Sprintf("%d.%d", value/1000, (value%1000)/10)
+			if integer > 0 && integer < godcgm.DCGM_FT_INT64_BLANK {
+				version := fmt.Sprintf("%d.%d", integer/1000, (integer%1000)/10)
 				gpu.CudaDriverVersion = &version
+				return nil
 			}
 		}
 	}
-	return gpus
-}
-
-func inventoryString(field godcgm.FieldValue_v2) (string, bool) {
-	if field.FieldType != godcgm.DCGM_FT_STRING {
-		return "", false
+	return &observation.CollectionError{
+		Category: observation.CollectionErrorCategoryParseError,
+		Detail:   fmt.Sprintf("DCGM inventory field %d has an invalid type or value", field.FieldID),
 	}
-	value := strings.TrimSpace(field.String())
-	if value == "" || strings.HasPrefix(value, "<<<") && strings.HasSuffix(value, ">>>") {
-		return "", false
-	}
-	return value, true
-}
-
-func inventoryInteger(field godcgm.FieldValue_v2) (int64, bool) {
-	if field.FieldType != godcgm.DCGM_FT_INT64 {
-		return 0, false
-	}
-	value := field.Int64()
-	if value >= godcgm.DCGM_FT_INT64_BLANK {
-		return 0, false
-	}
-	return value, true
 }

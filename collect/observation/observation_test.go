@@ -168,8 +168,8 @@ func TestGPUInventoryExample(t *testing.T) {
 	}
 
 	batch := &ObservationBatch{}
-	if err := protojson.Unmarshal(data, batch); err != nil {
-		t.Fatalf("unmarshal GPU inventory example: %v", err)
+	if unmarshalErr := protojson.Unmarshal(data, batch); unmarshalErr != nil {
+		t.Fatalf("unmarshal GPU inventory example: %v", unmarshalErr)
 	}
 
 	snapshots := batch.GetInventory().GetGpuSnapshots()
@@ -181,8 +181,8 @@ func TestGPUInventoryExample(t *testing.T) {
 		t.Fatalf("snapshot source = %q, want %q", snapshot.GetSource(), "dcgm")
 	}
 	entries := snapshot.GetInventory().GetEntries()
-	if len(entries) != 2 {
-		t.Fatalf("GPU entries = %d, want 2", len(entries))
+	if len(entries) != 3 {
+		t.Fatalf("GPU entries = %d, want 3", len(entries))
 	}
 	if snapshot.GetCollectedAt() == nil {
 		t.Fatal("GPU snapshot collection time is absent")
@@ -200,61 +200,48 @@ func TestGPUInventoryExample(t *testing.T) {
 	if entries[1].GetSourceIndex() != 1 || entries[1].GetCollectionError() == nil {
 		t.Fatalf("second GPU entry = %v, want source index 1 and collection error", entries[1])
 	}
+	if entries[2].GetGpu().GetUuid() != "GPU-789" || entries[2].GetFieldErrors()["serial"].GetSourceError() != "DCGM_FT_BLANK" {
+		t.Fatalf("partial inventory lost: %+v", entries[2])
+	}
+	encoded, err := protojson.Marshal(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTrip := &ObservationBatch{}
+	if err := protojson.Unmarshal(encoded, roundTrip); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateBatch(roundTrip); err != nil {
+		t.Fatal(err)
+	}
 	if err := ValidateBatch(batch); err != nil {
 		t.Fatalf("ValidateBatch() error = %v", err)
 	}
 }
 
-func TestValidateBatchRequiresGPUInventoryEntryOutcome(t *testing.T) {
+func TestValidateGPUInventoryEntry(t *testing.T) {
+	gpuUUID := "GPU-0"
+	failure := &CollectionError{Category: CollectionErrorCategoryUnavailable}
 	tests := []struct {
 		entry     *GPUInventoryEntry
 		name      string
-		wantError string
+		wantError bool
 	}{
-		{
-			name: "GPU",
-			entry: &GPUInventoryEntry{SourceIndex: 0, Outcome: &GPUInventoryEntry_GPU{
-				Gpu: &GPUDevice{},
-			}},
-		},
-		{
-			name: "collection error",
-			entry: &GPUInventoryEntry{SourceIndex: 1, Outcome: &GPUInventoryEntry_CollectionError{
-				CollectionError: &CollectionError{Category: CollectionErrorCategoryUnavailable},
-			}},
-		},
-		{
-			name:      "GPU outcome without payload",
-			entry:     &GPUInventoryEntry{SourceIndex: 2, Outcome: &GPUInventoryEntry_GPU{}},
-			wantError: "source index 2 has a GPU outcome with no payload",
-		},
-		{
-			name:      "collection error outcome without payload",
-			entry:     &GPUInventoryEntry{SourceIndex: 3, Outcome: &GPUInventoryEntry_CollectionError{}},
-			wantError: "source index 3 has a collection-error outcome with no payload",
-		},
-		{name: "missing outcome", entry: &GPUInventoryEntry{SourceIndex: 4}, wantError: "source index 4 has no outcome"},
-		{name: "nil entry", wantError: "entry is required"},
+		{entry: &GPUInventoryEntry{Gpu: &GPUDevice{Uuid: &gpuUUID}}, name: "GPU"},
+		{entry: &GPUInventoryEntry{CollectionError: failure}, name: "read failure"},
+		{entry: &GPUInventoryEntry{Gpu: &GPUDevice{Uuid: &gpuUUID}, CollectionError: failure}, name: "identity survives read failure"},
+		{entry: &GPUInventoryEntry{Gpu: &GPUDevice{Uuid: &gpuUUID}, FieldErrors: map[string]*CollectionError{"serial": failure}}, name: "partial attributes"},
+		{entry: &GPUInventoryEntry{Gpu: &GPUDevice{}, FieldErrors: map[string]*CollectionError{"future_field": failure}}, name: "forward compatible error"},
+		{entry: &GPUInventoryEntry{Gpu: &GPUDevice{Uuid: &gpuUUID}, FieldErrors: map[string]*CollectionError{"uuid": failure}}, name: "value and error conflict", wantError: true},
+		{entry: &GPUInventoryEntry{Gpu: &GPUDevice{}, FieldErrors: map[string]*CollectionError{"serial": nil}}, name: "nil field error", wantError: true},
+		{entry: &GPUInventoryEntry{Gpu: &GPUDevice{}, FieldErrors: map[string]*CollectionError{"": failure}}, name: "empty field name", wantError: true},
+		{entry: &GPUInventoryEntry{}, name: "missing result", wantError: true},
+		{name: "nil entry", wantError: true},
 	}
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := ValidateBatch(&ObservationBatch{Inventory: &HardwareInventory{
-				GpuSnapshots: []*GPUInventorySnapshot{{
-					Source: "dcgm",
-					Outcome: &GPUInventorySnapshot_Inventory{Inventory: &GPUInventory{
-						Entries: []*GPUInventoryEntry{test.entry},
-					}},
-				}},
-			}})
-			if test.wantError == "" {
-				if err != nil {
-					t.Fatalf("ValidateBatch() error = %v", err)
-				}
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("ValidateBatch() error = %v, want text %q", err, test.wantError)
+			if err := validateGPUInventoryEntry(test.entry); (err != nil) != test.wantError {
+				t.Fatalf("validation = %v, want error %v", err, test.wantError)
 			}
 		})
 	}

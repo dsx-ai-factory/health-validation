@@ -5,7 +5,6 @@ package dcgm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -14,133 +13,123 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
-// GPUIdentityEntry pairs a DCGM index with its UUID or a per-GPU error.
+// GPUIdentityEntry pairs a DCGM index with optional UUID enrichment.
 type GPUIdentityEntry struct {
-	CollectionError *observation.CollectionError
-	UUID            string
-	Index           uint
+	UUIDError *observation.CollectionError
+	UUID      string
+	Index     uint
 }
 
-type gpuReadError struct {
-	cause     error
-	operation string
-}
-
-func (failure gpuReadError) Error() string { return failure.operation + ": " + failure.cause.Error() }
-func (failure gpuReadError) Unwrap() error { return failure.cause }
-
-// GPUIdentities enumerates GPUs and reads only their UUIDs for metric identity.
+// GPUIdentities enumerates GPUs and enriches their indices with UUIDs.
+// A UUID lookup failure preserves the indices for subsequent collection.
 func (source *Source) GPUIdentities(ctx context.Context, currentCycle *collect.Cycle) ([]GPUIdentityEntry, *observation.CollectionError) {
-	entries, err := collect.Run(ctx, currentCycle, Name, func(callContext context.Context) ([]GPUIdentityEntry, error) {
-		if err := source.startNativeCall(); err != nil {
-			return nil, err
+	gpuIndices, err := collect.Run(ctx, currentCycle, Name, func(callContext context.Context) ([]uint, error) {
+		if startErr := source.startNativeCall(); startErr != nil {
+			return nil, startErr
 		}
 		defer source.finishNativeCall()
-		if err := source.ensureInitialized(); err != nil {
-			return nil, err
+		if initErr := source.ensureInitialized(); initErr != nil {
+			return nil, initErr
 		}
-		gpuIndices, err := source.native.SupportedGPUIndices()
-		if err != nil {
-			return nil, fmt.Errorf("enumerate GPUs: %w", err)
+		if contextErr := callContext.Err(); contextErr != nil {
+			return nil, contextErr
 		}
-		if ctxErr := callContext.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		if len(gpuIndices) == 0 {
-			return nil, nil
-		}
-		gpuUUIDs, err := source.native.ReadGPUUUIDs(gpuIndices)
-		if err != nil {
-			return nil, gpuReadError{operation: "identity", cause: err}
-		}
-		entries := make([]GPUIdentityEntry, 0, len(gpuIndices))
-		for _, gpuIndex := range gpuIndices {
-			entry := GPUIdentityEntry{Index: gpuIndex, UUID: gpuUUIDs[gpuIndex]}
-			if entry.UUID == "" {
-				entry.CollectionError = &observation.CollectionError{
-					Source:    source.ID(),
-					Operation: "identity",
-					Category:  observation.CollectionErrorCategorySourceError,
-					Detail:    fmt.Sprintf("GPU identity has no UUID for DCGM index %d", gpuIndex),
-				}
-			}
-			entries = append(entries, entry)
-		}
-		return entries, nil
+		return source.native.SupportedGPUIndices()
 	})
 	if err != nil {
-		failure := collectionError(err)
-		failure.Source = source.ID()
-		failure.Operation = "gpu_enumeration"
-		var readFailure gpuReadError
-		if errors.As(err, &readFailure) {
-			failure.Operation = readFailure.operation
+		return nil, source.gpuCollectionError("identity", err)
+	}
+	if len(gpuIndices) == 0 {
+		return nil, nil
+	}
+	// Keep membership outside this call so a UUID timeout cannot discard it.
+	identities, readErr := collect.Run(ctx, currentCycle, Name, func(callContext context.Context) (map[uint]GPUIdentityEntry, error) {
+		if startErr := source.startNativeCall(); startErr != nil {
+			return nil, startErr
 		}
-		return nil, &failure
+		defer source.finishNativeCall()
+		if initErr := source.ensureInitialized(); initErr != nil {
+			return nil, initErr
+		}
+		if contextErr := callContext.Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		return source.native.ReadGPUUUIDs(gpuIndices)
+	})
+	entries := make([]GPUIdentityEntry, 0, len(gpuIndices))
+	for _, gpuIndex := range gpuIndices {
+		entry := identities[gpuIndex]
+		entry.Index = gpuIndex
+		if readErr != nil {
+			entry.UUIDError = source.gpuCollectionError("identity", readErr)
+		} else if entry.UUID == "" && entry.UUIDError == nil {
+			entry.UUIDError = source.gpuCollectionError("identity", fmt.Errorf("no UUID returned for GPU index %d", gpuIndex))
+		}
+		entries = append(entries, entry)
 	}
 	return entries, nil
 }
 
-// GPUInventory freezes GPU membership and reads its attributes once per cycle.
-// Its entries are also the GPU list used by the DCGM sensor for metrics.
-func (source *Source) GPUInventory(ctx context.Context, currentCycle *collect.Cycle) *observation.GPUInventorySnapshot {
-	entries, err := collect.Run(ctx, currentCycle, Name, func(callContext context.Context) ([]*observation.GPUInventoryEntry, error) {
-		if err := source.startNativeCall(); err != nil {
-			return nil, err
-		}
-		defer source.finishNativeCall()
-
-		if err := source.ensureInitialized(); err != nil {
-			return nil, err
-		}
-		gpuIndices, err := source.native.SupportedGPUIndices()
-		if err != nil {
-			return nil, fmt.Errorf("enumerate GPUs: %w", err)
-		}
-		if ctxErr := callContext.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		if len(gpuIndices) == 0 {
-			return nil, nil
-		}
-		gpus, err := source.native.ReadGPUInventory(gpuIndices)
-		if err != nil {
-			return nil, gpuReadError{operation: "inventory", cause: err}
-		}
-		entries := make([]*observation.GPUInventoryEntry, 0, len(gpuIndices))
-		for _, gpuIndex := range gpuIndices {
-			entry := &observation.GPUInventoryEntry{SourceIndex: uint32(gpuIndex)}
-			gpu := gpus[gpuIndex]
-			if gpu == nil || gpu.GetUuid() == "" {
-				entry.Outcome = &observation.GPUInventoryEntry_CollectionError{CollectionError: &observation.CollectionError{
-					Source:    source.ID(),
-					Operation: "inventory",
-					Category:  observation.CollectionErrorCategorySourceError,
-					Detail:    fmt.Sprintf("GPU inventory has no UUID for DCGM index %d", gpuIndex),
-				}}
-			} else {
-				entry.Outcome = &observation.GPUInventoryEntry_GPU{Gpu: gpu}
+// GPUInventory enriches the supplied identities without re-enumerating GPUs or reading UUIDs again.
+func (source *Source) GPUInventory(ctx context.Context, currentCycle *collect.Cycle, identities []GPUIdentityEntry) *observation.GPUInventorySnapshot {
+	gpuIndices := make([]uint, 0, len(identities))
+	for _, identity := range identities {
+		gpuIndices = append(gpuIndices, identity.Index)
+	}
+	var err error
+	var collected map[uint]*observation.GPUInventoryEntry
+	if len(gpuIndices) > 0 {
+		collected, err = collect.Run(ctx, currentCycle, Name, func(callContext context.Context) (map[uint]*observation.GPUInventoryEntry, error) {
+			if startErr := source.startNativeCall(); startErr != nil {
+				return nil, startErr
 			}
-			entries = append(entries, entry)
-		}
-		return entries, nil
-	})
-	snapshot := &observation.GPUInventorySnapshot{
-		Source:      source.ID(),
-		CollectedAt: timestamppb.Now(),
+			defer source.finishNativeCall()
+			if initErr := source.ensureInitialized(); initErr != nil {
+				return nil, initErr
+			}
+			if contextErr := callContext.Err(); contextErr != nil {
+				return nil, contextErr
+			}
+			return source.native.ReadGPUInventory(gpuIndices)
+		})
 	}
-	if err != nil {
-		failure := collectionError(err)
-		failure.Source = source.ID()
-		failure.Operation = "gpu_enumeration"
-		var readFailure gpuReadError
-		if errors.As(err, &readFailure) {
-			failure.Operation = readFailure.operation
+	entries := make([]*observation.GPUInventoryEntry, 0, len(gpuIndices))
+	for _, identity := range identities {
+		gpuIndex := identity.Index
+		entry := collected[gpuIndex]
+		if err != nil || entry == nil {
+			readErr := err
+			if readErr == nil {
+				readErr = fmt.Errorf("no inventory returned for GPU index %d", gpuIndex)
+			}
+			entry = &observation.GPUInventoryEntry{
+				CollectionError: source.gpuCollectionError("inventory", readErr),
+			}
 		}
-		snapshot.Outcome = &observation.GPUInventorySnapshot_CollectionError{CollectionError: &failure}
-		return snapshot
+		entry.SourceIndex = uint32(gpuIndex)
+		if entry.Gpu == nil {
+			entry.Gpu = &observation.GPUDevice{}
+		}
+		if identity.UUID != "" {
+			gpuUUID := identity.UUID
+			entry.Gpu.Uuid = &gpuUUID
+		} else if identity.UUIDError != nil {
+			if entry.FieldErrors == nil {
+				entry.FieldErrors = make(map[string]*observation.CollectionError)
+			}
+			entry.FieldErrors["uuid"] = identity.UUIDError
+		}
+		entries = append(entries, entry)
 	}
+	return &observation.GPUInventorySnapshot{
+		Source: source.ID(), CollectedAt: timestamppb.Now(),
+		Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: &observation.GPUInventory{Entries: entries}},
+	}
+}
 
-	snapshot.Outcome = &observation.GPUInventorySnapshot_Inventory{Inventory: &observation.GPUInventory{Entries: entries}}
-	return snapshot
+func (source *Source) gpuCollectionError(operation string, err error) *observation.CollectionError {
+	failure := collectionError(err)
+	failure.Source = source.ID()
+	failure.Operation = operation
+	return &failure
 }

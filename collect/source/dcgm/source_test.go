@@ -26,11 +26,15 @@ var (
 type fakeNative struct {
 	uuidErr           error
 	inventoryErr      error
+	enumerationErr    error
 	gpuUUIDs          map[uint]string
 	readStarted       chan struct{}
+	uuidStarted       chan struct{}
+	inventoryStarted  chan struct{}
 	inventory         map[uint]*observation.GPUDevice
 	releaseRead       chan struct{}
 	gpuIndices        []uint
+	enumerationCalls  atomic.Int32
 	cleanupCalls      atomic.Int32
 	initCalls         atomic.Int32
 	inventoryCalls    atomic.Int32
@@ -46,39 +50,54 @@ func (native *fakeNative) Init() (func(), error) {
 }
 
 func (native *fakeNative) SupportedGPUIndices() ([]uint, error) {
+	native.enumerationCalls.Add(1)
+	if native.enumerationErr != nil {
+		return nil, native.enumerationErr
+	}
 	if native.gpuIndices != nil {
 		return native.gpuIndices, nil
 	}
 	return []uint{0}, nil
 }
 
-func (native *fakeNative) ReadGPUUUIDs(gpuIndices []uint) (map[uint]string, error) {
+func (native *fakeNative) ReadGPUUUIDs(gpuIndices []uint) (map[uint]GPUIdentityEntry, error) {
 	native.uuidCalls.Add(1)
+	if native.uuidStarted != nil {
+		close(native.uuidStarted)
+		<-native.releaseRead
+	}
 	if native.uuidErr != nil {
 		return nil, native.uuidErr
 	}
-	if native.gpuUUIDs != nil {
-		return native.gpuUUIDs, nil
-	}
-	gpuUUIDs := make(map[uint]string, len(gpuIndices))
+	gpuUUIDs := make(map[uint]GPUIdentityEntry, len(gpuIndices))
 	for _, gpuIndex := range gpuIndices {
-		gpuUUIDs[gpuIndex] = fmt.Sprintf("GPU-%d", gpuIndex)
+		gpuUUID := fmt.Sprintf("GPU-%d", gpuIndex)
+		if native.gpuUUIDs != nil {
+			gpuUUID = native.gpuUUIDs[gpuIndex]
+		}
+		gpuUUIDs[gpuIndex] = GPUIdentityEntry{Index: gpuIndex, UUID: gpuUUID}
 	}
 	return gpuUUIDs, nil
 }
 
-func (native *fakeNative) ReadGPUInventory(gpuIndices []uint) (map[uint]*observation.GPUDevice, error) {
+func (native *fakeNative) ReadGPUInventory(gpuIndices []uint) (map[uint]*observation.GPUInventoryEntry, error) {
 	native.inventoryCalls.Add(1)
+	if native.inventoryStarted != nil {
+		close(native.inventoryStarted)
+		<-native.releaseRead
+	}
 	if native.inventoryErr != nil {
 		return nil, native.inventoryErr
 	}
-	if native.inventory != nil {
-		return native.inventory, nil
-	}
-	gpus := make(map[uint]*observation.GPUDevice, len(gpuIndices))
+	gpus := make(map[uint]*observation.GPUInventoryEntry, len(gpuIndices))
 	for _, gpuIndex := range gpuIndices {
-		gpuUUID := fmt.Sprintf("GPU-%d", gpuIndex)
-		gpus[gpuIndex] = &observation.GPUDevice{Uuid: &gpuUUID}
+		gpu := &observation.GPUDevice{}
+		if native.inventory != nil {
+			gpu = native.inventory[gpuIndex]
+		}
+		if gpu != nil {
+			gpus[gpuIndex] = &observation.GPUInventoryEntry{SourceIndex: uint32(gpuIndex), Gpu: gpu}
+		}
 	}
 	return gpus, nil
 }
@@ -155,7 +174,11 @@ func TestInventoryUsesOneRead(t *testing.T) {
 	native := &fakeNative{gpuIndices: []uint{0, 1}}
 	source := newSource(native, &sync.Mutex{})
 	cycle := newTestCycle(t, "inventory")
-	snapshot := source.GPUInventory(context.Background(), cycle)
+	identities, failure := source.GPUIdentities(context.Background(), cycle)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	snapshot := source.GPUInventory(context.Background(), cycle, identities)
 	entries := snapshot.GetInventory().GetEntries()
 	if len(entries) != 2 || entries[0].GetSourceIndex() != 0 || entries[0].GetGpu().GetUuid() != "GPU-0" || entries[1].GetSourceIndex() != 1 || entries[1].GetGpu().GetUuid() != "GPU-1" {
 		t.Fatalf("Inventory() = %+v", snapshot)
@@ -163,8 +186,8 @@ func TestInventoryUsesOneRead(t *testing.T) {
 	if got := native.inventoryCalls.Load(); got != 1 {
 		t.Fatalf("inventory read calls = %d, want 1", got)
 	}
-	if got := native.uuidCalls.Load(); got != 0 {
-		t.Fatalf("UUID read calls = %d, want 0", got)
+	if got := native.uuidCalls.Load(); got != 1 {
+		t.Fatalf("UUID read calls = %d, want 1", got)
 	}
 	if err := observation.ValidateBatch(&observation.ObservationBatch{Inventory: &observation.HardwareInventory{
 		GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot},
@@ -176,7 +199,7 @@ func TestInventoryUsesOneRead(t *testing.T) {
 func TestGPUIdentitiesReadsOnlyUUIDs(t *testing.T) {
 	native := &fakeNative{gpuIndices: []uint{0, 1}, gpuUUIDs: map[uint]string{0: "GPU-0"}}
 	entries, failure := newSource(native, &sync.Mutex{}).GPUIdentities(context.Background(), newTestCycle(t, "identities"))
-	if failure != nil || len(entries) != 2 || entries[0].UUID != "GPU-0" || entries[1].CollectionError == nil {
+	if failure != nil || len(entries) != 2 || entries[0].UUID != "GPU-0" || entries[1].UUIDError == nil {
 		t.Fatalf("GPUIdentities() = %+v, %v", entries, failure)
 	}
 	if native.uuidCalls.Load() != 1 || native.inventoryCalls.Load() != 0 {
@@ -184,11 +207,85 @@ func TestGPUIdentitiesReadsOnlyUUIDs(t *testing.T) {
 	}
 }
 
-func TestGPUIdentitiesReportsReadFailure(t *testing.T) {
-	native := &fakeNative{uuidErr: errors.New("DCGM read failed")}
-	entries, failure := newSource(native, &sync.Mutex{}).GPUIdentities(context.Background(), newTestCycle(t, "identity-error"))
-	if failure == nil || failure.Operation != "identity" || len(entries) != 0 {
+func TestGPUIdentitiesUUIDFailurePreservesIndices(t *testing.T) {
+	native := &fakeNative{gpuIndices: []uint{2, 7}, uuidErr: errors.New("DCGM UUID read failed")}
+	source := newSource(native, &sync.Mutex{})
+	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
+		t.Fatal(err)
+	}
+	cycle := newTestCycle(t, "uuid-error")
+	entries, failure := source.GPUIdentities(context.Background(), cycle)
+	if failure != nil || len(entries) != 2 {
 		t.Fatalf("GPUIdentities() = %+v, %v", entries, failure)
+	}
+	for position, entry := range entries {
+		if entry.Index != native.gpuIndices[position] || entry.UUID != "" || entry.UUIDError.GetOperation() != "identity" {
+			t.Fatalf("identity = %+v", entry)
+		}
+		values := source.ReadGPUMetrics(context.Background(), cycle, entry.Index, []string{signalPowerDraw})
+		if values[signalPowerDraw].Value == nil {
+			t.Fatalf("metric read failed after UUID failure: %+v", values)
+		}
+	}
+	snapshot := source.GPUInventory(context.Background(), cycle, entries)
+	for _, entry := range snapshot.GetInventory().GetEntries() {
+		if entry.GetFieldErrors()["uuid"] == nil || entry.GetCollectionError() != nil {
+			t.Fatalf("UUID failure = %+v", entry)
+		}
+	}
+	if native.enumerationCalls.Load() != 1 || native.uuidCalls.Load() != 1 || native.readCalls.Load() != 2 || native.inventoryCalls.Load() != 1 {
+		t.Fatal("UUID failure changed membership or blocked subsequent collection")
+	}
+}
+
+func TestGPUIdentitiesCancellationPreservesIndicesAndBlocksReentry(t *testing.T) {
+	native := &fakeNative{gpuIndices: []uint{2, 7}, uuidStarted: make(chan struct{}), releaseRead: make(chan struct{})}
+	t.Cleanup(func() { close(native.releaseRead) })
+	source := newSource(native, &sync.Mutex{})
+	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
+		t.Fatal(err)
+	}
+	cycle := newTestCycle(t, "interrupted-uuid")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan []GPUIdentityEntry, 1)
+	failures := make(chan *observation.CollectionError, 1)
+	go func() {
+		identities, failure := source.GPUIdentities(ctx, cycle)
+		result <- identities
+		failures <- failure
+	}()
+	select {
+	case <-native.uuidStarted:
+	case <-time.After(time.Second):
+		t.Fatal("UUID read did not start")
+	}
+	cancel()
+	var entries []GPUIdentityEntry
+	select {
+	case entries = <-result:
+	case <-time.After(time.Second):
+		t.Fatal("identity read did not return after cancellation")
+	}
+	if failure := <-failures; failure != nil {
+		t.Fatalf("UUID failure discarded membership: %v", failure)
+	}
+	if len(entries) != 2 || entries[0].Index != 2 || entries[1].Index != 7 {
+		t.Fatalf("indices = %+v", entries)
+	}
+	for _, entry := range entries {
+		if entry.UUIDError.GetCategory() != observation.CollectionErrorCategoryUnavailable {
+			t.Fatalf("UUID error = %v", entry.UUIDError)
+		}
+		for _, nextCycle := range []*collect.Cycle{cycle, newTestCycle(t, "next-cycle")} {
+			values := source.ReadGPUMetrics(context.Background(), nextCycle, entry.Index, []string{signalPowerDraw})
+			if values[signalPowerDraw].CollectionError == nil {
+				t.Fatal("metric read entered DCGM while UUID read was running")
+			}
+		}
+	}
+	if native.readCalls.Load() != 0 {
+		t.Fatal("native metric read started while UUID call was running")
 	}
 }
 
@@ -211,31 +308,103 @@ func TestGPUIdentitiesReenumeratesOnEachCycle(t *testing.T) {
 }
 
 func TestInventoryPreservesMissingUUIDPerGPU(t *testing.T) {
-	gpuUUID := "GPU-0"
+	gpuUUID, model := "GPU-0", "H100"
 	native := &fakeNative{
 		gpuIndices: []uint{0, 1},
-		inventory:  map[uint]*observation.GPUDevice{0: {Uuid: &gpuUUID}, 1: {}},
+		inventory:  map[uint]*observation.GPUDevice{0: {Uuid: &gpuUUID}, 1: {Model: &model}},
 	}
-	snapshot := newSource(native, &sync.Mutex{}).GPUInventory(context.Background(), newTestCycle(t, "missing-uuid"))
+	source := newSource(native, &sync.Mutex{})
+	cycle := newTestCycle(t, "missing-uuid")
+	native.gpuUUIDs = map[uint]string{0: gpuUUID}
+	identities, failure := source.GPUIdentities(context.Background(), cycle)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	snapshot := source.GPUInventory(context.Background(), cycle, identities)
 	entries := snapshot.GetInventory().GetEntries()
-	if len(entries) != 2 || entries[0].GetGpu().GetUuid() != gpuUUID || entries[1].GetCollectionError() == nil {
+	if len(entries) != 2 || entries[0].GetGpu().GetUuid() != gpuUUID || entries[1].GetGpu().GetModel() != model || entries[1].GetGpu().Uuid != nil || entries[1].GetFieldErrors()["uuid"] == nil {
 		t.Fatalf("Inventory() = %+v", snapshot)
 	}
 }
 
 func TestInventoryEmptyEnumerationSkipsQuery(t *testing.T) {
 	native := &fakeNative{gpuIndices: []uint{}}
-	snapshot := newSource(native, &sync.Mutex{}).GPUInventory(context.Background(), newTestCycle(t, "empty-inventory"))
+	source := newSource(native, &sync.Mutex{})
+	cycle := newTestCycle(t, "empty-inventory")
+	identities, failure := source.GPUIdentities(context.Background(), cycle)
+	if failure != nil || len(identities) != 0 || native.uuidCalls.Load() != 0 {
+		t.Fatalf("empty GPU identities = %+v, %v; UUID calls = %d", identities, failure, native.uuidCalls.Load())
+	}
+	snapshot := source.GPUInventory(context.Background(), cycle, identities)
 	if snapshot.GetInventory() == nil || len(snapshot.GetInventory().GetEntries()) != 0 || native.inventoryCalls.Load() != 0 {
 		t.Fatalf("Inventory() = %+v, inventory calls = %d", snapshot, native.inventoryCalls.Load())
 	}
 }
 
 func TestInventoryReportsQueryFailure(t *testing.T) {
-	native := &fakeNative{inventoryErr: errors.New("DCGM read failed")}
-	snapshot := newSource(native, &sync.Mutex{}).GPUInventory(context.Background(), newTestCycle(t, "inventory-error"))
-	if failure := snapshot.GetCollectionError(); failure == nil || failure.Operation != "inventory" {
-		t.Fatalf("Inventory() = %+v", snapshot)
+	native := &fakeNative{gpuIndices: []uint{2, 7}, inventoryErr: errors.New("DCGM read failed")}
+	source := newSource(native, &sync.Mutex{})
+	cycle := newTestCycle(t, "inventory-error")
+	identities, failure := source.GPUIdentities(context.Background(), cycle)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	snapshot := source.GPUInventory(context.Background(), cycle, identities)
+	entries := snapshot.GetInventory().GetEntries()
+	if snapshot.GetCollectionError() != nil || len(entries) != 2 {
+		t.Fatalf("enumerated membership lost: %+v", snapshot)
+	}
+	for index, gpuIndex := range native.gpuIndices {
+		if entries[index].GetSourceIndex() != uint32(gpuIndex) || entries[index].GetCollectionError().GetOperation() != "inventory" {
+			t.Fatalf("GPU %d result: %+v", gpuIndex, entries[index])
+		}
+	}
+	if native.enumerationCalls.Load() != 1 || native.uuidCalls.Load() != 1 || entries[0].GetGpu().GetUuid() != "GPU-2" || entries[1].GetGpu().GetUuid() != "GPU-7" {
+		t.Fatalf("inventory did not preserve original identities: %+v", entries)
+	}
+}
+
+func TestGPUIdentitiesEnumerationFailure(t *testing.T) {
+	native := &fakeNative{enumerationErr: errors.New("enumeration failed")}
+	entries, failure := newSource(native, &sync.Mutex{}).GPUIdentities(context.Background(), newTestCycle(t, "enumeration-error"))
+	if len(entries) != 0 || failure.GetOperation() != "identity" || native.inventoryCalls.Load() != 0 || native.uuidCalls.Load() != 0 {
+		t.Fatalf("enumeration failure = %+v, %v", entries, failure)
+	}
+}
+
+func TestInventoryCancellationPreservesMembershipAndBlocksReentry(t *testing.T) {
+	native := &fakeNative{gpuIndices: []uint{2, 7}, inventoryStarted: make(chan struct{}), releaseRead: make(chan struct{})}
+	t.Cleanup(func() { close(native.releaseRead) })
+	source := newSource(native, &sync.Mutex{})
+	cycle := newTestCycle(t, "interrupted-inventory")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan *observation.GPUInventorySnapshot, 1)
+	identities, failure := source.GPUIdentities(context.Background(), cycle)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	go func() { result <- source.GPUInventory(ctx, cycle, identities) }()
+	select {
+	case <-native.inventoryStarted:
+	case <-time.After(time.Second):
+		t.Fatal("inventory read did not start")
+	}
+	cancel()
+	select {
+	case snapshot := <-result:
+		entries := snapshot.GetInventory().GetEntries()
+		if len(entries) != 2 || entries[0].GetSourceIndex() != 2 || entries[1].GetSourceIndex() != 7 || entries[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryUnavailable {
+			t.Fatalf("canceled inventory lost membership: %+v", snapshot)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("inventory did not return after cancellation")
+	}
+	for _, nextCycle := range []*collect.Cycle{cycle, newTestCycle(t, "next-cycle")} {
+		entries, failure := source.GPUIdentities(context.Background(), nextCycle)
+		if failure == nil || len(entries) != 0 || native.uuidCalls.Load() != 1 {
+			t.Fatalf("entered DCGM while inventory still running: %+v", entries)
+		}
 	}
 }
 

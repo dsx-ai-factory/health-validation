@@ -47,8 +47,6 @@ type (
 	Value_BoolValue                      = healthv1.Value_BoolValue
 	GPUInventorySnapshot_Inventory       = healthv1.GpuInventorySnapshot_Inventory
 	GPUInventorySnapshot_CollectionError = healthv1.GpuInventorySnapshot_CollectionError
-	GPUInventoryEntry_GPU                = healthv1.GpuInventoryEntry_Gpu
-	GPUInventoryEntry_CollectionError    = healthv1.GpuInventoryEntry_CollectionError
 )
 
 const (
@@ -153,17 +151,28 @@ func validateGPUInventoryEntry(entry *GPUInventoryEntry) error {
 	if entry == nil {
 		return fmt.Errorf("entry is required")
 	}
-	switch outcome := entry.GetOutcome().(type) {
-	case *GPUInventoryEntry_GPU:
-		if outcome == nil || outcome.Gpu == nil {
-			return fmt.Errorf("source index %d has a GPU outcome with no payload", entry.GetSourceIndex())
+	if entry.GetGpu() == nil && entry.GetCollectionError() == nil {
+		return fmt.Errorf("source index %d has no GPU record or collection error", entry.GetSourceIndex())
+	}
+	for field, failure := range entry.GetFieldErrors() {
+		if failure == nil {
+			return fmt.Errorf("source index %d has a nil error for field %q", entry.GetSourceIndex(), field)
 		}
-	case *GPUInventoryEntry_CollectionError:
-		if outcome == nil || outcome.CollectionError == nil {
-			return fmt.Errorf("source index %d has a collection-error outcome with no payload", entry.GetSourceIndex())
+		if entry.GetGpu() == nil {
+			return fmt.Errorf("source index %d has field errors without a GPU record", entry.GetSourceIndex())
 		}
-	default:
-		return fmt.Errorf("source index %d has no outcome", entry.GetSourceIndex())
+		gpu := entry.GetGpu().ProtoReflect()
+		definition := gpu.Descriptor().Fields().ByTextName(field)
+		if field == "" {
+			return fmt.Errorf("source index %d has an error without a field name", entry.GetSourceIndex())
+		}
+		// Preserve errors for fields introduced by newer producers.
+		if definition == nil {
+			continue
+		}
+		if gpu.Has(definition) {
+			return fmt.Errorf("source index %d has both a value and an error for GPU field %q", entry.GetSourceIndex(), field)
+		}
 	}
 	return nil
 }

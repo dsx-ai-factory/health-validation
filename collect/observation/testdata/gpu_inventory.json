@@ -36,6 +36,22 @@
                 "sourceError": "DCGM_ST_GENERIC_ERROR",
                 "detail": "GPU static information is unavailable"
               }
+            },
+            {
+              "sourceIndex": 2,
+              "gpu": {
+                "uuid": "GPU-789",
+                "model": "H100"
+              },
+              "fieldErrors": {
+                "serial": {
+                  "source": "dcgm",
+                  "operation": "inventory",
+                  "category": "COLLECTION_ERROR_CATEGORY_UNAVAILABLE",
+                  "sourceError": "DCGM_FT_BLANK",
+                  "detail": "Serial has no data yet"
+                }
+              }
             }
           ]
         }

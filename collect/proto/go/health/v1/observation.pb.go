@@ -7,12 +7,13 @@
 package healthv1
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -250,8 +251,9 @@ func (x *HardwareInventory) GetGpuSnapshots() []*GpuInventorySnapshot {
 }
 
 // GpuInventorySnapshot is one source's GPU inventory contribution for this
-// collection cycle. Exactly one outcome must be selected. A successful
-// inventory with no entries means the source found no GPUs.
+// collection cycle. A snapshot error means GPU enumeration failed.
+// Once enumerated, inventory retains every GPU, including failed UUID reads.
+// An inventory with no entries means the source found no GPUs.
 type GpuInventorySnapshot struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Source      string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
@@ -402,11 +404,15 @@ type GpuInventoryEntry struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The GPU index assigned by this snapshot's source.
 	SourceIndex uint32 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
-	// Types that are valid to be assigned to Outcome:
-	//
-	//	*GpuInventoryEntry_Gpu
-	//	*GpuInventoryEntry_CollectionError
-	Outcome       isGpuInventoryEntry_Outcome `protobuf_oneof:"outcome"`
+	// Known identity and successfully read attributes, including partial records.
+	Gpu *GpuDevice `protobuf:"bytes,2,opt,name=gpu,proto3" json:"gpu,omitempty"`
+	// Failure of the enrichment query; known identity is still retained in gpu.
+	CollectionError *CollectionError `protobuf:"bytes,3,opt,name=collection_error,json=collectionError,proto3" json:"collection_error,omitempty"`
+	// Errors for attempted attributes, keyed by GpuDevice proto field name
+	// (e.g. "bus_id"). May accompany gpu; an errored field has no value.
+	// An absent value without an error means the attribute was not attempted.
+	// collection_error means the entire enrichment query failed.
+	FieldErrors   map[string]*CollectionError `protobuf:"bytes,4,rep,name=field_errors,json=fieldErrors,proto3" json:"field_errors,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -448,49 +454,30 @@ func (x *GpuInventoryEntry) GetSourceIndex() uint32 {
 	return 0
 }
 
-func (x *GpuInventoryEntry) GetOutcome() isGpuInventoryEntry_Outcome {
-	if x != nil {
-		return x.Outcome
-	}
-	return nil
-}
-
 func (x *GpuInventoryEntry) GetGpu() *GpuDevice {
 	if x != nil {
-		if x, ok := x.Outcome.(*GpuInventoryEntry_Gpu); ok {
-			return x.Gpu
-		}
+		return x.Gpu
 	}
 	return nil
 }
 
 func (x *GpuInventoryEntry) GetCollectionError() *CollectionError {
 	if x != nil {
-		if x, ok := x.Outcome.(*GpuInventoryEntry_CollectionError); ok {
-			return x.CollectionError
-		}
+		return x.CollectionError
 	}
 	return nil
 }
 
-type isGpuInventoryEntry_Outcome interface {
-	isGpuInventoryEntry_Outcome()
+func (x *GpuInventoryEntry) GetFieldErrors() map[string]*CollectionError {
+	if x != nil {
+		return x.FieldErrors
+	}
+	return nil
 }
-
-type GpuInventoryEntry_Gpu struct {
-	Gpu *GpuDevice `protobuf:"bytes,2,opt,name=gpu,proto3,oneof"`
-}
-
-type GpuInventoryEntry_CollectionError struct {
-	CollectionError *CollectionError `protobuf:"bytes,3,opt,name=collection_error,json=collectionError,proto3,oneof"`
-}
-
-func (*GpuInventoryEntry_Gpu) isGpuInventoryEntry_Outcome() {}
-
-func (*GpuInventoryEntry_CollectionError) isGpuInventoryEntry_Outcome() {}
 
 // GpuDevice contains the inventory attributes of one GPU.
-// Optional fields may be absent when the source legitimately has no value.
+// Available attributes are retained even if UUID or another attribute fails.
+// Consult the entry field_errors for attempted attributes without a value.
 type GpuDevice struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	Uuid                   *string                `protobuf:"bytes,1,opt,name=uuid,proto3,oneof" json:"uuid,omitempty"`
@@ -1389,12 +1376,15 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x10collection_error\x18\x04 \x01(\v2\x1a.health.v1.CollectionErrorH\x00R\x0fcollectionErrorB\t\n" +
 	"\aoutcome\"F\n" +
 	"\fGpuInventory\x126\n" +
-	"\aentries\x18\x01 \x03(\v2\x1c.health.v1.GpuInventoryEntryR\aentries\"\xb4\x01\n" +
+	"\aentries\x18\x01 \x03(\v2\x1c.health.v1.GpuInventoryEntryR\aentries\"\xd3\x02\n" +
 	"\x11GpuInventoryEntry\x12!\n" +
-	"\fsource_index\x18\x01 \x01(\rR\vsourceIndex\x12(\n" +
-	"\x03gpu\x18\x02 \x01(\v2\x14.health.v1.GpuDeviceH\x00R\x03gpu\x12G\n" +
-	"\x10collection_error\x18\x03 \x01(\v2\x1a.health.v1.CollectionErrorH\x00R\x0fcollectionErrorB\t\n" +
-	"\aoutcome\"\xa8\a\n" +
+	"\fsource_index\x18\x01 \x01(\rR\vsourceIndex\x12&\n" +
+	"\x03gpu\x18\x02 \x01(\v2\x14.health.v1.GpuDeviceR\x03gpu\x12E\n" +
+	"\x10collection_error\x18\x03 \x01(\v2\x1a.health.v1.CollectionErrorR\x0fcollectionError\x12P\n" +
+	"\ffield_errors\x18\x04 \x03(\v2-.health.v1.GpuInventoryEntry.FieldErrorsEntryR\vfieldErrors\x1aZ\n" +
+	"\x10FieldErrorsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x120\n" +
+	"\x05value\x18\x02 \x01(\v2\x1a.health.v1.CollectionErrorR\x05value:\x028\x01\"\xa8\a\n" +
 	"\tGpuDevice\x12\x17\n" +
 	"\x04uuid\x18\x01 \x01(\tH\x00R\x04uuid\x88\x01\x01\x12\x19\n" +
 	"\x05model\x18\x02 \x01(\tH\x01R\x05model\x88\x01\x01\x12\x1b\n" +
@@ -1503,57 +1493,63 @@ func file_health_v1_observation_proto_rawDescGZIP() []byte {
 	return file_health_v1_observation_proto_rawDescData
 }
 
-var file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_health_v1_observation_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
-var file_health_v1_observation_proto_goTypes = []any{
-	(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
-	(NoValueReason)(0),            // 1: health.v1.NoValueReason
-	(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
-	(*HardwareInventory)(nil),     // 3: health.v1.HardwareInventory
-	(*GpuInventorySnapshot)(nil),  // 4: health.v1.GpuInventorySnapshot
-	(*GpuInventory)(nil),          // 5: health.v1.GpuInventory
-	(*GpuInventoryEntry)(nil),     // 6: health.v1.GpuInventoryEntry
-	(*GpuDevice)(nil),             // 7: health.v1.GpuDevice
-	(*Observation)(nil),           // 8: health.v1.Observation
-	(*ObservationTarget)(nil),     // 9: health.v1.ObservationTarget
-	(*NodeRef)(nil),               // 10: health.v1.NodeRef
-	(*GpuRef)(nil),                // 11: health.v1.GpuRef
-	(*NvLinkEndpointRef)(nil),     // 12: health.v1.NvLinkEndpointRef
-	(*GpuPairRef)(nil),            // 13: health.v1.GpuPairRef
-	(*Value)(nil),                 // 14: health.v1.Value
-	(*CollectionError)(nil),       // 15: health.v1.CollectionError
-	(*NoValue)(nil),               // 16: health.v1.NoValue
-	(*timestamppb.Timestamp)(nil), // 17: google.protobuf.Timestamp
-}
+var (
+	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 16)
+	file_health_v1_observation_proto_goTypes   = []any{
+		(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
+		(NoValueReason)(0),            // 1: health.v1.NoValueReason
+		(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
+		(*HardwareInventory)(nil),     // 3: health.v1.HardwareInventory
+		(*GpuInventorySnapshot)(nil),  // 4: health.v1.GpuInventorySnapshot
+		(*GpuInventory)(nil),          // 5: health.v1.GpuInventory
+		(*GpuInventoryEntry)(nil),     // 6: health.v1.GpuInventoryEntry
+		(*GpuDevice)(nil),             // 7: health.v1.GpuDevice
+		(*Observation)(nil),           // 8: health.v1.Observation
+		(*ObservationTarget)(nil),     // 9: health.v1.ObservationTarget
+		(*NodeRef)(nil),               // 10: health.v1.NodeRef
+		(*GpuRef)(nil),                // 11: health.v1.GpuRef
+		(*NvLinkEndpointRef)(nil),     // 12: health.v1.NvLinkEndpointRef
+		(*GpuPairRef)(nil),            // 13: health.v1.GpuPairRef
+		(*Value)(nil),                 // 14: health.v1.Value
+		(*CollectionError)(nil),       // 15: health.v1.CollectionError
+		(*NoValue)(nil),               // 16: health.v1.NoValue
+		nil,                           // 17: health.v1.GpuInventoryEntry.FieldErrorsEntry
+		(*timestamppb.Timestamp)(nil), // 18: google.protobuf.Timestamp
+	}
+)
+
 var file_health_v1_observation_proto_depIdxs = []int32{
 	8,  // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
 	3,  // 1: health.v1.ObservationBatch.inventory:type_name -> health.v1.HardwareInventory
 	4,  // 2: health.v1.HardwareInventory.gpu_snapshots:type_name -> health.v1.GpuInventorySnapshot
-	17, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
+	18, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
 	5,  // 4: health.v1.GpuInventorySnapshot.inventory:type_name -> health.v1.GpuInventory
 	15, // 5: health.v1.GpuInventorySnapshot.collection_error:type_name -> health.v1.CollectionError
 	6,  // 6: health.v1.GpuInventory.entries:type_name -> health.v1.GpuInventoryEntry
 	7,  // 7: health.v1.GpuInventoryEntry.gpu:type_name -> health.v1.GpuDevice
 	15, // 8: health.v1.GpuInventoryEntry.collection_error:type_name -> health.v1.CollectionError
-	9,  // 9: health.v1.Observation.target:type_name -> health.v1.ObservationTarget
-	17, // 10: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
-	14, // 11: health.v1.Observation.value:type_name -> health.v1.Value
-	15, // 12: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
-	16, // 13: health.v1.Observation.no_value:type_name -> health.v1.NoValue
-	10, // 14: health.v1.ObservationTarget.node:type_name -> health.v1.NodeRef
-	11, // 15: health.v1.ObservationTarget.gpu:type_name -> health.v1.GpuRef
-	12, // 16: health.v1.ObservationTarget.nv_link_endpoint:type_name -> health.v1.NvLinkEndpointRef
-	13, // 17: health.v1.ObservationTarget.gpu_pair:type_name -> health.v1.GpuPairRef
-	11, // 18: health.v1.NvLinkEndpointRef.gpu:type_name -> health.v1.GpuRef
-	11, // 19: health.v1.GpuPairRef.source_gpu:type_name -> health.v1.GpuRef
-	11, // 20: health.v1.GpuPairRef.peer_gpu:type_name -> health.v1.GpuRef
-	0,  // 21: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
-	1,  // 22: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
-	23, // [23:23] is the sub-list for method output_type
-	23, // [23:23] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	17, // 9: health.v1.GpuInventoryEntry.field_errors:type_name -> health.v1.GpuInventoryEntry.FieldErrorsEntry
+	9,  // 10: health.v1.Observation.target:type_name -> health.v1.ObservationTarget
+	18, // 11: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
+	14, // 12: health.v1.Observation.value:type_name -> health.v1.Value
+	15, // 13: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
+	16, // 14: health.v1.Observation.no_value:type_name -> health.v1.NoValue
+	10, // 15: health.v1.ObservationTarget.node:type_name -> health.v1.NodeRef
+	11, // 16: health.v1.ObservationTarget.gpu:type_name -> health.v1.GpuRef
+	12, // 17: health.v1.ObservationTarget.nv_link_endpoint:type_name -> health.v1.NvLinkEndpointRef
+	13, // 18: health.v1.ObservationTarget.gpu_pair:type_name -> health.v1.GpuPairRef
+	11, // 19: health.v1.NvLinkEndpointRef.gpu:type_name -> health.v1.GpuRef
+	11, // 20: health.v1.GpuPairRef.source_gpu:type_name -> health.v1.GpuRef
+	11, // 21: health.v1.GpuPairRef.peer_gpu:type_name -> health.v1.GpuRef
+	0,  // 22: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
+	1,  // 23: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
+	15, // 24: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
+	25, // [25:25] is the sub-list for method output_type
+	25, // [25:25] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_health_v1_observation_proto_init() }
@@ -1564,10 +1560,6 @@ func file_health_v1_observation_proto_init() {
 	file_health_v1_observation_proto_msgTypes[2].OneofWrappers = []any{
 		(*GpuInventorySnapshot_Inventory)(nil),
 		(*GpuInventorySnapshot_CollectionError)(nil),
-	}
-	file_health_v1_observation_proto_msgTypes[4].OneofWrappers = []any{
-		(*GpuInventoryEntry_Gpu)(nil),
-		(*GpuInventoryEntry_CollectionError)(nil),
 	}
 	file_health_v1_observation_proto_msgTypes[5].OneofWrappers = []any{}
 	file_health_v1_observation_proto_msgTypes[6].OneofWrappers = []any{
@@ -1593,7 +1585,7 @@ func file_health_v1_observation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_health_v1_observation_proto_rawDesc), len(file_health_v1_observation_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   15,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
