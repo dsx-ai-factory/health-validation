@@ -409,7 +409,7 @@ Six metrics are published per run:
 | `health_validation.domain.severity` | gauge | `1`/`0` | `severity`, `category` |
 | `health_validation.check.severity` | gauge | `1`/`0` | `severity`, `check_id`, `category`, `condition_scope`, `maturity_level`, `nvidia_endorsed` |
 | `health_validation.check.skipped` | gauge | Always `1`, one per skipped check | `check_id`, `category`, `skip_reason` |
-| `health_validation.check.affected_entities` | gauge | Count of entities a check named | `check_id`, `category` |
+| `health_validation.check.affected_entities` | gauge | Count of distinct entities a check named | `check_id`, `category` |
 | `health_validation.runs` | counter (delta) | `1` | `severity` |
 
 The three severity gauges carry the severity as a **name** — `PASS`, `INFO`,
@@ -427,6 +427,12 @@ and alerting on it is `health_validation_node_severity{severity="CRITICAL"} == 1
 Emitting the zeros matters: if only the severity in effect were reported, the
 previous run's `severity="CRITICAL"` point would sit at `1` with nothing to
 contradict it, and a node that had recovered would keep reading as critical.
+
+A check that runs per entity — most GPU and NVLink checks — produces one result
+per GPU, so `check.severity` reports the **worst** severity across them and
+`check.affected_entities` counts the distinct entities named. One failing GPU
+therefore shows as a failing check; which GPU it was is in the JSON verdict's
+`affected_entities`, not in the metrics.
 
 Node identity and versions ride on the OTLP **resource**
 (`service.name`, `service.version`, `service.instance.id` = the node ID, plus

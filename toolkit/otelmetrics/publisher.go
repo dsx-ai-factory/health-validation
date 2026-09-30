@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -239,25 +238,70 @@ func (p *Publisher) record(ctx context.Context, nv health.NodeVerdict) {
 			attribute.String("category", category.String()))
 	}
 
-	for _, cv := range slices.Concat(nv.CheckResults, nv.SkippedChecks) {
-		id := []attribute.KeyValue{
+	for _, cv := range nv.SkippedChecks {
+		p.checkSkipped.Record(ctx, 1, metric.WithAttributes(
 			attribute.String("check_id", cv.CheckID),
 			attribute.String("category", cv.Category.String()),
+			attribute.String("skip_reason", cv.SkipReason.String()),
+		))
+	}
+
+	for _, r := range aggregateByCheck(nv.CheckResults) {
+		id := []attribute.KeyValue{
+			attribute.String("check_id", r.verdict.CheckID),
+			attribute.String("category", r.verdict.Category.String()),
 		}
-		if cv.Skipped {
-			p.checkSkipped.Record(ctx, 1, metric.WithAttributes(
-				append(id, attribute.String("skip_reason", cv.SkipReason.String()))...))
-			continue
-		}
-		recordSeverity(ctx, p.checkSeverity, cv.Severity, append(id,
-			attribute.String("condition_scope", cv.ConditionScope.String()),
-			attribute.String("maturity_level", cv.MaturityLevel.String()),
-			attribute.Bool("nvidia_endorsed", cv.NVIDIAEndorsed),
+		recordSeverity(ctx, p.checkSeverity, r.severity, append(id,
+			attribute.String("condition_scope", r.verdict.ConditionScope.String()),
+			attribute.String("maturity_level", r.verdict.MaturityLevel.String()),
+			attribute.Bool("nvidia_endorsed", r.verdict.NVIDIAEndorsed),
 		)...)
-		if n := len(cv.AffectedEntities); n > 0 {
+		if n := len(r.entities); n > 0 {
 			p.affectedEntities.Record(ctx, int64(n), metric.WithAttributes(id...))
 		}
 	}
+}
+
+// checkResult is one check's outcome across every entity it ran against.
+// entities precedes verdict to satisfy nogo's pointer-scan metric, not
+// largest-first ordering.
+type checkResult struct {
+	entities map[string]struct{}
+	verdict  health.CheckVerdict // first seen; supplies the check-level attributes
+	severity health.Severity     // worst across entities
+}
+
+// aggregateByCheck folds a check's per-entity verdicts into one.
+//
+// The catalog evaluates a check once per measurement that feeds it, so a
+// per-GPU check yields one verdict per GPU — all carrying the same check_id and
+// the same check-level attributes. Recorded individually they land in one gauge
+// series and the last entity written wins, so a single failing GPU among
+// healthy ones would report as PASS. Returned in first-seen order to keep the
+// exported points stable between runs.
+func aggregateByCheck(verdicts []health.CheckVerdict) []checkResult {
+	byID := make(map[string]*checkResult, len(verdicts))
+	order := make([]string, 0, len(verdicts))
+
+	for _, cv := range verdicts {
+		r, ok := byID[cv.CheckID]
+		if !ok {
+			r = &checkResult{verdict: cv, entities: map[string]struct{}{}}
+			byID[cv.CheckID] = r
+			order = append(order, cv.CheckID)
+		}
+		// Pass is the zero value and the minimum, so it is a safe identity here.
+		r.severity = health.Worse(r.severity, cv.Severity)
+		for _, e := range cv.AffectedEntities {
+			r.entities[e] = struct{}{}
+		}
+	}
+
+	out := make([]checkResult, 0, len(order))
+	for _, id := range order {
+		out = append(out, *byID[id])
+	}
+	return out
 }
 
 // recordSeverity reports one subject's severity as a name rather than an

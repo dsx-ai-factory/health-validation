@@ -534,3 +534,57 @@ func TestEnvEndpointDoesNotOverride(t *testing.T) {
 		t.Errorf("configured collector saw %d exports, want 1", len(cap.requests))
 	}
 }
+
+// perGPUVerdict is one check fanned out across four GPUs, the shape
+// evaluateAllRaw produces for a per-entity check: same check_id on every
+// verdict, severity varying by entity, and the failing GPU not last.
+func perGPUVerdict() health.NodeVerdict {
+	now := time.Now()
+	results := []health.CheckVerdict{
+		{Timestamp: now, CheckID: "gpu_ecc_errors", Category: health.GPU, Severity: health.Pass},
+		{
+			Timestamp: now, CheckID: "gpu_ecc_errors", Category: health.GPU,
+			Severity: health.Critical, AffectedEntities: []string{"GPU-1"},
+		},
+		{Timestamp: now, CheckID: "gpu_ecc_errors", Category: health.GPU, Severity: health.Pass},
+		{Timestamp: now, CheckID: "gpu_ecc_errors", Category: health.GPU, Severity: health.Pass},
+	}
+	return health.NodeVerdict{
+		SchemaVersion:    health.NodeVerdictSchemaVersion,
+		Timestamp:        now,
+		NodeID:           "gpu-node-1",
+		OverallSeverity:  health.Critical,
+		SeverityByDomain: map[health.Category]health.Severity{health.GPU: health.Critical},
+		CheckResults:     results,
+	}
+}
+
+// TestPerEntityResultsDoNotOverwrite is the regression guard for a silently
+// lost fault. A per-entity check yields one verdict per GPU, all sharing
+// check_id and every other attribute, so recording each one separately makes
+// them collide in a single gauge series: the last GPU written wins and one
+// critical GPU among healthy ones disappears.
+func TestPerEntityResultsDoNotOverwrite(t *testing.T) {
+	srv, cap := newCollector(t, http.StatusOK)
+
+	ctx := context.Background()
+	p, err := otelmetrics.New(ctx, otelmetrics.Options{Endpoint: srv.URL, Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = p.Shutdown(ctx) }()
+	if err := p.Publish(ctx, perGPUVerdict()); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	points := cap.metricsByName(t)["health_validation.check.severity"].GetGauge().GetDataPoints()
+	if got := activeSeverity(t, points, "gpu_ecc_errors"); got != "CRITICAL" {
+		t.Errorf("gpu_ecc_errors severity = %q, want CRITICAL: the failing GPU must "+
+			"survive the three passing ones recorded around it", got)
+	}
+
+	entities := cap.metricsByName(t)["health_validation.check.affected_entities"].GetGauge().GetDataPoints()
+	if len(entities) != 1 || entities[0].GetAsInt() != 1 {
+		t.Errorf("affected_entities = %v, want a single point of 1", entities)
+	}
+}
