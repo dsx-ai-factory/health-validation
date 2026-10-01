@@ -16,15 +16,14 @@ on:
     # Skip pushes that cannot change the rendered site. A denylist, so anything
     # unlisted still deploys: an allowlist would have to track every docs-build
     # input, including pnpm-lock.yaml, MODULE.bazel, .bazelrc and third_party/,
-    # and a missed one serves a stale site from a green workflow. build/,
-    # go.mod and go.work feed the Bazel graph but cannot change the generated
-    # pages, which is why they are listed.
+    # and a missed one serves a stale site from a green workflow. List only
+    # paths the docs build never reads, counting .bzl load()s and files that
+    # MODULE.bazel extensions read, such as build/, go.mod and go.work.
     paths-ignore:
       - 'toolkit/**'
       - 'collect/**'
       - 'agentkit/**'
       - 'scripts/**'
-      - 'build/**'
       - '.github/workflows/ci.yml'
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/dependabot.yml'
@@ -33,8 +32,6 @@ on:
       - '*.md'
       - 'NOTICE'
       - 'LICENSE'
-      - 'go.mod'
-      - 'go.work'
       - '.coderabbit.yaml'
       - 'commitlint.config.js'
       - 'multitool.lock.json'
