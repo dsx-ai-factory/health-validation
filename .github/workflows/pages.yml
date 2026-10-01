@@ -13,6 +13,31 @@ on:
   push:
     branches:
       - main
+    # Skip pushes that cannot change the rendered site. A denylist, so anything
+    # unlisted still deploys: an allowlist would have to track every docs-build
+    # input, including pnpm-lock.yaml, MODULE.bazel, .bazelrc and third_party/,
+    # and a missed one serves a stale site from a green workflow. build/,
+    # go.mod and go.work feed the Bazel graph but cannot change the generated
+    # pages, which is why they are listed.
+    paths-ignore:
+      - 'toolkit/**'
+      - 'collect/**'
+      - 'agentkit/**'
+      - 'scripts/**'
+      - 'build/**'
+      - '.github/workflows/ci.yml'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/dependabot.yml'
+      - '.github/CODEOWNERS'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - '*.md'
+      - 'NOTICE'
+      - 'LICENSE'
+      - 'go.mod'
+      - 'go.work'
+      - '.coderabbit.yaml'
+      - 'commitlint.config.js'
+      - 'multitool.lock.json'
   workflow_dispatch:
 
 permissions:
@@ -50,10 +75,9 @@ jobs:
         with:
           disk-cache: CI
 
-      # Deliberately no `paths:` filter on the trigger. The check reference
-      # pages are generated from catalog/**/*.go by //catalog/cmd/gencheckpages,
-      # so filtering on docs/** would silently keep serving a stale catalog
-      # after a check changes.
+      # The check reference pages are generated from catalog/**/*.go by
+      # //catalog/cmd/gencheckpages, which is why the trigger filter is a
+      # denylist: a docs/**-only allowlist would serve a stale catalog.
       #
       # Pages serves an access-controlled site from the root of a generated
       # subdomain rather than under dsx-ai-factory.github.io/<repo>/, so a
