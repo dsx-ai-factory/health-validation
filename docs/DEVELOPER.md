@@ -116,13 +116,10 @@ themselves never pass through it: `//catalog/cmd/healthdump:checks` lands as
 editing a check in `catalog/` changes the published docs. `//docs:test` builds
 the whole site and is part of `//...`, so a broken site fails `bazel test //...`.
 
-Pushes to `main` publish the site to GitHub Pages via
-[`.github/workflows/pages.yml`](../.github/workflows/pages.yml). The workflow
-skips pushes that cannot change the site, so a commit confined to `toolkit/`,
-`collect/`, `agentkit/` or the root docs does not redeploy; its `paths-ignore`
-list is a denylist, so anything unlisted still deploys. `workflow_dispatch`
-republishes on demand. Pages is enabled on this repository with Source set to
-GitHub Actions.
+Pushes to `main` are wired to publish the site to GitHub Pages via
+[`.github/workflows/pages.yml`](../.github/workflows/pages.yml), which also has a
+`workflow_dispatch` trigger for republishing on demand. Pages is enabled on this
+repository with Source set to GitHub Actions.
 
 The workflow takes `url` and `baseUrl` from `actions/configure-pages`, so the
 site is built for wherever GitHub serves it: a generated access-controlled
