@@ -1,0 +1,9 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "cpu",
+    srcs = ["signals.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/cpu",
+    visibility = ["//visibility:public"],
+    deps = ["//collect"],
+)
