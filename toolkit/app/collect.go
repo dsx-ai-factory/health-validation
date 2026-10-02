@@ -13,7 +13,9 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
 	"github.com/google/uuid"
 )
@@ -61,8 +63,11 @@ type collectSource struct {
 
 // WithCollectAdapters adds adapters that assemble domain measurements from
 // facts across all sensors registered with [App.WithCollect]. Calls append to
-// the adapter list; names must be unique across calls. Sensor and adapter
-// registration order does not matter; both lists are resolved for each run.
+// the adapter list; names must be unique across calls. Built-in domains use
+// adapters named after their catalog category (for example "cpu"), so those
+// names are reserved; a built-in adapter reads its canonical signals from
+// whichever registered sensor produces them. Sensor and adapter registration
+// order does not matter; both lists are resolved for each run.
 // Requested signals without a producer are reported as missing at run time,
 // failing only dependent checks rather than causing a registration error.
 func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
@@ -71,9 +76,16 @@ func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 }
 
 // builtinCollect returns the stock CLI's collect-backed domains. A domain
-// moves here from the legacy sensor list in runCommand when it migrates.
+// moves here from the legacy sensor list in runCommand when it migrates; its
+// With*Backend override keeps the legacy sensor instead.
 func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
-	return nil, nil
+	var sources []collect.Sensor
+	var adapters []CollectAdapter
+	if a.cpu == nil {
+		sources = append(sources, cpusensor.New(nil))
+		adapters = append(adapters, collectadapters.CPU())
+	}
+	return sources, adapters
 }
 
 // collectSensors resolves registered sensors and adapters, plus the given
@@ -104,7 +116,7 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 	var requested []string
 	adapterNames := make(map[string]bool)
 	var bindings []collectbridge.Binding
-	for _, declared := range adapters {
+	for i, declared := range adapters {
 		if isNilCollectInput(declared) {
 			return nil, fmt.Errorf("registered collect adapter cannot be nil")
 		}
@@ -113,6 +125,10 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 			return nil, fmt.Errorf("incomplete collect adapter")
 		}
 		if adapterNames[name] {
+			// Built-ins come last, so a clash at a built-in index is with a caller.
+			if i >= len(a.collectAdapters) {
+				return nil, fmt.Errorf("collect adapter name %q is reserved for a built-in domain", name)
+			}
 			return nil, fmt.Errorf("collect adapter %q is already registered", name)
 		}
 		adapterNames[name] = true

@@ -22,6 +22,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
@@ -29,6 +30,17 @@ import (
 )
 
 const customCountSignal = "test.node.custom_count"
+
+func TestCPUDomainDefaultsToCollectSensor(t *testing.T) {
+	sources, adapters := New().builtinCollect()
+	if len(sources) != 1 || sources[0].ID() != cpusensor.ID || len(adapters) != 1 || adapters[0].Name() != "cpu" {
+		t.Fatalf("default CPU domain = %v, %v; want the sysfs collect sensor and cpu adapter", sources, adapters)
+	}
+	sources, adapters = New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})).builtinCollect()
+	if len(sources) != 0 || len(adapters) != 0 {
+		t.Fatalf("WithCPUBackend kept collect CPU domain: %v, %v", sources, adapters)
+	}
+}
 
 func TestLegacyOnlyCollectionIsUnchangedByCollectPlumbing(t *testing.T) {
 	a := cadenceRunApp().WithNodeID(testNodeID).
@@ -434,7 +446,7 @@ func TestWithCollectReportsRegistrationPanics(t *testing.T) {
 }
 
 func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
-	for _, name := range []string{"nil sensor", "typed nil sensor", "nil signal", "no adapter", "nil adapter", "typed nil adapter", "lazy typed nil adapter", "incomplete adapter", "unowned signal", "duplicate producer", "duplicate adapter", "duplicate adapter across calls"} {
+	for _, name := range []string{"nil sensor", "typed nil sensor", "nil signal", "no adapter", "nil adapter", "typed nil adapter", "lazy typed nil adapter", "incomplete adapter", "unowned signal", "duplicate producer", "duplicate adapter", "duplicate adapter across calls", "built-in adapter name"} {
 		t.Run(name, func(t *testing.T) {
 			sensor := &collectAppSensor{}
 			var otherCycles []*collect.Cycle
@@ -472,6 +484,11 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 				})
 			case "duplicate adapter":
 				a.WithCollect(sensor).WithCollectAdapters(customCountAdapter(), customCountAdapter())
+			case "built-in adapter name":
+				a.cpu = nil
+				adapter := customCountAdapter()
+				adapter.name = "cpu"
+				a.WithCollect(sensor).WithCollectAdapters(adapter)
 			case "duplicate adapter across calls":
 				adapter := customCountAdapter()
 				adapter.signals = append(adapter.signals, "test.empty")
@@ -501,6 +518,9 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 			}
 			if strings.HasPrefix(name, "duplicate adapter") && !strings.Contains(stderr.String(), `collect adapter "custom-count" is already registered`) {
 				t.Fatalf("duplicate adapter did not cause setup failure: %q", stderr.String())
+			}
+			if name == "built-in adapter name" && !strings.Contains(stderr.String(), `collect adapter name "cpu" is reserved for a built-in domain`) {
+				t.Fatalf("built-in adapter name was not reserved: %q", stderr.String())
 			}
 			if len(sensor.cycles) != 0 || len(otherCycles) != 0 {
 				t.Fatal("invalid registration was measured")

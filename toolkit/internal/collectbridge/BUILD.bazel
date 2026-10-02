@@ -12,6 +12,7 @@ go_library(
         "//catalog/health",
         "//collect",
         "//collect/observation",
+        "//collect/signals/cpu",
         "//collect/signals/gpu",
         "@org_golang_google_protobuf//proto",
     ],

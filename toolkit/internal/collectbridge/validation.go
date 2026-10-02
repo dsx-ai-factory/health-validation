@@ -12,6 +12,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"google.golang.org/protobuf/proto"
 )
@@ -30,8 +31,15 @@ const (
 // declared after the whole-GPU entry. observations.targetID attributes
 // endpoint and pair targets to their source GPU, so a new kind needs a
 // matching mapping there.
+//
+// Node-scoped producers emit observation.NodeTarget(""), meaning the node
+// that produced the batch: like collect's other targets, it is host-relative,
+// and collect carries no node identity. Health Validation evaluates one node
+// per run, so the ID is not part of a measurement's identity. Output that must
+// name the node stamps the run's node ID, as observations.FromMeasurements does.
 var canonicalTargets = []canonicalTarget{
 	{kind: targetGPU, signals: gpusignals.All()},
+	{kind: targetNode, signals: cpusignals.All()},
 }
 
 type canonicalTarget struct {

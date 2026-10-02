@@ -12,6 +12,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 )
 
@@ -368,11 +369,16 @@ func TestCanonicalSignalsFor(t *testing.T) {
 	if got := CanonicalSignalsFor(health.NVLink); !slices.Equal(got, nvlinkIDs) {
 		t.Fatalf("NVLink signals = %v, want %v", got, nvlinkIDs)
 	}
-	if got := CanonicalSignalsFor(health.CPU); len(got) != 0 {
-		t.Fatalf("CPU signals = %v, want none until a canonical signal feeds it", got)
+	cpuIDs := []string{
+		cpusignals.PossibleCount.ID(),
+		cpusignals.OnlineCount.ID(),
+		cpusignals.NUMANodeOnlineCount.ID(),
+	}
+	if got := CanonicalSignalsFor(health.CPU); !slices.Equal(got, cpuIDs) {
+		t.Fatalf("CPU signals = %v, want %v", got, cpuIDs)
 	}
 	// Every mapped signal belongs to exactly one domain.
-	perDomain := append(CanonicalSignalsFor(health.GPU), CanonicalSignalsFor(health.NVLink)...)
+	perDomain := slices.Concat(CanonicalSignalsFor(health.CPU), CanonicalSignalsFor(health.GPU), CanonicalSignalsFor(health.NVLink))
 	if !slices.Equal(perDomain, CanonicalSignals()) {
 		t.Fatalf("per-domain signals %v do not partition %v", perDomain, CanonicalSignals())
 	}

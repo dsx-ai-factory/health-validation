@@ -8,10 +8,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 )
@@ -19,17 +21,32 @@ import (
 // sourceLevelGPU identifies failures not attributable to one GPU.
 const sourceLevelGPU = "gpu"
 
-// domainAdapter assembles one catalog category from canonical GPU signals.
+// domainAdapter assembles one catalog category from canonical signals.
 type domainAdapter struct {
+	errored   func(error) []health.Measurement
 	signalIDs []string
 	category  health.Category
+	// nodeScoped domains build one measurement from every source's
+	// observations. Health Validation is node-local, so a node target's ID
+	// (empty by convention) and a source-scoped failure both describe this
+	// node; grouping them per source would split one fact set into partial
+	// measurements that each fail the other's fields.
+	nodeScoped bool
+}
+
+// CPU replaces toolkit.CPUSensor for the stock CLI's CPU domain.
+func CPU() *domainAdapter {
+	return &domainAdapter{
+		category: health.CPU, signalIDs: cpusignals.All().IDs(), nodeScoped: true,
+		errored: func(err error) []health.Measurement { return []health.Measurement{cpu.ErroredCPU(err)} },
+	}
 }
 
 // GPU prepares the cutover of toolkit.GPUSensor (toolkit.NewGPUSensor).
 // The app still registers that legacy sensor; only tests use this adapter.
 // Unmapped catalog signals remain failures until cutover coverage is complete.
 func GPU() *domainAdapter {
-	return &domainAdapter{category: health.GPU, signalIDs: []string{
+	return &domainAdapter{category: health.GPU, errored: erroredGPU, signalIDs: []string{
 		gpusignals.PowerDraw.ID(),
 		gpusignals.PowerLimitRequested.ID(),
 		gpusignals.PowerLimitEnforced.ID(),
@@ -44,7 +61,7 @@ func GPU() *domainAdapter {
 // The app still registers that legacy sensor; only tests use this adapter.
 // Per-link catalog signals remain unmapped until cutover coverage is complete.
 func NVLink() *domainAdapter {
-	return &domainAdapter{category: health.NVLink, signalIDs: []string{
+	return &domainAdapter{category: health.NVLink, errored: erroredNVLink, signalIDs: []string{
 		gpusignals.FabricManagerStatus.ID(),
 		gpusignals.NVLinkFabricBandwidthDegraded.ID(),
 		gpusignals.NVLinkFabricRouteRecoveryActive.ID(),
@@ -53,40 +70,43 @@ func NVLink() *domainAdapter {
 	}}
 }
 
-func (a *domainAdapter) Name() string {
-	if a.category == health.GPU {
-		return "gpu"
-	}
-	return "nvlink"
-}
+// Name is the catalog category, which app reserves for the built-in adapter.
+func (a *domainAdapter) Name() string { return a.category.String() }
 
 func (a *domainAdapter) Signals() []string { return slices.Clone(a.signalIDs) }
 
 // Build consumes observations already validated by the bridge.
 func (a *domainAdapter) Build(obs []*observation.Observation) []health.Measurement {
-	measurements := adaptCategory(a.category, a.signalIDs, obs)
+	measurements := adaptCategory(a.category, a.signalIDs, a.nodeScoped, obs)
 	if len(measurements) == 0 {
 		return a.Errored(fmt.Errorf("no %s observations were collected", a.Name()))
 	}
 	return measurements
 }
 
-func (a *domainAdapter) Errored(err error) []health.Measurement {
-	if a.category == health.GPU {
-		return []health.Measurement{gpu.ErroredGPU(sourceLevelGPU, err, gpu.MeasurementSignals...)}
-	}
+func (a *domainAdapter) Errored(err error) []health.Measurement { return a.errored(err) }
+
+func erroredGPU(err error) []health.Measurement {
+	return []health.Measurement{gpu.ErroredGPU(sourceLevelGPU, err, gpu.MeasurementSignals...)}
+}
+
+func erroredNVLink(err error) []health.Measurement {
 	return []health.Measurement{nvlink.ErroredNVLink(sourceLevelGPU, err, nvlink.MeasurementSignals...)}
 }
 
-// adaptCategory groups observations per GPU, converts each group with
-// observations.ToMeasurements, and keeps measurements of category.
-func adaptCategory(category health.Category, signals []string, obs []*observation.Observation) []health.Measurement {
+// adaptCategory groups observations per GPU, or into one group when
+// nodeScoped, converts each group with observations.ToMeasurements, and
+// keeps measurements of category.
+func adaptCategory(category health.Category, signals []string, nodeScoped bool, obs []*observation.Observation) []health.Measurement {
 	groups := make(map[adapterKey][]*observation.Observation)
 	for _, o := range obs {
 		if !slices.Contains(signals, o.GetSignalId()) {
 			continue
 		}
-		key := adapterGroup(o)
+		var key adapterKey
+		if !nodeScoped {
+			key = adapterGroup(o)
+		}
 		groups[key] = append(groups[key], o)
 	}
 	var out []health.Measurement

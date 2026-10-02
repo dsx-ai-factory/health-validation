@@ -4,13 +4,17 @@
 package collectadapters
 
 import (
+	"errors"
 	"reflect"
 	"slices"
 	"testing"
 
+	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -199,8 +203,49 @@ func boolValue(v bool) *observation.Value {
 	return &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: v}}
 }
 
+// Two sources feeding the node-scoped CPU domain yield one measurement, also
+// when one of them failed as a whole.
+func TestCPUAdapterMergesSources(t *testing.T) {
+	observe := func(signal collect.Signal, source string, value int64) *observation.Observation {
+		return &observation.Observation{
+			SignalId: signal.ID(), Source: source, Target: observation.NodeTarget(""), ObservedAt: timestamppb.Now(),
+			Unit: signal.Unit(), Outcome: &observation.Observation_Value{Value: intValue(value)},
+		}
+	}
+	numa := cpusignals.NUMANodeOnlineCount
+	tests := []struct {
+		numa   *observation.Observation
+		name   string
+		failed []string
+		want   int64
+	}{
+		{name: "values", numa: observe(numa, "custom", 2), want: 2},
+		{
+			name:   "source-scoped failure",
+			numa:   observation.NewErrorObservation(numa.ID(), numa.Unit(), "custom", "Measure", errors.New("unavailable")),
+			failed: []string{cpu.SignalNUMANodeCount},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := only[cpu.CPUMeasurement](t, CPU().Build([]*observation.Observation{
+				observe(cpusignals.PossibleCount, "cpu.sysfs", 8),
+				observe(cpusignals.OnlineCount, "cpu.sysfs", 8),
+				tt.numa,
+			}))
+			var failed []string
+			for _, e := range got.Errors() {
+				failed = append(failed, e.FailedSignals()...)
+			}
+			if got.PossibleCPUCount != 8 || got.OnlineCPUCount != 8 || got.NUMANodeCount != tt.want || !slices.Equal(failed, tt.failed) {
+				t.Fatalf("got %+v, failed %v; want counts 8/8/%d, failed %v", got, failed, tt.want, tt.failed)
+			}
+		})
+	}
+}
+
 func TestAdapterRequestsMatchConverterMappings(t *testing.T) {
-	got := append(GPU().Signals(), NVLink().Signals()...)
+	got := slices.Concat(GPU().Signals(), NVLink().Signals(), CPU().Signals())
 	want := observations.CanonicalSignals()
 	slices.Sort(got)
 	slices.Sort(want)

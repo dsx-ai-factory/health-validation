@@ -170,7 +170,7 @@ The dependency direction is strict: `catalog → (nothing)`, `toolkit → catalo
 
 **`catalog/internal/evaluation/`** — orchestrates a single check evaluation: filters by architecture/context, resolves threshold overrides, calls CEL, returns `CheckVerdict`.
 
-**`toolkit/`** — integration layer for consumers. Defines `Sensor`, the per-domain backend interfaces, `Collect()` (runs sensors → evaluates catalog → node verdict), the `SysfsCPU` file backend, the `Journalctl` command backend, and mock helpers for testing.
+**`toolkit/`** — integration layer for consumers. Defines `Sensor`, the per-domain backend interfaces, `Collect()` (runs sensors → evaluates catalog → node verdict), the deprecated `SysfsCPU` file backend (the CLI collects CPU through `collect/sensors/cpu`), the `Journalctl` command backend, and mock helpers for testing.
 
 #### Data flow
 
@@ -196,7 +196,7 @@ The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PAS
 Two distinct concepts in `toolkit/`:
 
 - **Sensor** — implements `toolkit.Sensor`, holds a backend, and produces `[]health.Measurement` for `Collect`. `GPUSensor` produces per-GPU measurements; `CPUSensor` produces one host-wide logical-CPU measurement.
-- **Backend** — a data source for one sensor. Defined as a sensor-facing interface in `toolkit/`. `SysfsCPU` is a context-aware file backend in `toolkit/`; `NVMLBackend` lives in `toolkit/nvml/` because it is gated on linux + cgo + libnvidia-ml.
+- **Backend** — a data source for one sensor. Defined as a sensor-facing interface in `toolkit/`. `SysfsCPU` is a deprecated context-aware file backend in `toolkit/`, superseded in the CLI by the `collect/sensors/cpu` collect sensor; `NVMLBackend` lives in `toolkit/nvml/` because it is gated on linux + cgo + libnvidia-ml.
 
 #### Adding a sensor for a new domain
 

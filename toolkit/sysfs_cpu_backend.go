@@ -25,6 +25,9 @@ type sysfsCPUBackend struct {
 
 // SysfsCPU returns a backend that collects CPU availability and NUMA topology
 // from sysfs.
+//
+// Deprecated: toolkit/app collects CPU topology through the collect sensor in
+// collect/sensors/cpu. SysfsCPU is removed with the other legacy backends.
 func SysfsCPU() CPUBackend {
 	return &sysfsCPUBackend{readFile: os.ReadFile}
 }

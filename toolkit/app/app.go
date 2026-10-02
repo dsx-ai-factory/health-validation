@@ -93,8 +93,8 @@ type App struct {
 	hostname func() (string, error)
 	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
 	// overrides set by the matching With*Backend setter. A nil override uses the
-	// default: the shared host NVML backend for gpu/node/nvlink,
-	// [toolkit.SysfsCPU] for cpu, [toolkit.Journalctl] for xid, and
+	// default: the shared host NVML backend for gpu/node/nvlink, the sysfs
+	// collect sensor for cpu, [toolkit.Journalctl] for xid, and
 	// [toolkit.JournalctlRDMALinkFlap] for rdmaLinkFlap. The generic ib backend
 	// has no default and is opt-in.
 	gpu          toolkit.GPUBackend
@@ -169,10 +169,10 @@ func (a *App) WithNVLinkBackend(b toolkit.NVLinkBackend) *App {
 	return a
 }
 
-// WithCPUBackend overrides the CPU sensor's backend (default:
-// [toolkit.SysfsCPU], which reports the Linux kernel's possible and online
-// logical CPU counts and its online NUMA node count). The override is
-// caller-owned.
+// WithCPUBackend replaces the CPU domain's default collect sensor, which
+// reports the Linux kernel's possible and online logical CPU counts and its
+// online NUMA node count from sysfs, with a legacy toolkit backend. The
+// override is caller-owned.
 func (a *App) WithCPUBackend(b toolkit.CPUBackend) *App {
 	a.cpu = b
 	return a
@@ -391,10 +391,6 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	if nvlink == nil {
 		nvlink = a.host.nvlinkBackend()
 	}
-	cpu := a.cpu
-	if cpu == nil {
-		cpu = toolkit.SysfsCPU()
-	}
 	xid := a.xid
 	if xid == nil {
 		xid = toolkit.Journalctl()
@@ -408,7 +404,6 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		toolkit.NewGPUSensor(gpu),
 		toolkit.NewNodeSensor(node),
 		toolkit.NewNVLinkSensor(nvlink),
-		toolkit.NewCPUSensor(cpu),
 		toolkit.NewXidSensor(xid),
 		toolkit.NewRDMALinkFlapSensor(rdmaLinkFlap),
 	}
@@ -418,6 +413,10 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	// its own checks) via WithIBBackend.
 	if a.ib != nil {
 		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
+	}
+	// Without an override, the CPU domain comes from builtinCollect.
+	if a.cpu != nil {
+		sensors = append(sensors, toolkit.NewCPUSensor(a.cpu))
 	}
 	builtinSources, builtinAdapters := a.builtinCollect()
 	collectSensors, err := a.collectSensors(timeout, builtinSources, builtinAdapters)
