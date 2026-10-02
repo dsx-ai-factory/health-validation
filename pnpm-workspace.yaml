@@ -24,3 +24,19 @@ overrides:
   # @docusaurus/core, and serve-handler pins minimatch 3.1.5. Drop this once
   # serve-handler moves off minimatch 3.
   'minimatch@3>brace-expansion': 1.1.21
+  # CVE-2026-76844 (high): webpack-dev-middleware's getFilenameFromUrl lets a
+  # request escape the output directory when publicPath lacks a trailing slash.
+  # Used only by the docs dev server (bazel run //docs:serve), reaching us
+  # through webpack-dev-server 5.2.6 under @docusaurus/core. 8.3.0 is outside
+  # webpack-dev-server 5's declared ^7.4.2, but webpack-dev-server 5 uses only
+  # middleware APIs that 8.x still exports. Drop this once Docusaurus moves to
+  # webpack-dev-server 6, which requires 8.x itself.
+  'webpack-dev-server@5>webpack-dev-middleware': 8.3.0
+  # CVE-2026-41907 (moderate): uuid's v3, v5 and v6 skip bounds checks on a
+  # caller-supplied buffer. Not reached here: sockjs only calls v4, and
+  # webpack-dev-server loads sockjs only when webSocketServer is "sockjs",
+  # which Docusaurus does not set. sockjs 0.3.24, its last release, pins
+  # ^8.3.2. 11.1.1 is the newest uuid that still ships CommonJS, which sockjs
+  # requires. Drop this once Docusaurus moves to webpack-dev-server 6, which
+  # no longer depends on sockjs.
+  'sockjs>uuid': 11.1.1
