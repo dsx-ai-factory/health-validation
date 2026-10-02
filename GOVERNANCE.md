@@ -2,7 +2,7 @@
 
 ## Maintainers
 
-NVIDIA Health Validation is maintained by the nvidia/health-validation-maintainers team at NVIDIA. See
+NVIDIA Health Validation is maintained by the dsx-ai-factory/health-validation-sw-maintainers team at NVIDIA. See
 [`MAINTAINERS.md`](MAINTAINERS.md) for the current list of maintainers and
 their GitHub handles.
 
