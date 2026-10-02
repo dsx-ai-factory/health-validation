@@ -11,8 +11,8 @@ type unsupportedNative struct{}
 
 func newNative(StandaloneOptions) nativeAPI { return unsupportedNative{} }
 
-func (unsupportedNative) Init() (func(), error)                { return nil, unsupportedError() }
-func (unsupportedNative) SupportedGPUIndices() ([]uint, error) { return nil, unsupportedError() }
+func (unsupportedNative) Init() (func(), error)          { return nil, unsupportedError() }
+func (unsupportedNative) AllGPUIndices() ([]uint, error) { return nil, unsupportedError() }
 func (unsupportedNative) ReadGPUUUIDs([]uint) (map[uint]GPUIdentityEntry, error) {
 	return nil, unsupportedError()
 }

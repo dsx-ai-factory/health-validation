@@ -32,6 +32,7 @@ type fakeNative struct {
 	uuidStarted       chan struct{}
 	inventoryStarted  chan struct{}
 	inventory         map[uint]*observation.GPUDevice
+	inventoryEntries  map[uint]*observation.GPUInventoryEntry
 	releaseRead       chan struct{}
 	gpuIndices        []uint
 	enumerationCalls  atomic.Int32
@@ -49,7 +50,7 @@ func (native *fakeNative) Init() (func(), error) {
 	return func() { native.cleanupCalls.Add(1) }, nil
 }
 
-func (native *fakeNative) SupportedGPUIndices() ([]uint, error) {
+func (native *fakeNative) AllGPUIndices() ([]uint, error) {
 	native.enumerationCalls.Add(1)
 	if native.enumerationErr != nil {
 		return nil, native.enumerationErr
@@ -88,6 +89,9 @@ func (native *fakeNative) ReadGPUInventory(gpuIndices []uint) (map[uint]*observa
 	}
 	if native.inventoryErr != nil {
 		return nil, native.inventoryErr
+	}
+	if native.inventoryEntries != nil {
+		return native.inventoryEntries, nil
 	}
 	gpus := make(map[uint]*observation.GPUInventoryEntry, len(gpuIndices))
 	for _, gpuIndex := range gpuIndices {
@@ -338,6 +342,59 @@ func TestInventoryEmptyEnumerationSkipsQuery(t *testing.T) {
 	snapshot := source.GPUInventory(context.Background(), cycle, identities)
 	if snapshot.GetInventory() == nil || len(snapshot.GetInventory().GetEntries()) != 0 || native.inventoryCalls.Load() != 0 {
 		t.Fatalf("Inventory() = %+v, inventory calls = %d", snapshot, native.inventoryCalls.Load())
+	}
+}
+
+func TestInventoryPreservesLostGPUs(t *testing.T) {
+	for _, allLost := range []bool{false, true} {
+		t.Run(fmt.Sprintf("all_lost_%t", allLost), func(t *testing.T) {
+			native := &fakeNative{
+				gpuIndices:       []uint{2, 7},
+				gpuUUIDs:         map[uint]string{},
+				inventoryEntries: map[uint]*observation.GPUInventoryEntry{},
+			}
+			for _, gpuIndex := range native.gpuIndices {
+				entry := &observation.GPUInventoryEntry{}
+				if allLost || gpuIndex == 7 {
+					entry.CollectionError = &observation.CollectionError{
+						Source: Name, Operation: "inventory",
+						SourceError: "DcgmEntityStatusLost", Category: observation.CollectionErrorCategoryUnavailable,
+					}
+				} else {
+					native.gpuUUIDs[gpuIndex] = "GPU-2"
+				}
+				native.inventoryEntries[gpuIndex] = entry
+			}
+			source := newSource(native, &sync.Mutex{})
+			cycle := newTestCycle(t, "lost-inventory")
+			identities, failure := source.GPUIdentities(context.Background(), cycle)
+			if failure != nil || len(identities) != 2 {
+				t.Fatalf("discovery lost membership: %+v, %v", identities, failure)
+			}
+			snapshot := source.GPUInventory(context.Background(), cycle, identities)
+			entries := snapshot.GetInventory().GetEntries()
+			if snapshot.GetCollectionError() != nil || len(entries) != 2 {
+				t.Fatalf("inventory lost membership: %+v", snapshot)
+			}
+			for position, entry := range entries {
+				gpuIndex := native.gpuIndices[position]
+				if entry.GetSourceIndex() != uint32(gpuIndex) {
+					t.Fatalf("index lost: %+v", entry)
+				}
+				if allLost || gpuIndex == 7 {
+					if entry.GetCollectionError().GetSourceError() != "DcgmEntityStatusLost" || entry.GetFieldErrors()["uuid"] == nil {
+						t.Fatalf("lost GPU errors missing: %+v", entry)
+					}
+				} else if entry.GetCollectionError() != nil || entry.GetGpu().GetUuid() != "GPU-2" {
+					t.Fatalf("healthy GPU changed: %+v", entry)
+				}
+			}
+			if err := observation.ValidateBatch(&observation.ObservationBatch{Inventory: &observation.HardwareInventory{
+				GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot},
+			}}); err != nil {
+				t.Fatalf("inventory snapshot is invalid: %v", err)
+			}
+		})
 	}
 }
 

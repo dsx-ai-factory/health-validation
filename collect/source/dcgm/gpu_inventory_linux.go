@@ -29,12 +29,45 @@ var inventoryFields = []godcgm.Short{
 	godcgm.DCGM_FI_CUDA_DRIVER_VERSION,
 }
 
-func (*nativeLibrary) ReadGPUInventory(gpuIndices []uint) (map[uint]*observation.GPUInventoryEntry, error) {
-	values, err := readGPUFields(gpuIndices, inventoryFields)
-	if err != nil {
-		return nil, err
+func (library *nativeLibrary) ReadGPUInventory(gpuIndices []uint) (map[uint]*observation.GPUInventoryEntry, error) {
+	entries := make(map[uint]*observation.GPUInventoryEntry, len(gpuIndices))
+	for _, gpuIndex := range gpuIndices {
+		entries[gpuIndex] = &observation.GPUInventoryEntry{
+			SourceIndex:     uint32(gpuIndex),
+			CollectionError: gpuInventoryStatusError(gpuIndex, library.gpuStatus(gpuIndex)),
+		}
 	}
-	return decodeGPUInventoryFields(gpuIndices, inventoryFields, values), nil
+	values, err := library.readFields(gpuIndices, inventoryFields)
+	if err != nil {
+		failure := collectionError(err)
+		failure.Source, failure.Operation = Name, "inventory"
+		for _, entry := range entries {
+			if entry.CollectionError == nil || entry.CollectionError.GetSourceError() == "DcgmEntityStatusUnknown" {
+				entry.CollectionError = &failure
+			}
+		}
+		return entries, nil
+	}
+	decoded := decodeGPUInventoryFields(gpuIndices, inventoryFields, values)
+	for gpuIndex, entry := range decoded {
+		entry.CollectionError = entries[gpuIndex].CollectionError
+	}
+	return decoded, nil
+}
+
+func gpuInventoryStatusError(gpuIndex uint, status godcgm.EntityStatus) *observation.CollectionError {
+	if status == godcgm.EntityStatusOk || status == godcgm.EntityStatusFake {
+		return nil
+	}
+	category := observation.CollectionErrorCategoryUnavailable
+	if status == godcgm.EntityStatusUnsupported {
+		category = observation.CollectionErrorCategoryUnsupported
+	}
+	return &observation.CollectionError{
+		Source: Name, Operation: "inventory", Category: category,
+		SourceError: fmt.Sprintf("DcgmEntityStatus%s", status.String()),
+		Detail:      fmt.Sprintf("DCGM GPU index %d has status %s", gpuIndex, status),
+	}
 }
 
 func (*nativeLibrary) ReadGPUUUIDs(gpuIndices []uint) (map[uint]GPUIdentityEntry, error) {

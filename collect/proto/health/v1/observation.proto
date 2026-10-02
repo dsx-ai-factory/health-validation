@@ -52,13 +52,13 @@ message GpuInventoryEntry {
 
   // Known identity and successfully read attributes, including partial records.
   GpuDevice gpu = 2;
-  // Failure of the enrichment query; known identity is still retained in gpu.
+  // GPU unavailable (e.g. Lost), or enrichment query failure.
+  // Known identity and available attributes are still retained in gpu.
   CollectionError collection_error = 3;
 
   // Errors for attempted attributes, keyed by GpuDevice proto field name
   // (e.g. "bus_id"). May accompany gpu; an errored field has no value.
   // An absent value without an error means the attribute was not attempted.
-  // collection_error means the entire enrichment query failed.
   map<string, CollectionError> field_errors = 4;
 }
 

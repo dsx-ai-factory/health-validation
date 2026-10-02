@@ -406,12 +406,12 @@ type GpuInventoryEntry struct {
 	SourceIndex uint32 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
 	// Known identity and successfully read attributes, including partial records.
 	Gpu *GpuDevice `protobuf:"bytes,2,opt,name=gpu,proto3" json:"gpu,omitempty"`
-	// Failure of the enrichment query; known identity is still retained in gpu.
+	// GPU unavailable (e.g. Lost), or enrichment query failure.
+	// Known identity and available attributes are still retained in gpu.
 	CollectionError *CollectionError `protobuf:"bytes,3,opt,name=collection_error,json=collectionError,proto3" json:"collection_error,omitempty"`
 	// Errors for attempted attributes, keyed by GpuDevice proto field name
 	// (e.g. "bus_id"). May accompany gpu; an errored field has no value.
 	// An absent value without an error means the attribute was not attempted.
-	// collection_error means the entire enrichment query failed.
 	FieldErrors   map[string]*CollectionError `protobuf:"bytes,4,rep,name=field_errors,json=fieldErrors,proto3" json:"field_errors,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

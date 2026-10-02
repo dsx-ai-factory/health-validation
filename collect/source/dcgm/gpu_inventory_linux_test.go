@@ -7,10 +7,126 @@ package dcgm
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
+	"slices"
 	"testing"
 
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
+	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
+
+func TestReadGPUInventoryPreservesStatusAndQueryErrors(t *testing.T) {
+	for _, queryFails := range []bool{false, true} {
+		t.Run(fmt.Sprintf("query_fails_%t", queryFails), func(t *testing.T) {
+			indices := []uint{2, 7, 9}
+			var checked []uint
+			library := &nativeLibrary{
+				gpuStatus: func(gpuIndex uint) godcgm.EntityStatus {
+					checked = append(checked, gpuIndex)
+					switch gpuIndex {
+					case 7:
+						return godcgm.EntityStatusLost
+					case 9:
+						return godcgm.EntityStatusUnknown
+					default:
+						return godcgm.EntityStatusOk
+					}
+				},
+				readFields: func(gpuIndices []uint, fields []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
+					if !slices.Equal(gpuIndices, indices) || !slices.Equal(fields, inventoryFields) {
+						t.Fatalf("unexpected read: %v, %v", gpuIndices, fields)
+					}
+					if queryFails {
+						return nil, &dcgmError{sourceError: "DCGM_ST_NO_PERMISSION", category: observation.CollectionErrorCategoryPermissionDenied, detail: "No permission"}
+					}
+					model := "H100"
+					return []godcgm.FieldValue_v2{{EntityGroupId: godcgm.FE_GPU, EntityID: 7, FieldID: godcgm.DCGM_FI_DEV_NAME, FieldType: godcgm.DCGM_FT_STRING, StringValue: &model}}, nil
+				},
+			}
+			entries, err := library.ReadGPUInventory(indices)
+			if err != nil || len(entries) != len(indices) || !slices.Equal(checked, indices) {
+				t.Fatalf("membership or checks lost: %v, %v, %v", entries, checked, err)
+			}
+			for _, gpuIndex := range indices {
+				entry := entries[gpuIndex]
+				if entry.GetSourceIndex() != uint32(gpuIndex) {
+					t.Fatalf("index lost: %+v", entry)
+				}
+				failure := entry.GetCollectionError()
+				if gpuIndex == 7 {
+					if failure.GetSourceError() != "DcgmEntityStatusLost" || failure.GetCategory() != observation.CollectionErrorCategoryUnavailable {
+						t.Fatalf("Lost status replaced: %v", failure)
+					}
+				} else if queryFails {
+					if failure.GetSourceError() != "DCGM_ST_NO_PERMISSION" || failure.GetCategory() != observation.CollectionErrorCategoryPermissionDenied {
+						t.Fatalf("query failure hidden by status: %v", failure)
+					}
+				} else if gpuIndex == 9 {
+					if failure.GetSourceError() != "DcgmEntityStatusUnknown" {
+						t.Fatalf("unknown status lost: %v", failure)
+					}
+				} else if failure != nil {
+					t.Fatalf("healthy status has an error: %v", failure)
+				}
+				if failure != nil && (failure.GetSource() != Name || failure.GetOperation() != "inventory") {
+					t.Fatalf("error attribution lost: %v", failure)
+				}
+			}
+			if !queryFails && entries[7].GetGpu().GetModel() != "H100" {
+				t.Fatalf("Lost GPU's available attributes discarded: %+v", entries[7])
+			}
+		})
+	}
+}
+
+func TestReadGPUInventoryAllLost(t *testing.T) {
+	indices := []uint{2, 7}
+	library := &nativeLibrary{
+		gpuStatus: func(uint) godcgm.EntityStatus { return godcgm.EntityStatusLost },
+		readFields: func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
+			return nil, errors.New("attributes unavailable")
+		},
+	}
+	entries, err := library.ReadGPUInventory(indices)
+	if err != nil || len(entries) != len(indices) {
+		t.Fatalf("all-Lost membership discarded: %v, %v", entries, err)
+	}
+	for _, gpuIndex := range indices {
+		if entries[gpuIndex].GetCollectionError().GetSourceError() != "DcgmEntityStatusLost" {
+			t.Fatalf("Lost error discarded: %v", entries[gpuIndex])
+		}
+	}
+}
+
+func TestGPUInventoryStatusError(t *testing.T) {
+	cases := []struct {
+		sourceError string
+		status      godcgm.EntityStatus
+		category    observation.CollectionErrorCategory
+	}{
+		{status: godcgm.EntityStatusOk},
+		{status: godcgm.EntityStatusFake},
+		{status: godcgm.EntityStatusLost, sourceError: "DcgmEntityStatusLost", category: observation.CollectionErrorCategoryUnavailable},
+		{status: godcgm.EntityStatusUnknown, sourceError: "DcgmEntityStatusUnknown", category: observation.CollectionErrorCategoryUnavailable},
+		{status: godcgm.EntityStatusUnsupported, sourceError: "DcgmEntityStatusUnsupported", category: observation.CollectionErrorCategoryUnsupported},
+		{status: godcgm.EntityStatusInaccessible, sourceError: "DcgmEntityStatusInaccessible", category: observation.CollectionErrorCategoryUnavailable},
+		{status: godcgm.EntityStatusDisabled, sourceError: "DcgmEntityStatusDisabled", category: observation.CollectionErrorCategoryUnavailable},
+		{status: godcgm.EntityStatusDetached, sourceError: "DcgmEntityStatusDetached", category: observation.CollectionErrorCategoryUnavailable},
+	}
+	for _, test := range cases {
+		t.Run(test.status.String(), func(t *testing.T) {
+			failure := gpuInventoryStatusError(7, test.status)
+			if test.sourceError == "" {
+				if failure != nil {
+					t.Fatalf("healthy status has an error: %v", failure)
+				}
+			} else if failure.GetSourceError() != test.sourceError || failure.GetCategory() != test.category {
+				t.Fatalf("status error = %v", failure)
+			}
+		})
+	}
+}
 
 func TestDecodeGPUUUIDs(t *testing.T) {
 	field := func(gpuIndex uint, fieldID godcgm.Short, value string) godcgm.FieldValue_v2 {

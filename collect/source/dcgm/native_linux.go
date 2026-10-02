@@ -17,14 +17,16 @@ import (
 )
 
 type nativeLibrary struct {
-	options StandaloneOptions
+	readFields func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error)
+	gpuStatus  func(uint) godcgm.EntityStatus
+	options    StandaloneOptions
 }
 
 // metricWatchSequence keeps DCGM group names unique within the process.
 var metricWatchSequence atomic.Uint64
 
 func newNative(options StandaloneOptions) nativeAPI {
-	return &nativeLibrary{options: options}
+	return &nativeLibrary{options: options, readFields: readGPUFields, gpuStatus: godcgm.GetGPUStatus}
 }
 
 func (library *nativeLibrary) Init() (func(), error) {
@@ -41,8 +43,9 @@ func (library *nativeLibrary) Init() (func(), error) {
 	return cleanup, nil
 }
 
-func (*nativeLibrary) SupportedGPUIndices() ([]uint, error) {
-	gpuIndices, err := godcgm.GetSupportedDevices()
+func (*nativeLibrary) AllGPUIndices() ([]uint, error) {
+	// No supported-only filter: retain GPUs that DCGM already marks Lost.
+	gpuIndices, err := godcgm.GetEntityGroupEntities(godcgm.FE_GPU)
 	if err != nil {
 		return nil, dcgmErrorFromError(err)
 	}

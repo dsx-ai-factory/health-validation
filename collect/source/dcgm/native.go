@@ -9,7 +9,7 @@ import "github.com/dsx-ai-factory/health-validation/collect/observation"
 // interface. The unsupported implementation returns a collection error.
 type nativeAPI interface {
 	Init() (func(), error)
-	SupportedGPUIndices() ([]uint, error)
+	AllGPUIndices() ([]uint, error)
 	ReadGPUUUIDs([]uint) (map[uint]GPUIdentityEntry, error)
 	ReadGPUInventory([]uint) (map[uint]*observation.GPUInventoryEntry, error)
 	WatchMetrics([]string) (func() error, error)

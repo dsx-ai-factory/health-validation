@@ -34,7 +34,7 @@ func (source *Source) GPUIdentities(ctx context.Context, currentCycle *collect.C
 		if contextErr := callContext.Err(); contextErr != nil {
 			return nil, contextErr
 		}
-		return source.native.SupportedGPUIndices()
+		return source.native.AllGPUIndices()
 	})
 	if err != nil {
 		return nil, source.gpuCollectionError("identity", err)
