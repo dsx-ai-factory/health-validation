@@ -8,6 +8,9 @@
 # and report the package defaults.
 #
 # Version rules:
+#   * HEALTH_VALIDATION_TOOLKIT_VERSION and HEALTH_VALIDATION_CATALOG_VERSION,
+#     when set, are stamped as given. CI's release-metadata job resolves both
+#     once and every later stamped build in the run reuses them.
 #   * A GitHub tag event named toolkit/vX.Y.Z (or toolkit/vX.Y.Z-rcN) stamps
 #     that semantic version into the operator.
 #   * Every other build gets a Go pseudo-version derived from the most recent
@@ -80,32 +83,46 @@ pseudo_version() {
 	printf 'v%s.%s.%s-0.%s-%s\n' "$major" "$minor" "$((10#$patch + 1))" "$pseudo_ts" "$short"
 }
 
-event_tag=""
-if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-	event_tag="${GITHUB_REF_NAME:-}"
-fi
+semver_re='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
 
-if [[ "$event_tag" =~ ^toolkit/v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
-	# The module prefix belongs to the Git tag, not the embedded version.
-	toolkit_version="${event_tag#toolkit/}"
-elif [[ -z "$event_tag" || "$event_tag" =~ ^catalog/v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
-	# Main and catalog-release builds advance the patch component of the most
-	# recent toolkit release.
-	# A repository with no toolkit release starts from v0.0.0.
-	toolkit_version="$(pseudo_version toolkit)"
+if [[ -n "${HEALTH_VALIDATION_TOOLKIT_VERSION:-}${HEALTH_VALIDATION_CATALOG_VERSION:-}" ]]; then
+	# CI resolves versions once and passes them to every later build. Resolving
+	# again per job would let a tag pushed mid-run stamp a binary with a version
+	# other than the one its image is published under.
+	toolkit_version="${HEALTH_VALIDATION_TOOLKIT_VERSION:-}"
+	catalog_version="${HEALTH_VALIDATION_CATALOG_VERSION:-}"
+	if [[ ! "$toolkit_version" =~ $semver_re || ! "$catalog_version" =~ $semver_re ]]; then
+		echo "workspace_status_release: HEALTH_VALIDATION_TOOLKIT_VERSION and HEALTH_VALIDATION_CATALOG_VERSION must both be set to vX.Y.Z versions; got '$toolkit_version' and '$catalog_version'" >&2
+		exit 1
+	fi
 else
-	echo "workspace_status_release: expected toolkit/vX.Y.Z or catalog/vX.Y.Z, optionally followed by -rcN; got '$event_tag'" >&2
-	exit 1
-fi
+	event_tag=""
+	if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+		event_tag="${GITHUB_REF_NAME:-}"
+	fi
 
-# A catalog release remains the embedded version across toolkit-only commits.
-# Once catalog/ changes, stamped builds use a catalog pseudo-version.
-catalog_release_tag="$(git describe --tags --abbrev=0 --match 'catalog/v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)"
-if [[ "$catalog_release_tag" =~ ^catalog/v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]] &&
-	git diff --quiet "$catalog_release_tag" HEAD -- catalog; then
-	catalog_version="${catalog_release_tag#catalog/}"
-else
-	catalog_version="$(pseudo_version catalog)"
+	if [[ "$event_tag" =~ ^toolkit/v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+		# The module prefix belongs to the Git tag, not the embedded version.
+		toolkit_version="${event_tag#toolkit/}"
+	elif [[ -z "$event_tag" || "$event_tag" =~ ^catalog/v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+		# Main and catalog-release builds advance the patch component of the most
+		# recent toolkit release.
+		# A repository with no toolkit release starts from v0.0.0.
+		toolkit_version="$(pseudo_version toolkit)"
+	else
+		echo "workspace_status_release: expected toolkit/vX.Y.Z or catalog/vX.Y.Z, optionally followed by -rcN; got '$event_tag'" >&2
+		exit 1
+	fi
+
+	# A catalog release remains the embedded version across toolkit-only commits.
+	# Once catalog/ changes, stamped builds use a catalog pseudo-version.
+	catalog_release_tag="$(git describe --tags --abbrev=0 --match 'catalog/v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)"
+	if [[ "$catalog_release_tag" =~ ^catalog/v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]] &&
+		git diff --quiet "$catalog_release_tag" HEAD -- catalog; then
+		catalog_version="${catalog_release_tag#catalog/}"
+	else
+		catalog_version="$(pseudo_version catalog)"
+	fi
 fi
 
 echo "STABLE_HEALTH_VALIDATION_VERSION ${toolkit_version}"

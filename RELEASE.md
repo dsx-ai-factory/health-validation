@@ -78,7 +78,10 @@ OCI index and pushes it to `ghcr.io/dsx-ai-factory/health-validation`:
 The version and commit metadata baked into each image (and reported by
 `health-validation version`) comes from `tools/workspace_status_release.sh`,
 which CI invokes via `--config=release-ci`; a plain local build stays
-unstamped and reports the package's "dev" defaults.
+unstamped and reports the package's "dev" defaults. CI's `release-metadata`
+job resolves the versions once, and every later stamped build in the run reuses
+them, so a tag pushed mid-run cannot split an image's tag from its embedded
+version.
 
 No binary/archive artifacts are attached to GitHub releases — the container
 image is the only published release artifact today. There are no user-facing

@@ -130,6 +130,8 @@ jobs:
         env:
           EXPECTED_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
           EXPECTED_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
+          HEALTH_VALIDATION_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
+          HEALTH_VALIDATION_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
         run: |
           set -euo pipefail
           bazel build --config=release-ci --platforms=//build/platforms:linux_amd64 \
@@ -166,6 +168,8 @@ jobs:
         env:
           EXPECTED_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
           EXPECTED_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
+          HEALTH_VALIDATION_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
+          HEALTH_VALIDATION_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
         run: |
           set -euo pipefail
           bazel build --config=release-ci --platforms=//build/platforms:linux_arm64 \
@@ -294,6 +298,8 @@ jobs:
         env:
           IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
           EXPECTED_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
+          HEALTH_VALIDATION_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
+          HEALTH_VALIDATION_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
         run: |
           version="$EXPECTED_TOOLKIT_VERSION"
           if [[ -z "$version" ]]; then
