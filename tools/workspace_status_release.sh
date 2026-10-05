@@ -11,13 +11,17 @@
 #   * A GitHub tag event named toolkit/vX.Y.Z (or toolkit/vX.Y.Z-rcN) stamps
 #     that semantic version into the operator.
 #   * Every other build gets a Go pseudo-version derived from the most recent
-#     toolkit release, the commit time, and the 12-character commit SHA.
+#     toolkit release, the commit time, and the 12-character commit SHA. A
+#     final release of the same MAJOR.MINOR line tagged on a release branch
+#     counts as most recent even though HEAD cannot reach it.
 #   * Catalog sources matching their latest release keep that semantic version;
 #     changed sources get a pseudo-version, including in toolkit releases.
 #   * Unstamped local builds retain the packages' development identifiers.
 #
-# The pseudo-version is deterministic for a commit, sorts after its base release
-# and before the next release, and identifies the exact main-branch build. Image
+# The pseudo-version is deterministic for a commit and a set of tags, sorts
+# after its base release and before the next release, and identifies the exact
+# main-branch build. Tagging a final release on a release branch moves main's
+# later builds from vX.Y.Z-rcN.0.* to vX.Y.(Z+1)-0.*. Image
 # publishing removes its leading v and also applies latest on main.
 
 set -euo pipefail
@@ -31,21 +35,48 @@ short="$(git rev-parse --short=12 HEAD)"
 pseudo_ts="$(TZ=UTC git show -s --date=format-local:%Y%m%d%H%M%S --format=%cd HEAD)"
 build_date="$(TZ=UTC git show -s --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd HEAD)"
 
+# Prints the patch number of the newest final release in a module's MAJOR.MINOR
+# line that HEAD does not predate. Finals are tagged on release/vX.Y after QA,
+# so main never reaches them; without this, main would stay a prerelease of the
+# RC it branched from and sort below a version that has already shipped.
+latest_line_release() {
+	local module="$1" line="$2" tag
+
+	while IFS= read -r tag; do
+		[[ "$tag" =~ ^${module}/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+		# A release built on top of HEAD is in HEAD's future, not its past.
+		git merge-base --is-ancestor HEAD "${tag}^{commit}" && continue
+		printf '%s\n' "${tag##*.}"
+		return
+	done < <(git tag --list "${module}/v${line}.*" --sort=-v:refname)
+}
+
 pseudo_version() {
 	local module="$1"
-	local base major minor patch
+	local base major minor patch released rc=0
 
 	base="$(git describe --tags --abbrev=0 --match "${module}/v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)"
 	base="${base:-${module}/v0.0.0}"
 	base="${base#"${module}/v"}"
+
+	IFS=. read -r major minor patch <<<"$base"
+	if [[ "$patch" =~ ^[0-9]+-rc[0-9]+$ ]]; then
+		rc=1
+	fi
+	patch="${patch%%[-+]*}"
+
+	released="$(latest_line_release "$module" "${major}.${minor}")"
+	if [[ -n "$released" ]] &&
+		((10#$released > 10#$patch || (10#$released == 10#$patch && rc))); then
+		patch="$released"
+		rc=0
+	fi
+
 	# Commits after an RC remain prereleases of the same final version.
-	if [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]]; then
+	if ((rc)); then
 		printf 'v%s.0.%s-%s\n' "$base" "$pseudo_ts" "$short"
 		return
 	fi
-
-	IFS=. read -r major minor patch <<<"$base"
-	patch="${patch%%[-+]*}"
 	printf 'v%s.%s.%s-0.%s-%s\n' "$major" "$minor" "$((10#$patch + 1))" "$pseudo_ts" "$short"
 }
 
