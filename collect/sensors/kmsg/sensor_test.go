@@ -36,8 +36,10 @@ func TestMeasure(t *testing.T) {
 	require.NoError(t, observation.ValidateBatch(batch))
 	require.Equal(t, "cycle", batch.CollectionId)
 	require.Len(t, batch.Observations, 6)
-	require.Equal(t, "boot/1", batch.Observations[0].GetEntity().GetId())
-	require.Equal(t, "boot/2", batch.Observations[3].GetEntity().GetId())
+	require.Equal(t, "boot", batch.Observations[0].GetTarget().GetKernelRecord().GetBootId())
+	require.Equal(t, int64(1), batch.Observations[0].GetTarget().GetKernelRecord().GetSequence())
+	require.Equal(t, "boot", batch.Observations[3].GetTarget().GetKernelRecord().GetBootId())
+	require.Equal(t, int64(2), batch.Observations[3].GetTarget().GetKernelRecord().GetSequence())
 	require.Equal(t, int64(6), batch.Observations[1].GetValue().GetIntValue())
 	batch, err = s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(kmsgsignals.Message.ID()))
 	require.NoError(t, err)
@@ -130,7 +132,10 @@ func TestPatterns(t *testing.T) {
 		require.Equal(t, `(?s)custom.*FAULT`, first.GetValue().GetStringValue())
 		require.Equal(t, "driver.fault", second.SignalId)
 		require.Equal(t, `FAULT`, second.GetValue().GetStringValue())
-		require.Equal(t, msg.Entity.Id, first.Entity.Id)
+		for _, obs := range []*observation.Observation{msg, priority, first, second} {
+			require.Equal(t, "boot", obs.GetTarget().GetKernelRecord().GetBootId())
+			require.Equal(t, int64(offset/4), obs.GetTarget().GetKernelRecord().GetSequence())
+		}
 		require.True(t, first.ObservedAt.AsTime().Equal(now))
 	}
 	batch, err = s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID("driver.fault"))
@@ -244,7 +249,8 @@ func TestGPUdPatternsPreserveMatchEvidence(t *testing.T) {
 	require.Equal(t, "kernel.nvrm_xid_extended", batch.Observations[3].SignalId)
 	require.Equal(t, kmsgxid.DefaultPatterns()["kernel.nvrm_xid_extended"], batch.Observations[3].GetValue().GetStringValue())
 	for _, obs := range batch.Observations {
-		require.Equal(t, "boot/42", obs.GetEntity().GetId())
+		require.Equal(t, "boot", obs.GetTarget().GetKernelRecord().GetBootId())
+		require.Equal(t, int64(42), obs.GetTarget().GetKernelRecord().GetSequence())
 	}
 }
 

@@ -26,7 +26,7 @@ func TestRead(t *testing.T) {
 		"mlx5_0/ports/1/rate":                      {Data: []byte("2.5 Gb/sec (1X SDR)\n")},
 		"mlx5_0/ports/1/counters/port_rcv_data":    {Data: []byte("123\n")},
 		"mlx5_0/ports/1/counters/port_xmit_data":   {Data: []byte("18446744073709551615")},
-		"mlx5_0/ports/1/hw_counters/out_of_buffer": {Data: []byte("N/A (no PMA)")},
+		"mlx5_0/ports/1/hw_counters/out_of_buffer": {Data: []byte(" \tN/A (no PMA)\n")},
 		"mlx5_1/ports/1/link_layer":                {Data: []byte("InfiniBand")},
 		"mlx5_1/ports/1/state":                     {Data: []byte("bad state")},
 	}
@@ -35,12 +35,24 @@ func TestRead(t *testing.T) {
 	readings, err := s.Read(context.Background(), signals)
 	require.NoError(t, err)
 	require.Len(t, readings, 10)
+	for i, reading := range readings {
+		device := "mlx5_0"
+		if i >= len(signals) {
+			device = "mlx5_1"
+		}
+		require.Equal(t, device, reading.Target.GetInfiniBandPort().GetDevice())
+		require.Equal(t, uint32(1), reading.Target.GetInfiniBandPort().GetPort())
+	}
 	for i, want := range []int64{4, 312500000, 492} {
 		require.Equal(t, want, readings[i].Value.GetIntValue())
 		require.Nil(t, readings[i].Failure)
 	}
 	require.Equal(t, observation.CollectionErrorCategoryParseError, readings[3].Failure.GetCategory())
-	require.Equal(t, observation.CollectionErrorCategoryUnsupported, readings[4].Failure.GetCategory())
+	require.Nil(t, readings[4].Failure)
+	require.Nil(t, readings[4].Value)
+	require.Equal(t, observation.NoValueReasonNotSupported, readings[4].NoValue.GetReason())
+	require.Equal(t, "N/A (no PMA)", readings[4].NoValue.GetSourceStatus())
+	require.Equal(t, "N/A (no PMA)", readings[4].NoValue.GetDetail())
 	require.Equal(t, observation.CollectionErrorCategoryParseError, readings[5].Failure.GetCategory())
 	require.Equal(t, observation.CollectionErrorCategoryUnavailable, readings[6].Failure.GetCategory())
 	s = New(files, "mlx5_1")
@@ -76,6 +88,9 @@ func TestRestrictedFilesAndSelection(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, readings, 1)
 		require.Equal(t, observation.CollectionErrorCategoryUnsupported, readings[0].Failure.GetCategory())
+		require.Nil(t, readings[0].NoValue)
+		require.Equal(t, "mlx5_0", readings[0].Target.GetInfiniBandPort().GetDevice())
+		require.Equal(t, uint32(1), readings[0].Target.GetInfiniBandPort().GetPort())
 	}
 	require.Equal(t, 1, files.reads)
 }
@@ -103,7 +118,16 @@ func TestDeviceInventoryWithoutPorts(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, readings, 2)
 	require.Equal(t, "28.41.1000", readings[0].Value.GetStringValue())
-	require.Equal(t, "infiniband_device", readings[0].Entity.GetType())
+	for _, reading := range readings {
+		require.Equal(t, "mlx5_0", reading.Target.GetInfiniBandDevice().GetName())
+	}
+	readings, err = s.Read(context.Background(), collect.Signals{ibsignals.HCAType, ibsignals.State})
+	require.NoError(t, err)
+	require.Len(t, readings, 2)
+	for _, reading := range readings {
+		require.Equal(t, "mlx5_0", reading.Target.GetInfiniBandDevice().GetName())
+		require.Equal(t, observation.CollectionErrorCategoryUnavailable, reading.Failure.GetCategory())
+	}
 }
 
 // A consumer's Signal need not be comparable or use the library's concrete type.

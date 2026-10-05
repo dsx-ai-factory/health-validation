@@ -102,9 +102,9 @@ func TestMeasureRefresh(t *testing.T) {
 			}
 
 			if test.wantNoTargets {
-				if len(batch.Observations) != len(temperatureSignals()) {
+				if len(batch.Observations) != len(sensor.Signals()) {
 					t.Fatalf("Measure() emitted %d observations, want one per signal (%d)",
-						len(batch.Observations), len(temperatureSignals()))
+						len(batch.Observations), len(sensor.Signals()))
 				}
 				for _, current := range batch.Observations {
 					if current.GetTarget() != nil {

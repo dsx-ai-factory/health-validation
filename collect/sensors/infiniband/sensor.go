@@ -56,21 +56,24 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		return batch, nil
 	}
 	for _, reading := range readings {
-		entity := reading.Entity
 		// GPUd components/accelerator/nvidia/infiniband/types.IBPort.IsIBPort.
 		// Preserve failures when link_layer itself could not be read.
 		if reading.LinkLayer != nil && !strings.EqualFold(*reading.LinkLayer, "infiniband") {
 			continue
 		}
 		if reading.Failure != nil {
-			batch.Observations = append(batch.Observations, observation.NewCollectionErrorObservation(reading.Signal.ID(), reading.Signal.Unit(), ibsource.Name, "read", entity, now, reading.Failure))
+			batch.Observations = append(batch.Observations, observation.NewCollectionErrorObservation(reading.Signal.ID(), reading.Signal.Unit(), ibsource.Name, "read", reading.Target, now, reading.Failure))
+			continue
+		}
+		if reading.NoValue != nil {
+			batch.Observations = append(batch.Observations, observation.NewNoValueObservation(reading.Signal.ID(), reading.Signal.Unit(), ibsource.Name, reading.Target, now, reading.NoValue))
 			continue
 		}
 		batch.Observations = append(batch.Observations, &observation.Observation{
 			SignalId:   reading.Signal.ID(),
 			Unit:       reading.Signal.Unit(),
 			Source:     ibsource.Name,
-			Entity:     entity,
+			Target:     reading.Target,
 			ObservedAt: now,
 			Outcome:    &observation.Observation_Value{Value: reading.Value},
 		})

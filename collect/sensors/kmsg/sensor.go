@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package kmsg selects kernel records by regular expression for consumer-specific interpretation.
+// Observations identify each record by a typed boot ID and sequence target.
 package kmsg
 
 import (
@@ -11,7 +12,6 @@ import (
 	"io/fs"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -146,7 +146,7 @@ func (s *sensor) measure(ctx context.Context, selected collect.Signals, now *tim
 		if len(matches) == 0 {
 			continue
 		}
-		entity := &observation.Entity{Type: "kernel_record", Id: message.BootID + "/" + strconv.FormatInt(message.Sequence, 10)}
+		target := observation.KernelRecordTarget(message.BootID, message.Sequence)
 		for _, signal := range selected {
 			value := &observation.Value{Kind: &observation.Value_StringValue{StringValue: message.Body}}
 			switch signal.ID() {
@@ -164,7 +164,7 @@ func (s *sensor) measure(ctx context.Context, selected collect.Signals, now *tim
 				SignalId:   signal.ID(),
 				Unit:       signal.Unit(),
 				Source:     source,
-				Entity:     entity,
+				Target:     target,
 				ObservedAt: timestamppb.New(message.Timestamp),
 				Outcome:    &observation.Observation_Value{Value: value},
 			})

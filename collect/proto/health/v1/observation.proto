@@ -110,6 +110,9 @@ message ObservationTarget {
     GpuRef gpu = 2;
     NvLinkEndpointRef nv_link_endpoint = 3;
     GpuPairRef gpu_pair = 4;
+    InfiniBandDeviceRef infini_band_device = 5;
+    InfiniBandPortRef infini_band_port = 6;
+    KernelRecordRef kernel_record = 7;
   }
 }
 
@@ -136,6 +139,21 @@ message NvLinkEndpointRef {
 message GpuPairRef {
   GpuRef source_gpu = 1;
   GpuRef peer_gpu = 2;
+}
+
+message InfiniBandDeviceRef {
+  string name = 1;
+}
+
+message InfiniBandPortRef {
+  string device = 1;
+  uint32 port = 2;
+}
+
+// KernelRecordRef identifies a kernel record within one boot.
+message KernelRecordRef {
+  string boot_id = 1;
+  int64 sequence = 2;
 }
 
 // Value is a typed observed value.

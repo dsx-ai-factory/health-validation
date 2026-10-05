@@ -25,6 +25,9 @@ type (
 	GPUInventory            = healthv1.GpuInventory
 	GPUInventoryEntry       = healthv1.GpuInventoryEntry
 	GPUDevice               = healthv1.GpuDevice
+	InfiniBandDeviceRef     = healthv1.InfiniBandDeviceRef
+	InfiniBandPortRef       = healthv1.InfiniBandPortRef
+	KernelRecordRef         = healthv1.KernelRecordRef
 	Value                   = healthv1.Value
 	CollectionError         = healthv1.CollectionError
 	CollectionErrorCategory = healthv1.CollectionErrorCategory
@@ -47,6 +50,9 @@ type (
 	Value_BoolValue                      = healthv1.Value_BoolValue
 	GPUInventorySnapshot_Inventory       = healthv1.GpuInventorySnapshot_Inventory
 	GPUInventorySnapshot_CollectionError = healthv1.GpuInventorySnapshot_CollectionError
+	ObservationTarget_InfiniBandDevice   = healthv1.ObservationTarget_InfiniBandDevice
+	ObservationTarget_InfiniBandPort     = healthv1.ObservationTarget_InfiniBandPort
+	ObservationTarget_KernelRecord       = healthv1.ObservationTarget_KernelRecord
 )
 
 const (
@@ -100,6 +106,21 @@ func GPUPairTarget(sourceGPUUUID, peerGPUUUID string) *ObservationTarget {
 			PeerGpu:   &GPURef{Uuid: peerGPUUUID},
 		},
 	}}
+}
+
+// InfiniBandDeviceTarget identifies one host-local HCA.
+func InfiniBandDeviceTarget(name string) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_InfiniBandDevice{InfiniBandDevice: &InfiniBandDeviceRef{Name: name}}}
+}
+
+// InfiniBandPortTarget identifies one port on a host-local HCA.
+func InfiniBandPortTarget(device string, port uint32) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_InfiniBandPort{InfiniBandPort: &InfiniBandPortRef{Device: device, Port: port}}}
+}
+
+// KernelRecordTarget identifies one boot-scoped kernel record.
+func KernelRecordTarget(bootID string, sequence int64) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_KernelRecord{KernelRecord: &KernelRecordRef{BootId: bootID, Sequence: sequence}}}
 }
 
 // ValidateBatch verifies every observation before a batch crosses a service
@@ -226,6 +247,18 @@ func validateTarget(target *ObservationTarget) error {
 	case *ObservationTarget_GPUPair:
 		if kind == nil || kind.GpuPair == nil || kind.GpuPair.SourceGpu == nil || kind.GpuPair.PeerGpu == nil {
 			return fmt.Errorf("target has an incomplete GPU pair payload")
+		}
+	case *ObservationTarget_InfiniBandDevice:
+		if kind == nil || kind.InfiniBandDevice == nil {
+			return fmt.Errorf("target has an empty InfiniBand device payload")
+		}
+	case *ObservationTarget_InfiniBandPort:
+		if kind == nil || kind.InfiniBandPort == nil {
+			return fmt.Errorf("target has an empty InfiniBand port payload")
+		}
+	case *ObservationTarget_KernelRecord:
+		if kind == nil || kind.KernelRecord == nil {
+			return fmt.Errorf("target has an empty kernel record payload")
 		}
 	default:
 		return fmt.Errorf("target has no kind")

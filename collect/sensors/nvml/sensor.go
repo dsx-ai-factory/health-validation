@@ -116,17 +116,16 @@ func (s *sensor) measure(ctx context.Context, op *collect.Op, selected collect.S
 		// selected signal unavailable instead.
 		return allSignalsFailed(selected, now, "GetDevices", observation.CollectionErrorCategoryUnavailable, initErr.Error()), nil
 	}
-	devices := s.inst.Devices()
-	if len(devices) == 0 {
-		appendNoTargetObservations(batch, selected, now)
-		return batch, nil
-	}
 
 	want := make(map[string]bool, len(selected))
 	for _, definition := range selected {
 		want[definition.ID()] = true
 	}
 	err := s.inst.Read(func(devices map[string]device.Device) error {
+		if len(devices) == 0 {
+			appendNoTargetObservations(batch, selected, now)
+			return ctx.Err()
+		}
 		for uuid, dev := range devices {
 			if contextErr := ctx.Err(); contextErr != nil {
 				return contextErr

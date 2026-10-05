@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -52,12 +53,15 @@ func TestGPUdFixtureParity(t *testing.T) {
 	require.NoError(t, err)
 	seen := make(map[string]bool)
 	for _, reading := range readings {
-		id := reading.Entity.Id
+		id := reading.Target.GetInfiniBandDevice().GetName()
+		if port := reading.Target.GetInfiniBandPort(); port != nil {
+			id = port.GetDevice() + "/" + strconv.FormatUint(uint64(port.GetPort()), 10)
+		}
 		key := id + ":" + reading.Signal.ID()
 		require.False(t, seen[key], "duplicate %s", key)
 		seen[key] = true
 		fields := expected[id]
-		require.NotNil(t, fields, "unexpected entity %s", id)
+		require.NotNil(t, fields, "unexpected target %s", id)
 		file := paths[reading.Signal.ID()]
 		var want any
 		switch reading.Signal {
@@ -117,9 +121,11 @@ func TestGPUdDiscoveryAndCounterParsing(t *testing.T) {
 	readings, err := New(files).Read(context.Background(), collect.Signals{ibsignals.State, ibsignals.StateName})
 	require.NoError(t, err)
 	require.Len(t, readings, 4)
-	require.Equal(t, "mlx5_0/2", readings[0].Entity.Id)
+	require.Equal(t, "mlx5_0", readings[0].Target.GetInfiniBandPort().GetDevice())
+	require.Equal(t, uint32(2), readings[0].Target.GetInfiniBandPort().GetPort())
 	require.Equal(t, "DOWN", readings[1].Value.GetStringValue())
-	require.Equal(t, "mlx5_0/10", readings[2].Entity.Id)
+	require.Equal(t, "mlx5_0", readings[2].Target.GetInfiniBandPort().GetDevice())
+	require.Equal(t, uint32(10), readings[2].Target.GetInfiniBandPort().GetPort())
 	for _, raw := range []string{"0x10", "020", "0b10000"} {
 		value, parseErr := parse(ibsignals.PortRcvData, raw)
 		require.NoError(t, parseErr)
@@ -271,7 +277,16 @@ func TestGPUdOptionalValues(t *testing.T) {
 	require.Len(t, readings, 3)
 	require.Nil(t, readings[0].Failure)
 	require.Equal(t, "", readings[0].Value.GetStringValue())
-	require.Equal(t, observation.CollectionErrorCategoryUnsupported, readings[1].Failure.Category)
+	require.Equal(t, "mlx5_0", readings[0].Target.GetInfiniBandDevice().GetName())
+	require.Nil(t, readings[1].Failure)
+	require.Nil(t, readings[1].Value)
+	require.Equal(t, observation.NoValueReasonNotSupported, readings[1].NoValue.GetReason())
+	require.Equal(t, "prefix N/A (no PMA)", readings[1].NoValue.GetSourceStatus())
+	require.Equal(t, "prefix N/A (no PMA)", readings[1].NoValue.GetDetail())
+	for _, reading := range readings[1:] {
+		require.Equal(t, "mlx5_0", reading.Target.GetInfiniBandPort().GetDevice())
+		require.Equal(t, uint32(1), reading.Target.GetInfiniBandPort().GetPort())
+	}
 	require.Equal(t, observation.CollectionErrorCategoryParseError, readings[2].Failure.Category)
 	// GPUd caches restricted counter files, not transient inventory failures.
 	restricted := &restrictedFS{FS: files}

@@ -99,11 +99,13 @@ func logEvents(logger *log.Logger, batch *observation.ObservationBatch) {
 		case kmsgsignals.Message.ID():
 			// Parse the original message once, even when multiple regexes matched it.
 			if xid := kmsgxid.ExtractNVRMXid(obs.GetValue().GetStringValue()); xid != 0 {
-				logger.Printf("event=xid record=%s xid=%d", obs.GetEntity().GetId(), xid)
+				record := obs.GetTarget().GetKernelRecord()
+				logger.Printf("event=xid record=%s/%d xid=%d", record.GetBootId(), record.GetSequence(), xid)
 			}
 		case ibsignals.State.ID():
 			if obs.GetValue().GetIntValue() == 1 { // Linux InfiniBand state 1 is DOWN.
-				logger.Printf("event=infiniband_port_down port=%s", obs.GetEntity().GetId())
+				port := obs.GetTarget().GetInfiniBandPort()
+				logger.Printf("event=infiniband_port_down port=%s/%d", port.GetDevice(), port.GetPort())
 			}
 		}
 	}

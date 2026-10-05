@@ -52,12 +52,14 @@ func New(files fs.FS, excludedDevices ...string) *Source {
 	return &Source{files: files, excluded: excluded, restricted: make(map[string]error)}
 }
 
-// Reading is one selected signal for an HCA or port.
+// Reading is one selected signal for a typed HCA or port target.
+// A reported unsupported value is NoValue, not a collection failure.
 type Reading struct {
 	Signal  collect.Signal
 	Value   *observation.Value
+	NoValue *observation.NoValue
 	Failure *observation.CollectionError
-	Entity  *observation.Entity
+	Target  *observation.ObservationTarget
 	// LinkLayer accompanies every port reading, even when not selected as a signal.
 	// Nil means link_layer could not be read, or this is a device reading.
 	LinkLayer *string
@@ -105,12 +107,12 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 		if s.excluded[device.Name()] || !strings.HasPrefix(device.Name(), "mlx") {
 			continue
 		}
-		entity := &observation.Entity{Type: "infiniband_device", Id: device.Name()}
+		target := observation.InfiniBandDeviceTarget(device.Name())
 		for _, signal := range deviceSignals {
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr
 			}
-			readings = append(readings, s.readSignal(signal, path.Join(device.Name(), paths[signal.ID()]), entity, cache))
+			readings = append(readings, s.readSignal(signal, path.Join(device.Name(), paths[signal.ID()]), target, cache))
 		}
 		if len(portSignals) == 0 {
 			continue
@@ -118,7 +120,7 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 		ports, portsErr := fs.ReadDir(s.files, path.Join(device.Name(), "ports"))
 		if portsErr != nil {
 			for _, signal := range portSignals {
-				readings = append(readings, Reading{Signal: signal, Entity: entity, Failure: Failure(portsErr)})
+				readings = append(readings, Reading{Signal: signal, Target: target, Failure: Failure(portsErr)})
 			}
 			continue
 		}
@@ -138,12 +140,12 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 			}
 			portName := strconv.FormatUint(portNumber, 10)
 			portPath := path.Join(device.Name(), "ports", portName)
-			entity := &observation.Entity{Type: "infiniband_port", Id: path.Join(device.Name(), portName)}
+			target := observation.InfiniBandPortTarget(device.Name(), uint32(portNumber))
 			// GPUd's class collector requires link_layer before reading port values.
-			layer := s.readSignal(ibsignals.LinkLayer, path.Join(portPath, "link_layer"), entity, cache)
+			layer := s.readSignal(ibsignals.LinkLayer, path.Join(portPath, "link_layer"), target, cache)
 			if layer.Failure != nil {
 				for _, signal := range portSignals {
-					readings = append(readings, Reading{Signal: signal, Entity: entity, Failure: layer.Failure})
+					readings = append(readings, Reading{Signal: signal, Target: target, Failure: layer.Failure})
 				}
 				continue
 			}
@@ -158,10 +160,10 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 				if err := counterErrors[file]; err != nil {
 					failure := Failure(err)
 					failure.Operation = name
-					readings = append(readings, Reading{Signal: signal, Entity: entity, Failure: failure, LinkLayer: &linkLayer})
+					readings = append(readings, Reading{Signal: signal, Target: target, Failure: failure, LinkLayer: &linkLayer})
 					continue
 				}
-				reading := s.readSignal(signal, name, entity, cache)
+				reading := s.readSignal(signal, name, target, cache)
 				reading.LinkLayer = &linkLayer
 				readings = append(readings, reading)
 			}
@@ -236,8 +238,8 @@ type fileResult struct {
 	raw []byte
 }
 
-func (s *Source) readSignal(signal collect.Signal, name string, entity *observation.Entity, cache map[string]fileResult) Reading {
-	reading := Reading{Signal: signal, Entity: entity}
+func (s *Source) readSignal(signal collect.Signal, name string, target *observation.ObservationTarget, cache map[string]fileResult) Reading {
+	reading := Reading{Signal: signal, Target: target}
 	result, cached := cache[name]
 	if !cached {
 		result.raw, result.err = s.readFile(name)
@@ -248,7 +250,8 @@ func (s *Source) readSignal(signal collect.Signal, name string, entity *observat
 	case err != nil:
 		reading.Failure = Failure(err)
 	case path.Dir(paths[signal.ID()]) != "." && strings.Contains(string(raw), "N/A (no PMA)"):
-		reading.Failure = &observation.CollectionError{Category: observation.CollectionErrorCategoryUnsupported, Reason: observation.CollectionErrorReasonValueReportedUnsupported, Detail: strings.TrimSpace(string(raw))}
+		status := strings.TrimSpace(string(raw))
+		reading.NoValue = &observation.NoValue{Reason: observation.NoValueReasonNotSupported, SourceStatus: status, Detail: status}
 	default:
 		reading.Value, err = parse(signal, string(raw))
 		if err != nil {

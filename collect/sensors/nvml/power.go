@@ -19,7 +19,7 @@ func powerSignals() collect.Signals {
 	return collect.Signals{gpusignals.PowerDraw, gpusignals.PowerLimitEnforced, gpusignals.PowerLimitRequested}
 }
 
-func measurePower(ctx context.Context, batch *observation.ObservationBatch, now *timestamppb.Timestamp, entity *observation.Entity, dev device.Device, want map[string]bool, ret nvml.Return) {
+func measurePower(ctx context.Context, batch *observation.ObservationBatch, now *timestamppb.Timestamp, target *observation.ObservationTarget, dev device.Device, want map[string]bool, ret nvml.Return) {
 	reads := []struct {
 		definition collect.Signal
 		read       func() (uint32, nvml.Return)
@@ -43,12 +43,12 @@ func measurePower(ctx context.Context, batch *observation.ObservationBatch, now 
 			category = categorizeFailure(read.definition, ret)
 		}
 		if ret != nvml.SUCCESS {
-			batch.Observations = append(batch.Observations, errorObservation(now, entity, read.definition, read.operation, category, returnName(ret), nvml.ErrorString(ret)))
+			batch.Observations = append(batch.Observations, errorObservation(now, target, read.definition, read.operation, category, returnName(ret), nvml.ErrorString(ret)))
 			continue
 		}
 		// NVML reports milliwatts; canonical power signals use watts, as DCGM does.
 		batch.Observations = append(batch.Observations, &observation.Observation{
-			SignalId: read.definition.ID(), Unit: read.definition.Unit(), Source: source, Entity: entity, ObservedAt: now,
+			SignalId: read.definition.ID(), Unit: read.definition.Unit(), Source: source, Target: target, ObservedAt: now,
 			Outcome: &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_DoubleValue{DoubleValue: float64(value) / 1000}}},
 		})
 	}

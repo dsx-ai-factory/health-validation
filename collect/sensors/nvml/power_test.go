@@ -63,7 +63,7 @@ func TestPowerCollection(t *testing.T) {
 			require.NoError(t, observation.ValidateBatch(batch))
 			require.Len(t, batch.Observations, 3)
 			first := batch.Observations[0]
-			require.Equal(t, "gpu-1", first.GetEntity().GetId())
+			require.Equal(t, "gpu-1", first.GetTarget().GetGpu().GetUuid())
 			require.Equal(t, "watts", first.GetUnit())
 			switch ret {
 			case nvml.SUCCESS:
