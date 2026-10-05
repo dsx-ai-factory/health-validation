@@ -3,6 +3,64 @@
 All notable changes to NVIDIA Health Validation are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
+
+Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,
+test, and documentation-only changes are omitted.
+
+### Breaking Changes
+
+- The verdict `schema_version` is now `0.3`, and three wire values change.
+  Consumers matching on the old strings must update.
+  - The `operational_state` value `none` is now `ready`, because `none` read
+    as "no state" rather than "the node stays schedulable"
+    (`health.OperationalNone` → `health.OperationalReady`). ([#103](https://github.com/dsx-ai-factory/health-validation/pull/103))
+  - The `contact_support` remediation action is now `service_required`
+    (`RemediationActionContactSupport` → `RemediationActionServiceRequired`). ([#104](https://github.com/dsx-ai-factory/health-validation/pull/104))
+  - The `workflow_nvlink5_err` remediation action is removed. Fatal Xid
+    144-150 occurrences now recommend `reset_gpu` then `service_required`. ([#52](https://github.com/dsx-ai-factory/health-validation/pull/52))
+- `toolkit.CollectWithTimeout` is replaced by `toolkit.CollectWithOptions`,
+  which takes a `CollectionOptions` carrying the timeout and an optional
+  scheduling cadence. ([#84](https://github.com/dsx-ai-factory/health-validation/pull/84))
+- `toolkit.ParseXid` moves to the new `toolkit/xid` package. ([#52](https://github.com/dsx-ai-factory/health-validation/pull/52))
+
+### Features
+
+- Optional `--cadence CONTINUOUS|PROLOG|MAINTENANCE` on the CLI, and a
+  matching cadence in `catalog.EvaluationOptions` / `toolkit.CollectionOptions`,
+  run only the checks whose scheduling cadence covers that window. Checks
+  outside it are reported as `CADENCE_MISMATCH` skips. Omitting the cadence
+  still evaluates every registered check. ([#84](https://github.com/dsx-ai-factory/health-validation/pull/84))
+- New `gpu_compute_apps` check: CRITICAL when a compute (CUDA) process still
+  holds a GPU, with each process's command line in the diagnostic, so a
+  leftover job cannot look like a clean node. It runs only in the guest,
+  where those processes are visible. ([#54](https://github.com/dsx-ai-factory/health-validation/pull/54))
+- Xid 144-150 (the NVLink5/NVSwitch fault family) follow the Fatal/Nonfatal
+  flag NVRM logs with each occurrence: Fatal is CRITICAL, Nonfatal is
+  WARNING with no action. These codes previously fired CRITICAL on any
+  occurrence. The parser also handles the extended log shapes real NVRM
+  output uses for this family. ([#52](https://github.com/dsx-ai-factory/health-validation/pull/52))
+- Application-level Xids and `gpu_xid_warning` now recommend `restart_app`
+  then `service_required`, so a fault that persists past the restart sends
+  the node for service. ([#102](https://github.com/dsx-ai-factory/health-validation/pull/102))
+- The CLI can push each verdict to an OTLP/HTTP metrics endpoint, configured
+  under `metrics:` in the config file. Publishing runs after the verdict is
+  written and never changes the exit code. See
+  [Publishing metrics](README.md#publishing-metrics). ([#90](https://github.com/dsx-ai-factory/health-validation/pull/90))
+- A measurement can expose signals it computes through the optional
+  `health.DerivedSignaler` interface, so values that depend on catalog
+  knowledge can stay in the catalog. ([#83](https://github.com/dsx-ai-factory/health-validation/pull/83))
+- The in-repo `collect` module gains DCGM signals for the GPU and NVLink
+  checks, typed observation targets, and an explicit representation for
+  absent values. It is still not wired into the CLI or the container
+  image. ([#60](https://github.com/dsx-ai-factory/health-validation/pull/60), [#96](https://github.com/dsx-ai-factory/health-validation/pull/96))
+
+### Fixes
+
+- Evaluating a pointer to a measurement no longer panics, and a json tag
+  carrying only options (such as `json:",omitempty"`) now yields the Go
+  field name as its signal name instead of an empty one. ([#83](https://github.com/dsx-ai-factory/health-validation/pull/83))
+
 ## [catalog/v0.2.0] and [toolkit/v0.2.0] - 2026-09-17
 
 Covers everything since `catalog/v0.1.0` and `toolkit/v0.1.0`. Build, CI,
@@ -73,6 +131,8 @@ and documentation-only changes are omitted.
 - Operator CLI (`health-validation run`) producing structured JSON verdicts.
 - CEL-based rule evaluation engine with operator-configurable threshold overrides.
 
+[catalog/v0.3.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.0
+[toolkit/v0.3.0]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.0
 [catalog/v0.2.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.2.0
 [toolkit/v0.2.0]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.2.0
 [catalog/v0.1.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.1.0

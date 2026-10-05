@@ -41,8 +41,7 @@ policy.
 
 ## Branch naming and tagging
 
-Releases are cut from `main`; there is no separate release branch. Tag each
-module independently with its module name as a prefix:
+Tag each module independently with its module name as a prefix:
 
 ```text
 catalog/vX.Y.Z
@@ -52,6 +51,23 @@ toolkit/vX.Y.Z
 Release candidates use a `-rcN` suffix (e.g. `toolkit/v1.2.0-rc1`); commits
 after an RC tag continue to version as prereleases of that same final version
 until the final tag lands.
+
+A minor release goes through QA as a toolkit RC, without freezing `main`:
+
+1. Tag `catalog/vX.Y.0` on `main`.
+2. Merge a PR to `main` that bumps `toolkit/go.mod`'s catalog `require` to
+   `vX.Y.0` and adds the `CHANGELOG.md` entry. Point the entry's links at the
+   final `vX.Y.0` tags, even though the toolkit one does not exist yet.
+3. Before tagging, confirm `catalog/` is unchanged since the catalog tag
+   (`git diff --quiet catalog/vX.Y.0 <commit> -- catalog`). If it changed, the
+   image reports a catalog pseudo-version instead of `vX.Y.0`.
+4. Tag that commit `toolkit/vX.Y.0-rc1`, and create `release/vX.Y` from the
+   tag.
+5. Land QA fixes on `main` first, then cherry-pick them onto `release/vX.Y`
+   and tag the next `-rcN` there. A catalog fix ships as `catalog/vX.Y.1`,
+   with the release branch's catalog `require` bumped to match.
+6. Tag `toolkit/vX.Y.0` on `release/vX.Y` once QA passes. Later patch
+   releases for that line are tagged on the same branch.
 
 This matches Go's module-tagging convention for a multi-module repository, so
 `go get github.com/dsx-ai-factory/health-validation/catalog@vX.Y.Z` resolves

@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/NVIDIA/go-nvml v0.13.4-0
-	github.com/dsx-ai-factory/health-validation/catalog v0.2.0
+	github.com/dsx-ai-factory/health-validation/catalog v0.3.0
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.46.0
 	go.opentelemetry.io/otel/metric v1.46.0
