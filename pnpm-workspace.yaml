@@ -40,3 +40,10 @@ overrides:
   # requires. Drop this once Docusaurus moves to webpack-dev-server 6, which
   # no longer depends on sockjs.
   'sockjs>uuid': 11.1.1
+  # CVE-2026-104848 and CVE-2026-104849 (critical): prototype-pollution gadgets
+  # in tinypool's worker and run() options lead to code execution. Build-time
+  # only, used by @docusaurus/core for the SSG thread pool. 3.10.2 declares
+  # ^1.0.2 and no 1.x patch exists; 2.x drops Node 18 (docs already require
+  # >=20) but keeps every option and export Docusaurus uses. Drop this once
+  # Docusaurus depends on tinypool >= 2.1.2.
+  '@docusaurus/core>tinypool': 2.1.2
