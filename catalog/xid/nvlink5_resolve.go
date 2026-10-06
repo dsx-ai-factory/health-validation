@@ -22,6 +22,12 @@ const (
 	// escalate, but only one of them is documented guidance.
 	ResolutionResetGPUUnconfirmed = "RESET_GPU_UNCONFIRMED"
 
+	// ResolutionUndecoded marks an NVLink5 event whose log line carried
+	// no fields to decode, such as one in a format the sensor does not
+	// parse. The fault still happened, so it is counted rather than
+	// dropped.
+	ResolutionUndecoded = "UNDECODED"
+
 	// ResolutionXid154Eval is the table's deferral, not an action: the
 	// row says the action is whatever Xid 154 reports for the same GPU.
 	// It never survives [NVLink5ResolutionCounts] — every occurrence is
@@ -156,11 +162,16 @@ func nvlink5ResolutionCounts(events []XidEvent, driverVersion health.DriverVersi
 
 	var counts map[string]int64
 	for _, ev := range events {
-		if ev.NVLink5 == nil {
+		var bucket string
+		switch {
+		case ev.NVLink5 != nil:
+			action, observed := terminal[ev.PCIAddress]
+			bucket = resolveNVLink5Event(ev.XidCode, era, *ev.NVLink5, action, observed)
+		case ev.XidCode >= 144 && ev.XidCode <= 150:
+			bucket = ResolutionUndecoded
+		default:
 			continue
 		}
-		action, observed := terminal[ev.PCIAddress]
-		bucket := resolveNVLink5Event(ev.XidCode, era, *ev.NVLink5, action, observed)
 		if bucket == "" {
 			continue
 		}

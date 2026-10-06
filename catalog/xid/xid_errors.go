@@ -406,6 +406,11 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 			RecommendedAction: resetAndService(),
 		},
 		{
+			Expression: key(ResolutionUndecoded),
+			Severity:   health.Warning,
+			Message:    fmt.Sprintf("GPU Xid %d detected: %s. Its log line could not be decoded, so its severity and required action are unknown; inspect the line in the system journal.", c.code, c.description),
+		},
+		{
 			Expression:        key(ResolutionXid154Missing),
 			Severity:          health.Warning,
 			Message:           fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to Xid 154, and no Xid 154 was observed for the affected GPU, so the driver requested no recovery action. Restart the faulting application; send the node for service if the error persists.", c.code, c.description),

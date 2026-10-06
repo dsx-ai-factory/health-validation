@@ -449,3 +449,25 @@ func TestNVLink5Check_No154MeansRestartApp(t *testing.T) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
 	}
 }
+
+// TestNVLink5Check_UndecodedLineStillReports covers an NVLink5 event the
+// sensor could not decode, which carries a code but no detail. It must
+// still report rather than pass on an empty resolution signal.
+func TestNVLink5Check_UndecodedLineStillReports(t *testing.T) {
+	nv, err := hostCatalog(t, "575.51.03").EvaluateAll(xid.XidMeasurement{
+		Since:      "boot",
+		XidCounts:  map[int64]int64{150: 1},
+		Events:     []xid.XidEvent{{PCIAddress: "0019:01:00", XidCode: 150}},
+		EventCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	v, ok := checkResult(nv, "gpu_xid_150")
+	if !ok {
+		t.Fatalf("gpu_xid_150 verdict not found")
+	}
+	if v.Severity != health.Warning {
+		t.Errorf("severity = %v, want WARNING", v.Severity)
+	}
+}
