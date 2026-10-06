@@ -402,7 +402,7 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 		{
 			Expression:        key(ResolutionResetGPUUnconfirmed),
 			Severity:          health.Critical,
-			Message:           fmt.Sprintf("GPU Xid %d detected: %s. NVRM marked it Fatal and NVIDIA's decode table has no confirmed entry for this subcomponent and error status, so the escalation rests on the Fatal flag alone.", c.code, c.description),
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. NVIDIA's decode table does not confirm a reset for this occurrence, either because it has no entry for this subcomponent and error status (NVRM marked it Fatal) or because the driver version needed to read its registers is unknown, so it is escalated conservatively.", c.code, c.description),
 			RecommendedAction: resetAndService(),
 		},
 		{

@@ -224,7 +224,8 @@ type NVLink5Resolution struct {
 	// docs stated unambiguously, as opposed to the generic
 	// Fatal-flag-derived fallback (RESET_GPU/CONTACT_SUPPORT when
 	// Fatal, IGNORE/CONTACT_SUPPORT when not) used when the table has
-	// no confirmed entry for this combination.
+	// no confirmed entry for this combination. It is also false for a
+	// row's escalation taken without a known driver era to confirm it.
 	Matched bool
 }
 
@@ -298,11 +299,18 @@ func applyResolution(row nvlink5DecodeRow, era DriverEra, intrInfoHex string) NV
 	if row.action2V1Pattern == "" && row.action2V2Pattern == "" {
 		return res
 	}
-	if era == DriverEraUnknown {
-		return res
-	}
 	intrInfo, ok := parseHexUint32(intrInfoHex)
 	if !ok {
+		return res
+	}
+	if era == DriverEraUnknown {
+		// The escalation bit sits at a different position in each era,
+		// so escalate if either layout has it set, unconfirmed: missing
+		// a reset costs more than recommending one the table might not.
+		if matchesPattern(intrInfo, row.action2V1Pattern) || matchesPattern(intrInfo, row.action2V2Pattern) {
+			res.Resolution = row.action2Resolution
+			res.Matched = false
+		}
 		return res
 	}
 	pattern := row.action2V2Pattern

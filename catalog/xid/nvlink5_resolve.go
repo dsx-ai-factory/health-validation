@@ -13,14 +13,13 @@ const (
 	ResolutionIgnore   = "IGNORE"
 	ResolutionResetGPU = "RESET_GPU"
 
-	// ResolutionResetGPUUnconfirmed is a reset the Fatal flag implies
-	// rather than one NVIDIA's table names. [DecodeNVLink5Resolution]
-	// falls back to the flag when no row covers a
-	// (subcode, ErrorStatus/IntrInfo) combination, so without this the
-	// verdict could not distinguish "the table says reset this GPU" from
-	// "the table says nothing and NVRM called it Fatal". Both still
-	// escalate -- a Fatal NVLink5 fault is not something to sit on --
-	// but only one of them is documented guidance.
+	// ResolutionResetGPUUnconfirmed is a reset NVIDIA's table does not
+	// confirm: either the Fatal flag implies it because no row covers a
+	// (subcode, ErrorStatus/IntrInfo) combination, or a row escalates to
+	// it on a register bit that cannot be located without the driver
+	// era. Without this the verdict could not distinguish "the table
+	// says reset this GPU" from a conservative guess. Both still
+	// escalate, but only one of them is documented guidance.
 	ResolutionResetGPUUnconfirmed = "RESET_GPU_UNCONFIRMED"
 
 	// ResolutionXid154Eval is the table's deferral, not an action: the

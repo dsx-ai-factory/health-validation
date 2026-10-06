@@ -318,3 +318,19 @@ func TestDecodeNVLink5Resolution_UnlistedErrorStatusFallsBack(t *testing.T) {
 		t.Errorf("Resolution = %q matched=%v, want the Nonfatal fallback IGNORE/false", got.Resolution, got.Matched)
 	}
 }
+
+// TestDecodeNVLink5Resolution_Action2EscalatesWithoutEra covers a
+// promotable row with no known driver era. The escalation bit cannot be
+// located, so it escalates unconfirmed when either layout has it set
+// rather than settling for the row's IGNORE.
+func TestDecodeNVLink5Resolution_Action2EscalatesWithoutEra(t *testing.T) {
+	escalated := DecodeNVLink5Resolution(145, DriverEraUnknown, NVLink5Detail{SubComponent: "RLW_RXPIPE", ErrorStatus: "0x00000001", IntrInfo: "0x00000086", Fatal: true})
+	if escalated.Matched || escalated.Resolution != "RESET_GPU" {
+		t.Errorf("escalation bit set: Resolution = %q matched=%v, want RESET_GPU/false", escalated.Resolution, escalated.Matched)
+	}
+
+	base := DecodeNVLink5Resolution(145, DriverEraUnknown, NVLink5Detail{SubComponent: "RLW_RXPIPE", ErrorStatus: "0x00000001", IntrInfo: "0x00000006", Fatal: true})
+	if !base.Matched || base.Resolution != "IGNORE" {
+		t.Errorf("escalation bit clear: Resolution = %q matched=%v, want IGNORE/true", base.Resolution, base.Matched)
+	}
+}
