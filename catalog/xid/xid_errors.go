@@ -177,11 +177,12 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 	)
 	def.RequiredSignals = []string{SignalXidCounts, SignalFatalXidCounts}
 	// Pinned rather than inherited. This currently matches baseCheck, but
-	// for a different reason: baseCheck is GB200/GB300 because H100/A100
-	// support is deprioritized, while NVLink5 (144-150) is Blackwell-only
-	// per NVIDIA's Xid catalog and does not exist on those parts at all.
-	// If baseCheck's coverage ever widens again, this must not follow it.
-	def.Architectures = []string{"GB200", "GB300"}
+	// for a different reason: baseCheck's list reflects which parts are
+	// prioritized, while NVLink5 (144-150) is Blackwell-only per NVIDIA's
+	// Xid catalog and does not exist on H100/A100 at all. B200 is Blackwell
+	// with NVLink 5 and belongs here. If baseCheck's coverage widens to
+	// pre-Blackwell parts, this must not follow it.
+	def.Architectures = []string{"GB200", "GB300", "B200"}
 	def.Rules = []health.Rule{
 		{
 			Expression:        fmt.Sprintf("%d in fatal_xid_counts", c.code),
@@ -250,7 +251,7 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300"},
+		Architectures:     []string{"GB200", "GB300", "B200"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
