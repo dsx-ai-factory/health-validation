@@ -71,12 +71,14 @@ var (
 	// example an OOM kill report, but cannot also supply the address.
 	lineRE = regexp.MustCompile(`NVRM: Xid \((?:PCI:)?[0-9a-fA-F]{4,}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}`)
 	// MIG GPU and compute instance attribution follows the address.
-	deviceRE   = regexp.MustCompile(`^(?:PCI:)?([0-9a-fA-F:.]+)(?:\s+GPU-I:\d+)?(?:\s+GPU-CI:\d+)?$`)
-	codeRE     = regexp.MustCompile(`^: (\d+)`)
-	pidRE      = regexp.MustCompile(`^,\s*pid=([^,]*)`)
-	nameRE     = regexp.MustCompile(`^,\s*name=([^,]*)`)
-	digitsRE   = regexp.MustCompile(`^\d+$`)
-	nvlink5RE  = regexp.MustCompile(`^,\s*(\S+)\s+(Fatal|Nonfatal)\s+XC\d+\s+i\d+\s+Link\s+(-?\d+)(?:\s+\(([^)]*)\))?`)
+	deviceRE = regexp.MustCompile(`^(?:PCI:)?([0-9a-fA-F:.]+)(?:\s+GPU-I:\d+)?(?:\s+GPU-CI:\d+)?$`)
+	codeRE   = regexp.MustCompile(`^: (\d+)`)
+	pidRE    = regexp.MustCompile(`^,\s*pid=([^,]*)`)
+	nameRE   = regexp.MustCompile(`^,\s*name=([^,]*)`)
+	digitsRE = regexp.MustCompile(`^\d+$`)
+	// The sub-component may be several words ("MSE Degraded"); its words
+	// exclude commas so a pid or name field is never read as part of it.
+	nvlink5RE  = regexp.MustCompile(`^,\s*([^\s,]+(?:\s+[^\s,]+)*?)\s+(Fatal|Nonfatal)\s+XC\d+\s+i\d+\s+Link\s+(-?\d+)(?:\s+\(([^)]*)\))?`)
 	recoveryRE = regexp.MustCompile(`GPU recovery action changed from (0x[0-9a-fA-F]+) \(([^)]*)\) to (0x[0-9a-fA-F]+) \(([^)]*)\)`)
 )
 
@@ -117,13 +119,13 @@ func Parse(message string) (Event, error) {
 		}
 	}
 	if m := pidRE.FindStringSubmatch(rest); m != nil {
-		// A pid that is not a number (pid='<unknown>') ends parsing, so the
-		// name= and NVLink5 fields after it, Fatal included, are not read.
-		if !digitsRE.MatchString(m[1]) {
-			return event, nil
-		}
-		if pid, err := strconv.ParseInt(m[1], 10, 64); err == nil {
-			event.PID, event.HasPID = pid, true
+		// A pid that is not a number (pid='<unknown>') is no pid, but the
+		// fields after it are still read: an NVLink5 line carries its Fatal
+		// flag and registers there.
+		if digitsRE.MatchString(m[1]) {
+			if pid, err := strconv.ParseInt(m[1], 10, 64); err == nil {
+				event.PID, event.HasPID = pid, true
+			}
 		}
 		rest = rest[len(m[0]):]
 	}
@@ -136,7 +138,7 @@ func Parse(message string) (Event, error) {
 	if code >= 144 && code <= 150 {
 		if m := nvlink5RE.FindStringSubmatch(rest); m != nil {
 			link, _ := strconv.ParseInt(m[3], 10, 64)
-			detail := &NVLink5{SubComponent: m[1], Fatal: m[2] == "Fatal", Link: link}
+			detail := &NVLink5{SubComponent: strings.Join(strings.Fields(m[1]), " "), Fatal: m[2] == "Fatal", Link: link}
 			tail := strings.Fields(m[4])
 			if len(tail) > 0 {
 				detail.IntrInfo = tail[0]

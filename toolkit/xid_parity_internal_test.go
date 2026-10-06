@@ -220,7 +220,6 @@ func TestXidCollectParity(t *testing.T) {
 		{name: "nonfatal 145 without tail", entries: xidLines(xid145Line)},
 		{name: "Xid 154 transition", entries: xidLines(xid154Line)},
 		{name: "interleaved", entries: xidLines(xid79Line, unrelatedLine, xid149Fatal, xid154Line, xid145Line, xid79Line)},
-		{name: "unattributed NVLink5", entries: xidLines("NVRM: Xid (PCI:0018:01:00): 149, pid='<unknown>', name=<unknown>, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)")},
 		{name: "unattributed ordinary", entries: xidLines("NVRM: Xid (PCI:0000:01:00): 79, pid='<unknown>', name=python3, x")},
 		{name: "unterminated NVLink5 tail", entries: xidLines("NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000")},
 		{name: "Xid stamped ahead of the clock", entries: []xidParityEntry{{at: time.Now().Add(time.Hour), message: xid79Line}}},
@@ -342,6 +341,15 @@ func TestXidCollectDocumentedDivergences(t *testing.T) {
 	})
 	t.Run("numeric pid with unknown name", func(t *testing.T) {
 		legacy, bridged := event(t, "NVRM: Xid (PCI:0000:01:00): 79, pid=42, name=<unknown>, x")
+		if legacy.ProcessName != "<unknown>" || bridged.ProcessName != "" {
+			t.Fatalf("process name legacy=%q collect=%q", legacy.ProcessName, bridged.ProcessName)
+		}
+	})
+	t.Run("NVLink5 with unknown attribution", func(t *testing.T) {
+		legacy, bridged := event(t, "NVRM: Xid (PCI:0018:01:00): 149, pid='<unknown>', name=<unknown>, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)")
+		if bridged.NVLink5 == nil || !bridged.NVLink5.Fatal || !reflect.DeepEqual(legacy.NVLink5, bridged.NVLink5) {
+			t.Fatalf("NVLink5 legacy=%+v collect=%+v, want the same Fatal detail", legacy.NVLink5, bridged.NVLink5)
+		}
 		if legacy.ProcessName != "<unknown>" || bridged.ProcessName != "" {
 			t.Fatalf("process name legacy=%q collect=%q", legacy.ProcessName, bridged.ProcessName)
 		}
