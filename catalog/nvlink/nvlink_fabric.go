@@ -31,7 +31,7 @@ func NVLinkFabric() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300"},
+		Architectures:     []string{"GB200", "GB300", "B200"},
 
 		ConditionScope:    health.DomainScope,
 		Provenance:        health.NVIDIA,
