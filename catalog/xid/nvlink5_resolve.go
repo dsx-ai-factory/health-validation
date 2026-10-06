@@ -31,9 +31,10 @@ const (
 	ResolutionXid154Eval = "XID_154_EVAL"
 
 	// ResolutionXid154Missing marks a deferral with no Xid 154 to defer
-	// to. Expected below CUDA 12.7 / driver R565, where NVIDIA's catalog
-	// records no Xid 154 linkage for this family at all, so the fault is
-	// real but the driver never published an action for it.
+	// to. The driver logs a 154 only when its recovery action changes, so
+	// this normally means it requested none. It stays a bucket of its own
+	// rather than folding into a restart: a 154 that was logged but not
+	// read lands here too, and should remain visible.
 	ResolutionXid154Missing = "XID_154_MISSING"
 
 	// ResolutionXid154Unrecognized marks a deferral whose Xid 154 named

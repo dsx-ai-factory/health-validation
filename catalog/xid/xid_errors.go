@@ -408,8 +408,8 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 		{
 			Expression:        key(ResolutionXid154Missing),
 			Severity:          health.Warning,
-			Message:           fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to Xid 154, but no Xid 154 was observed for the affected GPU. NVIDIA records that linkage from CUDA 12.7 / driver R565; on an older driver the required action cannot be determined from the log alone.", c.code, c.description),
-			RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to Xid 154, and no Xid 154 was observed for the affected GPU, so the driver requested no recovery action. Restart the faulting application; send the node for service if the error persists.", c.code, c.description),
+			RecommendedAction: health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
 		},
 		{
 			Expression:        key(ResolutionXid154Unrecognized),

@@ -423,3 +423,29 @@ func TestDerivedSignals_UnparseableActionCodeSurvives(t *testing.T) {
 		t.Errorf("counts = %v, want the raw value preserved", counts)
 	}
 }
+
+// TestNVLink5Check_No154MeansRestartApp pins what a deferral with no Xid
+// 154 recommends. The driver logs a 154 only when its recovery action
+// changes, so its absence reads as no action requested: the same restart
+// as an application-level Xid, not a service call.
+func TestNVLink5Check_No154MeansRestartApp(t *testing.T) {
+	nv, err := hostCatalog(t, "575.51.03").EvaluateAll(xid.XidMeasurement{
+		Since:      "boot",
+		XidCounts:  map[int64]int64{145: 1},
+		Events:     []xid.XidEvent{srcTrackEvent("0019:01:00", deferToXid154)},
+		EventCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	v, ok := checkResult(nv, "gpu_xid_145")
+	if !ok {
+		t.Fatalf("gpu_xid_145 verdict not found")
+	}
+	if v.Severity != health.Warning {
+		t.Errorf("severity = %v, want WARNING", v.Severity)
+	}
+	if want := health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired); !v.RecommendedAction.Equal(want) {
+		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
+	}
+}
