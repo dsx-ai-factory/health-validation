@@ -45,6 +45,55 @@ func resetAndService() health.RecommendedAction {
 	return health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
 }
 
+// recoveryStep is what one recovery action an Xid 154 can request calls
+// for. The Xid 154 check and the NVLink5 checks that defer to it share
+// these, so one driver request gets the same advice from both.
+type recoveryStep struct {
+	bucket    string
+	requested string
+	// guidance follows the request in a message when the action alone
+	// does not say what to do first.
+	guidance string
+	action   health.RecommendedAction
+	severity health.Severity
+}
+
+func (s recoveryStep) message(finding string) string {
+	if s.guidance == "" {
+		return finding
+	}
+	return finding + " " + s.guidance
+}
+
+// recoverySteps is ordered most disruptive first: rules that tie on
+// severity take the first match's action, so a GPU needing a reboot is
+// not reported as needing only a reset.
+var recoverySteps = []recoveryStep{
+	{
+		bucket:    ResolutionRestartOS,
+		requested: "an OS reboot",
+		severity:  health.Critical,
+		action:    health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired),
+	},
+	{
+		bucket:    ResolutionResetGPU,
+		requested: "a GPU reset",
+		severity:  health.Critical,
+		action:    resetAndService(),
+	},
+	// Drain P2P is not a final verdict: the driver names the real
+	// action once P2P traffic stops, logging another Xid 154. NVIDIA's
+	// guidance is to reset the GPU if Drain P2P is still requested after
+	// the drain, so it shares the reset's steps.
+	{
+		bucket:    ResolutionDrainP2P,
+		requested: "that peer-to-peer traffic be stopped",
+		guidance:  "Stop the processes using peer-to-peer and disable persistence mode, then re-run; reset the GPU if this is still requested.",
+		severity:  health.Critical,
+		action:    resetAndService(),
+	},
+}
+
 // criticalXids lists every critical Xid code, ordered by code. action
 // is the immediate-action bucket; codes whose action is IGNORE/empty or
 // that are marked Unused are excluded entirely.
@@ -392,7 +441,19 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 	// (INFO exits 0). Escalating on the bare occurrence instead makes
 	// reading the table pointless, because a node's severity is the worst
 	// across its checks and the escalation would stand regardless.
-	def.Rules = []health.Rule{
+	var rules []health.Rule
+	for _, step := range recoverySteps {
+		if step.bucket == ResolutionResetGPU {
+			continue // also a decode-table action, with its own message below
+		}
+		rules = append(rules, health.Rule{
+			Expression:        key(step.bucket),
+			Severity:          step.severity,
+			Message:           step.message(fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to Xid 154, which requested %s for the affected GPU.", c.code, c.description, step.requested)),
+			RecommendedAction: step.action,
+		})
+	}
+	def.Rules = append(rules, []health.Rule{
 		{
 			Expression:        key(ResolutionResetGPU),
 			Severity:          health.Critical,
@@ -427,7 +488,7 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 			Severity:   health.Info,
 			Message:    fmt.Sprintf("GPU Xid %d detected: %s. NVIDIA's decode table resolves this occurrence to no action.", c.code, c.description),
 		},
-	}
+	}...)
 	return def
 }
 
@@ -508,20 +569,60 @@ func xid45Check() health.CheckDefinition {
 	return def
 }
 
-// xid154Check builds the INFO check for Xid 154.
+// xid154Check builds the check for Xid 154. It reads the recovery action
+// each GPU was left in, so a request the driver made alongside any Xid,
+// not only an NVLink5 fault that defers to it, reaches the operator.
 func xid154Check() health.CheckDefinition {
 	def := baseCheck(
 		"gpu_xid_154",
 		"GPU Xid 154 (GPU recovery action changed)",
-		"Detects NVRM Xid 154 in the system journal since boot. Informational; correlates with an accompanying Xid.",
+		"Detects NVRM Xid 154 in the system journal since boot and reports the recovery action the driver last requested for each GPU.",
 		health.Drain(health.RemediationActionXid154),
 	)
 	def.Architectures = slices.Clone(allArchitectures)
-	def.Rules = []health.Rule{{
-		Expression: "154 in xid_counts && xid_counts[154] >= occurrences",
-		Severity:   health.Info,
-		Message:    "GPU Xid 154 (GPU recovery action changed) observed. Informational; correlate with the accompanying Xid.",
-	}}
+	def.RequiredSignals = []string{SignalXidCounts, SignalRecoveryActionCounts}
+
+	codesByBucket := make(map[string][]string)
+	var mapped []string
+	for code, bucket := range recoveryActionBuckets {
+		key := strconv.Quote(fmt.Sprintf("0x%x", code))
+		codesByBucket[bucket] = append(codesByBucket[bucket], key)
+		mapped = append(mapped, key)
+	}
+	slices.Sort(mapped)
+
+	// Every rule also needs occurrences Xid 154 lines, so raising the
+	// threshold quiets the check as a whole.
+	const seen = " && 154 in xid_counts && xid_counts[154] >= occurrences"
+
+	var rules []health.Rule
+	for _, step := range recoverySteps {
+		codes := codesByBucket[step.bucket]
+		slices.Sort(codes)
+		terms := make([]string, len(codes))
+		for i, code := range codes {
+			terms[i] = code + " in recovery_action_counts"
+		}
+		rules = append(rules, health.Rule{
+			Expression:        "(" + strings.Join(terms, " || ") + ")" + seen,
+			Severity:          step.severity,
+			Message:           step.message(fmt.Sprintf("GPU Xid 154: the driver requested %s for at least one GPU.", step.requested)),
+			RecommendedAction: step.action,
+		})
+	}
+	def.Rules = append(rules,
+		health.Rule{
+			Expression:        fmt.Sprintf("recovery_action_counts.exists(k, !(k in [%s]))", strings.Join(mapped, ", ")) + seen,
+			Severity:          health.Warning,
+			Message:           "GPU Xid 154: the driver requested a recovery action this catalog does not recognize for at least one GPU; report the action code.",
+			RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
+		},
+		health.Rule{
+			Expression: "154 in xid_counts && xid_counts[154] >= occurrences",
+			Severity:   health.Info,
+			Message:    "GPU Xid 154 (GPU recovery action changed) observed. Informational; correlate with the accompanying Xid.",
+		},
+	)
 	return def
 }
 

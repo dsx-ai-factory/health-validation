@@ -42,26 +42,37 @@ const (
 	// read lands here too, and should remain visible.
 	ResolutionXid154Missing = "XID_154_MISSING"
 
+	// ResolutionRestartOS and ResolutionDrainP2P are recovery actions an
+	// Xid 154 can name that the decode table itself never does.
+	ResolutionRestartOS = "RESTART_OS"
+	ResolutionDrainP2P  = "DRAIN_P2P"
+
 	// ResolutionXid154Unrecognized marks a deferral whose Xid 154 named
-	// a recovery action this code does not map. Surfaced rather than
-	// dropped: the action set is not documented as closed, so a new code
-	// should be visible instead of silently reading as "no action".
+	// a recovery action [recoveryActionBuckets] does not map. Surfaced
+	// rather than dropped, so a new or unmapped code is visible instead
+	// of silently reading as "no action".
 	ResolutionXid154Unrecognized = "XID_154_UNRECOGNIZED"
 )
 
-// Recovery-action codes observed in Xid 154 lines. NVRM prints the code
-// and the name it expands to; the code is matched because it is what the
-// driver commits to, while the name is display text.
+// recoveryActionBuckets maps the recovery-action codes an Xid 154
+// reports onto the bucket vocabulary. The codes are the driver's
+// NV2080_CTRL_GPU_RECOVERY_ACTION values, which NVML's
+// nvmlDeviceGpuRecoveryAction_t numbers identically.
 //
-// Compared numerically rather than as the strings NVRM printed. The log
-// format permits any hex rendering, so "0x1", "0x01" and "0X1" are the
-// same action, and matching on the printed text read the padded forms as
-// unrecognized.
-const (
-	recoveryActionNone             = 0x0 // None
-	recoveryActionGPUResetRequired = 0x1 // GPU Reset Required
-	recoveryActionDrainAndReset    = 0x4 // Drain and Reset
-)
+// Recover IMEX Domain (0x5) and Bus Reset (0x6) are left unmapped: no
+// remediation step here matches either, and an unmapped code still
+// reports as unrecognized rather than as no action.
+//
+// Keyed numerically rather than by the string NVRM printed, so "0x1",
+// "0x01" and "0X1" are the same action.
+var recoveryActionBuckets = map[uint32]string{
+	0x0: ResolutionIgnore,    // None
+	0x1: ResolutionResetGPU,  // GPU reset (PF FLR)
+	0x2: ResolutionRestartOS, // OS Reboot
+	0x3: ResolutionDrainP2P,  // Drain P2P
+	0x4: ResolutionResetGPU,  // Drain and Reset
+	0x7: ResolutionRestartOS, // System Reboot
+}
 
 // canonicalRecoveryActionCode renders a recovery-action code one way, so
 // the same action keys the same signal entry however NVRM spelled it. An
@@ -75,10 +86,10 @@ func canonicalRecoveryActionCode(raw string) string {
 	return fmt.Sprintf("0x%x", v)
 }
 
-// resolveRecoveryAction maps a terminal Xid 154 action onto the decode
-// table's bucket vocabulary.
+// resolveRecoveryAction maps a terminal Xid 154 action onto the bucket
+// vocabulary.
 //
-// Drain and Reset collapses onto RESET_GPU along with GPU Reset Required
+// Drain and Reset collapses onto RESET_GPU along with a plain GPU reset
 // because the bucket names the remediation step, not the scheduling
 // consequence: a check firing Critical already carries OperationalDrain,
 // so the draining half is expressed there rather than duplicated here.
@@ -87,14 +98,10 @@ func resolveRecoveryAction(action RecoveryAction) string {
 	if !ok {
 		return ResolutionXid154Unrecognized
 	}
-	switch code {
-	case recoveryActionNone:
-		return ResolutionIgnore
-	case recoveryActionGPUResetRequired, recoveryActionDrainAndReset:
-		return ResolutionResetGPU
-	default:
-		return ResolutionXid154Unrecognized
+	if bucket, ok := recoveryActionBuckets[code]; ok {
+		return bucket
 	}
+	return ResolutionXid154Unrecognized
 }
 
 // resolveNVLink5Event returns the immediate-action bucket for one

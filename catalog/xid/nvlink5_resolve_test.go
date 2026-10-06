@@ -1,6 +1,7 @@
 package xid_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -106,6 +107,10 @@ func TestNVLink5ResolutionCounts_DeferralUsesThe154(t *testing.T) {
 		{"reset required", "0x1", "GPU Reset Required", k145(xid.ResolutionResetGPU)},
 		{"drain and reset", "0x4", "Drain and Reset", k145(xid.ResolutionResetGPU)},
 		{"none clears it", "0x0", "None", k145(xid.ResolutionIgnore)},
+		{"os reboot", "0x2", "OS Reboot", k145(xid.ResolutionRestartOS)},
+		{"system reboot", "0x7", "System Reboot", k145(xid.ResolutionRestartOS)},
+		{"drain p2p", "0x3", "Drain P2P", k145(xid.ResolutionDrainP2P)},
+		{"bus reset stays unmapped", "0x6", "Bus Reset", k145(xid.ResolutionXid154Unrecognized)},
 		{"unmapped code is surfaced", "0x9", "Some Future Action", k145(xid.ResolutionXid154Unrecognized)},
 	}
 	for _, tc := range tests {
@@ -469,5 +474,81 @@ func TestNVLink5Check_UndecodedLineStillReports(t *testing.T) {
 	}
 	if v.Severity != health.Warning {
 		t.Errorf("severity = %v, want WARNING", v.Severity)
+	}
+}
+
+// TestXid154Check_ReportsRequestedAction pins what gpu_xid_154 reports for
+// each recovery action a GPU was left in. A 154 can accompany any Xid, so
+// this is the only check that sees a request made alongside, say, an
+// Xid 94.
+func TestXid154Check_ReportsRequestedAction(t *testing.T) {
+	restartOS := health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired)
+	reset := health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
+	service := health.Drain(health.RemediationActionServiceRequired)
+
+	tests := []struct {
+		name         string
+		toCodes      []string
+		wantAction   health.RecommendedAction
+		wantSeverity health.Severity
+	}{
+		{name: "gpu reset", toCodes: []string{"0x1"}, wantSeverity: health.Critical, wantAction: reset},
+		{name: "drain and reset", toCodes: []string{"0x4"}, wantSeverity: health.Critical, wantAction: reset},
+		{name: "os reboot", toCodes: []string{"0x2"}, wantSeverity: health.Critical, wantAction: restartOS},
+		{name: "system reboot", toCodes: []string{"0x7"}, wantSeverity: health.Critical, wantAction: restartOS},
+		{name: "drain p2p", toCodes: []string{"0x3"}, wantSeverity: health.Critical, wantAction: reset},
+		{name: "unmapped", toCodes: []string{"0x5"}, wantSeverity: health.Warning, wantAction: service},
+		{name: "reboot outranks reset", toCodes: []string{"0x1", "0x2"}, wantSeverity: health.Critical, wantAction: restartOS},
+		{name: "none", toCodes: []string{"0x0"}, wantSeverity: health.Info, wantAction: health.Drain(health.RemediationActionXid154)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := xid.XidMeasurement{Since: "boot", XidCounts: map[int64]int64{94: 1}, EventCount: 1}
+			m.Events = append(m.Events, xid.XidEvent{PCIAddress: "0018:01:00", XidCode: 94})
+			for i, code := range tc.toCodes {
+				m.Events = append(m.Events, recoveryEvent(fmt.Sprintf("00%d9:01:00", i), "0x0", "None", code, "Action"))
+				m.XidCounts[154]++
+				m.EventCount++
+			}
+			nv, err := hostCatalog(t, "575.51.03").EvaluateAll(m)
+			if err != nil {
+				t.Fatalf("EvaluateAll: %v", err)
+			}
+			v, ok := checkResult(nv, "gpu_xid_154")
+			if !ok {
+				t.Fatalf("gpu_xid_154 verdict not found")
+			}
+			if v.Severity != tc.wantSeverity {
+				t.Errorf("severity = %v, want %v", v.Severity, tc.wantSeverity)
+			}
+			if !v.RecommendedAction.Equal(tc.wantAction) {
+				t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, tc.wantAction)
+			}
+		})
+	}
+}
+
+// TestNVLink5Check_DeferralToReboot covers a deferral the 154 resolves to
+// a reboot, an action the decode table never names itself.
+func TestNVLink5Check_DeferralToReboot(t *testing.T) {
+	nv, err := hostCatalog(t, "575.51.03").EvaluateAll(xid.XidMeasurement{
+		Since:     "boot",
+		XidCounts: map[int64]int64{145: 1, 154: 1},
+		Events: []xid.XidEvent{
+			srcTrackEvent("0019:01:00", deferToXid154),
+			recoveryEvent("0019:01:00", "0x0", "None", "0x2", "OS Reboot"),
+		},
+		EventCount: 2,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	v, ok := checkResult(nv, "gpu_xid_145")
+	if !ok {
+		t.Fatalf("gpu_xid_145 verdict not found")
+	}
+	want := health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired)
+	if v.Severity != health.Critical || !v.RecommendedAction.Equal(want) {
+		t.Errorf("verdict = %v %v, want CRITICAL %v", v.Severity, v.RecommendedAction, want)
 	}
 }

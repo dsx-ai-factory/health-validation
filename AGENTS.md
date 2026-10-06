@@ -75,7 +75,7 @@ This file provides guidance to AI coding agents when working with code in this r
 | `rdma_linkflap_fatal` | infiniband | Count of mlx5 RDMA link outages (down→up ≥ `min_outage_seconds`) reaches `fatal_flap_threshold` | None |
 | `gpu_xid_<code>` | xid | A critical-class Xid code is seen in the system journal (since boot) | A warning-class Xid code is seen in the system journal (since boot) |
 | `gpu_xid_149_<hex>` | xid | An Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype whose decode-table resolution is a GPU reset | The same, for a subtype the table resolves to IGNORE |
-| `gpu_xid_154` | xid | None | None (INFO only) |
+| `gpu_xid_154` | xid | A GPU was left in a GPU-reset, reboot or drain-P2P recovery action | A GPU was left in a recovery action the catalog does not map |
 
 ---
 
