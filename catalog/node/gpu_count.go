@@ -15,10 +15,11 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // adjustable threshold, so operators tune it per fleet.
 //
 // The check is scoped to architectures with a known canonical GPU
-// count. Defaults below target GB200 (4 Blackwell GPUs per node);
-// extend the Architectures list and adjust expected_gpu_count via
-// [catalog.WithOverrides] for other architectures, or register
-// an architecture-specific variant.
+// count: 4 per node on GB200 and GB300 (one Grace Blackwell compute
+// tray), 8 per node on H100, H200 and B200 (HGX/DGX baseboards). A fleet
+// with a different SKU overrides expected_gpu_count via
+// [catalog.WithOverrides]; other architectures need an entry here
+// before the check runs on them.
 func GPUCount() health.CheckDefinition {
 	return health.CheckDefinition{
 		ID:          "gpu_count",
@@ -31,7 +32,7 @@ func GPUCount() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300"},
+		Architectures:     []string{"GB200", "GB300", "B200"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
@@ -40,9 +41,14 @@ func GPUCount() health.CheckDefinition {
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_gpu_count": {
-				Value:       int64(4),
+				Value: int64(8),
+				PerArchitecture: map[string]any{
+					"GB200": int64(4),
+					"GB300": int64(4),
+					"B200":  int64(8),
+				},
 				Category:    health.DefaultThreshold,
-				Description: "Expected number of GPUs on a node. Override per fleet.",
+				Description: "Expected number of GPUs on a node: 4 on GB200/GB300, 8 on B200. Override per fleet.",
 				Unit:        "count",
 			},
 		},
