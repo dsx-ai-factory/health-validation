@@ -256,9 +256,14 @@ func DecodeNVLink5Resolution(code int64, era DriverEra, detail NVLink5Detail) NV
 		}
 	}
 
-	if byStatus := filterByErrorStatus(candidates, detail.ErrorStatus); len(byStatus) == 1 {
+	switch byStatus := filterByErrorStatus(candidates, detail.ErrorStatus); len(byStatus) {
+	case 1:
 		return applyResolution(byStatus[0], era, detail.IntrInfo)
-	} else if len(byStatus) > 0 {
+	case 0:
+		// A row naming a different ErrorStatus describes a different
+		// fault, however well its IntrInfo pattern fits.
+		candidates = withoutErrorStatus(candidates)
+	default:
 		candidates = byStatus
 	}
 
@@ -324,6 +329,18 @@ func filterByErrorStatus(candidates []nvlink5DecodeRow, actual string) []nvlink5
 				out = append(out, row)
 				break
 			}
+		}
+	}
+	return out
+}
+
+// withoutErrorStatus returns the rows among candidates that leave
+// errorStatus blank, i.e. match any value.
+func withoutErrorStatus(candidates []nvlink5DecodeRow) []nvlink5DecodeRow {
+	var out []nvlink5DecodeRow
+	for _, row := range candidates {
+		if row.errorStatus == "" {
+			out = append(out, row)
 		}
 	}
 	return out

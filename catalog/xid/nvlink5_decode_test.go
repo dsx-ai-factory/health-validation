@@ -307,3 +307,14 @@ func TestNVLink5SubXidCodeChecks_NoCheckForAmbiguousDigit(t *testing.T) {
 		}
 	}
 }
+
+// TestDecodeNVLink5Resolution_UnlistedErrorStatusFallsBack covers an
+// ErrorStatus no row names. IntrInfo 0x7 fits every RLW_SRC_TRACK row's
+// V2 pattern, so matching on it alone would confirm the first row, a
+// reset, for a Nonfatal fault the table says nothing about.
+func TestDecodeNVLink5Resolution_UnlistedErrorStatusFallsBack(t *testing.T) {
+	got := DecodeNVLink5Resolution(145, DriverEraV2, NVLink5Detail{SubComponent: "RLW_SRC_TRACK", IntrInfo: "0x00000007", ErrorStatus: "0x00000400", Fatal: false})
+	if got.Matched || got.Resolution != "IGNORE" {
+		t.Errorf("Resolution = %q matched=%v, want the Nonfatal fallback IGNORE/false", got.Resolution, got.Matched)
+	}
+}
