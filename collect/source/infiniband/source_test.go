@@ -40,7 +40,7 @@ func TestRead(t *testing.T) {
 		if i >= len(signals) {
 			device = "mlx5_1"
 		}
-		require.Equal(t, device, reading.Target.GetInfiniBandPort().GetDevice())
+		require.Equal(t, device, reading.Target.GetInfiniBandPort().GetDevice().GetName())
 		require.Equal(t, uint32(1), reading.Target.GetInfiniBandPort().GetPort())
 	}
 	for i, want := range []int64{4, 312500000, 492} {
@@ -89,7 +89,7 @@ func TestRestrictedFilesAndSelection(t *testing.T) {
 		require.Len(t, readings, 1)
 		require.Equal(t, observation.CollectionErrorCategoryUnsupported, readings[0].Failure.GetCategory())
 		require.Nil(t, readings[0].NoValue)
-		require.Equal(t, "mlx5_0", readings[0].Target.GetInfiniBandPort().GetDevice())
+		require.Equal(t, "mlx5_0", readings[0].Target.GetInfiniBandPort().GetDevice().GetName())
 		require.Equal(t, uint32(1), readings[0].Target.GetInfiniBandPort().GetPort())
 	}
 	require.Equal(t, 1, files.reads)

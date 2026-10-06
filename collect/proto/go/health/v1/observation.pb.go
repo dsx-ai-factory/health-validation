@@ -402,6 +402,8 @@ func (x *GpuInventory) GetEntries() []*GpuInventoryEntry {
 // the same inventory snapshot.
 type GpuInventoryEntry struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// The GPU index assigned by this snapshot's source.
+	SourceIndex uint32 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
 	// Known identity and successfully read attributes, including partial records.
 	Gpu *GpuDevice `protobuf:"bytes,2,opt,name=gpu,proto3" json:"gpu,omitempty"`
 	// GPU unavailable (e.g. Lost), or enrichment query failure.
@@ -412,9 +414,7 @@ type GpuInventoryEntry struct {
 	// An absent value without an error means the attribute was not attempted.
 	FieldErrors   map[string]*CollectionError `protobuf:"bytes,4,rep,name=field_errors,json=fieldErrors,proto3" json:"field_errors,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
-	// The GPU index assigned by this snapshot's source.
-	SourceIndex uint32 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
-	sizeCache   protoimpl.SizeCache
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GpuInventoryEntry) Reset() {
@@ -1193,7 +1193,7 @@ func (x *InfiniBandDeviceRef) GetName() string {
 
 type InfiniBandPortRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Device        string                 `protobuf:"bytes,1,opt,name=device,proto3" json:"device,omitempty"`
+	Device        *InfiniBandDeviceRef   `protobuf:"bytes,1,opt,name=device,proto3" json:"device,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	Port          uint32 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
 	sizeCache     protoimpl.SizeCache
@@ -1229,11 +1229,11 @@ func (*InfiniBandPortRef) Descriptor() ([]byte, []int) {
 	return file_health_v1_observation_proto_rawDescGZIP(), []int{13}
 }
 
-func (x *InfiniBandPortRef) GetDevice() string {
+func (x *InfiniBandPortRef) GetDevice() *InfiniBandDeviceRef {
 	if x != nil {
 		return x.Device
 	}
-	return ""
+	return nil
 }
 
 func (x *InfiniBandPortRef) GetPort() uint32 {
@@ -1651,9 +1651,9 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"source_gpu\x18\x01 \x01(\v2\x11.health.v1.GpuRefR\tsourceGpu\x12,\n" +
 	"\bpeer_gpu\x18\x02 \x01(\v2\x11.health.v1.GpuRefR\apeerGpu\")\n" +
 	"\x13InfiniBandDeviceRef\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"?\n" +
-	"\x11InfiniBandPortRef\x12\x16\n" +
-	"\x06device\x18\x01 \x01(\tR\x06device\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"_\n" +
+	"\x11InfiniBandPortRef\x126\n" +
+	"\x06device\x18\x01 \x01(\v2\x1e.health.v1.InfiniBandDeviceRefR\x06device\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\"F\n" +
 	"\x0fKernelRecordRef\x12\x17\n" +
 	"\aboot_id\x18\x01 \x01(\tR\x06bootId\x12\x1a\n" +
@@ -1756,14 +1756,15 @@ var file_health_v1_observation_proto_depIdxs = []int32{
 	11, // 22: health.v1.NvLinkEndpointRef.gpu:type_name -> health.v1.GpuRef
 	11, // 23: health.v1.GpuPairRef.source_gpu:type_name -> health.v1.GpuRef
 	11, // 24: health.v1.GpuPairRef.peer_gpu:type_name -> health.v1.GpuRef
-	0,  // 25: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
-	1,  // 26: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
-	18, // 27: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
-	28, // [28:28] is the sub-list for method output_type
-	28, // [28:28] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	14, // 25: health.v1.InfiniBandPortRef.device:type_name -> health.v1.InfiniBandDeviceRef
+	0,  // 26: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
+	1,  // 27: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
+	18, // 28: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
+	29, // [29:29] is the sub-list for method output_type
+	29, // [29:29] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_health_v1_observation_proto_init() }

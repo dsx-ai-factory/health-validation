@@ -105,7 +105,7 @@ func logEvents(logger *log.Logger, batch *observation.ObservationBatch) {
 		case ibsignals.State.ID():
 			if obs.GetValue().GetIntValue() == 1 { // Linux InfiniBand state 1 is DOWN.
 				port := obs.GetTarget().GetInfiniBandPort()
-				logger.Printf("event=infiniband_port_down port=%s/%d", port.GetDevice(), port.GetPort())
+				logger.Printf("event=infiniband_port_down port=%s/%d", port.GetDevice().GetName(), port.GetPort())
 			}
 		}
 	}

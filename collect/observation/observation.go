@@ -115,7 +115,7 @@ func InfiniBandDeviceTarget(name string) *ObservationTarget {
 
 // InfiniBandPortTarget identifies one port on a host-local HCA.
 func InfiniBandPortTarget(device string, port uint32) *ObservationTarget {
-	return &ObservationTarget{Kind: &ObservationTarget_InfiniBandPort{InfiniBandPort: &InfiniBandPortRef{Device: device, Port: port}}}
+	return &ObservationTarget{Kind: &ObservationTarget_InfiniBandPort{InfiniBandPort: &InfiniBandPortRef{Device: &InfiniBandDeviceRef{Name: device}, Port: port}}}
 }
 
 // KernelRecordTarget identifies one boot-scoped kernel record.
@@ -255,6 +255,9 @@ func validateTarget(target *ObservationTarget) error {
 	case *ObservationTarget_InfiniBandPort:
 		if kind == nil || kind.InfiniBandPort == nil {
 			return fmt.Errorf("target has an empty InfiniBand port payload")
+		}
+		if kind.InfiniBandPort.Device == nil {
+			return fmt.Errorf("target has an incomplete InfiniBand port payload")
 		}
 	case *ObservationTarget_KernelRecord:
 		if kind == nil || kind.KernelRecord == nil {

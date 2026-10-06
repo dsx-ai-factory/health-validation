@@ -146,7 +146,7 @@ message InfiniBandDeviceRef {
 }
 
 message InfiniBandPortRef {
-  string device = 1;
+  InfiniBandDeviceRef device = 1;
   uint32 port = 2;
 }
 
