@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	catalogxid "github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/xid"
 )
 
@@ -359,6 +360,55 @@ func TestParseXid_RecoveryAction(t *testing.T) {
 	}
 	if second.RecoveryAction.ToName != "GPU Reset Required" {
 		t.Errorf("second To = %q, want GPU Reset Required", second.RecoveryAction.ToName)
+	}
+}
+
+// TestParseXid_RecoveryActionWithProcess covers 154 lines on which the
+// driver also names the process it was servicing. Missing the transition
+// here would leave a driver-requested reset looking unreported.
+func TestParseXid_RecoveryActionWithProcess(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     string
+		wantProc string
+		wantPid  int64
+	}{
+		{
+			name:     "numeric pid",
+			line:     "NVRM: Xid (PCI:0019:01:00): 154, pid=31982, name=nv_queue, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
+			wantPid:  31982,
+			wantProc: "nv_queue",
+		},
+		{
+			name:     "non-numeric pid",
+			line:     "NVRM: Xid (PCI:0019:01:00): 154, pid='<unknown>', name=<unknown>, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
+			wantProc: "<unknown>",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := xid.ParseXid("boot", []string{tt.line})
+			if m.EventCount != 1 {
+				t.Fatalf("EventCount = %d, want 1", m.EventCount)
+			}
+			ev := m.Events[0]
+			if ev.XidCode != 154 || ev.PCIAddress != "0019:01:00" {
+				t.Errorf("event = Xid %d on %q, want Xid 154 on 0019:01:00", ev.XidCode, ev.PCIAddress)
+			}
+			if ev.Pid != tt.wantPid {
+				t.Errorf("Pid = %d, want %d", ev.Pid, tt.wantPid)
+			}
+			if ev.ProcessName != tt.wantProc {
+				t.Errorf("ProcessName = %q, want %q", ev.ProcessName, tt.wantProc)
+			}
+			if ev.RecoveryAction == nil {
+				t.Fatalf("RecoveryAction = nil, want populated")
+			}
+			want := catalogxid.RecoveryAction{FromCode: "0x0", FromName: "None", ToCode: "0x1", ToName: "GPU Reset Required"}
+			if *ev.RecoveryAction != want {
+				t.Errorf("RecoveryAction = %+v, want %+v", *ev.RecoveryAction, want)
+			}
+		})
 	}
 }
 
