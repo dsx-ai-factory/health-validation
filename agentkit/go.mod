@@ -1,6 +1,6 @@
 module github.com/dsx-ai-factory/health-validation/agentkit
 
-go 1.27.0
+go 1.27.1
 
 // collect is developed in this same repo. The replace resolves it from the
 // local tree; consumers of a published agentkit ignore this replace (replace
