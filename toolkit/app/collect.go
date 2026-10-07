@@ -32,6 +32,13 @@ type CollectAdapter interface {
 // measurements across all sensors; the two methods may be called in any order.
 // Sources and inventory shared by sensors must be constructed by the caller.
 // Only requested signals are collected; each sensor must supply at least one.
+// Each signal has one producer, so overlapping sensors are a registration error.
+// Without signalIDs the sensor supplies every requested signal it declares.
+// With signalIDs it supplies exactly those, replacing the built-in collect
+// source for them; this succeeds the With*Backend overrides for collect-backed
+// domains. Each claimed signal must be declared by the sensor and requested by
+// an adapter. A built-in source left with no requested signals never runs, and
+// built-in adapters read claimed signals from this sensor.
 // Every selected sensor runs; cadence filters evaluation only. Each registered
 // collect source has its own timeout budget.
 // Timeout blocking is keyed by sensor ID, not the underlying source. Shared
@@ -41,9 +48,15 @@ type CollectAdapter interface {
 // collect sensor, never both. For a domain still on a legacy sensor, override
 // its legacy backend with an empty provider when an adapter supplies that
 // domain's measurements instead.
-func (a *App) WithCollect(sensor collect.Sensor) *App {
-	a.collectSources = append(a.collectSources, sensor)
+func (a *App) WithCollect(sensor collect.Sensor, signalIDs ...string) *App {
+	a.collectSources = append(a.collectSources, collectSource{sensor: sensor, claims: slices.Clone(signalIDs)})
 	return a
+}
+
+// collectSource is a caller sensor and the signals it claims from built-ins.
+type collectSource struct {
+	sensor collect.Sensor
+	claims []string
 }
 
 // WithCollectAdapters adds adapters that assemble domain measurements from
@@ -70,9 +83,8 @@ func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 // Registration errors and panics are returned so the CLI exits 2 before
 // anything is measured.
 func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter) (sensors []toolkit.Sensor, err error) {
-	sources := slices.Concat(a.collectSources, builtinSources)
 	adapters := slices.Concat(a.collectAdapters, builtinAdapters)
-	if len(sources) == 0 && len(adapters) == 0 {
+	if len(a.collectSources) == 0 && len(builtinSources) == 0 && len(adapters) == 0 {
 		return nil, nil
 	}
 	if len(adapters) == 0 {
@@ -115,11 +127,48 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 			Build: declared.Build, Errored: declared.Errored,
 		})
 	}
-	for _, source := range sources {
-		if isNilCollectInput(source) {
+	// Caller sensors register first so a built-in that overlaps a bare caller
+	// sensor can name the fix.
+	claimed := make(map[string]bool)
+	for _, source := range a.collectSources {
+		if isNilCollectInput(source.sensor) {
 			return nil, fmt.Errorf("registered collect sensor cannot be nil")
 		}
-		if err := runner.Register(source, requested...); err != nil {
+		signals := requested
+		if len(source.claims) > 0 {
+			signals = source.claims
+			declared := source.sensor.Signals()
+			for _, id := range source.claims {
+				if !slices.ContainsFunc(declared, func(s collect.Signal) bool { return s != nil && s.ID() == id }) {
+					return nil, fmt.Errorf("collect sensor %q does not declare claimed signal %q", source.sensor.ID(), id)
+				}
+				if !slices.Contains(requested, id) {
+					return nil, fmt.Errorf("collect sensor %q claims signal %q, which no adapter requests", source.sensor.ID(), id)
+				}
+				claimed[id] = true
+			}
+		}
+		if err := runner.Register(source.sensor, signals...); err != nil {
+			return nil, err
+		}
+	}
+	unclaimed := slices.DeleteFunc(slices.Clone(requested), func(id string) bool { return claimed[id] })
+	for _, source := range builtinSources {
+		owns := false
+		for _, s := range source.Signals() {
+			if s == nil || !slices.Contains(unclaimed, s.ID()) {
+				continue
+			}
+			if owner := runner.Owner(s.ID()); owner != "" {
+				return nil, fmt.Errorf("signal %q is produced by both %q and built-in %q; pass the signal IDs to WithCollect to replace the built-in source", s.ID(), owner, source.ID())
+			}
+			owns = true
+		}
+		// Skipping a fully claimed built-in keeps its hardware untouched.
+		if !owns {
+			continue
+		}
+		if err := runner.Register(source, unclaimed...); err != nil {
 			return nil, err
 		}
 	}

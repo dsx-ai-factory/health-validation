@@ -931,3 +931,97 @@ func TestWithCollectRegistersReusableDomainAdapters(t *testing.T) {
 		})
 	}
 }
+
+// claimSignals returns the signals sourceAdapter requests.
+func claimSignals() collect.Signals {
+	return collect.Signals{collect.NewSignal("test.a", ""), collect.NewSignal("test.b", "")}
+}
+
+// sourceAdapter requests claimSignals and records each observation's producer
+// as "signal/source".
+func sourceAdapter(produced *[]string) collectAppAdapter {
+	return collectAppAdapter{
+		name: "sources", signals: claimSignals().IDs(),
+		build: func(obs []*observation.Observation) []health.Measurement {
+			for _, o := range obs {
+				*produced = append(*produced, o.GetSignalId()+"/"+o.GetSource())
+			}
+			return nil
+		},
+		errored: func(error) []health.Measurement { return nil },
+	}
+}
+
+func TestWithCollectClaimsReplaceBuiltinSources(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		claims       []string
+		want         []string
+		builtinCalls int
+	}{
+		{name: "no caller", want: []string{"test.a/test.builtin", "test.b/test.builtin"}, builtinCalls: 1},
+		{name: "partial claim", claims: []string{"test.a"}, want: []string{"test.a/test.caller", "test.b/test.builtin"}, builtinCalls: 1},
+		{name: "full claim", claims: []string{"test.a", "test.b"}, want: []string{"test.a/test.caller", "test.b/test.caller"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			builtin := &collectHardwareSensor{id: "test.builtin", signals: claimSignals()}
+			caller := &collectHardwareSensor{id: "test.caller", signals: claimSignals()}
+			a := New()
+			if test.claims != nil {
+				a.WithCollect(caller, test.claims...)
+			}
+			var produced []string
+			sensors, err := a.collectSensors(time.Second, []collect.Sensor{builtin}, []CollectAdapter{sourceAdapter(&produced)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = sensors[0].Measure(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			slices.Sort(produced)
+			if !reflect.DeepEqual(produced, test.want) || builtin.calls != test.builtinCalls {
+				t.Fatalf("produced=%v builtin calls=%d; want %v and %d", produced, builtin.calls, test.want, test.builtinCalls)
+			}
+		})
+	}
+}
+
+func TestWithCollectRejectsInvalidClaims(t *testing.T) {
+	for _, name := range []string{"bare overlap", "undeclared claim", "unrequested claim", "duplicate claim", "claim overlaps bare sensor"} {
+		t.Run(name, func(t *testing.T) {
+			builtin := &collectHardwareSensor{id: "test.builtin", signals: claimSignals()}
+			caller := &collectHardwareSensor{id: "test.caller", signals: claimSignals()}
+			other := &collectHardwareSensor{id: "test.other", signals: claimSignals()}
+			a := New()
+			conflict := `signal "test.a" is produced by both "test.caller" and "test.other"; select one source explicitly`
+			var want string
+			switch name {
+			case "bare overlap":
+				a.WithCollect(caller)
+				want = `signal "test.a" is produced by both "test.caller" and built-in "test.builtin"; pass the signal IDs to WithCollect to replace the built-in source`
+			case "undeclared claim":
+				caller.signals = claimSignals()[:1]
+				a.WithCollect(caller, "test.b")
+				want = `collect sensor "test.caller" does not declare claimed signal "test.b"`
+			case "unrequested claim":
+				caller.signals = append(claimSignals(), collect.NewSignal("test.c", ""))
+				a.WithCollect(caller, "test.c")
+				want = `collect sensor "test.caller" claims signal "test.c", which no adapter requests`
+			case "duplicate claim":
+				a.WithCollect(caller, "test.a").WithCollect(other, "test.a")
+				want = conflict
+			case "claim overlaps bare sensor":
+				a.WithCollect(caller).WithCollect(other, "test.a")
+				want = conflict
+			}
+			var produced []string
+			_, err := a.collectSensors(time.Second, []collect.Sensor{builtin}, []CollectAdapter{sourceAdapter(&produced)})
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("err=%v, want %q", err, want)
+			}
+			if builtin.calls+caller.calls+other.calls != 0 {
+				t.Fatal("invalid claim was measured")
+			}
+		})
+	}
+}

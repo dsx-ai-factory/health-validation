@@ -98,6 +98,14 @@ func (r *Runner) Register(sensor collect.Sensor, signalIDs ...string) error {
 	return nil
 }
 
+// Owner returns the ID of the sensor registered for signalID, or "".
+func (r *Runner) Owner(signalID string) string {
+	if e := r.owner[signalID]; e != nil {
+		return e.id
+	}
+	return ""
+}
+
 // Collect runs each registered sensor once, in registration order, and caches
 // its batch. collect.Run bounds each sensor by the cycle timeout and recovers
 // its panics, and a late result is discarded, never cached.

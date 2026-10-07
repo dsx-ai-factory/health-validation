@@ -42,7 +42,6 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/version"
 	"github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics"
@@ -110,7 +109,7 @@ type App struct {
 	prog            string
 	nodeID          string
 	customChecks    []health.CheckDefinition
-	collectSources  []collect.Sensor
+	collectSources  []collectSource
 	collectAdapters []CollectAdapter
 	// stderrLogging, set via WithStderrLogging, asks Run to install a
 	// stderr-backed slog default honoring --verbose.
