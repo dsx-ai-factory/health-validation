@@ -392,7 +392,7 @@ metrics:
   endpoint: http://127.0.0.1:44318   # full URL, not the collector's host:port form
   timeout_seconds: 10                # optional; defaults to 10
   headers:                           # optional; for an endpoint that authenticates values are passed as plain text since GPUs are considered privileged
-    x-api-key: ${SECRET}
+    x-api-key: <SECRET>
   resource_attributes:               # optional; fleet context on every metric
     cluster: dsx-east
 ```
