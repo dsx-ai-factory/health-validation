@@ -391,7 +391,7 @@ metrics:
   enabled: true
   endpoint: http://127.0.0.1:44318   # full URL, not the collector's host:port form
   timeout_seconds: 10                # optional; defaults to 10
-  headers:                           # optional; for an endpoint that authenticates
+  headers:                           # optional; for an endpoint that authenticates values are passed as plain text since GPUs are considered privileged
     x-api-key: ${SECRET}
   resource_attributes:               # optional; fleet context on every metric
     cluster: dsx-east
@@ -400,7 +400,9 @@ metrics:
 `endpoint` is a full URL. An OTLP collector's own receiver config writes
 `127.0.0.1:44318`, so that form is the easy mistake — it is rejected at load
 time with the fix spelled out. A URL with no path gets `/v1/metrics` appended;
-an explicit path is used as given. `https` enables TLS.
+an explicit path is used as given. `https` enables TLS. Any values thare are
+written to `headers` or `resource_attributes` are passed along as plain text
+not as expanded environment variables.
 
 Six metrics are published per run:
 
