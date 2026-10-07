@@ -98,19 +98,38 @@ func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 // Registration errors and panics are returned so the CLI exits 2 before
 // anything is measured.
 func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter) (sensors []toolkit.Sensor, err error) {
-	adapters := slices.Concat(a.collectAdapters, builtinAdapters)
-	if len(a.collectSources) == 0 && len(builtinSources) == 0 && len(adapters) == 0 {
-		return nil, nil
-	}
-	if len(adapters) == 0 {
-		return nil, fmt.Errorf("collect sensors registered without adapters; register adapters with WithCollectAdapters")
-	}
+	return a.collectSensorsForCategories(timeout, builtinSources, builtinAdapters, nil)
+}
+
+func (a *App) collectSensorsForCategories(timeout time.Duration, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter, categories map[health.Category]bool) (sensors []toolkit.Sensor, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			sensors = nil
 			err = fmt.Errorf("collect registration panicked: %v", recovered)
 		}
 	}()
+	callerAdapters := slices.Clone(a.collectAdapters)
+	if categories != nil {
+		selected := func(adapter CollectAdapter) bool {
+			if isNilCollectInput(adapter) {
+				return false
+			}
+			category, ok := categoryBySensor[adapter.Name()]
+			return !ok || !categories[category]
+		}
+		callerAdapters = slices.DeleteFunc(callerAdapters, selected)
+		builtinAdapters = slices.DeleteFunc(slices.Clone(builtinAdapters), selected)
+	}
+	adapters := slices.Concat(callerAdapters, builtinAdapters)
+	if len(a.collectSources) == 0 && len(builtinSources) == 0 && len(adapters) == 0 {
+		return nil, nil
+	}
+	if len(adapters) == 0 {
+		if categories != nil {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("collect sensors registered without adapters; register adapters with WithCollectAdapters")
+	}
 	cycle, err := collect.NewCycleWithTimeout(uuid.NewString(), time.Now().UTC(), timeout)
 	if err != nil {
 		return nil, err
@@ -129,7 +148,7 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 		}
 		if adapterNames[name] {
 			// Built-ins come last, so a clash at a built-in index is with a caller.
-			if i >= len(a.collectAdapters) {
+			if i >= len(callerAdapters) {
 				return nil, fmt.Errorf("collect adapter name %q is reserved for a built-in domain", name)
 			}
 			return nil, fmt.Errorf("collect adapter %q is already registered", name)
@@ -155,9 +174,15 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 		}
 		signals := requested
 		if len(source.claims) > 0 {
-			signals = source.claims
+			signals = slices.Clone(source.claims)
+			if categories != nil {
+				signals = slices.DeleteFunc(signals, func(id string) bool { return !slices.Contains(requested, id) })
+				if len(signals) == 0 {
+					continue
+				}
+			}
 			declared := source.sensor.Signals()
-			for _, id := range source.claims {
+			for _, id := range signals {
 				if !slices.ContainsFunc(declared, func(s collect.Signal) bool { return s != nil && s.ID() == id }) {
 					return nil, fmt.Errorf("collect sensor %q does not declare claimed signal %q", source.sensor.ID(), id)
 				}
@@ -166,6 +191,10 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 				}
 				claimed[id] = true
 			}
+		} else if categories != nil && !slices.ContainsFunc(source.sensor.Signals(), func(s collect.Signal) bool {
+			return s != nil && slices.Contains(requested, s.ID())
+		}) {
+			continue
 		}
 		if err := runner.Register(source.sensor, signals...); err != nil {
 			return nil, err

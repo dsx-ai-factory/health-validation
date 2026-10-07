@@ -40,6 +40,17 @@ func TestCollectWithOptions_ZeroValueHealthyNode(t *testing.T) {
 	}
 }
 
+func TestCollectMeasurementsWithTimeoutPreservesSensor(t *testing.T) {
+	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
+		node.NodeMeasurement{GPUCount: 4},
+	))
+
+	groups := toolkit.CollectMeasurementsWithTimeout(time.Second, sensor)
+	if len(groups) != 1 || groups[0].Sensor != "node" || len(groups[0].Measurements) != 1 {
+		t.Fatalf("groups = %+v, want one node measurement", groups)
+	}
+}
+
 func TestCollect_FailingNode(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
