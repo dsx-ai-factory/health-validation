@@ -404,16 +404,14 @@ an explicit path is used as given. `https` enables TLS. Any values that are
 written to `headers` or `resource_attributes` are passed along as plain text
 not as expanded environment variables.
 
-Six metrics are defined. Five are published on every run; `check.skipped` is
-the one conditional instrument, emitted once per skipped check, so a run with
-nothing skipped publishes five.
+Six metrics are defined, all published on every run.
 
 | Metric | Type | Value | Attributes |
 |---|---|---|---|
 | `health_validation.node.severity` | gauge | `1`/`0` | `severity` |
 | `health_validation.domain.severity` | gauge | `1`/`0` | `severity`, `category` |
 | `health_validation.check.severity` | gauge | `1`/`0` | `severity`, `check_id`, `category`, `condition_scope`, `maturity_level`, `nvidia_endorsed` |
-| `health_validation.check.skipped` | gauge | Always `1`, one per skipped check | `check_id`, `category`, `skip_reason` |
+| `health_validation.check.skipped` | gauge | `1`/`0` | `check_id`, `category`, `skip_reason` |
 | `health_validation.check.affected_entities` | gauge | Count of distinct entities a check named, `0` included | `check_id`, `category` |
 | `health_validation.runs` | counter (delta) | `1` | `severity` |
 
@@ -438,6 +436,14 @@ per GPU, so `check.severity` reports the **worst** severity across them and
 `check.affected_entities` counts the distinct entities named. One failing GPU
 therefore shows as a failing check; which GPU it was is in the JSON verdict's
 `affected_entities`, not in the metrics.
+
+`check.skipped` works the same way as the severity gauges: every check in the
+run reports all ten skip reasons, `1` for the one in effect and `0` for the
+rest. A check that ran reports `skip_reason="NOT_SKIPPED"` at `1`, which is
+what clears the previous run's skip. Alert on a specific reason, e.g.
+`health_validation_check_skipped{skip_reason="SENSOR_MISSING"} == 1`. A check
+evaluated per entity can be skipped for one GPU and run for another, so more
+than one reason can be `1` at once.
 
 `check.affected_entities` reports `0` for a check that ran and named nothing.
 

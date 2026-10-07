@@ -43,6 +43,17 @@ var severities = []health.Severity{
 	health.Pass, health.Info, health.Warning, health.Critical, health.Unknown,
 }
 
+// skipReasons is reported in full on the skip gauge for the same reason, with
+// one difference: a check evaluated per entity can be skipped for one GPU and
+// run for another, so the reasons are not mutually exclusive and NotSkipped
+// can hold alongside a skip. Each reason in effect reports 1, the rest 0.
+var skipReasons = []health.SkipReason{
+	health.NotSkipped, health.ArchitectureUnsupported, health.DeploymentUnsupported,
+	health.CheckDisabled, health.DependencySkipped, health.InsufficientHistory,
+	health.ThresholdUnconfigured, health.NoApplicableMeasurement, health.SensorMissing,
+	health.CadenceMismatch,
+}
+
 // Spelled out rather than imported from otel/semconv: the keys are stable, and
 // the versioned package would pin the Bazel label to semconv/v1.37.0, a moving
 // target on every OTel bump.
@@ -202,7 +213,7 @@ func (p *Publisher) newInstruments(m metric.Meter) error {
 	p.checkSeverity = gauge("health_validation.check.severity",
 		"1 for the severity a check reported, 0 for every other severity.")
 	p.checkSkipped = gauge("health_validation.check.skipped",
-		"Always 1, emitted once per check that did not execute, labelled with the skip reason.")
+		"1 for each reason a check was skipped, 0 for every other reason; NOT_SKIPPED is 1 when the check ran.")
 	p.affectedEntities = gauge("health_validation.check.affected_entities",
 		"Number of entities (GPUs, links, devices) a check named as affected.")
 	p.runs = runs
@@ -238,12 +249,18 @@ func (p *Publisher) record(ctx context.Context, nv health.NodeVerdict) {
 			attribute.String("category", category.String()))
 	}
 
-	for _, cv := range nv.SkippedChecks {
-		p.checkSkipped.Record(ctx, 1, metric.WithAttributes(
-			attribute.String("check_id", cv.CheckID),
-			attribute.String("category", cv.Category.String()),
-			attribute.String("skip_reason", cv.SkipReason.String()),
-		))
+	for _, s := range aggregateSkips(nv) {
+		for _, reason := range skipReasons {
+			var value int64
+			if _, ok := s.reasons[reason]; ok {
+				value = 1
+			}
+			p.checkSkipped.Record(ctx, value, metric.WithAttributes(
+				attribute.String("check_id", s.checkID),
+				attribute.String("category", s.category.String()),
+				attribute.String("skip_reason", reason.String()),
+			))
+		}
 	}
 
 	for _, r := range aggregateByCheck(nv.CheckResults) {
@@ -263,6 +280,51 @@ func (p *Publisher) record(ctx context.Context, nv health.NodeVerdict) {
 		// staleness window expires it.
 		p.affectedEntities.Record(ctx, int64(len(r.entities)), metric.WithAttributes(id...))
 	}
+}
+
+// skipSummary is every skip reason one check reported across the verdicts it
+// produced, plus NotSkipped if any of them ran.
+type skipSummary struct {
+	reasons  map[health.SkipReason]struct{}
+	checkID  string
+	category health.Category
+}
+
+// aggregateSkips folds a run's executed and skipped verdicts into one entry
+// per check, in first-seen order. Executed checks are included so their
+// skip-reason series are driven back to 0 — without that, a check skipped on
+// one run would sit at 1 forever once it started running again.
+func aggregateSkips(nv health.NodeVerdict) []skipSummary {
+	total := len(nv.CheckResults) + len(nv.SkippedChecks)
+	byID := make(map[string]*skipSummary, total)
+	order := make([]string, 0, total)
+
+	add := func(cv health.CheckVerdict, reason health.SkipReason) {
+		s, ok := byID[cv.CheckID]
+		if !ok {
+			s = &skipSummary{
+				reasons:  map[health.SkipReason]struct{}{},
+				checkID:  cv.CheckID,
+				category: cv.Category,
+			}
+			byID[cv.CheckID] = s
+			order = append(order, cv.CheckID)
+		}
+		s.reasons[reason] = struct{}{}
+	}
+
+	for _, cv := range nv.CheckResults {
+		add(cv, health.NotSkipped)
+	}
+	for _, cv := range nv.SkippedChecks {
+		add(cv, cv.SkipReason)
+	}
+
+	out := make([]skipSummary, 0, len(order))
+	for _, id := range order {
+		out = append(out, *byID[id])
+	}
+	return out
 }
 
 // checkResult is one check's outcome across every entity it ran against.
