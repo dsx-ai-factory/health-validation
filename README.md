@@ -437,14 +437,7 @@ per GPU, so `check.severity` reports the **worst** severity across them and
 therefore shows as a failing check; which GPU it was is in the JSON verdict's
 `affected_entities`, not in the metrics.
 
-`check.affected_entities` reports `0` for a check that ran and named nothing,
-for the same reason the severity gauges emit their zeros: a count published
-only when non-zero would leave the previous run's `2` as the newest point in
-the series, and a recovered node would keep reading as having affected
-entities. Note the gap this does not close — a check that *stops running*
-(newly skipped, or its sensor disappears) publishes no point at all, so its
-last `check.severity` and `check.affected_entities` values go stale rather than
-to zero. Alert on `check.skipped` to catch that case.
+`check.affected_entities` reports `0` for a check that ran and named nothing.
 
 Node identity and versions ride on the OTLP **resource**
 (`service.name`, `service.version`, `service.instance.id` = the node ID, plus
