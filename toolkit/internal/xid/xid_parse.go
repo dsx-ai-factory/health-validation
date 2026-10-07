@@ -168,11 +168,9 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 //
 // Group 1 PCI address, 2 and 3 the optional pid and process name, 4 and 5
 // the code and name being left, 6 and 7 the code and name being entered.
-// Both codes and names are captured verbatim: the code set is not
-// documented as closed, so an unrecognized value still carries a name
-// worth surfacing.
+// Codes and names are captured verbatim; see [xid.RecoveryAction].
 var xidRecoveryActionRE = regexp.MustCompile(
-	`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): 154, (?:pid=([^,]*),\s*name=([^,]*),\s*)?` +
+	`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): 154, (?:pid=([^,]*),\s*)?(?:name=([^,]*),\s*)?` +
 		`GPU recovery action changed ` +
 		`from (0x[0-9a-fA-F]+) \(([^)]*)\) to (0x[0-9a-fA-F]+) \(([^)]*)\)`)
 

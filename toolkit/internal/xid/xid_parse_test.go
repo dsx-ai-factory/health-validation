@@ -384,6 +384,16 @@ func TestParseXid_RecoveryActionWithProcess(t *testing.T) {
 			line:     "NVRM: Xid (PCI:0019:01:00): 154, pid='<unknown>', name=<unknown>, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
 			wantProc: "<unknown>",
 		},
+		{
+			name:    "pid without name",
+			line:    "NVRM: Xid (PCI:0019:01:00): 154, pid=31982, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
+			wantPid: 31982,
+		},
+		{
+			name:     "name without pid",
+			line:     "NVRM: Xid (PCI:0019:01:00): 154, name=nv_queue, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
+			wantProc: "nv_queue",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
