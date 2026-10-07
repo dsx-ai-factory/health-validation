@@ -18,6 +18,8 @@ func (m XidMeasurement) DerivedSignals(host health.Host) map[string]any {
 	terminal := TerminalRecoveryActions(m.Events)
 	resolutions := nvlink5ResolutionCounts(m.Events, host.DriverVersion, terminal)
 	if resolutions == nil {
+		// Empty rather than nil, so the signal reads {} in a verdict's
+		// observed values like the other two instead of null.
 		resolutions = make(map[string]int64)
 	}
 	return map[string]any{

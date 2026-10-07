@@ -134,19 +134,31 @@ followed by service if the problem persists. The verdict message preserves
 the conditional guidance for operators.
 
 Xid 144-150 (the NVLink5/NVSwitch fault family, `gpu_xid_144`..`gpu_xid_150`)
-are a special case: unlike other Xid codes, NVRM marks each occurrence Fatal
-or Nonfatal directly in the log line. Each of these checks fires CRITICAL
-with `["reset_gpu", "service_required"]` (the same two-step sequence as
-above) on a Fatal occurrence, and WARNING with **no recommended action** on
-a Nonfatal one. In NVIDIA's full Xid 144-150 decode table, about 95% of
-Fatal rows resolve to a GPU reset, then service if the reset doesn't clear
-it, and most Nonfatal rows need no remediation at all.
+are a special case: each occurrence is matched against NVIDIA's Xid 144-150
+decode table, and some rows defer to the recovery action an accompanying
+Xid 154 reports for the same GPU. Each check reports what its occurrences
+resolve to:
+
+- **CRITICAL** with `["reset_gpu", "service_required"]` for a GPU reset,
+  including a Fatal occurrence the table has no confirmed row for, and for
+  an Xid 154 asking to drain peer-to-peer traffic.
+- **CRITICAL** with `["restart_os", "service_required"]` for an Xid 154
+  asking for a reboot or bus reset.
+- **WARNING** with `["service_required"]` when the Xid 154 names an action
+  this catalog does not map or could not be read; with
+  `["restart_app", "service_required"]` when the row defers to an Xid 154
+  and none was found; and with no action when the log line could not be
+  decoded.
+- **INFO** with no action when the occurrence resolves to no action.
+
+`gpu_xid_154` reports the recovery action Xid 154 last requested for each
+GPU on the same terms, whichever Xid it accompanied.
 
 | Action | Description |
 |---|---|
 | <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for warning-class per-Xid checks. |
 | <nobr>`update_swfw`</nobr> | Bring the GPU driver/firmware and related software to compatible versions, or correct the vGPU configuration. Recommended for Xid 78 (vGPU start error), raised when the guest VM's driver is incompatible with the host vGPU Manager or the vGPU type is not supported for the guest OS or GPU. The guest driver is installed inside the VM; the host vGPU Manager and the vGPU type are managed by the infrastructure operator. |
-| <nobr>`xid_154`</nobr> | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
+| <nobr>`xid_154`</nobr> | Follow the recovery action the accompanying Xid 154 (GPU recovery action changed) reports. The built-in checks name that action directly instead; this remains for custom checks. |
 
 `gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at
 WARNING when Xid 45 is the only Xid seen since boot. When another Xid is

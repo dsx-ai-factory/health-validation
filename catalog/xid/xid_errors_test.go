@@ -436,9 +436,9 @@ func TestXidErrors_NVLink5_FatalIsCritical(t *testing.T) {
 }
 
 // TestXidErrors_NVLink5_NonfatalIsInfoNoAction pins what a Nonfatal
-// occurrence costs the node: nothing. The decode table resolves it to
-// IGNORE, so it is reported at INFO (which exits 0) rather than drawing
-// a WARNING the operator cannot act on.
+// occurrence the decode table has no row for costs the node: nothing. It
+// falls back to IGNORE, so it is reported at INFO (which exits 0) rather
+// than drawing a WARNING the operator cannot act on.
 func TestXidErrors_NVLink5_NonfatalIsInfoNoAction(t *testing.T) {
 	nv, err := xidCatalog(t).EvaluateAll(nvlink5MeasurementFor(146, false))
 	if err != nil {
@@ -595,8 +595,8 @@ func TestXidErrors_NVLink5SubXidCode_OccurrencesOverride(t *testing.T) {
 
 func TestXidErrors_NVLink5SubXidCode_AdditiveWithBaseline(t *testing.T) {
 	// A "149.4" Fatal event fires both the per-subcode check and the
-	// baseline gpu_xid_149 Fatal/Nonfatal check: subcode checks are
-	// additive, not a replacement.
+	// code-level gpu_xid_149 check: subcode checks are additive, not a
+	// replacement.
 	nv, err := xidCatalog(t).EvaluateAll(nvlink5SubXidCodeMeasurementFor("149.4", true))
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
@@ -740,14 +740,12 @@ func TestXidErrors_CHINonDataError_ResetsGPU(t *testing.T) {
 	}
 }
 
-// TestXidErrors_NVLink5_FatalDoesNotAlsoReportNonfatal guards the
-// exclusion in the Nonfatal rule. Rules are not first-match-wins: every
-// rule whose expression matches contributes its message, and a Fatal
-// occurrence is in xid_counts as well as fatal_xid_counts. Without the
-// exclusion the verdict carries both messages, telling a reader the same
-// fault is Fatal and Nonfatal. Severity stays CRITICAL either way, so
-// asserting on severity alone would not catch this.
-func TestXidErrors_NVLink5_FatalDoesNotAlsoReportNonfatal(t *testing.T) {
+// TestXidErrors_NVLink5_OneOccurrenceOneMessage pins that one occurrence
+// resolves to one bucket. Rules are not first-match-wins: every rule
+// whose expression matches contributes its message, so an occurrence
+// counted under two buckets would report two contradictory findings.
+// Severity alone would not show it.
+func TestXidErrors_NVLink5_OneOccurrenceOneMessage(t *testing.T) {
 	nv, err := xidCatalog(t).EvaluateAll(nvlink5MeasurementFor(146, true))
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
@@ -759,11 +757,6 @@ func TestXidErrors_NVLink5_FatalDoesNotAlsoReportNonfatal(t *testing.T) {
 
 	if len(v.Messages) != 1 {
 		t.Errorf("Messages = %q, want exactly one", v.Messages)
-	}
-	for _, msg := range v.Messages {
-		if strings.Contains(msg, "(Nonfatal)") {
-			t.Errorf("Fatal occurrence reported as Nonfatal: %q", msg)
-		}
 	}
 }
 

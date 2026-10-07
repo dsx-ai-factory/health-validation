@@ -3,12 +3,18 @@ package xid
 // TerminalRecoveryActions maps a GPU's PCI address to the last
 // recovery-action transition reported for it in the window.
 //
-// An Xid 154 reports a transition, not a state, and a GPU escalates
+// An Xid 154 reports a transition, not a state, and a GPU can escalate
 // through several in sequence (None -> Drain and Reset -> GPU Reset
-// Required), each line's From matching the previous line's To. The
-// action actually in effect is therefore the To of the final
-// transition for that GPU — which is what a decode-table row resolving
-// to XID_154_EVAL needs in order to mean anything.
+// Required). The To of the final logged transition is therefore the
+// latest action the journal shows for that GPU, which is what a
+// decode-table row resolving to XID_154_EVAL needs in order to mean
+// anything.
+//
+// It is not guaranteed to be the action in effect now. The driver logs
+// no 154 when a GPU is reinitialized, as after a reset, and suppresses
+// it for some transitions it clears itself. So a GPU that was reset
+// still shows its last requested action until the journal window moves
+// past it, as every since-boot Xid check here does.
 //
 // Attribution is by PCI address rather than by proximity in the log.
 // Captured logs show two GPUs reporting the same Xid 145 subtype in one

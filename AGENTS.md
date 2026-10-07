@@ -74,7 +74,8 @@ This file provides guidance to AI coding agents when working with code in this r
 | `nvlink_p2p` | nvlink | Unhealthy P2P peer count exceeds `max_unhealthy_p2p_peers` | None |
 | `rdma_linkflap_fatal` | infiniband | Count of mlx5 RDMA link outages (down→up ≥ `min_outage_seconds`) reaches `fatal_flap_threshold` | None |
 | `gpu_xid_<code>` | xid | A critical-class Xid code is seen in the system journal (since boot) | A warning-class Xid code is seen in the system journal (since boot) |
-| `gpu_xid_149_<hex>` | xid | An Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype whose decode-table resolution is a GPU reset | The same, for a subtype the table resolves to IGNORE |
+| `gpu_xid_144`..`gpu_xid_150` | xid | An NVLink5 occurrence resolves, through the decode table or the Xid 154 it defers to, to a GPU reset, reboot or P2P drain | Its resolution is unknown: no Xid 154 found, an unmapped or unreadable one, or an undecodable line |
+| `gpu_xid_149_<hex>` | xid | An Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype whose decode-table resolution is a GPU reset | None (INFO for a subtype the table resolves to IGNORE) |
 | `gpu_xid_154` | xid | A GPU was left in a GPU-reset, reboot or drain-P2P recovery action | A GPU was left in a recovery action the catalog does not map |
 
 ---
