@@ -144,7 +144,7 @@ Go module dependencies:
   License:  Apache-2.0
   URL:      https://google.golang.org/genproto/googleapis/rpc
 
-  google.golang.org/grpc  v1.83.2
+  google.golang.org/grpc  v1.84.0
   License:  Apache-2.0
   URL:      https://google.golang.org/grpc
 
