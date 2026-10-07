@@ -22,6 +22,10 @@ func TestParseDriverVersion(t *testing.T) {
 		{raw: "", wantOK: false},
 		{raw: "unknown", wantOK: false},
 		{raw: "R575.51", wantOK: false},
+		{raw: "-1.5", wantOK: false},
+		{raw: "+575.51", wantOK: false},
+		{raw: "575.+51", wantOK: false},
+		{raw: ".51", wantOK: false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.raw, func(t *testing.T) {

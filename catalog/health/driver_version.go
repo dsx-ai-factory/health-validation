@@ -8,17 +8,14 @@ import (
 // DriverVersion is the NVIDIA driver version a node is running, e.g.
 // "575.51.03".
 //
-// It is a node-wide host fact, like the GPU architecture: discovered
-// once per run and true for every sensor and check on that host. Both
-// the text the host reported and its numeric parts are kept. Raw is
-// what a verdict or signal should surface, because it is what an
-// operator will see in nvidia-smi and in NVIDIA's own release notes;
-// the numeric parts exist so code can order versions, which text
-// cannot do — "99.0" sorts above "570.0" as a string.
+// It is a node-wide host fact, like the GPU architecture. Raw is the text
+// the host reported, which is what an operator sees in nvidia-smi; the
+// numeric parts let code order versions, which text cannot ("99.0" sorts
+// above "570.0" as a string). Order versions in Go rather than in a CEL
+// rule, which would compare them as strings.
 //
-// Version ordering therefore belongs in Go, never in a CEL rule: the
-// evaluator declares every signal as a dynamic type and would compare
-// two version signals lexicographically without complaint.
+// Build values with [ParseDriverVersion]: a value without Raw reads as
+// unknown whatever its numeric parts.
 type DriverVersion struct {
 	Raw   string
 	Major int
@@ -29,32 +26,40 @@ type DriverVersion struct {
 // ParseDriverVersion parses a driver version token such as "575.51.03"
 // or "570.86" into its numeric parts, keeping the original text.
 //
-// Returns ok=false when the token has no numeric major.minor pair, so a
-// caller cannot mistake an unreadable version for 0.0.0 — which would
-// compare as older than every real driver and silently disable
-// everything gated on a minimum. A trailing patch segment is optional;
-// anything beyond it is ignored, since NVIDIA has shipped four-segment
-// build strings.
+// Returns ok=false unless the token starts with a digits-only
+// major.minor pair, so a caller cannot mistake an unreadable version for
+// 0.0.0, which would compare as older than every real driver. The patch
+// segment is optional and a non-numeric one reads as 0; anything after it
+// is ignored.
 func ParseDriverVersion(raw string) (DriverVersion, bool) {
-	parts := strings.Split(strings.TrimSpace(raw), ".")
+	raw = strings.TrimSpace(raw)
+	parts := strings.Split(raw, ".")
 	if len(parts) < 2 {
 		return DriverVersion{}, false
 	}
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
+	major, ok := parseVersionSegment(parts[0])
+	if !ok {
 		return DriverVersion{}, false
 	}
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
+	minor, ok := parseVersionSegment(parts[1])
+	if !ok {
 		return DriverVersion{}, false
 	}
 	var patch int
 	if len(parts) > 2 {
-		// A non-numeric patch is not fatal: major.minor already orders
-		// the version, and NVIDIA's release notes key on those.
-		patch, _ = strconv.Atoi(parts[2])
+		patch, _ = parseVersionSegment(parts[2])
 	}
-	return DriverVersion{Raw: strings.TrimSpace(raw), Major: major, Minor: minor, Patch: patch}, true
+	return DriverVersion{Raw: raw, Major: major, Minor: minor, Patch: patch}, true
+}
+
+// parseVersionSegment parses one dot-separated segment, accepting only
+// digits: strconv.Atoi alone would also take a sign.
+func parseVersionSegment(s string) (int, bool) {
+	if s == "" || strings.TrimLeft(s, "0123456789") != "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	return n, err == nil
 }
 
 // Known reports whether this value carries a parsed version. The zero
