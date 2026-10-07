@@ -1,6 +1,7 @@
 package xid_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
@@ -155,6 +156,52 @@ func TestXidErrors_NVLink5_NonfatalIsWarningNoAction(t *testing.T) {
 	}
 	if !v.RecommendedAction.Equal(health.NoAction) {
 		t.Errorf("RecommendedAction = %v, want NoAction", v.RecommendedAction)
+	}
+}
+
+// A Fatal occurrence also counts toward xid_counts; it must not
+// additionally be reported as Nonfatal (issue #126).
+func TestXidErrors_NVLink5_FatalIsNotAlsoNonfatal(t *testing.T) {
+	nv, err := xidCatalog(t).EvaluateAll(nvlink5MeasurementFor(149, true))
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	v, ok := checkResult(nv, "gpu_xid_149")
+	if !ok {
+		t.Fatalf("gpu_xid_149 verdict not found")
+	}
+	want := []string{"GPU Xid 149 detected: NVLink NETIR error (Fatal)."}
+	if !slices.Equal(v.Messages, want) {
+		t.Errorf("Messages = %q, want %q", v.Messages, want)
+	}
+}
+
+func TestXidErrors_NVLink5_FatalAndNonfatalReportsBoth(t *testing.T) {
+	m := nvlink5MeasurementFor(149, true)
+	m.XidCounts[149] = 2
+	m.EventCount = 2
+	m.Events = append(m.Events, xid.XidEvent{
+		PCIAddress: "0000:01:00",
+		XidCode:    149,
+		NVLink5:    &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", Link: 9},
+	})
+	nv, err := xidCatalog(t).EvaluateAll(m)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	v, ok := checkResult(nv, "gpu_xid_149")
+	if !ok {
+		t.Fatalf("gpu_xid_149 verdict not found")
+	}
+	if v.Severity != health.Critical {
+		t.Errorf("gpu_xid_149 severity = %v, want CRITICAL", v.Severity)
+	}
+	want := []string{
+		"GPU Xid 149 detected: NVLink NETIR error (Fatal).",
+		"GPU Xid 149 detected: NVLink NETIR error (Nonfatal).",
+	}
+	if !slices.Equal(v.Messages, want) {
+		t.Errorf("Messages = %q, want %q", v.Messages, want)
 	}
 }
 
