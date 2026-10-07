@@ -400,7 +400,7 @@ metrics:
 `endpoint` is a full URL. An OTLP collector's own receiver config writes
 `127.0.0.1:44318`, so that form is the easy mistake — it is rejected at load
 time with the fix spelled out. A URL with no path gets `/v1/metrics` appended;
-an explicit path is used as given. `https` enables TLS. Any values thare are
+an explicit path is used as given. `https` enables TLS. Any values that are
 written to `headers` or `resource_attributes` are passed along as plain text
 not as expanded environment variables.
 
