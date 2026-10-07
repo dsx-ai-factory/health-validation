@@ -64,14 +64,13 @@ type XidEvent struct {
 //
 //	NVRM: Xid (PCI:0019:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x4 (Drain and Reset)
 //
-// An Xid 154 does not describe a fault of its own; it summarizes the
-// action required by some *other* Xid on the same GPU. Codes observed
-// so far are 0x0 (None), 0x1 (GPU Reset Required), and 0x4 (Drain and
-// Reset), and a GPU escalates through them one line at a time, so the
-// action in effect is the To of the last 154 rather than any single
-// line. Both the code and its name are kept because the set is not
-// documented as closed: an unrecognized code still carries a
-// human-readable name to surface.
+// An Xid 154 does not describe a fault of its own; it reports the
+// recovery action the driver now wants for the GPU after some *other*
+// Xid. The codes are the driver's recovery-action enum (0x0 None, 0x1
+// GPU reset, 0x4 Drain and Reset, and so on), and the name is the
+// driver's display text for it, which differs between driver releases
+// for the same code. Both are kept so a code this catalog does not map
+// still surfaces something readable.
 type RecoveryAction struct {
 	FromCode string `json:"from_code"`
 	FromName string `json:"from_name"`
