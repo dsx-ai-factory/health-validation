@@ -208,9 +208,6 @@ func TestXidErrors_NVLink5_FatalAndNonfatalReportsBoth(t *testing.T) {
 	}
 }
 
-// nvlink5SubXidCodeMeasurementFor builds an XidMeasurement for one Xid 149
-// NETIR_LINK_EVT/NETIR_LINK_DOWN event carrying the given subcode, the way
-// toolkit/xid.ParseXid would after decoding the extended log format.
 // intrInfoForSubXidCode builds an IntrInfo register value whose
 // fault-subtype bits (IntrInfo[25:20]) encode subcode's digit, e.g.
 // "149.4" -> "0x00400000", so a test measurement carries the raw field
@@ -224,6 +221,9 @@ func intrInfoForSubXidCode(subcode string) string {
 	return fmt.Sprintf("0x%08x", v<<20)
 }
 
+// nvlink5SubXidCodeMeasurementFor builds an XidMeasurement for one Xid 149
+// NETIR_LINK_EVT/NETIR_LINK_DOWN event carrying the given subcode, the way
+// toolkit/xid.ParseXid would after decoding the extended log format.
 func nvlink5SubXidCodeMeasurementFor(subcode string, fatal bool) xid.XidMeasurement {
 	m := xid.XidMeasurement{
 		Since:     "boot",
@@ -264,8 +264,8 @@ func TestXidErrors_NVLink5SubXidCode_Critical(t *testing.T) {
 }
 
 func TestXidErrors_NVLink5SubXidCode_Warning(t *testing.T) {
-	// Subcode 149.26 is the one row whose decode-table resolution is
-	// IGNORE rather than RESET_GPU.
+	// Subcode 149.26 is one of the two rows (with 149.28) whose
+	// decode-table resolution is IGNORE rather than RESET_GPU.
 	nv, err := xidCatalog(t).EvaluateAll(nvlink5SubXidCodeMeasurementFor("149.26", false))
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
@@ -290,11 +290,48 @@ func TestXidErrors_NVLink5SubXidCode_AdditiveWithBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	if _, ok := checkResult(nv, "gpu_xid_149"); !ok {
-		t.Errorf("gpu_xid_149 (baseline) verdict not found")
+	for _, id := range []string{"gpu_xid_149", "gpu_xid_149_4"} {
+		v, ok := checkResult(nv, id)
+		if !ok {
+			t.Fatalf("%s verdict not found", id)
+		}
+		if v.Severity != health.Critical {
+			t.Errorf("%s severity = %v, want CRITICAL", id, v.Severity)
+		}
 	}
-	if _, ok := checkResult(nv, "gpu_xid_149_4"); !ok {
-		t.Errorf("gpu_xid_149_4 (subcode) verdict not found")
+}
+
+// TestXidErrors_NVLink5SubXidCode_OnlyItsOwnDigit pins that a subcode
+// check fires for its own digit alone, and not at all for a sub-component
+// it was not built from.
+func TestXidErrors_NVLink5SubXidCode_OnlyItsOwnDigit(t *testing.T) {
+	ber := nvlink5SubXidCodeMeasurementFor("149.4", true)
+	ber.Events[0].NVLink5.SubComponent = "NETIR_BER_EVENT"
+
+	tests := []struct {
+		name string
+		want string
+		m    xid.XidMeasurement
+	}{
+		{name: "149.4 fires only gpu_xid_149_4", m: nvlink5SubXidCodeMeasurementFor("149.4", true), want: "gpu_xid_149_4"},
+		{name: "unchecked digit fires none", m: nvlink5SubXidCodeMeasurementFor("149.0", true)},
+		{name: "other sub-component fires none", m: ber},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nv, err := xidCatalog(t).EvaluateAll(tt.m)
+			if err != nil {
+				t.Fatalf("EvaluateAll: %v", err)
+			}
+			for _, v := range nv.CheckResults {
+				if !strings.HasPrefix(v.CheckID, "gpu_xid_149_") || v.CheckID == tt.want {
+					continue
+				}
+				if v.Severity != health.Pass {
+					t.Errorf("%s severity = %v, want PASS", v.CheckID, v.Severity)
+				}
+			}
+		})
 	}
 }
 

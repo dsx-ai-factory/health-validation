@@ -13,7 +13,7 @@ import (
 // knows what exercises the Xid derivations.
 func TestXidMeasurement_DerivedSignalContract(t *testing.T) {
 	populated := xid.XidMeasurement{Events: []xid.XidEvent{
-		{XidCode: 149, NVLink5: &xid.NVLink5Detail{IntrInfo: "0x004505c6"}},
+		{XidCode: 149, NVLink5: &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: "0x004505c6"}},
 	}}
 	if err := catalog.CheckDerivedSignalKeysStable(populated); err != nil {
 		t.Error(err)
@@ -28,7 +28,7 @@ func TestXidMeasurement_DerivedSignalContract(t *testing.T) {
 // sub_xid_code_counts in front of the rules.
 func TestSubXidCodeCounts_ReachesCEL(t *testing.T) {
 	m := xid.XidMeasurement{Events: []xid.XidEvent{
-		{XidCode: 149, NVLink5: &xid.NVLink5Detail{IntrInfo: "0x004505c6"}},
+		{XidCode: 149, NVLink5: &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: "0x004505c6"}},
 	}}
 	counts, ok := evaluation.ToSignals(m)[xid.SignalSubXidCodeCounts].(map[string]int64)
 	if !ok {

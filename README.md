@@ -212,6 +212,7 @@ The catalog includes these check families:
 | `nvlink_p2p` | nvlink | Peer GPUs reachable over NVLink P2P | `max_unhealthy_p2p_peers` |
 | `rdma_linkflap_fatal` | infiniband | mlx5 RDMA link outages that stayed down past a window | `min_outage_seconds`, `fatal_flap_threshold` |
 | `gpu_xid_<code>` | xid | One CRITICAL check per critical Xid code seen in the journal | None |
+| `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | None |
 | `gpu_xid_warning` | xid | Consolidated WARNING check for warning-class Xid codes | None |
 | `gpu_xid_154` | xid | Xid 154 (INFO — recovery action changed) | None |
 

@@ -35,7 +35,7 @@ type nvlink5DecodeRow struct {
 	code              int64
 }
 
-// nvlink5DecodeTable is generated from NVIDIA's internal Xid 144-150
+// nvlink5DecodeTable is generated from NVIDIA's Xid 144-150
 // decode spreadsheet ("Xid 144-150 Decode" sheet), scripted directly
 // out of the source file to avoid hand-transcription of the bit
 // patterns. Regenerate from the source spreadsheet rather than

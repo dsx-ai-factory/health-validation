@@ -94,12 +94,15 @@ func TestSubXidCode_AgreesWithDecodeTable(t *testing.T) {
 
 func TestSubXidCodeCounts(t *testing.T) {
 	got := subXidCodeCounts([]XidEvent{
-		{XidCode: 149, NVLink5: &NVLink5Detail{IntrInfo: "0x004505c6"}},
-		{XidCode: 149, NVLink5: &NVLink5Detail{IntrInfo: "0x00400000"}},
-		{XidCode: 149, NVLink5: &NVLink5Detail{IntrInfo: "0x00A00000"}},
+		{XidCode: 149, NVLink5: &NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: "0x004505c6"}},
+		{XidCode: 149, NVLink5: &NVLink5Detail{SubComponent: "NETIR_LINK_DOWN", IntrInfo: "0x00400000"}},
+		{XidCode: 149, NVLink5: &NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: "0x00A00000"}},
 		// Events with nothing to key on contribute nothing.
 		{XidCode: 79, ProcessName: "python3"},
-		{XidCode: 149, NVLink5: &NVLink5Detail{IntrInfo: ""}},
+		{XidCode: 149, NVLink5: &NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: ""}},
+		// The same digit under a sub-component with no per-subcode
+		// checks is a different fault.
+		{XidCode: 149, NVLink5: &NVLink5Detail{SubComponent: "NETIR_BER_EVENT", IntrInfo: "0x00400000"}},
 	})
 	want := map[string]int64{"149.4": 2, "149.A": 1}
 	if len(got) != len(want) {

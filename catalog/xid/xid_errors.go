@@ -86,16 +86,10 @@ var nvlink5Xids = []nvlink5Xid{
 // code-level Fatal/Nonfatal check, so every event on that code still
 // produces at least that baseline verdict. Splitting lets an operator
 // independently disable/override the guidance for one specific fault
-// subtype without touching the rest — e.g. a chronically noisy
-// "149.F" doesn't have to affect how "149.4" is handled.
+// subtype without touching the rest.
 //
-// Caveat: SubXidCode is computed from IntrInfo bits alone, independent
-// of subcode, so an event from a different subcode under the same code
-// that shares the digit also matches here. Severity and action stay
-// right because [nvlink5SubXidCodeResolvesAlike] only keeps digits
-// every such row resolves the same way, but the message's
-// investigatory guidance still names the subcode this check was built
-// from.
+// The code-level check still fires on every event, so silencing one
+// subtype entirely means disabling both checks.
 type nvlink5SubXidCode struct {
 	subXidCode    string // e.g. "149.4"
 	subcode       string // e.g. "NETIR_LINK_EVT/NETIR_LINK_DOWN"
@@ -163,10 +157,9 @@ func deriveNVLink5SubXidCodes() []nvlink5SubXidCode {
 // sharing this SubXidCode digit calls for the same resolution.
 //
 // sub_xid_code_counts is keyed from the Xid code and IntrInfo[25:20]
-// alone (see toolkit/xid's nvlink5SubXidCode), with no knowledge of the
-// SubComponent or ErrorStatus a decode-table row is also matched on.
-// Several rows under one code can therefore share a digit, and where
-// they disagree the signal cannot say which of them occurred. Xid 149
+// (see [XidEvent.SubXidCode]), not from the decode-table row an event
+// matches. Several rows under one code can therefore share a digit, and
+// where they disagree the signal cannot say which of them occurred. Xid 149
 // digit 0 covers NETIR_LINK_DOWN (RESET_GPU) and NETIR_BER_EVENT
 // (IGNORE) alike, so a check keyed on it would recommend a GPU reset
 // for a bit-error event NVIDIA says to ignore.
@@ -194,10 +187,9 @@ func nvlink5SubXidCodeResolvesAlike(code int64, digit, resolution string) bool {
 
 // nvlink5SubXidCodeDigit extracts row's SubXidCode digit: the literal
 // 6-bit value at characters 6-11 of its v1Pattern, the fixed IntrInfo
-// bit position (see toolkit/xid's nvlink5SubXidCodeMask) both driver
-// eras place it at — formatted the same way toolkit/xid.ParseXid
-// computes it, so the label matches what a check's CEL rule looks up in
-// sub_xid_code_counts. Returns ok=false if that bit range isn't a fixed
+// bit position (see [nvlink5SubXidCodeMask]) both driver eras place it
+// at — formatted as [XidEvent.SubXidCode] formats it, so the label
+// matches what a check's CEL rule looks up in sub_xid_code_counts. Returns ok=false if that bit range isn't a fixed
 // value in this row's pattern (wildcarded, meaning the row isn't
 // SubXidCode-differentiated).
 func nvlink5SubXidCodeDigit(row nvlink5DecodeRow) (string, bool) {
@@ -309,9 +301,8 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 // exactly this sequence. The rare exceptions that resolve to IGNORE
 // despite Fatal severity aren't distinguishable from a static per-check
 // action (they depend on the specific IntrInfo subcode, only available
-// per-event), so this
-// errs toward the safer over-remediation rather than silently doing
-// nothing.
+// per-event), so this errs toward the safer over-remediation rather
+// than silently doing nothing.
 //
 // Unlike [criticalCheck], the check-level default here is
 // [health.NoAction] and the Fatal rule sets its own RecommendedAction:
