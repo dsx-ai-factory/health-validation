@@ -3,7 +3,7 @@ module github.com/dsx-ai-factory/health-validation/collect
 go 1.27.1
 
 require (
-	github.com/NVIDIA/go-dcgm v1.4611.2
+	github.com/NVIDIA/go-dcgm v1.4701.2
 	github.com/NVIDIA/go-nvlib v0.12.0
 	github.com/NVIDIA/go-nvml v0.13.4-0
 	github.com/stretchr/testify v1.12.1

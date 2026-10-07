@@ -1,5 +1,5 @@
-github.com/NVIDIA/go-dcgm v1.4611.2 h1:e1ZB2I7ElT3/Kcz4IanYRkMhhQnl5QlP0LA0a3XW0AQ=
-github.com/NVIDIA/go-dcgm v1.4611.2/go.mod h1:XXuxXUmG6SCUrbh1wOytmTWPPuHCS1KxwOeMHQnnHUE=
+github.com/NVIDIA/go-dcgm v1.4701.2 h1:MHnZPnrAGogIOXyu+RlfwMq7Y44gbI0/WeA5N4hwJMs=
+github.com/NVIDIA/go-dcgm v1.4701.2/go.mod h1:EmLmw9um5xso8pa7uUeDoYqpUNcjtvhMbv71jq/8hpg=
 github.com/NVIDIA/go-nvlib v0.12.0 h1:LICVlUGlDnpbwQv64rOZQn11xQae1J+c+dvH9CCi7jc=
 github.com/NVIDIA/go-nvlib v0.12.0/go.mod h1:J5M/QPIJJtaipjdONqevSnfgBlkW49uVWX5cFOoQpoA=
 github.com/NVIDIA/go-nvml v0.13.4-0 h1:o3jp9u2x1R9ShFE3v+Aesp55XOSIQFMJz/VGNUcJaNE=
@@ -14,6 +14,8 @@ github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
+go.uber.org/mock v0.6.0 h1:hyF9dfmbgIX5EfOdasqLsWD6xqpNZlXblLB/Dbnwv3Y=
+go.uber.org/mock v0.6.0/go.mod h1:KiVJ4BqZJaMj4svdfmHM0AUx4NJYO8ZNpPnZn1Z+BBU=
 go.yaml.in/yaml/v3 v3.0.5 h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=
 go.yaml.in/yaml/v3 v3.0.5/go.mod h1:HVTZu1O7/Vkt2N+BFy8Zza+lnLsABggaTM2ZpNIGuKg=
 golang.org/x/net v0.58.0 h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=
