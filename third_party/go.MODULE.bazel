@@ -21,6 +21,13 @@ go_deps.gazelle_override(
     build_file_generation = "clean",
     path = "github.com/google/cel-go",
 )
+
+# go-dcgm ships BUILD files that load @rules_go, which is not visible from a
+# go_deps repo, so the package fails to load. Regenerate them like any other dep.
+go_deps.gazelle_override(
+    build_file_generation = "clean",
+    path = "github.com/NVIDIA/go-dcgm",
+)
 use_repo(
     go_deps,
     "co_honnef_go_tools",
