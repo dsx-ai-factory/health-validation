@@ -541,7 +541,7 @@ func TestXidErrors_NVLink5SubXidCode_Critical(t *testing.T) {
 	}
 }
 
-func TestXidErrors_NVLink5SubXidCode_Warning(t *testing.T) {
+func TestXidErrors_NVLink5SubXidCode_IgnoreIsInfo(t *testing.T) {
 	// Subcode 149.26 is one of the two rows (with 149.28) whose
 	// decode-table resolution is IGNORE rather than RESET_GPU.
 	nv, err := xidCatalog(t).EvaluateAll(nvlink5SubXidCodeMeasurementFor("149.26", false))
@@ -552,8 +552,8 @@ func TestXidErrors_NVLink5SubXidCode_Warning(t *testing.T) {
 	if !ok {
 		t.Fatalf("gpu_xid_149_26 verdict not found")
 	}
-	if v.Severity != health.Warning {
-		t.Errorf("gpu_xid_149_26 severity = %v, want WARNING", v.Severity)
+	if v.Severity != health.Info {
+		t.Errorf("gpu_xid_149_26 severity = %v, want INFO", v.Severity)
 	}
 	if !v.RecommendedAction.Equal(health.NoAction) {
 		t.Errorf("RecommendedAction = %v, want NoAction", v.RecommendedAction)

@@ -59,9 +59,10 @@ const (
 // NV2080_CTRL_GPU_RECOVERY_ACTION values, which NVML's
 // nvmlDeviceGpuRecoveryAction_t numbers identically.
 //
-// Recover IMEX Domain (0x5) and Bus Reset (0x6) are left unmapped: no
-// remediation step here matches either, and an unmapped code still
-// reports as unrecognized rather than as no action.
+// Bus Reset (0x6) maps to a reboot, the one available step sure to
+// cover a bus reset. Recover IMEX Domain (0x5) is left unmapped: no
+// remediation step here matches it, and an unmapped code still reports
+// as unrecognized rather than as no action.
 //
 // Keyed numerically rather than by the string NVRM printed, so "0x1",
 // "0x01" and "0X1" are the same action.
@@ -71,6 +72,7 @@ var recoveryActionBuckets = map[uint32]string{
 	0x2: ResolutionRestartOS, // OS Reboot
 	0x3: ResolutionDrainP2P,  // Drain P2P
 	0x4: ResolutionResetGPU,  // Drain and Reset
+	0x6: ResolutionRestartOS, // Bus Reset
 	0x7: ResolutionRestartOS, // System Reboot
 }
 
@@ -167,12 +169,27 @@ func NVLink5ResolutionCounts(events []XidEvent, driverVersion health.DriverVersi
 func nvlink5ResolutionCounts(events []XidEvent, driverVersion health.DriverVersion, terminal map[string]RecoveryAction) map[string]int64 {
 	era := DriverEraFrom(driverVersion)
 
+	// GPUs with an Xid 154 whose transition the sensor could not read. A
+	// deferral on one of these has a 154 to defer to, just not a legible
+	// one, which is unrecognized rather than missing.
+	unread := make(map[string]bool)
+	for _, ev := range events {
+		if ev.XidCode == 154 && ev.RecoveryAction == nil {
+			unread[ev.PCIAddress] = true
+		}
+	}
+
 	var counts map[string]int64
 	for _, ev := range events {
 		var bucket string
 		switch {
 		case ev.NVLink5 != nil:
 			action, observed := terminal[ev.PCIAddress]
+			if !observed && unread[ev.PCIAddress] {
+				// The zero action has no code to read, so it resolves
+				// as unrecognized.
+				observed = true
+			}
 			bucket = resolveNVLink5Event(ev.XidCode, era, *ev.NVLink5, action, observed)
 		case ev.XidCode >= 144 && ev.XidCode <= 150:
 			bucket = ResolutionUndecoded

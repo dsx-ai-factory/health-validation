@@ -2,6 +2,8 @@ package xid_test
 
 import (
 	"fmt"
+	"maps"
+	"strings"
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -110,7 +112,8 @@ func TestNVLink5ResolutionCounts_DeferralUsesThe154(t *testing.T) {
 		{"os reboot", "0x2", "OS Reboot", k145(xid.ResolutionRestartOS)},
 		{"system reboot", "0x7", "System Reboot", k145(xid.ResolutionRestartOS)},
 		{"drain p2p", "0x3", "Drain P2P", k145(xid.ResolutionDrainP2P)},
-		{"bus reset stays unmapped", "0x6", "Bus Reset", k145(xid.ResolutionXid154Unrecognized)},
+		{"bus reset", "0x6", "Bus Reset", k145(xid.ResolutionRestartOS)},
+		{"imex domain stays unmapped", "0x5", "Recover IMEX Domain", k145(xid.ResolutionXid154Unrecognized)},
 		{"unmapped code is surfaced", "0x9", "Some Future Action", k145(xid.ResolutionXid154Unrecognized)},
 	}
 	for _, tc := range tests {
@@ -496,10 +499,11 @@ func TestXid154Check_ReportsRequestedAction(t *testing.T) {
 		{name: "drain and reset", toCodes: []string{"0x4"}, wantSeverity: health.Critical, wantAction: reset},
 		{name: "os reboot", toCodes: []string{"0x2"}, wantSeverity: health.Critical, wantAction: restartOS},
 		{name: "system reboot", toCodes: []string{"0x7"}, wantSeverity: health.Critical, wantAction: restartOS},
+		{name: "bus reset", toCodes: []string{"0x6"}, wantSeverity: health.Critical, wantAction: restartOS},
 		{name: "drain p2p", toCodes: []string{"0x3"}, wantSeverity: health.Critical, wantAction: reset},
 		{name: "unmapped", toCodes: []string{"0x5"}, wantSeverity: health.Warning, wantAction: service},
 		{name: "reboot outranks reset", toCodes: []string{"0x1", "0x2"}, wantSeverity: health.Critical, wantAction: restartOS},
-		{name: "none", toCodes: []string{"0x0"}, wantSeverity: health.Info, wantAction: health.Drain(health.RemediationActionXid154)},
+		{name: "none", toCodes: []string{"0x0"}, wantSeverity: health.Info, wantAction: health.NoAction},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -550,5 +554,69 @@ func TestNVLink5Check_DeferralToReboot(t *testing.T) {
 	want := health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired)
 	if v.Severity != health.Critical || !v.RecommendedAction.Equal(want) {
 		t.Errorf("verdict = %v %v, want CRITICAL %v", v.Severity, v.RecommendedAction, want)
+	}
+}
+
+// TestNVLink5Check_DeferralToDrainP2P covers a deferral the 154 resolves
+// to Drain P2P, which takes the reset's steps and says what to do first.
+func TestNVLink5Check_DeferralToDrainP2P(t *testing.T) {
+	v := codeVerdict(t, "gpu_xid_145", resolutionMeasurement("575.51.03",
+		srcTrackEvent("0019:01:00", deferToXid154),
+		recoveryEvent("0019:01:00", "0x0", "None", "0x3", "Drain P2P")))
+
+	if want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired); v.Severity != health.Critical || !v.RecommendedAction.Equal(want) {
+		t.Errorf("verdict = %v %v, want CRITICAL %v", v.Severity, v.RecommendedAction, want)
+	}
+	if !strings.Contains(strings.Join(v.Messages, " "), "persistence mode") {
+		t.Errorf("Messages = %q, want the drain guidance", v.Messages)
+	}
+}
+
+// TestNVLink5ResolutionCounts_Unread154IsUnrecognized covers a deferral
+// whose GPU logged an Xid 154 the sensor could not read. There is a 154
+// to defer to, so the fault is unresolved rather than missing its 154.
+func TestNVLink5ResolutionCounts_Unread154IsUnrecognized(t *testing.T) {
+	got := xid.NVLink5ResolutionCounts([]xid.XidEvent{
+		srcTrackEvent("0019:01:00", deferToXid154),
+		{PCIAddress: "0019:01:00", XidCode: 154},
+	}, driver575)
+	want := map[string]int64{k145(xid.ResolutionXid154Unrecognized): 1}
+	if !maps.Equal(got, want) {
+		t.Errorf("counts = %v, want %v", got, want)
+	}
+}
+
+// TestNVLink5Check_WarningTiesKeepTheirAction pins the WARNING rule
+// order: when several WARNING buckets match on one code, the verdict
+// carries the most cautious action rather than none.
+func TestNVLink5Check_WarningTiesKeepTheirAction(t *testing.T) {
+	undecoded := xid.XidEvent{PCIAddress: "0018:01:00", XidCode: 145}
+	tests := []struct {
+		name   string
+		events []xid.XidEvent
+		want   health.RecommendedAction
+	}{
+		{
+			name:   "undecoded and missing",
+			want:   health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+			events: []xid.XidEvent{undecoded, srcTrackEvent("0019:01:00", deferToXid154)},
+		},
+		{
+			name: "missing and unrecognized",
+			want: health.Drain(health.RemediationActionServiceRequired),
+			events: []xid.XidEvent{
+				srcTrackEvent("0019:01:00", deferToXid154),
+				srcTrackEvent("001a:01:00", deferToXid154),
+				recoveryEvent("001a:01:00", "0x0", "None", "0x5", "Recover IMEX Domain"),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := codeVerdict(t, "gpu_xid_145", resolutionMeasurement("575.51.03", tt.events...))
+			if v.Severity != health.Warning || !v.RecommendedAction.Equal(tt.want) {
+				t.Errorf("verdict = %v %v, want WARNING %v", v.Severity, v.RecommendedAction, tt.want)
+			}
+		})
 	}
 }
