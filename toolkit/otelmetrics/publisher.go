@@ -256,9 +256,12 @@ func (p *Publisher) record(ctx context.Context, nv health.NodeVerdict) {
 			attribute.String("maturity_level", r.verdict.MaturityLevel.String()),
 			attribute.Bool("nvidia_endorsed", r.verdict.NVIDIAEndorsed),
 		)...)
-		if n := len(r.entities); n > 0 {
-			p.affectedEntities.Record(ctx, int64(n), metric.WithAttributes(id...))
-		}
+		// Recorded unconditionally, zero included, for the same reason the
+		// severity gauges report every severity: emitting only non-zero counts
+		// leaves last run's point sitting at 2 with nothing to contradict it,
+		// so a recovered GPU keeps reading as affected until the backend's
+		// staleness window expires it.
+		p.affectedEntities.Record(ctx, int64(len(r.entities)), metric.WithAttributes(id...))
 	}
 }
 

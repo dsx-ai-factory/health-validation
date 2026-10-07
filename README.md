@@ -402,11 +402,9 @@ metrics:
 time with the fix spelled out. A URL with no path gets `/v1/metrics` appended;
 an explicit path is used as given. `https` enables TLS.
 
-Six metrics are defined. The four node- and domain-level ones are published
-on every run; the two per-check ones are conditional — `check.skipped` is
-emitted once per skipped check, and `check.affected_entities` once per
-non-passing check that names an entity. A healthy node with nothing skipped
-therefore publishes neither.
+Six metrics are defined. Five are published on every run; `check.skipped` is
+the one conditional instrument, emitted once per skipped check, so a run with
+nothing skipped publishes five.
 
 | Metric | Type | Value | Attributes |
 |---|---|---|---|
@@ -414,7 +412,7 @@ therefore publishes neither.
 | `health_validation.domain.severity` | gauge | `1`/`0` | `severity`, `category` |
 | `health_validation.check.severity` | gauge | `1`/`0` | `severity`, `check_id`, `category`, `condition_scope`, `maturity_level`, `nvidia_endorsed` |
 | `health_validation.check.skipped` | gauge | Always `1`, one per skipped check | `check_id`, `category`, `skip_reason` |
-| `health_validation.check.affected_entities` | gauge | Count of distinct entities a check named | `check_id`, `category` |
+| `health_validation.check.affected_entities` | gauge | Count of distinct entities a check named, `0` included | `check_id`, `category` |
 | `health_validation.runs` | counter (delta) | `1` | `severity` |
 
 The three severity gauges carry the severity as a **name** — `PASS`, `INFO`,
@@ -438,6 +436,15 @@ per GPU, so `check.severity` reports the **worst** severity across them and
 `check.affected_entities` counts the distinct entities named. One failing GPU
 therefore shows as a failing check; which GPU it was is in the JSON verdict's
 `affected_entities`, not in the metrics.
+
+`check.affected_entities` reports `0` for a check that ran and named nothing,
+for the same reason the severity gauges emit their zeros: a count published
+only when non-zero would leave the previous run's `2` as the newest point in
+the series, and a recovered node would keep reading as having affected
+entities. Note the gap this does not close — a check that *stops running*
+(newly skipped, or its sensor disappears) publishes no point at all, so its
+last `check.severity` and `check.affected_entities` values go stale rather than
+to zero. Alert on `check.skipped` to catch that case.
 
 Node identity and versions ride on the OTLP **resource**
 (`service.name`, `service.version`, `service.instance.id` = the node ID, plus
