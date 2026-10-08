@@ -43,7 +43,7 @@ func customCheck() health.CheckDefinition {
 // TestWithChecksRegistersCustomCheck confirms a check supplied via the
 // WithChecks SPI is registered into the catalog alongside the built-ins.
 func TestWithChecksRegistersCustomCheck(t *testing.T) {
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, "")
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, "", health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	canonical := customCheck()
 	canonical.Provenance = health.NVIDIA
 
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, "")
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, "", health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 	collide := customCheck()
 	collide.ID = "gpu_count" // collides with a built-in
 
-	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, "")
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, "", health.OperatorInfra)
 	if err == nil {
 		t.Fatal("expected duplicate-ID error, got nil")
 	}
@@ -93,7 +93,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 // wired into the catalog: a check skips on an architecture it does not cover
 // (A100 here) instead of running with the wrong thresholds.
 func TestBuildCatalogAppliesArchitecture(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "A100")
+	cat, _, err := buildCatalog(nil, nil, "A100", health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}

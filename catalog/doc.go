@@ -28,8 +28,7 @@
 //
 // [Catalog.EvaluateAll] evaluates every registered check. Use
 // [Catalog.EvaluateAllWithOptions] with [EvaluationOptions] to request a
-// cadence or override the execution context for that run; checks outside the
-// selected window or context are reported as skipped.
+// cadence; checks outside that window are reported as skipped.
 //
 // For checks that remain, registration means a sensor is expected: each
 // yields a result or a skip. A category with no measurement is skipped

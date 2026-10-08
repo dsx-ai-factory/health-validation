@@ -94,42 +94,6 @@ func TestCollectWithOptions_ContinuousCadenceSkipsPrologChecks(t *testing.T) {
 	}
 }
 
-func TestCollectWithOptions_ForwardsExecutionContext(t *testing.T) {
-	check := health.CheckDefinition{
-		ID:                "tenant_only",
-		Category:          health.Node,
-		RequiredSignals:   []string{"gpu_count"},
-		ExecutionContexts: []health.ExecutionContext{health.TenantGuest},
-		Rules: []health.Rule{
-			{Expression: "gpu_count < 0", Severity: health.Critical, Message: "negative"},
-		},
-	}
-	cat := catalog.NewEmpty(
-		catalog.WithArchitecture(catalogtest.DummyArchitecture),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-	cat.MustRegister(check)
-	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
-	tenant := health.TenantGuest
-	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{ExecutionContext: &tenant}, sensor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, skipped := range nv.SkippedChecks {
-		if skipped.CheckID == check.ID {
-			t.Fatalf("%s was skipped with per-run TENANT_GUEST context: %+v", check.ID, skipped)
-		}
-	}
-	for _, result := range nv.CheckResults {
-		if result.CheckID == check.ID {
-			return
-		}
-	}
-	t.Fatalf("%s result not found", check.ID)
-}
-
 // emptySensor is a Sensor that succeeds while observing nothing — the
 // shape of a backend that enumerates no entities, or a domain whose sensor
 // was never added to the run at all. It reports no error, so nothing is

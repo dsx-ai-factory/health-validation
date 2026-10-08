@@ -224,7 +224,7 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 			if err := json.Unmarshal(stdout.Bytes(), &actual); err != nil {
 				t.Fatal(err)
 			}
-			cat, _, err := buildCatalog(nil, mixedChecks(), "GB200")
+			cat, _, err := buildCatalog(nil, mixedChecks(), "GB200", health.OperatorInfra)
 			if err != nil {
 				t.Fatal(err)
 			}

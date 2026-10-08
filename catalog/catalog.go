@@ -35,13 +35,10 @@ type Catalog struct {
 type Option func(*Catalog)
 
 // EvaluationOptions configures one batch evaluation. Its zero value requests
-// no cadence window and uses the catalog's execution context.
+// no cadence window.
 type EvaluationOptions struct {
 	// Cadence selects the run window; nil evaluates every registered check.
 	Cadence *health.SchedulingCadence
-	// ExecutionContext selects checks for the deployment position; nil uses
-	// the context configured on the catalog.
-	ExecutionContext *health.ExecutionContext
 }
 
 // WithOverrides supplies operator threshold overrides.
@@ -73,8 +70,7 @@ func WithArchitecture(arch string) Option {
 }
 
 // WithExecutionContext sets the deployment position. Checks that
-// don't list this context are skipped. A per-run context supplied through
-// EvaluationOptions overrides it for that evaluation.
+// don't list this context are skipped.
 func WithExecutionContext(ctx health.ExecutionContext) Option {
 	return func(c *Catalog) { c.executionContext = ctx }
 }
@@ -202,9 +198,8 @@ func (c *Catalog) Len() int {
 // construction-time configuration, so these fields are treated as read-only
 // once the catalog is in use. Under that convention, one snapshot under
 // RLock is equivalent to re-reading the catalog per check and avoids O(n)
-// lock round-trips on the batch path. Per-run fields such as cadence and an
-// execution-context override are set on a local copy for that evaluation;
-// they are not stored on Catalog.
+// lock round-trips on the batch path. Per-run fields such as cadence are
+// set on a local copy for that evaluation; they are not stored on Catalog.
 type paramsSnapshot struct {
 	cadence          *health.SchedulingCadence
 	disabledChecks   map[string]bool
@@ -287,10 +282,9 @@ func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVe
 
 // EvaluateAllWithOptions is [Catalog.EvaluateAll] with per-run evaluation
 // configuration. A zero-value EvaluationOptions evaluates every registered
-// check using the catalog's execution context. A requested cadence skips
-// checks whose declared cadence does not cover that window; an execution
-// context overrides the catalog's context for this evaluation. Dependents
-// skip through the normal dependency cascade.
+// check. A requested cadence skips checks whose declared cadence does not
+// cover that window; dependents then skip through the normal dependency
+// cascade.
 func (c *Catalog) EvaluateAllWithOptions(opts EvaluationOptions, measurements ...health.Measurement) (health.NodeVerdict, error) {
 	verdicts, err := c.evaluateAllRaw(opts, measurements...)
 	if err != nil {
@@ -343,9 +337,6 @@ func (c *Catalog) evaluateAllRaw(opts EvaluationOptions, measurements ...health.
 		executionContext: c.executionContext,
 	}
 	c.mu.RUnlock()
-	if opts.ExecutionContext != nil {
-		snap.executionContext = *opts.ExecutionContext
-	}
 
 	return c.evaluationEngine.EvaluateBatch(checks, measurements, snap.forCheck)
 }

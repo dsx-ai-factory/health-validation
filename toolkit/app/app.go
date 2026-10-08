@@ -381,7 +381,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 
-	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch)
+	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, executionContext)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
@@ -435,9 +435,8 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	sensors = append(sensors, collectSensors...)
 	verdict, produced, code := evaluate(cat, toolkit.CollectionOptions{
-		Cadence:          cadence,
-		ExecutionContext: &executionContext,
-		Timeout:          timeout,
+		Cadence: cadence,
+		Timeout: timeout,
 	}, a.prog, resolvedNodeID, stdout, stderr, sensors...)
 	if produced {
 		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
@@ -543,7 +542,7 @@ func loadOptionalConfig(path string) (*Config, error) {
 // collection_timeout_seconds (if set) is the timeout; otherwise the toolkit
 // default is used. A nil cfg means no config file: built-ins only, default
 // timeout.
-func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string) (*catalog.Catalog, time.Duration, error) {
+func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string, executionContext health.ExecutionContext) (*catalog.Catalog, time.Duration, error) {
 	// register adds the caller-supplied checks to a freshly built catalog.
 	// Classification is passed through untouched; the only failure is the
 	// catalog's duplicate-ID guard.
@@ -560,7 +559,7 @@ func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch strin
 	// NVML reports "unknown" for unrecognized devices so scoped checks still skip.
 	// Evaluate requires a non-empty architecture; the CLI fails discovery before
 	// it would construct a catalog with none.
-	var opts []catalog.Option
+	opts := []catalog.Option{catalog.WithExecutionContext(executionContext)}
 	if arch != "" {
 		opts = append(opts, catalog.WithArchitecture(arch))
 	}

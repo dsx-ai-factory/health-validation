@@ -347,7 +347,7 @@ func TestBuildCatalogAppliesConfigOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, _, err := buildCatalog(mustLoadConfig(t, path), nil, "GB200")
+	cat, _, err := buildCatalog(mustLoadConfig(t, path), nil, "GB200", health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, timeout, err := buildCatalog(mustLoadConfig(t, path), nil, "GB200")
+	cat, timeout, err := buildCatalog(mustLoadConfig(t, path), nil, "GB200", health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -530,7 +530,7 @@ func TestBuildCatalogResolvesTimeout(t *testing.T) {
 	if err := os.WriteFile(path, []byte("collection_timeout_seconds: 45\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, timeout, err := buildCatalog(mustLoadConfig(t, path), nil, "")
+	_, timeout, err := buildCatalog(mustLoadConfig(t, path), nil, "", health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -538,7 +538,7 @@ func TestBuildCatalogResolvesTimeout(t *testing.T) {
 		t.Errorf("timeout = %v, want 45s", timeout)
 	}
 
-	_, timeout, err = buildCatalog(nil, nil, "")
+	_, timeout, err = buildCatalog(nil, nil, "", health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}

@@ -4,9 +4,8 @@
 // A [Sensor] collects measurements from a hardware domain, either per observed
 // entity or host-wide. [Collect] runs one or more sensors, hands their
 // measurements to [catalog.Catalog.EvaluateAll], and returns the aggregated
-// [health.NodeVerdict]. Use [CollectWithOptions] for a per-run cadence,
-// execution context, or collection timeout; zero-value [CollectionOptions]
-// uses the defaults.
+// [health.NodeVerdict]. Use [CollectWithOptions] for a per-run cadence or
+// collection timeout; zero-value [CollectionOptions] uses the defaults.
 //
 // # Sensors and reference backends
 //
