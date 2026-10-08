@@ -310,7 +310,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	cadenceFlag := fs.String("cadence", "",
 		"evaluate checks whose scheduling cadence covers this window (CONTINUOUS, PROLOG, MAINTENANCE); omit to run every registered check")
 	executionContextFlag := fs.String("execution-context", health.TenantGuest.String(),
-		"deployment position used to select checks (OPERATOR_INFRA, TENANT_GUEST, OUT_OF_BAND)")
+		"execution context used to select checks (OPERATOR_INFRA, TENANT_GUEST, OUT_OF_BAND)")
 	if err := fs.Parse(args); err != nil {
 		return exitError
 	}
