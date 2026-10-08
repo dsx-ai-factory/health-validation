@@ -64,10 +64,13 @@ type collectSource struct {
 // WithCollectAdapters adds adapters that assemble domain measurements from
 // facts across all sensors registered with [App.WithCollect]. Calls append to
 // the adapter list; names must be unique across calls. Built-in domains use
-// adapters named after their catalog category (for example "cpu"), so those
-// names are reserved; a built-in adapter reads its canonical signals from
-// whichever registered sensor produces them. Sensor and adapter registration
-// order does not matter; both lists are resolved for each run.
+// adapters named after their catalog category (for example "cpu"), and a
+// caller adapter cannot reuse the name of an active built-in adapter. A domain
+// whose built-in is replaced by a With*Backend override or still on its
+// legacy sensor has no built-in adapter, so its name is free. A built-in
+// adapter reads its canonical signals from whichever registered sensor
+// produces them. Sensor and adapter registration order does not matter; both
+// lists are resolved for each run.
 // Requested signals without a producer are reported as missing at run time,
 // failing only dependent checks rather than causing a registration error.
 func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
