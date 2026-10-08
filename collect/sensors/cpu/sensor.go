@@ -20,9 +20,10 @@ import (
 // ID identifies the sysfs CPU sensor; it is also the observation source.
 const ID = "cpu.sysfs"
 
-// paths are relative to the filesystem root. The kernel creates a node
-// directory only for an online NUMA node, so node/online matches what
-// topology tools report.
+// paths are relative to the filesystem root. cpu/possible lists every CPU the
+// kernel could bring online, including hotplug slots; cpu/online lists those
+// currently online. The kernel creates a node directory only for an online
+// NUMA node, so node/online matches what topology tools report.
 var paths = map[string]string{
 	cpusignals.PossibleCount.ID():       "sys/devices/system/cpu/possible",
 	cpusignals.OnlineCount.ID():         "sys/devices/system/cpu/online",

@@ -11,6 +11,9 @@ import (
 
 const maxInt64 = int64(1<<63 - 1)
 
+// parseListCount counts the indices in a kernel cpulist such as "0-3,8,10-11"
+// (7 indices). The kernel always prints entries ascending and disjoint, so
+// anything else is rejected as corrupt rather than counted.
 func parseListCount(data []byte) (int64, error) {
 	value := strings.TrimSpace(string(data))
 	if value == "" {
@@ -65,6 +68,8 @@ func parseListCount(data []byte) (int64, error) {
 	return count, nil
 }
 
+// parseIndex accepts only unsigned decimal digits; ParseInt alone would also
+// accept a leading sign.
 func parseIndex(value string) (int64, error) {
 	if value == "" {
 		return 0, fmt.Errorf("index is empty")
