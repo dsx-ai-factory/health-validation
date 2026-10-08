@@ -15,6 +15,7 @@ import (
 // recommended action.
 type criticalXid struct {
 	description string
+	message     string
 	action      health.RecommendedAction
 	code        int64
 }
@@ -49,7 +50,12 @@ var criticalXids = []criticalXid{
 	{code: 155, action: resetAndService(), description: "NVLink SW-defined error"},
 	{code: 156, action: resetAndService(), description: "resource retirement event"},
 	{code: 158, action: resetAndService(), description: "GPU fatal timeout"},
-	{code: 159, action: health.Drain(health.RemediationActionCheckUVM), description: "CHI non-data error"},
+	{
+		code:        159,
+		action:      resetAndService(),
+		description: "CHI non-data error",
+		message:     "GPU Xid 159 detected: CHI non-data error. NVIDIA's Xid catalog calls for a GPU reset when UVM or vGPU is in use, and the CUDA driver uses UVM on bare-metal GB200/GB300.",
+	},
 }
 
 // nvlink5Xid is one Xid code in the NVLink5/NVSwitch fault family
@@ -137,10 +143,14 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 		fmt.Sprintf("Detects NVRM Xid %d in the system journal since boot.", c.code),
 		c.action,
 	)
+	message := c.message
+	if message == "" {
+		message = fmt.Sprintf("GPU Xid %d detected: %s.", c.code, c.description)
+	}
 	def.Rules = []health.Rule{{
 		Expression: fmt.Sprintf("%d in xid_counts", c.code),
 		Severity:   health.Critical,
-		Message:    fmt.Sprintf("GPU Xid %d detected: %s.", c.code, c.description),
+		Message:    message,
 	}}
 	return def
 }

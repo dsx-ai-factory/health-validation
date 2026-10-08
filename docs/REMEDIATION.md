@@ -127,6 +127,12 @@ Xid 151 recommends `restart_os` and Xid 142 recommends `service_required`
 alone, but are documented once, above. `service_required` is this repo's
 name for the bucket NVIDIA's Xid catalog calls `CONTACT_SUPPORT`.)
 
+Xid 159 (CHI non-data error, `gpu_xid_159`) recommends
+`["reset_gpu", "service_required"]`. NVIDIA's Xid catalog files it under
+`CHECK_UVM`, which resets the GPU only when UVM or vGPU is in use. GB200 and
+GB300 are supported on bare metal only, so vGPU never applies, and the CUDA
+driver uses UVM on them.
+
 Xid 144-150 (the NVLink5/NVSwitch fault family, `gpu_xid_144`..`gpu_xid_150`)
 are a special case: unlike other Xid codes, NVRM marks each occurrence Fatal
 or Nonfatal directly in the log line. Each of these checks fires CRITICAL
@@ -141,7 +147,6 @@ need no remediation at all.
 |---|---|
 | `restart_app` | Restart the application using the GPU; the GPU itself is not considered faulted. The default for the consolidated `gpu_xid_warning` check and most of the Xid codes it groups under "application-level" faults, where it is followed by `service_required` (`["restart_app", "service_required"]`) should the error persist after the restart. |
 | `update_swfw` | Update GPU driver/firmware and any related system software to the latest supported versions. Recommended for Xid 78 (vGPU start error). |
-| `check_uvm` | If Unified Virtual Memory or vGPU is in use, reset the GPU; otherwise no hardware action is warranted. Recommended for Xid 159 (CHI non-data error). |
 | `workflow_xid_45` | Follow the Xid 45 (preemptive GPU removal) workflow: restart the fabric manager if the node is solo; otherwise this Xid typically accompanies another Xid and that Xid's guidance applies instead. |
 | `xid_154` | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
 
