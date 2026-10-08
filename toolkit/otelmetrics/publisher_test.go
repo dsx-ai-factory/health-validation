@@ -341,10 +341,11 @@ func TestPublishRecordsDomainSeverityAsLabel(t *testing.T) {
 	}
 }
 
-// allSkipReasonNames is every value health.SkipReason can take; the skip gauge
-// reports all of them per check.
+// allSkipReasonNames is every reason a check can be skipped for; the skip
+// gauge reports all of them per check. NOT_SKIPPED is not among them — a check
+// that ran is every reason at 0.
 var allSkipReasonNames = []string{
-	"NOT_SKIPPED", "SIGNAL_UNAVAILABLE_ARCHITECTURE", "SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL",
+	"SIGNAL_UNAVAILABLE_ARCHITECTURE", "SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL",
 	"CHECK_DISABLED", "DEPENDENCY_SKIPPED", "INSUFFICIENT_HISTORY", "THRESHOLD_UNCONFIGURED",
 	"NO_APPLICABLE_MEASUREMENT", "SENSOR_MISSING", "CADENCE_MISMATCH",
 }
@@ -376,10 +377,10 @@ func activeSkipReasons(t *testing.T, points []*metricspb.NumberDataPoint, checkI
 }
 
 // TestPublishReportsSkipsAndEntities covers the per-check instruments. Every
-// check gets a full set of skip-reason points — the executed ones at
-// NOT_SKIPPED — so a check that stops being skipped is driven back to 0 rather
-// than sitting at 1 forever. affected_entities likewise reports a count for
-// every check that ran, including the zero that contradicts a previous run.
+// check gets a full set of skip-reason points, so a check that stops being
+// skipped is driven back to 0 rather than sitting at 1 forever.
+// affected_entities likewise reports a count for every check that ran,
+// including the zero that contradicts a previous run.
 func TestPublishReportsSkipsAndEntities(t *testing.T) {
 	srv, cap := newCollector(t, http.StatusOK)
 
@@ -397,8 +398,8 @@ func TestPublishReportsSkipsAndEntities(t *testing.T) {
 		t.Fatalf("checks on check.skipped = %d, want 3 (every check in the run)", len(skipped))
 	}
 	for _, id := range []string{"gpu_ecc_errors", "gpu_count"} {
-		if got := activeSkipReasons(t, skipped[id], id); !slices.Equal(got, []string{"NOT_SKIPPED"}) {
-			t.Errorf("%s skip reasons at 1 = %v, want [NOT_SKIPPED]", id, got)
+		if got := activeSkipReasons(t, skipped[id], id); len(got) != 0 {
+			t.Errorf("%s skip reasons at 1 = %v, want none: the check ran", id, got)
 		}
 	}
 	if got := activeSkipReasons(t, skipped["nvlink_active"], "nvlink_active"); !slices.Equal(got, []string{health.SensorMissing.String()}) {

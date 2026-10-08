@@ -43,15 +43,12 @@ var severities = []health.Severity{
 	health.Pass, health.Info, health.Warning, health.Critical, health.Unknown,
 }
 
-// skipReasons is reported in full on the skip gauge for the same reason, with
-// one difference: a check evaluated per entity can be skipped for one GPU and
-// run for another, so the reasons are not mutually exclusive and NotSkipped
-// can hold alongside a skip. Each reason in effect reports 1, the rest 0.
+// skipReasons is reported in full on the skip gauge for the same reason.
+// NotSkipped is absent: a check that ran is already every reason at 0.
 var skipReasons = []health.SkipReason{
-	health.NotSkipped, health.ArchitectureUnsupported, health.DeploymentUnsupported,
-	health.CheckDisabled, health.DependencySkipped, health.InsufficientHistory,
-	health.ThresholdUnconfigured, health.NoApplicableMeasurement, health.SensorMissing,
-	health.CadenceMismatch,
+	health.ArchitectureUnsupported, health.DeploymentUnsupported, health.CheckDisabled,
+	health.DependencySkipped, health.InsufficientHistory, health.ThresholdUnconfigured,
+	health.NoApplicableMeasurement, health.SensorMissing, health.CadenceMismatch,
 }
 
 // Spelled out rather than imported from otel/semconv: the keys are stable, and
@@ -213,7 +210,7 @@ func (p *Publisher) newInstruments(m metric.Meter) error {
 	p.checkSeverity = gauge("health_validation.check.severity",
 		"1 for the severity a check reported, 0 for every other severity.")
 	p.checkSkipped = gauge("health_validation.check.skipped",
-		"1 for each reason a check was skipped, 0 for every other reason; NOT_SKIPPED is 1 when the check ran.")
+		"1 when a check was skipped for this reason, 0 when it was not. A check that ran reports 0 for every reason.")
 	p.affectedEntities = gauge("health_validation.check.affected_entities",
 		"Number of entities (GPUs, links, devices) a check named as affected.")
 	p.runs = runs
@@ -293,13 +290,14 @@ type skipSummary struct {
 // aggregateSkips folds a run's executed and skipped verdicts into one entry
 // per check, in first-seen order. Executed checks are included so their
 // skip-reason series are driven back to 0 — without that, a check skipped on
-// one run would sit at 1 forever once it started running again.
+// one run would sit at 1 forever once it started running again. A check can
+// appear in both lists, so the reasons are collected as a set.
 func aggregateSkips(nv health.NodeVerdict) []skipSummary {
 	total := len(nv.CheckResults) + len(nv.SkippedChecks)
 	byID := make(map[string]*skipSummary, total)
 	order := make([]string, 0, total)
 
-	add := func(cv health.CheckVerdict, reason health.SkipReason) {
+	seen := func(cv health.CheckVerdict) *skipSummary {
 		s, ok := byID[cv.CheckID]
 		if !ok {
 			s = &skipSummary{
@@ -310,14 +308,16 @@ func aggregateSkips(nv health.NodeVerdict) []skipSummary {
 			byID[cv.CheckID] = s
 			order = append(order, cv.CheckID)
 		}
-		s.reasons[reason] = struct{}{}
+		return s
 	}
 
+	// Executed checks contribute no reason; they are here only so their
+	// series are driven to 0.
 	for _, cv := range nv.CheckResults {
-		add(cv, health.NotSkipped)
+		seen(cv)
 	}
 	for _, cv := range nv.SkippedChecks {
-		add(cv, cv.SkipReason)
+		seen(cv).reasons[cv.SkipReason] = struct{}{}
 	}
 
 	out := make([]skipSummary, 0, len(order))

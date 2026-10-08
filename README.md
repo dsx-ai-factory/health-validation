@@ -437,13 +437,8 @@ per GPU, so `check.severity` reports the **worst** severity across them and
 therefore shows as a failing check; which GPU it was is in the JSON verdict's
 `affected_entities`, not in the metrics.
 
-`check.skipped` works the same way as the severity gauges: every check in the
-run reports all ten skip reasons, `1` for the one in effect and `0` for the
-rest. A check that ran reports `skip_reason="NOT_SKIPPED"` at `1`, which is
-what clears the previous run's skip. Alert on a specific reason, e.g.
-`health_validation_check_skipped{skip_reason="SENSOR_MISSING"} == 1`. A check
-evaluated per entity can be skipped for one GPU and run for another, so more
-than one reason can be `1` at once.
+`check.skipped` reports every check against every skip reason: `1` if it was
+skipped for that reason, `0` if it was not.
 
 `check.affected_entities` reports `0` for a check that ran and named nothing.
 
