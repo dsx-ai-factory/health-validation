@@ -971,6 +971,41 @@ func TestEvaluateAll_HonorsDisabledChecks(t *testing.T) {
 	}
 }
 
+func TestEvaluateAllWithOptions_OverridesExecutionContext(t *testing.T) {
+	check := health.CheckDefinition{
+		ID:                "tenant_only",
+		Category:          health.Node,
+		RequiredSignals:   []string{"first"},
+		ExecutionContexts: []health.ExecutionContext{health.TenantGuest},
+		Rules: []health.Rule{
+			{Expression: "first < 0", Severity: health.Critical, Message: "negative"},
+		},
+	}
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+	cat.MustRegister(check)
+	tenant := health.TenantGuest
+	nv, err := cat.EvaluateAllWithOptions(catalog.EvaluationOptions{ExecutionContext: &tenant},
+		twoSignalMeasurement{First: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, skipped := range nv.SkippedChecks {
+		if skipped.CheckID == check.ID {
+			t.Fatalf("%s was skipped with per-run TENANT_GUEST context: %+v", check.ID, skipped)
+		}
+	}
+	for _, result := range nv.CheckResults {
+		if result.CheckID == check.ID {
+			return
+		}
+	}
+	t.Fatalf("%s result not found", check.ID)
+}
+
 // requiredThresholdCheck is a synthetic check whose threshold has no usable
 // catalog default, standing in for per-fleet values like expected RDMA device
 // names.

@@ -309,6 +309,8 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		"identifier of the node under test (overrides the configured default or system hostname)")
 	cadenceFlag := fs.String("cadence", "",
 		"evaluate checks whose scheduling cadence covers this window (CONTINUOUS, PROLOG, MAINTENANCE); omit to run every registered check")
+	executionContextFlag := fs.String("execution-context", health.TenantGuest.String(),
+		"deployment position used to select checks (OPERATOR_INFRA, TENANT_GUEST, OUT_OF_BAND)")
 	if err := fs.Parse(args); err != nil {
 		return exitError
 	}
@@ -340,6 +342,11 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 			return exitError
 		}
 		cadence = &sc
+	}
+	executionContext, err := health.ExecutionContextFromName(strings.ToUpper(strings.TrimSpace(*executionContextFlag)))
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: --execution-context: %v\n", a.prog, err)
+		return exitError
 	}
 
 	// Close only the host backend: per-domain overrides are caller-owned (see
@@ -428,8 +435,9 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	sensors = append(sensors, collectSensors...)
 	verdict, produced, code := evaluate(cat, toolkit.CollectionOptions{
-		Cadence: cadence,
-		Timeout: timeout,
+		Cadence:          cadence,
+		ExecutionContext: &executionContext,
+		Timeout:          timeout,
 	}, a.prog, resolvedNodeID, stdout, stderr, sensors...)
 	if produced {
 		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)

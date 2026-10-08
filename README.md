@@ -263,6 +263,9 @@ The verdict's `node_id` defaults to the configured system hostname. Use
 Optional `--cadence CONTINUOUS|PROLOG|MAINTENANCE`
 runs checks scheduled for that window and reports the others as
 `CADENCE_MISMATCH` skips; omit it to run the full stock catalog.
+The execution context defaults to `TENANT_GUEST`. Use
+`--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND` to select checks
+for a different deployment position.
 
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 

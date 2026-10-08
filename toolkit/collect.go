@@ -19,10 +19,14 @@ import (
 const DefaultSensorTimeout = 60 * time.Second
 
 // CollectionOptions configures one collection and evaluation run. Its zero
-// value uses DefaultSensorTimeout and requests no cadence window.
+// value uses DefaultSensorTimeout, requests no cadence window, and uses the
+// catalog's execution context.
 type CollectionOptions struct {
 	// Cadence selects the run window; nil evaluates every registered check.
 	Cadence *health.SchedulingCadence
+	// ExecutionContext selects checks for the deployment position; nil uses
+	// the context configured on the catalog.
+	ExecutionContext *health.ExecutionContext
 	// Timeout bounds each sensor; zero uses DefaultSensorTimeout.
 	Timeout time.Duration
 }
@@ -37,7 +41,8 @@ func Collect(cat *catalog.Catalog, sensors ...Sensor) (health.NodeVerdict, error
 
 // CollectWithOptions is [Collect] with per-run collection and evaluation
 // configuration. A zero timeout uses DefaultSensorTimeout; a nil cadence
-// evaluates every registered check. Each sensor is bounded independently and runs sequentially:
+// evaluates every registered check; and a nil execution context uses the
+// context configured on the catalog. Each sensor is bounded independently and runs sequentially:
 // if a sensor's Measure does not return within timeout, or returns an
 // error, the failure is degraded into errored measurements (via
 // [Sensor.Errored]) so the catalog fails exactly the dependent checks
@@ -91,7 +96,10 @@ func CollectWithOptions(cat *catalog.Catalog, opts CollectionOptions, sensors ..
 		}
 	}
 
-	nv, err := cat.EvaluateAllWithOptions(catalog.EvaluationOptions{Cadence: opts.Cadence}, all...)
+	nv, err := cat.EvaluateAllWithOptions(catalog.EvaluationOptions{
+		Cadence:          opts.Cadence,
+		ExecutionContext: opts.ExecutionContext,
+	}, all...)
 	if err != nil {
 		return nv, err
 	}

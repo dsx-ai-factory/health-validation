@@ -269,6 +269,16 @@ var executionContextFromName = map[string]ExecutionContext{
 	"OPERATOR_INFRA": OperatorInfra, "TENANT_GUEST": TenantGuest, "OUT_OF_BAND": OutOfBand,
 }
 
+// ExecutionContextFromName maps a wire name (OPERATOR_INFRA, TENANT_GUEST,
+// OUT_OF_BAND) to the enum. The match is exact; unknown names error.
+func ExecutionContextFromName(name string) (ExecutionContext, error) {
+	v, ok := executionContextFromName[name]
+	if !ok {
+		return 0, fmt.Errorf("unknown execution context %q", name)
+	}
+	return v, nil
+}
+
 func (ec ExecutionContext) String() string {
 	if name, ok := executionContextNames[ec]; ok {
 		return name

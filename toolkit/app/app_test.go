@@ -797,6 +797,73 @@ func TestRunCommandRejectsInvalidCadence(t *testing.T) {
 	}
 }
 
+func TestRunCommandRejectsInvalidExecutionContext(t *testing.T) {
+	a := New().WithProgramName("test")
+	a.host = panicHost{}
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"run", "--node-id", testNodeID, "--execution-context", "NOT_A_CONTEXT"}, &stdout, &stderr); code != exitError {
+		t.Fatalf("Run exit = %d, want %d; stderr = %q", code, exitError, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want no verdict", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "unknown execution context") {
+		t.Errorf("stderr = %q, want unknown execution context error", stderr.String())
+	}
+}
+
+func TestRunCommandExecutionContextSelection(t *testing.T) {
+	check := customCheck()
+	check.ID = "tenant_only"
+	check.ExecutionContexts = []health.ExecutionContext{health.TenantGuest}
+	tests := []struct {
+		name        string
+		args        []string
+		wantSkipped bool
+	}{
+		{name: "default is tenant guest"},
+		{name: "operator infra flag", args: []string{"--execution-context", "OPERATOR_INFRA"}, wantSkipped: true},
+		{name: "folded and padded tenant guest", args: []string{"--execution-context", "  tenant_guest  "}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := cadenceRunApp().WithChecks(check).WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}))
+			args := append([]string{"--node-id", testNodeID}, tt.args...)
+			var stdout, stderr bytes.Buffer
+			if code := a.runCommand(args, &stdout, &stderr); code == exitError {
+				t.Fatalf("runCommand exit = %d; stderr = %q", code, stderr.String())
+			}
+			var verdict health.NodeVerdict
+			if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+				t.Fatalf("unmarshal: %v; stdout = %s", err, stdout.String())
+			}
+
+			var found, skipped bool
+			for _, result := range verdict.CheckResults {
+				if result.CheckID == check.ID {
+					found = true
+				}
+			}
+			for _, result := range verdict.SkippedChecks {
+				if result.CheckID == check.ID {
+					found = true
+					skipped = true
+					if result.SkipReason != health.DeploymentUnsupported {
+						t.Errorf("%s skip reason = %v, want %v", check.ID, result.SkipReason, health.DeploymentUnsupported)
+					}
+				}
+			}
+			if !found {
+				t.Fatalf("%s verdict not found", check.ID)
+			}
+			if skipped != tt.wantSkipped {
+				t.Errorf("%s skipped = %v, want %v", check.ID, skipped, tt.wantSkipped)
+			}
+		})
+	}
+}
+
 func TestRunCommandCadenceAcceptsFoldedAndPaddedNames(t *testing.T) {
 	a := cadenceRunApp()
 	for _, name := range []string{"continuous", "  CONTINUOUS  "} {

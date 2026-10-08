@@ -6,6 +6,38 @@ import (
 	"testing"
 )
 
+func TestExecutionContextFromName(t *testing.T) {
+	tests := []struct {
+		name    string
+		want    ExecutionContext
+		wantErr bool
+	}{
+		{name: "OPERATOR_INFRA", want: OperatorInfra},
+		{name: "TENANT_GUEST", want: TenantGuest},
+		{name: "OUT_OF_BAND", want: OutOfBand},
+		{name: "tenant_guest", wantErr: true},
+		{name: "UNKNOWN", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ExecutionContextFromName(tt.name)
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "unknown execution context") {
+					t.Fatalf("ExecutionContextFromName(%q) error = %v, want unknown context error", tt.name, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ExecutionContextFromName(%q): %v", tt.name, err)
+			}
+			if got != tt.want {
+				t.Errorf("ExecutionContextFromName(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCategoryContract(t *testing.T) {
 	tests := []struct {
 		name     string
