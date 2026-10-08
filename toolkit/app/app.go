@@ -173,6 +173,9 @@ func (a *App) WithNVLinkBackend(b toolkit.NVLinkBackend) *App {
 // reports the Linux kernel's possible and online logical CPU counts and its
 // online NUMA node count from sysfs, with a legacy toolkit backend. The
 // override is caller-owned.
+//
+// Deprecated: pass a collect sensor and the CPU signal IDs it replaces to
+// [App.WithCollect] instead.
 func (a *App) WithCPUBackend(b toolkit.CPUBackend) *App {
 	a.cpu = b
 	return a
