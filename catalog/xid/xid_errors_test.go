@@ -225,7 +225,7 @@ func TestXidErrors_CHINonDataError_ResetsGPU(t *testing.T) {
 	if want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired); !v.RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
 	}
-	want := "GPU Xid 159 detected: CHI non-data error. NVIDIA's Xid catalog calls for a GPU reset when UVM or vGPU is in use, and the CUDA driver uses UVM on bare-metal GB200/GB300."
+	want := "GPU Xid 159 detected: CHI non-data error. NVIDIA's CHECK_UVM guidance is to reset the GPU if UVM or vGPU is in use; otherwise ignore the error. Health Validation cannot determine whether either was in use when this error occurred, so it recommends a GPU reset as a conservative default."
 	if len(v.Messages) != 1 || v.Messages[0] != want {
 		t.Errorf("Messages = %q, want [%q]", v.Messages, want)
 	}

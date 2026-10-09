@@ -54,7 +54,7 @@ var criticalXids = []criticalXid{
 		code:        159,
 		action:      resetAndService(),
 		description: "CHI non-data error",
-		message:     "GPU Xid 159 detected: CHI non-data error. NVIDIA's Xid catalog calls for a GPU reset when UVM or vGPU is in use, and the CUDA driver uses UVM on bare-metal GB200/GB300.",
+		message:     "GPU Xid 159 detected: CHI non-data error. NVIDIA's CHECK_UVM guidance is to reset the GPU if UVM or vGPU is in use; otherwise ignore the error. Health Validation cannot determine whether either was in use when this error occurred, so it recommends a GPU reset as a conservative default.",
 	},
 }
 
