@@ -5,14 +5,40 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug. Please fill in as much detail as you can.
+        Follow the [reporting checklist](https://github.com/dsx-ai-factory/health-validation/blob/main/SUPPORT.md#what-to-put-in-a-bug-report).
+        Remove credentials, customer data, and private identifiers from all output and configuration.
         For **security vulnerabilities**, do not open an issue here — see [SECURITY.md](https://github.com/dsx-ai-factory/health-validation/blob/main/SECURITY.md) to report to NVIDIA PSIRT.
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Affected component and version
+      description: Include CLI version JSON, embedded module versions, or a source commit SHA. For containers, include the image tag and digest.
+      placeholder: "health-validation version --output json"
+    validations:
+      required: true
+
+  - type: textarea
+    id: installation
+    attributes:
+      label: Installation or deployment method
+      description: Describe how you installed or deployed it, including relevant runtime versions and any local changes.
+    validations:
+      required: true
 
   - type: textarea
     id: description
     attributes:
       label: What happened?
-      description: Describe the bug. What did you expect vs. what did you observe?
+      description: Describe the actual behavior and the problem it causes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_output
+    attributes:
+      label: Expected output or behavior
+      description: Describe the expected result. Include expected verdict JSON, check results, exit code, or API behavior where applicable, and explain why that result is correct.
     validations:
       required: true
 
@@ -20,7 +46,7 @@ body:
     id: reproduce
     attributes:
       label: Steps to reproduce
-      description: Minimal steps or command to reproduce the issue.
+      description: Include the exact command or API call, inputs, and configuration. For verdict problems, include check IDs, values, thresholds/overrides, cadence, context, and skip reasons where relevant.
       placeholder: |
         1. Run `health-validation run --config ...`
         2. Observe output / exit code
@@ -31,14 +57,25 @@ body:
     id: output
     attributes:
       label: Full JSON output or error message
-      description: Paste the complete output of `health-validation run` (or the error).
+      description: Paste sanitized verdict JSON, errors, stderr, and exit code where applicable. Preserve schema_version and catalog_version. If no output was produced, say so.
       render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, kernel where applicable, CPU architecture, and relevant dependency versions. For collection problems, describe sensor/backend errors and access to NVML, sysfs, or the host journal.
+    validations:
+      required: true
 
   - type: input
     id: gpu
     attributes:
       label: GPU model
-      placeholder: "e.g. NVIDIA H100 SXM5 80GB"
+      description: Include this for hardware-dependent problems.
+      placeholder: "e.g. GB200 or GB300"
     validations:
       required: false
 
@@ -46,22 +83,15 @@ body:
     id: driver
     attributes:
       label: Driver version
+      description: Include this for GPU collection problems.
       placeholder: "nvidia-smi --query-gpu=driver_version --format=csv,noheader"
     validations:
       required: false
 
-  - type: input
-    id: os
+  - type: textarea
+    id: regression
     attributes:
-      label: OS / kernel
-      placeholder: "uname -a"
-    validations:
-      required: false
-
-  - type: input
-    id: version
-    attributes:
-      label: health-validation version or commit
-      placeholder: "git describe --tags --always"
+      label: Newer-release or main results
+      description: Check current main when feasible and include the tested SHA. If you cannot test it, explain why. For a supported-release defect already fixed on main, identify the fix and any requested backport. Include the last working version if known.
     validations:
       required: false

@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        For general usage questions and discussion, [GitHub Discussions](../discussions) is preferred over issues.
-        Use this template for concrete tasks (e.g. "update docs for X") or specific technical questions.
+        Use this template for usage questions, documentation gaps, concrete tasks,
+        and specific technical questions.
 
   - type: textarea
     id: description

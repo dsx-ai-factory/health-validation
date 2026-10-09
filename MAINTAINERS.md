@@ -14,6 +14,5 @@ _(none yet)_
 
 ## Contact
 
-For escalations or governance questions, reach the maintainer team via
-[GitHub Discussions](../../discussions) or open an issue with the `maintainer`
-label.
+For escalations or governance questions, request maintainer review in an
+[issue](../../issues).

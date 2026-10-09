@@ -23,12 +23,17 @@ the Code of Conduct.
 
 ## Reporting Bugs
 
-Open a [GitHub Issue](../../issues/new?template=bug.yml). Include:
+Open a [GitHub Issue](../../issues/new?template=bug.yml). Include the affected
+component and version or SHA, installation method, command or API call,
+reproduction steps, expected and actual results, and sanitized output or error.
+Include relevant OS, kernel, architecture, and dependency versions; add GPU,
+driver, and sensor-access details for hardware collection problems.
 
-- The full JSON output of `health-validation run` (or the error message)
-- GPU model and driver version (`nvidia-smi -q | head -20`)
-- Kernel and OS (`uname -a`)
-- How you invoked the tool and what you expected vs. what happened
+Follow the [SUPPORT.md reporting checklist](SUPPORT.md#what-to-put-in-a-bug-report)
+for verdict, collection, and integration evidence and supported-release
+reproduction guidance. Check current `main` when feasible and identify the
+tested SHA. If you cannot test it, explain why. Identify any known fix on
+`main` when requesting a backport.
 
 For security vulnerabilities, see [`SECURITY.md`](SECURITY.md) — do not file a
 public issue.
@@ -222,6 +227,5 @@ Full text of the DCO (<https://developercertificate.org/>):
 
 ## Questions
 
-Open a [GitHub Discussion](../../discussions) or a
-[task issue](../../issues/new?template=task.yml) for anything that doesn't fit
-a bug or feature request.
+Open a [task issue](../../issues/new?template=task.yml) for anything that doesn't
+fit a bug or feature request.

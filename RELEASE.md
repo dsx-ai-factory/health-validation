@@ -17,6 +17,29 @@ There is no fixed release cadence. A release is cut when there's a meaningful
 set of merged changes to ship — typically after one or more feature/fix PRs
 land on `main` — not on a calendar schedule.
 
+## Supported release lines and backports
+
+[SUPPORT.md](SUPPORT.md#support-lifecycle) defines the Current, Maintenance,
+and EOL stages for each module, including the pre-1.0 policy and the
+three-month previous-major Maintenance tail. Catalog lines required by a
+supported toolkit line remain eligible for security and critical fixes needed
+by that toolkit line while it is supported.
+
+When publishing a final release, update the
+[supported release lines](SUPPORT.md#supported-release-lines) and identify
+stage transitions, EOL dates for previous-major tails, and migration guidance
+in the release notes. Recheck the initial covered lines when adopting this
+policy if another final release has shipped during review.
+
+Maintainers evaluate security and critical bug fixes for Maintenance lines on
+a best-effort basis. Security fixes follow the private coordination and
+disclosure process in [SECURITY.md](SECURITY.md). When maintainers choose a
+Maintenance backport, critical bug fixes applicable to `main` land there first,
+then are backported and validated on the affected release line before its
+patch release. Security and critical bug fixes specific to a Maintenance line
+may be fixed on that release branch. Do not include new features or other bug
+fixes in a Maintenance release.
+
 ## Versioning
 
 Both modules follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.

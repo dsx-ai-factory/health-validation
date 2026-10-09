@@ -54,9 +54,11 @@ The repo contains four Go modules, joined by a root `go.work`:
 - **`collect/`** — telemetry collection emitting protobuf observations
 - **`agentkit/`** — gRPC/HTTP server exposing `collect`
 
-Only `catalog` and `toolkit` are independently versioned and published. All four
-are resolved together by Gazelle, so a dependency pin in any of them can change
-the versions linked into the CLI. CI gates `mod tidy -diff` on all four.
+The [support lifecycle](../SUPPORT.md#support-lifecycle) applies to the
+independently versioned `catalog` and `toolkit` modules. `collect` and `agentkit`
+remain experimental and outside that lifecycle. All four modules are resolved
+together by Gazelle, so a dependency pin in any of them can change the versions
+linked into the CLI. CI gates `mod tidy -diff` on all four.
 
 Run `go mod tidy` inside each module directory after changing imports.
 
@@ -94,9 +96,11 @@ of its imports to the `/vN` suffix. The scoped tags remain, for example,
 
 When a toolkit release needs a new catalog version, tag the catalog release
 first. Then update the toolkit `require` directive to that catalog version,
-test the combined modules, and tag the toolkit release. This policy defines
-tag and compatibility semantics only. The repository does not currently
-provide automatic release stamping or publishing.
+test the combined modules, and tag the toolkit release. See
+[RELEASE.md](../RELEASE.md) for the RC/QA process, release stamping and image
+publishing, and Maintenance backports. The
+[supported release lines](../SUPPORT.md#supported-release-lines) track fix
+eligibility separately from the pre-1.0 compatibility policy above.
 
 ## Documentation Site
 
