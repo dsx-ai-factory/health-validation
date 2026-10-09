@@ -157,12 +157,12 @@ func (cfg *Config) DisabledCheckIDs(cat *catalog.Catalog) ([]string, error) {
 
 // thresholdTypeRef returns a value of the Go type coerce should validate
 // an override against for spec: spec.Value when the threshold declares
-// one, otherwise an arbitrary entry from PerArchitecture (registration
-// requires every entry to share one Go type per threshold, so any entry
-// is representative). A threshold with neither — a RequiredOverride
-// threshold with no catalog-authored type hint at all — returns nil, and
-// coerce passes the value through unchecked; there is nothing to check
-// it against.
+// one, otherwise the PerArchitecture entry with the lexically first
+// architecture key. Registration does not check that entries share a Go
+// type, so this assumes catalog authors keep them uniform. A threshold
+// with neither — a RequiredOverride threshold with no catalog-authored
+// type hint at all — returns nil, and coerce passes the value through
+// unchecked; there is nothing to check it against.
 func thresholdTypeRef(spec health.ThresholdSpec) any {
 	if spec.Value != nil {
 		return spec.Value
