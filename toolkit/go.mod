@@ -3,7 +3,7 @@ module github.com/dsx-ai-factory/health-validation/toolkit
 go 1.27.1
 
 require (
-	github.com/NVIDIA/go-nvml v0.13.4-0
+	github.com/NVIDIA/go-nvml v0.13.4-1
 	github.com/dsx-ai-factory/health-validation/catalog v0.3.0
 	github.com/dsx-ai-factory/health-validation/collect v0.3.0
 	github.com/google/uuid v1.6.0

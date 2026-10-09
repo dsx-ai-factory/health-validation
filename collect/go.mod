@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/NVIDIA/go-dcgm v1.4701.2
 	github.com/NVIDIA/go-nvlib v0.12.0
-	github.com/NVIDIA/go-nvml v0.13.4-0
+	github.com/NVIDIA/go-nvml v0.13.4-1
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sys v0.47.0
 	google.golang.org/grpc v1.84.0

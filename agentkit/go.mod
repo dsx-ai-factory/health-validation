@@ -26,7 +26,7 @@ require (
 	cel.dev/expr v0.25.2 // indirect
 	github.com/NVIDIA/go-dcgm v1.4701.2 // indirect
 	github.com/NVIDIA/go-nvlib v0.12.0 // indirect
-	github.com/NVIDIA/go-nvml v0.13.4-0 // indirect
+	github.com/NVIDIA/go-nvml v0.13.4-1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bits-and-blooms/bitset v1.25.0 // indirect
 	github.com/google/cel-go v0.28.0 // indirect
