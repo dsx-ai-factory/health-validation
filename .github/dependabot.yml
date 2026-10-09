@@ -8,32 +8,34 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: gomod
-    directory: /catalog
+    directories:
+      - /catalog
+      - /toolkit
+      - /collect
+      - /agentkit
     schedule:
       interval: cron
       cronjob: "0 9 1,15 * *"
     open-pull-requests-limit: 5
-
-  - package-ecosystem: gomod
-    directory: /toolkit
-    schedule:
-      interval: cron
-      cronjob: "0 9 1,15 * *"
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: gomod
-    directory: /collect
-    schedule:
-      interval: cron
-      cronjob: "0 9 1,15 * *"
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: gomod
-    directory: /agentkit
-    schedule:
-      interval: cron
-      cronjob: "0 9 1,15 * *"
-    open-pull-requests-limit: 5
+    groups:
+      opentelemetry:
+        patterns:
+          - "go.opentelemetry.io/*"
+      golang-x:
+        patterns:
+          - "golang.org/x/*"
+      grpc-protobuf:
+        patterns:
+          - "google.golang.org/*"
+          - "github.com/grpc-ecosystem/*"
+      cel:
+        patterns:
+          - "github.com/google/cel-go"
+          - "cel.dev/expr"
+          - "github.com/antlr4-go/antlr/*"
+      nvidia-go:
+        patterns:
+          - "github.com/NVIDIA/*"
 
   - package-ecosystem: npm
     directory: /
