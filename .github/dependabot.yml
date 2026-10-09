@@ -3,35 +3,41 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: cron
+      cronjob: "0 9 1,15 * *"
     open-pull-requests-limit: 5
 
   - package-ecosystem: gomod
     directory: /catalog
     schedule:
-      interval: weekly
+      interval: cron
+      cronjob: "0 9 1,15 * *"
     open-pull-requests-limit: 5
 
   - package-ecosystem: gomod
     directory: /toolkit
     schedule:
-      interval: weekly
+      interval: cron
+      cronjob: "0 9 1,15 * *"
     open-pull-requests-limit: 5
 
   - package-ecosystem: gomod
     directory: /collect
     schedule:
-      interval: weekly
+      interval: cron
+      cronjob: "0 9 1,15 * *"
     open-pull-requests-limit: 5
 
   - package-ecosystem: gomod
     directory: /agentkit
     schedule:
-      interval: weekly
+      interval: cron
+      cronjob: "0 9 1,15 * *"
     open-pull-requests-limit: 5
 
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: cron
+      cronjob: "0 9 1,15 * *"
     open-pull-requests-limit: 5
