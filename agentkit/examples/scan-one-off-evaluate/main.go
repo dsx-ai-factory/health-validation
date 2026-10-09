@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -76,7 +77,10 @@ func run(cfg config) error {
 
 	// Selecting only the signals required by the registered checks also fixes
 	// the DCGM field watch before its first lazy native read.
-	sensor, err := dcgmsensor.New(dcgmSource, observations.CanonicalSignals()...)
+	sensor, err := dcgmsensor.New(dcgmSource, slices.Concat(
+		observations.CanonicalSignalsFor(health.GPU),
+		observations.CanonicalSignalsFor(health.NVLink),
+	)...)
 	if err != nil {
 		return fmt.Errorf("initialize DCGM sensor: %w", err)
 	}

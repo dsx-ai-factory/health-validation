@@ -88,8 +88,8 @@ var canonicalMappings = []canonicalMapping{
 }
 
 // CanonicalSignals returns the canonical collect signal IDs [ToMeasurements]
-// reads, for callers that restrict collect sensors to what the catalog
-// consumes.
+// reads, across every domain. A single-source sensor rejects signals it does
+// not collect, so restrict one with [CanonicalSignalsFor] instead.
 func CanonicalSignals() []string {
 	ids := make([]string, 0, len(canonicalMappings))
 	for _, mapped := range canonicalMappings {
