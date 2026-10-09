@@ -323,20 +323,44 @@ func (c *Catalog) evaluateAllRaw(opts EvaluationOptions, measurements ...health.
 	if err := c.requireArchitecture(); err != nil {
 		return nil, err
 	}
+	checks, snap := c.batchSnapshot(opts)
+	return c.evaluationEngine.EvaluateBatch(checks, measurements, snap.forCheck)
+}
 
+// RunnableChecks returns the registered checks that [Catalog.EvaluateAllWithOptions]
+// would not skip before reading any measurement: checks that are not
+// disabled, are in the cadence window, match the architecture and execution
+// context, and have their required thresholds. Use it to collect only the
+// signals these checks need. A returned check can still skip during
+// evaluation, for example when no measurement of its category arrives or a
+// dependency was skipped.
+func (c *Catalog) RunnableChecks(opts EvaluationOptions) ([]*health.CheckDefinition, error) {
+	if err := c.requireArchitecture(); err != nil {
+		return nil, err
+	}
+	checks, snap := c.batchSnapshot(opts)
+	ids := evaluation.RunnableChecks(checks, snap.forCheck)
+	runnable := make([]*health.CheckDefinition, 0, len(ids))
+	for _, id := range ids {
+		runnable = append(runnable, checks[id])
+	}
+	return runnable, nil
+}
+
+// batchSnapshot copies the registered checks and the evaluation context for
+// one run under a single RLock.
+func (c *Catalog) batchSnapshot(opts EvaluationOptions) (map[string]*health.CheckDefinition, paramsSnapshot) {
 	c.mu.RLock()
+	defer c.mu.RUnlock()
 	checks := make(map[string]*health.CheckDefinition, len(c.checks))
 	for k, v := range c.checks {
 		checks[k] = v
 	}
-	snap := paramsSnapshot{
+	return checks, paramsSnapshot{
 		cadence:          opts.Cadence,
 		overrides:        c.overrides,
 		disabledChecks:   c.disabledChecks,
 		architecture:     c.architecture,
 		executionContext: c.executionContext,
 	}
-	c.mu.RUnlock()
-
-	return c.evaluationEngine.EvaluateBatch(checks, measurements, snap.forCheck)
 }

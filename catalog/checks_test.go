@@ -6,6 +6,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/google/cel-go/cel"
 )
 
 func TestNew_HasBuiltinChecks(t *testing.T) {
@@ -116,6 +117,33 @@ func TestBuiltinChecks_ConditionScopeSerializes(t *testing.T) {
 		}
 		if got["condition_scope"] != want {
 			t.Errorf("%s: condition_scope = %v, want %q; json = %s", id, got["condition_scope"], want, data)
+		}
+	}
+}
+
+// Collection requests only a runnable check's RequiredSignals, so a rule that
+// read an undeclared signal would see that field's zero value.
+func TestBuiltinRulesReadOnlyDeclaredInputs(t *testing.T) {
+	for _, cd := range catalog.New().List(catalog.Filter{}) {
+		names := make(map[string]bool)
+		for _, s := range cd.RequiredSignals {
+			names[s] = true
+		}
+		for name := range cd.Thresholds {
+			names[name] = true
+		}
+		var opts []cel.EnvOption
+		for name := range names {
+			opts = append(opts, cel.Variable(name, cel.DynType))
+		}
+		env, err := cel.NewEnv(opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, rule := range cd.Rules {
+			if _, iss := env.Compile(rule.Expression); iss.Err() != nil {
+				t.Errorf("%s: rule %q reads an input outside RequiredSignals and Thresholds: %v", cd.ID, rule.Expression, iss.Err())
+			}
 		}
 	}
 }

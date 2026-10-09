@@ -4,6 +4,7 @@ go_library(
     name = "evaluation",
     srcs = [
         "evaluate.go",
+        "runnable.go",
         "signals.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/catalog/internal/evaluation",
