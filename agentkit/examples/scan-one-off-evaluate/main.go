@@ -75,12 +75,7 @@ func run(cfg config) error {
 		}
 	}()
 
-	// Selecting only the signals required by the registered checks also fixes
-	// the DCGM field watch before its first lazy native read.
-	sensor, err := dcgmsensor.New(dcgmSource, slices.Concat(
-		observations.CanonicalSignalsFor(health.GPU),
-		observations.CanonicalSignalsFor(health.NVLink),
-	)...)
+	sensor, err := dcgmsensor.New(dcgmSource, watchedSignals()...)
 	if err != nil {
 		return fmt.Errorf("initialize DCGM sensor: %w", err)
 	}
@@ -117,6 +112,15 @@ func run(cfg config) error {
 	}
 	fmt.Println(string(encoded))
 	return nil
+}
+
+// watchedSignals selects only the signals the registered checks require,
+// which also fixes the DCGM field watch before its first lazy native read.
+func watchedSignals() []string {
+	return slices.Concat(
+		observations.CanonicalSignalsFor(health.GPU),
+		observations.CanonicalSignalsFor(health.NVLink),
+	)
 }
 
 func newValidationCatalog(architecture string) (*catalog.Catalog, error) {

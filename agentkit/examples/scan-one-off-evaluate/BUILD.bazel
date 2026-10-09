@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 load("//build/rules/go:defs.bzl", "go_binary")
 
 go_library(
@@ -24,4 +24,15 @@ go_binary(
     name = "scan-one-off-evaluate",
     embed = [":scan-one-off-evaluate_lib"],
     visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "scan-one-off-evaluate_test",
+    srcs = ["main_test.go"],
+    embed = [":scan-one-off-evaluate_lib"],
+    deps = [
+        "//collect/sensors/dcgm",
+        "//collect/source/dcgm",
+        "@com_github_stretchr_testify//require",
+    ],
 )
