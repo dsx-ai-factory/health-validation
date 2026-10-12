@@ -227,7 +227,7 @@ Each check definition carries:
 
 ## Prerequisites
 
-- go 1.27.0
+- go 1.27.2
 - Linux sysfs exposing `/sys/devices/system/cpu/{possible,online}` and `/sys/devices/system/node/online` (required for CPU collection)
 - NVIDIA driver (required for the GPU sensor; not required if you supply measurements directly)
 - NVML (libnvidia-ml) for the NVML-backed sensor

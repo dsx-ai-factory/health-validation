@@ -4,4 +4,4 @@
 // go_sdk.from_file reads the go directive below to pin the toolchain.
 module github.com/dsx-ai-factory/health-validation
 
-go 1.27.0
+go 1.27.2

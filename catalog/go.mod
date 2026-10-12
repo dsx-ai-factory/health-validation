@@ -1,6 +1,6 @@
 module github.com/dsx-ai-factory/health-validation/catalog
 
-go 1.27.0
+go 1.27.2
 
 require (
 	github.com/google/cel-go v0.28.0
