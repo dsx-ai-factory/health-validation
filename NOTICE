@@ -116,7 +116,7 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://golang.org/x/mod
 
-  golang.org/x/net  v0.59.0
+  golang.org/x/net  v0.60.0
   License:  BSD-3-Clause
   URL:      https://golang.org/x/net
 
