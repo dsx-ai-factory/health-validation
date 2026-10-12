@@ -5,6 +5,7 @@ package collectadapters
 
 import (
 	"errors"
+	"maps"
 	"reflect"
 	"slices"
 	"testing"
@@ -245,8 +246,11 @@ func TestCPUAdapterMergesSources(t *testing.T) {
 }
 
 func TestAdapterRequestsMatchConverterMappings(t *testing.T) {
-	got := slices.Concat(GPU().Signals(), NVLink().Signals(), CPU().Signals())
-	want := observations.CanonicalSignals()
+	var got []string
+	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU()} {
+		got = slices.AppendSeq(got, maps.Keys(adapter.Signals()))
+	}
+	want := observations.MappedSignals()
 	slices.Sort(got)
 	slices.Sort(want)
 	if !reflect.DeepEqual(got, want) {

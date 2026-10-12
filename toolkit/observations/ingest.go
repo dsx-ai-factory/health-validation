@@ -30,7 +30,7 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // An observation is read as one of two shapes:
 //   - <domain>.<field>, as written by [FromMeasurements], sets that field
 //     of the domain's measurement type.
-//   - A canonical collect signal ID sets the catalog fields the mapping
+//   - A mapped collect signal ID sets the catalog fields the mapping
 //     table assigns it, as during migration to collect sensors.
 //
 // Both shapes may appear in one batch and feed one measurement. Other
@@ -112,12 +112,12 @@ func schemaForDomain(domain string) *schema {
 
 // neutralFields returns the <domain>.<field> signals whose unsupported
 // NoValue leaves the field at its zero value: the catalog fields of the
-// canonical signals marked unsupportedIsNeutral, which are the signals the
+// mapped signals marked unsupportedIsNeutral, which are the signals the
 // toolkit's sensors treat as neutral. Any other unsupported field fails, so
 // a batch from another producer cannot pass a check on a missing value.
 var neutralFields = sync.OnceValue(func() map[string]bool {
 	out := make(map[string]bool)
-	for _, mapped := range canonicalMappings {
+	for _, mapped := range mappings {
 		if !mapped.unsupportedIsNeutral {
 			continue
 		}
@@ -147,7 +147,7 @@ func resolve(current *observation.Observation) (feed, bool) {
 			}
 		}
 	}
-	for _, mapped := range canonicalMappings {
+	for _, mapped := range mappings {
 		if mapped.signal.ID() == current.GetSignalId() {
 			return feed{
 				schema:  schemaFor(mapped.measurement),

@@ -118,8 +118,8 @@ func run(cfg config) error {
 // which also fixes the DCGM field watch before its first lazy native read.
 func watchedSignals() []string {
 	return slices.Concat(
-		observations.CanonicalSignalsFor(health.GPU),
-		observations.CanonicalSignalsFor(health.NVLink),
+		observations.MappedSignalsFor(health.GPU),
+		observations.MappedSignalsFor(health.NVLink),
 	)
 }
 

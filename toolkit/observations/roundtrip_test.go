@@ -65,13 +65,13 @@ func TestRoundTripPreservesMeasurementsAndVerdicts(t *testing.T) {
 	}
 }
 
-func TestToMeasurementsMergesToolkitAndCanonicalSignals(t *testing.T) {
+func TestToMeasurementsMergesToolkitAndMappedSignals(t *testing.T) {
 	observations, err := FromMeasurements("gpu", testNode, time.Unix(1, 0), gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// A GPU check migrated to a collect sensor: its signal arrives under the
-	// canonical ID instead of the toolkit field.
+	// mapped ID instead of the toolkit field.
 	observations = slices.DeleteFunc(observations, func(o *observation.Observation) bool {
 		return o.GetSignalId() == "gpu.power_limit_w"
 	})

@@ -5,13 +5,15 @@
 // one observation per measurement field named <domain>.<field>.
 // [ToMeasurements] rebuilds measurements from a batch for evaluation. It
 // accepts those toolkit-shaped observations and observations from collect
-// sensors under canonical signal IDs, including both in one batch, so
-// sensors can move to collect one at a time.
+// sensors under mapped signal IDs, including both in one batch, so sensors
+// can move to collect one at a time. A mapped signal is a collect signal with
+// a row in this package's mapping table.
 package observations
 
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
@@ -23,9 +25,9 @@ import (
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 )
 
-// canonicalMapping relates one canonical collect signal to the catalog
+// mapping relates one collect signal to the catalog
 // fields it feeds on one measurement type.
-type canonicalMapping struct {
+type mapping struct {
 	signal      collect.Signal
 	measurement health.Measurement
 	// apply writes the observed value into a pointer to the measurement.
@@ -40,7 +42,7 @@ type canonicalMapping struct {
 	unsupportedIsNeutral bool
 }
 
-var canonicalMappings = []canonicalMapping{
+var mappings = []mapping{
 	{signal: cpusignals.PossibleCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalPossibleCPUCount}, unit: "1"},
 	{signal: cpusignals.OnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalOnlineCPUCount}, unit: "1"},
 	{signal: cpusignals.NUMANodeOnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalNUMANodeCount}, unit: "1"},
@@ -87,29 +89,44 @@ var canonicalMappings = []canonicalMapping{
 	},
 }
 
-// CanonicalSignals returns the canonical collect signal IDs [ToMeasurements]
+// MappedSignals returns the mapped collect signal IDs [ToMeasurements]
 // reads, across every domain. A single-source sensor rejects signals it does
-// not collect, so restrict one with [CanonicalSignalsFor] instead.
-func CanonicalSignals() []string {
-	ids := make([]string, 0, len(canonicalMappings))
-	for _, mapped := range canonicalMappings {
+// not collect, so restrict one with [MappedSignalsFor] instead.
+func MappedSignals() []string {
+	ids := make([]string, 0, len(mappings))
+	for _, mapped := range mappings {
 		ids = append(ids, mapped.signal.ID())
 	}
 	return ids
 }
 
-// CanonicalSignalsFor returns the canonical collect signal IDs that feed
+// MappedSignalsFor returns the mapped collect signal IDs that feed
 // the catalog's measurement for category, in mapping order, so a domain's
 // collect adapter requests what this table maps rather than its own copy.
-// It is empty for a category no canonical signal feeds yet.
-func CanonicalSignalsFor(category health.Category) []string {
+// It is empty for a category no mapped signal feeds yet.
+func MappedSignalsFor(category health.Category) []string {
 	var ids []string
-	for _, mapped := range canonicalMappings {
-		if mapped.measurement.Category() == category {
-			ids = append(ids, mapped.signal.ID())
-		}
+	for _, mapped := range mappingsFor(category) {
+		ids = append(ids, mapped.signal.ID())
 	}
 	return ids
+}
+
+// MappedFeeds maps each mapped collect signal ID that feeds the
+// catalog's measurement for category to the catalog signals it fills.
+func MappedFeeds(category health.Category) map[string][]string {
+	feeds := make(map[string][]string)
+	for _, mapped := range mappingsFor(category) {
+		feeds[mapped.signal.ID()] = slices.Clone(mapped.catalog)
+	}
+	return feeds
+}
+
+// mappingsFor returns the rows feeding category's measurement, in table order.
+func mappingsFor(category health.Category) []mapping {
+	return slices.DeleteFunc(slices.Clone(mappings), func(m mapping) bool {
+		return m.measurement.Category() != category
+	})
 }
 
 // applyFabricManagerStatus maps the raw Fabric Manager status onto the two

@@ -11,8 +11,6 @@ go_library(
         "//catalog/health",
         "//catalog/nvlink",
         "//collect/observation",
-        "//collect/signals/cpu",
-        "//collect/signals/gpu",
         "//toolkit/observations",
     ],
 )

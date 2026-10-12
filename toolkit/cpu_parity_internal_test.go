@@ -101,12 +101,12 @@ func collectCPU(ctx context.Context, t *testing.T, fsys fs.FS) cpu.CPUMeasuremen
 	}
 	adapter := collectadapters.CPU()
 	runner := collectbridge.NewRunner(cycle)
-	if err = runner.Register(cpusensor.New(fsys), adapter.Signals()...); err != nil {
+	if err = runner.Register(cpusensor.New(fsys), slices.Sorted(maps.Keys(adapter.Signals()))...); err != nil {
 		t.Fatal(err)
 	}
 	runner.Collect()
 	measurements, err := runner.Sensor(collectbridge.Binding{
-		Name: adapter.Name(), Signals: adapter.Signals(), Build: adapter.Build, Errored: adapter.Errored,
+		Name: adapter.Name(), Signals: slices.Sorted(maps.Keys(adapter.Signals())), Build: adapter.Build, Errored: adapter.Errored,
 	}).Measure(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -157,12 +157,12 @@ func TestCPUCollectTimeoutParity(t *testing.T) {
 	}
 	adapter := collectadapters.CPU()
 	runner := collectbridge.NewRunner(cycle)
-	if err = runner.Register(cpusensor.New(blockingFS(release)), adapter.Signals()...); err != nil {
+	if err = runner.Register(cpusensor.New(blockingFS(release)), slices.Sorted(maps.Keys(adapter.Signals()))...); err != nil {
 		t.Fatal(err)
 	}
 	runner.Collect()
 	measurements, err := runner.Sensor(collectbridge.Binding{
-		Name: adapter.Name(), Signals: adapter.Signals(), Build: adapter.Build, Errored: adapter.Errored,
+		Name: adapter.Name(), Signals: slices.Sorted(maps.Keys(adapter.Signals())), Build: adapter.Build, Errored: adapter.Errored,
 	}).Measure(context.Background())
 	if err != nil {
 		t.Fatal(err)

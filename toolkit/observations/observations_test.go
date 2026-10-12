@@ -184,9 +184,9 @@ func TestToMeasurementsConvertsFabricManagerStatus(t *testing.T) {
 	}
 }
 
-// Checks fed by signals with no canonical observation must not pass on the
+// Checks fed by signals with no mapped observation must not pass on the
 // zero values of fields nobody collected.
-func TestToMeasurementsFailsCatalogSignalsWithoutCanonicalFeed(t *testing.T) {
+func TestToMeasurementsFailsCatalogSignalsWithoutMappedFeed(t *testing.T) {
 	byID := evaluate(t, "GB200", ToMeasurements(healthyNVLinkObservations()),
 		nvlink.NVLinkFabricHealth(), nvlink.NVLinkActive())
 	if byID["nvlink_fabric_health"] != health.Pass || byID["nvlink_active"] != health.Critical {
@@ -256,7 +256,7 @@ func only[M health.Measurement](t *testing.T, measurements []health.Measurement)
 }
 
 // mappedErrors returns m's errors other than the entry naming catalog
-// signals no canonical signal feeds, which depends on the catalog schema
+// signals no mapped signal feeds, which depends on the catalog schema
 // rather than on the observations under test.
 func mappedErrors(m health.Measurement) []health.ErroredMeasurement {
 	var errs []health.ErroredMeasurement
@@ -346,7 +346,7 @@ func noValueObservation(signalID string, reason observation.NoValueReason) *obse
 	return o
 }
 
-func TestCanonicalSignalsFor(t *testing.T) {
+func TestMappedSignalsFor(t *testing.T) {
 	gpuIDs := []string{
 		gpusignals.PowerDraw.ID(),
 		gpusignals.PowerLimitRequested.ID(),
@@ -363,10 +363,10 @@ func TestCanonicalSignalsFor(t *testing.T) {
 		gpusignals.NVLinkFabricAccessTimeoutRecovery.ID(),
 		gpusignals.FabricManagerStatus.ID(),
 	}
-	if got := CanonicalSignalsFor(health.GPU); !slices.Equal(got, gpuIDs) {
+	if got := MappedSignalsFor(health.GPU); !slices.Equal(got, gpuIDs) {
 		t.Fatalf("GPU signals = %v, want %v", got, gpuIDs)
 	}
-	if got := CanonicalSignalsFor(health.NVLink); !slices.Equal(got, nvlinkIDs) {
+	if got := MappedSignalsFor(health.NVLink); !slices.Equal(got, nvlinkIDs) {
 		t.Fatalf("NVLink signals = %v, want %v", got, nvlinkIDs)
 	}
 	cpuIDs := []string{
@@ -374,12 +374,12 @@ func TestCanonicalSignalsFor(t *testing.T) {
 		cpusignals.OnlineCount.ID(),
 		cpusignals.NUMANodeOnlineCount.ID(),
 	}
-	if got := CanonicalSignalsFor(health.CPU); !slices.Equal(got, cpuIDs) {
+	if got := MappedSignalsFor(health.CPU); !slices.Equal(got, cpuIDs) {
 		t.Fatalf("CPU signals = %v, want %v", got, cpuIDs)
 	}
 	// Every mapped signal belongs to exactly one domain.
-	perDomain := slices.Concat(CanonicalSignalsFor(health.CPU), CanonicalSignalsFor(health.GPU), CanonicalSignalsFor(health.NVLink))
-	if !slices.Equal(perDomain, CanonicalSignals()) {
-		t.Fatalf("per-domain signals %v do not partition %v", perDomain, CanonicalSignals())
+	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink))
+	if !slices.Equal(perDomain, MappedSignals()) {
+		t.Fatalf("per-domain signals %v do not partition %v", perDomain, MappedSignals())
 	}
 }

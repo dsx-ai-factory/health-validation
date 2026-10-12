@@ -429,7 +429,12 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		sensors = append(sensors, toolkit.NewCPUSensor(a.cpu))
 	}
 	builtinSources, builtinAdapters := a.builtinCollect()
-	collectSensors, err := a.collectSensors(timeout, builtinSources, builtinAdapters)
+	runnable, err := cat.RunnableChecks(catalog.EvaluationOptions{Cadence: cadence})
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
+		return exitError
+	}
+	collectSensors, err := a.collectSensors(timeout, builtinSources, builtinAdapters, requiredFor(runnable))
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError

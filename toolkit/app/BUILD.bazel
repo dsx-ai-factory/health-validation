@@ -53,6 +53,7 @@ go_test(
         "//collect",
         "//collect/observation",
         "//collect/sensors/cpu",
+        "//collect/signals/cpu",
         "//collect/signals/gpu",
         "//toolkit",
         "//toolkit/internal/collectadapters",
