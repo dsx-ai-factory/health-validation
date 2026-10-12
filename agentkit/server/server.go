@@ -57,6 +57,12 @@ func (s *Server) Check(ctx context.Context) (*observation.ObservationBatch, erro
 		}
 		slog.Debug("sensor returned", "sensor", sensor.ID(), "observations", len(b.GetObservations()))
 		batch.Observations = append(batch.Observations, b.GetObservations()...)
+		if inventory := b.GetInventory(); inventory != nil {
+			if batch.Inventory == nil {
+				batch.Inventory = &observation.HardwareInventory{}
+			}
+			batch.Inventory.GpuSnapshots = append(batch.Inventory.GpuSnapshots, inventory.GetGpuSnapshots()...)
+		}
 	}
 	return batch, nil
 }

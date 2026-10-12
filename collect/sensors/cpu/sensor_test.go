@@ -39,6 +39,10 @@ func (d deniedFS) Open(name string) (fs.File, error) {
 
 func measure(t *testing.T, fsys fs.FS, opts ...collect.OpOption) map[string]*observation.Observation {
 	t.Helper()
+	// Existing tests exercise topology; activity has separate fixture coverage.
+	if len(opts) == 0 {
+		opts = []collect.OpOption{collect.WithSignalID(cpusignals.PossibleCount.ID(), cpusignals.OnlineCount.ID(), cpusignals.NUMANodeOnlineCount.ID())}
+	}
 	cycle, err := collect.NewCycle("cycle-1", time.Now())
 	if err != nil {
 		t.Fatal(err)

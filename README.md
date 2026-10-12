@@ -9,6 +9,10 @@ The repository is `github.com/dsx-ai-factory/health-validation`. It contains fou
 
 `toolkit` depends on `catalog`; import `toolkit` to get both.
 
+For raw observations without catalog evaluation, use the experimental `collect`
+module. See [Shared raw collection library](docs/INTEGRATION.md#shared-raw-collection-library)
+for its ten collection families, typed targets, and custom sensor registration.
+
 > **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor/backend layer that feeds it is a reference implementation and is subject to change.
 
 ## What it does

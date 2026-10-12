@@ -21,6 +21,7 @@ type Device interface {
 	PCIBusID() string
 	UUID() string
 	GetMarginTemperature() (nvml.MarginTemperature, nvml.Return)
+	GetFabricInfo() (nvml.GpuFabricInfo_v3, nvml.Return, nvml.Return)
 }
 
 var _ Device = &nvDevice{}
@@ -41,13 +42,18 @@ func (d *nvDevice) UUID() string {
 }
 
 func New(dev device.Device, busID string, opts ...OpOption) Device {
-	op := &Op{}
-	op.applyOpts(opts)
-
 	uuid, ret := dev.GetUUID()
 	if ret != nvml.SUCCESS {
 		panic(fmt.Sprintf("failed to get device UUID: %v", nvml.ErrorString(ret)))
 	}
+	return NewWithIdentity(dev, uuid, busID, opts...)
+}
+
+// NewWithIdentity wraps an acquired handle without querying UUID again. An
+// unresolved UUID can remain empty for source-local inventory records.
+func NewWithIdentity(dev device.Device, uuid, busID string, opts ...OpOption) Device {
+	op := &Op{}
+	op.applyOpts(opts)
 	return &nvDevice{Device: dev, busID: busID, uuid: uuid, driverMajor: op.DriverMajor}
 }
 

@@ -19,10 +19,18 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
+	disksensor "github.com/dsx-ai-factory/health-validation/collect/sensors/disk"
+	fusesensor "github.com/dsx-ai-factory/health-validation/collect/sensors/fuse"
+	hostsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/host"
 	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	kmsgsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/kmsg"
+	memorysensor "github.com/dsx-ai-factory/health-validation/collect/sensors/memory"
 	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
+	pcisensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pci"
+	processsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/process"
+	pstoresensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pstore"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	kmsgsignals "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg"
 	kmsgmemory "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/memory"
@@ -69,12 +77,18 @@ func run() error {
 		return fmt.Errorf("create collection cycle: %w", err)
 	}
 	batch := &observation.ObservationBatch{CollectionId: currentCycle.CollectionID()}
-	for _, sensor := range []collect.Sensor{nvmlsensor.New(nvmlInst), dcgmSensor, ibsensor.New(nil), kmsgSensor} {
+	for _, sensor := range []collect.Sensor{nvmlsensor.New(nvmlInst), dcgmSensor, ibsensor.New(nil), kmsgSensor, cpusensor.New(nil), disksensor.New(nil), fusesensor.New(nil), hostsensor.New(nil), memorysensor.New(nil), pcisensor.New(nil), processsensor.New(nil), pstoresensor.New(nil)} {
 		measured, measureErr := sensor.Measure(context.Background(), collect.WithCycle(currentCycle))
 		if measureErr != nil {
 			return fmt.Errorf("measure sensor %q: %w", sensor.ID(), measureErr)
 		}
 		batch.Observations = append(batch.Observations, measured.GetObservations()...)
+		if inventory := measured.GetInventory(); inventory != nil {
+			if batch.Inventory == nil {
+				batch.Inventory = &observation.HardwareInventory{}
+			}
+			batch.Inventory.GpuSnapshots = append(batch.Inventory.GpuSnapshots, inventory.GetGpuSnapshots()...)
+		}
 	}
 
 	// The batch is the full result. Collection errors are observations, not

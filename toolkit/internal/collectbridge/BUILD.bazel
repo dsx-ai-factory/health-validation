@@ -21,6 +21,7 @@ go_library(
 go_test(
     name = "collectbridge_test",
     srcs = [
+        "entity_test.go",
         "runner_test.go",
         "validation_internal_test.go",
     ],

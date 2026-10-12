@@ -64,7 +64,7 @@ func TestCycleTimeoutAndCancellation(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		empty := New(&fakeInstance{exists: true})
-		batch, err = empty.Measure(ctx, collect.WithCycle(next))
+		batch, err = empty.Measure(ctx, collect.WithCycle(next), collect.WithSignalID(gpusignals.PowerDraw.ID()))
 		require.NoError(t, err)
 		require.Equal(t, observation.CollectionErrorCategoryUnavailable, batch.Observations[0].GetCollectionError().GetCategory())
 		batch, err = New(nil).Measure(context.Background(), collect.WithCycle(next), collect.WithSignalID(), collect.WithRefresh(true))

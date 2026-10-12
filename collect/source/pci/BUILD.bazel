@@ -1,0 +1,24 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "pci",
+    srcs = ["source.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/source/pci",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/pci",
+    ],
+)
+
+go_test(
+    name = "pci_test",
+    srcs = ["source_test.go"],
+    embed = [":pci"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/pci",
+    ],
+)

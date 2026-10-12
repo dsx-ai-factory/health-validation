@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "process",
+    srcs = ["process.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/source/process",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "process_test",
+    srcs = ["process_test.go"],
+    embed = [":process"],
+)

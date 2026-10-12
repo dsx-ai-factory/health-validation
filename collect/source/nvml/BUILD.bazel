@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "instance.go",
+        "metadata.go",
         "version.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/source/nvml",
@@ -18,11 +19,15 @@ go_library(
 
 go_test(
     name = "nvml_test",
-    srcs = ["instance_test.go"],
+    srcs = [
+        "instance_test.go",
+        "metadata_test.go",
+    ],
     embed = [":nvml"],
     deps = [
         "//collect/source/nvml/device",
         "//collect/source/nvml/lib",
+        "@com_github_nvidia_go_nvlib//pkg/nvlib/device",
         "@com_github_nvidia_go_nvml//pkg/nvml",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",

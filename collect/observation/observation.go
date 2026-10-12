@@ -31,6 +31,13 @@ type (
 	InfiniBandDeviceRef     = healthv1.InfiniBandDeviceRef
 	InfiniBandPortRef       = healthv1.InfiniBandPortRef
 	KernelRecordRef         = healthv1.KernelRecordRef
+	ProcessRef              = healthv1.ProcessRef
+	GPUProcessRef           = healthv1.GpuProcessRef
+	BlockDeviceRef          = healthv1.BlockDeviceRef
+	MountRef                = healthv1.MountRef
+	PCIRef                  = healthv1.PCIRef
+	FUSEConnectionRef       = healthv1.FuseConnectionRef
+	PstoreRecordRef         = healthv1.PstoreRecordRef
 	Value                   = healthv1.Value
 	CollectionError         = healthv1.CollectionError
 	CollectionErrorCategory = healthv1.CollectionErrorCategory
@@ -56,6 +63,14 @@ type (
 	ObservationTarget_InfiniBandDevice   = healthv1.ObservationTarget_InfiniBandDevice
 	ObservationTarget_InfiniBandPort     = healthv1.ObservationTarget_InfiniBandPort
 	ObservationTarget_KernelRecord       = healthv1.ObservationTarget_KernelRecord
+	ObservationTarget_Process            = healthv1.ObservationTarget_Process
+	ObservationTarget_GPUProcess         = healthv1.ObservationTarget_GpuProcess
+	ObservationTarget_BlockDevice        = healthv1.ObservationTarget_BlockDevice
+	ObservationTarget_Mount              = healthv1.ObservationTarget_Mount
+	ObservationTarget_PCI                = healthv1.ObservationTarget_Pci
+	ObservationTarget_FUSEConnection     = healthv1.ObservationTarget_FuseConnection
+	ObservationTarget_PstoreRecord       = healthv1.ObservationTarget_PstoreRecord
+	Value_UintValue                      = healthv1.Value_UintValue
 )
 
 const (
@@ -124,6 +139,41 @@ func InfiniBandPortTarget(device string, port uint32) *ObservationTarget {
 // KernelRecordTarget identifies one boot-scoped kernel record.
 func KernelRecordTarget(bootID string, sequence int64) *ObservationTarget {
 	return &ObservationTarget{Kind: &ObservationTarget_KernelRecord{KernelRecord: &KernelRecordRef{BootId: bootID, Sequence: sequence}}}
+}
+
+// ProcessTarget identifies a process without conflating reused PIDs.
+func ProcessTarget(bootID string, pid uint32, startTimeTicks uint64) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_Process{Process: &ProcessRef{BootId: bootID, Pid: pid, StartTimeTicks: startTimeTicks}}}
+}
+
+// GPUProcessTarget attributes a process reading to its GPU.
+func GPUProcessTarget(gpuUUID, bootID string, pid uint32, startTimeTicks uint64) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_GPUProcess{GpuProcess: &GPUProcessRef{Gpu: &GPURef{Uuid: gpuUUID}, Process: &ProcessRef{BootId: bootID, Pid: pid, StartTimeTicks: startTimeTicks}}}}
+}
+
+// BlockDeviceTarget identifies a kernel block-device number.
+func BlockDeviceTarget(major, minor uint32) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_BlockDevice{BlockDevice: &BlockDeviceRef{Major: major, Minor: minor}}}
+}
+
+// MountTarget identifies a mount within its namespace.
+func MountTarget(namespace string, mountID uint64) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_Mount{Mount: &MountRef{Namespace: namespace, MountId: mountID}}}
+}
+
+// PCITarget identifies a domain-qualified PCI address.
+func PCITarget(address string) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_PCI{Pci: &PCIRef{Address: address}}}
+}
+
+// FUSEConnectionTarget identifies a connection within one boot.
+func FUSEConnectionTarget(bootID string, connectionID uint64) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_FUSEConnection{FuseConnection: &FUSEConnectionRef{BootId: bootID, ConnectionId: connectionID}}}
+}
+
+// PstoreRecordTarget identifies a persistent record by path and content digest.
+func PstoreRecordTarget(path, sha256 string) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_PstoreRecord{PstoreRecord: &PstoreRecordRef{Path: path, Sha256: sha256}}}
 }
 
 // ValidateBatch verifies every observation before a batch crosses a service
@@ -211,6 +261,21 @@ func validate(current *Observation) error {
 	if err := validateTarget(current.GetTarget()); err != nil {
 		return fmt.Errorf("observation %q: %w", current.GetSignalId(), err)
 	}
+	start, end := current.GetSampleStartedAt(), current.GetSampleEndedAt()
+	if (start == nil) != (end == nil) {
+		return fmt.Errorf("observation %q has an incomplete sample interval", current.GetSignalId())
+	}
+	if start != nil {
+		if err := start.CheckValid(); err != nil {
+			return fmt.Errorf("observation %q sample start: %w", current.GetSignalId(), err)
+		}
+		if err := end.CheckValid(); err != nil {
+			return fmt.Errorf("observation %q sample end: %w", current.GetSignalId(), err)
+		}
+		if !end.AsTime().After(start.AsTime()) {
+			return fmt.Errorf("observation %q has a nonpositive sample interval", current.GetSignalId())
+		}
+	}
 	switch outcome := current.GetOutcome().(type) {
 	case *Observation_Value:
 		if outcome == nil || outcome.Value == nil {
@@ -266,6 +331,40 @@ func validateTarget(target *ObservationTarget) error {
 		if kind == nil || kind.KernelRecord == nil {
 			return fmt.Errorf("target has an empty kernel record payload")
 		}
+	case *ObservationTarget_Process:
+		if kind == nil {
+			return fmt.Errorf("target has an empty process payload")
+		}
+		return validateProcessRef(kind.Process)
+	case *ObservationTarget_GPUProcess:
+		if kind == nil {
+			return fmt.Errorf("target has an incomplete GPU process payload")
+		}
+		return validateGPUProcessRef(kind.GpuProcess)
+	case *ObservationTarget_BlockDevice:
+		if kind == nil || kind.BlockDevice == nil {
+			return fmt.Errorf("target has an empty block device payload")
+		}
+	case *ObservationTarget_Mount:
+		if kind == nil {
+			return fmt.Errorf("target has an empty mount payload")
+		}
+		return validateMountRef(kind.Mount)
+	case *ObservationTarget_PCI:
+		if kind == nil {
+			return fmt.Errorf("target has an empty PCI payload")
+		}
+		return validatePCIRef(kind.Pci)
+	case *ObservationTarget_FUSEConnection:
+		if kind == nil {
+			return fmt.Errorf("target has an empty FUSE connection payload")
+		}
+		return validateFUSEConnectionRef(kind.FuseConnection)
+	case *ObservationTarget_PstoreRecord:
+		if kind == nil {
+			return fmt.Errorf("target has an empty pstore record payload")
+		}
+		return validatePstoreRecordRef(kind.PstoreRecord)
 	default:
 		return fmt.Errorf("target has no kind")
 	}

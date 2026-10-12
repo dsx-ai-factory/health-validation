@@ -62,6 +62,13 @@ linked into the CLI. CI gates `mod tidy -diff` on all four.
 
 Run `go mod tidy` inside each module directory after changing imports.
 
+Regenerate collection protobufs with `bash collect/hack/genproto.sh`. The script
+pins both plugins and applies `protolayout.go` to preserve compact Go message
+layouts. Field order changes do not change protobuf field numbers or wire data.
+Run the pinned formatter afterward and verify binary and protobuf JSON round trips.
+Linux Bazel tests remain the authoritative check for the pinned nogo analyzers.
+
+
 ## Versioning and Releases
 
 The `catalog` and `toolkit` modules follow Semantic Versioning 2.0.0

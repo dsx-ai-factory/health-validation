@@ -1,0 +1,24 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "pstore",
+    srcs = ["source.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/source/pstore",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/pstore",
+    ],
+)
+
+go_test(
+    name = "pstore_test",
+    srcs = ["source_test.go"],
+    embed = [":pstore"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/pstore",
+    ],
+)

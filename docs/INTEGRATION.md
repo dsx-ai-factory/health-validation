@@ -499,6 +499,157 @@ Either way, the durable surface is the **catalog** (check definitions and the
 evaluation engine); the toolkit's sensor/backend layer that feeds it is a
 reference implementation and may change.
 
+## Shared raw collection library
+
+Use the experimental `github.com/dsx-ai-factory/health-validation/collect`
+module when you need raw observations rather than a catalog verdict.
+`collect.Sensor` keeps the same `ID`, `Signals`, and `Measure(ctx, ...OpOption)`
+interface. The packages below collect and normalize source data; they do not
+apply thresholds, infer health, remediate, write an event database, or schedule
+future collection. `agentkit/server` can serve registered sensors without
+coupling them to the toolkit's check catalog.
+
+### Families and constructors
+
+Package paths in this table are relative to `…/health-validation/collect/`.
+Several families share the NVML sensor and its caller-owned instance.
+
+| Family | Raw data | Constructor |
+| --- | --- | --- |
+| GPU inventory and telemetry | Structured GPU inventory; temperature, power, framebuffer memory, utilization, clocks, and device metadata | `sensors/nvml.New(inst)`; request inventory with `collect.WithGPUInventory()` |
+| GPU memory reliability | ECC modes and counts by location and lifetime; row-remapper counts and native status | `sensors/nvml.New(inst)` |
+| NVLink and fabric | Local endpoint state and error counters; fabric state, status, identity, and health fields | `sensors/nvml.New(inst)` |
+| GPU processes | Compute-process membership, process count, framebuffer use, and host process name/state | `sensors/nvml.New(inst)` or explicit diagnostic options with `NewWithOptions` |
+| Linux processes | Current process state, name, boot/start identity, and visible process totals/state counts | `sensors/process.New(fsys)` |
+| Host memory, CPU, and resources | Memory and BPF JIT bytes; CPU topology, cumulative mode times and load; kernel file handles, visible descriptors, and task counters | `sensors/memory.New(fsys)`, `sensors/cpu.New(fsys)`, `sensors/host.New(fsys)` |
+| Block devices and filesystems | Block identity, metadata, size and parents; mount metadata and eligible filesystem capacity | `sensors/disk.New(fsys, ...source/disk.Option)` |
+| FUSE | Connection waiting/background/congestion counts and mount correlation | `sensors/fuse.New(fsys, ...source/fuse.Option)` |
+| PCI | PCI address, vendor/device/class identity, driver, bound module, and raw ACS control | `sensors/pci.New(fsys)` |
+| Persistent crash records | Live and archived pstore paths, text or base64 content, hashes, and root provenance | `sensors/pstore.New(fsys)` or `NewWithRoots(fsys, roots...)` |
+
+GPM profiling is a separate, opt-in NVML sensor:
+`sensors/nvml.NewGPM(inst, sampleDuration, metricIDs...)`. The duration must be
+**greater than 100 milliseconds**. It takes two native samples and retains
+`sample_started_at` and `sample_ended_at`; its percentage signals are not DCGM
+profiling ratios. Do not add it to routine collection unless the sampling cost
+and interval are appropriate for your application. The existing DCGM,
+InfiniBand, and kernel-message sensors remain separate source adapters.
+
+### Register and collect
+
+Register only the sources your service needs, before it handles requests:
+
+```go
+import (
+    "github.com/dsx-ai-factory/health-validation/agentkit/server"
+    "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+    "github.com/dsx-ai-factory/health-validation/collect/sensors/host"
+    "github.com/dsx-ai-factory/health-validation/collect/sensors/memory"
+)
+
+func rawServer() *server.Server {
+    service := server.New()
+    service.Register(cpu.New(nil), memory.New(nil), host.New(nil))
+    return service
+}
+```
+
+For direct calls, `collect.WithSignalID(ids...)` selects canonical definitions.
+An unknown ID is an error; `collect.WithSignalID()` selects nothing and does no
+source I/O. `collect.WithCycle(cycle)` supplies collection identity and start
+time. Ordinary file-backed reads do not require a cycle. Native calls and
+blocking acquisitions retain their own admission gates: a timeout stops the
+wait, not an active kernel or cgo call. Reuse the source and sensor; do not
+create replacements to bypass a gate. Close a caller-owned NVML instance only
+after its outstanding calls finish.
+
+### Identity, values, and outcomes
+
+Canonical definitions live in `collect/signals`; source adapters and sensors
+reuse them. Observations use typed targets rather than names encoded into
+opaque JSON values:
+
+- `ProcessRef`: boot ID, PID, and process start ticks; PID alone is not identity.
+- `GpuProcessRef`: a `GpuRef` and a `ProcessRef`.
+- `BlockDeviceRef`: kernel major and minor numbers.
+- `MountRef`: boot-scoped mount namespace and kernel mount ID, not the mount path alone.
+- `PCIRef`: PCI address, including domain, bus, device, and function.
+- `FuseConnectionRef`: boot ID and connection ID.
+- `PstoreRecordRef`: record path and SHA-256 of the bytes read.
+
+These extend the existing node, GPU, NVLink endpoint, ordered GPU-pair,
+InfiniBand, and kernel-record targets. Inventory remains structured in
+`ObservationBatch.inventory`; inspect each GPU entry's `field_errors` before
+treating an absent attribute as unattempted or unsupported.
+
+Unsigned counts and byte values use `Value.uint_value`, exposed in Go as
+`observation.Value_UintValue`. Protobuf JSON encodes `uint64` values as decimal
+**strings**, for example `{"uintValue":"18446744073709551615"}`. Preserve the
+string or parse it with an unsigned 64-bit integer type. A JSON number or
+JavaScript `Number` can lose precision. Units remain part of each canonical
+definition; do not assume every memory or clock signal uses the same unit.
+
+Inspect the outcome before reading the value. `CollectionError` distinguishes
+permission, parse, timeout, unsupported, and source failures. `NoValue` records
+successful collection with no target or no supported value. Neither outcome
+is a healthy zero. In particular, denied `/proc/vmallocinfo` reads are failures,
+and NVML unavailable-memory sentinels are not byte measurements.
+
+### Process and filesystem exposure
+
+Process names use `/proc/<pid>/comm` by default. Full command lines are an
+explicit GPU-process diagnostic option:
+`nvml.WithProcessCmdlineDiagnostics(true)` with `nvml.NewWithOptions`.
+Command lines can contain credentials or other sensitive arguments; restrict
+access and retention before enabling them. Reads are bounded, report
+truncation, and can still block in the kernel. No sensor reads process
+`environ`. Process collection reports current membership and state, not
+historical per-process utilization. CPU activity reports cumulative mode
+seconds, not percentages synthesized from earlier runs.
+
+File-backed constructors accept an `fs.FS`; `nil` means `os.DirFS("/")`.
+An injected filesystem must expose paths relative to that root, such as
+`proc/meminfo` or `sys/class/block`. A container's root, PID view, and mount
+namespace are not automatically the host's. Align those views explicitly;
+otherwise process counts and mount identity describe the visible namespace.
+Kernel file handles count file descriptions; descriptor totals count visible
+per-process descriptor entries, which can reference the same description.
+
+Disk capacity is separate from filesystem metadata. An injected `fs.FS` does
+not implicitly call live-host `statfs`. Supply `source/disk.WithHostRoot(root)`
+or an explicit `WithStatfs` callback for capacity. When the native capacity root
+is not `/`, you must also supply `source/disk.WithMountPID(pid)`. This option
+selects `proc/<pid>/mountinfo` and `proc/<pid>/ns/mnt` in the supplied filesystem.
+Verify that the selected process uses the same mount view as the capacity root.
+PID 1 is not automatically the host process; the collector makes no such assumption.
+Without an explicit PID, metadata uses `proc/self`, and alternate-root native
+capacity returns an unsupported acquisition error rather than mixing views.
+
+The default mount namespace combines the boot ID with the selected process's
+mount-namespace inode. Use `WithNamespace` for a view that cannot provide those
+identities, with equivalent boot/reuse scope. FUSE accepts its own
+`source/fuse.WithMountPID(pid)` and `source/fuse.WithNamespace` options for
+correlation. Keep mount metadata, namespace identity, and capacity in one view.
+
+Capacity acquisition permits only known local filesystem types. It skips
+autofs, FUSE, network filesystems, unknown types, and stacked mounts with an
+ambiguous path; their metadata can still be collected. Native capacity paths
+are confined to the configured root. The statfs gate remains held until a
+timed-out syscall finishes. FUSE collection reads the control filesystem and
+mount metadata; it does not probe files inside a FUSE mount or write `abort`.
+
+FUSE correlation uses the kernel `dev_t` identity, `(major << 20) | minor`,
+so both anonymous-device FUSE mounts and block-device `fuseblk` mounts match
+their control connections. Bind mounts remain separate correlations. A connection
+with no mounts in the selected view returns an empty string for each correlation
+list. `NO_TARGETS` is source-scoped and means no visible control connections.
+
+Pstore scans `sys/fs/pstore` and `var/lib/systemd/pstore` by default, with
+bounded record reads and no deletion. `NewWithRoots` accepts other relative
+record directories. Its observation timestamp is the **scan time**, not the
+crash time; a persistent record can come from an earlier boot. Use its content
+and path/hash identity without inventing a crash timestamp.
+
 ---
 
 For the JSON contract, see

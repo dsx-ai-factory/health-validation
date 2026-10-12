@@ -328,6 +328,17 @@ func setField(field reflect.Value, current *observation.Observation) error {
 		default:
 			return mismatch
 		}
+	case *observation.Value_UintValue:
+		switch {
+		case field.CanUint() && !field.OverflowUint(kind.UintValue):
+			field.SetUint(kind.UintValue)
+		case field.CanInt() && kind.UintValue <= uint64(^uint64(0)>>1) && !field.OverflowInt(int64(kind.UintValue)):
+			field.SetInt(int64(kind.UintValue))
+		case field.CanFloat():
+			field.SetFloat(float64(kind.UintValue))
+		default:
+			return mismatch
+		}
 	case *observation.Value_DoubleValue:
 		if !field.CanFloat() {
 			return mismatch

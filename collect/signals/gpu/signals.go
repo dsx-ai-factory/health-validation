@@ -130,5 +130,5 @@ var all = collect.Signals{
 
 // All returns every canonical GPU definition in stable order.
 func All() collect.Signals {
-	return slices.Clone(all)
+	return slices.Concat(all, ReliabilityAdditions(), InterconnectAdditions(), TelemetrySignals(), Processes(), ProcessDiagnostics(), GPMSignals())
 }

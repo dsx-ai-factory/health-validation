@@ -37,7 +37,7 @@ type domainAdapter struct {
 // CPU replaces toolkit.CPUSensor for the stock CLI's CPU domain.
 func CPU() *domainAdapter {
 	return &domainAdapter{
-		category: health.CPU, errored: erroredCPU, signalIDs: cpusignals.All().IDs(), nodeScoped: true,
+		category: health.CPU, errored: erroredCPU, signalIDs: []string{cpusignals.PossibleCount.ID(), cpusignals.OnlineCount.ID(), cpusignals.NUMANodeOnlineCount.ID()}, nodeScoped: true,
 	}
 }
 
