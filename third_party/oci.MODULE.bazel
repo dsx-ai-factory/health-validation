@@ -1,7 +1,7 @@
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci", dev_dependency = True)
 oci.pull(
     name = "ubuntu_noble",
-    digest = "sha256:a6015cf73597a174b8624ef0a9f78937f79a0862c078df4922dc35f26cec8fad",
+    digest = "sha256:43c1682f10cdf6561e22f6da1765d491b6f0e5808f94d5fde29d7bdbe75142d5",
     image = "nvcr.io/nvidia/base/ubuntu",
     platforms = [
         "linux/arm64",
