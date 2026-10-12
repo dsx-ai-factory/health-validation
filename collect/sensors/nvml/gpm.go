@@ -48,6 +48,9 @@ type gpmSensor struct {
 // NewGPM creates a read-only profiling sensor. NVML requires more than 100 ms
 // between sample reads. An empty metric list selects GPUd's nine metric families.
 // Reuse this sensor and instance; timeout does not interrupt an active cgo call.
+// Sampling holds the process-wide NVML gate through the wait and sample frees.
+// Do not overlap NVML collection, Refresh, or Shutdown, even on another instance:
+// they return ErrInUse until sampling and cleanup finish. A timeout only stops waiting.
 func NewGPM(inst nvmlsource.Instance, sampleDuration time.Duration, metricIDs ...nvml.GpmMetricId) (collect.Sensor, error) {
 	if inst == nil {
 		return nil, fmt.Errorf("NVML instance is required")

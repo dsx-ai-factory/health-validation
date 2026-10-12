@@ -159,6 +159,8 @@ var errNoProcesses = errors.New("no visible process descriptor tables")
 
 // A disappearing PID is normal during enumeration. Permission errors must not
 // become a successful partial total, because that total would undercount.
+// OpenFileDescriptors requires sufficient procfs visibility and ptrace access
+// to each visible PID's fd directory; the required credentials depend on policy.
 func (s *sensor) descriptorCount(ctx context.Context) (uint64, error) {
 	processes, err := fs.ReadDir(s.fsys, "proc")
 	if err != nil {

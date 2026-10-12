@@ -78,7 +78,11 @@ func run() error {
 	}
 	batch := &observation.ObservationBatch{CollectionId: currentCycle.CollectionID()}
 	for _, sensor := range []collect.Sensor{nvmlsensor.New(nvmlInst), dcgmSensor, ibsensor.New(nil), kmsgSensor, cpusensor.New(nil), disksensor.New(nil), fusesensor.New(nil), hostsensor.New(nil), memorysensor.New(nil), pcisensor.New(nil), processsensor.New(nil), pstoresensor.New(nil)} {
-		measured, measureErr := sensor.Measure(context.Background(), collect.WithCycle(currentCycle))
+		opts := []collect.OpOption{collect.WithCycle(currentCycle)}
+		if sensor.ID() == nvmlsensor.ID {
+			opts = append(opts, collect.WithGPUInventory())
+		}
+		measured, measureErr := sensor.Measure(context.Background(), opts...)
 		if measureErr != nil {
 			return fmt.Errorf("measure sensor %q: %w", sensor.ID(), measureErr)
 		}

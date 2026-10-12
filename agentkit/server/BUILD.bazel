@@ -12,6 +12,7 @@ go_library(
         "//collect",
         "//collect/observation",
         "//collect/proto/go/health/v1:health",
+        "//collect/sensors/nvml",
         "@com_github_google_uuid//:uuid",
         "@com_github_soheilhy_cmux//:cmux",
         "@org_golang_google_grpc//:grpc",

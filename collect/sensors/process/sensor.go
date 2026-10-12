@@ -29,15 +29,15 @@ func (*sensor) Signals() collect.Signals { return processsignals.All() }
 
 func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	op := collect.NewOp(opts...)
-	selected, err := op.Signals(s.Signals())
-	if err != nil {
-		return nil, err
-	}
 	if ctx == nil {
 		return nil, fmt.Errorf("collection context is required")
 	}
 	if op.GPUInventory() {
 		return nil, fmt.Errorf("process sensor does not provide GPU inventory")
+	}
+	selected, err := op.Signals(s.Signals())
+	if err != nil {
+		return nil, err
 	}
 	now := timestamppb.Now()
 	if op.Cycle() != nil {

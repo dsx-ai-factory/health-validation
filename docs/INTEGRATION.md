@@ -534,6 +534,12 @@ GPM profiling is a separate, opt-in NVML sensor:
 profiling ratios. Do not add it to routine collection unless the sampling cost
 and interval are appropriate for your application. The existing DCGM,
 InfiniBand, and kernel-message sensors remain separate source adapters.
+GPM holds the process-wide NVML gate across both samples, the configured wait,
+and sample cleanup to prevent shutdown from invalidating live samples. Serialize
+it with ordinary NVML collection, `Refresh`, and `Shutdown`, including calls on
+another instance in the same process. Overlapping source calls return `ErrInUse`,
+which sensors report as unavailable observations. A collection timeout does not
+release the gate before native work and frees finish.
 Clock-event queries use the legacy throttle-reason API before driver 535.
 Chassis serial is reported only from platform-info version 2. The pinned NVML
 binding requests version 1, so that field currently reports unsupported rather
@@ -566,6 +572,9 @@ blocking acquisitions retain their own admission gates: a timeout stops the
 wait, not an active kernel or cgo call. Reuse the source and sensor; do not
 create replacements to bypass a gate. Close a caller-owned NVML instance only
 after its outstanding calls finish.
+The agentkit server and one-shot collection example request GPU inventory only
+from the ordinary NVML sensor and merge its snapshot into the returned batch.
+Other sensors do not receive the inventory option.
 
 ### Identity, values, and outcomes
 

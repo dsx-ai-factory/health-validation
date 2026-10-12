@@ -16,6 +16,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 )
 
 type Server struct {
@@ -42,7 +43,11 @@ func (s *Server) Check(ctx context.Context) (*observation.ObservationBatch, erro
 	}
 	batch := &observation.ObservationBatch{CollectionId: collectionID}
 	for _, sensor := range s.sensors {
-		b, err := sensor.Measure(ctx, collect.WithCycle(currentCycle))
+		opts := []collect.OpOption{collect.WithCycle(currentCycle)}
+		if sensor.ID() == nvmlsensor.ID {
+			opts = append(opts, collect.WithGPUInventory())
+		}
+		b, err := sensor.Measure(ctx, opts...)
 		if err != nil {
 			// Source-specific failures should already be observations. Attribute
 			// an unexpected top-level failure to the sensor that returned it.
