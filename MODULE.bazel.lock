@@ -820,7 +820,7 @@
     "@@rules_oci+//oci:extensions.bzl%oci": {
       "general": {
         "bzlTransitiveDigest": "TO0sjSNkDsRNtKiwgPJW4ogKM/yK77iip7GpQtVYt44=",
-        "usagesDigest": "k8dZgimLG79dSWwwrjzwviakLqV7MpI19q96/wm80LU=",
+        "usagesDigest": "EBG63ymLe2KOOnebNU8WxI/3fHrNpAnpQbFIr+SX460=",
         "recordedInputs": [
           "REPO_MAPPING:aspect_bazel_lib+,bazel_tools bazel_tools",
           "REPO_MAPPING:bazel_features+,bazel_tools bazel_tools",
@@ -836,7 +836,7 @@
               "scheme": "https",
               "registry": "nvcr.io",
               "repository": "nvidia/base/ubuntu",
-              "identifier": "sha256:a6015cf73597a174b8624ef0a9f78937f79a0862c078df4922dc35f26cec8fad",
+              "identifier": "sha256:43c1682f10cdf6561e22f6da1765d491b6f0e5808f94d5fde29d7bdbe75142d5",
               "platform": "linux/arm64",
               "target_name": "ubuntu_noble_linux_arm64",
               "bazel_tags": []
@@ -849,7 +849,7 @@
               "scheme": "https",
               "registry": "nvcr.io",
               "repository": "nvidia/base/ubuntu",
-              "identifier": "sha256:a6015cf73597a174b8624ef0a9f78937f79a0862c078df4922dc35f26cec8fad",
+              "identifier": "sha256:43c1682f10cdf6561e22f6da1765d491b6f0e5808f94d5fde29d7bdbe75142d5",
               "platform": "linux/amd64",
               "target_name": "ubuntu_noble_linux_amd64",
               "bazel_tags": []
@@ -863,7 +863,7 @@
               "scheme": "https",
               "registry": "nvcr.io",
               "repository": "nvidia/base/ubuntu",
-              "identifier": "sha256:a6015cf73597a174b8624ef0a9f78937f79a0862c078df4922dc35f26cec8fad",
+              "identifier": "sha256:43c1682f10cdf6561e22f6da1765d491b6f0e5808f94d5fde29d7bdbe75142d5",
               "platforms": {
                 "@@platforms//cpu:arm64": "@ubuntu_noble_linux_arm64",
                 "@@platforms//cpu:x86_64": "@ubuntu_noble_linux_amd64"
