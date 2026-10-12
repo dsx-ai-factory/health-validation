@@ -84,11 +84,10 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 				cat = readCategory(sourceErr)
 			}
 			if errors.Is(sourceErr, errNoProcesses) {
-				batch.Observations = append(batch.Observations, &observation.Observation{
-					SignalId: definition.ID(), Source: ID,
-					Target: observation.NodeTarget(""), ObservedAt: now, Unit: definition.Unit(),
-					Outcome: &observation.Observation_NoValue{NoValue: &observation.NoValue{Reason: observation.NoValueReasonNoTargets}},
-				})
+				batch.Observations = append(batch.Observations, observation.NewNoValueObservation(
+					definition.ID(), definition.Unit(), ID, nil, now,
+					&observation.NoValue{Reason: observation.NoValueReasonNoTargets, Detail: "no visible process descriptor tables"},
+				))
 				continue
 			}
 		} else {

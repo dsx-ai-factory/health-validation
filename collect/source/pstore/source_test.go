@@ -145,3 +145,17 @@ func TestInvalidRootsDoNotEscape(t *testing.T) {
 		}
 	}
 }
+
+func TestNonUTF8RecordPath(t *testing.T) {
+	fixture := fstest.MapFS{"records/bad\xff": {Data: []byte("record")}, "records/good": {Data: []byte("record")}}
+	readings, err := New(fixture, "records").Read(context.Background(), collect.Signals{pstoresignals.Path})
+	if err != nil || len(readings) != 2 {
+		t.Fatalf("readings=%+v err=%v", readings, err)
+	}
+	if readings[0].Value != nil || readings[0].Failure.GetCategory() != observation.CollectionErrorCategoryParseError || readings[0].Path != "records" {
+		t.Fatalf("invalid path outcome: %+v", readings[0])
+	}
+	if readings[1].Value.GetStringValue() != "records/good" {
+		t.Fatalf("healthy record lost: %+v", readings[1])
+	}
+}

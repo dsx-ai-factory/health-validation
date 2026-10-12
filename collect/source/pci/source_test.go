@@ -157,3 +157,34 @@ func TestSysfsDeviceDriverAndModuleLinks(t *testing.T) {
 		}
 	}
 }
+
+func TestExtendedDomainIdentity(t *testing.T) {
+	for _, address := range []string{"10000:e0:17.0", "ffffffff:ff:1f.7"} {
+		fixture := fstest.MapFS{Root + "/" + address + "/vendor": {Data: []byte("0x8086\n")}}
+		readings, err := New(fixture).Read(context.Background(), collect.Signals{pcisignals.Address})
+		if err != nil || len(readings) != 1 || readings[0].Value.GetStringValue() != address {
+			t.Fatalf("%s: readings=%+v err=%v", address, readings, err)
+		}
+		batch := &observation.ObservationBatch{Observations: []*observation.Observation{{
+			SignalId: pcisignals.Address.ID(), Target: readings[0].Target,
+			Outcome: &observation.Observation_Value{Value: readings[0].Value},
+		}}}
+		if err := observation.ValidateBatch(batch); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestACSAfterPlaceholder(t *testing.T) {
+	for _, placeholder := range []uint32{0x18000000, 0x18000001} {
+		config := make([]byte, 4096)
+		binary.LittleEndian.PutUint32(config[0x100:], placeholder)
+		binary.LittleEndian.PutUint32(config[0x180:], 0x0001000d)
+		binary.LittleEndian.PutUint16(config[0x184:], 0x7f)
+		binary.LittleEndian.PutUint16(config[0x186:], 0x45)
+		acs, err := ParseACS(config)
+		if err != nil || acs == nil || acs.Offset != 0x180 || acs.Capability != 0x7f || acs.Control != 0x45 {
+			t.Fatalf("placeholder %#x: ACS=%+v err=%v", placeholder, acs, err)
+		}
+	}
+}

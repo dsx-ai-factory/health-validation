@@ -92,6 +92,10 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 			continue
 		}
 		seenRoots[root] = true
+		if !utf8.ValidString(root) {
+			readings = append(readings, failures(selected, "scan", fmt.Errorf("%w: non-UTF-8 record root", ErrMalformed))...)
+			continue
+		}
 		if !fs.ValidPath(root) || root == "." {
 			readings = append(readings, failures(selected, root, fmt.Errorf("%w: root must be a relative directory path", fs.ErrInvalid))...)
 			continue
@@ -151,7 +155,7 @@ func (s *Source) scan(ctx context.Context, files fs.FS, root, directory string, 
 		name := path.Join(directory, entry.Name())
 		fullName := path.Join(root, name)
 		if err := ctx.Err(); err != nil {
-			readings = append(readings, failures(selected, fullName, err)...)
+			readings = append(readings, failures(selected, fullDirectory, err)...)
 			break
 		}
 		if *entriesLeft <= 0 {
@@ -159,6 +163,10 @@ func (s *Source) scan(ctx context.Context, files fs.FS, root, directory string, 
 			break
 		}
 		*entriesLeft--
+		if !utf8.ValidString(fullName) {
+			readings = append(readings, failures(selected, fullDirectory, fmt.Errorf("%w: non-UTF-8 record path", ErrMalformed))...)
+			continue
+		}
 		if entry.Type()&fs.ModeSymlink != 0 {
 			readings = append(readings, failures(selected, fullName, fmt.Errorf("%w: symlinks are not traversed", syscall.EOPNOTSUPP))...)
 			continue

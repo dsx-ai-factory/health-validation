@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 var ErrMalformed = errors.New("malformed procfs data")
@@ -119,6 +120,9 @@ func (r *Reader) Comm(pid uint32) (string, error) {
 	if len(data) == 0 {
 		return "", fmt.Errorf("%w: empty comm for PID %d", ErrMalformed, pid)
 	}
+	if !utf8.Valid(data) {
+		return "", fmt.Errorf("%w: non-UTF-8 comm for PID %d", ErrMalformed, pid)
+	}
 	return strings.TrimSuffix(string(data), "\n"), nil
 }
 
@@ -141,6 +145,17 @@ func (r *Reader) Cmdline(pid uint32, limit int) (string, bool, error) {
 	truncated := len(data) > limit
 	if truncated {
 		data = data[:limit]
+		// Do not split a UTF-8 character at the diagnostic byte limit.
+		start := len(data) - 1
+		for start > 0 && !utf8.RuneStart(data[start]) {
+			start--
+		}
+		if !utf8.FullRune(data[start:]) {
+			data = data[:start]
+		}
+	}
+	if !utf8.Valid(data) {
+		return "", truncated, fmt.Errorf("%w: non-UTF-8 cmdline for PID %d", ErrMalformed, pid)
 	}
 	text := strings.ReplaceAll(strings.TrimSuffix(string(data), "\x00"), "\x00", " ")
 	return text, truncated, nil

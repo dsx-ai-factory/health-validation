@@ -50,15 +50,22 @@ func validatePCIRef(pci *PCIRef) error {
 		return fmt.Errorf("target has an empty PCI payload")
 	}
 	address := pci.Address
-	if len(address) != 12 || address[4] != ':' || address[7] != ':' || address[10] != '.' {
+	if len(address) < 12 || len(address) > 16 {
 		return fmt.Errorf("PCI target requires a canonical domain-qualified address")
 	}
-	for _, index := range [...]int{0, 1, 2, 3, 5, 6, 8, 9} {
+	domainEnd := len(address) - 8
+	if address[domainEnd] != ':' || address[domainEnd+3] != ':' || address[domainEnd+6] != '.' {
+		return fmt.Errorf("PCI target requires a canonical domain-qualified address")
+	}
+	for index := range address {
+		if index == domainEnd || index == domainEnd+3 || index == domainEnd+6 || index == domainEnd+7 {
+			continue
+		}
 		if !lowerHex(address[index]) {
 			return fmt.Errorf("PCI target requires a lowercase hexadecimal address")
 		}
 	}
-	if address[8] > '1' || address[11] < '0' || address[11] > '7' {
+	if address[domainEnd+4] > '1' || address[domainEnd+7] < '0' || address[domainEnd+7] > '7' {
 		return fmt.Errorf("PCI target has an invalid device or function number")
 	}
 	return nil

@@ -2,6 +2,7 @@ package nvml
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"testing/fstest"
 
@@ -78,4 +79,20 @@ func TestTelemetryInvalidNumericValuesDoNotBecomeUnsignedSuccess(t *testing.T) {
 		require.Nil(t, batch.Observations[index].GetValue())
 		require.Equal(t, observation.CollectionErrorCategoryParseError, batch.Observations[index].GetCollectionError().Category)
 	}
+}
+
+type failedCoherenceDevice struct{ boundaryTelemetryDevice }
+
+func (*failedCoherenceDevice) IsCoherent() (bool, error) {
+	return false, errors.New("native addressing-mode query failed")
+}
+
+func TestTelemetryCoherenceFailureIsSourceError(t *testing.T) {
+	batch := &observation.ObservationBatch{}
+	dev := &failedCoherenceDevice{boundaryTelemetryDevice: boundaryTelemetryDevice{unsupported: true}}
+	measureTelemetry(context.Background(), batch, timestamppb.Now(), observation.GPUTarget("gpu"), dev, map[string]bool{gpu.FramebufferTotal.ID(): true})
+	require.Len(t, batch.Observations, 1)
+	require.Nil(t, batch.Observations[0].GetValue())
+	require.Equal(t, observation.CollectionErrorCategorySourceError, batch.Observations[0].GetCollectionError().Category)
+	require.Equal(t, "IsCoherent", batch.Observations[0].GetCollectionError().Operation)
 }

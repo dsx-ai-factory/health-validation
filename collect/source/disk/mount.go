@@ -134,18 +134,16 @@ func unescapeMount(raw string) (string, error) {
 			return "", fmt.Errorf("truncated mount escape %q", raw)
 		}
 		escape := raw[i+1 : i+4]
-		switch escape {
-		case "040":
-			result.WriteByte(' ')
-		case "011":
-			result.WriteByte('\t')
-		case "012":
-			result.WriteByte('\n')
-		case "134":
-			result.WriteByte('\\')
-		default:
+		for _, digit := range escape {
+			if digit < '0' || digit > '7' {
+				return "", fmt.Errorf("invalid mount escape %q", escape)
+			}
+		}
+		value, err := strconv.ParseUint(escape, 8, 8)
+		if err != nil {
 			return "", fmt.Errorf("invalid mount escape %q", escape)
 		}
+		result.WriteByte(byte(value))
 		i += 3
 	}
 	return result.String(), nil

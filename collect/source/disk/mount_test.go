@@ -71,3 +71,30 @@ func TestMalformedMountDoesNotEraseValidMetadata(t *testing.T) {
 		t.Fatalf("%+v", readings)
 	}
 }
+
+func TestKernelOctalEscapes(t *testing.T) {
+	value, err := unescapeMount(`sshfs\043user@host:/a\054b\075c`)
+	if err != nil || value != "sshfs#user@host:/a,b=c" {
+		t.Fatalf("decoded=%q err=%v", value, err)
+	}
+	for _, raw := range []string{`\400`, `\777`, `\08x`, `\+40`, `\04`} {
+		if _, err := unescapeMount(raw); err == nil {
+			t.Fatalf("accepted malformed escape %q", raw)
+		}
+	}
+}
+
+func TestRamfsAndInvalidPathDoNotProbe(t *testing.T) {
+	files := fstest.MapFS{"proc/self/mountinfo": {Data: []byte("10 1 0:3 / /ram rw - ramfs ramfs rw\n11 1 8:0 / /bad\xff rw - ext4 /dev/sda rw\n")}}
+	s := New(files, WithNamespace("fixture"), WithStatfs(func(string) (Usage, error) {
+		t.Fatal("capacity probe for unaccounted filesystem or unencodable mount point")
+		return Usage{}, nil
+	}))
+	readings, err := s.Read(context.Background(), collect.Signals{signals.TotalBytes})
+	if err != nil || len(readings) != 2 {
+		t.Fatalf("readings=%+v err=%v", readings, err)
+	}
+	if readings[0].NoValue.GetReason() != observation.NoValueReasonNotSupported || readings[1].Failure.GetCategory() != observation.CollectionErrorCategoryParseError {
+		t.Fatalf("capacity outcomes=%+v", readings)
+	}
+}

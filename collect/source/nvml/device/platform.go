@@ -10,3 +10,11 @@ func (d *nvDevice) GetPlatformInfo() (nvml.PlatformInfo, nvml.Return) {
 	}
 	return d.Device.GetPlatformInfo()
 }
+
+// GetCurrentClocksEventReasons avoids resolving a symbol absent before driver 535.
+func (d *nvDevice) GetCurrentClocksEventReasons() (uint64, nvml.Return) {
+	if d.driverMajor < 535 {
+		return d.Device.GetCurrentClocksThrottleReasons()
+	}
+	return d.Device.GetCurrentClocksEventReasons()
+}

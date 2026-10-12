@@ -534,6 +534,10 @@ GPM profiling is a separate, opt-in NVML sensor:
 profiling ratios. Do not add it to routine collection unless the sampling cost
 and interval are appropriate for your application. The existing DCGM,
 InfiniBand, and kernel-message sensors remain separate source adapters.
+Clock-event queries use the legacy throttle-reason API before driver 535.
+Chassis serial is reported only from platform-info version 2. The pinned NVML
+binding requests version 1, so that field currently reports unsupported rather
+than presenting rack GUID bytes as a chassis serial.
 
 ### Register and collect
 
@@ -606,6 +610,9 @@ truncation, and can still block in the kernel. No sensor reads process
 `environ`. Process collection reports current membership and state, not
 historical per-process utilization. CPU activity reports cumulative mode
 seconds, not percentages synthesized from earlier runs.
+Non-UTF-8 process names or command-line bytes report a parse error instead of
+making the batch unencodable. Diagnostic truncation preserves complete UTF-8
+characters within the byte limit.
 
 File-backed constructors accept an `fs.FS`; `nil` means `os.DirFS("/")`.
 An injected filesystem must expose paths relative to that root, such as
@@ -637,6 +644,13 @@ ambiguous path; their metadata can still be collected. Native capacity paths
 are confined to the configured root. The statfs gate remains held until a
 timed-out syscall finishes. FUSE collection reads the control filesystem and
 mount metadata; it does not probe files inside a FUSE mount or write `abort`.
+Ramfs has no capacity accounting and is skipped. A native filesystem reporting
+zero capacity blocks returns an unsupported outcome, not a zero-byte capacity.
+Disk text and archived pstore paths that are not valid UTF-8 report parse errors.
+
+PCI addresses retain domain-qualified identity, including four- to eight-digit
+domains used by VMD devices. ACS traversal preserves raw registers and follows
+placeholder capabilities without interpreting them as health policy.
 
 FUSE correlation uses the kernel `dev_t` identity, `(major << 20) | minor`,
 so both anonymous-device FUSE mounts and block-device `fuseblk` mounts match

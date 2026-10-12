@@ -30,7 +30,7 @@ const (
 )
 
 var (
-	addressPattern   = regexp.MustCompile(`^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-1][0-9a-fA-F]\.[0-7]$`)
+	addressPattern   = regexp.MustCompile(`^[0-9a-fA-F]{4,8}:[0-9a-fA-F]{2}:[0-1][0-9a-fA-F]\.[0-7]$`)
 	ErrInUse         = errors.New("PCI read already in progress")
 	ErrMalformed     = errors.New("malformed PCI configuration or attribute")
 	ErrLimitedConfig = errors.New("extended PCI configuration unavailable")
@@ -84,7 +84,7 @@ func ParseACS(config []byte) (*ACS, error) {
 			}
 			return found, nil
 		}
-		if header == 0xffffffff || header&0xffff == 0 || (header>>16)&0xf == 0 {
+		if header == 0xffffffff {
 			return nil, fmt.Errorf("%w: invalid capability header %#x at %#x", ErrMalformed, header, offset)
 		}
 		if header&0xffff == 0x0d {

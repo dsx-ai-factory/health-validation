@@ -91,3 +91,33 @@ func TestInventorySourceSlotsAndMetadata(t *testing.T) {
 		require.Equal(t, observation.CollectionErrorCategoryPermissionDenied, entry.FieldErrors["cuda_driver_version"].Category)
 	}
 }
+
+type platformInventoryDevice struct {
+	inventoryDevice
+	platform nvml.PlatformInfo
+}
+
+func (d *platformInventoryDevice) GetPlatformInfo() (nvml.PlatformInfo, nvml.Return) {
+	return d.platform, nvml.SUCCESS
+}
+
+func TestInventoryPlatformLayout(t *testing.T) {
+	for _, version := range []uint32{1, 2} {
+		dev := &platformInventoryDevice{platform: nvml.PlatformInfo{Version: version << 24}}
+		copy(dev.platform.ChassisSerialNumber[:], "serial")
+		snapshot := measureInventory(context.Background(), timestamppb.Now(), map[string]device.Device{"gpu": dev})
+		entry := snapshot.GetInventory().Entries[0]
+		if version == 1 {
+			require.Nil(t, entry.Gpu.ChassisSerial)
+			require.Equal(t, observation.CollectionErrorCategoryUnsupported, entry.FieldErrors["chassis_serial"].Category)
+		} else {
+			require.Equal(t, "serial", entry.Gpu.GetChassisSerial())
+		}
+	}
+	dev := &platformInventoryDevice{platform: nvml.PlatformInfo{Version: 2 << 24, ChassisSerialNumber: [16]uint8{0xff}}}
+	snapshot := measureInventory(context.Background(), timestamppb.Now(), map[string]device.Device{"gpu": dev})
+	entry := snapshot.GetInventory().Entries[0]
+	require.Nil(t, entry.Gpu.ChassisSerial)
+	require.Equal(t, observation.CollectionErrorCategoryParseError, entry.FieldErrors["chassis_serial"].Category)
+	require.Equal(t, "GPU model", entry.Gpu.GetModel())
+}

@@ -33,3 +33,26 @@ func TestPlatformInfoDriverGate(t *testing.T) {
 		}
 	}
 }
+
+type clockReasonDevice struct{ nvlibdevice.Device }
+
+func (*clockReasonDevice) GetCurrentClocksThrottleReasons() (uint64, nvml.Return) {
+	return 8, nvml.SUCCESS
+}
+
+func (*clockReasonDevice) GetCurrentClocksEventReasons() (uint64, nvml.Return) {
+	return 16, nvml.SUCCESS
+}
+
+func TestClockReasonDriverBoundary(t *testing.T) {
+	for _, major := range []int{534, 535} {
+		dev := NewWithIdentity(&clockReasonDevice{}, "gpu", "bus", WithDriverMajor(major))
+		value, ret := dev.GetCurrentClocksEventReasons()
+		require.Equal(t, nvml.SUCCESS, ret)
+		if major < 535 {
+			require.Equal(t, uint64(8), value)
+		} else {
+			require.Equal(t, uint64(16), value)
+		}
+	}
+}

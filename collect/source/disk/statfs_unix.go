@@ -38,6 +38,9 @@ func nativeUsage(hostRoot, point string) (Usage, error) {
 		}
 		return Usage{}, err
 	}
+	if stat.Blocks == 0 {
+		return Usage{}, fmt.Errorf("filesystem reports no capacity accounting: %w", ErrUnsupported)
+	}
 	blockSize := fragmentSize(&stat)
 	if blockSize == 0 || stat.Bfree > stat.Blocks || stat.Bavail > stat.Bfree {
 		return Usage{}, parseError(fmt.Errorf("invalid statfs block counts"))

@@ -178,3 +178,24 @@ func TestEmptySelectionNoIO(t *testing.T) {
 		t.Fatalf("%v %v", readings, err)
 	}
 }
+
+func TestNonUTF8Metadata(t *testing.T) {
+	fixture := fstest.MapFS{
+		"proc/self/mountinfo":              {Data: []byte("42 1 8:1 / /bad\xff rw - ext4 /dev/sda rw\n")},
+		"sys/class/block/sda/dev":          {Data: []byte("8:0")},
+		"sys/class/block/sda/device/model": {Data: []byte{'m', 0xff}},
+	}
+	readings, err := New(fixture, WithNamespace("fixture")).Read(context.Background(), collect.Signals{signals.Model, signals.MountPoint, signals.MountFSType})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, reading := range readings {
+		if reading.Signal == signals.MountFSType {
+			if reading.Value.GetStringValue() != "ext4" || reading.Failure != nil {
+				t.Fatalf("healthy field lost: %+v", reading)
+			}
+		} else if reading.Value != nil || reading.Failure.GetCategory() != observation.CollectionErrorCategoryParseError {
+			t.Fatalf("unencodable value retained: %+v", reading)
+		}
+	}
+}

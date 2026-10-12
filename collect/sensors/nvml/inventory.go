@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -90,8 +91,8 @@ func measureInventory(ctx context.Context, now *timestamppb.Timestamp, devices m
 			value, ret := field.read()
 			if ret != nvml.SUCCESS {
 				entry.FieldErrors[field.name] = failure(field.operation, ret)
-			} else if value == "" {
-				entry.FieldErrors[field.name] = &observation.CollectionError{Source: source, Operation: field.operation, Category: observation.CollectionErrorCategoryParseError, Detail: "empty inventory attribute"}
+			} else if value == "" || !utf8.ValidString(value) {
+				entry.FieldErrors[field.name] = &observation.CollectionError{Source: source, Operation: field.operation, Category: observation.CollectionErrorCategoryParseError, Detail: "empty or non-UTF-8 inventory attribute"}
 			} else {
 				*field.dest = &value
 			}
@@ -152,6 +153,8 @@ func measureInventory(ctx context.Context, now *timestamppb.Timestamp, devices m
 				platform, ret := dev.GetPlatformInfo()
 				if ret != nvml.SUCCESS {
 					entry.FieldErrors["chassis_serial"] = failure("GetPlatformInfo", ret)
+				} else if platform.Version>>24 != 2 {
+					entry.FieldErrors["chassis_serial"] = failure("GetPlatformInfo", nvml.ERROR_NOT_SUPPORTED)
 				} else {
 					end := 0
 					for end < len(platform.ChassisSerialNumber) && platform.ChassisSerialNumber[end] != 0 {
@@ -161,7 +164,11 @@ func measureInventory(ctx context.Context, now *timestamppb.Timestamp, devices m
 						entry.FieldErrors["chassis_serial"] = failure("GetPlatformInfo", nvml.ERROR_NO_DATA)
 					} else {
 						value := string(platform.ChassisSerialNumber[:end])
-						entry.Gpu.ChassisSerial = &value
+						if !utf8.ValidString(value) {
+							entry.FieldErrors["chassis_serial"] = &observation.CollectionError{Source: source, Operation: "GetPlatformInfo", Category: observation.CollectionErrorCategoryParseError, Detail: "non-UTF-8 chassis serial"}
+						} else {
+							entry.Gpu.ChassisSerial = &value
+						}
 					}
 				}
 			}

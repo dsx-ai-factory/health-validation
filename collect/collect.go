@@ -103,9 +103,8 @@ func WithGPUInventory() OpOption {
 // No-refresh is the default because GPU membership is static for the life
 // of a driver session outside rare events (hot-plug, driver reset, MIG
 // reconfiguration): per-cycle re-enumeration adds failure surface, not
-// information. One unreadable device aborts NVML enumeration today (the
-// Xid 79 case), which would otherwise suppress observations for every
-// healthy GPU; per-device read failures already surface per signal.
+// information. NVML preserves healthy devices when another slot is unreadable;
+// enumeration-wide failures and per-device failures remain explicit outcomes.
 func WithRefresh(refresh bool) OpOption {
 	return func(op *Op) {
 		op.refresh = refresh

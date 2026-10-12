@@ -53,3 +53,27 @@ func TestCmdlineBoundAndArguments(t *testing.T) {
 		t.Fatalf("bounded cmdline = %q %v %v", text, truncated, err)
 	}
 }
+
+func TestProcessTextEncoding(t *testing.T) {
+	r := New(fstest.MapFS{
+		"proc/42/comm":    &fstest.MapFile{Data: []byte{'w', 0xff, '\n'}},
+		"proc/42/cmdline": &fstest.MapFile{Data: []byte{'w', 0xff, 0}},
+	})
+	if _, err := r.Comm(42); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("non-UTF-8 comm: %v", err)
+	}
+	if _, _, err := r.Cmdline(42, 4096); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("non-UTF-8 cmdline: %v", err)
+	}
+	r = New(fstest.MapFS{"proc/42/cmdline": &fstest.MapFile{Data: []byte("a界\x00")}})
+	for _, limit := range []int{2, 3} {
+		text, truncated, err := r.Cmdline(42, limit)
+		if err != nil || !truncated || text != "a" {
+			t.Fatalf("limit %d: %q, %v, %v", limit, text, truncated, err)
+		}
+	}
+	text, truncated, err := r.Cmdline(42, 4)
+	if err != nil || !truncated || text != "a界" {
+		t.Fatalf("complete character: %q, %v, %v", text, truncated, err)
+	}
+}

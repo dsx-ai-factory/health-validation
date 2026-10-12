@@ -132,12 +132,13 @@ func measureTelemetryFS(ctx context.Context, batch *observation.ObservationBatch
 		info, reservedKnown, ret := readFramebuffer(dev)
 		unified := false
 		var hostErr error
+		var coherentErr error
 		if ret == nvml.ERROR_NOT_SUPPORTED {
 			// Coherent ATS access is the capability classification available in
 			// nvlib. Require it in addition to unavailable framebuffer accounting.
 			coherent, err := dev.IsCoherent()
 			if err != nil {
-				hostErr = err
+				coherentErr = err
 			} else if coherent {
 				unified = true
 				info, hostErr = readUnifiedMemory(fsys)
@@ -148,6 +149,10 @@ func measureTelemetryFS(ctx context.Context, batch *observation.ObservationBatch
 		}
 		for _, signal := range memorySignals {
 			if !want[signal.ID()] {
+				continue
+			}
+			if coherentErr != nil {
+				batch.Observations = append(batch.Observations, errorObservation(now, target, signal, "IsCoherent", observation.CollectionErrorCategorySourceError, "", coherentErr.Error()))
 				continue
 			}
 			if hostErr != nil {

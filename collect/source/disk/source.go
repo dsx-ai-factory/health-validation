@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -262,6 +263,7 @@ func (s *Source) readBlocks(ctx context.Context, selected collect.Signals) []Rea
 					reading.Value = Text(text)
 				}
 			}
+			validateTextReading(&reading)
 			out = append(out, reading)
 		}
 	}
@@ -274,6 +276,13 @@ func (s *Source) readBlocks(ctx context.Context, selected collect.Signals) []Rea
 }
 
 func parseError(err error) error { return &strconv.NumError{Func: "parse", Err: err} }
+
+func validateTextReading(reading *Reading) {
+	if value, ok := reading.Value.GetKind().(*observation.Value_StringValue); ok && !utf8.ValidString(value.StringValue) {
+		reading.Value = nil
+		reading.Failure = Failure(parseError(fmt.Errorf("non-UTF-8 disk metadata")))
+	}
+}
 
 func (s *Source) attribute(base, field string) ([]byte, error) {
 	raw, err := fs.ReadFile(s.files, path.Join(base, field))
@@ -349,7 +358,7 @@ func (s *Source) parents(base string) (*observation.Value, error) {
 // FUSE, or network mounts; metadata remains available for those mounts.
 func safeCapacity(m Mount) bool {
 	switch m.FSType {
-	case "ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "tmpfs", "ramfs", "overlay", "zfs":
+	case "ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "tmpfs", "overlay", "zfs":
 		return true
 	}
 	return false
@@ -412,6 +421,10 @@ func (s *Source) readMounts(ctx context.Context, selected collect.Signals) []Rea
 			case signals.MountDevice:
 				reading.Value = Text(fmt.Sprintf("%d:%d", m.Major, m.Minor))
 			default:
+				if !utf8.ValidString(m.Point) {
+					reading = failed(signal, target, parseError(fmt.Errorf("non-UTF-8 mount point")), "statfs")
+					break
+				}
 				if len(failures) > 0 {
 					reading = failed(signal, target, parseError(fmt.Errorf("capacity requires complete mountinfo")), MountInfoPath(s.mountPID))
 					break
@@ -436,6 +449,7 @@ func (s *Source) readMounts(ctx context.Context, selected collect.Signals) []Rea
 					reading.Value = Uint(value)
 				}
 			}
+			validateTextReading(&reading)
 			out = append(out, reading)
 		}
 	}
