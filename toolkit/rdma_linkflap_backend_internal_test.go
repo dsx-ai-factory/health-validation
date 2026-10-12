@@ -75,8 +75,11 @@ func TestRDMALinkFlapBackend_Window(t *testing.T) {
 			}
 			b := &rdmaLinkFlapBackend{
 				run: func(_ context.Context, args ...string) ([]byte, error) {
+					if slices.Contains(args, "-n") {
+						return []byte("some journal entry\n"), nil
+					}
 					gotArgs = args
-					return []byte(""), nil // success, no matches
+					return nil, nil // success, no matches
 				},
 				now:        func() time.Time { return fixedNow },
 				uptime:     uptimeFn,
@@ -103,8 +106,13 @@ func TestRDMALinkFlapBackend_Window(t *testing.T) {
 			if got := sinceArg(gotArgs); got != tt.wantSince {
 				t.Errorf("--since = %q, want %q (all args: %v)", got, tt.wantSince, gotArgs)
 			}
-			if !slices.Contains(gotArgs, "--output=short-full") || !slices.Contains(gotArgs, "--grep="+linkFlapGrep) {
-				t.Errorf("read is missing output/grep args: %v", gotArgs)
+			if !slices.Contains(gotArgs, "--output=short-full") {
+				t.Errorf("read is missing output arg: %v", gotArgs)
+			}
+			for _, arg := range gotArgs {
+				if strings.HasPrefix(arg, "--grep") || arg == "-g" {
+					t.Errorf("read must filter in Go, got journalctl args: %v", gotArgs)
+				}
 			}
 		})
 	}
@@ -140,7 +148,7 @@ func TestRDMALinkFlapBackend_InvalidOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := JournalctlRDMALinkFlap(tt.opt).(*rdmaLinkFlapBackend)
-			b.run = func(_ context.Context, args ...string) ([]byte, error) {
+			b.run = func(_ context.Context, _ ...string) ([]byte, error) {
 				t.Fatal("journalctl must not run with an invalid option")
 				return nil, nil
 			}

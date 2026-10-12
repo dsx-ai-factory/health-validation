@@ -2,6 +2,7 @@ package toolkit
 
 import (
 	"context"
+	"strings"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
@@ -44,7 +45,7 @@ type XidBackend interface {
 // Journalctl returns a backend that collects NVRM Xid events from the
 // current boot's kernel journal by running:
 //
-//	journalctl --dmesg --boot --no-pager --output=cat --grep=Xid
+//	journalctl --dmesg --boot --no-pager --quiet --output=cat
 //
 // Requires journalctl on PATH and permission to read the system
 // journal. A read failure (or timeout) yields a single errored
@@ -62,14 +63,13 @@ type journalctlBackend struct {
 }
 
 // Measure reads the current boot's Xid lines. It scopes the read to
-// kernel-transport entries (--dmesg) and greps for "Xid": Xid is an NVRM
-// kernel message, so this is exact coverage and keeps a large journal from
-// tripping the collection timeout. See [readJournal] for the clean-boot vs
-// unreadable-journal handling.
+// kernel-transport entries (--dmesg), then filters for Xid lines in Go.
+// See [readJournal] for the clean-boot vs unreadable-journal handling.
 func (b *journalctlBackend) Measure(ctx context.Context) ([]health.Measurement, error) {
 	return readJournal(ctx, b.run, journalMatcher{
-		args:    []string{"--output=cat", "--grep=Xid"},
+		args:    []string{"--output=cat"},
 		subject: "Xid state",
+		match:   func(line string) bool { return strings.Contains(line, "NVRM: Xid ") },
 		parse:   func(lines []string) health.Measurement { return xidparse.ParseXid(sinceBoot, lines) },
 		errored: func(err error) health.Measurement {
 			return xid.ErroredXid(sinceBoot, err, xid.MeasurementSignals...)

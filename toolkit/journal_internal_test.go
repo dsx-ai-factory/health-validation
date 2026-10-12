@@ -10,13 +10,13 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 )
 
-// linkFlapMatcher is the matcher the RDMA link-flap backend supplies, which is
-// the read that exposed the banner: it needs --output=short-full for its
-// per-line timestamps, and that format does not suppress "-- No entries --".
+// linkFlapMatcher is the matcher the RDMA link-flap backend supplies. It needs
+// --output=short-full for per-line timestamps and filters link lines in Go.
 func linkFlapMatcher(since string) journalMatcher {
 	return journalMatcher{
-		args:    []string{"--since=" + since, "--output=short-full", "--grep=" + linkFlapGrep},
+		args:    []string{"--since=" + since, "--output=short-full"},
 		subject: "link state",
+		match:   linkFlapPattern.MatchString,
 		parse:   func(lines []string) health.Measurement { return ParseLinkFlaps(since, lines) },
 		errored: func(err error) health.Measurement {
 			return infiniband.ErroredLinkFlap(since, err, infiniband.MeasurementSignals...)
@@ -24,17 +24,15 @@ func linkFlapMatcher(since string) journalMatcher {
 	}
 }
 
-// TestReadJournalCleanBootIsNotErrored pins the behaviour against real
-// journalctl rather than an idealised one: journalctl 255 answers a --grep that
-// matches nothing with exit 1 *and* "-- No entries --" on stdout, so a clean
-// host only reads as clean while readJournal passes --quiet. Without it every
-// event-free node reports the journal as unreadable, which for the link-flap
-// check means CRITICAL and a drain on healthy hardware.
+// TestReadJournalCleanBootIsNotErrored pins the handling of an empty kernel
+// journal. Some journalctl versions print "-- No entries --" on stdout unless
+// --quiet is present; that banner must not turn an otherwise readable journal
+// into a collection failure.
 func TestReadJournalCleanBootIsNotErrored(t *testing.T) {
 	const since = "2026-08-31 13:00:00"
 
-	// run mimics journalctl 255. The liveness probe (-n 1) returns a line so
-	// the journal itself reads as readable; the grep matches nothing.
+	// The liveness probe (-n 1) returns a line so the journal itself reads as
+	// readable; the scoped kernel read has no entries.
 	run := func(_ context.Context, args ...string) ([]byte, error) {
 		if slices.Contains(args, "-n") {
 			return []byte("some unrelated log line\n"), nil

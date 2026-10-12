@@ -20,7 +20,7 @@ const sinceBoot = "boot"
 type runFunc func(ctx context.Context, args ...string) ([]byte, error)
 
 // journalMatcher is the per-domain configuration a journal-backed backend
-// supplies to [readJournal]: how to scope and grep the read, and how to turn
+// supplies to [readJournal]: how to scope and filter the read, and how to turn
 // the result — matching lines, or an unreadable journal — into a measurement.
 type journalMatcher struct {
 	// parse builds the measurement from the matching lines (nil on a clean
@@ -28,34 +28,28 @@ type journalMatcher struct {
 	// not be read, so the dependent check fails rather than falsely passing.
 	parse   func(lines []string) health.Measurement
 	errored func(err error) health.Measurement
+	// match selects the lines passed to parse; journalctl itself is not filtered.
+	match func(line string) bool
 	// subject names the state being read, for the "cannot confirm <subject>"
 	// message when the journal is unreadable (e.g. "Xid state", "link state").
 	subject string
-	// args are the journalctl flags for the primary read — the output format
-	// and the --grep. readJournal always prepends --dmesg --boot --no-pager.
+	// args are the journalctl flags for the primary read, such as the output
+	// format and time window. readJournal always prepends --dmesg, --boot,
+	// --no-pager, and --quiet, then filters the returned kernel lines through
+	// match.
 	args []string
 }
 
-// readJournal runs journalctl for the current boot and turns the result into a
-// single measurement. --dmesg scopes the read to kernel-transport entries,
-// turning the --grep from a full-boot full-text scan into an indexed scan over
-// the kernel subset — what keeps a large journal from tripping the collection
-// timeout, most acutely on a clean boot where --grep must read the whole boot
-// to prove zero matches.
+// readJournal reads the current boot's kernel journal, retains lines accepted
+// by the matcher, and turns the result into a single measurement. --dmesg limits
+// the read to kernel entries so a large full journal does not consume the
+// collection timeout.
 //
-// journalctl's "no matching entries" (exit 1, empty output) is ambiguous
-// between a genuinely event-free boot and an empty/unreadable journal (missing
-// mount, container's own machine-id, unreadable format). Before trusting a
-// clean result, [journalReadable] confirms the journal is actually readable; if
-// it is not, the result is an errored measurement rather than a false PASS.
-//
-// --quiet is required for that exit-1-and-empty test to hold. Without it
-// journalctl writes "-- No entries --" to *stdout* (not stderr) when a --grep
-// matches nothing, so a clean boot arrives as exit 1 with 17 bytes of output
-// and falls through to the errored path -- turning every healthy node CRITICAL.
-// --output=cat happens to suppress the banner, which is why the Xid read was
-// unaffected while the link-flap read (--output=short-full, needed for its
-// per-line timestamps) reported an unreadable journal on every clean host.
+// An empty kernel journal (exit 1, empty output) is ambiguous between a boot
+// with no kernel entries and an absent/unreadable journal. Before trusting it,
+// [journalReadable] confirms the journal itself is readable. --quiet keeps the
+// informational "-- No entries --" banner out of stdout so this distinction is
+// reliable across journalctl versions.
 func readJournal(ctx context.Context, run runFunc, m journalMatcher) ([]health.Measurement, error) {
 	// The caller's context bounds the read; Collect's watchdog supplies the
 	// deadline, so the operator's collection timeout governs the journal read.
@@ -63,27 +57,39 @@ func readJournal(ctx context.Context, run runFunc, m journalMatcher) ([]health.M
 	out, err := run(ctx, args...)
 	if err != nil {
 		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 && len(bytes.TrimSpace(out)) == 0 {
-			if probeErr := journalReadable(ctx, run); probeErr != nil {
-				return []health.Measurement{m.errored(fmt.Errorf("journal unreadable, cannot confirm %s: %w", m.subject, probeErr))}, nil
-			}
-			return []health.Measurement{m.parse(nil)}, nil
+		noEntries := errors.As(err, &exitErr) &&
+			exitErr.ExitCode() == 1 &&
+			len(bytes.TrimSpace(out)) == 0 &&
+			len(bytes.TrimSpace(exitErr.Stderr)) == 0
+		if !noEntries {
+			return []health.Measurement{m.errored(journalCommandError(err))}, nil
 		}
-		return []health.Measurement{m.errored(fmt.Errorf("journalctl: %w", err))}, nil
 	}
-	return []health.Measurement{m.parse(splitLines(out))}, nil
+
+	lines := make([]string, 0)
+	for _, line := range splitLines(out) {
+		if m.match(line) {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 0 {
+		if probeErr := journalReadable(ctx, run); probeErr != nil {
+			return []health.Measurement{m.errored(fmt.Errorf("journal unreadable, cannot confirm %s: %w", m.subject, probeErr))}, nil
+		}
+	}
+	return []health.Measurement{m.parse(lines)}, nil
 }
 
 // journalReadable confirms the current boot's journal holds at least one entry.
 // A live host journal always does — a booted Linux host logs continuously — so
 // an empty result (or a read error) means journalctl is pointed at an empty or
-// absent journal, not that the boot was event-free. It carries no --grep, so it
-// counts entries rather than matching the domain pattern it validates. Returns
+// absent journal, not that the boot was event-free. It carries no domain filter,
+// so it counts entries rather than matching the pattern being validated. Returns
 // nil only when the journal is demonstrably readable.
 func journalReadable(ctx context.Context, run runFunc) error {
 	out, err := run(ctx, "--boot", "--no-pager", "--output=cat", "-n", "1")
 	if err != nil {
-		return err
+		return journalCommandError(err)
 	}
 	if len(bytes.TrimSpace(out)) == 0 {
 		return errors.New("current boot has no journal entries")
@@ -104,4 +110,15 @@ func splitLines(out []byte) []string {
 		return nil
 	}
 	return strings.Split(trimmed, "\n")
+}
+
+// journalCommandError adds journalctl's captured stderr to a command error.
+func journalCommandError(err error) error {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if stderr := strings.TrimSpace(string(exitErr.Stderr)); stderr != "" {
+			return fmt.Errorf("journalctl: %w: %s", err, stderr)
+		}
+	}
+	return fmt.Errorf("journalctl: %w", err)
 }

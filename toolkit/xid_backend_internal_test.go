@@ -6,10 +6,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
-// exitOne returns a real *exec.ExitError with code 1 and no output, matching
-// journalctl's "no matching entries" signal for the --grep path.
+// exitOne returns a real *exec.ExitError with code 1 and no output.
 func exitOne(t *testing.T) error {
 	t.Helper()
 	err := exec.Command("false").Run()
@@ -19,71 +20,96 @@ func exitOne(t *testing.T) error {
 	return err
 }
 
-// fakeJournal dispatches the backend's two journalctl invocations — the
-// Xid grep (carries --grep=Xid) and the liveness probe (carries -n 1) — to
-// independently-canned results.
+func exitOneWithStderr(t *testing.T) error {
+	t.Helper()
+	_, err := exec.Command("sh", "-c", "echo 'unsupported journalctl flag' >&2; exit 1").Output()
+	if err == nil {
+		t.Fatal("expected command to exit non-zero")
+	}
+	return err
+}
+
+// fakeJournal dispatches the scoped kernel read and the optional liveness
+// probe (carries -n 1) to independently-canned results.
 type fakeJournal struct {
-	grepErr  error
+	readErr  error
 	probeErr error
-	grepOut  []byte
+	readOut  []byte
 	probeOut []byte
 }
 
 func (f *fakeJournal) run(_ context.Context, args ...string) ([]byte, error) {
-	if slices.Contains(args, "--grep=Xid") {
-		return f.grepOut, f.grepErr
+	if slices.Contains(args, "-n") {
+		return f.probeOut, f.probeErr
 	}
-	return f.probeOut, f.probeErr
+	return f.readOut, f.readErr
 }
 
 func TestJournalctlBackendMeasure(t *testing.T) {
 	xidLine := "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3"
 
 	tests := []struct {
-		name        string
-		fake        fakeJournal
-		wantErrored bool
+		name          string
+		wantErrorText string
+		fake          fakeJournal
+		wantEvents    int64
+		wantErrored   bool
+		emptyRead     bool
 	}{
 		{
-			name: "xid lines found are parsed",
-			fake: fakeJournal{grepOut: []byte(xidLine + "\n")},
+			name:       "xid lines found are parsed",
+			fake:       fakeJournal{readOut: []byte("unrelated kernel line\n" + xidLine + "\n")},
+			wantEvents: 1,
 		},
 		{
 			name: "clean boot with a readable journal passes",
-			// grep finds nothing (exit 1, empty) but the probe confirms the
-			// journal has entries: a genuine Xid-free boot.
-			fake: fakeJournal{probeOut: []byte("some unrelated log line\n")},
-			// grepErr set below (needs *testing.T for a real ExitError).
+			fake: fakeJournal{readOut: []byte("some unrelated kernel line\n"), probeOut: []byte("some unrelated log line\n")},
 		},
 		{
-			name: "empty journal errors instead of passing",
-			// grep finds nothing AND the probe finds nothing: the journal is
-			// absent/unreadable, so a clean result must not be trusted.
+			name:      "empty kernel journal with a readable journal passes",
+			fake:      fakeJournal{probeOut: []byte("some unrelated log line\n")},
+			emptyRead: true,
+		},
+		{
+			name: "successful empty kernel read with a readable journal passes",
+			fake: fakeJournal{probeOut: []byte("some unrelated log line\n")},
+		},
+		{
+			name:          "exit one with stderr errors instead of passing",
+			wantErrorText: "unsupported journalctl flag",
+			fake:          fakeJournal{},
+			wantErrored:   true,
+		},
+		{
+			name:        "empty journal errors instead of passing",
+			fake:        fakeJournal{},
+			wantErrored: true,
+			emptyRead:   true,
+		},
+		{
+			name:        "successful empty read from an empty journal errors",
 			fake:        fakeJournal{},
 			wantErrored: true,
 		},
 		{
-			name: "probe read failure errors",
-			// grep finds nothing and the probe itself fails (e.g. journalctl
-			// missing): unobservable, surface UNKNOWN.
+			name:        "probe read failure errors",
 			fake:        fakeJournal{probeErr: exec.ErrNotFound},
 			wantErrored: true,
+			emptyRead:   true,
 		},
 		{
-			name: "non-empty-match grep error errors",
-			// A grep failure that is not the exit-1/empty signal (here a
-			// generic exec error) is a hard read failure.
-			fake:        fakeJournal{grepErr: exec.ErrNotFound},
+			name:        "kernel journal read failure errors",
+			fake:        fakeJournal{readErr: exec.ErrNotFound},
 			wantErrored: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Cases that rely on the exit-1/empty "no matches" signal need a
-			// real *exec.ExitError; set it here where t is available.
-			if tt.fake.grepErr == nil && len(tt.fake.grepOut) == 0 {
-				tt.fake.grepErr = exitOne(t)
+			if tt.wantErrorText != "" {
+				tt.fake.readErr = exitOneWithStderr(t)
+			} else if tt.emptyRead {
+				tt.fake.readErr = exitOne(t)
 			}
 
 			b := &journalctlBackend{run: tt.fake.run}
@@ -95,17 +121,30 @@ func TestJournalctlBackendMeasure(t *testing.T) {
 				t.Fatalf("expected 1 measurement, got %d", len(ms))
 			}
 
-			errored := len(ms[0].Errors()) > 0
+			errs := ms[0].Errors()
+			errored := len(errs) > 0
 			if errored != tt.wantErrored {
-				t.Fatalf("errored = %v, want %v (errors: %v)", errored, tt.wantErrored, ms[0].Errors())
+				t.Fatalf("errored = %v, want %v (errors: %v)", errored, tt.wantErrored, errs)
+			}
+			if errored {
+				if tt.wantErrorText != "" && !strings.Contains(errs[0].Err().Error(), tt.wantErrorText) {
+					t.Errorf("error = %q, want it to contain %q", errs[0].Err(), tt.wantErrorText)
+				}
+				return
+			}
+			measurement, ok := ms[0].(xid.XidMeasurement)
+			if !ok {
+				t.Fatalf("measurement type = %T, want xid.XidMeasurement", ms[0])
+			}
+			if measurement.EventCount != tt.wantEvents {
+				t.Errorf("event count = %d, want %d", measurement.EventCount, tt.wantEvents)
 			}
 		})
 	}
 }
 
-// TestJournalReadableProbeArgs guards that the liveness probe does not carry
-// --grep (it must count entries, not match Xid) — a regression here would make
-// the probe as blind as the grep it validates.
+// TestJournalReadableProbeArgs guards that the liveness probe reads an entry
+// from the complete journal rather than applying a domain filter.
 func TestJournalReadableProbeArgs(t *testing.T) {
 	var gotArgs []string
 	b := &journalctlBackend{run: func(_ context.Context, args ...string) ([]byte, error) {
@@ -122,10 +161,9 @@ func TestJournalReadableProbeArgs(t *testing.T) {
 	}
 }
 
-// TestXidGrepArgs guards that the Xid read is scoped to kernel-transport
-// entries with --dmesg. Dropping it restores a full-boot full-text scan — the
-// regression that lets a large journal trip the collection timeout.
-func TestXidGrepArgs(t *testing.T) {
+// TestXidJournalArgs guards that the Xid read is scoped to kernel-transport
+// entries and does not rely on journalctl's optional --grep support.
+func TestXidJournalArgs(t *testing.T) {
 	var gotArgs []string
 	b := &journalctlBackend{run: func(_ context.Context, args ...string) ([]byte, error) {
 		gotArgs = args
@@ -136,5 +174,10 @@ func TestXidGrepArgs(t *testing.T) {
 	}
 	if !slices.Contains(gotArgs, "--dmesg") {
 		t.Fatalf("Xid read must be scoped to kernel messages with --dmesg, got args: %v", gotArgs)
+	}
+	for _, arg := range gotArgs {
+		if strings.HasPrefix(arg, "--grep") || arg == "-g" {
+			t.Fatalf("Xid read must filter in Go, got journalctl args: %v", gotArgs)
+		}
 	}
 }
