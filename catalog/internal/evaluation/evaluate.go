@@ -323,12 +323,13 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		action = topRuleAction
 	}
 
+	observed := observedValues(cd, signals)
 	if !anyMatched {
 		// No rule matched; check passes.
 		v := verdictFor(cd, now)
 		v.Severity = health.Pass
 		v.Thresholds = resolved
-		v.ObservedValues = signals
+		v.ObservedValues = observed
 		return v, nil
 	}
 
@@ -336,9 +337,26 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 	v.Severity = severity
 	v.Messages = messages
 	v.Thresholds = resolved
-	v.ObservedValues = signals
+	v.ObservedValues = observed
 	v.RecommendedAction = action
 	return withEntity(v, entity), nil
+}
+
+// observedValues limits signals to the ones cd requires. A sibling field the
+// check never read may be unfed (narrowed collection, unmapped or failed
+// signal), and its zero value would read as a real measurement. A check that
+// declares no required signals can read any field, so it keeps them all.
+func observedValues(cd *health.CheckDefinition, signals map[string]any) map[string]any {
+	if len(cd.RequiredSignals) == 0 {
+		return signals
+	}
+	out := make(map[string]any, len(cd.RequiredSignals))
+	for _, name := range cd.RequiredSignals {
+		if v, ok := signals[name]; ok {
+			out[name] = v
+		}
+	}
+	return out
 }
 
 // entityID returns the measurement's subject, or "" when the type does not

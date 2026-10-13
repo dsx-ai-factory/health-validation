@@ -103,7 +103,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | SkipReason | SkipReason | `skip_reason` | Machine-readable skip code (see below). |
 | SkipDetail | string | `skip_detail` | Human-readable skip explanation. |
 | AffectedEntities | []string | `affected_entities` | Device identifiers with non-PASS results (e.g. GPU UUIDs). |
-| ObservedValues | map[string]any | `observed_values` | Signal values that triggered the matching rule. |
+| ObservedValues | map[string]any | `observed_values` | Values of the check's `RequiredSignals` (every measurement signal when it declares none). |
 | Thresholds | map[string]ResolvedThreshold | `thresholds` | Threshold values used in evaluation, with override provenance. |
 | RecommendedAction | RecommendedAction | `recommended_action` | Structured remediation object `{operational_state, remediation_actions}`. `remediation_actions` is an ordered sequence of remediation steps for a remediation engine to work through, present only when `operational_state` is `drain`; the field is elided (`omitzero`) when no action applies. |
 | Messages | []string | `messages` | Human-readable verdict messages, one per matching rule. |

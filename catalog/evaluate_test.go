@@ -2,6 +2,7 @@ package catalog_test
 
 import (
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 
@@ -486,6 +487,47 @@ func TestEvaluateAll_ErroredMeasurement_GatesOnRequiredSignals(t *testing.T) {
 	// schema, so it skips exactly once.
 	if len(nv.SkippedChecks) != 1 || nv.SkippedChecks[0].CheckID != "gpu_thermal" || nv.SkippedChecks[0].SkipReason != health.NoApplicableMeasurement {
 		t.Errorf("skipped = %+v, want one NO_APPLICABLE_MEASUREMENT gpu_thermal", nv.SkippedChecks)
+	}
+}
+
+// ObservedValues carries only the check's required signals, so an unfed
+// sibling field's zero value cannot pass for a real reading. A check with no
+// required signals keeps every field.
+func TestEvaluateAll_ObservedValuesLimitedToRequiredSignals(t *testing.T) {
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture("GB200"),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+	for _, required := range [][]string{{"first"}, nil} {
+		id := "node_reads_first"
+		if required == nil {
+			id = "node_reads_any"
+		}
+		cat.MustRegister(health.CheckDefinition{
+			ID:                id,
+			Category:          health.Node,
+			RequiredSignals:   required,
+			ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+			Thresholds:        map[string]health.ThresholdSpec{},
+			Rules:             []health.Rule{{Expression: "first < 1", Severity: health.Critical, Message: "first too low"}},
+		})
+	}
+
+	nv, err := cat.EvaluateAll(twoSignalMeasurement{First: 4})
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	want := map[string]map[string]any{
+		"node_reads_first": {"first": int64(4)},
+		"node_reads_any":   {"first": int64(4), "second": int64(0)},
+	}
+	if len(nv.CheckResults) != len(want) {
+		t.Fatalf("CheckResults = %+v, want %d", nv.CheckResults, len(want))
+	}
+	for _, r := range nv.CheckResults {
+		if !maps.Equal(r.ObservedValues, want[r.CheckID]) {
+			t.Errorf("%s ObservedValues = %v, want %v", r.CheckID, r.ObservedValues, want[r.CheckID])
+		}
 	}
 }
 

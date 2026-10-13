@@ -76,8 +76,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
     {
       "timestamp": "2026-06-10T14:31:12.330483625-05:00",
       "observed_values": {
-        "gpu_count": 1,
-        "nvlink_inactive_count": 0
+        "gpu_count": 1
       },
       "thresholds": {
         "expected_gpu_count": {
@@ -107,8 +106,8 @@ The check engine collects typed measurements from sensors, evaluates them agains
     {
       "timestamp": "2026-06-10T14:31:12.331524621-05:00",
       "observed_values": {
-        "gpu_count": 1,
-        "nvlink_inactive_count": 0
+        "gpu_id": "GPU-5f1c2d8e-46b3-4e8d-9a70-1a2f5c073b64",
+        "inactive_count": 0
       },
       "thresholds": {
         "max_inactive_nvlinks": {
