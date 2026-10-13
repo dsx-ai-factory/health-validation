@@ -199,7 +199,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       # write: sbom-action attaches the SBOM to the tag's GitHub Release when
-      # one exists, which is the case for toolkit release tags.
+      # one exists, which is the case for toolkit release tags. It downloads
+      # the SBOM artifact it just uploaded to do so, which needs actions: read.
+      actions: read
       contents: write
       security-events: write
     steps:
