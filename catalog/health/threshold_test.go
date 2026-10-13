@@ -14,6 +14,7 @@ func TestCheckDefinition_ValidateRejectsRequiredFixedThreshold(t *testing.T) {
 		Thresholds: map[string]ThresholdSpec{
 			"expected_first": {
 				Value:            int64(0),
+				ValueType:        ThresholdInt64,
 				Category:         FixedThreshold,
 				RequiredOverride: true,
 			},
@@ -34,6 +35,7 @@ func TestCheckDefinition_ValidatePerArchitectureMustCoverArchitectures(t *testin
 			"expected_speed": {
 				Value:           int64(50000),
 				PerArchitecture: map[string]any{"GB200": int64(53125)},
+				ValueType:       ThresholdInt64,
 				Category:        DefaultThreshold,
 			},
 		},
@@ -54,7 +56,8 @@ func TestCheckDefinition_ValidateAllowsNilValueWhenPerArchitectureCovers(t *test
 					"GB200": int64(1200),
 					"H100":  int64(700),
 				},
-				Category: DefaultThreshold,
+				ValueType: ThresholdInt64,
+				Category:  DefaultThreshold,
 			},
 		},
 	}
@@ -67,7 +70,7 @@ func TestCheckDefinition_ValidateRequiresValueWithoutArchitectureCoverage(t *tes
 	cd := CheckDefinition{
 		ID: "unrestricted_check",
 		Thresholds: map[string]ThresholdSpec{
-			"expected_count": {Category: DefaultThreshold},
+			"expected_count": {ValueType: ThresholdInt64, Category: DefaultThreshold},
 		},
 	}
 	err := cd.Validate()
@@ -82,6 +85,7 @@ func TestCheckDefinition_ValidateAcceptsRequiredDefaultThreshold(t *testing.T) {
 		Thresholds: map[string]ThresholdSpec{
 			"expected_first": {
 				Value:            int64(0),
+				ValueType:        ThresholdInt64,
 				Category:         DefaultThreshold,
 				RequiredOverride: true,
 			},

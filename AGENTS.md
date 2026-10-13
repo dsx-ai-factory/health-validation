@@ -189,7 +189,7 @@ The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PAS
 #### Adding a check
 
 1. Define signals on the relevant measurement struct in `catalog/<domain>/measurement.go` (e.g. add a field + `Signal*` constant to `gpu.GPUMeasurement`).
-2. Write a `CheckDefinition` factory in the same `catalog/<domain>/` package. Add `Dependencies` only when another check explains this one's collection failures.
+2. Write a `CheckDefinition` factory in the same `catalog/<domain>/` package. Every threshold needs a `ValueType`, plus `ValueMin`/`ValueMax` where an out-of-range value is unambiguously a mistake (see "Threshold types and bounds"). Add `Dependencies` only when another check explains this one's collection failures.
 3. Register it in `catalog/checks.go` via `builtinChecks()` so `catalog.New()` and the stock CLI run it. Declare `SchedulingCadence` on the check. Omit `--cadence` (or use a zero-value evaluation/collection context) to evaluate every registered check; set a cadence to run checks whose cadence covers that window (Continuous ⊂ Prolog ⊂ Maintenance) and report the others as skipped.
 4. Regenerate the reference docs with `bazel run //docs:reference_update`. The Check Catalog and Verdict Schema pages under `docs/reference/` are generated from `catalog/` and committed; `//docs:reference_update_test` fails when they are stale. A new check category also needs an entry in `docs/index.yml`.
 
@@ -236,6 +236,10 @@ If the dep ends up linked into the CLI, `toolkit/cmd/health-validation/SHIPPED_M
 **Commit and PR titles** — Conventional Commits (`type(scope): subject`), checked on every pull request by the `commit-lint` check. Only the PR title is checked; it is the subject that lands on `main`, and individual commit subjects are unconstrained. A leading capital is allowed (`fix: RDMA link-flap`); title-case and all-caps subjects are not. Any title whose first word is `Revert` or `revert` skips the check entirely. Rules live in `commitlint.config.js`, the type list and examples in `CONTRIBUTING.md`.
 
 **Threshold governance** — `ThresholdCategory` controls whether operators can override a threshold: `DefaultThreshold` (overridable), `FixedThreshold` (never overridable, enforced at `OverrideSet` construction), `AdjustableThreshold` (overridable within bounds). Violations return `FixedThresholdError`.
+
+**Threshold types and bounds** — every `ThresholdSpec` must declare a `ValueType` (`ThresholdInt64`, `ThresholdFloat64`, `ThresholdBool`, `ThresholdString`, `ThresholdStringList`); registration rejects one that does not. The type is declared rather than inferred because CEL is type-sensitive and a threshold may carry no `Value` at all (per-architecture-only, or `RequiredOverride`). `Catalog.Register` normalizes `Value`, each `PerArchitecture` entry, and the bounds to the declared type, and override resolution does the same for overrides, so a bare `1200` or a YAML integer reaches CEL as the declared type. A lossy conversion is an error, not a truncation.
+
+`ValueMin`/`ValueMax` are optional inclusive bounds, independently settable, legal only on the numeric types, and applied to defaults, per-architecture values, and overrides alike; violations return `ThresholdValueError`. An `AdjustableThreshold` must declare at least one bound, since that category's promise of a tunable range is otherwise indistinguishable from `DefaultThreshold`. Bound a threshold only where an out-of-range value is unambiguously a mistake — upper-bound *tolerances* (`max_inactive_nvlinks`, `max_power_w`, …) deliberately carry a floor and no ceiling, because setting one very high is how an operator opts out of the alert.
 
 **Enum handling** — all enums use the generic `marshalEnum[T]` / `unmarshalEnum[T]` helpers in `catalog/health/enum.go`. Follow the same pattern for new enums.
 

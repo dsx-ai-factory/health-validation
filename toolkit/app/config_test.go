@@ -70,42 +70,6 @@ func TestOverridesCoercesAveragePowerDrawBounds(t *testing.T) {
 	}
 }
 
-// coerce handles []string thresholds (whitespace-trimmed, rejecting
-// non-lists, non-string items, and empties). Exercised directly on the
-// coercion helper since no built-in check currently declares a []string
-// threshold to route it through Overrides.
-func TestCoerceStringList(t *testing.T) {
-	got, err := coerce([]any{" mlx5_0 ", "mlx5_1"}, []string{})
-	if err != nil {
-		t.Fatalf("coerce: %v", err)
-	}
-	want := []string{"mlx5_0", "mlx5_1"}
-	if !slices.Equal(got.([]string), want) {
-		t.Fatalf("string list = %#v, want %#v", got, want)
-	}
-}
-
-func TestCoerceRejectsInvalidStringList(t *testing.T) {
-	tests := []struct {
-		name    string
-		value   any
-		wantErr string
-	}{
-		{name: "not a list", value: "mlx5_0", wantErr: "expected a list of strings"},
-		{name: "non-string", value: []any{"mlx5_0", 1}, wantErr: "item 1 is int"},
-		{name: "empty", value: []any{"mlx5_0", " "}, wantErr: "item 1 is empty"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := coerce(tt.value, []string{})
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("error = %v, want %q", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestOverridesRejectsBadConfig(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -133,13 +97,22 @@ func TestOverridesRejectsBadConfig(t *testing.T) {
 			wantErr: `expected an integer, got 3.5`,
 		},
 		{
-			// Regression for #85: gpu_power_limit's expected_power_limit_w
-			// threshold has no flat Value, only PerArchitecture entries, so
-			// coerce must still validate against their type instead of
-			// letting ref==nil pass anything through unchecked.
-			name:    "non-coercible value for PerArchitecture-only threshold",
+			// Regression for #85: expected_power_limit_w carries no flat
+			// Value, only PerArchitecture entries, so its type comes from
+			// ValueType rather than from a default to compare against.
+			name:    "non-coercible value for a per-architecture-only threshold",
 			checks:  map[string]map[string]any{"gpu_power_limit": {"expected_power_limit_w": "not-a-number"}},
 			wantErr: `expected a number, got string`,
+		},
+		{
+			name:    "below minimum",
+			checks:  map[string]map[string]any{"gpu_count": {"expected_gpu_count": 0}},
+			wantErr: `below the minimum 1`,
+		},
+		{
+			name:    "above maximum",
+			checks:  map[string]map[string]any{"gpu_power_state": {"expected_gpu_pstate": 16}},
+			wantErr: `above the maximum 15`,
 		},
 	}
 

@@ -5,6 +5,7 @@ package evaluation
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -12,7 +13,7 @@ import (
 
 func TestResolveThresholds_NoOverrides(t *testing.T) {
 	specs := map[string]health.ThresholdSpec{
-		"max_temp": {Value: 85.0, Category: health.DefaultThreshold},
+		"max_temp": {Value: 85.0, ValueType: health.ThresholdFloat64, Category: health.DefaultThreshold},
 	}
 
 	resolved, err := resolveThresholds("test_check", specs, nil, "")
@@ -31,7 +32,7 @@ func TestResolveThresholds_NoOverrides(t *testing.T) {
 
 func TestResolveThresholds_DefaultOverride(t *testing.T) {
 	specs := map[string]health.ThresholdSpec{
-		"max_temp": {Value: 85.0, Category: health.DefaultThreshold},
+		"max_temp": {Value: 85.0, ValueType: health.ThresholdFloat64, Category: health.DefaultThreshold},
 	}
 	overrides := map[string]any{
 		"max_temp": 90.0,
@@ -56,7 +57,7 @@ func TestResolveThresholds_DefaultOverride(t *testing.T) {
 
 func TestResolveThresholds_FixedRejectsOverride(t *testing.T) {
 	specs := map[string]health.ThresholdSpec{
-		"hard_limit": {Value: 100, Category: health.FixedThreshold},
+		"hard_limit": {Value: 100, ValueType: health.ThresholdInt64, Category: health.FixedThreshold},
 	}
 	overrides := map[string]any{
 		"hard_limit": 200,
@@ -79,9 +80,66 @@ func TestResolveThresholds_FixedRejectsOverride(t *testing.T) {
 	}
 }
 
+func TestResolveThresholds_RejectsInvalidOverride(t *testing.T) {
+	specs := map[string]health.ThresholdSpec{
+		"expected_pstate": {
+			Value:     int64(0),
+			ValueType: health.ThresholdInt64,
+			ValueMin:  int64(0),
+			ValueMax:  int64(15),
+			Category:  health.DefaultThreshold,
+		},
+	}
+
+	tests := []struct {
+		override any
+		name     string
+		wantErr  string
+	}{
+		{name: "wrong type", override: "P0", wantErr: "expected an integer, got string"},
+		{name: "above maximum", override: int64(16), wantErr: "above the maximum 15"},
+		{name: "below minimum", override: int64(-1), wantErr: "below the minimum 0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := resolveThresholds("test_check", specs,
+				map[string]any{"expected_pstate": tt.override}, "")
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want %q", err, tt.wantErr)
+			}
+
+			var tve *health.ThresholdValueError
+			if !errors.As(err, &tve) {
+				t.Fatalf("expected health.ThresholdValueError, got %T", err)
+			}
+			if tve.ThresholdName != "expected_pstate" || tve.CheckID != "test_check" {
+				t.Errorf("error = %+v, want it to name the threshold and check", tve)
+			}
+		})
+	}
+}
+
+// An override is coerced like a catalog value, so YAML's int lands on the
+// declared type rather than reaching CEL as an int.
+func TestResolveThresholds_NormalizesOverride(t *testing.T) {
+	specs := map[string]health.ThresholdSpec{
+		"min_power_w": {Value: float64(65), ValueType: health.ThresholdFloat64, Category: health.DefaultThreshold},
+	}
+
+	resolved, err := resolveThresholds("test_check", specs,
+		map[string]any{"min_power_w": 70}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved["min_power_w"].Value; got != float64(70) {
+		t.Errorf("value = %#v, want float64(70)", got)
+	}
+}
+
 func TestResolveThresholds_AdjustableOverride(t *testing.T) {
 	specs := map[string]health.ThresholdSpec{
-		"warn_temp": {Value: 75.0, Category: health.AdjustableThreshold},
+		"warn_temp": {Value: 75.0, ValueType: health.ThresholdFloat64, ValueMin: 0.0, Category: health.AdjustableThreshold},
 	}
 	overrides := map[string]any{
 		"warn_temp": 80.0,
@@ -106,6 +164,7 @@ func TestResolveThresholds_PerArchitecture(t *testing.T) {
 		"expected_speed": {
 			Value:           int64(50000),
 			PerArchitecture: map[string]any{"H100": int64(26562)},
+			ValueType:       health.ThresholdInt64,
 			Category:        health.DefaultThreshold,
 		},
 	}

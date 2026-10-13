@@ -23,7 +23,7 @@ func clonableCheck() health.CheckDefinition {
 		Name:            "Clone",
 		RequiredSignals: []string{"a", "b"},
 		Thresholds: map[string]health.ThresholdSpec{
-			"limit": {Value: 1, PerArchitecture: map[string]any{"H100": 2}, Category: health.DefaultThreshold},
+			"limit": {Value: 1, PerArchitecture: map[string]any{"H100": 2}, ValueType: health.ThresholdInt64, Category: health.DefaultThreshold},
 		},
 		Rules: []health.Rule{{
 			Expression:        "true",
@@ -44,8 +44,10 @@ func assertDefinitionPristine(t *testing.T, cd *health.CheckDefinition) {
 	if cd.RequiredSignals[0] != "a" {
 		t.Errorf("RequiredSignals[0] = %q, want %q", cd.RequiredSignals[0], "a")
 	}
-	if got := cd.Thresholds["limit"].PerArchitecture["H100"]; got != 2 {
-		t.Errorf("PerArchitecture[H100] = %v, want 2", got)
+	// Registration normalizes PerArchitecture to the declared ValueType, so
+	// the author's untyped 2 is stored as int64.
+	if got := cd.Thresholds["limit"].PerArchitecture["H100"]; got != int64(2) {
+		t.Errorf("PerArchitecture[H100] = %#v, want int64(2)", got)
 	}
 	if _, ok := cd.Thresholds["added"]; ok {
 		t.Error("Thresholds gained an entry from a caller mutation")

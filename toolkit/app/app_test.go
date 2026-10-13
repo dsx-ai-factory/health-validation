@@ -142,6 +142,7 @@ func customCheck() health.CheckDefinition {
 		Thresholds: map[string]health.ThresholdSpec{
 			"max_count": {
 				Value:       int64(8),
+				ValueType:   health.ThresholdInt64,
 				Category:    health.DefaultThreshold,
 				Description: "Arbitrary test threshold.",
 				Unit:        "count",

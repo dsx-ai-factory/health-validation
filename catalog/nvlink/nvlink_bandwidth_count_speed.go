@@ -53,6 +53,8 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_link_count": {
 				Value:       int64(18),
+				ValueType:   health.ThresholdInt64,
+				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
 				Description: "Expected NVLinks per GPU. GB200 exposes 18 NVLink 5 links.",
 				Unit:        "count",
@@ -64,6 +66,8 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 					"GB300": int64(53125),
 					"H100":  int64(26562),
 				},
+				ValueType:   health.ThresholdInt64,
+				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
 				Description: "Expected per-link NVLink speed in MegaBytes per second. GB200 NVLink 5 at 53125, GB300 at 53125, H100 NVLink 4 at 26562.",
 				Unit:        "MB/s",

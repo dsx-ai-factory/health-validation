@@ -207,7 +207,7 @@ func (cfg *Config) Overrides(cat *catalog.Catalog) (catalog.OverrideSet, error) 
 					name, checkID)
 			}
 
-			value, err := coerce(params[name], thresholdTypeRef(spec))
+			value, err := spec.CoerceInput(params[name])
 			if err != nil {
 				return catalog.OverrideSet{}, fmt.Errorf(
 					"config: check %q parameter %q: %w", checkID, name, err)
@@ -245,91 +245,6 @@ func (cfg *Config) DisabledCheckIDs(cat *catalog.Catalog) ([]string, error) {
 		disabledChecks = append(disabledChecks, checkID)
 	}
 	return disabledChecks, nil
-}
-
-// thresholdTypeRef returns a value of the Go type coerce should validate
-// an override against for spec: spec.Value when the threshold declares
-// one, otherwise the PerArchitecture entry with the lexically first
-// architecture key. Registration does not check that entries share a Go
-// type, so this assumes catalog authors keep them uniform. A threshold
-// with neither — a RequiredOverride threshold with no catalog-authored
-// type hint at all — returns nil, and coerce passes the value through
-// unchecked; there is nothing to check it against.
-func thresholdTypeRef(spec health.ThresholdSpec) any {
-	if spec.Value != nil {
-		return spec.Value
-	}
-	for _, arch := range sortedKeys(spec.PerArchitecture) {
-		return spec.PerArchitecture[arch]
-	}
-	return nil
-}
-
-// coerce converts a value decoded from the config file to the Go type of
-// the threshold's declared default (ref). YAML decodes integers as int
-// and decimals as float64, but thresholds carry concrete types (e.g.
-// int64) and CEL comparisons are type-sensitive, so an override must
-// match the declared type to evaluate correctly.
-func coerce(val, ref any) (any, error) {
-	switch ref.(type) {
-	case int64:
-		switch v := val.(type) {
-		case int:
-			return int64(v), nil
-		case int64:
-			return v, nil
-		case float64:
-			if v != math.Trunc(v) {
-				return nil, fmt.Errorf("expected an integer, got %v", v)
-			}
-			return int64(v), nil
-		default:
-			return nil, fmt.Errorf("expected an integer, got %T", val)
-		}
-	case float64:
-		switch v := val.(type) {
-		case int:
-			return float64(v), nil
-		case int64:
-			return float64(v), nil
-		case float64:
-			return v, nil
-		default:
-			return nil, fmt.Errorf("expected a number, got %T", val)
-		}
-	case bool:
-		if v, ok := val.(bool); ok {
-			return v, nil
-		}
-		return nil, fmt.Errorf("expected a boolean, got %T", val)
-	case string:
-		if v, ok := val.(string); ok {
-			return v, nil
-		}
-		return nil, fmt.Errorf("expected a string, got %T", val)
-	case []string:
-		items, ok := val.([]any)
-		if !ok {
-			return nil, fmt.Errorf("expected a list of strings, got %T", val)
-		}
-		out := make([]string, len(items))
-		for i, item := range items {
-			value, ok := item.(string)
-			if !ok {
-				return nil, fmt.Errorf("expected a list of strings, item %d is %T", i, item)
-			}
-			value = strings.TrimSpace(value)
-			if value == "" {
-				return nil, fmt.Errorf("expected a list of non-empty strings, item %d is empty", i)
-			}
-			out[i] = value
-		}
-		return out, nil
-	default:
-		// Unknown threshold type: pass the value through unchanged and
-		// let evaluation surface any mismatch.
-		return val, nil
-	}
 }
 
 // sortedKeys returns the keys of m in sorted order for deterministic

@@ -1040,6 +1040,7 @@ func requiredThresholdCheck() health.CheckDefinition {
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_first": {
 				Value:            int64(0),
+				ValueType:        health.ThresholdInt64,
 				Category:         health.DefaultThreshold,
 				RequiredOverride: true,
 			},

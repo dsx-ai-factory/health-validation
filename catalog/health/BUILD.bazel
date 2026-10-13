@@ -7,6 +7,7 @@ go_library(
         "action.go",
         "check.go",
         "classification.go",
+        "coerce.go",
         "doc.go",
         "enum.go",
         "errors.go",
@@ -33,7 +34,9 @@ go_test(
     srcs = [
         "action_test.go",
         "cadence_test.go",
+        "check_test.go",
         "classification_test.go",
+        "coerce_test.go",
         "severity_test.go",
         "threshold_test.go",
         "verdict_schema_test.go",

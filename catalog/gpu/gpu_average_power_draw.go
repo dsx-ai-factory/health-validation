@@ -33,13 +33,19 @@ func GPUAveragePowerDraw() health.CheckDefinition {
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"min_power_w": {
-				Value:       float64(65),
+				Value:     float64(65),
+				ValueType: health.ThresholdFloat64,
+				ValueMin:  float64(0),
+				// The ceiling catches a milliwatt reading passed as watts.
+				ValueMax:    float64(100000),
 				Category:    health.DefaultThreshold,
 				Description: "Minimum expected one-second average power draw per GPU. Override per fleet.",
 				Unit:        "W",
 			},
 			"max_power_w": {
 				Value:       float64(1500),
+				ValueType:   health.ThresholdFloat64,
+				ValueMin:    float64(1),
 				Category:    health.DefaultThreshold,
 				Description: "Maximum expected one-second average power draw per GPU. Override per fleet.",
 				Unit:        "W",

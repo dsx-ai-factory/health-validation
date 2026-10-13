@@ -150,6 +150,7 @@ func TestCatalog_RegisterRejectsRequiredFixedThreshold(t *testing.T) {
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_value": {
 				Value:            int64(0),
+				ValueType:        health.ThresholdInt64,
 				Category:         health.FixedThreshold,
 				RequiredOverride: true,
 			},
@@ -167,11 +168,97 @@ func TestCatalog_RegisterRejectsIncompletePerArchitecture(t *testing.T) {
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_value": {
 				PerArchitecture: map[string]any{"GB200": int64(1)},
+				ValueType:       health.ThresholdInt64,
 				Category:        health.DefaultThreshold,
 			},
 		},
 	})
 	if err == nil || !strings.Contains(err.Error(), "GB300") {
 		t.Fatalf("Register error = %v, want missing GB300 named", err)
+	}
+}
+
+// Normalization is what lets authors write bare literals: the stored
+// definition must carry the declared type, since CEL is handed these
+// values directly.
+func TestCatalog_RegisterNormalizesThresholdValues(t *testing.T) {
+	cat := NewEmpty()
+	if err := cat.Register(health.CheckDefinition{
+		ID: "normalize_me",
+		Thresholds: map[string]health.ThresholdSpec{
+			"expected_count": {
+				Value:           4,
+				PerArchitecture: map[string]any{"GB200": 8},
+				ValueType:       health.ThresholdInt64,
+				ValueMin:        1,
+				Category:        health.DefaultThreshold,
+			},
+			"min_power_w": {
+				Value:     65,
+				ValueType: health.ThresholdFloat64,
+				Category:  health.DefaultThreshold,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	cd, err := cat.Get("normalize_me")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	count := cd.Thresholds["expected_count"]
+	if count.Value != int64(4) {
+		t.Errorf("Value = %#v, want int64(4)", count.Value)
+	}
+	if count.PerArchitecture["GB200"] != int64(8) {
+		t.Errorf("PerArchitecture[GB200] = %#v, want int64(8)", count.PerArchitecture["GB200"])
+	}
+	if count.ValueMin != int64(1) {
+		t.Errorf("ValueMin = %#v, want int64(1)", count.ValueMin)
+	}
+	if power := cd.Thresholds["min_power_w"]; power.Value != float64(65) {
+		t.Errorf("min_power_w = %#v, want float64(65)", power.Value)
+	}
+}
+
+// A struct copy shares its maps with the caller, so normalization has to
+// rebuild them rather than rewrite the definition the caller still holds.
+func TestCatalog_RegisterDoesNotMutateCallerThresholds(t *testing.T) {
+	perArch := map[string]any{"GB200": 8}
+	cd := health.CheckDefinition{
+		ID: "no_mutate",
+		Thresholds: map[string]health.ThresholdSpec{
+			"expected_count": {
+				Value:           4,
+				PerArchitecture: perArch,
+				ValueType:       health.ThresholdInt64,
+				Category:        health.DefaultThreshold,
+			},
+		},
+	}
+
+	if err := NewEmpty().Register(cd); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	if got := cd.Thresholds["expected_count"].Value; got != 4 {
+		t.Errorf("caller Value = %#v, want the original int 4", got)
+	}
+	if got := perArch["GB200"]; got != 8 {
+		t.Errorf("caller PerArchitecture[GB200] = %#v, want the original int 8", got)
+	}
+}
+
+func TestCatalog_RegisterRejectsUndeclaredThresholdType(t *testing.T) {
+	err := NewEmpty().Register(health.CheckDefinition{
+		ID: "untyped_threshold",
+		Thresholds: map[string]health.ThresholdSpec{
+			"expected_count": {Value: int64(4), Category: health.DefaultThreshold},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "ValueType is required") {
+		t.Fatalf("Register error = %v, want an undeclared-type rejection", err)
 	}
 }
