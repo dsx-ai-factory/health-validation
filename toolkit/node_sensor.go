@@ -24,7 +24,7 @@ type NodeSensor struct {
 //
 // For production:
 //
-//	node := toolkit.NewNodeSensor(toolkit.NvidiaSMI())
+//	node := toolkit.NewNodeSensor(backend)
 //
 // For testing:
 //

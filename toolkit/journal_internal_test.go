@@ -39,7 +39,7 @@ func linkFlapMatcher(since string) journalMatcher {
 		args:    []string{"--since=" + since, "--output=short-full"},
 		subject: "link state",
 		match:   linkFlapPattern.MatchString,
-		parse:   func(lines []string) health.Measurement { return ParseLinkFlaps(since, lines) },
+		parse:   func(lines []string) health.Measurement { return parseLinkFlaps(since, lines) },
 		errored: func(err error) health.Measurement {
 			return infiniband.ErroredLinkFlap(since, err, infiniband.MeasurementSignals...)
 		},

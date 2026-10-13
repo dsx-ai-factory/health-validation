@@ -26,19 +26,3 @@ type IBBackend interface {
 	// what fails the dependent checks instead of silently skipping them.
 	Errored(err error) []health.Measurement
 }
-
-// MockIB returns an IB backend that emits the provided measurements and no
-// errored measurements.
-func MockIB(measurements ...health.Measurement) IBBackend {
-	return mockIBBackend{measurements: measurements}
-}
-
-type mockIBBackend struct {
-	measurements []health.Measurement
-}
-
-func (m mockIBBackend) MeasureIB(context.Context) ([]health.Measurement, error) {
-	return m.measurements, nil
-}
-
-func (mockIBBackend) Errored(error) []health.Measurement { return nil }

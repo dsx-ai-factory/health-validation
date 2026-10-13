@@ -9,7 +9,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
-	xidparse "github.com/dsx-ai-factory/health-validation/toolkit/xid"
+	xidparse "github.com/dsx-ai-factory/health-validation/toolkit/internal/xid"
 )
 
 // XidBackend is a single data source for NVRM Xid events. The concrete

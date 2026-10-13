@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/toolkit/xid"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/xid"
 )
 
 func TestParseXid_FullLine(t *testing.T) {

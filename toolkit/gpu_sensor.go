@@ -20,7 +20,7 @@ type GPUSensor struct {
 //
 // For production:
 //
-//	sensor := toolkit.NewGPUSensor(toolkit.NvidiaSMI())
+//	sensor := toolkit.NewGPUSensor(backend)
 //
 // For testing:
 //

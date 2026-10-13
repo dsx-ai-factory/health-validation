@@ -150,7 +150,7 @@ func (b *rdmaLinkFlapBackend) Measure(ctx context.Context) ([]health.Measurement
 		args:    []string{"--since=" + start, "--output=short-full"},
 		subject: "link state",
 		match:   linkFlapPattern.MatchString,
-		parse:   func(lines []string) health.Measurement { return ParseLinkFlaps(start, lines) },
+		parse:   func(lines []string) health.Measurement { return parseLinkFlaps(start, lines) },
 		errored: func(err error) health.Measurement {
 			return infiniband.ErroredLinkFlap(start, err, infiniband.MeasurementSignals...)
 		},
@@ -191,5 +191,5 @@ type mockRDMALinkFlapBackend struct {
 }
 
 func (m *mockRDMALinkFlapBackend) Measure(context.Context) ([]health.Measurement, error) {
-	return []health.Measurement{ParseLinkFlaps(sinceBoot, m.lines)}, nil
+	return []health.Measurement{parseLinkFlaps(sinceBoot, m.lines)}, nil
 }

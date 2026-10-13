@@ -39,7 +39,7 @@ go_library(
         "//catalog/node",
         "//catalog/nvlink",
         "//catalog/xid",
-        "//toolkit/xid",
+        "//toolkit/internal/xid",
     ],
 )
 
@@ -50,6 +50,7 @@ go_test(
         "cpu_parity_internal_test.go",
         "cpu_sensor_test.go",
         "example_test.go",
+        "export_test.go",
         "gpu_sensor_test.go",
         "journal_internal_test.go",
         "lazy_backend_test.go",
