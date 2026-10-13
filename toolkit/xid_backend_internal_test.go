@@ -112,7 +112,7 @@ func TestJournalctlBackendMeasure(t *testing.T) {
 				tt.fake.readErr = exitOne(t)
 			}
 
-			b := &journalctlBackend{run: tt.fake.run}
+			b := &journalctlBackend{run: cannedRun(tt.fake.run)}
 			ms, err := b.Measure(context.Background())
 			if err != nil {
 				t.Fatalf("Measure returned error: %v", err)
@@ -147,10 +147,10 @@ func TestJournalctlBackendMeasure(t *testing.T) {
 // from the complete journal rather than applying a domain filter.
 func TestJournalReadableProbeArgs(t *testing.T) {
 	var gotArgs []string
-	b := &journalctlBackend{run: func(_ context.Context, args ...string) ([]byte, error) {
+	b := &journalctlBackend{run: cannedRun(func(_ context.Context, args ...string) ([]byte, error) {
 		gotArgs = args
 		return []byte("entry\n"), nil
-	}}
+	})}
 	if err := journalReadable(context.Background(), b.run); err != nil {
 		t.Fatalf("journalReadable: %v", err)
 	}
@@ -165,10 +165,10 @@ func TestJournalReadableProbeArgs(t *testing.T) {
 // entries and does not rely on journalctl's optional --grep support.
 func TestXidJournalArgs(t *testing.T) {
 	var gotArgs []string
-	b := &journalctlBackend{run: func(_ context.Context, args ...string) ([]byte, error) {
+	b := &journalctlBackend{run: cannedRun(func(_ context.Context, args ...string) ([]byte, error) {
 		gotArgs = args
 		return []byte("NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3\n"), nil
-	}}
+	})}
 	if _, err := b.Measure(context.Background()); err != nil {
 		t.Fatalf("Measure: %v", err)
 	}

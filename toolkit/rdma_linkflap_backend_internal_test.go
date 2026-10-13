@@ -74,13 +74,13 @@ func TestRDMALinkFlapBackend_Window(t *testing.T) {
 				}
 			}
 			b := &rdmaLinkFlapBackend{
-				run: func(_ context.Context, args ...string) ([]byte, error) {
+				run: cannedRun(func(_ context.Context, args ...string) ([]byte, error) {
 					if slices.Contains(args, "-n") {
 						return []byte("some journal entry\n"), nil
 					}
 					gotArgs = args
 					return nil, nil // success, no matches
-				},
+				}),
 				now:        func() time.Time { return fixedNow },
 				uptime:     uptimeFn,
 				lookback:   tt.lookback,
@@ -148,9 +148,9 @@ func TestRDMALinkFlapBackend_InvalidOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := JournalctlRDMALinkFlap(tt.opt).(*rdmaLinkFlapBackend)
-			b.run = func(_ context.Context, _ ...string) ([]byte, error) {
+			b.run = func(_ context.Context, _ func(string) bool, _ ...string) (journalRunResult, error) {
 				t.Fatal("journalctl must not run with an invalid option")
-				return nil, nil
+				return journalRunResult{}, nil
 			}
 
 			ms, err := b.Measure(context.Background())
