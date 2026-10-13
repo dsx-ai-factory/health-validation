@@ -154,12 +154,12 @@ This repo is a **hardware health check catalog and evaluation engine** for NVIDI
 
 #### Module layout
 
-The repo is **four Go modules**, joined for local development by a root `go.work` (the root `go.mod` is an anchor only — it holds no packages). Only `catalog` and `toolkit` are independently versioned and published; `collect/` and `agentkit/` are in-repo only. All four are resolved together by Gazelle, so a pin in any of them can change the versions linked into the CLI:
+The repo is **four Go modules**, joined for local development by a root `go.work` (the root `go.mod` is an anchor only — it holds no packages). `catalog`, `toolkit`, and `collect` are independently versioned and published; `agentkit/` is in-repo only. All four are resolved together by Gazelle, so a pin in any of them can change the versions linked into the CLI:
 
 - **`catalog/`** (`…/health-validation/catalog`) — the check catalog and evaluation engine. Self-contained: `health/` (shared vocabulary), `internal/{celeval,evaluation}/`, the `catalog` package at the module root, the per-domain check packages (`cpu/`, `gpu/`, `node/`, `nvlink/`, `xid/`), and the catalog-only codegen/dump binaries under `cmd/`. No dependency on the toolkit.
 - **`toolkit/`** (`…/health-validation/toolkit`) — sensors, the NVML backend (`nvml/`), and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on the catalog module.** Resolved from `../catalog` via a `replace` in `toolkit/go.mod` until catalog is tagged and published.
 
-The dependency direction is strict: `catalog → (nothing)`, `toolkit → catalog`. Never add a catalog import of toolkit — it would create a module cycle. (Tests are bound by the same rule: a catalog test that needs sensor-style input builds its measurement structs directly rather than importing the toolkit.) Each module is tidied and version-tagged on its own (`catalog/vX.Y.Z`, `toolkit/vX.Y.Z`).
+The dependency direction is strict: `catalog → (nothing)`, `toolkit → catalog, collect`. Never add a catalog import of toolkit — it would create a module cycle. (Tests are bound by the same rule: a catalog test that needs sensor-style input builds its measurement structs directly rather than importing the toolkit.) Each module is tidied and version-tagged on its own (`catalog/vX.Y.Z`, `toolkit/vX.Y.Z`, `collect/vX.Y.Z`).
 
 #### Package roles
 
