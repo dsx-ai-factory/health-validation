@@ -4,6 +4,7 @@
 package health_test
 
 import (
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -26,6 +27,7 @@ func TestCoerceInput(t *testing.T) {
 		{name: "bare int literal to float64", value: 1200, valueType: health.ThresholdFloat64, want: float64(1200)},
 		{name: "int64 to float64", value: int64(1200), valueType: health.ThresholdFloat64, want: float64(1200)},
 		{name: "float64 to float64", value: 1200.5, valueType: health.ThresholdFloat64, want: 1200.5},
+		{name: "largest exactly-representable integer to float64", value: int64(1 << 53), valueType: health.ThresholdFloat64, want: float64(1 << 53)},
 		{name: "bool", value: true, valueType: health.ThresholdBool, want: true},
 		{name: "string", value: "P0", valueType: health.ThresholdString, want: "P0"},
 	}
@@ -56,6 +58,10 @@ func TestCoerceInputRejects(t *testing.T) {
 		{name: "string to float64", value: "not-a-number", valueType: health.ThresholdFloat64, wantErr: "expected a number, got string"},
 		{name: "string to int64", value: "four", valueType: health.ThresholdInt64, wantErr: "expected an integer, got string"},
 		{name: "fractional float to int64", value: 3.5, valueType: health.ThresholdInt64, wantErr: "expected an integer, got 3.5"},
+		// float64 cannot hold an odd integer above 2^53, and rounding it
+		// would enforce a threshold the operator never wrote.
+		{name: "lossy integer to float64", value: int64(1<<53 + 1), valueType: health.ThresholdFloat64, wantErr: "cannot be represented exactly as a float64"},
+		{name: "largest int64 to float64", value: int64(math.MaxInt64), valueType: health.ThresholdFloat64, wantErr: "cannot be represented exactly as a float64"},
 		{name: "int to bool", value: 1, valueType: health.ThresholdBool, wantErr: "expected a boolean, got int"},
 		{name: "int to string", value: 1, valueType: health.ThresholdString, wantErr: "expected a string, got int"},
 		// An undeclared type must fail rather than pass the value along.
@@ -70,6 +76,54 @@ func TestCoerceInputRejects(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// YAML resolves .inf and .nan to float64, so both reach coercion. An
+// infinity states an unbounded tolerance and is kept; NaN states nothing
+// and compares false against every bound and rule.
+func TestCoerceInputNonFinite(t *testing.T) {
+	ints := health.ThresholdSpec{ValueType: health.ThresholdInt64}
+	floats := health.ThresholdSpec{ValueType: health.ThresholdFloat64}
+
+	// Saturating keeps the rule disabled. Converting would yield the
+	// opposite extreme and make it fire on every measurement instead.
+	for _, tt := range []struct {
+		value any
+		want  any
+	}{
+		{value: math.Inf(1), want: int64(math.MaxInt64)},
+		{value: math.Inf(-1), want: int64(math.MinInt64)},
+		{value: math.Inf(1), want: math.Inf(1)},
+	} {
+		spec := ints
+		if _, isFloat := tt.want.(float64); isFloat {
+			spec = floats
+		}
+		got, err := spec.CoerceInput(tt.value)
+		if err != nil {
+			t.Errorf("CoerceInput(%v) as %s = %v, want %#v", tt.value, spec.ValueType, err, tt.want)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("CoerceInput(%v) as %s = %#v, want %#v", tt.value, spec.ValueType, got, tt.want)
+		}
+	}
+
+	for _, tt := range []struct {
+		value   any
+		wantErr string
+		spec    health.ThresholdSpec
+	}{
+		{spec: floats, value: math.NaN(), wantErr: "expected a number, got NaN"},
+		{spec: ints, value: math.NaN(), wantErr: "expected an integer, got NaN"},
+		{spec: ints, value: 1e300, wantErr: "out of range for int64"},
+	} {
+		_, err := tt.spec.CoerceInput(tt.value)
+		if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+			t.Errorf("CoerceInput(%v) as %s error = %v, want %q",
+				tt.value, tt.spec.ValueType, err, tt.wantErr)
+		}
 	}
 }
 

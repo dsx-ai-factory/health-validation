@@ -29,8 +29,21 @@ func coerceThresholdValue(val any, tt ThresholdType) (any, error) {
 		case int64:
 			return v, nil
 		case float64:
+			// An infinity states intent — an unbounded tolerance — so
+			// saturate. Converting instead yields the opposite extreme and
+			// inverts the rule. A finite value out of range indicates
+			// something went wrong.
+			if math.IsInf(v, 0) {
+				if v > 0 {
+					return int64(math.MaxInt64), nil
+				}
+				return int64(math.MinInt64), nil
+			}
 			if v != math.Trunc(v) {
 				return nil, fmt.Errorf("expected an integer, got %v", v)
+			}
+			if v < math.MinInt64 || v >= math.MaxInt64 {
+				return nil, fmt.Errorf("integer %v is out of range for int64", v)
 			}
 			return int64(v), nil
 		default:
@@ -39,12 +52,18 @@ func coerceThresholdValue(val any, tt ThresholdType) (any, error) {
 	case ThresholdFloat64:
 		switch v := val.(type) {
 		case int:
-			return float64(v), nil
+			return exactFloat64(int64(v))
 		case int32:
 			return float64(v), nil
 		case int64:
-			return float64(v), nil
+			return exactFloat64(v)
 		case float64:
+			// NaN compares false against everything, disabling a rule in
+			// both directions; no threshold means that. An infinity does —
+			// an unbounded tolerance — so it passes.
+			if math.IsNaN(v) {
+				return nil, fmt.Errorf("expected a number, got NaN")
+			}
 			return v, nil
 		default:
 			return nil, fmt.Errorf("expected a number, got %T", val)
@@ -66,6 +85,18 @@ func coerceThresholdValue(val any, tt ThresholdType) (any, error) {
 	default:
 		return nil, fmt.Errorf("unknown threshold value type %s", tt)
 	}
+}
+
+// exactFloat64 converts v only when float64 holds it exactly. Above 2^53
+// the representable integers thin out, and rounding would enforce a
+// threshold the operator never wrote. The upper comparison keeps the
+// round-trip itself in range, since float64(math.MaxInt64) rounds to 2^63.
+func exactFloat64(v int64) (any, error) {
+	f := float64(v)
+	if f >= math.MaxInt64 || int64(f) != v {
+		return nil, fmt.Errorf("integer %d cannot be represented exactly as a float64", v)
+	}
+	return f, nil
 }
 
 // coerceStringList accepts both shapes a string list arrives in: []any
