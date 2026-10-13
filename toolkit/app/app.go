@@ -40,10 +40,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/version"
+	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics"
 )
 
@@ -287,6 +292,8 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "collect":
+		return a.collectCommand(args[1:], stdout, stderr)
 	case "run":
 		return a.runCommand(args[1:], stdout, stderr)
 	case "version":
@@ -389,6 +396,27 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
+	runnable, err := cat.RunnableChecks(catalog.EvaluationOptions{Cadence: cadence})
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
+		return exitError
+	}
+	sensors, err := a.sensors(timeout, requiredFor(runnable))
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
+		return exitError
+	}
+	verdict, produced, code := evaluate(cat, toolkit.CollectionOptions{
+		Cadence: cadence,
+		Timeout: timeout,
+	}, a.prog, resolvedNodeID, stdout, stderr, sensors...)
+	if produced {
+		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
+	}
+	return code
+}
+
+func (a *App) sensors(timeout time.Duration, required requiredSignals) ([]toolkit.Sensor, error) {
 	gpu := a.gpu
 	if gpu == nil {
 		gpu = a.host.gpuBackend()
@@ -429,25 +457,12 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		sensors = append(sensors, toolkit.NewCPUSensor(a.cpu))
 	}
 	builtinSources, builtinAdapters := a.builtinCollect()
-	runnable, err := cat.RunnableChecks(catalog.EvaluationOptions{Cadence: cadence})
+	collectSensors, err := a.collectSensors(timeout, builtinSources, builtinAdapters, required)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
-		return exitError
-	}
-	collectSensors, err := a.collectSensors(timeout, builtinSources, builtinAdapters, requiredFor(runnable))
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
-		return exitError
+		return nil, err
 	}
 	sensors = append(sensors, collectSensors...)
-	verdict, produced, code := evaluate(cat, toolkit.CollectionOptions{
-		Cadence: cadence,
-		Timeout: timeout,
-	}, a.prog, resolvedNodeID, stdout, stderr, sensors...)
-	if produced {
-		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
-	}
-	return code
+	return sensors, nil
 }
 
 // publishMetrics pushes the verdict to the configured OTLP endpoint. It is a
@@ -527,7 +542,154 @@ func (a *App) resolveNodeID(value string, supplied bool) (string, error) {
 
 // usage returns the one-line usage banner for the given program name.
 func usage(prog string) string {
-	return "usage: " + prog + " <run|version> [flags]"
+	return "usage: " + prog + " <collect|run|version> [flags]"
+}
+
+var categoryBySensor = map[string]health.Category{
+	"cpu":           health.CPU,
+	"gpu":           health.GPU,
+	"infiniband":    health.InfiniBand,
+	"node":          health.Node,
+	"nvlink":        health.NVLink,
+	"rdma_linkflap": health.InfiniBand,
+	"xid":           health.Xid,
+}
+
+// collectCommand runs only the sensors selected by checks listed in config.
+func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet(a.prog+" collect", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "", "path to a YAML config listing checks to collect")
+	nodeID := fs.String("node-id", a.nodeID,
+		"identifier of the node under test, the target of host-wide observations (overrides the configured default or system hostname)")
+	if err := fs.Parse(args); err != nil {
+		return exitError
+	}
+	if fs.NArg() != 0 {
+		fmt.Fprintf(stderr, "%s: unexpected argument %q\n", a.prog, fs.Arg(0))
+		return exitError
+	}
+	nodeIDSet := a.nodeIDSet
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "node-id" {
+			nodeIDSet = true
+		}
+	})
+	resolvedNodeID, err := a.resolveNodeID(*nodeID, nodeIDSet)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	cfg, err := loadOptionalConfig(strings.TrimSpace(*configPath))
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	cat, timeout, err := buildCatalog(cfg, a.customChecks, "", health.TenantGuest)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	categories, err := collectionCategories(cat, cfg)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	defer a.host.close()
+	// Whole categories, not runnable signals: a batch may be evaluated later
+	// under a different cadence or config.
+	required := make(requiredSignals, len(categories))
+	for category := range categories {
+		required[category] = nil
+	}
+	allSensors, err := a.sensors(timeout, required)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
+		return exitError
+	}
+	sensors, err := collectionSensors(allSensors, categories)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	batch, err := collectionOutput(uuid.NewString(), resolvedNodeID, toolkit.CollectMeasurementsWithTimeout(timeout, sensors...))
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: prepare observation batch: %v\n", a.prog, err)
+		return exitError
+	}
+	encoded, err := protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(batch)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: encode observation batch: %v\n", a.prog, err)
+		return exitError
+	}
+	if _, err := fmt.Fprintln(stdout, string(encoded)); err != nil {
+		fmt.Fprintf(stderr, "%s: write observation batch: %v\n", a.prog, err)
+		return exitError
+	}
+	return exitOK
+}
+
+func collectionCategories(cat *catalog.Catalog, cfg *Config) (map[health.Category]bool, error) {
+	disabled := make(map[string]bool, len(cfg.DisabledChecks))
+	for _, id := range cfg.DisabledChecks {
+		disabled[strings.TrimSpace(id)] = true
+	}
+	wanted := make(map[health.Category]bool)
+	if len(cfg.Checks) == 0 {
+		for _, check := range cat.List(catalog.Filter{}) {
+			if !disabled[check.ID] {
+				wanted[check.Category] = true
+			}
+		}
+	} else {
+		for _, checkID := range sortedKeys(cfg.Checks) {
+			if disabled[checkID] {
+				continue
+			}
+			check, err := cat.Get(checkID)
+			if err != nil {
+				return nil, err
+			}
+			wanted[check.Category] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, fmt.Errorf("config selects no checks to collect")
+	}
+	return wanted, nil
+}
+
+func collectionSensors(sensors []toolkit.Sensor, categories map[health.Category]bool) ([]toolkit.Sensor, error) {
+	selected := make([]toolkit.Sensor, 0, len(categories))
+	covered := make(map[health.Category]bool)
+	for _, sensor := range sensors {
+		category, ok := categoryBySensor[sensor.Name()]
+		if ok && categories[category] {
+			selected = append(selected, sensor)
+			covered[category] = true
+		}
+	}
+	for category := range categories {
+		if !covered[category] {
+			return nil, fmt.Errorf("no sensor available for %s checks", category)
+		}
+	}
+	return selected, nil
+}
+
+// collectionOutput builds the ObservationBatch the collect command emits,
+// attributing each sensor's observations to "toolkit.<sensor>". Host-wide
+// measurements target nodeID.
+func collectionOutput(collectionID, nodeID string, groups []toolkit.SensorMeasurements) (*observation.ObservationBatch, error) {
+	batch := &observation.ObservationBatch{CollectionId: collectionID}
+	for _, group := range groups {
+		exported, err := observations.FromMeasurements(group.Sensor, nodeID, group.CollectedAt, group.Measurements...)
+		if err != nil {
+			return nil, fmt.Errorf("%s sensor: %w", group.Sensor, err)
+		}
+		batch.Observations = append(batch.Observations, exported...)
+	}
+	return batch, observation.ValidateBatch(batch)
 }
 
 // loadOptionalConfig loads the config at path, or returns the zero config when

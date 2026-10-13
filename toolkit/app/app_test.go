@@ -5,19 +5,129 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
+
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
+	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
+	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 )
 
 const testNodeID = "node-123"
+
+func TestCollectionCategoriesWithoutConfigIncludesEveryBuiltinDomain(t *testing.T) {
+	cat := catalog.New()
+	categories, err := collectionCategories(cat, &Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(categories) != len(cat.Categories()) {
+		t.Fatalf("categories = %v, want every built-in domain %v", categories, cat.Categories())
+	}
+}
+
+func TestCollectionCategories(t *testing.T) {
+	categories, err := collectionCategories(catalog.New(), &Config{
+		Checks: map[string]map[string]any{
+			"gpu_count":     {},
+			"nvlink_active": {},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(categories) != 2 || !categories[health.Node] || !categories[health.NVLink] {
+		t.Fatalf("categories = %v, want node and nvlink", categories)
+	}
+	if categories[health.GPU] {
+		t.Fatal("unselected GPU category included")
+	}
+}
+
+func TestCollectionOutputEmitsObservationBatch(t *testing.T) {
+	partial := gpu.GPUMeasurement{GPUID: "GPU-0", PowerLimitW: 700}
+	partial.AddError(errors.New("pstate unavailable"), gpu.SignalGPUPstate)
+	batch, err := collectionOutput("cycle-1", testNodeID, []toolkit.SensorMeasurements{
+		{Sensor: "gpu", Measurements: []health.Measurement{partial}},
+		{Sensor: "cpu", Measurements: []health.Measurement{cpu.CPUMeasurement{PossibleCPUCount: 1}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if batch.GetCollectionId() != "cycle-1" {
+		t.Errorf("collection_id = %q", batch.GetCollectionId())
+	}
+	bySignal := make(map[string]*observation.Observation)
+	for _, o := range batch.GetObservations() {
+		bySignal[o.GetSignalId()] = o
+	}
+	if o := bySignal["gpu.power_limit_w"]; o.GetValue().GetDoubleValue() != 700 || o.GetSource() != "toolkit.gpu" {
+		t.Errorf("power limit = %v", o)
+	}
+	if bySignal["gpu.gpu_pstate"].GetCollectionError() == nil {
+		t.Errorf("pstate = %v, want a collection error", bySignal["gpu.gpu_pstate"])
+	}
+	if o := bySignal["cpu.possible_cpu_count"]; o.GetValue().GetIntValue() != 1 || o.GetTarget().GetNode().GetId() != testNodeID {
+		t.Errorf("possible CPU count = %v, want 1 targeting node %q", o, testNodeID)
+	}
+}
+
+func TestCollectCommandWritesObservationBatch(t *testing.T) {
+	a := New().WithProgramName("test")
+	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	a.WithGPUBackend(toolkit.MockGPU(gpu.GPUMeasurement{GPUID: "GPU-0", PowerLimitW: 700, EnforcedPowerLimitW: 700}))
+	a.WithXidBackend(xidSpyBackend{called: new(bool)})
+	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 1}))
+
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"collect", "--node-id", testNodeID}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("collect exit = %d; stderr = %q", code, stderr.String())
+	}
+	var batch observation.ObservationBatch
+	if err := protojson.Unmarshal(stdout.Bytes(), &batch); err != nil {
+		t.Fatalf("stdout is not an ObservationBatch: %v\n%s", err, stdout.String())
+	}
+	if err := observation.ValidateBatch(&batch); err != nil {
+		t.Fatal(err)
+	}
+	if batch.GetCollectionId() == "" {
+		t.Fatalf("missing collection ID:\n%s", stdout.String())
+	}
+	for _, want := range []func(*observation.Observation) bool{
+		func(o *observation.Observation) bool {
+			return o.GetSignalId() == "gpu.power_limit_w" && o.GetValue().GetDoubleValue() == 700
+		},
+		func(o *observation.Observation) bool {
+			return o.GetSignalId() == "cpu.numa_node_count" && o.GetTarget().GetNode().GetId() == testNodeID
+		},
+	} {
+		if !slices.ContainsFunc(batch.GetObservations(), want) {
+			t.Errorf("output is missing an expected observation:\n%s", stdout.String())
+		}
+	}
+
+	// The written batch rebuilds the measurements an evaluate step needs.
+	var rebuilt *gpu.GPUMeasurement
+	for _, m := range observations.ToMeasurements(batch.GetObservations()) {
+		if g, ok := m.(gpu.GPUMeasurement); ok {
+			rebuilt = &g
+		}
+	}
+	if rebuilt == nil || rebuilt.GPUID != "GPU-0" || rebuilt.PowerLimitW != 700 || len(rebuilt.Errors()) != 0 {
+		t.Fatalf("rebuilt GPU measurement = %+v", rebuilt)
+	}
+}
 
 // customCheck is a minimal node check used to exercise the WithChecks SPI.
 func customCheck() health.CheckDefinition {

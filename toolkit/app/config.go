@@ -19,15 +19,17 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 )
 
-// Config is the operator-supplied configuration for `health-validation run`.
+// Config is the operator-supplied configuration for health-validation.
 //
-// Each entry under Checks maps a check ID to a set of threshold
-// name/value pairs that override the catalog defaults for that check.
-// DisabledChecks lists check IDs to remove from the run entirely; they are
-// reported as skipped with [health.CheckDisabled] and excluded from the
-// node-level severity. CollectionTimeoutSeconds optionally bounds each
-// sensor's collection (0 = use the built-in default). Metrics optionally
-// pushes the resulting verdict to an OTLP/HTTP endpoint:
+// For `run`, each entry under Checks maps a check ID to threshold overrides;
+// unlisted checks remain enabled. For `collect`, the listed check IDs select
+// which sensors run; an empty list selects every registered check. Threshold
+// values are validated but not evaluated during collection.
+// DisabledChecks lists check IDs to exclude. During `run`, they are reported
+// as skipped with [health.CheckDisabled] and excluded from the node-level
+// severity. CollectionTimeoutSeconds optionally bounds each sensor's
+// collection (0 = use the built-in default). Metrics optionally pushes the
+// verdict `run` produces to an OTLP/HTTP endpoint:
 //
 //	collection_timeout_seconds: 60
 //	checks:
@@ -202,7 +204,7 @@ func (cfg *Config) Overrides(cat *catalog.Catalog) (catalog.OverrideSet, error) 
 					name, checkID)
 			}
 
-			value, err := coerce(params[name], spec.Value)
+			value, err := coerce(params[name], thresholdTypeRef(spec))
 			if err != nil {
 				return catalog.OverrideSet{}, fmt.Errorf(
 					"config: check %q parameter %q: %w", checkID, name, err)
@@ -240,6 +242,24 @@ func (cfg *Config) DisabledCheckIDs(cat *catalog.Catalog) ([]string, error) {
 		disabledChecks = append(disabledChecks, checkID)
 	}
 	return disabledChecks, nil
+}
+
+// thresholdTypeRef returns a value of the Go type coerce should validate
+// an override against for spec: spec.Value when the threshold declares
+// one, otherwise the PerArchitecture entry with the lexically first
+// architecture key. Registration does not check that entries share a Go
+// type, so this assumes catalog authors keep them uniform. A threshold
+// with neither — a RequiredOverride threshold with no catalog-authored
+// type hint at all — returns nil, and coerce passes the value through
+// unchecked; there is nothing to check it against.
+func thresholdTypeRef(spec health.ThresholdSpec) any {
+	if spec.Value != nil {
+		return spec.Value
+	}
+	for _, arch := range sortedKeys(spec.PerArchitecture) {
+		return spec.PerArchitecture[arch]
+	}
+	return nil
 }
 
 // coerce converts a value decoded from the config file to the Go type of

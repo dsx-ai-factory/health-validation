@@ -44,6 +44,19 @@ func TestCPUDomainDefaultsToCollectSensor(t *testing.T) {
 	}
 }
 
+func TestCollectSkipsUnselectedBridgeSources(t *testing.T) {
+	source := &collectAppSensor{}
+	a := New().WithCollect(source).WithCollectAdapters(customCountAdapter())
+	builtinSources, builtinAdapters := a.builtinCollect()
+	sensors, err := a.collectSensors(time.Second, builtinSources, builtinAdapters, requiredSignals{health.GPU: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sensors) != 0 || len(source.cycles) != 0 {
+		t.Fatalf("unselected bridge sources ran: sensors=%d, cycles=%d", len(sensors), len(source.cycles))
+	}
+}
+
 func TestLegacyOnlyCollectionIsUnchangedByCollectPlumbing(t *testing.T) {
 	a := cadenceRunApp().WithNodeID(testNodeID).
 		WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}))
