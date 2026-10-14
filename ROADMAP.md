@@ -33,8 +33,9 @@ Improve how findings explain a node's condition and guide the next evaluation.
 - **Faults after recovery.** Define how evaluation distinguishes an active Xid
   condition from a historical event after a successful GPU reset
   ([#133](https://github.com/dsx-ai-factory/health-validation/issues/133)).
-- **Action guidance.** Document what each recommended action means, when it
-  applies, and where operators can find concrete next steps
+- **Action guidance.** Improve the
+  [existing remediation guidance](docs/REMEDIATION.md) with concrete next steps
+  and consistent advice on choosing an action when several checks fail
   ([#58](https://github.com/dsx-ai-factory/health-validation/issues/58)).
 - **Collection failures.** Explain when several findings share an underlying
   collection failure, while retaining evidence of the failure. A proposed
@@ -78,8 +79,8 @@ its prerequisites and limits clear.
   topologies before expanding coverage claims. The B200 applicability proposal
   remains a draft in
   [PR #122](https://github.com/dsx-ai-factory/health-validation/pull/122).
-- **Environment-specific guidance.** Document useful checks and practices that
-  do not belong in generic collection. Explain their required configuration,
+- **Environment-specific guidance.** Document operational checks whose expected
+  results depend on customer configuration. Explain required inputs,
   applicability, results, and next steps
   ([#57](https://github.com/dsx-ai-factory/health-validation/issues/57)).
 - **Evaluation without host access.** Explore which checks can use out-of-band
