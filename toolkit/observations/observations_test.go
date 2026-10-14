@@ -37,6 +37,34 @@ func TestToMeasurementsGPU(t *testing.T) {
 	}
 }
 
+// A source-wide timeout has no GPU identity. It must fail gpu_id with the same
+// timeout, not a missing-observation error, so checks still recommend retrying
+// collection as the legacy sensor's errored measurement does.
+func TestToMeasurementsSourceTimeoutRecommendsRetry(t *testing.T) {
+	var observations []*observation.Observation
+	for _, signal := range MappedSignalsFor(health.GPU) {
+		o := failedObservation(signal, &observation.CollectionError{Category: observation.CollectionErrorCategoryTimeout})
+		o.Target = nil
+		observations = append(observations, o)
+	}
+
+	m := only[gpu.GPUMeasurement](t, ToMeasurements(observations))
+	if !slices.Contains(failedSignals(m), gpu.SignalGPUID) {
+		t.Fatalf("failed signals = %v, want gpu_id", failedSignals(m))
+	}
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"))
+	if err := cat.Register(gpu.GPUPowerState()); err != nil {
+		t.Fatal(err)
+	}
+	verdict, err := cat.EvaluateAll(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := verdict.CheckResults[0].RecommendedAction; !got.Equal(health.Drain(health.RemediationActionRetryCollection)) {
+		t.Fatalf("action = %+v, want retry collection", got)
+	}
+}
+
 func TestToMeasurementsKeepsPerSignalFailure(t *testing.T) {
 	observations := replace(healthyGPUObservations(), gpusignals.PerformanceState.ID(),
 		failedObservation(gpusignals.PerformanceState.ID(), &observation.CollectionError{
@@ -98,6 +126,25 @@ func TestToMeasurementsFailsNoValueOutsideNeutralSignals(t *testing.T) {
 	m := only[gpu.GPUMeasurement](t, ToMeasurements(observations))
 	if got := failedSignals(m); !slices.Equal(got, []string{gpu.SignalGPUPstate}) {
 		t.Fatalf("failed signals = %v", got)
+	}
+}
+
+// The unknown-pstate sentinel (32) must fail the signal like the legacy
+// sensor, not reach the threshold as a real P32.
+func TestToMeasurementsFailsUnknownPerformanceState(t *testing.T) {
+	for _, state := range []int64{-1, 16, 32} {
+		observations := replace(healthyGPUObservations(), gpusignals.PerformanceState.ID(),
+			valueObservation(gpusignals.PerformanceState.ID(), intValue(state)))
+
+		m := only[gpu.GPUMeasurement](t, ToMeasurements(observations))
+		if got := failedSignals(m); !slices.Equal(got, []string{gpu.SignalGPUPstate}) {
+			t.Fatalf("pstate %d: failed signals = %v", state, got)
+		}
+	}
+	observations := replace(healthyGPUObservations(), gpusignals.PerformanceState.ID(),
+		valueObservation(gpusignals.PerformanceState.ID(), intValue(maxPerformanceState)))
+	if m := only[gpu.GPUMeasurement](t, ToMeasurements(observations)); m.GPUPstate != maxPerformanceState || len(failedSignals(m)) != 0 {
+		t.Fatalf("P15 = %+v, errors %v", m, m.Errors())
 	}
 }
 
@@ -432,6 +479,30 @@ func noValueObservation(signalID string, reason observation.NoValueReason) *obse
 	o := failedObservation(signalID, nil)
 	o.Outcome = &observation.Observation_NoValue{NoValue: &observation.NoValue{Reason: reason}}
 	return o
+}
+
+// gpu.power.draw is instantaneous on GA100 and older, so a built-in check
+// reading average_power_draw_w must stay on architectures where it averages.
+func TestAveragePowerDrawChecksStayOnAveragedArchitectures(t *testing.T) {
+	category := health.GPU
+	var found bool
+	for _, check := range catalog.New().List(catalog.Filter{Category: &category}) {
+		if !slices.Contains(check.RequiredSignals, gpu.SignalAveragePowerDrawW) {
+			continue
+		}
+		found = true
+		if len(check.Architectures) == 0 {
+			t.Errorf("%s reads %s on every architecture", check.ID, gpu.SignalAveragePowerDrawW)
+		}
+		for _, arch := range check.Architectures {
+			if !slices.Contains(averagedPowerDrawArchitectures, arch) {
+				t.Errorf("%s reads %s on %s, where averaging is unverified", check.ID, gpu.SignalAveragePowerDrawW, arch)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no built-in check reads average_power_draw_w")
+	}
 }
 
 func TestMappedSignalsFor(t *testing.T) {

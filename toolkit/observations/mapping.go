@@ -16,6 +16,7 @@ package observations
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
@@ -56,15 +57,23 @@ type mapping struct {
 	aggregated bool
 }
 
+// averagedPowerDrawArchitectures are where gpu.power.draw (DCGM board power,
+// field 155, and NVML power usage) is a one-second average, so it can feed
+// average_power_draw_w. On GA100 and older it is instantaneous. Add an
+// architecture only after confirming the field's averaging on hardware.
+var averagedPowerDrawArchitectures = []string{"B200", "GB200", "GB300"}
+
 var mappings = []mapping{
 	{signal: cpusignals.PossibleCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalPossibleCPUCount}, unit: "1"},
 	{signal: cpusignals.OnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalOnlineCPUCount}, unit: "1"},
 	{signal: cpusignals.NUMANodeOnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalNUMANodeCount}, unit: "1"},
 	{signal: gpuinventory.GPUCount, measurement: node.NodeMeasurement{}, catalog: []string{node.SignalGPUCount}, unit: "1"},
+	// Valid only on averagedPowerDrawArchitectures; the checks reading
+	// average_power_draw_w are limited to them, so it is not collected elsewhere.
 	{signal: gpusignals.PowerDraw, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalAveragePowerDrawW}, unit: "watts"},
 	{signal: gpusignals.PowerLimitRequested, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalPowerLimitW}, unit: "watts"},
 	{signal: gpusignals.PowerLimitEnforced, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalEnforcedPowerLimitW}, unit: "watts"},
-	{signal: gpusignals.PerformanceState, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalGPUPstate}},
+	{signal: gpusignals.PerformanceState, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalGPUPstate}, apply: applyPerformanceState},
 	{
 		signal: gpusignals.HardwareSlowdownActive, measurement: gpu.GPUMeasurement{},
 		catalog: []string{gpu.SignalHWSlowdown}, unsupportedIsNeutral: true,
@@ -166,6 +175,24 @@ func mappingsFor(category health.Category) []mapping {
 	return slices.DeleteFunc(slices.Clone(mappings), func(m mapping) bool {
 		return m.measurement.Category() != category
 	})
+}
+
+// maxPerformanceState is P15, the lowest NVML performance state. NVML and
+// DCGM report an undeterminable state as 32 (NVML_PSTATE_UNKNOWN).
+const maxPerformanceState = 15
+
+// applyPerformanceState fails a pstate outside P0-P15, as the legacy NVML
+// sensor does, rather than letting the unknown sentinel fail the threshold.
+func applyPerformanceState(measurement any, current *observation.Observation) error {
+	var state int64
+	if err := setField(reflect.ValueOf(&state).Elem(), current); err != nil {
+		return err
+	}
+	if state < 0 || state > maxPerformanceState {
+		return fmt.Errorf("performance state unknown (%d)", state)
+	}
+	measurement.(*gpu.GPUMeasurement).GPUPstate = state
+	return nil
 }
 
 // applyFabricManagerStatus maps the raw Fabric Manager status onto the two

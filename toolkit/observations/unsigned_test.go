@@ -14,7 +14,7 @@ import (
 )
 
 func TestToMeasurementsUnsignedPstate(t *testing.T) {
-	for _, value := range []uint64{0, 7, uint64(^uint64(0) >> 1)} {
+	for _, value := range []uint64{0, 7, maxPerformanceState} {
 		observations := replace(healthyGPUObservations(), gpusignals.PerformanceState.ID(),
 			valueObservation(gpusignals.PerformanceState.ID(), &observation.Value{Kind: &observation.Value_UintValue{UintValue: value}}))
 		measurement := only[gpu.GPUMeasurement](t, ToMeasurements(observations))
