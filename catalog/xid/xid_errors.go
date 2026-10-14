@@ -316,7 +316,7 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 // Unlike [criticalCheck], the check-level default here is
 // [health.NoAction] and the Fatal rule sets its own RecommendedAction:
 // a Rule can only override a non-zero check default (see
-// [health.Rule.HasRecommendedAction]), so the zero-value "no action"
+// [health.RecommendedAction.IsZero]), so the zero-value "no action"
 // outcome has to be the fallback, not an override.
 func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 	def := baseCheck(

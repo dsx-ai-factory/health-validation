@@ -9,7 +9,11 @@
 // the link-flap checks.
 package infiniband
 
-import "github.com/dsx-ai-factory/health-validation/catalog/health"
+import (
+	"slices"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
+)
 
 // Link-flap signal field names. These are the keys used in CEL rule
 // expressions and must match the RequiredSignals declared in checks
@@ -20,15 +24,18 @@ const (
 	SignalSince           = "since"
 )
 
-// MeasurementSignals lists every signal a LinkFlapMeasurement carries.
-// Sensors pass it as the failedSignals argument when they cannot query
-// the journal at all, telling the catalog that no signal is trustworthy
-// for this measurement.
-var MeasurementSignals = []string{
+var measurementSignals = []string{
 	SignalOutageDurations,
 	SignalFlapEvents,
 	SignalSince,
 }
+
+// MeasurementSignals lists every signal a LinkFlapMeasurement carries.
+// Sensors pass it as the failedSignals argument when they cannot query
+// the journal at all, telling the catalog that no signal is trustworthy
+// for this measurement.
+// The returned slice is a copy.
+func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 
 // LinkFlapEvent is one RDMA interface outage: a "Link down" paired with
 // the next "Link up" on the same interface. DurationSeconds is the wall
@@ -64,6 +71,9 @@ type LinkFlapMeasurement struct {
 // Critical rather than running CEL against an empty measurement. since
 // records the window that was attempted.
 func ErroredLinkFlap(since string, err error, failedSignals ...string) LinkFlapMeasurement {
+	if len(failedSignals) == 0 {
+		failedSignals = measurementSignals
+	}
 	m := LinkFlapMeasurement{Since: since}
 	m.AddError(err, failedSignals...)
 	return m

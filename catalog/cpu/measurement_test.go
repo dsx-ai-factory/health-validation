@@ -23,7 +23,7 @@ func TestCPUMeasurementContract(t *testing.T) {
 	if got, want := cpu.SignalNUMANodeCount, "numa_node_count"; got != want {
 		t.Errorf("SignalNUMANodeCount = %q, want %q", got, want)
 	}
-	if got, want := cpu.MeasurementSignals, []string{"possible_cpu_count", "online_cpu_count", "numa_node_count"}; !reflect.DeepEqual(got, want) {
+	if got, want := cpu.MeasurementSignals(), []string{"possible_cpu_count", "online_cpu_count", "numa_node_count"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("MeasurementSignals = %v, want %v", got, want)
 	}
 
@@ -60,7 +60,7 @@ func TestErroredCPUDefaultsToAllSignals(t *testing.T) {
 	if !errors.Is(errs[0].Err(), cause) {
 		t.Errorf("Err = %v, want %v", errs[0].Err(), cause)
 	}
-	if got, want := errs[0].FailedSignals(), cpu.MeasurementSignals; !reflect.DeepEqual(got, want) {
+	if got, want := errs[0].FailedSignals(), cpu.MeasurementSignals(); !reflect.DeepEqual(got, want) {
 		t.Errorf("FailedSignals = %v, want %v", got, want)
 	}
 }

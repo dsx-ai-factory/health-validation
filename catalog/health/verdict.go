@@ -77,27 +77,6 @@ type AffectedComponent struct {
 	MaxSeverity Severity `json:"max_severity"`
 }
 
-// ExitCode returns the process exit code for this verdict:
-//
-//	0: all checks passed or INFO only
-//	1: at least one CRITICAL
-//	2: tool failure / could not run
-//	3: at least one WARNING, no CRITICAL
-func (nv *NodeVerdict) ExitCode() int {
-	switch nv.OverallSeverity {
-	case Pass, Info:
-		return 0
-	case Critical:
-		return 1
-	case Unknown:
-		return 2
-	case Warning:
-		return 3
-	default:
-		return 2
-	}
-}
-
 // AggregateNodeVerdict builds a NodeVerdict from a set of check verdicts.
 // Skipped checks are recorded separately in SkippedChecks and do not
 // contribute to the overall severity. No coverage ratio is derived: most

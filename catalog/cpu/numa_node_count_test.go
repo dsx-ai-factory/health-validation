@@ -95,7 +95,7 @@ func TestNUMANodeCountDefinition(t *testing.T) {
 	if topologyRule.Message != "Expected ${expected_numa_node_count} NUMA nodes online, found ${numa_node_count}." {
 		t.Errorf("topology Message = %q, want canonical interpolation template", topologyRule.Message)
 	}
-	if topologyRule.HasRecommendedAction() {
+	if !topologyRule.RecommendedAction.IsZero() {
 		t.Errorf("topology RecommendedAction = %v, want inherited check action", topologyRule.RecommendedAction)
 	}
 }

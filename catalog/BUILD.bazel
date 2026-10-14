@@ -7,6 +7,7 @@ go_library(
     srcs = [
         "catalog.go",
         "checks.go",
+        "clone.go",
         "doc.go",
         "filter.go",
         "override.go",
@@ -31,6 +32,7 @@ go_test(
     srcs = [
         "catalog_test.go",
         "checks_test.go",
+        "clone_test.go",
         "entities_test.go",
         "evaluate_test.go",
         "filter_test.go",

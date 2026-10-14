@@ -36,5 +36,5 @@
 //	cpu := toolkit.NewCPUSensor(toolkit.SysfsCPU())
 //	nv, err := toolkit.Collect(cat, gpu, cpu)
 //	if err != nil { /* handle */ }
-//	os.Exit(nv.ExitCode())
+//	fmt.Println(nv.OverallSeverity)
 package toolkit

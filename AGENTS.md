@@ -50,7 +50,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 - **Catalog is early.** Coverage is whatever is registered in `catalog/checks.go` (CPU (count, NUMA), GPU power/state/limit/throttle/compute-apps, NVLink (active, fabric, fabric-health, bandwidth/count/speed, capabilities, P2P), node GPU count, InfiniBand RDMA link flap, XID, …). Do not describe coverage beyond that file. The catalog ships one InfiniBand check (`rdma_linkflap_fatal`), fed by the journal link-flap sensor; the generic IB sensor remains opt-in scaffolding (`toolkit.IBBackend`/`WithIBBackend`) for a consumer that brings additional IB backends and checks.
 - **CLI cadence default is unfiltered.** Checks declare `SchedulingCadence`. Pass `--cadence` (or set cadence in `EvaluationOptions` / `CollectionOptions`) to apply the nested Continuous ⊂ Prolog ⊂ Maintenance window. Checks outside the window are reported as `CADENCE_MISMATCH` skips. Omit it and all registered checks run, including Prolog power/throttle/compute-apps checks. Cadence is per evaluation so one constructed catalog can serve Continuous and Prolog windows. Cluster YAML is thresholds/disables/timeout only — not the run window.
-- **`health.NodeVerdict.ExitCode()` is not what the binary uses.** That catalog-library method returns a 0/1/2/3 scheme and is not called by the CLI. The binary's exit policy lives in `toolkit/app` (`exitCodeForVerdict` plus the `exitOK`/`exitUnhealthy`/`exitError` constants): PASS/INFO/WARNING→0, CRITICAL/UNKNOWN→1, tool/runtime error→2. WARNING→0 is deliberate and noted as eventually-configurable. Keep the two schemes separate.
+- **The exit policy lives only in `toolkit/app`.** The catalog library has no exit-code method. `exitCodeForVerdict` plus the `exitOK`/`exitUnhealthy`/`exitError` constants map PASS/INFO/WARNING→0, CRITICAL/UNKNOWN→1, tool/runtime error→2. WARNING→0 is deliberate and noted as eventually-configurable.
 - **OUT_OF_BAND context is defined but not used** by any registered check. The enum value exists in the codebase; no current check declares it as a valid context.
 - **NVML backend is Linux-only.** The `toolkit/nvml/` package is gated on `//go:build linux` and requires cgo. The catalog and direct evaluation path work on any platform.
 
@@ -184,7 +184,7 @@ Sensor.Measure() → []Measurement
   → AggregateNodeVerdict() → NodeVerdict
 ```
 
-The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, 2 when the tool could not run to a verdict (config/backend/collection/output failure). The precise level lives in `overall_severity` in the JSON. Note the catalog library's `health.NodeVerdict.ExitCode()` (0=PASS/INFO, 1=CRITICAL, 2=UNKNOWN, 3=WARNING) is a separate, unused-by-the-CLI scheme.
+The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, 2 when the tool could not run to a verdict (config/backend/collection/output failure). The precise level lives in `overall_severity` in the JSON. The catalog library has no exit-code method; the policy lives only in `toolkit/app`.
 
 #### Adding a check
 
@@ -202,7 +202,7 @@ Two distinct concepts in `toolkit/`:
 
 #### Adding a sensor for a new domain
 
-1. Define the typed measurement struct (with `Category()` returning the new `health.Category` value, signal constants, a `MeasurementSignals` slice, and an `ErroredXxx` helper) in `catalog/<domain>/measurement.go`.
+1. Define the typed measurement struct (with `Category()` returning the new `health.Category` value, signal constants, a `MeasurementSignals()` function that returns a copy of the signal list, and an `ErroredXxx` helper that defaults to every signal) in `catalog/<domain>/measurement.go`.
    If the domain has several like entities rather than being host-wide, also implement `health.EntityIdentifier` (`EntityID() string`) on it. The evaluation engine copies that value into a non-PASS verdict's `AffectedEntities`, which is what feeds the JSON verdict's `affected_components[].entities` and the `health_validation.check.affected_entities` metric. Omit it and a failing per-entity check cannot say which entity failed.
 2. Declare the sensor-facing backend interface in `toolkit/` (e.g. `NVLinkBackend` with `Measure() ([]health.Measurement, error)`).
 3. Implement `toolkit.Sensor` wrapping that interface (e.g. `NVLinkSensor`), forwarding `Measure()` from the backend.

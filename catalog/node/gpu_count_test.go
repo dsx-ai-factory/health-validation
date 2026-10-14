@@ -84,7 +84,7 @@ func TestGPUCount(t *testing.T) {
 			name: "errored node forces critical",
 			cat:  func() *catalog.Catalog { return newCatalog() },
 			measurement: func() node.NodeMeasurement {
-				return node.ErroredNode(errors.New("nvml init failed"), node.MeasurementSignals...)
+				return node.ErroredNode(errors.New("nvml init failed"), node.MeasurementSignals()...)
 			},
 			wantSeverity: health.Critical,
 		},

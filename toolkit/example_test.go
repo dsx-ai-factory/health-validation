@@ -30,8 +30,8 @@ func Example() {
 		panic(err)
 	}
 
-	fmt.Printf("severity=%s exit_code=%d\n", verdict.OverallSeverity, verdict.ExitCode())
+	fmt.Printf("severity=%s\n", verdict.OverallSeverity)
 
 	// Output:
-	// severity=CRITICAL exit_code=1
+	// severity=CRITICAL
 }

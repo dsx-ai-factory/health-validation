@@ -84,7 +84,7 @@ func countAdapter(signals ...string) collectbridge.Binding {
 		}
 		return []health.Measurement{m}
 	}, Errored: func(err error) []health.Measurement {
-		return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals...)}
+		return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
 	}}
 }
 
@@ -284,7 +284,7 @@ func TestCollectRunnerFailureAndValidPartialResults(t *testing.T) {
 				return measurements
 			}
 			adapter.Errored = func(err error) []health.Measurement {
-				return []health.Measurement{cpu.ErroredCPU(err, cpu.MeasurementSignals...)}
+				return []health.Measurement{cpu.ErroredCPU(err, cpu.MeasurementSignals()...)}
 			}
 			cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
 			for _, check := range []health.CheckDefinition{cpu.CPUCount(), node.GPUCount()} {

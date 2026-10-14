@@ -116,7 +116,7 @@ func (p *peersCaptureProbe) Measure(pc ProbeContext) health.Measurement {
 }
 
 func (p *peersCaptureProbe) Errored(id string, err error) health.Measurement {
-	return nvlink.ErroredNVLink(id, err, nvlink.MeasurementSignals...)
+	return nvlink.ErroredNVLink(id, err, nvlink.MeasurementSignals()...)
 }
 
 // A slot whose handle never loaded is excluded from every peer list, so a

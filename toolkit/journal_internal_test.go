@@ -41,7 +41,7 @@ func linkFlapMatcher(since string) journalMatcher {
 		match:   linkFlapPattern.MatchString,
 		parse:   func(lines []string) health.Measurement { return parseLinkFlaps(since, lines) },
 		errored: func(err error) health.Measurement {
-			return infiniband.ErroredLinkFlap(since, err, infiniband.MeasurementSignals...)
+			return infiniband.ErroredLinkFlap(since, err, infiniband.MeasurementSignals()...)
 		},
 	}
 }

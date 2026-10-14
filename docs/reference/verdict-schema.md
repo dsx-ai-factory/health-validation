@@ -24,7 +24,6 @@ CheckDefinition is the canonical shape of a health check in the catalog. Each de
 | Field | JSON name | Type | Description |
 |---|---|---|---|
 | <nobr>`Thresholds`</nobr> | <nobr>`thresholds`</nobr> | [<nobr>`map[string]ThresholdSpec`</nobr>](#thresholdspec) |  |
-| <nobr>`FeasibilityClass`</nobr> | <nobr>`feasibility_class`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`Description`</nobr> | <nobr>`description`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`Name`</nobr> | <nobr>`name`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`ID`</nobr> | <nobr>`id`</nobr> | <nobr>`string`</nobr> |  |

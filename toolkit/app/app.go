@@ -59,8 +59,7 @@ import (
 // Exit codes returned by Run. The split is verdict-vs-no-verdict: 0/1 report a
 // verdict the caller can act on, 2 means one was never produced — so 2 is
 // deliberately distinct from an UNKNOWN verdict (1). WARNING maps to 0 for now;
-// making that configurable is deferred until there is a concrete need. This is
-// the CLI's own policy, separate from the catalog's [health.NodeVerdict.ExitCode].
+// making that configurable is deferred until there is a concrete need.
 const (
 	exitOK        = 0 // PASS, INFO, WARNING
 	exitUnhealthy = 1 // CRITICAL, UNKNOWN

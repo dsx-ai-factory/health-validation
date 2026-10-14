@@ -38,9 +38,6 @@ func TestCollectWithOptions_ZeroValueHealthyNode(t *testing.T) {
 	if nv.OverallSeverity != health.Pass {
 		t.Errorf("overall = %v, want PASS", nv.OverallSeverity)
 	}
-	if nv.ExitCode() != 0 {
-		t.Errorf("exit code = %d, want 0", nv.ExitCode())
-	}
 }
 
 func TestCollectMeasurementsWithTimeoutPreservesSensor(t *testing.T) {
@@ -71,9 +68,6 @@ func TestCollect_FailingNode(t *testing.T) {
 	}
 	if nv.OverallSeverity != health.Critical {
 		t.Errorf("overall = %v, want CRITICAL", nv.OverallSeverity)
-	}
-	if nv.ExitCode() != 1 {
-		t.Errorf("exit code = %d, want 1", nv.ExitCode())
 	}
 }
 
@@ -222,7 +216,7 @@ func TestCollect_SensorErrorDegradesToCritical(t *testing.T) {
 	sensor := failingSensor{
 		name: "node",
 		errored: func(err error) []health.Measurement {
-			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals...)}
+			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
 		},
 	}
 
@@ -268,7 +262,7 @@ func TestCollect_FailingSensorDoesNotMaskHealthy(t *testing.T) {
 	failing := failingSensor{
 		name: "nvlink",
 		errored: func(err error) []health.Measurement {
-			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals...)}
+			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals()...)}
 		},
 	}
 
@@ -341,7 +335,7 @@ func TestCollectWithOptions_UninterruptibleSensorDoesNotHang(t *testing.T) {
 		honorCtx: false,
 		release:  make(chan struct{}),
 		errored: func(err error) []health.Measurement {
-			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals...)}
+			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
 		},
 	}
 	// Let the parked goroutine exit once the watchdog has given up.
@@ -377,7 +371,7 @@ func TestCollectWithOptions_TimeoutDegradesToCritical(t *testing.T) {
 		honorCtx: true,
 		release:  make(chan struct{}),
 		errored: func(err error) []health.Measurement {
-			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals...)}
+			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
 		},
 	}
 	defer close(s.release)
@@ -423,7 +417,7 @@ func TestCollectWithOptions_TimeoutDoesNotMaskHealthy(t *testing.T) {
 		honorCtx: true,
 		release:  make(chan struct{}),
 		errored: func(err error) []health.Measurement {
-			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals...)}
+			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals()...)}
 		},
 	}
 	defer close(slow.release)
@@ -457,7 +451,7 @@ func TestCollectWithOptions_CircuitBreakerSkipsWedgedResource(t *testing.T) {
 		honorCtx: false,
 		release:  make(chan struct{}),
 		errored: func(err error) []health.Measurement {
-			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals...)}
+			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
 		},
 	}
 	defer close(first.release)
@@ -473,7 +467,7 @@ func TestCollectWithOptions_CircuitBreakerSkipsWedgedResource(t *testing.T) {
 		release:  make(chan struct{}),
 		measured: secondMeasured,
 		errored: func(err error) []health.Measurement {
-			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals...)}
+			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals()...)}
 		},
 	}
 	defer close(second.release)
@@ -517,7 +511,7 @@ func TestCollectWithOptions_CircuitBreakerScopedToResource(t *testing.T) {
 		honorCtx: false,
 		release:  make(chan struct{}),
 		errored: func(err error) []health.Measurement {
-			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals...)}
+			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals()...)}
 		},
 	}
 	defer close(wedged.release)
@@ -604,7 +598,7 @@ func TestCollectWithOptions_SensorPanicDegradesToCritical(t *testing.T) {
 	s := panicSensor{
 		name: "node",
 		errored: func(err error) []health.Measurement {
-			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals...)}
+			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
 		},
 	}
 

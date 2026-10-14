@@ -135,7 +135,7 @@ func TestCPUSensor_ErroredAttributesAllSignals(t *testing.T) {
 	if !errors.Is(errs[0].Err(), cause) {
 		t.Errorf("error = %v, want cause %v", errs[0].Err(), cause)
 	}
-	if got, want := errs[0].FailedSignals(), cpu.MeasurementSignals; !slices.Equal(got, want) {
+	if got, want := errs[0].FailedSignals(), cpu.MeasurementSignals(); !slices.Equal(got, want) {
 		t.Errorf("FailedSignals = %v, want %v", got, want)
 	}
 }

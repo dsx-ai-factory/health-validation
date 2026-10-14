@@ -121,7 +121,7 @@ type rdmaLinkFlapBackend struct {
 func (b *rdmaLinkFlapBackend) Measure(ctx context.Context) ([]health.Measurement, error) {
 	if b.configErr != nil {
 		return []health.Measurement{
-			infiniband.ErroredLinkFlap(sinceBoot, b.configErr, infiniband.MeasurementSignals...),
+			infiniband.ErroredLinkFlap(sinceBoot, b.configErr, infiniband.MeasurementSignals()...),
 		}, nil
 	}
 
@@ -135,7 +135,7 @@ func (b *rdmaLinkFlapBackend) Measure(ctx context.Context) ([]health.Measurement
 			// Label with the lookback-window start like every other path (the
 			// offset couldn't be applied); since is still the lookback here.
 			return []health.Measurement{
-				infiniband.ErroredLinkFlap(b.now().Add(-since).Format(journalSinceLayout), fmt.Errorf("reading /proc/uptime for boot offset: %w", err), infiniband.MeasurementSignals...),
+				infiniband.ErroredLinkFlap(b.now().Add(-since).Format(journalSinceLayout), fmt.Errorf("reading /proc/uptime for boot offset: %w", err), infiniband.MeasurementSignals()...),
 			}, nil
 		}
 		// Start no earlier than boot + offset (clamped to now), and never before
@@ -152,7 +152,7 @@ func (b *rdmaLinkFlapBackend) Measure(ctx context.Context) ([]health.Measurement
 		match:   linkFlapPattern.MatchString,
 		parse:   func(lines []string) health.Measurement { return parseLinkFlaps(start, lines) },
 		errored: func(err error) health.Measurement {
-			return infiniband.ErroredLinkFlap(start, err, infiniband.MeasurementSignals...)
+			return infiniband.ErroredLinkFlap(start, err, infiniband.MeasurementSignals()...)
 		},
 	})
 }

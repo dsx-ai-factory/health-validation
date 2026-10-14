@@ -127,7 +127,8 @@ func (c *Catalog) Register(cd health.CheckDefinition) error {
 	if _, exists := c.checks[cd.ID]; exists {
 		return fmt.Errorf("check %q already registered", cd.ID)
 	}
-	c.checks[cd.ID] = &cd
+	stored := cloneDefinition(cd)
+	c.checks[cd.ID] = &stored
 	return nil
 }
 
@@ -138,8 +139,8 @@ func (c *Catalog) MustRegister(cd health.CheckDefinition) {
 	}
 }
 
-// Get returns the check definition with the given ID, or an error
-// if not found.
+// Get returns a copy of the check definition with the given ID, or an error
+// if not found. Mutating the copy does not affect the catalog.
 func (c *Catalog) Get(id string) (*health.CheckDefinition, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -148,10 +149,11 @@ func (c *Catalog) Get(id string) (*health.CheckDefinition, error) {
 	if !ok {
 		return nil, fmt.Errorf("check %q not found", id)
 	}
-	return cd, nil
+	cp := cloneDefinition(*cd)
+	return &cp, nil
 }
 
-// List returns all check definitions matching the given filter.
+// List returns copies of all check definitions matching the given filter.
 // Results are sorted by ID for deterministic output.
 func (c *Catalog) List(f Filter) []*health.CheckDefinition {
 	c.mu.RLock()
@@ -160,7 +162,8 @@ func (c *Catalog) List(f Filter) []*health.CheckDefinition {
 	var result []*health.CheckDefinition
 	for _, cd := range c.checks {
 		if f.matches(cd) {
-			result = append(result, cd)
+			cp := cloneDefinition(*cd)
+			result = append(result, &cp)
 		}
 	}
 	slices.SortFunc(result, func(a, b *health.CheckDefinition) int {

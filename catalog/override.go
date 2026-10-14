@@ -3,6 +3,8 @@
 
 package catalog
 
+import "maps"
+
 // Override is an operator-supplied threshold value that replaces
 // the catalog default for a specific check. Overrides for Fixed
 // thresholds are rejected at evaluation time.
@@ -33,11 +35,11 @@ func NewOverrideSet(overrides ...Override) OverrideSet {
 	return os
 }
 
-// ForCheck returns the threshold overrides for a specific check.
+// ForCheck returns a copy of the threshold overrides for a specific check.
 // Returns nil if no overrides exist for the check.
 func (os *OverrideSet) ForCheck(checkID string) map[string]any {
 	if os.overrides == nil {
 		return nil
 	}
-	return os.overrides[checkID]
+	return maps.Clone(os.overrides[checkID])
 }

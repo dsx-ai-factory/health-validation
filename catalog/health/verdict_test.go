@@ -9,25 +9,6 @@ import (
 	"time"
 )
 
-func TestNodeVerdict_ExitCode(t *testing.T) {
-	tests := []struct {
-		severity Severity
-		want     int
-	}{
-		{Pass, 0},
-		{Info, 0},
-		{Warning, 3},
-		{Critical, 1},
-		{Unknown, 2},
-	}
-	for _, tt := range tests {
-		nv := &NodeVerdict{OverallSeverity: tt.severity}
-		if got := nv.ExitCode(); got != tt.want {
-			t.Errorf("ExitCode() for %v = %d, want %d", tt.severity, got, tt.want)
-		}
-	}
-}
-
 func TestAggregateNodeVerdict_SchemaVersion(t *testing.T) {
 	nv := AggregateNodeVerdict(nil)
 	if got, want := nv.SchemaVersion, NodeVerdictSchemaVersion; got != want {
@@ -258,9 +239,6 @@ func TestAggregateNodeVerdict_Basic(t *testing.T) {
 	if nv.OverallSeverity != Critical {
 		t.Errorf("overall severity = %v, want CRITICAL", nv.OverallSeverity)
 	}
-	if nv.ExitCode() != 1 {
-		t.Errorf("exit code = %d, want 1", nv.ExitCode())
-	}
 	if len(nv.CheckResults) != 3 {
 		t.Errorf("check results = %d, want 3", len(nv.CheckResults))
 	}
@@ -313,9 +291,6 @@ func TestAggregateNodeVerdict_MostlySkipped(t *testing.T) {
 	if len(nv.SkippedChecks) != 3 {
 		t.Errorf("skipped checks = %d, want 3", len(nv.SkippedChecks))
 	}
-	if nv.ExitCode() != 0 {
-		t.Errorf("exit code = %d, want 0", nv.ExitCode())
-	}
 }
 
 func TestAggregateNodeVerdict_AllPass(t *testing.T) {
@@ -329,8 +304,5 @@ func TestAggregateNodeVerdict_AllPass(t *testing.T) {
 
 	if nv.OverallSeverity != Pass {
 		t.Errorf("overall severity = %v, want PASS", nv.OverallSeverity)
-	}
-	if nv.ExitCode() != 0 {
-		t.Errorf("exit code = %d, want 0", nv.ExitCode())
 	}
 }

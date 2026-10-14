@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "evaluation",
@@ -6,6 +6,7 @@ go_library(
         "evaluate.go",
         "runnable.go",
         "signals.go",
+        "thresholds.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/catalog/internal/evaluation",
     visibility = ["//:__subpackages__"],
@@ -13,4 +14,11 @@ go_library(
         "//catalog/health",
         "//catalog/internal/celeval",
     ],
+)
+
+go_test(
+    name = "evaluation_test",
+    srcs = ["thresholds_test.go"],
+    embed = [":evaluation"],
+    deps = ["//catalog/health"],
 )

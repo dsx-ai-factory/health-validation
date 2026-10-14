@@ -75,7 +75,7 @@ func (b *journalctlBackend) Measure(ctx context.Context) ([]health.Measurement, 
 		match:   func(line string) bool { return strings.Contains(line, "NVRM: Xid ") },
 		parse:   func(lines []string) health.Measurement { return xidparse.ParseXid(sinceBoot, lines) },
 		errored: func(err error) health.Measurement {
-			return xid.ErroredXid(sinceBoot, err, xid.MeasurementSignals...)
+			return xid.ErroredXid(sinceBoot, err, xid.MeasurementSignals()...)
 		},
 	})
 }

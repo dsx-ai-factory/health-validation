@@ -23,7 +23,7 @@
 //	m := gpu.GPUMeasurement{GPUID: "GPU-0"}
 //	nv, err := cat.EvaluateAll(m)
 //	if err != nil { /* handle */ }
-//	os.Exit(nv.ExitCode())
+//	fmt.Println(nv.OverallSeverity)
 //
 // Each measurement is matched to checks by [health.Category]; one
 // CheckVerdict is produced per (measurement, matching check) pair, and

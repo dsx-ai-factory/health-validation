@@ -87,43 +87,6 @@ type ResolvedThreshold struct {
 	Overridden    bool              `json:"overridden"`
 }
 
-// ResolveThresholds merges catalog-authored thresholds with operator
-// overrides for the given architecture. A threshold's PerArchitecture entry
-// for architecture becomes its base value (else Value); an operator override
-// then applies on top. Returns an error if an override targets a Fixed
-// threshold.
-func ResolveThresholds(checkID string, specs map[string]ThresholdSpec, overrides map[string]any, architecture string) (map[string]ResolvedThreshold, error) {
-	resolved := make(map[string]ResolvedThreshold, len(specs))
-
-	for name, spec := range specs {
-		base := spec.Value
-		if archValue, ok := spec.PerArchitecture[architecture]; ok {
-			base = archValue
-		}
-
-		rt := ResolvedThreshold{
-			Value:         base,
-			Category:      spec.Category,
-			OriginalValue: base,
-		}
-
-		if override, ok := overrides[name]; ok {
-			if spec.Category == FixedThreshold {
-				return nil, &FixedThresholdError{
-					ThresholdName: name,
-					CheckID:       checkID,
-				}
-			}
-			rt.Value = override
-			rt.Overridden = true
-		}
-
-		resolved[name] = rt
-	}
-
-	return resolved, nil
-}
-
 // FixedThresholdError is returned when an operator attempts to override
 // a threshold classified as Fixed.
 type FixedThresholdError struct {

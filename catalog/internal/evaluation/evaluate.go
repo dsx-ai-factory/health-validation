@@ -321,7 +321,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		return withEntity(ErroredVerdict(cd, now, detail, action), entity), nil
 	}
 
-	resolved, err := health.ResolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
+	resolved, err := resolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
 	if err != nil {
 		return health.CheckVerdict{}, err
 	}
@@ -367,7 +367,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		if !anyMatched || rule.Severity > topSeverity {
 			topSeverity = rule.Severity
 			topRuleAction = rule.RecommendedAction
-			topRuleHasAction = rule.HasRecommendedAction()
+			topRuleHasAction = !rule.RecommendedAction.IsZero()
 		}
 		anyMatched = true
 	}
@@ -392,6 +392,9 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 	v.Messages = messages
 	v.Thresholds = resolved
 	v.ObservedValues = observed
+	// action's slice belongs to the registered definition; the verdict goes to
+	// callers.
+	action.RemediationActions = slices.Clone(action.RemediationActions)
 	v.RecommendedAction = action
 	return withEntity(v, entity), nil
 }

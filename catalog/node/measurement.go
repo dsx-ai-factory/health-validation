@@ -3,7 +3,11 @@
 
 package node
 
-import "github.com/dsx-ai-factory/health-validation/catalog/health"
+import (
+	"slices"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
+)
 
 // Node-level signal field names. These are the keys used in CEL rule
 // expressions and must match the RequiredSignals declared in node
@@ -12,13 +16,16 @@ const (
 	SignalGPUCount = "gpu_count"
 )
 
+var measurementSignals = []string{
+	SignalGPUCount,
+}
+
 // MeasurementSignals lists every signal a NodeMeasurement carries.
 // Sensors pass it as the failedSignals argument when they cannot
 // observe the node at all (e.g. NVML failed to initialize), telling
 // the catalog that no signal is trustworthy for this entity.
-var MeasurementSignals = []string{
-	SignalGPUCount,
-}
+// The returned slice is a copy.
+func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 
 // NodeMeasurement captures host-wide signals that are not bound to any
 // single GPU — for example, the number of GPUs the driver enumerated.
@@ -47,6 +54,9 @@ type NodeMeasurement struct {
 // domain-specific error type (e.g. nvml.Error) so consumers can
 // type-assert for structured failure details.
 func ErroredNode(err error, failedSignals ...string) NodeMeasurement {
+	if len(failedSignals) == 0 {
+		failedSignals = measurementSignals
+	}
 	var m NodeMeasurement
 	m.AddError(err, failedSignals...)
 	return m

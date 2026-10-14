@@ -12,8 +12,6 @@ The exit code is a coarse health signal:
 
 The exit code does not distinguish CRITICAL from UNKNOWN or INFO from WARNING. For the precise level, read `overall_severity` from the JSON — Slurm prolog scripts that need more than the coarse signal should do so.
 
-The catalog library's `health.NodeVerdict.ExitCode()` method uses a separate 0/1/2/3 scheme that the CLI does not use.
-
 ## What happens if a sensor cannot read from a GPU?
 
 It depends on how the sensor reports the failure. If the sensor can identify the GPU but cannot read one or more fields, it calls `AddError()` on the measurement for those failing fields. The catalog evaluates each check against the partial measurement: checks that require only the available signals proceed normally; checks that require a failed signal produce a CRITICAL verdict rather than silently passing.
