@@ -47,6 +47,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/version"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics"
@@ -664,6 +665,10 @@ func collectionSensors(sensors []toolkit.Sensor, categories map[health.Category]
 	covered := make(map[health.Category]bool)
 	for _, sensor := range sensors {
 		category, ok := categoryBySensor[sensor.Name()]
+		// Collect adapters declare their category; their names are arbitrary.
+		if bridged, isBridged := sensor.(*collectbridge.Sensor); isBridged {
+			category, ok = bridged.Category(), true
+		}
 		if ok && categories[category] {
 			selected = append(selected, sensor)
 			covered[category] = true

@@ -18,10 +18,11 @@ import (
 
 // Binding captures adapter metadata and callbacks for one collection run.
 type Binding struct {
-	Build   func([]*observation.Observation) []health.Measurement
-	Errored func(error) []health.Measurement
-	Name    string
-	Signals []string
+	Build    func([]*observation.Observation) []health.Measurement
+	Errored  func(error) []health.Measurement
+	Name     string
+	Signals  []string
+	Category health.Category
 }
 
 // Runner coordinates one collection cycle: Register every source, Collect
@@ -225,6 +226,9 @@ type Sensor struct {
 }
 
 func (s *Sensor) Name() string { return s.binding.Name }
+
+// Category is the catalog category of the bound adapter's measurements.
+func (s *Sensor) Category() health.Category { return s.binding.Category }
 
 func (s *Sensor) Measure(context.Context) ([]health.Measurement, error) {
 	return s.binding.Build(s.runner.Observe(s.binding.Signals...)), nil

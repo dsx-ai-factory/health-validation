@@ -57,6 +57,18 @@ func TestCollectSkipsUnselectedBridgeSources(t *testing.T) {
 	}
 }
 
+func TestCollectionSensorsSelectsBridgeSensorsByAdapterCategory(t *testing.T) {
+	a := New().WithCollect(&collectAppSensor{}).WithCollectAdapters(customCountAdapter())
+	sensors, err := a.collectSensors(time.Second, nil, nil, requiredSignals{health.Node: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := collectionSensors(sensors, map[health.Category]bool{health.Node: true})
+	if err != nil || len(selected) != 1 || selected[0].Name() != "custom-count" {
+		t.Fatalf("selected=%v err=%v; want the node adapter selected despite its non-domain name", selected, err)
+	}
+}
+
 func TestLegacyOnlyCollectionIsUnchangedByCollectPlumbing(t *testing.T) {
 	a := cadenceRunApp().WithNodeID(testNodeID).
 		WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}))

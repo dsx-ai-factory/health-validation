@@ -270,7 +270,7 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 		}
 		requested = append(requested, signals...)
 		bindings = append(bindings, collectbridge.Binding{
-			Name: d.name, Signals: signals,
+			Name: d.name, Signals: signals, Category: d.category,
 			Build: d.build, Errored: d.adapter.Errored,
 		})
 	}
