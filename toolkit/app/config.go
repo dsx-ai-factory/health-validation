@@ -207,7 +207,11 @@ func (cfg *Config) Overrides(cat *catalog.Catalog) (catalog.OverrideSet, error) 
 					name, checkID)
 			}
 
-			value, err := spec.CoerceInput(params[name])
+			raw := params[name]
+			if spec.ValueType == health.ThresholdStringList {
+				raw = trimListItems(raw)
+			}
+			value, err := spec.CoerceInput(raw)
 			if err != nil {
 				return catalog.OverrideSet{}, fmt.Errorf(
 					"config: check %q parameter %q: %w", checkID, name, err)
@@ -222,6 +226,26 @@ func (cfg *Config) Overrides(cat *catalog.Catalog) (catalog.OverrideSet, error) 
 	}
 
 	return catalog.NewOverrideSet(overrides...), nil
+}
+
+// trimListItems strips whitespace around the entries of a decoded string
+// list. It stays here rather than in the catalog's coercion because only a
+// serialized value can pick up whitespace it did not mean; an item left
+// empty by trimming is still rejected during coercion.
+func trimListItems(val any) any {
+	items, ok := val.([]any)
+	if !ok {
+		return val
+	}
+	trimmed := make([]any, len(items))
+	for i, item := range items {
+		if s, ok := item.(string); ok {
+			trimmed[i] = strings.TrimSpace(s)
+			continue
+		}
+		trimmed[i] = item
+	}
+	return trimmed
 }
 
 // DisabledCheckIDs validates the config's disabled_checks against the

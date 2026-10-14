@@ -128,10 +128,11 @@ func TestCoerceInputNonFinite(t *testing.T) {
 }
 
 // A string list arrives as []any from YAML and as []string from a Go
-// literal; both are valid and both are trimmed.
+// literal. Both are valid, and both reach CEL with their items verbatim —
+// stripping whitespace is the config decoder's job, not coercion's.
 func TestCoerceStringList(t *testing.T) {
 	spec := health.ThresholdSpec{ValueType: health.ThresholdStringList}
-	want := []string{"mlx5_0", "mlx5_1"}
+	want := []string{" mlx5_0 ", "mlx5_1"}
 
 	for _, value := range []any{
 		[]any{" mlx5_0 ", "mlx5_1"},
@@ -147,16 +148,18 @@ func TestCoerceStringList(t *testing.T) {
 	}
 }
 
-// Coercing a []string must not alias the caller's slice, since the
-// trimming would otherwise rewrite a catalog author's literal.
+// Coercing a []string must not hand back the caller's backing array, or a
+// registered threshold would alias whatever the author can still write to.
 func TestCoerceStringListCopies(t *testing.T) {
 	spec := health.ThresholdSpec{ValueType: health.ThresholdStringList}
-	original := []string{" mlx5_0 "}
-	if _, err := spec.CoerceInput(original); err != nil {
+	original := []string{"mlx5_0"}
+	got, err := spec.CoerceInput(original)
+	if err != nil {
 		t.Fatalf("CoerceInput: %v", err)
 	}
-	if original[0] != " mlx5_0 " {
-		t.Errorf("caller slice mutated to %q", original[0])
+	original[0] = "mlx5_1"
+	if coerced := got.([]string); coerced[0] != "mlx5_0" {
+		t.Errorf("coerced slice aliases caller: got %q", coerced[0])
 	}
 }
 
@@ -168,8 +171,8 @@ func TestCoerceRejectsInvalidStringList(t *testing.T) {
 	}{
 		{name: "not a list", value: "mlx5_0", wantErr: "expected a list of strings"},
 		{name: "non-string item", value: []any{"mlx5_0", 1}, wantErr: "item 1 is int"},
-		{name: "empty item", value: []any{"mlx5_0", " "}, wantErr: "item 1 is empty"},
-		{name: "empty item in typed slice", value: []string{"mlx5_0", " "}, wantErr: "item 1 is empty"},
+		{name: "empty item", value: []any{"mlx5_0", ""}, wantErr: "item 1 is empty"},
+		{name: "empty item in typed slice", value: []string{"mlx5_0", ""}, wantErr: "item 1 is empty"},
 	}
 
 	spec := health.ThresholdSpec{ValueType: health.ThresholdStringList}

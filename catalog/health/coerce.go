@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strings"
 )
 
 // coerceThresholdValue converts val to the Go type tt declares. Neither
@@ -120,8 +119,10 @@ func coerceStringList(val any) (any, error) {
 		return nil, fmt.Errorf("expected a list of strings, got %T", val)
 	}
 
+	// Values are kept verbatim: whitespace in a Go literal is the author's,
+	// not a serialization artifact, so stripping it would silently rewrite a
+	// declaration. Trimming a decoded config belongs to whoever decodes it.
 	for i := range items {
-		items[i] = strings.TrimSpace(items[i])
 		if items[i] == "" {
 			return nil, fmt.Errorf("expected a list of non-empty strings, item %d is empty", i)
 		}
