@@ -491,6 +491,7 @@ this config has no field for it.
 6. [docs/FAQ.md](docs/FAQ.md)
 7. [catalog/health/node-verdict.schema.json](catalog/health/node-verdict.schema.json): JSON Schema for the node verdict output
 8. [CONTRIBUTING.md](CONTRIBUTING.md)
+9. [ROADMAP.md](ROADMAP.md): development focus areas and related work
 
 ## Maintainers
 
