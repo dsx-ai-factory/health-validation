@@ -9,9 +9,9 @@ import (
 )
 
 // criticalXid is one Xid code whose immediate-action resolution bucket
-// (from the NVIDIA Xid catalog) is reset/hardware/RMA-class. Each such
-// code ships as its own CRITICAL check (gpu_xid_<code>) so a verdict
-// names exactly which fault fired and carries that bucket as the
+// (from the NVIDIA Xid catalog) is reset/hardware/RMA/restart-VM-class.
+// Each such code ships as its own CRITICAL check (gpu_xid_<code>) so a
+// verdict names exactly which fault fired and carries that bucket as the
 // recommended action.
 type criticalXid struct {
 	description string
@@ -47,6 +47,7 @@ var criticalXids = []criticalXid{
 	{code: 143, action: resetAndService(), description: "GPU initialization error"},
 	// 144-150 (NVLink5/NETIR family) are not listed here: they get their
 	// own severity-differentiated checks below, built by nvlink5Check.
+	{code: 151, action: health.Drain(health.RemediationActionRestartOS), description: "key rotation error"},
 	{code: 155, action: resetAndService(), description: "NVLink SW-defined error"},
 	{code: 156, action: resetAndService(), description: "resource retirement event"},
 	{code: 158, action: resetAndService(), description: "GPU fatal timeout"},
@@ -242,11 +243,6 @@ var warningClasses = []warningClass{
 		action:  health.Drain(health.RemediationActionUpdateSWFW),
 		message: "GPU Xid 78 (vGPU start error) detected. Update GPU software/firmware.",
 		codes:   []int64{78},
-	},
-	{
-		action:  health.Drain(health.RemediationActionRestartOS),
-		message: "GPU Xid 151 (key rotation error) detected. Restart the affected VM or host.",
-		codes:   []int64{151},
 	},
 }
 

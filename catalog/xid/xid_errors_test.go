@@ -65,6 +65,7 @@ func TestXidErrors_SeverityByBucket(t *testing.T) {
 		{"memory page fault (31)", 31, health.Warning},
 		{"vgpu start (78)", 78, health.Warning},
 		{"preemptive removal (45)", 45, health.Warning},
+		{"key rotation (151)", 151, health.Critical},
 		{"recovery action changed (154)", 154, health.Info},
 	}
 	for _, tc := range tests {
@@ -87,7 +88,6 @@ func TestXidErrors_WarningActionByBucket(t *testing.T) {
 		{"memory page fault (31)", health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired), 31},
 		{"preemptive removal (45)", health.Drain(health.RemediationActionWorkflowXid45), 45},
 		{"vgpu start (78)", health.Drain(health.RemediationActionUpdateSWFW), 78},
-		{"key rotation (151)", health.Drain(health.RemediationActionRestartOS), 151},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -99,6 +99,20 @@ func TestXidErrors_WarningActionByBucket(t *testing.T) {
 				t.Errorf("code %d: RecommendedAction = %v, want %v", tc.code, v.RecommendedAction, tc.want)
 			}
 		})
+	}
+}
+
+func TestXidErrors_Xid151IsCritical(t *testing.T) {
+	v, ok := checkResult(evalXid(t, 151), "gpu_xid_151")
+	if !ok {
+		t.Fatalf("gpu_xid_151 verdict not found")
+	}
+	if v.Severity != health.Critical {
+		t.Errorf("Severity = %v, want %v", v.Severity, health.Critical)
+	}
+	want := health.Drain(health.RemediationActionRestartOS)
+	if !v.RecommendedAction.Equal(want) {
+		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
 	}
 }
 
