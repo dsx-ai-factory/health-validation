@@ -367,7 +367,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		if !anyMatched || rule.Severity > topSeverity {
 			topSeverity = rule.Severity
 			topRuleAction = rule.RecommendedAction
-			topRuleHasAction = !rule.RecommendedAction.IsZero()
+			topRuleHasAction = rule.HasRecommendedAction()
 		}
 		anyMatched = true
 	}

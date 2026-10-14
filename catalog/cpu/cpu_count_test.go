@@ -74,7 +74,7 @@ func TestCPUCountDefinition(t *testing.T) {
 	if mechanicalRule.Message != "Expected all ${possible_cpu_count} possible logical CPUs to be online; found ${online_cpu_count} online." {
 		t.Errorf("mechanical Message = %q, want canonical interpolation template", mechanicalRule.Message)
 	}
-	if !mechanicalRule.RecommendedAction.IsZero() {
+	if mechanicalRule.HasRecommendedAction() {
 		t.Errorf("mechanical RecommendedAction = %v, want inherited check action", mechanicalRule.RecommendedAction)
 	}
 }

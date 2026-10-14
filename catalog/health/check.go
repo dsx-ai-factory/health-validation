@@ -127,6 +127,13 @@ type Rule struct {
 	Severity Severity `json:"severity"`
 }
 
+// HasRecommendedAction reports whether the rule sets a non-zero
+// RecommendedAction that should override the parent
+// [CheckDefinition.RecommendedAction].
+func (r Rule) HasRecommendedAction() bool {
+	return !r.RecommendedAction.IsZero()
+}
+
 // Prerequisite declares a minimum software requirement for a check.
 type Prerequisite struct {
 	Name       string `json:"name"`
