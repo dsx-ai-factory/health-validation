@@ -61,11 +61,6 @@ jobs:
           persist-credentials: false
 
       # commitlint 21 declares engines.node >= 22.12.0.
-      #
-      # Avoid v5 specifically. It auto-enables package-manager caching from
-      # package.json's `packageManager`, and this repo's root declares pnpm, so
-      # the step runs `pnpm store path` and fails on a runner that has no pnpm.
-      # v6 narrowed that to npm only and v7 kept it, so v7 is inert here.
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -74,8 +69,7 @@ jobs:
       # Exact pins, not a range: a new 21.x patch is a new artifact executing
       # on the runner, and there is no Dependabot here to vet one. Bump both
       # together and deliberately. Transitive deps still float; a lockfile
-      # would close that, at the cost of a second lockfile format in a repo
-      # that declares pnpm.
+      # would close that, at the cost of a lockfile for a one-step install.
       - name: Install commitlint
         run: npm install --no-package-lock --no-save --ignore-scripts @commitlint/cli@21.2.2 @commitlint/config-conventional@21.2.2
 

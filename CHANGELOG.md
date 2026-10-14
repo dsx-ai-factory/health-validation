@@ -72,7 +72,7 @@ and documentation-only changes are omitted.
   check now carries `remediation_actions`: an ordered sequence of steps to
   work through, re-running the whole suite between steps. `RecommendedAction.DiagnosticAction`
   is replaced by `RecommendedAction.RemediationActions`. See
-  [`docs/REMEDIATION.md`](docs/REMEDIATION.md) for the consumption contract. ([#45](https://github.com/dsx-ai-factory/health-validation/pull/45))
+  [`docs/remediation.md`](docs/remediation.md) for the consumption contract. ([#45](https://github.com/dsx-ai-factory/health-validation/pull/45))
 - `Catalog.Evaluate` now fails closed unless an architecture is set with
   `WithArchitecture`. Previously an empty architecture disabled filtering and
   fell back to a threshold's base `Value`, which forced checks to carry
@@ -110,7 +110,7 @@ and documentation-only changes are omitted.
   `SENSOR_MISSING` reason rather than being reported as a failure. ([#21](https://github.com/dsx-ai-factory/health-validation/pull/21))
 - The container mounts the host's `journalctl` instead of bundling systemd,
   shrinking the image. Host journal access is now a deployment requirement —
-  see the [container journal access profiles](docs/INTEGRATION.md#security-context-and-check-coverage). ([#15](https://github.com/dsx-ai-factory/health-validation/pull/15))
+  see the [container journal access profiles](docs/integration.md#security-context-and-check-coverage). ([#15](https://github.com/dsx-ai-factory/health-validation/pull/15))
 
 ### Fixes
 

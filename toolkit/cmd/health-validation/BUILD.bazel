@@ -25,7 +25,7 @@ go_binary(
     oci = True,
     # journalctl (Xid/RDMA link-flap checks) is bind-mounted from the host at
     # runtime instead of bundled here, to avoid tracking systemd's apt churn.
-    # See scripts/health-validation-run.sh and docs/INTEGRATION.md.
+    # See scripts/health-validation-run.sh and docs/integration.md.
     visibility = ["//visibility:public"],
     # Stamped only under --config=release (see .bazel/release.bazelrc); plain
     # builds leave the version defaults ("dev"). The {STABLE_*} keys are

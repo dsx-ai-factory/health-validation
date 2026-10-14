@@ -1,5 +1,3 @@
-node_modules/
-docs/node_modules
 
 # Claude Code's workspace state. Git worktrees created under here are whole
 # checkouts with their own bazel-* symlinks and external/ trees, so leaving

@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+instances:
+  - url: nvidia-health-validation.docs.buildwithfern.com/health-validation
+    custom-domain: docs.nvidia.com/health-validation
+    multi-source: true
+
+redirects:
+  - source: /health-validation/index.html
+    destination: /health-validation
+
+title: NVIDIA Health Validation
+
+global-theme: nvidia
+
+logo:
+  href: /health-validation
+  right-text: Health Validation
+
+navbar-links:
+  - type: github
+    value: https://github.com/dsx-ai-factory/health-validation
+
+products:
+  - display-name: Health Validation
+    path: ../docs/index.yml
+    slug: /

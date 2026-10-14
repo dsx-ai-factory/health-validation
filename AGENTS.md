@@ -144,9 +144,9 @@ cp -L bazel-bin/toolkit/cmd/health-validation/health-validation_/health-validati
 (cd toolkit && go test ./cmd/health-validation)
 ```
 
-The repo uses Bazel exclusively — do not use `go build` or `go test` directly for anything other than quick local iteration. See [docs/DEVELOPER.md](docs/DEVELOPER.md) for the full CI, publishing, and container workflow.
+The repo uses Bazel exclusively — do not use `go build` or `go test` directly for anything other than quick local iteration. See [docs/developer.md](docs/developer.md) for the full CI, publishing, and container workflow.
 
-**Verifying linux-only code on darwin.** `//go:build linux` files are excluded from the host Bazel build on darwin, so local `bazel test //...` compiles them to empty stubs and nogo/link-time issues never surface. Run `bazel test --config=ci --platforms=//build/platforms:linux_amd64 <target>` from a Linux VM or container to exercise them before pushing. See [docs/DEVELOPER.md](docs/DEVELOPER.md#build-a-linux-image-from-macos) for a macOS container recipe.
+**Verifying linux-only code on darwin.** `//go:build linux` files are excluded from the host Bazel build on darwin, so local `bazel test //...` compiles them to empty stubs and nogo/link-time issues never surface. Run `bazel test --config=ci --platforms=//build/platforms:linux_amd64 <target>` from a Linux VM or container to exercise them before pushing. See [docs/developer.md](docs/developer.md#build-a-linux-image-from-macos) for a macOS container recipe.
 
 ### Architecture
 
@@ -191,6 +191,7 @@ The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PAS
 1. Define signals on the relevant measurement struct in `catalog/<domain>/measurement.go` (e.g. add a field + `Signal*` constant to `gpu.GPUMeasurement`).
 2. Write a `CheckDefinition` factory in the same `catalog/<domain>/` package. Add `Dependencies` only when another check explains this one's collection failures.
 3. Register it in `catalog/checks.go` via `builtinChecks()` so `catalog.New()` and the stock CLI run it. Declare `SchedulingCadence` on the check. Omit `--cadence` (or use a zero-value evaluation/collection context) to evaluate every registered check; set a cadence to run checks whose cadence covers that window (Continuous ⊂ Prolog ⊂ Maintenance) and report the others as skipped.
+4. Regenerate the reference docs with `bazel run //docs:reference_update`. The Check Catalog and Verdict Schema pages under `docs/reference/` are generated from `catalog/` and committed; `//docs:reference_update_test` fails when they are stale. A new check category also needs an entry in `docs/index.yml`.
 
 #### Sensors vs. backends
 

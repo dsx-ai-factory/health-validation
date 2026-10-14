@@ -36,10 +36,3 @@ updates:
       nvidia-go:
         patterns:
           - "github.com/NVIDIA/*"
-
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: cron
-      cronjob: "0 9 1,15 * *"
-    open-pull-requests-limit: 5

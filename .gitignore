@@ -1,7 +1,6 @@
 bazel-*
 node_modules/
 .bazelrc.user
-public
 .DS_Store
 
 # Claude Code's per-developer workspace state: worktrees, checkpoints, local

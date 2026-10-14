@@ -80,6 +80,11 @@ reviews:
         Prefer deterministic, table-driven tests that cover hardware,
         architecture, and collection failure modes. Avoid tests that depend on
         local GPUs, timing, shared mutable state, or host-specific inventory.
+    - path: ".github/workflows/*fern*.yml"
+      instructions: >-
+        `npm install -g fern-api@latest` is intentional (Fern has no LTS
+        channel and the NVIDIA global theme tracks the latest CLI). Do not
+        recommend pinning the Fern CLI version.
     - path: ".github/workflows/**"
       instructions: >-
         Review GitHub Actions workflows for trigger correctness, permissions,

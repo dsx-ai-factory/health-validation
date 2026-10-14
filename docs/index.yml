@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+navigation:
+  - section: Getting Started
+    contents:
+      - page: Overview
+        path: intro.md
+        slug: overview
+      - page: Architecture
+        path: architecture.md
+        slug: architecture
+      - page: FAQ
+        path: faq.md
+        slug: faq
+
+  - section: Operating
+    contents:
+      - page: Integrating into a GPU cluster
+        path: integration.md
+        slug: integration
+      - page: Remediation Actions
+        path: remediation.md
+        slug: remediation
+      - page: Extending the Catalog
+        path: extending.md
+        slug: extending
+      - page: Collection API
+        path: collection-api.md
+        slug: collection-api
+
+  - section: Reference
+    slug: reference
+    contents:
+      - page: Verdict Schema
+        path: reference/verdict-schema.md
+        slug: verdict-schema
+      - section: Check Catalog
+        slug: checks
+        contents:
+          - page: Overview
+            path: reference/checks/overview.md
+            slug: overview
+          - page: CPU
+            path: reference/checks/cpu.md
+            slug: cpu
+          - page: GPU
+            path: reference/checks/gpu.md
+            slug: gpu
+          - page: InfiniBand
+            path: reference/checks/infiniband.md
+            slug: infiniband
+          - page: Node
+            path: reference/checks/node.md
+            slug: node
+          - page: NVLink
+            path: reference/checks/nvlink.md
+            slug: nvlink
+          - page: Xid
+            path: reference/checks/xid.md
+            slug: xid
+
+  - api: API Reference

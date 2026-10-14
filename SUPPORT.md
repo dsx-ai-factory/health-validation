@@ -30,8 +30,8 @@ the result is incorrect.
 
 Before opening a request, search
 [existing issues](https://github.com/dsx-ai-factory/health-validation/issues)
-and check the [README](./README.md), [FAQ](./docs/FAQ.md), or
-[integration guide](./docs/INTEGRATION.md) for the relevant guidance.
+and check the [README](./README.md), [FAQ](./docs/faq.md), or
+[integration guide](./docs/integration.md) for the relevant guidance.
 
 ### What to put in a bug report
 
@@ -84,7 +84,7 @@ Authors are responsible for their private checks, custom collection code, and
 fork changes. If an extension exposes a suspected upstream defect, reproduce
 it with built-in checks and stock collection where possible, or provide a
 minimal catalog reproduction with supplied measurements. See the
-[extension guide](./docs/EXTENDING.md).
+[extension guide](./docs/extending.md).
 
 ## Upstream community support
 
@@ -188,7 +188,7 @@ The catalog is the intended integration and extension surface, subject to the
 pre-1.0 policy above. Toolkit sensors, backends, collection wiring, and the app
 builder are reference implementations and may change. The `collect` and
 `agentkit` modules are experimental. See the
-[developer guide](./docs/DEVELOPER.md) and [extension guide](./docs/EXTENDING.md).
+[developer guide](./docs/developer.md) and [extension guide](./docs/extending.md).
 
 Verdict JSON is versioned separately through `schema_version`.
 `catalog_version` identifies the catalog compiled into the producer. Validate
@@ -210,7 +210,7 @@ through `journalctl`. These backend requirements also apply to the stock app.
 The catalog can evaluate supplied measurements on other platforms without
 hardware access.
 See the [prerequisites](./README.md#prerequisites) and
-[integration guide](./docs/INTEGRATION.md).
+[integration guide](./docs/integration.md).
 
 The catalog focuses on GB200 and GB300. GB200 coverage is validated; GB300
 remains experimental pending equivalent validation. Coverage depends on each
@@ -247,7 +247,7 @@ information.
 
 Health Validation reports verdicts and recommended actions. Your scheduler,
 controller, or remediation system performs the actions. Follow the
-[remediation guide](./docs/REMEDIATION.md) and re-evaluate the suite between
+[remediation guide](./docs/remediation.md) and re-evaluate the suite between
 actions. For `service_required`, use your CSP's service path for a CSP-managed
 cluster or your organization's service process on premises.
 

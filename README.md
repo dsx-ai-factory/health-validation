@@ -5,7 +5,7 @@ NVIDIA Health Validation runs on a GPU node, evaluates hardware and driver state
 The repository is `github.com/dsx-ai-factory/health-validation`. It contains four Go modules; the two published and independently versioned ones are:
 
 - **`catalog`** (`…/health-validation/catalog`): Check definitions, threshold logic, severity classifications, and a CEL-based evaluation engine. No hardware dependency. Import this if you already collect GPU telemetry and want NVIDIA's operational judgment applied to your signal stream.
-- **`toolkit`** (`…/health-validation/toolkit`): Sensor implementations (including NVML-backed GPU collection and sysfs-backed CPU collection), mock backends for testing, and a `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Import this if you want the full working sensor and evaluation stack.
+- **`toolkit`** (`…/health-validation/toolkit`): Sensor implementations (including NVML-backed GPU collection and CPU collection from Linux sysfs), mock backends for testing, and a `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Import this if you want the full working sensor and evaluation stack.
 
 `toolkit` depends on `catalog`; import `toolkit` to get both.
 
@@ -171,7 +171,7 @@ The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.j
 Sensor.Measure() --> []Measurement --> Catalog.EvaluateAll() --> NodeVerdict
 ```
 
-Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor backed by Linux sysfs, an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface a CRITICAL verdict or skip.
+Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor reading Linux sysfs (the CLI collects CPU through `collect/sensors/cpu`), an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface a CRITICAL verdict or skip.
 
 The CPU sensor counts the logical CPUs in `/sys/devices/system/cpu/possible` and `/sys/devices/system/cpu/online`, and the NUMA nodes in `/sys/devices/system/node/online`. The `cpu_count` check requires no operator configuration and reports CRITICAL when a kernel-possible CPU is not online. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM or machine-SKU count, process affinity, or cgroup CPU limits.
 
@@ -482,16 +482,16 @@ this config has no field for it.
 
 > Running in a container? The stock wrapper does not use host networking, so
 > `127.0.0.1` inside the container is not the node's loopback. See
-> [docs/INTEGRATION.md](docs/INTEGRATION.md#publishing-metrics-from-a-container).
+> [docs/integration.md](docs/integration.md#publishing-metrics-from-a-container).
 
 ## Where to go for more
 
-1. [docs/INTEGRATION.md](docs/INTEGRATION.md): deploy to a GPU cluster, wire into the workload lifecycle, act on verdicts, collect results across the fleet
-2. [docs/REMEDIATION.md](docs/REMEDIATION.md): the remediation action catalog and how to work through a check's remediation sequence
-3. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): package roles, data flow, adding checks and sensors
-4. [docs/EXTENDING.md](docs/EXTENDING.md): extend the catalog with your own private checks
-5. [docs/DEVELOPER.md](docs/DEVELOPER.md): build, CI, container images, publishing
-6. [docs/FAQ.md](docs/FAQ.md)
+1. [docs/integration.md](docs/integration.md): deploy to a GPU cluster, wire into the workload lifecycle, act on verdicts, collect results across the fleet
+2. [docs/remediation.md](docs/remediation.md): the remediation action catalog and how to work through a check's remediation sequence
+3. [docs/architecture.md](docs/architecture.md): package roles, data flow, adding checks and sensors
+4. [docs/extending.md](docs/extending.md): extend the catalog with your own private checks
+5. [docs/developer.md](docs/developer.md): build, CI, container images, publishing
+6. [docs/faq.md](docs/faq.md)
 7. [catalog/health/node-verdict.schema.json](catalog/health/node-verdict.schema.json): JSON Schema for the node verdict output
 8. [CONTRIBUTING.md](CONTRIBUTING.md)
 9. [ROADMAP.md](ROADMAP.md): development focus areas and related work

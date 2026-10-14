@@ -5,7 +5,7 @@
 
 # Runs the health-validation container with the host's journalctl binary and
 # its shared-library dependencies bind-mounted in. The image no longer bundles
-# systemd; see docs/INTEGRATION.md.
+# systemd; see docs/integration.md.
 #
 # Usage: scripts/health-validation-run.sh <image>[:tag] [health-validation args...]
 set -euo pipefail

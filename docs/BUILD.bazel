@@ -1,90 +1,10 @@
-load("@aspect_bazel_lib//lib:copy_directory.bzl", "copy_directory")
-load("@aspect_rules_js//js:defs.bzl", "js_run_devserver")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
-load("@npm//:defs.bzl", "npm_link_all_packages")
-load("@npm//docs:@docusaurus/core/package_json.bzl", docusaurus_bin = "bin")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@aspect_bazel_lib//lib:write_source_files.bzl", "write_source_files")
 
-npm_link_all_packages()
-
-copy_file(
-    name = "checks_data",
-    src = "//catalog/cmd/healthdump:checks",
-    out = "static/data/checks.json",
-)
-
-copy_file(
-    name = "schema_data",
-    src = "//catalog/health:schema",
-    out = "static/data/schema.json",
-)
-
-copy_directory(
-    name = "check_pages",
-    src = "//catalog/cmd/gencheckpages:pages",
-    out = "docs/reference/checks",
-)
-
-filegroup(
-    name = "src",
-    srcs = glob(
-        [
-            "src/**/*.*",
-            "static/**/*.*",
-            "docs/**/*.*",
-            "plugins/**/*.*",
-        ],
-        allow_empty = True,
-    ) + [
-        ":check_pages",
-        ":checks_data",
-        ":schema_data",
-    ],
-)
-
-DOCUSAURUS_SRCS = [
-    "docusaurus.config.ts",
-    "package.json",
-    "sidebars.ts",
-    "tsconfig.json",
-    ":node_modules",
-    ":src",
-]
-
-docusaurus_bin.docusaurus(
-    name = "build",
-    srcs = DOCUSAURUS_SRCS,
-    args = ["build"],
-    chdir = package_name(),
-    env = {
-        "DOCS_BASE_URL": "$(DOCS_BASE_URL)",
-        "DOCS_URL": "$(DOCS_URL)",
-    },
-    out_dirs = ["build"],
-    visibility = ["//visibility:public"],
-)
-
-build_test(
-    name = "test",
-    targets = [":build"],
-)
-
-docusaurus_bin.docusaurus_binary(
-    name = "docusaurus_bin",
-)
-
-sh_binary(
-    name = "publish",
-    srcs = ["publish.sh"],
-    args = ["$(location :build)"],
-    data = [":build"],
-)
-
-js_run_devserver(
-    name = "serve",
-    args = ["start"],
-    chdir = package_name(),
-    data = DOCUSAURUS_SRCS,
-    tool = ":docusaurus_bin",
+# docs/reference holds the Check Catalog and Verdict Schema pages, generated from
+# catalog/ by //catalog/cmd/gencheckpages. The generated _test target fails when
+# the committed copy is stale; regenerate with
+# 'bazel run //docs:reference_update'.
+write_source_files(
+    name = "reference_update",
+    files = {"reference": "//catalog/cmd/gencheckpages:pages"},
 )
