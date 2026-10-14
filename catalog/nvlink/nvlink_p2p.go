@@ -17,6 +17,8 @@ func NVLinkP2P() health.CheckDefinition {
 		Description: "Verifies each GPU has healthy peer-to-peer NVLink connectivity to every other GPU.",
 		Category:    health.NVLink,
 
+		Dependencies: []string{"gpu_count"},
+
 		RequiredSignals: []string{
 			SignalGPUID,
 			SignalUnhealthyP2PPeerCount,

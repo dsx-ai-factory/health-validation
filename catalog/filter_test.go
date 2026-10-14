@@ -139,21 +139,3 @@ func TestEvaluate_IgnoresCadenceOptions(t *testing.T) {
 		t.Fatalf("Evaluate(prolog) skipped with %v; single-ID Evaluate is not cadence-filtered", v.SkipReason)
 	}
 }
-
-func TestEvaluateAllWithOptions_CadenceSkipCascadesToDependent(t *testing.T) {
-	cat := catalog.NewEmpty(catalog.WithArchitecture(catalogtest.DummyArchitecture))
-	base := cadenceCheck("prolog", health.Prolog)
-	dependent := cadenceCheck("continuous", health.Continuous)
-	dependent.Dependencies = []string{"prolog"}
-	cat.MustRegister(base)
-	cat.MustRegister(dependent)
-
-	cadence := health.Continuous
-	got := evaluatedVerdicts(t, cat, &cadence)
-	if got["prolog"].SkipReason != health.CadenceMismatch {
-		t.Errorf("prolog skip reason = %v, want CADENCE_MISMATCH", got["prolog"].SkipReason)
-	}
-	if got["continuous"].SkipReason != health.DependencySkipped {
-		t.Errorf("continuous skip reason = %v, want DEPENDENCY_SKIPPED", got["continuous"].SkipReason)
-	}
-}

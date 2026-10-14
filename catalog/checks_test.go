@@ -2,6 +2,7 @@ package catalog_test
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
@@ -117,5 +118,46 @@ func TestBuiltinChecks_ConditionScopeSerializes(t *testing.T) {
 		if got["condition_scope"] != want {
 			t.Errorf("%s: condition_scope = %v, want %q; json = %s", id, got["condition_scope"], want, data)
 		}
+	}
+}
+
+// Every check reading the shared NVML per-device enumeration depends on
+// gpu_count, so a verdict about a device missing from that enumeration names
+// gpu_count as the cause rather than reading as an independent fault. The
+// cohort matches the sensors sharing the NVML backend resource key in toolkit:
+// GPU, Node, and NVLink.
+func TestBuiltinChecks_NVMLCohortDependsOnGPUCount(t *testing.T) {
+	cohort := []string{
+		"gpu_average_power_draw",
+		"gpu_power_limit",
+		"gpu_power_state",
+		"gpu_sensor_throttle",
+		"nvlink_active",
+		"nvlink_bandwidth_count_speed",
+		"nvlink_capabilities",
+		"nvlink_fabric",
+		"nvlink_fabric_health",
+		"nvlink_p2p",
+	}
+
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	for _, id := range cohort {
+		cd, err := cat.Get(id)
+		if err != nil {
+			t.Errorf("Get(%q): %v", id, err)
+			continue
+		}
+		if !slices.Contains(cd.Dependencies, "gpu_count") {
+			t.Errorf("%s dependencies = %v, want to contain gpu_count", id, cd.Dependencies)
+		}
+	}
+
+	// gpu_count is the root of the cohort and depends on nothing itself.
+	root, err := cat.Get("gpu_count")
+	if err != nil {
+		t.Fatalf("Get(gpu_count): %v", err)
+	}
+	if len(root.Dependencies) != 0 {
+		t.Errorf("gpu_count dependencies = %v, want none", root.Dependencies)
 	}
 }

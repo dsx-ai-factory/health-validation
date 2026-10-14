@@ -113,7 +113,7 @@
           "type": "string"
         },
         "messages": {
-          "description": "One entry per matching rule, describing the detected condition.",
+          "description": "One entry per matching rule, describing the detected condition. A verdict for a measurement that could not be collected carries a single entry prefixed \"measurement unavailable: \" instead, which may also name a dependency that explains it.",
           "type": "array",
           "items": { "type": "string" }
         },
@@ -211,7 +211,6 @@
         "SIGNAL_UNAVAILABLE_ARCHITECTURE",
         "SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL",
         "CHECK_DISABLED",
-        "DEPENDENCY_SKIPPED",
         "INSUFFICIENT_HISTORY",
         "THRESHOLD_UNCONFIGURED",
         "NO_APPLICABLE_MEASUREMENT",

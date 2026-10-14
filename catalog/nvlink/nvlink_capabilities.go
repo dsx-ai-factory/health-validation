@@ -18,17 +18,17 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // activity are verified by gpu_count, nvlink_bandwidth_count_speed, and
 // nvlink_active respectively.
 //
-// It deliberately declares no dependency on gpu_count: the catalog
-// evaluates a check only against measurements of its own Category, so a
-// Node-category check cannot gate this NVLink-category one. A node with
-// missing GPUs still fails gpu_count, so the node verdict is Critical
-// regardless.
+// It declares a dependency on gpu_count so that a device missing from the
+// enumeration gpu_count measures is named as the cause here rather than
+// reported as an unexplained collection failure. Dependencies gate nothing.
 func NVLinkCapabilities() health.CheckDefinition {
 	return health.CheckDefinition{
 		ID:          "nvlink_capabilities",
 		Name:        "NVLink Capabilities",
 		Description: "Verifies every NVLink on each GPU reports the capabilities required for multi-GPU communication (P2P, system-memory access, P2P and system-memory atomics, SLI, and link validity).",
 		Category:    health.NVLink,
+
+		Dependencies: []string{"gpu_count"},
 
 		RequiredSignals: []string{
 			SignalGPUID,

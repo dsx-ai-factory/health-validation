@@ -26,6 +26,8 @@ func NVLinkFabricHealth() health.CheckDefinition {
 		Description: "Monitors per-GPU NVLink fabric health flags from NVML. Degraded bandwidth, in-progress route recovery, an unhealthy route, or active access timeout recovery indicate a fabric problem affecting multi-GPU communication.",
 		Category:    health.NVLink,
 
+		Dependencies: []string{"gpu_count"},
+
 		RequiredSignals: []string{
 			SignalGPUID,
 			SignalFabricBandwidthDegraded,

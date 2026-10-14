@@ -28,6 +28,8 @@ func GPUSensorThrottle() health.CheckDefinition {
 		Description: "Monitors GPU hardware throttling via NVML clocks-event-reasons. Active hardware slowdown, thermal slowdown, or power-brake slowdown indicates the GPU is being clamped by hardware protection logic.",
 		Category:    health.GPU,
 
+		Dependencies: []string{"gpu_count"},
+
 		RequiredSignals: []string{
 			SignalGPUID,
 			SignalHWSlowdown,

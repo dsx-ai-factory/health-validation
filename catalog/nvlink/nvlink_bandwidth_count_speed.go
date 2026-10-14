@@ -29,6 +29,8 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 		Description: "Verifies each GPU's NVLink link count and per-link speed match expected values.",
 		Category:    health.NVLink,
 
+		Dependencies: []string{"gpu_count"},
+
 		RequiredSignals: []string{
 			SignalGPUID,
 			SignalLinkCount,

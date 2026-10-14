@@ -17,6 +17,8 @@ func NVLinkActive() health.CheckDefinition {
 		Description: "Verifies each GPU has no inactive NVLinks.",
 		Category:    health.NVLink,
 
+		Dependencies: []string{"gpu_count"},
+
 		RequiredSignals: []string{
 			SignalGPUID,
 			SignalInactiveCount,

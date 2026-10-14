@@ -149,10 +149,12 @@ func TestNVLinkCapabilities_NoArchitectureErrors(t *testing.T) {
 }
 
 // EvaluateAll is the batch path Collect uses; it evaluates an NVLink
-// measurement against the NVLink check set only. A cross-category
-// Dependency on this check (e.g. the Node-category gpu_count) would put a
-// Node check id into the NVLink evaluation order and panic on the nil
-// lookup. This guards that regression against the full builtin catalog.
+// measurement against the NVLink check set only. This check declares a
+// cross-category Dependency on the Node-category gpu_count, which once
+// panicked on the nil lookup when that id reached the evaluation order.
+// It now resolves, and a Node dependency absent from an NVLink-only run is
+// simply an inactive edge. This guards both against the full builtin
+// catalog.
 func TestNVLinkCapabilities_EvaluateAllBatchPath(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),

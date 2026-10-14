@@ -62,6 +62,21 @@ function CheckDetail({ check }: { check: CheckDefinition }) {
         </div>
       )}
 
+      {check.dependencies && check.dependencies.length > 0 && (
+        <div className={styles.section}>
+          <h4>Depends On</h4>
+          <p className={styles.description}>
+            A verdict for a device this check could not read at all names these
+            checks as the cause when they report CRITICAL.
+          </p>
+          <div className={styles.chipRow}>
+            {check.dependencies.map((dep) => (
+              <Chip key={dep} label={dep} variant="neutral" />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className={styles.section}>
         <h4>Execution Contexts</h4>
         <div className={styles.chipRow}>

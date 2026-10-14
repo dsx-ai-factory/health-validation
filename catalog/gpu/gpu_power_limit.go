@@ -17,6 +17,8 @@ func GPUPowerLimit() health.CheckDefinition {
 		Description: "Verifies each GPU's current and enforced power limits.",
 		Category:    health.GPU,
 
+		Dependencies: []string{"gpu_count"},
+
 		RequiredSignals: []string{
 			SignalGPUID,
 			SignalPowerLimitW,

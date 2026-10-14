@@ -11,6 +11,8 @@ func GPUAveragePowerDraw() health.CheckDefinition {
 		Description: "Verifies each GPU's one-second average power draw is within the expected range.",
 		Category:    health.GPU,
 
+		Dependencies: []string{"gpu_count"},
+
 		RequiredSignals: []string{
 			SignalGPUID,
 			SignalAveragePowerDrawW,
