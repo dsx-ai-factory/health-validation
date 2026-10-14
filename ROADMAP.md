@@ -22,7 +22,7 @@ record what has shipped.
 | Focus area | Outcome |
 | --- | --- |
 | [Make verdicts and recommendations more useful](#make-verdicts-and-recommendations-more-useful) | Operators can distinguish current faults from historical evidence and understand the recommended next steps. |
-| [Reuse observations across collection and evaluation](#reuse-observations-across-collection-and-evaluation) | Consumers can reuse collected measurements and apply catalog policy without duplicating collection or health logic. |
+| [Adopt shared sensors and an agent API](#adopt-shared-sensors-and-an-agent-api) | Consumers can reuse sensor data and request node verdicts through the CLI or a long-running agent. |
 | [Extend validated check coverage](#extend-validated-check-coverage) | Operators can see which checks apply to their hardware and environment, with evidence for each coverage claim. |
 
 ### Make verdicts and recommendations more useful
@@ -43,10 +43,10 @@ Validation should cover active faults, historical events, collection failures,
 and evaluation after recovery. Health Validation produces findings and
 recommendations; the calling system owns scheduling and remediation.
 
-### Reuse observations across collection and evaluation
+### Adopt shared sensors and an agent API
 
-Migrate hardware acquisition to shared collection interfaces so consumers can
-reuse GPU and host observations without duplicating collection. Keep thresholds,
+Migrate hardware acquisition to the sensors in `collect`, the shared collection
+foundation for Health Validation, Fleet Intelligence, and GPUd. Keep thresholds,
 severity, and health judgment in the catalog.
 
 - **Shared acquisition.** Complete the migration of GPU, host, NVLink, and
@@ -55,6 +55,8 @@ severity, and health judgment in the catalog.
 - **Collection for applicable checks.** Request only the signals required by
   enabled checks that apply to the node's architecture, execution context, and
   selected cadence.
+- **Agent mode.** Integrate `agentkit` to add a long-running agent with a gRPC
+  API for node health verdicts on demand, alongside the one-shot CLI.
 - **Repeatable evaluation.** Evaluate captured observations with catalog policy
   so consumers can reproduce findings without access to the original hardware.
 
