@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package toolkit provides sensor implementations for collecting
 // hardware measurements that feed into the health check catalog.
 package toolkit

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 load("@rules_go//go:def.bzl", go_binary_wrapper = "go_binary")
 load("//build/rules/oci:defs.bzl", "DEFAULT_BASE_IMAGE", "go_image")
 

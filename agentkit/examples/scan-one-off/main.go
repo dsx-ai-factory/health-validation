@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // scan-one-off runs one collection cycle over the built-in sensors, prints
 // the observation batch, and exits. It is the one-off counterpart of
 // server-simple-collect: no server, no config file. Xid and current port-down

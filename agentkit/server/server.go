@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package server runs one collection cycle per request over the registered
 // sensors and serves the combined batch over gRPC and HTTP on one TCP port —
 // the prototype's single-port surface.

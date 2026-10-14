@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package catalog is the NVIDIA Canonical Health Checks knowledge layer.
 //
 // It provides a registry of check definitions encoding NVIDIA's operational

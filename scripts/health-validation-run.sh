@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Runs the health-validation container with the host's journalctl binary and
 # its shared-library dependencies bind-mounted in. The image no longer bundles
 # systemd; see docs/INTEGRATION.md.

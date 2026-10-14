@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package nvml is the NVML source client for the collect module: one
 // lifecycle owner, device enumeration exposed for the coordinator's
 // per-cycle shared read.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Rule for extracting health check schema from a go_library target."""
 
 load("@rules_go//go:def.bzl", "GoSource")

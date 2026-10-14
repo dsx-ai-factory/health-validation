@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Command healthschema extracts enum and struct metadata from Go source
 // files using the Go AST. It outputs a JSON schema with descriptions
 // derived from source comments.

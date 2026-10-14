@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // server-simple-collect serves one collection cycle per request over gRPC and
 // HTTP on a single port. Built-in sensors are registered here as they land
 // in collect/sensors. See scan-one-off for consumer-side Xid parsing and

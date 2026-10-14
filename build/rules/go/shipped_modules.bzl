@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Extracts the Go module list the linker embedded in a binary.
 
 The emitted list is the linker's own record of the third-party modules in the

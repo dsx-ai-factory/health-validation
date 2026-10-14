@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // gencheckpages reads checks.json and schema.json and generates MDX pages
 // for each health check category, plus a sidebar.ts for Docusaurus integration.
 package main
