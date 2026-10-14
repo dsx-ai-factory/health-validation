@@ -6,11 +6,10 @@ feedback and development proposals into three focus areas.
 
 ## How to read this roadmap
 
-The focus areas below describe proposed direction. Linked issues track
-requests and decisions; linked pull requests show proposed implementations.
-Priority, scope, and sequencing may change as feedback and validation results
-come in. Inclusion here does not establish an implementation or release
-commitment.
+The focus areas below describe proposed direction. Linked issues provide
+context on requests and decisions. Priority, scope, and sequencing may change
+as feedback and validation results come in. Inclusion here does not establish
+an implementation or release commitment.
 
 For current capabilities, see the [README](README.md) and
 [check catalog](catalog/checks.go). [SUPPORT.md](SUPPORT.md) defines supported
@@ -38,9 +37,7 @@ Improve how findings explain a node's condition and guide the next evaluation.
   and consistent advice on choosing an action when several checks fail
   ([#58](https://github.com/dsx-ai-factory/health-validation/issues/58)).
 - **Collection failures.** Explain when several findings share an underlying
-  collection failure, while retaining evidence of the failure. A proposed
-  implementation is tracked in
-  [PR #91](https://github.com/dsx-ai-factory/health-validation/pull/91).
+  collection failure, while retaining evidence of the failure.
 
 Validation should cover active faults, historical events, collection failures,
 and evaluation after recovery. Health Validation produces findings and
@@ -48,27 +45,30 @@ recommendations; the calling system owns scheduling and remediation.
 
 ### Reuse observations across collection and evaluation
 
-Keep hardware collection reusable while the catalog owns thresholds, severity,
-and health judgment. On current `main`, CPU collection uses the experimental
-`collect` module, and the CLI can capture observations without evaluating health.
+Migrate hardware acquisition to shared collection interfaces so consumers can
+reuse GPU and host observations without duplicating collection. Keep thresholds,
+severity, and health judgment in the catalog.
 
-- **Shared collection.** Expand GPU and host measurements available through
-  common collection interfaces
-  ([PR #153](https://github.com/dsx-ai-factory/health-validation/pull/153)).
-- **Collection for applicable checks.** Collect the signals needed by checks
-  that can run in the selected context and cadence
-  ([PR #156](https://github.com/dsx-ai-factory/health-validation/pull/156)).
-- **Evaluation of captured observations.** Evaluate retained measurements with
-  the catalog so consumers can reproduce findings without hardware access
-  ([PR #164](https://github.com/dsx-ai-factory/health-validation/pull/164)).
+- **Shared acquisition.** Complete the migration of GPU, host, NVLink, and
+  journal-backed collection to common sensors, reusing hardware sources and
+  inventory across domains within each validation run.
+- **Collection for applicable checks.** Request only the signals required by
+  enabled checks that apply to the node's architecture, execution context, and
+  selected cadence.
+- **Repeatable evaluation.** Evaluate captured observations with catalog policy
+  so consumers can reproduce findings without access to the original hardware.
 
-The proposals need to preserve measurement identity, units, timing, and the
-distinction between a value, an unavailable value, and a collection error.
+Preserve observation identity, units, timing, and the distinction between values,
+unavailable values, and collection errors. Validate the migration against existing
+check coverage, verdicts, recommended actions, and skip behavior on relevant
+hardware. Review API compatibility and document prerequisites before replacing a
+collection path.
+
 Captured and live evaluation should agree when measurements, node architecture,
-and evaluation settings are equivalent. Additional measurements require
-separate check definitions before they contribute to a health verdict.
-`collect` and `agentkit` remain
-experimental under the current [support policy](SUPPORT.md#support-lifecycle).
+and evaluation settings are equivalent. Broader collection does not by itself
+expand the catalog's check coverage.
+The `collect` and `agentkit` modules remain experimental under the current
+[support policy](SUPPORT.md#support-lifecycle).
 
 ### Extend validated check coverage
 
@@ -76,9 +76,7 @@ Expand coverage where operational feedback identifies a useful check, and make
 its prerequisites and limits clear.
 
 - **Hardware applicability.** Validate checks for additional architectures and
-  topologies before expanding coverage claims. The B200 applicability proposal
-  remains a draft in
-  [PR #122](https://github.com/dsx-ai-factory/health-validation/pull/122).
+  topologies before expanding coverage claims.
 - **Environment-specific guidance.** Document operational checks whose expected
   results depend on customer configuration. Explain required inputs,
   applicability, results, and next steps
@@ -102,4 +100,4 @@ validate it. See [CONTRIBUTING.md](CONTRIBUTING.md) for contributions and
 Usage questions follow the routes in [SUPPORT.md](SUPPORT.md).
 
 Update this roadmap when a focus area changes, is completed, or is retired.
-Keep implementation progress and priority decisions in the linked issues.
+Track implementation progress and priority decisions in issues and pull requests.
