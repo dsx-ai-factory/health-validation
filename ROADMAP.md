@@ -47,8 +47,6 @@ recommendations; the calling system owns scheduling and remediation.
 
 ### Reuse observations across collection and evaluation
 
-Tracking: [#169](https://github.com/dsx-ai-factory/health-validation/issues/169).
-
 Keep hardware collection reusable while the catalog owns thresholds, severity,
 and health judgment. On current `main`, CPU collection uses the experimental
 `collect` module, and the CLI can capture observations without evaluating health.
