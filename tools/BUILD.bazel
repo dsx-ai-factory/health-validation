@@ -1,4 +1,21 @@
 load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_test.bzl", "py_test")
+
+py_test(
+    name = "check_spdx",
+    size = "small",
+    srcs = ["check_spdx.py"],
+    data = ["//:MODULE.bazel"],
+    main = "check_spdx.py",
+    # Reads the real working tree, and its only declared input is MODULE.bazel,
+    # so it must not be sandboxed or cached.
+    tags = [
+        "external",
+        "local",
+        "no-sandbox",
+    ],
+    deps = ["@rules_python//python/runfiles"],
+)
 
 py_binary(
     name = "check_notice",
