@@ -2,7 +2,14 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "gpu",
-    srcs = ["signals.go"],
+    srcs = [
+        "gpm.go",
+        "interconnect.go",
+        "processes.go",
+        "reliability.go",
+        "signals.go",
+        "telemetry.go",
+    ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/gpu",
     visibility = ["//visibility:public"],
     deps = ["//collect"],

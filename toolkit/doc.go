@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package toolkit provides the sensor and backend abstractions partners
 // use to feed measurements into the catalog and produce a node verdict.
 //

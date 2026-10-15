@@ -1,9 +1,14 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package nvml
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"slices"
 	"sync"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,21 +24,48 @@ var _ collect.Sensor = (*sensor)(nil)
 // ID identifies the NVML-backed GPU sensor.
 const ID = "gpu.nvml"
 
-// sensor reads GPU power and temperature through the NVML source client.
+// sensor reads selected GPU fields through one NVML instance.
 type sensor struct {
-	inst nvmlsource.Instance
-	mu   sync.Mutex
+	inst           nvmlsource.Instance
+	fsys           fs.FS
+	processCmdline bool
+	mu             sync.Mutex
 }
 
 // New returns a sensor over the given NVML instance.
 func New(inst nvmlsource.Instance) collect.Sensor {
-	return &sensor{inst: inst}
+	return NewWithOptions(inst)
+}
+
+// Option configures optional host-process diagnostics.
+type Option func(*sensor)
+
+// WithProcessFilesystem selects the filesystem used for process metadata.
+func WithProcessFilesystem(fsys fs.FS) Option { return func(s *sensor) { s.fsys = fsys } }
+
+// WithProcessCmdlineDiagnostics enables bounded command-line reads.
+// Reads may block in the kernel; a timed-out read keeps the native gate held.
+func WithProcessCmdlineDiagnostics(enabled bool) Option {
+	return func(s *sensor) { s.processCmdline = enabled }
+}
+
+// NewWithOptions creates a sensor with explicit diagnostic options.
+func NewWithOptions(inst nvmlsource.Instance, opts ...Option) collect.Sensor {
+	s := &sensor{inst: inst}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *sensor) ID() string { return ID }
 
 func (s *sensor) Signals() collect.Signals {
-	return append(temperatureSignals(), powerSignals()...)
+	signals := slices.Concat(temperatureSignals(), powerSignals(), reliabilitySignals(), interconnectSignals(), telemetrySignals(), processSignals())
+	if s.processCmdline {
+		signals = append(signals, processDiagnosticSignals()...)
+	}
+	return signals
 }
 
 // Measure reads selected fields. WithCycle applies the shared collection timeout;
@@ -41,9 +73,6 @@ func (s *sensor) Signals() collect.Signals {
 // and shut the instance down only after in-flight native calls have completed.
 func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	op := collect.NewOp(opts...)
-	if op.GPUInventory() {
-		return nil, fmt.Errorf("NVML sensor GPU inventory is not supported yet")
-	}
 	selected, err := op.Signals(s.Signals())
 	if err != nil {
 		return nil, fmt.Errorf("select NVML signals: %w", err)
@@ -57,7 +86,7 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		now = timestamppb.New(cycle.StartedAt())
 	}
 	batch := &observation.ObservationBatch{CollectionId: cycle.CollectionID()}
-	if len(selected) == 0 {
+	if len(selected) == 0 && !op.GPUInventory() {
 		return batch, nil
 	}
 	if s.inst == nil {
@@ -87,6 +116,9 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 			category = observation.CollectionErrorCategoryUnavailable
 		}
 		batch = allSignalsFailed(selected, now, "Measure", category, err.Error())
+		if op.GPUInventory() {
+			appendInventoryFailure(batch, now, "Measure", category, err.Error())
+		}
 	}
 	batch.CollectionId = cycle.CollectionID()
 	return batch, nil
@@ -96,25 +128,32 @@ var errInUse = errors.New("NVML read already in progress")
 
 func (s *sensor) measure(ctx context.Context, op *collect.Op, selected collect.Signals, now *timestamppb.Timestamp) (*observation.ObservationBatch, error) {
 	batch := &observation.ObservationBatch{}
+	fail := func(operation string, category observation.CollectionErrorCategory, detail string) *observation.ObservationBatch {
+		failed := allSignalsFailed(selected, now, operation, category, detail)
+		if op.GPUInventory() {
+			appendInventoryFailure(failed, now, operation, category, detail)
+		}
+		return failed
+	}
 
 	if !s.inst.NVMLExists() {
 		if initErr := s.inst.InitError(); initErr != nil {
-			return allSignalsFailed(selected, now, "Init", observation.CollectionErrorCategoryUnavailable, initErr.Error()), nil
+			return fail("Init", observation.CollectionErrorCategoryUnavailable, initErr.Error()), nil
 		}
-		return allSignalsFailed(selected, now, "Init", observation.CollectionErrorCategoryUnsupported, "NVML library not found"), nil
+		return fail("Init", observation.CollectionErrorCategoryUnsupported, "NVML library not found"), nil
 	}
 	if op.Refresh() {
 		if err := s.inst.Refresh(); err != nil {
 			// Device enumeration failed this cycle (e.g. a GPU fell off the bus):
 			// every selected signal is unavailable, attributed to the source.
-			return allSignalsFailed(selected, now, "GetDevices", observation.CollectionErrorCategoryUnavailable, err.Error()), nil
+			return fail("GetDevices", observation.CollectionErrorCategoryUnavailable, err.Error()), nil
 		}
 	} else if initErr := s.inst.InitError(); initErr != nil && len(s.inst.Devices()) == 0 {
 		// The instantiation-time enumeration failed and no refresh has
 		// recovered it, so there is no static list to measure. An empty
 		// batch would read as "no GPUs, nothing wrong"; report every
 		// selected signal unavailable instead.
-		return allSignalsFailed(selected, now, "GetDevices", observation.CollectionErrorCategoryUnavailable, initErr.Error()), nil
+		return fail("GetDevices", observation.CollectionErrorCategoryUnavailable, initErr.Error()), nil
 	}
 
 	want := make(map[string]bool, len(selected))
@@ -122,8 +161,37 @@ func (s *sensor) measure(ctx context.Context, op *collect.Op, selected collect.S
 		want[definition.ID()] = true
 	}
 	err := s.inst.Read(func(devices map[string]device.Device) error {
+		var records []nvmlsource.InventoryDevice
+		if provider, ok := s.inst.(interface {
+			InventoryDevices() []nvmlsource.InventoryDevice
+		}); ok {
+			records = provider.InventoryDevices()
+		}
+		if op.GPUInventory() {
+			input := inventoryInput{Devices: records}
+			if provider, ok := s.inst.(interface{ Metadata() nvmlsource.Metadata }); ok {
+				metadata := provider.Metadata()
+				input.Metadata = &metadata
+			}
+			batch.Inventory = &observation.HardwareInventory{GpuSnapshots: []*observation.GPUInventorySnapshot{measureInventory(ctx, now, devices, input)}}
+		}
+		for _, record := range records {
+			if record.Device != nil && record.UUIDReturn == 0 && record.Error == nil {
+				continue
+			}
+			detail := "GPU identity or handle is unavailable"
+			if record.Error != nil {
+				detail = record.Error.Error()
+			}
+			target := observation.GPUSourceLocalTarget(fmt.Sprint(record.SourceIndex))
+			for _, signal := range selected {
+				batch.Observations = append(batch.Observations, errorObservation(now, target, signal, "GetDevices", observation.CollectionErrorCategoryUnavailable, "", detail))
+			}
+		}
 		if len(devices) == 0 {
-			appendNoTargetObservations(batch, selected, now)
+			if len(records) == 0 {
+				appendNoTargetObservations(batch, selected, now)
+			}
 			return ctx.Err()
 		}
 		for uuid, dev := range devices {
@@ -133,6 +201,22 @@ func (s *sensor) measure(ctx context.Context, op *collect.Op, selected collect.S
 			target := observation.GPUTarget(uuid)
 			ret := measureTemperature(ctx, batch, now, target, dev, want)
 			measurePower(ctx, batch, now, target, dev, want, ret)
+			if appendFatalFailures(batch, now, target, selected) {
+				continue
+			}
+			measureReliability(ctx, batch, now, target, dev, want)
+			if appendFatalFailures(batch, now, target, selected) {
+				continue
+			}
+			measureInterconnect(ctx, batch, now, target, dev, want)
+			if appendFatalFailures(batch, now, target, selected) {
+				continue
+			}
+			measureTelemetryFS(ctx, batch, now, target, dev, want, s.fsys)
+			if appendFatalFailures(batch, now, target, selected) {
+				continue
+			}
+			measureProcessesWithDiagnostics(ctx, batch, now, target, dev, want, s.fsys, s.processCmdline)
 		}
 		return ctx.Err()
 	})
@@ -166,4 +250,48 @@ func allSignalsFailed(selected collect.Signals, now *timestamppb.Timestamp, oper
 		batch.Observations = append(batch.Observations, errorObservation(now, nil, definition, operation, category, "", detail))
 	}
 	return batch
+}
+
+func appendInventoryFailure(batch *observation.ObservationBatch, now *timestamppb.Timestamp, operation string, category observation.CollectionErrorCategory, detail string) {
+	batch.Inventory = &observation.HardwareInventory{GpuSnapshots: []*observation.GPUInventorySnapshot{{Source: source, CollectedAt: now, Outcome: &observation.GPUInventorySnapshot_CollectionError{CollectionError: &observation.CollectionError{Source: source, Operation: operation, Category: category, Detail: detail}}}}}
+}
+
+// Device loss ends native queries, but every selected field retains an outcome.
+func appendFatalFailures(batch *observation.ObservationBatch, now *timestamppb.Timestamp, target *observation.ObservationTarget, selected collect.Signals) bool {
+	start := len(batch.Observations)
+	var fatal *observation.CollectionError
+	for _, obs := range batch.Observations {
+		if observationGPUUUID(obs.GetTarget()) != target.GetGpu().GetUuid() {
+			continue
+		}
+		failure := obs.GetCollectionError()
+		if failure.GetSourceError() == "ERROR_GPU_IS_LOST" || failure.GetSourceError() == "ERROR_RESET_REQUIRED" {
+			fatal = failure
+		}
+	}
+	if fatal == nil {
+		return false
+	}
+	seen := make(map[string]bool)
+	for _, obs := range batch.Observations[:start] {
+		if observationGPUUUID(obs.GetTarget()) == target.GetGpu().GetUuid() {
+			seen[obs.GetSignalId()] = true
+		}
+	}
+	for _, signal := range selected {
+		if !seen[signal.ID()] {
+			batch.Observations = append(batch.Observations, observation.NewCollectionErrorObservation(signal.ID(), signal.Unit(), source, fatal.GetOperation(), target, now, fatal))
+		}
+	}
+	return true
+}
+
+func observationGPUUUID(target *observation.ObservationTarget) string {
+	if gpu := target.GetGpu(); gpu != nil {
+		return gpu.GetUuid()
+	}
+	if endpoint := target.GetNvLinkEndpoint(); endpoint != nil {
+		return endpoint.GetGpu().GetUuid()
+	}
+	return target.GetGpuProcess().GetGpu().GetUuid()
 }

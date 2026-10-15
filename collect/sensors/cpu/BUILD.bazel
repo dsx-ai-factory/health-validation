@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "cpu",
     srcs = [
+        "activity.go",
         "list.go",
         "sensor.go",
     ],
@@ -19,6 +20,7 @@ go_library(
 go_test(
     name = "cpu_test",
     srcs = [
+        "activity_test.go",
         "list_test.go",
         "sensor_test.go",
     ],

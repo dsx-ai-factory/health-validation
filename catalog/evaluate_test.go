@@ -1,8 +1,12 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package catalog_test
 
 import (
 	"errors"
 	"maps"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,6 +15,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
+	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
@@ -194,8 +199,8 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 			t.Errorf("CheckID %q: collected category skipped with %v", v.CheckID, v.SkipReason)
 			continue
 		}
-		// An uncollected domain's checks may skip SENSOR_MISSING in their own
-		// right, or DEPENDENCY_SKIPPED when a prerequisite already did.
+		// Only Xid supplies a measurement here, so every other check skips
+		// SENSOR_MISSING in its own right; a dependency never causes a skip.
 		// A context mismatch is decided first, so a check that does not
 		// apply to this catalog does not read as a sensor hole.
 		switch v.SkipReason {
@@ -204,7 +209,7 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 				t.Errorf("CheckID %q skip detail %q does not name the missing category",
 					v.CheckID, v.SkipDetail)
 			}
-		case health.DependencySkipped, health.DeploymentUnsupported:
+		case health.DeploymentUnsupported:
 		default:
 			t.Errorf("CheckID %q (category %v) skip reason = %v, want SENSOR_MISSING",
 				v.CheckID, v.Category, v.SkipReason)
@@ -307,58 +312,6 @@ func TestEvaluateAll_MissingSensorRecordsSkip(t *testing.T) {
 	}
 }
 
-// A check whose dependency was skipped SENSOR_MISSING cascades to
-// DEPENDENCY_SKIPPED, the same as any other skipped prerequisite.
-func TestEvaluateAll_SensorMissingCascadesToDependents(t *testing.T) {
-	base := health.CheckDefinition{
-		ID:                "gpu_base",
-		Category:          health.GPU,
-		RequiredSignals:   []string{"gpu_id"},
-		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
-		Thresholds:        map[string]health.ThresholdSpec{},
-		Rules: []health.Rule{
-			{Expression: "gpu_id == ''", Severity: health.Critical, Message: "no id"},
-		},
-	}
-	dependent := health.CheckDefinition{
-		ID:                "gpu_dependent",
-		Category:          health.GPU,
-		RequiredSignals:   []string{"gpu_id"},
-		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
-		Thresholds:        map[string]health.ThresholdSpec{},
-		Dependencies:      []string{"gpu_base"},
-		Rules: []health.Rule{
-			{Expression: "gpu_id == ''", Severity: health.Critical, Message: "no id"},
-		},
-	}
-
-	cat := catalog.NewEmpty(
-		catalog.WithArchitecture(catalogtest.DummyArchitecture),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-	cat.MustRegister(base)
-	cat.MustRegister(dependent)
-
-	nv, err := cat.EvaluateAll()
-	if err != nil {
-		t.Fatalf("EvaluateAll: %v", err)
-	}
-	if len(nv.CheckResults) != 0 {
-		t.Errorf("check results = %+v, want none", nv.CheckResults)
-	}
-
-	got := map[string]health.SkipReason{}
-	for _, v := range nv.SkippedChecks {
-		got[v.CheckID] = v.SkipReason
-	}
-	if got["gpu_base"] != health.SensorMissing {
-		t.Errorf("gpu_base skip reason = %v, want SENSOR_MISSING", got["gpu_base"])
-	}
-	if got["gpu_dependent"] != health.DependencySkipped {
-		t.Errorf("gpu_dependent skip reason = %v, want DEPENDENCY_SKIPPED", got["gpu_dependent"])
-	}
-}
-
 func TestEvaluateAll_Dependencies(t *testing.T) {
 	driver := health.CheckDefinition{
 		ID:                "node_driver",
@@ -393,13 +346,25 @@ func TestEvaluateAll_Dependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nv.SkippedChecks) != 2 {
-		t.Errorf("skipped = %d, want 2", len(nv.SkippedChecks))
+	// node_driver has no measurement carrying driver_loaded, so it skips. Its
+	// dependent carries gpu_count and evaluates regardless: a dependency that
+	// did not run is not a reason to leave a readable signal unassessed.
+	if len(nv.SkippedChecks) != 1 {
+		t.Errorf("skipped = %d, want 1", len(nv.SkippedChecks))
 	}
 	for _, sc := range nv.SkippedChecks {
-		if sc.CheckID == "node_check" && sc.SkipReason != health.DependencySkipped {
-			t.Errorf("node_check skip reason = %v, want DEPENDENCY_SKIPPED", sc.SkipReason)
+		if sc.CheckID != "node_driver" {
+			t.Errorf("skipped %q, want only node_driver", sc.CheckID)
 		}
+	}
+	var ran bool
+	for _, r := range nv.CheckResults {
+		if r.CheckID == "node_check" {
+			ran = true
+		}
+	}
+	if !ran {
+		t.Error("node_check did not run; its required signal was present")
 	}
 }
 
@@ -1188,4 +1153,457 @@ func TestEvaluate_ConditionScope(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A dependent that read its signals and failed its own rule is an
+// independently observed fault, not a restatement of the dependency's.
+func TestEvaluateAll_RuleFailureUnderFailedDependencySurvives(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+
+	// gpu_count is Critical on the shortfall; the GPU that is present reports a
+	// real thermal slowdown of its own.
+	verdict, err := cat.EvaluateAll(
+		node.NodeMeasurement{GPUCount: 3},
+		gpu.GPUMeasurement{
+			GPUID: "GPU-0", AveragePowerDrawW: 400, PowerLimitW: 1200,
+			EnforcedPowerLimitW: 1200, HWThermalSlowdown: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+
+	for _, v := range verdict.CheckResults {
+		if v.CheckID != "gpu_sensor_throttle" || v.Severity != health.Critical {
+			continue
+		}
+		if strings.Contains(strings.Join(v.Messages, " "), "gpu_count") {
+			t.Errorf("a rule failure was attributed to gpu_count: %v", v.Messages)
+		}
+		return
+	}
+	t.Error("gpu_sensor_throttle did not report the throttle; a rule failure must survive")
+}
+
+// Disabling one check must not disable its dependents. Checks never consume
+// each other's results, so a check the operator turned off says nothing about
+// whether another check can read its own signals.
+func TestEvaluateAll_DisablingRootKeepsDependents(t *testing.T) {
+	cat := catalog.New(
+		catalog.WithArchitecture("GB200"),
+		catalog.WithDisabledChecks("gpu_count"),
+	)
+
+	verdict, err := cat.EvaluateAll(
+		node.NodeMeasurement{GPUCount: 4},
+		gpu.GPUMeasurement{GPUID: "GPU-0", HWThermalSlowdown: true},
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	if verdict.OverallSeverity != health.Critical {
+		t.Errorf("overall = %v, want CRITICAL: a throttling GPU must not read PASS "+
+			"because gpu_count was disabled", verdict.OverallSeverity)
+	}
+}
+
+// healthyGPU is a GPU measurement that passes every built-in GPU check on
+// GB200, so a test can tell a real domain failure from a fixture artifact.
+func healthyGPU(id string) gpu.GPUMeasurement {
+	return gpu.GPUMeasurement{
+		GPUID:               id,
+		AveragePowerDrawW:   400,
+		PowerLimitW:         1200,
+		EnforcedPowerLimitW: 1200,
+		GPUPstate:           0,
+	}
+}
+
+// The reported scenario: one of four GPUs off the bus. Every dependent names
+// gpu_count as the cause instead of restating the same fault as an unexplained
+// collection failure, and the GPU domain stays visible.
+func TestEvaluateAll_LostGPUNamesGPUCount(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	cause := errors.New("device handle unavailable")
+
+	verdict, err := cat.EvaluateAll(
+		node.NodeMeasurement{GPUCount: 3},
+		healthyGPU("GPU-0"), healthyGPU("GPU-1"), healthyGPU("GPU-2"),
+		gpu.ErroredGPU("", cause, gpu.MeasurementSignals...),
+		nvlink.NVLinkMeasurement{GPUID: "GPU-0"},
+		nvlink.ErroredNVLink("", cause, nvlink.MeasurementSignals...),
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+
+	named := map[string]int{}
+	for _, v := range verdict.CheckResults {
+		if v.Severity != health.Critical {
+			continue
+		}
+		msg := strings.Join(v.Messages, " ")
+		if strings.Contains(msg, "gpu_count") {
+			named[v.CheckID]++
+			if !strings.Contains(msg, "device handle unavailable") {
+				t.Errorf("%s = %q, want the collection cause kept alongside the cause", v.CheckID, msg)
+			}
+		}
+	}
+	for _, id := range []string{
+		"gpu_average_power_draw", "gpu_power_limit", "gpu_power_state", "gpu_sensor_throttle",
+		"nvlink_active", "nvlink_bandwidth_count_speed", "nvlink_capabilities",
+		"nvlink_fabric", "nvlink_fabric_health", "nvlink_p2p",
+	} {
+		if named[id] != 1 {
+			t.Errorf("%s verdicts naming gpu_count = %d, want 1 for the one lost device", id, named[id])
+		}
+	}
+	if verdict.SeverityByDomain[health.GPU] != health.Critical {
+		t.Errorf("severity_by_domain[gpu] = %v, want CRITICAL", verdict.SeverityByDomain[health.GPU])
+	}
+}
+
+// A partial per-signal read failure on a GPU that enumerated fine is a
+// different event from a device falling off the bus. gpu_count explains the
+// second and not the first, so only whole-entity loss is annotated.
+func TestEvaluateAll_PartialSignalFailureIsNotAttributedToDependency(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+
+	// Slot 3 off the bus: every signal unreadable.
+	lost := gpu.ErroredGPU("", errors.New("device handle unavailable"), gpu.MeasurementSignals...)
+
+	// GPU-1 enumerated fine; one power read failed on its own.
+	partial := healthyGPU("GPU-1")
+	partial.AddError(errors.New("DeviceGetEnforcedPowerLimit: ERROR_UNKNOWN"),
+		gpu.SignalEnforcedPowerLimitW)
+
+	verdict, err := cat.EvaluateAll(
+		node.NodeMeasurement{GPUCount: 3},
+		healthyGPU("GPU-0"), partial, lost,
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+
+	var own, annotated int
+	for _, v := range verdict.CheckResults {
+		if v.CheckID != "gpu_power_limit" || v.Severity != health.Critical {
+			continue
+		}
+		msg := strings.Join(v.Messages, " ")
+		switch {
+		case strings.Contains(msg, "gpu_count"):
+			annotated++
+			if strings.Contains(msg, "DeviceGetEnforcedPowerLimit") {
+				t.Errorf("an unrelated partial failure was attributed to gpu_count: %q", msg)
+			}
+		case strings.Contains(msg, "DeviceGetEnforcedPowerLimit"):
+			own++
+		}
+	}
+	if own != 1 {
+		t.Errorf("gpu_power_limit verdicts reporting the partial failure on its own = %d, want 1", own)
+	}
+	if annotated != 1 {
+		t.Errorf("gpu_power_limit verdicts naming gpu_count = %d, want 1 for the lost device", annotated)
+	}
+}
+
+// Separate read failures on a device that enumerated fine stay unattributed even
+// when together they cover every signal the check requires.
+func TestEvaluateAll_JointPartialFailuresAreNotAttributedToDependency(t *testing.T) {
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+	cat.MustRegister(health.CheckDefinition{
+		ID: "root", Category: health.Node,
+		RequiredSignals:   []string{"gpu_count"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "gpu_count < 4", Severity: health.Critical, Message: "short"},
+		},
+	})
+	cat.MustRegister(health.CheckDefinition{
+		ID: "limits", Category: health.GPU,
+		RequiredSignals:   []string{gpu.SignalPowerLimitW, gpu.SignalEnforcedPowerLimitW},
+		Dependencies:      []string{"root"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "power_limit_w != enforced_power_limit_w", Severity: health.Critical, Message: "mismatch"},
+		},
+	})
+
+	m := gpu.GPUMeasurement{GPUID: "GPU-1"}
+	m.AddError(errors.New("DeviceGetPowerManagementLimit: ERROR_UNKNOWN"), gpu.SignalPowerLimitW)
+	m.AddError(errors.New("DeviceGetEnforcedPowerLimit: ERROR_UNKNOWN"), gpu.SignalEnforcedPowerLimitW)
+
+	nv, err := cat.EvaluateAll(node.NodeMeasurement{GPUCount: 3}, m)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	for _, v := range nv.CheckResults {
+		if v.CheckID != "limits" {
+			continue
+		}
+		if v.Severity != health.Critical {
+			t.Errorf("severity = %v, want CRITICAL for the collection failure", v.Severity)
+		}
+		if strings.Contains(strings.Join(v.Messages, " "), "explained by dependency") {
+			t.Errorf("messages = %v, want no dependency named on a device that enumerated", v.Messages)
+		}
+		return
+	}
+	t.Error("limits produced no verdict")
+}
+
+// A collection failure is classified by every message carrying the
+// "measurement unavailable" prefix. Naming the dependency must extend that
+// message, not add a second one, or a consumer reads the verdict as an
+// observed fault and recommends hardware remediation.
+func TestEvaluateAll_CollectionFailureKeepsItsPrefixOnEveryMessage(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	cause := errors.New("device handle unavailable")
+
+	verdict, err := cat.EvaluateAll(
+		node.NodeMeasurement{GPUCount: 3},
+		healthyGPU("GPU-0"),
+		gpu.ErroredGPU("", cause, gpu.MeasurementSignals...),
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+
+	var checked int
+	for _, v := range verdict.CheckResults {
+		if v.Severity != health.Critical {
+			continue
+		}
+		if !strings.Contains(strings.Join(v.Messages, " "), "gpu_count") {
+			continue
+		}
+		checked++
+		for _, m := range v.Messages {
+			if !strings.HasPrefix(m, "measurement unavailable: ") {
+				t.Errorf("%s message %q lacks the collection-failure prefix", v.CheckID, m)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no annotated collection failure in the verdict")
+	}
+}
+
+// A dependency that reported Critical because its own measurement could not be
+// collected explains nothing: it observed no fault. Only a rule match, which is
+// the path that records ObservedValues, licenses the claim.
+func TestEvaluateAll_UnobservedDependencyExplainsNothing(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	cause := errors.New("nvml init failed")
+
+	// The whole NVML source is wedged: gpu_count is Critical from its own
+	// errored measurement rather than from a count it actually read.
+	verdict, err := cat.EvaluateAll(
+		node.ErroredNode(cause, node.MeasurementSignals...),
+		gpu.ErroredGPU("", cause, gpu.MeasurementSignals...),
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	for _, v := range verdict.CheckResults {
+		if strings.Contains(strings.Join(v.Messages, " "), "explained by dependency") {
+			t.Errorf("%s credits gpu_count, which observed nothing: %v", v.CheckID, v.Messages)
+		}
+	}
+}
+
+// gpu_count is Blackwell-only while six dependents also declare H100, H200 or
+// A100. There it is architecture-skipped, never reports Critical, and each
+// dependent reports its own collection failure unannotated. AGENTS.md documents
+// this as the scope limit; this pins it.
+func TestEvaluateAll_NoAnnotationWhereGPUCountDoesNotApply(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("H100"))
+	cause := errors.New("device handle unavailable")
+
+	verdict, err := cat.EvaluateAll(
+		healthyGPU("GPU-0"),
+		gpu.ErroredGPU("", cause, gpu.MeasurementSignals...),
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+
+	var reported bool
+	for _, v := range verdict.CheckResults {
+		msg := strings.Join(v.Messages, " ")
+		if strings.Contains(msg, "gpu_count") {
+			t.Errorf("%s names gpu_count on H100, where it does not run: %q", v.CheckID, msg)
+		}
+		if v.CheckID == "gpu_power_limit" && strings.Contains(msg, "device handle unavailable") {
+			reported = true
+		}
+	}
+	if !reported {
+		t.Error("gpu_power_limit did not report its collection failure on H100")
+	}
+}
+
+// With several dependencies, the first declared one that reported Critical is
+// named. Nothing built in declares more than one, so this records the rule.
+func TestEvaluateAll_MultipleDependenciesNamesFirstDeclared(t *testing.T) {
+	root := func(id string) health.CheckDefinition {
+		return health.CheckDefinition{
+			ID: id, Category: health.Node,
+			RequiredSignals:   []string{"gpu_count"},
+			ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+			Thresholds:        map[string]health.ThresholdSpec{},
+			Rules: []health.Rule{
+				{Expression: "gpu_count < 4", Severity: health.Critical, Message: "short"},
+			},
+		}
+	}
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+	cat.MustRegister(root("first_root"))
+	cat.MustRegister(root("second_root"))
+	cat.MustRegister(health.CheckDefinition{
+		ID: "two_deps", Category: health.GPU,
+		RequiredSignals:   []string{"gpu_id"},
+		Dependencies:      []string{"first_root", "second_root"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "gpu_id == ''", Severity: health.Critical, Message: "no id"},
+		},
+	})
+
+	nv, err := cat.EvaluateAll(
+		node.NodeMeasurement{GPUCount: 3},
+		gpu.ErroredGPU("", errors.New("handle unavailable"), gpu.MeasurementSignals...),
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	for _, v := range nv.CheckResults {
+		if v.CheckID != "two_deps" || v.Severity != health.Critical {
+			continue
+		}
+		if !strings.Contains(strings.Join(v.Messages, " "), "first_root") {
+			t.Errorf("messages = %v, want the first declared failing dependency", v.Messages)
+		}
+		return
+	}
+	t.Error("two_deps produced no Critical verdict")
+}
+
+// Evaluate runs one check alone, so there is no sibling verdict to name and
+// Dependencies has no effect. catalog.go documents this contract.
+func TestEvaluate_SingleCheckIgnoresDependencies(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	lost := gpu.ErroredGPU("", errors.New("device handle unavailable"), gpu.MeasurementSignals...)
+
+	v, err := cat.Evaluate("gpu_power_limit", lost)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if v.Severity != health.Critical {
+		t.Errorf("severity = %v, want CRITICAL", v.Severity)
+	}
+	if got := strings.Join(v.Messages, " "); strings.Contains(got, "gpu_count") {
+		t.Errorf("messages = %q, want no attribution on the single-check path", got)
+	}
+}
+
+// The annotated verdict's exact shape: one message, the collection prefix, the
+// cause, then the dependency clause, and the collection action preserved.
+func TestEvaluateAll_AnnotatedVerdictShape(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+
+	verdict, err := cat.EvaluateAll(
+		node.NodeMeasurement{GPUCount: 3},
+		healthyGPU("GPU-0"),
+		gpu.ErroredGPU("", errors.New("device handle unavailable"), gpu.MeasurementSignals...),
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+
+	const want = `measurement unavailable: device handle unavailable; ` +
+		`explained by dependency "gpu_count", itself CRITICAL`
+	for _, v := range verdict.CheckResults {
+		if v.CheckID != "gpu_power_limit" || v.Severity != health.Critical {
+			continue
+		}
+		if len(v.Messages) != 1 {
+			t.Fatalf("messages = %v, want exactly one", v.Messages)
+		}
+		if v.Messages[0] != want {
+			t.Errorf("message =\n  %q\nwant\n  %q", v.Messages[0], want)
+		}
+		if !slices.Contains(v.RecommendedAction.RemediationActions,
+			health.RemediationActionCheckCollection) {
+			t.Errorf("action = %v, want the collection-failure action preserved",
+				v.RecommendedAction.RemediationActions)
+		}
+		return
+	}
+	t.Error("no annotated gpu_power_limit verdict")
+}
+
+// Unknown ranks above Critical and means the check could not complete, so a
+// dependency that reported it explains a dependent just as a Critical does.
+func TestEvaluateAll_UnknownDependencyExplains(t *testing.T) {
+	root := health.CheckDefinition{
+		ID: "unknown_root", Category: health.Node,
+		RequiredSignals:   []string{"gpu_count"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "gpu_count < 4", Severity: health.Unknown, Message: "cannot assess"},
+		},
+	}
+	dependent := health.CheckDefinition{
+		ID: "dependent", Category: health.GPU,
+		RequiredSignals:   []string{"gpu_id"},
+		Dependencies:      []string{"unknown_root"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules: []health.Rule{
+			{Expression: "gpu_id == ''", Severity: health.Critical, Message: "no id"},
+		},
+	}
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+	cat.MustRegister(root)
+	cat.MustRegister(dependent)
+
+	nv, err := cat.EvaluateAll(
+		node.NodeMeasurement{GPUCount: 3},
+		gpu.ErroredGPU("", errors.New("handle unavailable"), gpu.MeasurementSignals...),
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	for _, v := range nv.CheckResults {
+		if v.CheckID != "dependent" {
+			continue
+		}
+		msg := strings.Join(v.Messages, " ")
+		if !strings.Contains(msg, "unknown_root") {
+			t.Errorf("messages = %v, want the Unknown dependency named", v.Messages)
+		}
+		// The severity is the dependency's own, not a hardcoded CRITICAL.
+		if !strings.Contains(msg, "itself UNKNOWN") {
+			t.Errorf("messages = %v, want the dependency's actual severity", v.Messages)
+		}
+		return
+	}
+	t.Error("dependent produced no verdict")
 }

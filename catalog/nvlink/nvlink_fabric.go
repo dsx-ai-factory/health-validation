@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package nvlink
 
 import "github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -21,6 +24,11 @@ func NVLinkFabric() health.CheckDefinition {
 		Name:        "NVLink Fabric Registration",
 		Description: "Verifies each GPU has completed NVLink fabric registration with a successful status. Incomplete or failed registration cuts the GPU off from multi-GPU NVLink communication.",
 		Category:    health.NVLink,
+
+		// Reads the same NVML per-device enumeration that gpu_count
+		// measures, so a verdict about a device missing from that
+		// enumeration names gpu_count as the cause.
+		Dependencies: []string{"gpu_count"},
 
 		RequiredSignals: []string{
 			SignalGPUID,

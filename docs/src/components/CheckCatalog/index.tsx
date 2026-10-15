@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 import React, { useState } from "react";
 import { usePluginData } from "@docusaurus/useGlobalData";
 import Chip from "../Chip";
@@ -57,6 +60,21 @@ function CheckDetail({ check }: { check: CheckDefinition }) {
           <div className={styles.chipRow}>
             {check.architectures.map((arch) => (
               <Chip key={arch} label={arch} variant="neutral" />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {check.dependencies && check.dependencies.length > 0 && (
+        <div className={styles.section}>
+          <h4>Depends On</h4>
+          <p className={styles.description}>
+            A verdict for a device this check could not read at all names these
+            checks as the cause when they report CRITICAL.
+          </p>
+          <div className={styles.chipRow}>
+            {check.dependencies.map((dep) => (
+              <Chip key={dep} label={dep} variant="neutral" />
             ))}
           </div>
         </div>

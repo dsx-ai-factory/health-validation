@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 syntax = "proto3";
 
 package health.v1;
@@ -100,6 +103,9 @@ message Observation {
     CollectionError collection_error = 7;
     NoValue no_value = 8;
   }
+  // Interval measurements retain both sample times; snapshots leave these absent.
+  google.protobuf.Timestamp sample_started_at = 9;
+  google.protobuf.Timestamp sample_ended_at = 10;
 }
 
 // ObservationTarget identifies exactly what an observation describes.
@@ -113,6 +119,13 @@ message ObservationTarget {
     InfiniBandDeviceRef infini_band_device = 5;
     InfiniBandPortRef infini_band_port = 6;
     KernelRecordRef kernel_record = 7;
+    ProcessRef process = 8;
+    GpuProcessRef gpu_process = 9;
+    BlockDeviceRef block_device = 10;
+    MountRef mount = 11;
+    PCIRef pci = 12;
+    FuseConnectionRef fuse_connection = 13;
+    PstoreRecordRef pstore_record = 14;
   }
 }
 
@@ -156,6 +169,44 @@ message KernelRecordRef {
   int64 sequence = 2;
 }
 
+// ProcessRef distinguishes reused PIDs within a boot.
+message ProcessRef {
+  string boot_id = 1;
+  uint32 pid = 2;
+  uint64 start_time_ticks = 3;
+}
+
+message GpuProcessRef {
+  GpuRef gpu = 1;
+  ProcessRef process = 2;
+}
+
+message BlockDeviceRef {
+  uint32 major = 1;
+  uint32 minor = 2;
+}
+
+// MountRef uses the mount namespace and kernel mount ID, not a path alone.
+message MountRef {
+  string namespace = 1;
+  uint64 mount_id = 2;
+}
+
+message PCIRef {
+  string address = 1;
+}
+
+message FuseConnectionRef {
+  string boot_id = 1;
+  uint64 connection_id = 2;
+}
+
+// PstoreRecordRef identifies the bytes read from one persistent record.
+message PstoreRecordRef {
+  string path = 1;
+  string sha256 = 2;
+}
+
 // Value is a typed observed value.
 message Value {
   oneof kind {
@@ -163,6 +214,7 @@ message Value {
     double double_value = 2;
     string string_value = 3;
     bool bool_value = 4;
+    uint64 uint_value = 5;
   }
 }
 

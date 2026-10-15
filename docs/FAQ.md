@@ -31,7 +31,6 @@ The check did not execute. The `skip_reason` field says why:
 | SIGNAL_UNAVAILABLE_ARCHITECTURE | Check does not apply to this GPU architecture. | None. The check will never run in this environment. |
 | SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL | Requires a different execution context. | Check `skip_detail` for the required context. |
 | CHECK_DISABLED | Operator disabled this check, via `disabled_checks:` in the config or `catalog.WithDisabledChecks`. | Intentional, but the verdict does not record which config file asked for it. |
-| DEPENDENCY_SKIPPED | A prerequisite check was skipped or failed. | Investigate the dependency. |
 | INSUFFICIENT_HISTORY | Time-window data not yet available. Not triggered by any currently registered check. | Re-run after the window accumulates. |
 | THRESHOLD_UNCONFIGURED | A required-override threshold (one the operator must supply, with no universal default) was not configured. | Set it in the config file for this fleet; `skip_detail` names the threshold. |
 | CADENCE_MISMATCH | Check is not scheduled for the requested run window. | None. This check belongs to another cadence. |

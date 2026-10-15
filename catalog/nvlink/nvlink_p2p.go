@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package nvlink
 
 import "github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -16,6 +19,8 @@ func NVLinkP2P() health.CheckDefinition {
 		Name:        "NVLink P2P Connectivity",
 		Description: "Verifies each GPU has healthy peer-to-peer NVLink connectivity to every other GPU.",
 		Category:    health.NVLink,
+
+		Dependencies: []string{"gpu_count"},
 
 		RequiredSignals: []string{
 			SignalGPUID,

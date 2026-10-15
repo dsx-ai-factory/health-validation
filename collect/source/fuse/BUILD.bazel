@@ -1,0 +1,29 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "fuse",
+    srcs = ["source.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/source/fuse",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/fuse",
+        "//collect/source/disk",
+    ],
+)
+
+go_test(
+    name = "fuse_test",
+    srcs = [
+        "correlation_test.go",
+        "mount_view_test.go",
+        "source_test.go",
+    ],
+    embed = [":fuse"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/fuse",
+    ],
+)

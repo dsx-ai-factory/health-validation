@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package nvlink
 
 import "github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -28,6 +31,8 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 		Name:        "NVLink Bandwidth, Count, and Speed",
 		Description: "Verifies each GPU's NVLink link count and per-link speed match expected values.",
 		Category:    health.NVLink,
+
+		Dependencies: []string{"gpu_count"},
 
 		RequiredSignals: []string{
 			SignalGPUID,

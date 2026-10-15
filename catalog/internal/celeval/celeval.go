@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package celeval provides CEL expression evaluation for health check rules.
 //
 // It wraps cel-go with lazy compilation and caching: expressions are compiled

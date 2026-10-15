@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package gpu
 
 import "github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -16,6 +19,8 @@ func GPUPowerLimit() health.CheckDefinition {
 		Name:        "GPU Power Limit",
 		Description: "Verifies each GPU's current and enforced power limits.",
 		Category:    health.GPU,
+
+		Dependencies: []string{"gpu_count"},
 
 		RequiredSignals: []string{
 			SignalGPUID,

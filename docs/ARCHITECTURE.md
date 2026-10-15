@@ -54,7 +54,7 @@ To add a sensor for a new hardware domain: define a measurement struct in `catal
 | `catalog.WithDisabledChecks("check_id", ...)` | Named checks are skipped with `CHECK_DISABLED`. Built from a config file's `disabled_checks:` via `Config.DisabledCheckIDs()`. |
 | `catalog.WithOverrides(overrides)` | Applies operator threshold overrides. Built from a config file via `Config.Overrides()`. |
 
-Scheduling cadence is not a construction option. Set `Cadence` in per-run `catalog.EvaluationOptions` or `toolkit.CollectionOptions`; either zero value evaluates every registered check, and zero-value collection options also use the default timeout. Checks outside the requested window are reported with `CADENCE_MISMATCH`, allowing dependent checks to follow the normal `DEPENDENCY_SKIPPED` cascade. One catalog can serve Continuous, Prolog, and Maintenance windows.
+Scheduling cadence is not a construction option. Set `Cadence` in per-run `catalog.EvaluationOptions` or `toolkit.CollectionOptions`; either zero value evaluates every registered check, and zero-value collection options also use the default timeout. Checks outside the requested window are reported with `CADENCE_MISMATCH`. One catalog can serve Continuous, Prolog, and Maintenance windows.
 
 `health-validation run` defaults to `TENANT_GUEST`; `--execution-context`
 selects another context. The CLI applies the selected context through
@@ -128,7 +128,6 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | SIGNAL_UNAVAILABLE_ARCHITECTURE | Check does not apply to this GPU architecture. |
 | SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL | Check requires a different execution context. |
 | CHECK_DISABLED | Operator explicitly disabled this check. |
-| DEPENDENCY_SKIPPED | A prerequisite check was skipped or failed. |
 | INSUFFICIENT_HISTORY | Time-window data not yet accumulated. Applies only to checks that evaluate over a window; not used by any currently registered check. |
 | THRESHOLD_UNCONFIGURED | A threshold the operator must supply was not configured. |
 | NO_APPLICABLE_MEASUREMENT | The category was collected, but no measurement in it carries the check's required signals. Routing is by measurement schema, so a measurement that carries the signals but whose sensor failed to collect one reports CRITICAL rather than skipping. |
@@ -137,7 +136,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 ## Adding a check
 
 1. Add any new signal fields to the measurement struct in `catalog/<domain>/measurement.go`. Add matching `Signal*` string constants.
-2. Write a `CheckDefinition` factory in `catalog/<domain>/`. Declare `RequiredSignals`, `Thresholds`, and `Rules` (CEL expressions referencing signal names and threshold names).
+2. Write a `CheckDefinition` factory in `catalog/<domain>/`. Declare `RequiredSignals`, `Thresholds`, and `Rules` (CEL expressions referencing signal names and threshold names). Declare `Dependencies` when another check explains this one's *complete* failure to read an entity, as the GPU and NVLink checks do for `gpu_count`. A partial read, where only some required signals failed, is an independent fault and is not attributed.
 3. Register it in `catalog/checks.go` via `builtinChecks()` so `catalog.New()` and the stock CLI run it. Declare `SchedulingCadence` on the check. Omit `--cadence` (or use a zero-value evaluation/collection context) to evaluate every registered check; set a cadence to run checks whose cadence covers that window (Continuous ⊂ Prolog ⊂ Maintenance) and report the others as skipped.
 4. Add a test covering the PASS path, at least one non-PASS path, and the skipped path (errored measurement).
 

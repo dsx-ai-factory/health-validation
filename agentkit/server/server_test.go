@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package server
 
 import (
@@ -9,10 +12,14 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	healthv1 "github.com/dsx-ai-factory/health-validation/collect/proto/go/health/v1"
+	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
+	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 )
 
@@ -121,5 +128,63 @@ func TestServeRoutesGRPC(t *testing.T) {
 	}
 	if batch.GetCollectionId() == "" {
 		t.Fatal("Check() over gRPC returned an empty collection ID")
+	}
+}
+
+func TestCheckPreservesInventorySnapshotsFromEverySensor(t *testing.T) {
+	now := timestamppb.Now()
+	snapshots := []*observation.GPUInventorySnapshot{
+		{Source: "nvml", CollectedAt: now, Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: &observation.GPUInventory{}}},
+		{Source: "dcgm", CollectedAt: now, Outcome: &observation.GPUInventorySnapshot_CollectionError{CollectionError: &observation.CollectionError{Source: "dcgm", Operation: "GetDevices", Category: observation.CollectionErrorCategoryUnavailable, Detail: "enumeration failed"}}},
+	}
+	collector := New()
+	sensorIDs := []string{nvmlsensor.ID, dcgmsensor.ID}
+	for i, snapshot := range snapshots {
+		id := sensorIDs[i]
+		collector.Register(testSensor{
+			id:      id,
+			signals: collect.Signals{gpusignals.PowerDraw},
+			measure: func(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+				if !collect.NewOp(opts...).GPUInventory() {
+					t.Fatalf("sensor %q did not receive WithGPUInventory", id)
+				}
+				return &observation.ObservationBatch{
+					Inventory:    &observation.HardwareInventory{GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot}},
+					Observations: []*observation.Observation{observation.NewNoValueObservation(gpusignals.PowerDraw.ID(), gpusignals.PowerDraw.Unit(), snapshot.Source, nil, now, &observation.NoValue{Reason: observation.NoValueReasonNoTargets})},
+				}, nil
+			},
+		})
+	}
+	collector.Register(testSensor{
+		id:      "cpu.sysfs",
+		signals: collect.Signals{gpusignals.PowerDraw},
+		measure: func(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+			if collect.NewOp(opts...).GPUInventory() {
+				t.Fatal("non-GPU sensor received WithGPUInventory")
+			}
+			return &observation.ObservationBatch{}, nil
+		},
+	})
+	batch, err := collector.Check(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if batch.GetCollectionId() == "" {
+		t.Fatal("collection ID is missing")
+	}
+	if len(batch.GetObservations()) != len(snapshots) {
+		t.Fatalf("observations = %d, want %d", len(batch.GetObservations()), len(snapshots))
+	}
+	got := batch.GetInventory().GetGpuSnapshots()
+	if len(got) != len(snapshots) {
+		t.Fatalf("inventory snapshots = %d, want %d", len(got), len(snapshots))
+	}
+	for i, want := range snapshots {
+		if !proto.Equal(got[i], want) {
+			t.Errorf("snapshot %d changed: got %v, want %v", i, got[i], want)
+		}
+	}
+	if err := observation.ValidateBatch(batch); err != nil {
+		t.Fatalf("combined batch is invalid: %v", err)
 	}
 }

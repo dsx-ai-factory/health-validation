@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package health
 
 import (
@@ -334,7 +337,6 @@ const (
 	ArchitectureUnsupported                   // Wrong GPU architecture.
 	DeploymentUnsupported                     // Requires different execution context.
 	CheckDisabled                             // Operator disabled this check.
-	DependencySkipped                         // Prerequisite check was skipped.
 	InsufficientHistory                       // Time-window data not yet available.
 	ThresholdUnconfigured                     // Required threshold not supplied for this fleet.
 	NoApplicableMeasurement                   // No supplied measurement carries the check's required signals.
@@ -352,7 +354,7 @@ const (
 var skipReasonNames = map[SkipReason]string{
 	NotSkipped: "NOT_SKIPPED", ArchitectureUnsupported: "SIGNAL_UNAVAILABLE_ARCHITECTURE",
 	DeploymentUnsupported: "SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL", CheckDisabled: "CHECK_DISABLED",
-	DependencySkipped: "DEPENDENCY_SKIPPED", InsufficientHistory: "INSUFFICIENT_HISTORY",
+	InsufficientHistory:   "INSUFFICIENT_HISTORY",
 	ThresholdUnconfigured: "THRESHOLD_UNCONFIGURED", NoApplicableMeasurement: "NO_APPLICABLE_MEASUREMENT",
 	CadenceMismatch: "CADENCE_MISMATCH", SensorMissing: "SENSOR_MISSING",
 }
@@ -360,7 +362,7 @@ var skipReasonNames = map[SkipReason]string{
 var skipReasonFromName = map[string]SkipReason{
 	"NOT_SKIPPED": NotSkipped, "SIGNAL_UNAVAILABLE_ARCHITECTURE": ArchitectureUnsupported,
 	"SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL": DeploymentUnsupported, "CHECK_DISABLED": CheckDisabled,
-	"DEPENDENCY_SKIPPED": DependencySkipped, "INSUFFICIENT_HISTORY": InsufficientHistory,
+	"INSUFFICIENT_HISTORY":   InsufficientHistory,
 	"THRESHOLD_UNCONFIGURED": ThresholdUnconfigured, "NO_APPLICABLE_MEASUREMENT": NoApplicableMeasurement,
 	"CADENCE_MISMATCH": CadenceMismatch, "SENSOR_MISSING": SensorMissing,
 }

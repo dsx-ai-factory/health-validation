@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package nvml
 
 import (
@@ -172,6 +175,8 @@ func (r *temperatureReads) deviceUnreadable(ret nvml.Return) bool {
 // collection-error category.
 func categorizeFailure(definition collect.Signal, ret nvml.Return) observation.CollectionErrorCategory {
 	switch {
+	case isGPULost(ret), isGPURequiresReset(ret), ret == nvml.ERROR_UNINITIALIZED, ret == nvml.ERROR_NO_DATA, ret == nvml.ERROR_NOT_FOUND:
+		return observation.CollectionErrorCategoryUnavailable
 	case ret == nvml.ERROR_NO_PERMISSION:
 		return observation.CollectionErrorCategoryPermissionDenied
 	case ret == nvml.ERROR_TIMEOUT:

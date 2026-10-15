@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package cpu owns the canonical definitions of host CPU topology signals.
+// Package cpu owns canonical host CPU topology and activity signals.
 package cpu
 
 import "github.com/dsx-ai-factory/health-validation/collect"
@@ -15,5 +15,5 @@ var (
 
 // All returns every canonical CPU definition in stable order.
 func All() collect.Signals {
-	return collect.Signals{PossibleCount, OnlineCount, NUMANodeOnlineCount}
+	return append(collect.Signals{PossibleCount, OnlineCount, NUMANodeOnlineCount}, Activity()...)
 }

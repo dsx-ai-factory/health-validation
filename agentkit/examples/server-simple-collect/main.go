@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // server-simple-collect serves one collection cycle per request over gRPC and
 // HTTP on a single port. Built-in sensors are registered here as they land
 // in collect/sensors. See scan-one-off for consumer-side Xid parsing and
@@ -9,12 +12,21 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"time"
 
 	"github.com/dsx-ai-factory/health-validation/agentkit/server"
+	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
+	disksensor "github.com/dsx-ai-factory/health-validation/collect/sensors/disk"
+	fusesensor "github.com/dsx-ai-factory/health-validation/collect/sensors/fuse"
+	hostsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/host"
 	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	kmsgsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/kmsg"
+	memorysensor "github.com/dsx-ai-factory/health-validation/collect/sensors/memory"
 	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
+	pcisensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pci"
+	processsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/process"
+	pstoresensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pstore"
 	kmsgmemory "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/memory"
 	kmsgxid "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/xid"
 	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
@@ -33,6 +45,7 @@ func main() {
 func run() error {
 	address := flag.String("address", "127.0.0.1:18080", "shared gRPC and HTTP address")
 	kmsgCapacity := flag.Int("kmsg-capacity", kmsgsource.DefaultStreamCapacity, "maximum kernel records retained in memory")
+	gpmInterval := flag.Duration("gpm-interval", 0, "GPM sample interval; zero disables profiling")
 	flag.Parse()
 
 	// NVML source client: one lifecycle for the process; hosts without NVML
@@ -66,6 +79,17 @@ func run() error {
 
 	collector := server.New()
 	collector.Register(nvmlsensor.New(nvmlInst), dcgmSensor, ibsensor.New(nil), kmsgSensor)
+	collector.Register(cpusensor.New(nil), disksensor.New(nil), fusesensor.New(nil), hostsensor.New(nil), memorysensor.New(nil), pcisensor.New(nil), processsensor.New(nil), pstoresensor.New(nil))
+	if *gpmInterval != 0 {
+		if *gpmInterval <= 100*time.Millisecond {
+			return fmt.Errorf("gpm-interval must be greater than 100ms")
+		}
+		profiling, err := nvmlsensor.NewGPM(nvmlInst, *gpmInterval)
+		if err != nil {
+			return err
+		}
+		collector.Register(profiling)
+	}
 
 	log.Printf("serving plaintext gRPC and HTTP on %s", *address)
 	return server.Serve(*address, collector)

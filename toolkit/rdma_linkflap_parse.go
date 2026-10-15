@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package toolkit
 
 import (
@@ -17,8 +20,8 @@ import (
 // Group 1 is the timestamp, group 2 the interface (the token immediately
 // before ": Link"), group 3 the up/down state. It does not require an
 // "rdma" token — the netdev-style link lines the driver actually logs
-// don't carry one; the parser stays permissive and lets the collector's
-// grep bound what it sees.
+// don't carry one; the parser stays permissive because the collector filters
+// journal lines before parsing.
 var linkFlapLineRE = regexp.MustCompile(`(?i)(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*?\bmlx5_core\b.*?(\S+): Link (up|down)\b`)
 
 // linkFlapTimeLayout parses the short-full timestamp. The zone token that

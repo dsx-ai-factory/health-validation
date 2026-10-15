@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package otelmetrics publishes a [health.NodeVerdict] to an OTLP/HTTP
 // metrics endpoint.
 //
@@ -47,7 +50,7 @@ var severities = []health.Severity{
 // NotSkipped is absent: a check that ran is already every reason at 0.
 var skipReasons = []health.SkipReason{
 	health.ArchitectureUnsupported, health.DeploymentUnsupported, health.CheckDisabled,
-	health.DependencySkipped, health.InsufficientHistory, health.ThresholdUnconfigured,
+	health.InsufficientHistory, health.ThresholdUnconfigured,
 	health.NoApplicableMeasurement, health.SensorMissing, health.CadenceMismatch,
 }
 

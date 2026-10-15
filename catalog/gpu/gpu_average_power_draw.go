@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package gpu
 
 import "github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -10,6 +13,8 @@ func GPUAveragePowerDraw() health.CheckDefinition {
 		Name:        "GPU Average Power Draw",
 		Description: "Verifies each GPU's one-second average power draw is within the expected range.",
 		Category:    health.GPU,
+
+		Dependencies: []string{"gpu_count"},
 
 		RequiredSignals: []string{
 			SignalGPUID,

@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "observation.go",
+        "validation.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/observation",
     visibility = ["//visibility:public"],
@@ -17,8 +18,15 @@ go_library(
 
 go_test(
     name = "observation_test",
-    srcs = ["observation_test.go"],
+    srcs = [
+        "extended_test.go",
+        "observation_test.go",
+    ],
     data = ["testdata/gpu_inventory.json"],
     embed = [":observation"],
-    deps = ["@org_golang_google_protobuf//encoding/protojson"],
+    deps = [
+        "@org_golang_google_protobuf//encoding/protojson",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ],
 )

@@ -1,15 +1,32 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "device",
     srcs = [
         "device.go",
+        "fabric.go",
         "margin_temperature.go",
+        "platform.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/source/nvml/device",
     visibility = ["//visibility:public"],
     deps = [
         "@com_github_nvidia_go_nvlib//pkg/nvlib/device",
         "@com_github_nvidia_go_nvml//pkg/nvml",
+    ],
+)
+
+go_test(
+    name = "device_test",
+    srcs = [
+        "fabric_test.go",
+        "identity_test.go",
+        "platform_test.go",
+    ],
+    embed = [":device"],
+    deps = [
+        "@com_github_nvidia_go_nvlib//pkg/nvlib/device",
+        "@com_github_nvidia_go_nvml//pkg/nvml",
+        "@com_github_stretchr_testify//require",
     ],
 )

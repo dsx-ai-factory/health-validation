@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package gpu
 
 import "github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -14,6 +17,11 @@ func GPUPowerState() health.CheckDefinition {
 		Name:        "GPU Power State",
 		Description: "Verifies each GPU is operating at the expected performance state.",
 		Category:    health.GPU,
+
+		// Reads the same NVML per-device enumeration that gpu_count
+		// measures, so a verdict about a device missing from that
+		// enumeration names gpu_count as the cause.
+		Dependencies: []string{"gpu_count"},
 
 		RequiredSignals: []string{
 			SignalGPUID,

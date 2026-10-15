@@ -159,6 +159,10 @@ fix(catalog): add GB300 to remaining GB200-only checks
 - Struct field ordering: largest fields first to minimize padding; see
   `nogo`'s `fieldalignment` analyzer which gates CI.
 - Comments: only when the *why* is non-obvious. Avoid restating what the code does.
+- License headers: every hand-written Go, proto, Starlark, Python, shell, and JS/TS/CSS
+  file starts with the two-line `SPDX-FileCopyrightText` / `SPDX-License-Identifier:
+  Apache-2.0` header (after any shebang). `bazel test //tools:check_spdx` fails, and
+  lists the files, if one is missing. Copy the header from any existing file.
 
 ## Signing Your Work
 

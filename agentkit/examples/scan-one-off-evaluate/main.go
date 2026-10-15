@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // scan-one-off-evaluate demonstrates the complete in-process path from
 // shared collection through Health Validation catalog evaluation.
 package main

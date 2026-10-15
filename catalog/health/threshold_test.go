@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package health
 
 import (
@@ -219,5 +222,21 @@ func TestCheckDefinition_ValidateAcceptsRequiredDefaultThreshold(t *testing.T) {
 
 	if err := cd.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil", err)
+	}
+}
+
+// A check naming itself as a dependency would cite itself as its own cause.
+func TestValidate_RejectsSelfDependency(t *testing.T) {
+	cd := CheckDefinition{
+		ID:           "selfie",
+		Dependencies: []string{"other", "selfie"},
+		Thresholds:   map[string]ThresholdSpec{},
+	}
+	err := cd.Validate()
+	if err == nil {
+		t.Fatal("Validate = nil, want an error for a self-dependency")
+	}
+	if !strings.Contains(err.Error(), "selfie") {
+		t.Errorf("error = %q, want it to name the check", err)
 	}
 }

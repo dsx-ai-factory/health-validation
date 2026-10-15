@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package nvlink defines health check definitions for NVLink hardware.
 package nvlink
 
@@ -25,6 +28,8 @@ func NVLinkFabricHealth() health.CheckDefinition {
 		Name:        "NVLink Fabric Health",
 		Description: "Monitors per-GPU NVLink fabric health flags from NVML. Degraded bandwidth, in-progress route recovery, an unhealthy route, or active access timeout recovery indicate a fabric problem affecting multi-GPU communication.",
 		Category:    health.NVLink,
+
+		Dependencies: []string{"gpu_count"},
 
 		RequiredSignals: []string{
 			SignalGPUID,

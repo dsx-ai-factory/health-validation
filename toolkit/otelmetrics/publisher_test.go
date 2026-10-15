@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package otelmetrics_test
 
 import (
@@ -346,7 +349,7 @@ func TestPublishRecordsDomainSeverityAsLabel(t *testing.T) {
 // that ran is every reason at 0.
 var allSkipReasonNames = []string{
 	"SIGNAL_UNAVAILABLE_ARCHITECTURE", "SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL",
-	"CHECK_DISABLED", "DEPENDENCY_SKIPPED", "INSUFFICIENT_HISTORY", "THRESHOLD_UNCONFIGURED",
+	"CHECK_DISABLED", "INSUFFICIENT_HISTORY", "THRESHOLD_UNCONFIGURED",
 	"NO_APPLICABLE_MEASUREMENT", "SENSOR_MISSING", "CADENCE_MISMATCH",
 }
 

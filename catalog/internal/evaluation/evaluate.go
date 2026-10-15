@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package evaluation implements the health check evaluation pipeline.
 //
 // It evaluates check definitions against signal values using CEL
@@ -68,13 +71,15 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 //
 // A measurement feeds a check when they share a Category and the
 // measurement's schema carries all of the check's RequiredSignals (see
-// [routes]). Each check is evaluated once per measurement that feeds it
-// — so a per-entity check yields one verdict per entity — and exactly
-// once as a [health.NoApplicableMeasurement] skip when its category was
-// collected but no measurement carried its required signals. The
+// [routes]). Each check is evaluated once per measurement that feeds it,
+// so a per-entity check yields one verdict per entity, and exactly once as
+// a [health.NoApplicableMeasurement] skip when its category was collected
+// but no measurement carried its required signals. The
 // measurement-independent skips (disabled, cadence, architecture, context,
-// unconfigured threshold, dependency) are decided once per check, not
-// once per measurement.
+// unconfigured threshold) are decided once per check, not once per
+// measurement. A dependency is not among them: it is examined per
+// measurement, and only to name the cause on a verdict for an entity this
+// check could not read at all. See [lostEntity].
 //
 // A check whose Category supplied no measurement at all skips
 // [health.SensorMissing]. Registering a check is what declares the
@@ -90,8 +95,8 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 // OverallSeverity, so a missing sensor never turns a node CRITICAL on its
 // own. Recording it is the point — the check stays visible as unassessed
 // under a skip_reason a consumer can act on. The measurement-independent
-// skips are decided
-// first, so an operator's [health.CheckDisabled] outranks SensorMissing:
+// skips are decided first, so an operator's [health.CheckDisabled]
+// outranks SensorMissing:
 // a check turned off on purpose never reads as a sensor hole.
 //
 // paramsFor supplies the per-check evaluation context; the engine asks
@@ -119,22 +124,14 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 
 	order := TopologicalOrder(checks)
 	verdicts := make([]health.CheckVerdict, 0, len(order))
-	skipped := make(map[string]bool, len(order))
+	failed := make(map[string]health.Severity, len(order))
 
 	for _, id := range order {
 		cd := checks[id]
 
-		if dep, ok := skippedDependency(cd, skipped); ok {
-			verdicts = append(verdicts, skippedVerdict(cd, now, health.DependencySkipped,
-				fmt.Sprintf("dependency %q was skipped", dep)))
-			skipped[id] = true
-			continue
-		}
-
 		p := paramsFor(id)
 		if v, isSkip := checkLevelSkip(cd, p, now); isSkip {
 			verdicts = append(verdicts, v)
-			skipped[id] = true
 			continue
 		}
 
@@ -144,7 +141,6 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 		if !presentCategories[cd.Category] {
 			verdicts = append(verdicts, skippedVerdict(cd, now, health.SensorMissing,
 				fmt.Sprintf("no measurement of category %s was supplied", cd.Category)))
-			skipped[id] = true
 			continue
 		}
 
@@ -153,17 +149,46 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 			if !routes(cd, o.category, o.signals) {
 				continue
 			}
+			matched = true
+
 			v, err := e.evaluateAgainst(cd, o.signals, o.errs, o.entity, p, now)
 			if err != nil {
 				return nil, fmt.Errorf("evaluating %q: %w", id, err)
 			}
+			// Two conditions, both required. ObservedValues separates a matched
+			// rule, which always records it, from [ErroredVerdict], which never
+			// does: a dependency that went Critical because its own measurement
+			// could not be collected observed no fault, so it explains nothing
+			// about a sibling that also could not be read. The comparison is
+			// >= so [health.Unknown], which ranks above Critical and means the
+			// check could not complete, is not the one severity excluded from
+			// explaining anything.
+			if v.Severity >= health.Critical && v.ObservedValues != nil {
+				failed[id] = v.Severity
+			}
+
+			// This entity could not be read at all and a dependency already
+			// reported Critical, which is the fault this verdict restates. Name
+			// it so the operator reads one cause instead of correlating several
+			// identical reports. The wording claims only that the dependency is
+			// Critical: it may be so because its own measurement errored, which
+			// is a different fact from an observed fault.
+			//
+			// The cause extends the existing message instead of adding a second
+			// one. A consumer classifies a collection failure by every message
+			// carrying the "measurement unavailable" prefix, so a second message
+			// without it reads as an observed fault and draws hardware
+			// remediation rather than a collection check.
+			if dep, sev, ok := failedDependency(cd, failed); ok && lostEntity(o.errs, o.signals) {
+				if n := len(v.Messages); n > 0 {
+					v.Messages[n-1] += fmt.Sprintf("; explained by dependency %q, itself %s", dep, sev)
+				}
+			}
 			verdicts = append(verdicts, v)
-			matched = true
 		}
 		if !matched {
 			verdicts = append(verdicts, skippedVerdict(cd, now, health.NoApplicableMeasurement,
 				noApplicableDetail(cd)))
-			skipped[id] = true
 		}
 	}
 
@@ -188,15 +213,44 @@ func routes(cd *health.CheckDefinition, category health.Category, signals map[st
 	return true
 }
 
-// skippedDependency returns the first dependency of cd that was skipped,
-// if any, so the batch path can cascade the skip to dependents.
-func skippedDependency(cd *health.CheckDefinition, skipped map[string]bool) (string, bool) {
-	for _, dep := range cd.Dependencies {
-		if skipped[dep] {
-			return dep, true
+// lostEntity reports whether the collection errors account for every signal the
+// measurement carries, which is the signature a sensor emits when it could not
+// read the entity at all.
+//
+// This is what separates a device that vanished from the enumeration, where a
+// Critical dependency genuinely explains this check too, from read failures on
+// a device that enumerated fine, even ones that together cover every signal
+// this check requires. Those are independent faults, and naming the dependency
+// on them would credit an unrelated cause.
+func lostEntity(errs []health.ErroredMeasurement, signals map[string]any) bool {
+	if len(errs) == 0 || len(signals) == 0 {
+		return false
+	}
+	for sig := range signals {
+		var covered bool
+		for _, e := range errs {
+			if slices.Contains(e.FailedSignals(), sig) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			return false
 		}
 	}
-	return "", false
+	return true
+}
+
+// failedDependency returns the first dependency of cd that evaluated Critical or
+// worse, with the severity it reported, so the batch path can name it as the
+// cause on a verdict that only restates it.
+func failedDependency(cd *health.CheckDefinition, failed map[string]health.Severity) (string, health.Severity, bool) {
+	for _, dep := range cd.Dependencies {
+		if sev, ok := failed[dep]; ok {
+			return dep, sev, true
+		}
+	}
+	return "", health.Pass, false
 }
 
 func noApplicableDetail(cd *health.CheckDefinition) string {
@@ -484,10 +538,12 @@ func interpolateMessage(template string, vars map[string]any) string {
 
 // TopologicalOrder returns check IDs ordered so that dependencies come
 // before the checks that depend on them. IDs are sorted before traversal
-// for deterministic output.
+// for deterministic output. A dependency naming an unregistered check is
+// skipped: a consumer may register any subset of the catalog, so the edge is
+// simply inactive.
 func TopologicalOrder(checks map[string]*health.CheckDefinition) []string {
 	visited := make(map[string]bool, len(checks))
-	var order []string
+	order := make([]string, 0, len(checks))
 
 	ids := make([]string, 0, len(checks))
 	for id := range checks {
@@ -501,8 +557,8 @@ func TopologicalOrder(checks map[string]*health.CheckDefinition) []string {
 			return
 		}
 		visited[id] = true
-		if cd, ok := checks[id]; ok {
-			for _, dep := range cd.Dependencies {
+		for _, dep := range checks[id].Dependencies {
+			if _, ok := checks[dep]; ok {
 				visit(dep)
 			}
 		}

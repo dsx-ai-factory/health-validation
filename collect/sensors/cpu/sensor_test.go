@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -39,6 +40,10 @@ func (d deniedFS) Open(name string) (fs.File, error) {
 
 func measure(t *testing.T, fsys fs.FS, opts ...collect.OpOption) map[string]*observation.Observation {
 	t.Helper()
+	// Existing tests exercise topology; activity has separate fixture coverage.
+	if len(opts) == 0 {
+		opts = []collect.OpOption{collect.WithSignalID(cpusignals.PossibleCount.ID(), cpusignals.OnlineCount.ID(), cpusignals.NUMANodeOnlineCount.ID())}
+	}
 	cycle, err := collect.NewCycle("cycle-1", time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -185,5 +190,83 @@ func TestMeasureCanceled(t *testing.T) {
 	batch, err := New(healthyFS()).Measure(ctx)
 	if !errors.Is(err, context.Canceled) || batch != nil {
 		t.Fatalf("Measure = %v, %v; want nil, context.Canceled", batch, err)
+	}
+}
+
+type blockedCPUFS struct {
+	fs.FS
+	started chan struct{}
+	release chan struct{}
+	path    string
+	calls   atomic.Int32
+}
+
+func (f *blockedCPUFS) Open(name string) (fs.File, error) {
+	if name == f.path {
+		if f.calls.Add(1) == 1 {
+			close(f.started)
+		}
+		<-f.release
+	}
+	return f.FS.Open(name)
+}
+
+func TestMeasureTimeoutCoversTopologyAndActivity(t *testing.T) {
+	for _, path := range []string{"sys/devices/system/cpu/online", "proc/stat", "proc/loadavg"} {
+		t.Run(path, func(t *testing.T) {
+			fsys := healthyFS()
+			fsys["proc/stat"] = &fstest.MapFile{Data: []byte("cpu 100 200 300 400\n")}
+			fsys["proc/loadavg"] = &fstest.MapFile{Data: []byte("1 2 3\n")}
+			blocked := &blockedCPUFS{FS: fsys, path: path, started: make(chan struct{}), release: make(chan struct{})}
+			defer close(blocked.release)
+			startedAt := time.Now()
+			cycle, err := collect.NewCycleWithTimeout("cpu-timeout", startedAt, 100*time.Millisecond)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := New(blocked)
+			ids := []string{cpusignals.OnlineCount.ID(), cpusignals.UserSeconds.ID(), cpusignals.Load5.ID()}
+			opts := []collect.OpOption{collect.WithCycle(cycle), collect.WithSignalID(ids...)}
+			done := make(chan struct{})
+			var batch *observation.ObservationBatch
+			var measureErr error
+			go func() {
+				batch, measureErr = s.Measure(context.Background(), opts...)
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("Measure did not stop waiting for blocked acquisition")
+			}
+			select {
+			case <-blocked.started:
+			default:
+				t.Fatal("acquisition did not reach blocked source")
+			}
+			if measureErr != nil || len(batch.GetObservations()) != len(ids) {
+				t.Fatalf("Measure = %v, %v", batch, measureErr)
+			}
+			if batch.GetCollectionId() != cycle.CollectionID() {
+				t.Fatalf("collection ID = %q", batch.GetCollectionId())
+			}
+			for i, o := range batch.Observations {
+				if o.SignalId != ids[i] || o.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout || !o.ObservedAt.AsTime().Equal(startedAt) {
+					t.Errorf("timeout observation = %v", o)
+				}
+			}
+			if validateErr := observation.ValidateBatch(batch); validateErr != nil {
+				t.Fatal(validateErr)
+			}
+			repeated, err := s.Measure(context.Background(), opts...)
+			if err != nil || len(repeated.GetObservations()) != len(ids) || blocked.calls.Load() != 1 {
+				t.Fatalf("same-cycle retry = %v, %v; blocked opens = %d", repeated, err, blocked.calls.Load())
+			}
+			for _, o := range repeated.Observations {
+				if o.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
+					t.Errorf("same-cycle retry = %v", o)
+				}
+			}
+		})
 	}
 }

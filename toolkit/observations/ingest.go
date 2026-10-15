@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package observations
 
 import (
@@ -322,6 +325,17 @@ func setField(field reflect.Value, current *observation.Observation) error {
 			field.SetUint(uint64(kind.IntValue))
 		case field.CanFloat():
 			field.SetFloat(float64(kind.IntValue))
+		default:
+			return mismatch
+		}
+	case *observation.Value_UintValue:
+		switch {
+		case field.CanUint() && !field.OverflowUint(kind.UintValue):
+			field.SetUint(kind.UintValue)
+		case field.CanInt() && kind.UintValue <= uint64(^uint64(0)>>1) && !field.OverflowInt(int64(kind.UintValue)):
+			field.SetInt(int64(kind.UintValue))
+		case field.CanFloat():
+			field.SetFloat(float64(kind.UintValue))
 		default:
 			return mismatch
 		}

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // scan-one-off runs one collection cycle over the built-in sensors, prints
 // the observation batch, and exits. It is the one-off counterpart of
 // server-simple-collect: no server, no config file. Xid and current port-down
@@ -16,10 +19,18 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
+	disksensor "github.com/dsx-ai-factory/health-validation/collect/sensors/disk"
+	fusesensor "github.com/dsx-ai-factory/health-validation/collect/sensors/fuse"
+	hostsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/host"
 	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	kmsgsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/kmsg"
+	memorysensor "github.com/dsx-ai-factory/health-validation/collect/sensors/memory"
 	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
+	pcisensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pci"
+	processsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/process"
+	pstoresensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pstore"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	kmsgsignals "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg"
 	kmsgmemory "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/memory"
@@ -66,12 +77,22 @@ func run() error {
 		return fmt.Errorf("create collection cycle: %w", err)
 	}
 	batch := &observation.ObservationBatch{CollectionId: currentCycle.CollectionID()}
-	for _, sensor := range []collect.Sensor{nvmlsensor.New(nvmlInst), dcgmSensor, ibsensor.New(nil), kmsgSensor} {
-		measured, measureErr := sensor.Measure(context.Background(), collect.WithCycle(currentCycle))
+	for _, sensor := range []collect.Sensor{nvmlsensor.New(nvmlInst), dcgmSensor, ibsensor.New(nil), kmsgSensor, cpusensor.New(nil), disksensor.New(nil), fusesensor.New(nil), hostsensor.New(nil), memorysensor.New(nil), pcisensor.New(nil), processsensor.New(nil), pstoresensor.New(nil)} {
+		opts := []collect.OpOption{collect.WithCycle(currentCycle)}
+		if sensor.ID() == nvmlsensor.ID || sensor.ID() == dcgmsensor.ID {
+			opts = append(opts, collect.WithGPUInventory())
+		}
+		measured, measureErr := sensor.Measure(context.Background(), opts...)
 		if measureErr != nil {
 			return fmt.Errorf("measure sensor %q: %w", sensor.ID(), measureErr)
 		}
 		batch.Observations = append(batch.Observations, measured.GetObservations()...)
+		if inventory := measured.GetInventory(); inventory != nil {
+			if batch.Inventory == nil {
+				batch.Inventory = &observation.HardwareInventory{}
+			}
+			batch.Inventory.GpuSnapshots = append(batch.Inventory.GpuSnapshots, inventory.GetGpuSnapshots()...)
+		}
 	}
 
 	// The batch is the full result. Collection errors are observations, not

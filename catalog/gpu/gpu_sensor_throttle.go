@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package gpu
 
 import "github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -27,6 +30,8 @@ func GPUSensorThrottle() health.CheckDefinition {
 		Name:        "GPU Sensor Throttle",
 		Description: "Monitors GPU hardware throttling via NVML clocks-event-reasons. Active hardware slowdown, thermal slowdown, or power-brake slowdown indicates the GPU is being clamped by hardware protection logic.",
 		Category:    health.GPU,
+
+		Dependencies: []string{"gpu_count"},
 
 		RequiredSignals: []string{
 			SignalGPUID,

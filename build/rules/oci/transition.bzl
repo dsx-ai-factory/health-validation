@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 "a rule transitioning an oci_image to multiple platforms"
 
 def _multiarch_transition(settings, attr):

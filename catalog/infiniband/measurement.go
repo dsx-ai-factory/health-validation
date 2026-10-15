@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package infiniband defines the measurement type and checks for
 // InfiniBand / RDMA network health derived from the system journal. The
 // mlx5 driver logs RDMA interface link transitions ("Link up"/"Link

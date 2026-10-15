@@ -1,0 +1,26 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "process",
+    srcs = ["sensor.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/sensors/process",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/process",
+        "//collect/source/process",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ],
+)
+
+go_test(
+    name = "process_test",
+    srcs = ["sensor_test.go"],
+    embed = [":process"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/process",
+    ],
+)

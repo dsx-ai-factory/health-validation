@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package server runs one collection cycle per request over the registered
 // sensors and serves the combined batch over gRPC and HTTP on one TCP port —
 // the prototype's single-port surface.
@@ -13,6 +16,8 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
+	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 )
 
 type Server struct {
@@ -39,7 +44,11 @@ func (s *Server) Check(ctx context.Context) (*observation.ObservationBatch, erro
 	}
 	batch := &observation.ObservationBatch{CollectionId: collectionID}
 	for _, sensor := range s.sensors {
-		b, err := sensor.Measure(ctx, collect.WithCycle(currentCycle))
+		opts := []collect.OpOption{collect.WithCycle(currentCycle)}
+		if sensor.ID() == nvmlsensor.ID || sensor.ID() == dcgmsensor.ID {
+			opts = append(opts, collect.WithGPUInventory())
+		}
+		b, err := sensor.Measure(ctx, opts...)
 		if err != nil {
 			// Source-specific failures should already be observations. Attribute
 			// an unexpected top-level failure to the sensor that returned it.
@@ -54,6 +63,12 @@ func (s *Server) Check(ctx context.Context) (*observation.ObservationBatch, erro
 		}
 		slog.Debug("sensor returned", "sensor", sensor.ID(), "observations", len(b.GetObservations()))
 		batch.Observations = append(batch.Observations, b.GetObservations()...)
+		if inventory := b.GetInventory(); inventory != nil {
+			if batch.Inventory == nil {
+				batch.Inventory = &observation.HardwareInventory{}
+			}
+			batch.Inventory.GpuSnapshots = append(batch.Inventory.GpuSnapshots, inventory.GetGpuSnapshots()...)
+		}
 	}
 	return batch, nil
 }

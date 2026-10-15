@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package toolkit
 
 import (
@@ -5,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -13,11 +17,10 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 )
 
-// linkFlapGrep is the journalctl --grep prefilter for mlx5 link
-// transitions. It deliberately does not require an "rdma" token —
-// the driver's netdev link lines do not carry one — so real outages
-// are collected; the parser does the exact structuring.
-const linkFlapGrep = `(?i)mlx5_core .* Link (up|down)`
+// linkFlapPattern matches mlx5 link transitions. It deliberately does
+// not require an "rdma" token because the driver's netdev link lines do not
+// carry one; the parser does the exact structuring.
+var linkFlapPattern = regexp.MustCompile(`(?i)mlx5_core .* Link (up|down)`)
 
 // Defaults: a 1-hour lookback and no boot offset.
 const (
@@ -73,7 +76,7 @@ func WithLinkFlapBootOffset(d time.Duration) RDMALinkFlapOption {
 // JournalctlRDMALinkFlap returns a backend that collects mlx5 RDMA link
 // transitions from the current boot's kernel journal by running:
 //
-//	journalctl --dmesg --boot --no-pager --since=<start> --output=short-full --grep=<mlx5 link>
+//	journalctl --dmesg --boot --no-pager --quiet --since=<start> --output=short-full
 //
 // --boot scopes the read to this boot and --since bounds it to the lookback
 // window (default 1h); with a boot offset the window start is never earlier
@@ -144,8 +147,9 @@ func (b *rdmaLinkFlapBackend) Measure(ctx context.Context) ([]health.Measurement
 
 	start := b.now().Add(-since).Format(journalSinceLayout)
 	return readJournal(ctx, b.run, journalMatcher{
-		args:    []string{"--since=" + start, "--output=short-full", "--grep=" + linkFlapGrep},
+		args:    []string{"--since=" + start, "--output=short-full"},
 		subject: "link state",
+		match:   linkFlapPattern.MatchString,
 		parse:   func(lines []string) health.Measurement { return ParseLinkFlaps(start, lines) },
 		errored: func(err error) health.Measurement {
 			return infiniband.ErroredLinkFlap(start, err, infiniband.MeasurementSignals...)

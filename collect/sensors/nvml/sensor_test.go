@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package nvml
 
 import (
@@ -137,16 +140,41 @@ func TestMeasureRefresh(t *testing.T) {
 	}
 }
 
-func TestSensorID(t *testing.T) {
-	if got := (&sensor{}).ID(); got != "gpu.nvml" {
-		t.Fatalf("Sensor.ID() = %q, want %q", got, "gpu.nvml")
+func TestGPUInventoryEmptyAndLifecycleFailures(t *testing.T) {
+	tests := []struct {
+		inst      *fakeInstance
+		name      string
+		operation string
+		category  observation.CollectionErrorCategory
+		refresh   bool
+	}{
+		{name: "empty successful inventory", inst: &fakeInstance{exists: true}},
+		{name: "closed instance", inst: &fakeInstance{exists: true, readErr: nvmlsource.ErrClosed}, operation: "Measure", category: observation.CollectionErrorCategoryUnavailable},
+		{name: "enumeration failed", inst: &fakeInstance{exists: true, initErr: errors.New("enumeration failed")}, operation: "GetDevices", category: observation.CollectionErrorCategoryUnavailable},
+		{name: "refresh failed", inst: &fakeInstance{exists: true, refreshErr: errors.New("refresh failed")}, refresh: true, operation: "GetDevices", category: observation.CollectionErrorCategoryUnavailable},
+		{name: "library unavailable", inst: &fakeInstance{}, operation: "Init", category: observation.CollectionErrorCategoryUnsupported},
 	}
-}
-
-func TestRejectGPUInventory(t *testing.T) {
-	_, err := New(&fakeInstance{exists: true}).Measure(context.Background(), collect.WithGPUInventory())
-	if err == nil {
-		t.Fatal("Measure() accepted unsupported GPU inventory request")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			batch, err := New(test.inst).Measure(context.Background(), collect.WithSignalID(), collect.WithGPUInventory(), collect.WithRefresh(test.refresh))
+			require.NoError(t, err)
+			require.Empty(t, batch.Observations)
+			require.NotNil(t, batch.Inventory)
+			require.Len(t, batch.Inventory.GpuSnapshots, 1)
+			snapshot := batch.Inventory.GpuSnapshots[0]
+			require.Equal(t, "nvml", snapshot.Source)
+			require.NotNil(t, snapshot.CollectedAt)
+			if test.operation == "" {
+				require.NotNil(t, snapshot.GetInventory())
+				require.Empty(t, snapshot.GetInventory().GetEntries())
+				require.Nil(t, snapshot.GetCollectionError())
+			} else {
+				require.Nil(t, snapshot.GetInventory())
+				require.Equal(t, test.operation, snapshot.GetCollectionError().GetOperation())
+				require.Equal(t, test.category, snapshot.GetCollectionError().GetCategory())
+			}
+			require.Equal(t, test.refresh, test.inst.refreshed)
+		})
 	}
 }
 

@@ -651,9 +651,12 @@ type Observation struct {
 	//	*Observation_Value
 	//	*Observation_CollectionError
 	//	*Observation_NoValue
-	Outcome       isObservation_Outcome `protobuf_oneof:"outcome"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Outcome isObservation_Outcome `protobuf_oneof:"outcome"`
+	// Interval measurements retain both sample times; snapshots leave these absent.
+	SampleStartedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=sample_started_at,json=sampleStartedAt,proto3" json:"sample_started_at,omitempty"`
+	SampleEndedAt   *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=sample_ended_at,json=sampleEndedAt,proto3" json:"sample_ended_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Observation) Reset() {
@@ -755,6 +758,20 @@ func (x *Observation) GetNoValue() *NoValue {
 	return nil
 }
 
+func (x *Observation) GetSampleStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SampleStartedAt
+	}
+	return nil
+}
+
+func (x *Observation) GetSampleEndedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SampleEndedAt
+	}
+	return nil
+}
+
 type isObservation_Outcome interface {
 	isObservation_Outcome()
 }
@@ -790,6 +807,13 @@ type ObservationTarget struct {
 	//	*ObservationTarget_InfiniBandDevice
 	//	*ObservationTarget_InfiniBandPort
 	//	*ObservationTarget_KernelRecord
+	//	*ObservationTarget_Process
+	//	*ObservationTarget_GpuProcess
+	//	*ObservationTarget_BlockDevice
+	//	*ObservationTarget_Mount
+	//	*ObservationTarget_Pci
+	//	*ObservationTarget_FuseConnection
+	//	*ObservationTarget_PstoreRecord
 	Kind          isObservationTarget_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -895,6 +919,69 @@ func (x *ObservationTarget) GetKernelRecord() *KernelRecordRef {
 	return nil
 }
 
+func (x *ObservationTarget) GetProcess() *ProcessRef {
+	if x != nil {
+		if x, ok := x.Kind.(*ObservationTarget_Process); ok {
+			return x.Process
+		}
+	}
+	return nil
+}
+
+func (x *ObservationTarget) GetGpuProcess() *GpuProcessRef {
+	if x != nil {
+		if x, ok := x.Kind.(*ObservationTarget_GpuProcess); ok {
+			return x.GpuProcess
+		}
+	}
+	return nil
+}
+
+func (x *ObservationTarget) GetBlockDevice() *BlockDeviceRef {
+	if x != nil {
+		if x, ok := x.Kind.(*ObservationTarget_BlockDevice); ok {
+			return x.BlockDevice
+		}
+	}
+	return nil
+}
+
+func (x *ObservationTarget) GetMount() *MountRef {
+	if x != nil {
+		if x, ok := x.Kind.(*ObservationTarget_Mount); ok {
+			return x.Mount
+		}
+	}
+	return nil
+}
+
+func (x *ObservationTarget) GetPci() *PCIRef {
+	if x != nil {
+		if x, ok := x.Kind.(*ObservationTarget_Pci); ok {
+			return x.Pci
+		}
+	}
+	return nil
+}
+
+func (x *ObservationTarget) GetFuseConnection() *FuseConnectionRef {
+	if x != nil {
+		if x, ok := x.Kind.(*ObservationTarget_FuseConnection); ok {
+			return x.FuseConnection
+		}
+	}
+	return nil
+}
+
+func (x *ObservationTarget) GetPstoreRecord() *PstoreRecordRef {
+	if x != nil {
+		if x, ok := x.Kind.(*ObservationTarget_PstoreRecord); ok {
+			return x.PstoreRecord
+		}
+	}
+	return nil
+}
+
 type isObservationTarget_Kind interface {
 	isObservationTarget_Kind()
 }
@@ -927,6 +1014,34 @@ type ObservationTarget_KernelRecord struct {
 	KernelRecord *KernelRecordRef `protobuf:"bytes,7,opt,name=kernel_record,json=kernelRecord,proto3,oneof"`
 }
 
+type ObservationTarget_Process struct {
+	Process *ProcessRef `protobuf:"bytes,8,opt,name=process,proto3,oneof"`
+}
+
+type ObservationTarget_GpuProcess struct {
+	GpuProcess *GpuProcessRef `protobuf:"bytes,9,opt,name=gpu_process,json=gpuProcess,proto3,oneof"`
+}
+
+type ObservationTarget_BlockDevice struct {
+	BlockDevice *BlockDeviceRef `protobuf:"bytes,10,opt,name=block_device,json=blockDevice,proto3,oneof"`
+}
+
+type ObservationTarget_Mount struct {
+	Mount *MountRef `protobuf:"bytes,11,opt,name=mount,proto3,oneof"`
+}
+
+type ObservationTarget_Pci struct {
+	Pci *PCIRef `protobuf:"bytes,12,opt,name=pci,proto3,oneof"`
+}
+
+type ObservationTarget_FuseConnection struct {
+	FuseConnection *FuseConnectionRef `protobuf:"bytes,13,opt,name=fuse_connection,json=fuseConnection,proto3,oneof"`
+}
+
+type ObservationTarget_PstoreRecord struct {
+	PstoreRecord *PstoreRecordRef `protobuf:"bytes,14,opt,name=pstore_record,json=pstoreRecord,proto3,oneof"`
+}
+
 func (*ObservationTarget_Node) isObservationTarget_Kind() {}
 
 func (*ObservationTarget_Gpu) isObservationTarget_Kind() {}
@@ -940,6 +1055,20 @@ func (*ObservationTarget_InfiniBandDevice) isObservationTarget_Kind() {}
 func (*ObservationTarget_InfiniBandPort) isObservationTarget_Kind() {}
 
 func (*ObservationTarget_KernelRecord) isObservationTarget_Kind() {}
+
+func (*ObservationTarget_Process) isObservationTarget_Kind() {}
+
+func (*ObservationTarget_GpuProcess) isObservationTarget_Kind() {}
+
+func (*ObservationTarget_BlockDevice) isObservationTarget_Kind() {}
+
+func (*ObservationTarget_Mount) isObservationTarget_Kind() {}
+
+func (*ObservationTarget_Pci) isObservationTarget_Kind() {}
+
+func (*ObservationTarget_FuseConnection) isObservationTarget_Kind() {}
+
+func (*ObservationTarget_PstoreRecord) isObservationTarget_Kind() {}
 
 type NodeRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1044,8 +1173,8 @@ func (x *GpuRef) GetSourceLocalId() string {
 type NvLinkEndpointRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Gpu           *GpuRef                `protobuf:"bytes,1,opt,name=gpu,proto3" json:"gpu,omitempty"`
+	LinkIndex     uint32                 `protobuf:"varint,2,opt,name=link_index,json=linkIndex,proto3" json:"link_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
-	LinkIndex     uint32 `protobuf:"varint,2,opt,name=link_index,json=linkIndex,proto3" json:"link_index,omitempty"`
 	sizeCache     protoimpl.SizeCache
 }
 
@@ -1194,8 +1323,8 @@ func (x *InfiniBandDeviceRef) GetName() string {
 type InfiniBandPortRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Device        *InfiniBandDeviceRef   `protobuf:"bytes,1,opt,name=device,proto3" json:"device,omitempty"`
+	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
-	Port          uint32 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
 	sizeCache     protoimpl.SizeCache
 }
 
@@ -1247,8 +1376,8 @@ func (x *InfiniBandPortRef) GetPort() uint32 {
 type KernelRecordRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BootId        string                 `protobuf:"bytes,1,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	Sequence      int64                  `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	unknownFields protoimpl.UnknownFields
-	Sequence      int64 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	sizeCache     protoimpl.SizeCache
 }
 
@@ -1296,6 +1425,373 @@ func (x *KernelRecordRef) GetSequence() int64 {
 	return 0
 }
 
+// ProcessRef distinguishes reused PIDs within a boot.
+type ProcessRef struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	BootId         string                 `protobuf:"bytes,1,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	Pid            uint32                 `protobuf:"varint,2,opt,name=pid,proto3" json:"pid,omitempty"`
+	StartTimeTicks uint64                 `protobuf:"varint,3,opt,name=start_time_ticks,json=startTimeTicks,proto3" json:"start_time_ticks,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ProcessRef) Reset() {
+	*x = ProcessRef{}
+	mi := &file_health_v1_observation_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessRef) ProtoMessage() {}
+
+func (x *ProcessRef) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessRef.ProtoReflect.Descriptor instead.
+func (*ProcessRef) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ProcessRef) GetBootId() string {
+	if x != nil {
+		return x.BootId
+	}
+	return ""
+}
+
+func (x *ProcessRef) GetPid() uint32 {
+	if x != nil {
+		return x.Pid
+	}
+	return 0
+}
+
+func (x *ProcessRef) GetStartTimeTicks() uint64 {
+	if x != nil {
+		return x.StartTimeTicks
+	}
+	return 0
+}
+
+type GpuProcessRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Gpu           *GpuRef                `protobuf:"bytes,1,opt,name=gpu,proto3" json:"gpu,omitempty"`
+	Process       *ProcessRef            `protobuf:"bytes,2,opt,name=process,proto3" json:"process,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GpuProcessRef) Reset() {
+	*x = GpuProcessRef{}
+	mi := &file_health_v1_observation_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GpuProcessRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GpuProcessRef) ProtoMessage() {}
+
+func (x *GpuProcessRef) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GpuProcessRef.ProtoReflect.Descriptor instead.
+func (*GpuProcessRef) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GpuProcessRef) GetGpu() *GpuRef {
+	if x != nil {
+		return x.Gpu
+	}
+	return nil
+}
+
+func (x *GpuProcessRef) GetProcess() *ProcessRef {
+	if x != nil {
+		return x.Process
+	}
+	return nil
+}
+
+type BlockDeviceRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Major         uint32                 `protobuf:"varint,1,opt,name=major,proto3" json:"major,omitempty"`
+	Minor         uint32                 `protobuf:"varint,2,opt,name=minor,proto3" json:"minor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlockDeviceRef) Reset() {
+	*x = BlockDeviceRef{}
+	mi := &file_health_v1_observation_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlockDeviceRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlockDeviceRef) ProtoMessage() {}
+
+func (x *BlockDeviceRef) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlockDeviceRef.ProtoReflect.Descriptor instead.
+func (*BlockDeviceRef) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *BlockDeviceRef) GetMajor() uint32 {
+	if x != nil {
+		return x.Major
+	}
+	return 0
+}
+
+func (x *BlockDeviceRef) GetMinor() uint32 {
+	if x != nil {
+		return x.Minor
+	}
+	return 0
+}
+
+// MountRef uses the mount namespace and kernel mount ID, not a path alone.
+type MountRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	MountId       uint64                 `protobuf:"varint,2,opt,name=mount_id,json=mountId,proto3" json:"mount_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MountRef) Reset() {
+	*x = MountRef{}
+	mi := &file_health_v1_observation_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MountRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MountRef) ProtoMessage() {}
+
+func (x *MountRef) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MountRef.ProtoReflect.Descriptor instead.
+func (*MountRef) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *MountRef) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *MountRef) GetMountId() uint64 {
+	if x != nil {
+		return x.MountId
+	}
+	return 0
+}
+
+type PCIRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PCIRef) Reset() {
+	*x = PCIRef{}
+	mi := &file_health_v1_observation_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PCIRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PCIRef) ProtoMessage() {}
+
+func (x *PCIRef) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PCIRef.ProtoReflect.Descriptor instead.
+func (*PCIRef) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *PCIRef) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+type FuseConnectionRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	BootId        string                 `protobuf:"bytes,1,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	ConnectionId  uint64                 `protobuf:"varint,2,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FuseConnectionRef) Reset() {
+	*x = FuseConnectionRef{}
+	mi := &file_health_v1_observation_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FuseConnectionRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FuseConnectionRef) ProtoMessage() {}
+
+func (x *FuseConnectionRef) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FuseConnectionRef.ProtoReflect.Descriptor instead.
+func (*FuseConnectionRef) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *FuseConnectionRef) GetBootId() string {
+	if x != nil {
+		return x.BootId
+	}
+	return ""
+}
+
+func (x *FuseConnectionRef) GetConnectionId() uint64 {
+	if x != nil {
+		return x.ConnectionId
+	}
+	return 0
+}
+
+// PstoreRecordRef identifies the bytes read from one persistent record.
+type PstoreRecordRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Sha256        string                 `protobuf:"bytes,2,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PstoreRecordRef) Reset() {
+	*x = PstoreRecordRef{}
+	mi := &file_health_v1_observation_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PstoreRecordRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PstoreRecordRef) ProtoMessage() {}
+
+func (x *PstoreRecordRef) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PstoreRecordRef.ProtoReflect.Descriptor instead.
+func (*PstoreRecordRef) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *PstoreRecordRef) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *PstoreRecordRef) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
 // Value is a typed observed value.
 type Value struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1305,6 +1801,7 @@ type Value struct {
 	//	*Value_DoubleValue
 	//	*Value_StringValue
 	//	*Value_BoolValue
+	//	*Value_UintValue
 	Kind          isValue_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1312,7 +1809,7 @@ type Value struct {
 
 func (x *Value) Reset() {
 	*x = Value{}
-	mi := &file_health_v1_observation_proto_msgTypes[15]
+	mi := &file_health_v1_observation_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1324,7 +1821,7 @@ func (x *Value) String() string {
 func (*Value) ProtoMessage() {}
 
 func (x *Value) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[15]
+	mi := &file_health_v1_observation_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1337,7 +1834,7 @@ func (x *Value) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Value.ProtoReflect.Descriptor instead.
 func (*Value) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{15}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Value) GetKind() isValue_Kind {
@@ -1383,6 +1880,15 @@ func (x *Value) GetBoolValue() bool {
 	return false
 }
 
+func (x *Value) GetUintValue() uint64 {
+	if x != nil {
+		if x, ok := x.Kind.(*Value_UintValue); ok {
+			return x.UintValue
+		}
+	}
+	return 0
+}
+
 type isValue_Kind interface {
 	isValue_Kind()
 }
@@ -1403,6 +1909,10 @@ type Value_BoolValue struct {
 	BoolValue bool `protobuf:"varint,4,opt,name=bool_value,json=boolValue,proto3,oneof"`
 }
 
+type Value_UintValue struct {
+	UintValue uint64 `protobuf:"varint,5,opt,name=uint_value,json=uintValue,proto3,oneof"`
+}
+
 func (*Value_IntValue) isValue_Kind() {}
 
 func (*Value_DoubleValue) isValue_Kind() {}
@@ -1411,25 +1921,27 @@ func (*Value_StringValue) isValue_Kind() {}
 
 func (*Value_BoolValue) isValue_Kind() {}
 
+func (*Value_UintValue) isValue_Kind() {}
+
 // CollectionError records why a signal could not be collected. It keeps the
 // source's symbolic error next to the normalized category, because collapsing
 // them loses information the catalog needs.
 // It carries no health severity; each consumer decides what a failed
 // observation means for its own result.
 type CollectionError struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Operation     string                 `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
-	SourceError   string                 `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
-	Detail        string                 `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
-	unknownFields protoimpl.UnknownFields
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Source        string                  `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Operation     string                  `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
+	SourceError   string                  `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
+	Detail        string                  `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
 	Category      CollectionErrorCategory `protobuf:"varint,3,opt,name=category,proto3,enum=health.v1.CollectionErrorCategory" json:"category,omitempty"`
+	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CollectionError) Reset() {
 	*x = CollectionError{}
-	mi := &file_health_v1_observation_proto_msgTypes[16]
+	mi := &file_health_v1_observation_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1441,7 +1953,7 @@ func (x *CollectionError) String() string {
 func (*CollectionError) ProtoMessage() {}
 
 func (x *CollectionError) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[16]
+	mi := &file_health_v1_observation_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1454,7 +1966,7 @@ func (x *CollectionError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectionError.ProtoReflect.Descriptor instead.
 func (*CollectionError) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{16}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CollectionError) GetSource() string {
@@ -1497,16 +2009,16 @@ func (x *CollectionError) GetCategory() CollectionErrorCategory {
 // source status that is itself the observed value.
 type NoValue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Reason        NoValueReason          `protobuf:"varint,1,opt,name=reason,proto3,enum=health.v1.NoValueReason" json:"reason,omitempty"`
 	Detail        string                 `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"`
 	SourceStatus  string                 `protobuf:"bytes,3,opt,name=source_status,json=sourceStatus,proto3" json:"source_status,omitempty"`
 	unknownFields protoimpl.UnknownFields
-	Reason        NoValueReason `protobuf:"varint,1,opt,name=reason,proto3,enum=health.v1.NoValueReason" json:"reason,omitempty"`
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *NoValue) Reset() {
 	*x = NoValue{}
-	mi := &file_health_v1_observation_proto_msgTypes[17]
+	mi := &file_health_v1_observation_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1518,7 +2030,7 @@ func (x *NoValue) String() string {
 func (*NoValue) ProtoMessage() {}
 
 func (x *NoValue) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[17]
+	mi := &file_health_v1_observation_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1531,7 +2043,7 @@ func (x *NoValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NoValue.ProtoReflect.Descriptor instead.
 func (*NoValue) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{17}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *NoValue) GetReason() NoValueReason {
@@ -1614,7 +2126,7 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x19_compute_capability_minorB\x1a\n" +
 	"\x18_framebuffer_total_bytesB\x11\n" +
 	"\x0f_driver_versionB\x16\n" +
-	"\x14_cuda_driver_version\"\x86\x03\n" +
+	"\x14_cuda_driver_version\"\x92\x04\n" +
 	"\vObservation\x12\x1b\n" +
 	"\tsignal_id\x18\x01 \x01(\tR\bsignalId\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x124\n" +
@@ -1624,9 +2136,12 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x04unit\x18\x05 \x01(\tH\x01R\x04unit\x88\x01\x01\x12(\n" +
 	"\x05value\x18\x06 \x01(\v2\x10.health.v1.ValueH\x00R\x05value\x12G\n" +
 	"\x10collection_error\x18\a \x01(\v2\x1a.health.v1.CollectionErrorH\x00R\x0fcollectionError\x12/\n" +
-	"\bno_value\x18\b \x01(\v2\x12.health.v1.NoValueH\x00R\anoValueB\t\n" +
+	"\bno_value\x18\b \x01(\v2\x12.health.v1.NoValueH\x00R\anoValue\x12F\n" +
+	"\x11sample_started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x0fsampleStartedAt\x12B\n" +
+	"\x0fsample_ended_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\rsampleEndedAtB\t\n" +
 	"\aoutcomeB\a\n" +
-	"\x05_unit\"\xc7\x03\n" +
+	"\x05_unit\"\xd7\x06\n" +
 	"\x11ObservationTarget\x12(\n" +
 	"\x04node\x18\x01 \x01(\v2\x12.health.v1.NodeRefH\x00R\x04node\x12%\n" +
 	"\x03gpu\x18\x02 \x01(\v2\x11.health.v1.GpuRefH\x00R\x03gpu\x12H\n" +
@@ -1634,7 +2149,16 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\bgpu_pair\x18\x04 \x01(\v2\x15.health.v1.GpuPairRefH\x00R\agpuPair\x12N\n" +
 	"\x12infini_band_device\x18\x05 \x01(\v2\x1e.health.v1.InfiniBandDeviceRefH\x00R\x10infiniBandDevice\x12H\n" +
 	"\x10infini_band_port\x18\x06 \x01(\v2\x1c.health.v1.InfiniBandPortRefH\x00R\x0einfiniBandPort\x12A\n" +
-	"\rkernel_record\x18\a \x01(\v2\x1a.health.v1.KernelRecordRefH\x00R\fkernelRecordB\x06\n" +
+	"\rkernel_record\x18\a \x01(\v2\x1a.health.v1.KernelRecordRefH\x00R\fkernelRecord\x121\n" +
+	"\aprocess\x18\b \x01(\v2\x15.health.v1.ProcessRefH\x00R\aprocess\x12;\n" +
+	"\vgpu_process\x18\t \x01(\v2\x18.health.v1.GpuProcessRefH\x00R\n" +
+	"gpuProcess\x12>\n" +
+	"\fblock_device\x18\n" +
+	" \x01(\v2\x19.health.v1.BlockDeviceRefH\x00R\vblockDevice\x12+\n" +
+	"\x05mount\x18\v \x01(\v2\x13.health.v1.MountRefH\x00R\x05mount\x12%\n" +
+	"\x03pci\x18\f \x01(\v2\x11.health.v1.PCIRefH\x00R\x03pci\x12G\n" +
+	"\x0ffuse_connection\x18\r \x01(\v2\x1c.health.v1.FuseConnectionRefH\x00R\x0efuseConnection\x12A\n" +
+	"\rpstore_record\x18\x0e \x01(\v2\x1a.health.v1.PstoreRecordRefH\x00R\fpstoreRecordB\x06\n" +
 	"\x04kind\"\x19\n" +
 	"\aNodeRef\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"D\n" +
@@ -1657,13 +2181,37 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x04port\x18\x02 \x01(\rR\x04port\"F\n" +
 	"\x0fKernelRecordRef\x12\x17\n" +
 	"\aboot_id\x18\x01 \x01(\tR\x06bootId\x12\x1a\n" +
-	"\bsequence\x18\x02 \x01(\x03R\bsequence\"\x99\x01\n" +
+	"\bsequence\x18\x02 \x01(\x03R\bsequence\"a\n" +
+	"\n" +
+	"ProcessRef\x12\x17\n" +
+	"\aboot_id\x18\x01 \x01(\tR\x06bootId\x12\x10\n" +
+	"\x03pid\x18\x02 \x01(\rR\x03pid\x12(\n" +
+	"\x10start_time_ticks\x18\x03 \x01(\x04R\x0estartTimeTicks\"e\n" +
+	"\rGpuProcessRef\x12#\n" +
+	"\x03gpu\x18\x01 \x01(\v2\x11.health.v1.GpuRefR\x03gpu\x12/\n" +
+	"\aprocess\x18\x02 \x01(\v2\x15.health.v1.ProcessRefR\aprocess\"<\n" +
+	"\x0eBlockDeviceRef\x12\x14\n" +
+	"\x05major\x18\x01 \x01(\rR\x05major\x12\x14\n" +
+	"\x05minor\x18\x02 \x01(\rR\x05minor\"C\n" +
+	"\bMountRef\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x19\n" +
+	"\bmount_id\x18\x02 \x01(\x04R\amountId\"\"\n" +
+	"\x06PCIRef\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\"Q\n" +
+	"\x11FuseConnectionRef\x12\x17\n" +
+	"\aboot_id\x18\x01 \x01(\tR\x06bootId\x12#\n" +
+	"\rconnection_id\x18\x02 \x01(\x04R\fconnectionId\"=\n" +
+	"\x0fPstoreRecordRef\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
+	"\x06sha256\x18\x02 \x01(\tR\x06sha256\"\xba\x01\n" +
 	"\x05Value\x12\x1d\n" +
 	"\tint_value\x18\x01 \x01(\x03H\x00R\bintValue\x12#\n" +
 	"\fdouble_value\x18\x02 \x01(\x01H\x00R\vdoubleValue\x12#\n" +
 	"\fstring_value\x18\x03 \x01(\tH\x00R\vstringValue\x12\x1f\n" +
 	"\n" +
-	"bool_value\x18\x04 \x01(\bH\x00R\tboolValueB\x06\n" +
+	"bool_value\x18\x04 \x01(\bH\x00R\tboolValue\x12\x1f\n" +
+	"\n" +
+	"uint_value\x18\x05 \x01(\x04H\x00R\tuintValueB\x06\n" +
 	"\x04kind\"\xc2\x01\n" +
 	"\x0fCollectionError\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x1c\n" +
@@ -1703,7 +2251,7 @@ func file_health_v1_observation_proto_rawDescGZIP() []byte {
 
 var (
 	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 19)
+	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 26)
 	file_health_v1_observation_proto_goTypes   = []any{
 		(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
 		(NoValueReason)(0),            // 1: health.v1.NoValueReason
@@ -1722,11 +2270,18 @@ var (
 		(*InfiniBandDeviceRef)(nil),   // 14: health.v1.InfiniBandDeviceRef
 		(*InfiniBandPortRef)(nil),     // 15: health.v1.InfiniBandPortRef
 		(*KernelRecordRef)(nil),       // 16: health.v1.KernelRecordRef
-		(*Value)(nil),                 // 17: health.v1.Value
-		(*CollectionError)(nil),       // 18: health.v1.CollectionError
-		(*NoValue)(nil),               // 19: health.v1.NoValue
-		nil,                           // 20: health.v1.GpuInventoryEntry.FieldErrorsEntry
-		(*timestamppb.Timestamp)(nil), // 21: google.protobuf.Timestamp
+		(*ProcessRef)(nil),            // 17: health.v1.ProcessRef
+		(*GpuProcessRef)(nil),         // 18: health.v1.GpuProcessRef
+		(*BlockDeviceRef)(nil),        // 19: health.v1.BlockDeviceRef
+		(*MountRef)(nil),              // 20: health.v1.MountRef
+		(*PCIRef)(nil),                // 21: health.v1.PCIRef
+		(*FuseConnectionRef)(nil),     // 22: health.v1.FuseConnectionRef
+		(*PstoreRecordRef)(nil),       // 23: health.v1.PstoreRecordRef
+		(*Value)(nil),                 // 24: health.v1.Value
+		(*CollectionError)(nil),       // 25: health.v1.CollectionError
+		(*NoValue)(nil),               // 26: health.v1.NoValue
+		nil,                           // 27: health.v1.GpuInventoryEntry.FieldErrorsEntry
+		(*timestamppb.Timestamp)(nil), // 28: google.protobuf.Timestamp
 	}
 )
 
@@ -1734,37 +2289,48 @@ var file_health_v1_observation_proto_depIdxs = []int32{
 	8,  // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
 	3,  // 1: health.v1.ObservationBatch.inventory:type_name -> health.v1.HardwareInventory
 	4,  // 2: health.v1.HardwareInventory.gpu_snapshots:type_name -> health.v1.GpuInventorySnapshot
-	21, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
+	28, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
 	5,  // 4: health.v1.GpuInventorySnapshot.inventory:type_name -> health.v1.GpuInventory
-	18, // 5: health.v1.GpuInventorySnapshot.collection_error:type_name -> health.v1.CollectionError
+	25, // 5: health.v1.GpuInventorySnapshot.collection_error:type_name -> health.v1.CollectionError
 	6,  // 6: health.v1.GpuInventory.entries:type_name -> health.v1.GpuInventoryEntry
 	7,  // 7: health.v1.GpuInventoryEntry.gpu:type_name -> health.v1.GpuDevice
-	18, // 8: health.v1.GpuInventoryEntry.collection_error:type_name -> health.v1.CollectionError
-	20, // 9: health.v1.GpuInventoryEntry.field_errors:type_name -> health.v1.GpuInventoryEntry.FieldErrorsEntry
+	25, // 8: health.v1.GpuInventoryEntry.collection_error:type_name -> health.v1.CollectionError
+	27, // 9: health.v1.GpuInventoryEntry.field_errors:type_name -> health.v1.GpuInventoryEntry.FieldErrorsEntry
 	9,  // 10: health.v1.Observation.target:type_name -> health.v1.ObservationTarget
-	21, // 11: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
-	17, // 12: health.v1.Observation.value:type_name -> health.v1.Value
-	18, // 13: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
-	19, // 14: health.v1.Observation.no_value:type_name -> health.v1.NoValue
-	10, // 15: health.v1.ObservationTarget.node:type_name -> health.v1.NodeRef
-	11, // 16: health.v1.ObservationTarget.gpu:type_name -> health.v1.GpuRef
-	12, // 17: health.v1.ObservationTarget.nv_link_endpoint:type_name -> health.v1.NvLinkEndpointRef
-	13, // 18: health.v1.ObservationTarget.gpu_pair:type_name -> health.v1.GpuPairRef
-	14, // 19: health.v1.ObservationTarget.infini_band_device:type_name -> health.v1.InfiniBandDeviceRef
-	15, // 20: health.v1.ObservationTarget.infini_band_port:type_name -> health.v1.InfiniBandPortRef
-	16, // 21: health.v1.ObservationTarget.kernel_record:type_name -> health.v1.KernelRecordRef
-	11, // 22: health.v1.NvLinkEndpointRef.gpu:type_name -> health.v1.GpuRef
-	11, // 23: health.v1.GpuPairRef.source_gpu:type_name -> health.v1.GpuRef
-	11, // 24: health.v1.GpuPairRef.peer_gpu:type_name -> health.v1.GpuRef
-	14, // 25: health.v1.InfiniBandPortRef.device:type_name -> health.v1.InfiniBandDeviceRef
-	0,  // 26: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
-	1,  // 27: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
-	18, // 28: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
-	29, // [29:29] is the sub-list for method output_type
-	29, // [29:29] is the sub-list for method input_type
-	29, // [29:29] is the sub-list for extension type_name
-	29, // [29:29] is the sub-list for extension extendee
-	0,  // [0:29] is the sub-list for field type_name
+	28, // 11: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
+	24, // 12: health.v1.Observation.value:type_name -> health.v1.Value
+	25, // 13: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
+	26, // 14: health.v1.Observation.no_value:type_name -> health.v1.NoValue
+	28, // 15: health.v1.Observation.sample_started_at:type_name -> google.protobuf.Timestamp
+	28, // 16: health.v1.Observation.sample_ended_at:type_name -> google.protobuf.Timestamp
+	10, // 17: health.v1.ObservationTarget.node:type_name -> health.v1.NodeRef
+	11, // 18: health.v1.ObservationTarget.gpu:type_name -> health.v1.GpuRef
+	12, // 19: health.v1.ObservationTarget.nv_link_endpoint:type_name -> health.v1.NvLinkEndpointRef
+	13, // 20: health.v1.ObservationTarget.gpu_pair:type_name -> health.v1.GpuPairRef
+	14, // 21: health.v1.ObservationTarget.infini_band_device:type_name -> health.v1.InfiniBandDeviceRef
+	15, // 22: health.v1.ObservationTarget.infini_band_port:type_name -> health.v1.InfiniBandPortRef
+	16, // 23: health.v1.ObservationTarget.kernel_record:type_name -> health.v1.KernelRecordRef
+	17, // 24: health.v1.ObservationTarget.process:type_name -> health.v1.ProcessRef
+	18, // 25: health.v1.ObservationTarget.gpu_process:type_name -> health.v1.GpuProcessRef
+	19, // 26: health.v1.ObservationTarget.block_device:type_name -> health.v1.BlockDeviceRef
+	20, // 27: health.v1.ObservationTarget.mount:type_name -> health.v1.MountRef
+	21, // 28: health.v1.ObservationTarget.pci:type_name -> health.v1.PCIRef
+	22, // 29: health.v1.ObservationTarget.fuse_connection:type_name -> health.v1.FuseConnectionRef
+	23, // 30: health.v1.ObservationTarget.pstore_record:type_name -> health.v1.PstoreRecordRef
+	11, // 31: health.v1.NvLinkEndpointRef.gpu:type_name -> health.v1.GpuRef
+	11, // 32: health.v1.GpuPairRef.source_gpu:type_name -> health.v1.GpuRef
+	11, // 33: health.v1.GpuPairRef.peer_gpu:type_name -> health.v1.GpuRef
+	14, // 34: health.v1.InfiniBandPortRef.device:type_name -> health.v1.InfiniBandDeviceRef
+	11, // 35: health.v1.GpuProcessRef.gpu:type_name -> health.v1.GpuRef
+	17, // 36: health.v1.GpuProcessRef.process:type_name -> health.v1.ProcessRef
+	0,  // 37: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
+	1,  // 38: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
+	25, // 39: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
+	40, // [40:40] is the sub-list for method output_type
+	40, // [40:40] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_health_v1_observation_proto_init() }
@@ -1790,12 +2356,20 @@ func file_health_v1_observation_proto_init() {
 		(*ObservationTarget_InfiniBandDevice)(nil),
 		(*ObservationTarget_InfiniBandPort)(nil),
 		(*ObservationTarget_KernelRecord)(nil),
+		(*ObservationTarget_Process)(nil),
+		(*ObservationTarget_GpuProcess)(nil),
+		(*ObservationTarget_BlockDevice)(nil),
+		(*ObservationTarget_Mount)(nil),
+		(*ObservationTarget_Pci)(nil),
+		(*ObservationTarget_FuseConnection)(nil),
+		(*ObservationTarget_PstoreRecord)(nil),
 	}
-	file_health_v1_observation_proto_msgTypes[15].OneofWrappers = []any{
+	file_health_v1_observation_proto_msgTypes[22].OneofWrappers = []any{
 		(*Value_IntValue)(nil),
 		(*Value_DoubleValue)(nil),
 		(*Value_StringValue)(nil),
 		(*Value_BoolValue)(nil),
+		(*Value_UintValue)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1803,7 +2377,7 @@ func file_health_v1_observation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_health_v1_observation_proto_rawDesc), len(file_health_v1_observation_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   19,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

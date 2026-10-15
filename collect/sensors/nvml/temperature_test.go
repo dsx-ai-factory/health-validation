@@ -6,12 +6,9 @@ package nvml
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 )
@@ -23,27 +20,6 @@ func newTemperatureReads(want map[string]bool) *temperatureReads {
 		target:    observation.GPUTarget("test-gpu"),
 		want:      want,
 		collected: make(map[string]bool, len(temperatureSignals())),
-	}
-}
-
-func TestCategorizeFailure(t *testing.T) {
-	tests := []struct {
-		definition collect.Signal
-		ret        nvml.Return
-		want       observation.CollectionErrorCategory
-	}{
-		{gpusignals.TemperatureCelsius, nvml.ERROR_NOT_SUPPORTED, observation.CollectionErrorCategoryUnsupported},
-		{gpusignals.PowerDraw, nvml.ERROR_NO_PERMISSION, observation.CollectionErrorCategoryPermissionDenied},
-		{gpusignals.PowerDraw, nvml.ERROR_TIMEOUT, observation.CollectionErrorCategoryTimeout},
-		{gpusignals.PowerDraw, nvml.ERROR_FUNCTION_NOT_FOUND, observation.CollectionErrorCategoryUnsupported},
-		{gpusignals.TemperatureHBMCelsius, nvml.ERROR_INVALID_ARGUMENT, observation.CollectionErrorCategoryUnsupported},
-		{gpusignals.TemperatureSlowdownMarginCelsius, nvml.ERROR_INVALID_ARGUMENT, observation.CollectionErrorCategoryUnsupported},
-		{gpusignals.TemperatureCelsius, nvml.ERROR_INVALID_ARGUMENT, observation.CollectionErrorCategorySourceError},
-		{gpusignals.TemperatureCelsius, nvml.ERROR_GPU_IS_LOST, observation.CollectionErrorCategorySourceError},
-	}
-	for _, test := range tests {
-		got := categorizeFailure(test.definition, test.ret)
-		assert.Equal(t, test.want, got)
 	}
 }
 

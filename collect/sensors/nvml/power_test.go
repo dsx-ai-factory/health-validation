@@ -94,7 +94,8 @@ func TestPowerAndTemperatureSelection(t *testing.T) {
 	require.Len(t, batch.Observations, 2)
 	require.Equal(t, int64(-3), batch.Observations[0].GetValue().GetIntValue())
 	dev.calls = nil
-	batch, err = s.Measure(context.Background())
+	definitions := append(temperatureSignals(), powerSignals()...)
+	batch, err = s.Measure(context.Background(), collect.WithSignalID(definitions.IDs()...))
 	require.NoError(t, err)
 	require.Len(t, batch.GetObservations(), 10)
 	require.Len(t, dev.calls, 10)
@@ -113,5 +114,31 @@ func TestLostGPUStopsAllFamilies(t *testing.T) {
 		for _, current := range batch.Observations[1:] {
 			require.Equal(t, observation.CollectionErrorCategoryUnavailable, current.GetCollectionError().GetCategory())
 		}
+	}
+}
+
+func TestReliabilityLossStopsInterconnectAndTelemetry(t *testing.T) {
+	for _, ret := range []nvml.Return{nvml.ERROR_GPU_IS_LOST, nvml.ERROR_RESET_REQUIRED} {
+		t.Run(returnName(ret), func(t *testing.T) {
+			dev := &reliabilityDevice{totalRet: ret}
+			definitions := collect.Signals{gpusignals.ECCSingleBitAggregateTotal, gpusignals.NVLinkState, gpusignals.NVLinkFabricState}
+			// Later native methods are deliberately absent on this mock. A call to
+			// interconnect, telemetry, or process collection would panic.
+			definitions = append(definitions, telemetrySignals()...)
+			definitions = append(definitions, processSignals()...)
+			batch, err := New(&fakeInstance{exists: true, devices: map[string]device.Device{"gpu-1": dev}}).Measure(context.Background(), collect.WithSignalID(definitions.IDs()...))
+			require.NoError(t, err)
+			require.Equal(t, []string{"total"}, dev.calls)
+			require.Len(t, batch.Observations, len(definitions))
+			seen := make(map[string]bool)
+			for _, current := range batch.Observations {
+				require.False(t, seen[current.SignalId])
+				seen[current.SignalId] = true
+				require.Nil(t, current.GetValue())
+				require.Equal(t, observation.CollectionErrorCategoryUnavailable, current.GetCollectionError().GetCategory())
+				require.Equal(t, returnName(ret), current.GetCollectionError().GetSourceError())
+				require.Equal(t, "gpu-1", current.Target.GetGpu().GetUuid())
+			}
+		})
 	}
 }

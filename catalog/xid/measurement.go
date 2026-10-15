@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package xid defines the measurement type for NVRM Xid errors parsed
 // from the system journal. Xid errors are GPU faults the NVIDIA driver
 // logs to the kernel ring buffer / syslog; a sensor collects them and

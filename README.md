@@ -9,6 +9,10 @@ The repository is `github.com/dsx-ai-factory/health-validation`. It contains fou
 
 `toolkit` depends on `catalog`; import `toolkit` to get both.
 
+For raw observations without catalog evaluation, use the experimental `collect`
+module. See [Shared raw collection library](docs/INTEGRATION.md#shared-raw-collection-library)
+for its ten collection families, typed targets, and custom sensor registration.
+
 > **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor/backend layer that feeds it is a reference implementation and is subject to change.
 
 ## What it does
@@ -490,6 +494,7 @@ this config has no field for it.
 6. [docs/FAQ.md](docs/FAQ.md)
 7. [catalog/health/node-verdict.schema.json](catalog/health/node-verdict.schema.json): JSON Schema for the node verdict output
 8. [CONTRIBUTING.md](CONTRIBUTING.md)
+9. [ROADMAP.md](ROADMAP.md): development focus areas and related work
 
 ## Maintainers
 
@@ -508,7 +513,7 @@ authoring, and PR guidelines. All participation is governed by our
 
 ## License
 
-Use of this software is governed by the NVIDIA Software and Model Evaluation License. See [LICENSE](LICENSE).
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE).
 
 ## Support
 

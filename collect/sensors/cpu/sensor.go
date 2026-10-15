@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package cpu is the sysfs-backed collect sensor for host CPU topology.
+// Package cpu collects host CPU topology and cumulative activity.
 package cpu
 
 import (
@@ -46,25 +46,70 @@ func New(fsys fs.FS) collect.Sensor {
 func (*sensor) ID() string               { return ID }
 func (*sensor) Signals() collect.Signals { return cpusignals.All() }
 
-// Measure reads each selected list independently, so one unreadable or
-// malformed file fails only its own signal. Cancellation fails the whole
-// call: a partial read under a dying context proves nothing.
+// Measure reads selected topology and activity files independently.
+// Cancellation fails the call instead of returning a partial snapshot.
 //
+// The cycle bounds the wait for both topology and activity acquisition.
 // Observations target the node with an empty ID: collection is node-local,
 // so the consumer supplies node identity.
 func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("collection context is required")
+	}
 	op := collect.NewOp(opts...)
+	if op.GPUInventory() {
+		return nil, fmt.Errorf("GPU inventory is not supported by %s", ID)
+	}
 	selected, err := op.Signals(s.Signals())
 	if err != nil {
 		return nil, fmt.Errorf("select CPU signals: %w", err)
 	}
 	now := timestamppb.Now()
+	if cycle := op.Cycle(); cycle != nil {
+		now = timestamppb.New(cycle.StartedAt())
+	}
 	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("collect CPU: %w", ctxErr)
+	}
+	if len(selected) == 0 {
+		return batch, nil
+	}
+	cycle := op.Cycle()
+	if cycle == nil {
+		cycle, err = collect.NewCycle("cpu.local", now.AsTime())
+		if err != nil {
+			return nil, err
+		}
+	}
+	result, err := collect.Run(ctx, cycle, ID, func(ctx context.Context) (*observation.ObservationBatch, error) {
+		return s.read(ctx, selected, now, batch.CollectionId)
+	})
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("collect CPU: %w", ctxErr)
+	}
+	if err != nil {
+		for _, definition := range selected {
+			batch.Observations = append(batch.Observations, failure(definition, now, "read", readCategory(err), err))
+		}
+		return batch, nil
+	}
+	return result, nil
+}
+
+func (s *sensor) read(ctx context.Context, selected collect.Signals, now *timestamppb.Timestamp, collectionID string) (*observation.ObservationBatch, error) {
+	// This batch belongs to the acquisition callback, which may outlive Run.
+	batch := &observation.ObservationBatch{CollectionId: collectionID}
+	activity := s.readActivity(ctx, selected, now)
 	for _, definition := range selected {
 		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("collect CPU topology: %w", err)
+			return nil, fmt.Errorf("collect CPU: %w", err)
 		}
 		path := paths[definition.ID()]
+		if activityObservation, ok := activity[definition.ID()]; ok {
+			batch.Observations = append(batch.Observations, activityObservation)
+			continue
+		}
 		data, err := fs.ReadFile(s.fsys, path)
 		if err != nil {
 			batch.Observations = append(batch.Observations, failure(definition, now, "read /"+path, readCategory(err), err))
@@ -86,7 +131,7 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		})
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("collect CPU topology: %w", err)
+		return nil, fmt.Errorf("collect CPU: %w", err)
 	}
 	return batch, nil
 }
@@ -97,6 +142,8 @@ func readCategory(err error) observation.CollectionErrorCategory {
 		return observation.CollectionErrorCategoryPermissionDenied
 	case errors.Is(err, fs.ErrNotExist):
 		return observation.CollectionErrorCategoryUnavailable
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, collect.ErrCollectionTimeout):
+		return observation.CollectionErrorCategoryTimeout
 	default:
 		return observation.CollectionErrorCategorySourceError
 	}

@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "disk",
+    srcs = ["sensor.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/sensors/disk",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/disk",
+        "//collect/source/disk",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ],
+)
+
+go_test(
+    name = "disk_test",
+    srcs = ["sensor_test.go"],
+    embed = [":disk"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/disk",
+        "//collect/source/disk",
+    ],
+)

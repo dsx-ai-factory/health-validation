@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package nvml is the NVML-sourced GPU sensor: power and temperature readings per
 // device. Single-source sensors group by their source. The NVML queries
 // follow GPUd's power and temperature components. Power is converted from

@@ -23,6 +23,7 @@ const (
 	targetGPU            = "GPU"
 	targetNVLinkEndpoint = "NVLink endpoint"
 	targetGPUPair        = "GPU pair"
+	targetGPUProcess     = "GPU process"
 )
 
 // canonicalTargets lists the target kind each canonical signal accepts.
@@ -40,6 +41,8 @@ const (
 var canonicalTargets = []canonicalTarget{
 	{kind: targetGPU, signals: gpusignals.All()},
 	{kind: targetNode, signals: cpusignals.All()},
+	{kind: targetNVLinkEndpoint, signals: gpusignals.EndpointSignals()},
+	{kind: targetGPUProcess, signals: gpusignals.ProcessEntitySignals()},
 }
 
 type canonicalTarget struct {
@@ -77,6 +80,8 @@ func targetKind(target *observation.ObservationTarget) string {
 		return targetNVLinkEndpoint
 	case *observation.ObservationTarget_GPUPair:
 		return targetGPUPair
+	case *observation.ObservationTarget_GPUProcess:
+		return targetGPUProcess
 	default:
 		return ""
 	}
@@ -189,8 +194,8 @@ func validateCollectObservation(o *observation.Observation, s collect.Signal) er
 	case *observation.Observation_NoValue:
 		switch outcome.NoValue.GetReason() {
 		case observation.NoValueReasonNoTargets:
-			if o.GetTarget() != nil {
-				return fmt.Errorf("NO_TARGETS must be source-scoped")
+			if o.GetTarget() != nil && !gpuParentOutcome(o, s) {
+				return fmt.Errorf("NO_TARGETS must be source-scoped or identify an entity family's parent GPU")
 			}
 		case observation.NoValueReasonNotSupported:
 			if o.GetTarget() == nil {
@@ -202,7 +207,7 @@ func validateCollectObservation(o *observation.Observation, s collect.Signal) er
 	default:
 		return fmt.Errorf("observation outcome is required")
 	}
-	if rule, ok := canonical[s.ID()]; ok && o.GetTarget() != nil && targetKind(o.GetTarget()) != rule.target {
+	if rule, ok := canonical[s.ID()]; ok && o.GetTarget() != nil && targetKind(o.GetTarget()) != rule.target && !gpuParentOutcome(o, s) {
 		return fmt.Errorf("signal %q requires a %s target", s.ID(), rule.target)
 	}
 	return nil
@@ -218,6 +223,8 @@ func gpuRefs(target *observation.ObservationTarget) []*observation.GPURef {
 		return []*observation.GPURef{kind.NvLinkEndpoint.GetGpu()}
 	case *observation.ObservationTarget_GPUPair:
 		return []*observation.GPURef{kind.GpuPair.GetSourceGpu(), kind.GpuPair.GetPeerGpu()}
+	case *observation.ObservationTarget_GPUProcess:
+		return []*observation.GPURef{kind.GpuProcess.GetGpu()}
 	default:
 		return nil
 	}
@@ -226,4 +233,13 @@ func gpuRefs(target *observation.ObservationTarget) []*observation.GPURef {
 // collectSourceLocal reports whether any GPU in target lacks a UUID.
 func collectSourceLocal(target *observation.ObservationTarget) bool {
 	return slices.ContainsFunc(gpuRefs(target), func(ref *observation.GPURef) bool { return ref.GetSourceLocalId() != "" })
+}
+
+// A parent GPU scopes failed entity enumeration without inventing an endpoint or process.
+func gpuParentOutcome(o *observation.Observation, s collect.Signal) bool {
+	rule, ok := canonical[s.ID()]
+	if !ok || (rule.target != targetNVLinkEndpoint && rule.target != targetGPUProcess) || targetKind(o.GetTarget()) != targetGPU || o.GetValue() != nil {
+		return false
+	}
+	return o.GetCollectionError() != nil || o.GetNoValue() != nil
 }

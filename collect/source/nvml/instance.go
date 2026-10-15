@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package nvml
 
 import (
@@ -44,19 +47,16 @@ type Instance interface {
 	// re-runs (re-initializing NVML each cycle measured 5.8x the cost of
 	// enumeration alone). The coordinator calls Refresh once per cycle as
 	// its shared read, so a GPU appearing, disappearing, or falling off
-	// the bus between cycles is seen. On failure the device map is cleared
-	// and the error is reported through InitError.
+	// the bus between cycles is seen. A device-count failure clears the map
+	// and reaches InitError. Per-slot failures remain in InventoryDevices.
 	Refresh() error
 
 	// Shutdown is idempotent and returns ErrInUse while a native call is running.
 	Shutdown() error
 
-	// InitError returns any error that occurred during NVML initialization
-	// or the most recent Refresh. If both succeeded, this returns nil.
-	// This typically occurs when the NVML library loads but device enumeration
-	// fails, for example: "error getting device handle for index '4': Unknown Error"
-	// which corresponds to nvidia-smi showing:
-	// "Unable to determine the device handle for GPU0000:XX:00.0: Unknown Error"
+	// InitError reports initialization or source-wide enumeration failures.
+	// An unreadable device handle or UUID does not invalidate healthy devices;
+	// optional InventoryDevices records retain those per-slot errors.
 	InitError() error
 }
 
@@ -102,12 +102,9 @@ func New() (result Instance, err error) {
 
 	inst := &instance{nvmlLib: nvmlLib, driverMajor: driverMajor}
 	if err := inst.refresh(); err != nil {
-		// "NVIDIA Xid 79: GPU has fallen off the bus" may fail enumeration with:
-		// "error getting device handle for index '6': Unknown Error"
-		// When this happens, nvidia-smi also shows:
-		// "Unable to determine the device handle for GPU0000:XX:00.0: Unknown Error"
-		// Instead of failing entirely, return the errored instance so callers keep
-		// running, report the failure through InitError, and can retry via Refresh.
+		// Keep the initialized library alive after a source-wide enumeration
+		// failure so a later Refresh can recover it. Per-slot failures do not
+		// enter this branch.
 		slog.Warn("NVML device enumeration failed, returning errored instance",
 			"error", err,
 			"hint", "nvidia-smi may show 'Unable to determine the device handle for GPU: Unknown Error'",
@@ -116,40 +113,14 @@ func New() (result Instance, err error) {
 	return inst, nil
 }
 
-// enumerateDevices lists the current NVML devices and wraps each with its
-// UUID and PCI bus ID.
-func enumerateDevices(nvmlLib nvmllib.Library, driverMajor int) (map[string]device.Device, error) {
-	devices, err := nvmlLib.Device().GetDevices()
-	if err != nil {
-		return nil, err
-	}
-
-	devs := make(map[string]device.Device, len(devices))
-	for _, dev := range devices {
-		// TODO: one unreadable device aborts enumeration, so Refresh clears
-		// the whole device map and healthy GPUs lose their observations.
-		// Record an errored entry for the failed device and keep enumerating
-		// the rest, as toolkit/nvml's erroredDevice does.
-		uuid, ret := dev.GetUUID()
-		if ret != nvml.SUCCESS {
-			return nil, fmt.Errorf("failed to get device uuid: %v", nvml.ErrorString(ret))
-		}
-		busID, err := dev.GetPCIBusID()
-		if err != nil {
-			return nil, err
-		}
-		devs[uuid] = device.New(dev, busID, device.WithDriverMajor(driverMajor))
-	}
-	return devs, nil
-}
-
 type instance struct {
-	nvmlLib     nvmllib.Library
-	devices     map[string]device.Device
-	initErr     error
-	mu          sync.RWMutex
-	driverMajor int
-	closed      bool
+	nvmlLib          nvmllib.Library
+	initErr          error
+	devices          map[string]device.Device
+	inventoryDevices []InventoryDevice
+	driverMajor      int
+	mu               sync.RWMutex
+	closed           bool
 }
 
 func (inst *instance) NVMLExists() bool {
@@ -197,13 +168,15 @@ func (inst *instance) refresh() error {
 	if inst.nvmlLib == nil {
 		return inst.initErr
 	}
-	devices, err := enumerateDevices(inst.nvmlLib, inst.driverMajor)
+	devices, inventoryDevices, err := enumerateInventory(inst.nvmlLib, inst.driverMajor)
 	if err != nil {
 		inst.devices = nil
+		inst.inventoryDevices = nil
 		inst.initErr = err
 		return err
 	}
 	inst.devices = devices
+	inst.inventoryDevices = inventoryDevices
 	inst.initErr = nil
 	return nil
 }
