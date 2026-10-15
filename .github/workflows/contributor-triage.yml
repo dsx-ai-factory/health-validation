@@ -1,0 +1,68 @@
+name: Contributor triage
+
+# See docs/DEVELOPER.md#contributor-triage.
+#
+# pull_request_target, not pull_request: under pull_request a fork PR gets a
+# read-only token and no secrets. That is only safe because this job never
+# checks out or executes pull request content; without `ref:`, checkout takes
+# the default branch. Do not add a head-ref or merge-ref checkout here.
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request_target:
+    types: [opened, reopened]
+  # Every run rescans all items, so this catches missed events and failed posts.
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Log what would be labeled and posted without doing it
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+  # Needed to list PRs and read their commits.
+  pull-requests: read
+
+# Serialized so two runs cannot post the same item.
+concurrency:
+  group: contributor-triage
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    if: github.repository == 'dsx-ai-factory/health-validation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Label and notify
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.CONTRIBUTOR_TRIAGE_SLACK_WEBHOOK }}
+          # Dry run until an admin sets CONTRIBUTOR_TRIAGE_LIVE; see the docs.
+          DRY_RUN: ${{ inputs.dry_run == true || vars.CONTRIBUTOR_TRIAGE_LIVE != 'true' }}
+        run: node tools/contributor_triage.mjs
+
+      # A red run in the Actions tab goes unseen, which is the gap this job
+      # exists to close.
+      - name: Report failure to Slack
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.CONTRIBUTOR_TRIAGE_SLACK_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -n "$SLACK_WEBHOOK_URL" ] || exit 0
+          curl -sS --fail -o /dev/null -H 'Content-Type: application/json' \
+            --data "{\"text\":\"Contributor triage failed: $RUN_URL\"}" "$SLACK_WEBHOOK_URL"

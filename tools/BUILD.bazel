@@ -1,3 +1,4 @@
+load("@aspect_rules_js//js:defs.bzl", "js_test")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 
 py_binary(
@@ -14,4 +15,11 @@ py_binary(
     },
     visibility = ["//visibility:public"],
     deps = ["@rules_python//python/runfiles"],
+)
+
+js_test(
+    name = "contributor_triage_test",
+    size = "small",
+    data = ["contributor_triage.mjs"],
+    entry_point = "contributor_triage.test.mjs",
 )

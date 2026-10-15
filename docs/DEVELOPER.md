@@ -131,6 +131,43 @@ subdomain while the repository is internal, and
 https://dsx-ai-factory.github.io/health-validation/ once it is public. Going
 public needs no change here.
 
+## Contributor Triage
+
+[`.github/workflows/contributor-triage.yml`](../.github/workflows/contributor-triage.yml)
+labels issues and PRs opened by people outside NVIDIA with `origin/external`
+and posts each open one to Slack, so the
+[open external queue](https://github.com/dsx-ai-factory/health-validation/issues?q=is%3Aopen+label%3Aorigin%2Fexternal)
+is one search.
+
+The workflow token cannot see private org membership, so `author_association`
+and the collaborator list don't identify staff. An author is internal if one of
+their commits on the default branch, or in one of their PRs, uses an nvidia.com
+address. A PR commit that GitHub links to a different account, such as a
+maintainer's fixup, doesn't count. Bots are skipped.
+
+Staff who have never committed, or who commit only from a personal or noreply
+address, come out external. A maintainer adds `origin/internal` to such an
+item, which clears `origin/external` and stops the post; the label is per item.
+A labeled item is settled and isn't looked up again. Commit addresses are not
+verified, so an outsider can pass as internal by using an nvidia.com address;
+that only suppresses the label and post.
+
+It runs when an issue or PR is opened or reopened and on a daily schedule,
+rescanning every item each time. A successful post adds `triage/notified`, and
+an open external item without it is posted on a later run, however old it is.
+A run posts at most 10 items, oldest first, and leaves the rest for the next
+one. The webhook comes from the `CONTRIBUTOR_TRIAGE_SLACK_WEBHOOK` secret; a
+live run fails without it, and a failed run posts a link to itself when the
+secret is set. GitHub can delay or drop scheduled runs, and disables them in a
+public repository after 60 days without activity, so the schedule is a retry
+path rather than a delivery guarantee.
+
+Every run is a dry run that only logs until the `CONTRIBUTOR_TRIAGE_LIVE`
+repository variable is `true`. Before setting it, start a manual run, check
+which items it would label, and add `origin/internal` to any staff item. A manual run stays a
+dry run by default. The tests run with
+`bazel test //tools:contributor_triage_test`.
+
 ## Linux-only Code
 
 `toolkit/nvml/` requires cgo and `libnvidia-ml.so.1`. On macOS, NVML stubs out
