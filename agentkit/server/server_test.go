@@ -18,6 +18,8 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	healthv1 "github.com/dsx-ai-factory/health-validation/collect/proto/go/health/v1"
+	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
+	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 )
 
@@ -136,11 +138,16 @@ func TestCheckPreservesInventorySnapshotsFromEverySensor(t *testing.T) {
 		{Source: "dcgm", CollectedAt: now, Outcome: &observation.GPUInventorySnapshot_CollectionError{CollectionError: &observation.CollectionError{Source: "dcgm", Operation: "GetDevices", Category: observation.CollectionErrorCategoryUnavailable, Detail: "enumeration failed"}}},
 	}
 	collector := New()
-	for _, snapshot := range snapshots {
+	sensorIDs := []string{nvmlsensor.ID, dcgmsensor.ID}
+	for i, snapshot := range snapshots {
+		id := sensorIDs[i]
 		collector.Register(testSensor{
-			id:      snapshot.Source,
+			id:      id,
 			signals: collect.Signals{gpusignals.PowerDraw},
-			measure: func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
+			measure: func(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+				if !collect.NewOp(opts...).GPUInventory() {
+					t.Fatalf("sensor %q did not receive WithGPUInventory", id)
+				}
 				return &observation.ObservationBatch{
 					Inventory:    &observation.HardwareInventory{GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot}},
 					Observations: []*observation.Observation{observation.NewNoValueObservation(gpusignals.PowerDraw.ID(), gpusignals.PowerDraw.Unit(), snapshot.Source, nil, now, &observation.NoValue{Reason: observation.NoValueReasonNoTargets})},
@@ -148,6 +155,16 @@ func TestCheckPreservesInventorySnapshotsFromEverySensor(t *testing.T) {
 			},
 		})
 	}
+	collector.Register(testSensor{
+		id:      "cpu.sysfs",
+		signals: collect.Signals{gpusignals.PowerDraw},
+		measure: func(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+			if collect.NewOp(opts...).GPUInventory() {
+				t.Fatal("non-GPU sensor received WithGPUInventory")
+			}
+			return &observation.ObservationBatch{}, nil
+		},
+	})
 	batch, err := collector.Check(context.Background())
 	if err != nil {
 		t.Fatal(err)

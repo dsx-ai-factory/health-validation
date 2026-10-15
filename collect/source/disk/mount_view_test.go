@@ -29,7 +29,9 @@ func TestAlternateRootUsesExplicitProcessMountInfo(t *testing.T) {
 		"proc/self/mountinfo": {Data: []byte("11 1 0:9 / /container-only rw - tmpfs tmpfs rw\n")},
 		"proc/42/mountinfo":   {Data: []byte("10 1 8:0 / / rw - ext4 /dev/sda rw\n")},
 	}
-	readings, err := New(files, WithNamespace("host"), WithHostRoot(root), WithMountPID(42)).Read(context.Background(), collect.Signals{signals.MountPoint, signals.TotalBytes})
+	readings, err := New(files, WithNamespace("host"), WithHostRoot(root), WithMountPID(42), WithStatfs(func(string) (Usage, error) {
+		return Usage{Total: 100, Free: 40, Used: 60}, nil
+	})).Read(context.Background(), collect.Signals{signals.MountPoint, signals.TotalBytes})
 	if err != nil || len(readings) != 2 || readings[0].Value.GetStringValue() != "/" || readings[1].Failure != nil || readings[1].Value.GetUintValue() == 0 {
 		t.Fatalf("explicit host view: %+v %v", readings, err)
 	}

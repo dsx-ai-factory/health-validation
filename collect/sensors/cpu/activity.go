@@ -21,20 +21,37 @@ import (
 // independent of the kernel's configured scheduler frequency.
 const userHZ = 100
 
+// Field indexes follow the proc file formats, not Activity's catalog order.
+var activitySources = []struct {
+	fields map[string]int
+	path   string
+}{
+	{fields: map[string]int{
+		cpusignals.UserSeconds.ID():      0,
+		cpusignals.NiceSeconds.ID():      1,
+		cpusignals.SystemSeconds.ID():    2,
+		cpusignals.IdleSeconds.ID():      3,
+		cpusignals.IOWaitSeconds.ID():    4,
+		cpusignals.IRQSeconds.ID():       5,
+		cpusignals.SoftIRQSeconds.ID():   6,
+		cpusignals.StealSeconds.ID():     7,
+		cpusignals.GuestSeconds.ID():     8,
+		cpusignals.GuestNiceSeconds.ID(): 9,
+	}, path: "proc/stat"},
+	{fields: map[string]int{
+		cpusignals.Load1.ID():  0,
+		cpusignals.Load5.ID():  1,
+		cpusignals.Load15.ID(): 2,
+	}, path: "proc/loadavg"},
+}
+
 func (s *sensor) readActivity(ctx context.Context, selected collect.Signals, now *timestamppb.Timestamp) map[string]*observation.Observation {
 	out := make(map[string]*observation.Observation)
-	definitions := cpusignals.Activity()
-	for _, group := range []struct {
-		path       string
-		start, end int
-	}{{"proc/stat", 0, 10}, {"proc/loadavg", 10, 13}} {
+	for _, group := range activitySources {
 		var wanted collect.Signals
 		for _, definition := range selected {
-			for _, candidate := range definitions[group.start:group.end] {
-				if definition == candidate {
-					wanted = append(wanted, definition)
-					break
-				}
+			if _, ok := group.fields[definition.ID()]; ok {
+				wanted = append(wanted, definition)
 			}
 		}
 		if len(wanted) == 0 {
@@ -46,33 +63,20 @@ func (s *sensor) readActivity(ctx context.Context, selected collect.Signals, now
 		data, readErr := fs.ReadFile(s.fsys, group.path)
 		var fields []string
 		if readErr == nil {
-			if group.path == "proc/stat" {
-				for _, line := range strings.Split(string(data), "\n") {
-					row := strings.Fields(line)
-					if len(row) > 0 && row[0] == "cpu" {
-						fields = row[1:]
-						break
-					}
-				}
-			} else {
-				fields = strings.Fields(string(data))
-			}
+			fields = parseActivityFields(group.path, data)
 		}
 		for _, definition := range wanted {
 			if readErr != nil {
 				out[definition.ID()] = failure(definition, now, "read /"+group.path, readCategory(readErr), readErr)
 				continue
 			}
-			index := 0
-			for i, candidate := range definitions[group.start:group.end] {
-				if candidate == definition {
-					index = i
-					break
-				}
-			}
+			index := group.fields[definition.ID()]
 			var value float64
 			var err error
 			category := observation.CollectionErrorCategoryParseError
+			// user, nice, system and idle are the original mandatory stat fields.
+			// Later kernels appended the remaining modes; their absence is
+			// unsupported, whereas truncating the original four is a parse error.
 			if len(fields) == 0 || (group.path == "proc/stat" && len(fields) < 4) || (group.path == "proc/loadavg" && len(fields) < 3) {
 				err = fmt.Errorf("missing or truncated CPU activity data")
 			} else if index >= len(fields) {
@@ -100,4 +104,17 @@ func (s *sensor) readActivity(ctx context.Context, selected collect.Signals, now
 		}
 	}
 	return out
+}
+
+func parseActivityFields(path string, data []byte) []string {
+	if path == "proc/stat" {
+		for line := range strings.SplitSeq(string(data), "\n") {
+			row := strings.Fields(line)
+			if len(row) > 0 && row[0] == "cpu" {
+				return row[1:]
+			}
+		}
+		return nil
+	}
+	return strings.Fields(string(data))
 }

@@ -189,11 +189,22 @@ func measureTelemetryFS(ctx context.Context, batch *observation.ObservationBatch
 			case gpu.FramebufferReserved:
 				value = telemetryDouble(float64(info.Reserved) / (1024 * 1024))
 			case gpu.FramebufferUsedRatio:
-				if info.Total == 0 {
-					batch.Observations = append(batch.Observations, errorObservation(now, target, signal, "GetMemoryInfo", observation.CollectionErrorCategoryParseError, "", "total memory is zero; ratio is undefined"))
+				// Legacy NVML and host meminfo do not expose reserved framebuffer
+				// memory; assuming zero would change the canonical DCGM quantity.
+				if !reservedKnown || unified {
+					failed(signal, "GetMemoryInfo_v2", nvml.ERROR_NOT_SUPPORTED)
 					continue
 				}
-				value = telemetryDouble(float64(info.Used) / float64(info.Total))
+				available := info.Total - info.Reserved
+				if available == 0 {
+					batch.Observations = append(batch.Observations, errorObservation(now, target, signal, "GetMemoryInfo_v2", observation.CollectionErrorCategoryParseError, "", "total minus reserved memory is zero; ratio is undefined"))
+					continue
+				}
+				if info.Used > available {
+					batch.Observations = append(batch.Observations, errorObservation(now, target, signal, "GetMemoryInfo_v2", observation.CollectionErrorCategoryParseError, "", "used memory exceeds total minus reserved memory"))
+					continue
+				}
+				value = telemetryDouble(float64(info.Used) / float64(available))
 			case gpu.UnifiedMemory:
 				value = telemetryBool(unified)
 			}

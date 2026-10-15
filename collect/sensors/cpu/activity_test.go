@@ -52,14 +52,14 @@ func TestActivityAccountingAndCycle(t *testing.T) {
 }
 
 func TestActivityIndependentParseAndSelection(t *testing.T) {
-	fsys := fstest.MapFS{"proc/stat": {Data: []byte("cpu 100 broken 300 400\n")}, "proc/loadavg": {Data: []byte("NaN 2 3\n")}}
-	got := measure(t, fsys, collect.WithSignalID(cpusignals.UserSeconds.ID(), cpusignals.NiceSeconds.ID(), cpusignals.SystemSeconds.ID(), cpusignals.GuestSeconds.ID(), cpusignals.Load1.ID(), cpusignals.Load5.ID()))
+	fsys := fstest.MapFS{"proc/stat": {Data: []byte("cpu 100 broken 300 400 broken\n")}, "proc/loadavg": {Data: []byte("NaN 2 3\n")}}
+	got := measure(t, fsys, collect.WithSignalID(cpusignals.UserSeconds.ID(), cpusignals.NiceSeconds.ID(), cpusignals.SystemSeconds.ID(), cpusignals.IOWaitSeconds.ID(), cpusignals.GuestSeconds.ID(), cpusignals.Load1.ID(), cpusignals.Load5.ID()))
 	for _, id := range []string{cpusignals.UserSeconds.ID(), cpusignals.SystemSeconds.ID(), cpusignals.Load5.ID()} {
 		if got[id].GetCollectionError() != nil {
 			t.Errorf("%s failed", id)
 		}
 	}
-	for _, id := range []string{cpusignals.NiceSeconds.ID(), cpusignals.Load1.ID()} {
+	for _, id := range []string{cpusignals.NiceSeconds.ID(), cpusignals.IOWaitSeconds.ID(), cpusignals.Load1.ID()} {
 		if got[id].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryParseError {
 			t.Errorf("%s = %v", id, got[id])
 		}
@@ -69,6 +69,56 @@ func TestActivityIndependentParseAndSelection(t *testing.T) {
 	}
 	if got := measure(t, fstest.MapFS{}, collect.WithSignalID()); len(got) != 0 {
 		t.Fatal(got)
+	}
+}
+
+func TestActivityStatFieldBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data string
+		want []observation.CollectionErrorCategory
+	}{
+		{"missing aggregate", "cpu0 100 200 300 400\n", []observation.CollectionErrorCategory{
+			observation.CollectionErrorCategoryParseError, observation.CollectionErrorCategoryParseError,
+			observation.CollectionErrorCategoryParseError, observation.CollectionErrorCategoryParseError,
+		}},
+		{"truncated mandatory", "cpu 100 200 300\n", []observation.CollectionErrorCategory{
+			observation.CollectionErrorCategoryParseError, observation.CollectionErrorCategoryParseError,
+			observation.CollectionErrorCategoryParseError, observation.CollectionErrorCategoryParseError,
+		}},
+		{"original four", "cpu 100 200 300 400\n", []observation.CollectionErrorCategory{
+			observation.CollectionErrorCategoryUnsupported, observation.CollectionErrorCategoryUnsupported, 0, 0,
+		}},
+		{"iowait appended", "cpu 100 200 300 400 500\n", []observation.CollectionErrorCategory{
+			observation.CollectionErrorCategoryUnsupported, 0, 0, 0,
+		}},
+		{"guest nice absent", "cpu 100 200 300 400 500 600 700 800 900\n", []observation.CollectionErrorCategory{
+			observation.CollectionErrorCategoryUnsupported, 0, 0, 0,
+		}},
+		{"all modes", "intr 123\ncpu 100 200 300 400 500 600 700 800 900 1000\ncpu0 0 0 0 0\n", []observation.CollectionErrorCategory{
+			0, 0, 0, 0,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Request nonadjacent fields out of source order.
+			definitions := collect.Signals{cpusignals.GuestNiceSeconds, cpusignals.IOWaitSeconds, cpusignals.IdleSeconds, cpusignals.UserSeconds}
+			wantValues := []float64{10, 5, 4, 1}
+			var ids []string
+			for _, definition := range definitions {
+				ids = append(ids, definition.ID())
+			}
+			got := measure(t, fstest.MapFS{"proc/stat": {Data: []byte(tc.data)}}, collect.WithSignalID(ids...))
+			for i, definition := range definitions {
+				o := got[definition.ID()]
+				if tc.want[i] != 0 {
+					if o.GetCollectionError().GetCategory() != tc.want[i] {
+						t.Errorf("%s = %v, want error %v", definition.ID(), o, tc.want[i])
+					}
+				} else if o.GetValue() == nil || o.GetValue().GetDoubleValue() != wantValues[i] {
+					t.Errorf("%s = %v, want %v", definition.ID(), o, wantValues[i])
+				}
+			}
+		})
 	}
 }
 

@@ -541,6 +541,9 @@ another instance in the same process. Overlapping source calls return `ErrInUse`
 which sensors report as unavailable observations. A collection timeout does not
 release the gate before native work and frees finish.
 Clock-event queries use the legacy throttle-reason API before driver 535.
+`gpu.memory.frame_buffer.used_ratio` matches DCGM's `Used / (Total - Reserved)`
+definition; legacy NVML and unified-memory fallbacks that do not report reserved
+memory emit unsupported rather than `Used / Total`.
 Chassis serial is reported only from platform-info version 2. The pinned NVML
 binding requests version 1, so that field currently reports unsupported rather
 than presenting rack GUID bytes as a chassis serial.
@@ -566,15 +569,16 @@ func rawServer() *server.Server {
 
 For direct calls, `collect.WithSignalID(ids...)` selects canonical definitions.
 An unknown ID is an error; `collect.WithSignalID()` selects nothing and does no
-source I/O. `collect.WithCycle(cycle)` supplies collection identity and start
-time. Ordinary file-backed reads do not require a cycle. Native calls and
+source I/O. `collect.WithCycle(cycle)` supplies collection identity, start time,
+and the collection timeout. Direct calls on file-backed sensors do not require
+an explicit cycle. Native calls and
 blocking acquisitions retain their own admission gates: a timeout stops the
 wait, not an active kernel or cgo call. Reuse the source and sensor; do not
 create replacements to bypass a gate. Close a caller-owned NVML instance only
 after its outstanding calls finish.
-The agentkit server and one-shot collection example request GPU inventory only
-from the ordinary NVML sensor and merge its snapshot into the returned batch.
-Other sensors do not receive the inventory option.
+The agentkit server and one-shot collection example request GPU inventory from
+the ordinary NVML and DCGM sensors and retain both source-labelled snapshots
+in the returned batch. Other sensors do not receive the inventory option.
 
 ### Identity, values, and outcomes
 
@@ -618,7 +622,11 @@ access and retention before enabling them. Reads are bounded, report
 truncation, and can still block in the kernel. No sensor reads process
 `environ`. Process collection reports current membership and state, not
 historical per-process utilization. CPU activity reports cumulative mode
-seconds, not percentages synthesized from earlier runs.
+seconds, not percentages synthesized from earlier runs. `/proc/stat` requires
+the original user, nice, system, and idle fields; a truncated aggregate row
+reports a parse error. Later mode fields are kernel-dependent: an absent
+selected field reports unsupported, while a present malformed field reports
+a parse error independently of other selected fields.
 Non-UTF-8 process names or command-line bytes report a parse error instead of
 making the batch unencodable. Diagnostic truncation preserves complete UTF-8
 characters within the byte limit.
@@ -640,12 +648,21 @@ Verify that the selected process uses the same mount view as the capacity root.
 PID 1 is not automatically the host process; the collector makes no such assumption.
 Without an explicit PID, metadata uses `proc/self`, and alternate-root native
 capacity returns an unsupported acquisition error rather than mixing views.
+The `WithStatfs` caller owns identity alignment with the injected mount records;
+the collector does not compare synthetic records with live-host mount IDs.
 
 The default mount namespace combines the boot ID with the selected process's
 mount-namespace inode. Use `WithNamespace` for a view that cannot provide those
 identities, with equivalent boot/reuse scope. FUSE accepts its own
 `source/fuse.WithMountPID(pid)` and `source/fuse.WithNamespace` options for
 correlation. Keep mount metadata, namespace identity, and capacity in one view.
+
+On Linux, native capacity checks the opened descriptor's `STATX_MNT_ID` against
+the enumerated mount ID before calling `Fstatfs` on that same descriptor. A
+replacement or mismatched mount view returns an unavailable acquisition error,
+without attaching capacity to the old target. If the kernel or platform cannot
+provide this identity, native capacity returns an unsupported error. Injected
+capacity callbacks remain usable on other platforms.
 
 Capacity acquisition permits only known local filesystem types. It skips
 autofs, FUSE, network filesystems, unknown types, and stacked mounts with an

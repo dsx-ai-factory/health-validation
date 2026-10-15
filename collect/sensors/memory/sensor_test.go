@@ -6,10 +6,14 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"math"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -161,4 +165,125 @@ type noReadFS struct{ t *testing.T }
 func (f noReadFS) Open(path string) (fs.File, error) {
 	f.t.Fatalf("unexpected source I/O: %s", path)
 	return nil, fs.ErrPermission
+}
+
+func TestBlockedReadTimeoutAndCancellation(t *testing.T) {
+	for _, path := range []string{"proc/meminfo", "proc/vmallocinfo"} {
+		for _, canceled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/canceled=%t", path, canceled), func(t *testing.T) {
+				selected := []string{memorysignals.TotalBytes.ID(), memorysignals.FreeBytes.ID()}
+				if path == "proc/vmallocinfo" {
+					selected = []string{memorysignals.BPFJITBytes.ID()}
+				}
+				fsys := &blockingFS{FS: fixture(), path: path, started: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{})}
+				var release sync.Once
+				t.Cleanup(func() { release.Do(func() { close(fsys.release) }) })
+				s := New(fsys)
+				cycle, err := collect.NewCycleWithTimeout("blocked", time.Now(), 100*time.Millisecond)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				type result struct {
+					batch *observation.ObservationBatch
+					err   error
+				}
+				completed := make(chan result, 1)
+				go func() {
+					batch, err := s.Measure(ctx, collect.WithCycle(cycle), collect.WithSignalID(selected...))
+					completed <- result{batch: batch, err: err}
+				}()
+				select {
+				case <-fsys.started:
+				case <-time.After(5 * time.Second):
+					t.Fatal("read did not start")
+				}
+				if canceled {
+					cancel()
+				}
+				var got result
+				select {
+				case got = <-completed:
+				case <-time.After(5 * time.Second):
+					t.Fatal("caller kept waiting for blocked read")
+				}
+				if canceled {
+					if got.batch != nil || !errors.Is(got.err, context.Canceled) {
+						t.Fatalf("canceled result: %v, %v", got.batch, got.err)
+					}
+				} else {
+					if got.err != nil || len(got.batch.GetObservations()) != len(selected) {
+						t.Fatalf("timeout result: %v, %v", got.batch, got.err)
+					}
+					for _, current := range got.batch.Observations {
+						if current.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
+							t.Fatalf("timeout became success: %v", current)
+						}
+					}
+				}
+				calls := fsys.calls.Load()
+				wedged, err := s.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(selected...))
+				if err != nil || fsys.calls.Load() != calls || len(wedged.GetObservations()) != len(selected) {
+					t.Fatalf("wedged cycle retried acquisition: %v, %v", wedged, err)
+				}
+				fresh, err := s.Measure(context.Background(), collect.WithSignalID(selected...))
+				if err != nil || len(fresh.GetObservations()) != len(selected) {
+					t.Fatalf("fresh acquisition: %v, %v", fresh, err)
+				}
+				for _, current := range fresh.Observations {
+					if current.GetValue() == nil {
+						t.Fatalf("fresh acquisition shared canceled result: %v", current)
+					}
+				}
+				release.Do(func() { close(fsys.release) })
+				select {
+				case <-fsys.finished:
+				case <-time.After(5 * time.Second):
+					t.Fatal("abandoned read did not close its file")
+				}
+				if got.batch != nil {
+					for _, current := range got.batch.Observations {
+						if current.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
+							t.Fatal("abandoned acquisition mutated returned batch")
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+type blockingFS struct {
+	fs.FS
+	started  chan struct{}
+	release  chan struct{}
+	finished chan struct{}
+	path     string
+	calls    atomic.Int32
+}
+
+func (f *blockingFS) Open(path string) (fs.File, error) {
+	if path == f.path && f.calls.Add(1) == 1 {
+		close(f.started)
+		<-f.release
+		file, err := f.FS.Open(path)
+		if err != nil {
+			close(f.finished)
+			return nil, err
+		}
+		return blockingFile{File: file, finished: f.finished}, nil
+	}
+	return f.FS.Open(path)
+}
+
+type blockingFile struct {
+	fs.File
+	finished chan struct{}
+}
+
+func (f blockingFile) Close() error {
+	err := f.File.Close()
+	close(f.finished)
+	return err
 }

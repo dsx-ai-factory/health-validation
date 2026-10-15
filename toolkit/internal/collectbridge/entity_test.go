@@ -36,9 +36,9 @@ func TestCollectRunnerGPUProcessValues(t *testing.T) {
 
 func TestCollectRunnerEntityParentOutcomes(t *testing.T) {
 	for _, test := range []struct {
-		name       string
 		definition collect.Signal
 		current    *observation.Observation
+		name       string
 	}{
 		{name: "idle GPU", definition: gpusignals.ProcessMember, current: observation.NewNoValueObservation(gpusignals.ProcessMember.ID(), gpusignals.ProcessMember.Unit(), "fake", observation.GPUTarget("GPU-1"), nil, &observation.NoValue{Reason: observation.NoValueReasonNoTargets})},
 		{name: "unsupported NVLink", definition: gpusignals.NVLinkEndpointCRCFlitErrorCount, current: observation.NewCollectionErrorObservation(gpusignals.NVLinkEndpointCRCFlitErrorCount.ID(), gpusignals.NVLinkEndpointCRCFlitErrorCount.Unit(), "fake", "GetNvLinkState", observation.GPUTarget("GPU-1"), nil, &observation.CollectionError{Category: observation.CollectionErrorCategoryUnsupported, SourceError: "ERROR_NOT_SUPPORTED"})},
@@ -60,9 +60,9 @@ func TestCollectRunnerRejectsWrongEntityScope(t *testing.T) {
 	sourceLocal := observation.GPUProcessTarget("GPU-1", bootID, 42, 500)
 	sourceLocal.GetGpuProcess().Gpu = &observation.GPURef{SourceLocalId: "1"}
 	for _, test := range []struct {
-		name       string
 		definition collect.Signal
 		current    *observation.Observation
+		name       string
 	}{
 		{name: "process value at parent", definition: gpusignals.ProcessMemoryUsed, current: runnerObservation(gpusignals.ProcessMemoryUsed, observation.GPUTarget("GPU-1"), 128)},
 		{name: "NVLink value at parent", definition: gpusignals.NVLinkEndpointCRCFlitErrorCount, current: runnerObservation(gpusignals.NVLinkEndpointCRCFlitErrorCount, observation.GPUTarget("GPU-1"), 1)},

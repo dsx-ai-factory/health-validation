@@ -47,6 +47,33 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	if len(selected) == 0 {
 		return batch, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	cycle := op.Cycle()
+	if cycle == nil {
+		cycle, err = collect.NewCycle("process.local", now.AsTime())
+		if err != nil {
+			return nil, err
+		}
+	}
+	result, err := collect.Run(ctx, cycle, ID, func(ctx context.Context) (*observation.ObservationBatch, error) {
+		return s.read(ctx, selected, now, batch.CollectionId)
+	})
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err != nil {
+		for _, definition := range selected {
+			batch.Observations = append(batch.Observations, failure(definition, nil, now, "read", err))
+		}
+		return batch, nil
+	}
+	return result, nil
+}
+
+func (s *sensor) read(ctx context.Context, selected collect.Signals, now *timestamppb.Timestamp, collectionID string) (*observation.ObservationBatch, error) {
+	batch := &observation.ObservationBatch{CollectionId: collectionID}
 	want := make(map[string]bool, len(selected))
 	for _, definition := range selected {
 		want[definition.ID()] = true
@@ -150,7 +177,7 @@ func appendValue(batch *observation.ObservationBatch, now *timestamppb.Timestamp
 func failure(definition collect.Signal, target *observation.ObservationTarget, now *timestamppb.Timestamp, operation string, err error) *observation.Observation {
 	category := observation.CollectionErrorCategorySourceError
 	switch {
-	case errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, collect.ErrCollectionTimeout):
 		category = observation.CollectionErrorCategoryTimeout
 	case errors.Is(err, fs.ErrPermission):
 		category = observation.CollectionErrorCategoryPermissionDenied

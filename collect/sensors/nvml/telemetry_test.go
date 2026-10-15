@@ -43,7 +43,7 @@ func (d *telemetryDevice) GetCurrentClocksEventReasons() (uint64, nvml.Return) {
 }
 
 func TestTelemetrySelectedMemoryUnitsAndFallback(t *testing.T) {
-	for _, ret := range []nvml.Return{nvml.SUCCESS, nvml.ERROR_FUNCTION_NOT_FOUND, nvml.ERROR_NO_PERMISSION} {
+	for _, ret := range []nvml.Return{nvml.SUCCESS, nvml.ERROR_NOT_SUPPORTED, nvml.ERROR_FUNCTION_NOT_FOUND, nvml.ERROR_ARGUMENT_VERSION_MISMATCH, nvml.ERROR_NO_PERMISSION} {
 		t.Run(returnName(ret), func(t *testing.T) {
 			dev := &telemetryDevice{memoryRet: ret}
 			s := New(&fakeInstance{exists: true, devices: map[string]device.Device{"gpu": dev}})
@@ -57,10 +57,14 @@ func TestTelemetrySelectedMemoryUnitsAndFallback(t *testing.T) {
 				return
 			}
 			require.Equal(t, float64(3), batch.Observations[0].GetValue().GetDoubleValue())
-			require.Equal(t, float64(.75), batch.Observations[2].GetValue().GetDoubleValue())
 			if ret == nvml.SUCCESS {
+				require.Equal(t, float64(3)/3.5, batch.Observations[2].GetValue().GetDoubleValue())
+				require.Zero(t, dev.oldCalls)
 				require.Equal(t, float64(.5), batch.Observations[1].GetValue().GetDoubleValue())
 			} else {
+				require.Equal(t, 1, dev.oldCalls)
+				require.Nil(t, batch.Observations[2].GetValue())
+				require.Equal(t, observation.CollectionErrorCategoryUnsupported, batch.Observations[2].GetCollectionError().Category)
 				require.Equal(t, observation.CollectionErrorCategoryUnsupported, batch.Observations[1].GetCollectionError().Category)
 			}
 		})

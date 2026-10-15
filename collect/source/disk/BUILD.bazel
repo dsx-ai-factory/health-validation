@@ -40,6 +40,7 @@ go_test(
         "mount_test.go",
         "mount_view_test.go",
         "source_test.go",
+        "statfs_linux_test.go",
         "statfs_unix_test.go",
     ],
     embed = [":disk"],
@@ -47,5 +48,13 @@ go_test(
         "//collect",
         "//collect/observation",
         "//collect/signals/disk",
-    ],
+    ] + select({
+        "@rules_go//go/platform:android": [
+            "@org_golang_x_sys//unix",
+        ],
+        "@rules_go//go/platform:linux": [
+            "@org_golang_x_sys//unix",
+        ],
+        "//conditions:default": [],
+    }),
 )

@@ -15,14 +15,14 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func nativeUsage(hostRoot, point string) (Usage, error) {
+func nativeUsage(hostRoot string, mount Mount) (Usage, error) {
 	root, err := os.OpenRoot(hostRoot)
 	if err != nil {
 		return Usage{}, err
 	}
 	defer root.Close()
 	// Root confines symlink traversal to the selected host view.
-	name := strings.TrimPrefix(point, "/")
+	name := strings.TrimPrefix(mount.Point, "/")
 	if name == "" {
 		name = "."
 	}
@@ -31,6 +31,9 @@ func nativeUsage(hostRoot, point string) (Usage, error) {
 		return Usage{}, err
 	}
 	defer file.Close()
+	if err := verifyCapacityMount(file, mount.ID); err != nil {
+		return Usage{}, err
+	}
 	var stat unix.Statfs_t
 	if err := unix.Fstatfs(int(file.Fd()), &stat); err != nil {
 		if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EOPNOTSUPP) {

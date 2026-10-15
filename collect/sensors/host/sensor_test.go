@@ -10,6 +10,7 @@ import (
 	"math"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -156,4 +157,27 @@ type noReadFS struct{ t *testing.T }
 func (f noReadFS) Open(path string) (fs.File, error) {
 	f.t.Fatalf("unexpected source I/O: %s", path)
 	return nil, fs.ErrPermission
+}
+
+type blockingHostFS struct {
+	fs.FS
+	release chan struct{}
+}
+
+func (f blockingHostFS) Open(path string) (fs.File, error) {
+	<-f.release
+	return f.FS.Open(path)
+}
+
+func TestCycleTimeout(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	cycle, err := collect.NewCycleWithTimeout("host-timeout", time.Now(), 20*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := observations(t, blockingHostFS{FS: fixture(), release: release}, collect.WithCycle(cycle), collect.WithSignalID(hostsignals.FileHandlesMax.ID()))
+	if got[hostsignals.FileHandlesMax.ID()].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
+		t.Fatalf("got %v, want timeout", got[hostsignals.FileHandlesMax.ID()])
+	}
 }

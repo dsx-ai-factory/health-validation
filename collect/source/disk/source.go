@@ -43,8 +43,9 @@ type Reading struct {
 
 type (
 	Usage struct{ Total, Free, Used uint64 }
-	// StatfsFunc performs read-only capacity acquisition. Cancellation cannot stop a
-	// kernel syscall; Source admits at most one outstanding invocation.
+	// StatfsFunc performs read-only capacity acquisition in the injected mount view.
+	// The caller owns identity alignment with the injected mountinfo. Cancellation
+	// cannot stop a kernel syscall; Source admits at most one outstanding invocation.
 	StatfsFunc func(string) (Usage, error)
 	Option     func(*Source)
 )
@@ -87,14 +88,6 @@ func New(files fs.FS, opts ...Option) *Source {
 	}
 	for _, opt := range opts {
 		opt(s)
-	}
-	if s.statfs == nil && s.root != "" {
-		s.statfs = func(point string) (Usage, error) {
-			if path.Clean(s.root) != "/" && s.mountPID == 0 {
-				return Usage{}, fmt.Errorf("non-default host root requires an aligned WithMountPID: %w", ErrUnsupported)
-			}
-			return nativeUsage(s.root, point)
-		}
 	}
 	return s
 }
@@ -434,7 +427,7 @@ func (s *Source) readMounts(ctx context.Context, selected collect.Signals) []Rea
 					break
 				}
 				if !acquired {
-					usage, usageErr = s.usage(ctx, m.Point)
+					usage, usageErr = s.usage(ctx, m)
 					acquired = true
 				}
 				if usageErr != nil {
@@ -461,8 +454,8 @@ func (s *Source) readMounts(ctx context.Context, selected collect.Signals) []Rea
 	return out
 }
 
-func (s *Source) usage(ctx context.Context, point string) (Usage, error) {
-	if s.statfs == nil {
+func (s *Source) usage(ctx context.Context, mount Mount) (Usage, error) {
+	if s.statfs == nil && s.root == "" {
 		return Usage{}, fmt.Errorf("statfs host root or injected source is required: %w", ErrUnsupported)
 	}
 	if err := ctx.Err(); err != nil {
@@ -487,7 +480,13 @@ func (s *Source) usage(ctx context.Context, point string) (Usage, error) {
 			s.statMu.Unlock()
 			done <- current
 		}()
-		current.usage, current.err = s.statfs(point)
+		if s.statfs != nil {
+			current.usage, current.err = s.statfs(mount.Point)
+		} else if path.Clean(s.root) != "/" && s.mountPID == 0 {
+			current.err = fmt.Errorf("non-default host root requires an aligned WithMountPID: %w", ErrUnsupported)
+		} else {
+			current.usage, current.err = nativeUsage(s.root, mount)
+		}
 	}()
 	select {
 	case r := <-done:

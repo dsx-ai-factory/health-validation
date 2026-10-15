@@ -63,10 +63,11 @@ linked into the CLI. CI gates `mod tidy -diff` on all four.
 Run `go mod tidy` inside each module directory after changing imports.
 
 Regenerate collection protobufs with `bash collect/hack/genproto.sh`. The script
-pins both plugins and applies `protolayout.go` to preserve compact Go message
-layouts. Field order changes do not change protobuf field numbers or wire data.
-Run the pinned formatter afterward and verify binary and protobuf JSON round trips.
-Linux Bazel tests remain the authoritative check for the pinned nogo analyzers.
+pins both plugins and leaves message layouts as generated. The generated
+`observation.pb.go` is excluded from `fieldalignment` because protobuf requires
+`MessageState` as the first field. Run the pinned formatter afterward and verify
+binary and protobuf JSON round trips. Linux Bazel tests remain the authoritative
+check for the other pinned nogo analyzers.
 
 
 ## Versioning and Releases

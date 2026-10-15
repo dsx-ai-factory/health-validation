@@ -82,6 +82,7 @@ func enumerateInventory(nvmlLib nvmllib.Library, driverMajor int) (map[string]de
 			record.Error = fmt.Errorf("device %d UUID is empty", index)
 			record.UUIDReturn = nvml.ERROR_NO_DATA
 		}
+		// UUID identifies the GPU; inventory queries GetPciInfo directly for bus_id errors.
 		busID, _ := dev.GetPCIBusID()
 		wrapped := device.NewWithIdentity(dev, uuid, busID, device.WithDriverMajor(driverMajor))
 		record.Device = wrapped

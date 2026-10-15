@@ -112,3 +112,26 @@ func TestMissingDeniedMalformedAndEmptySelection(t *testing.T) {
 		t.Fatal("empty selection performed acquisition")
 	}
 }
+
+type blockingProcessFS struct {
+	fs.FS
+	release chan struct{}
+}
+
+func (f blockingProcessFS) Open(path string) (fs.File, error) {
+	<-f.release
+	return f.FS.Open(path)
+}
+
+func TestCycleTimeout(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	cycle, err := collect.NewCycleWithTimeout("process-timeout", time.Now(), 20*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := New(blockingProcessFS{FS: fixtureFS(), release: release}).Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(processsignals.Count.ID()))
+	if err != nil || len(batch.GetObservations()) != 1 || batch.Observations[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
+		t.Fatalf("got %v, %v; want timeout observation", batch, err)
+	}
+}

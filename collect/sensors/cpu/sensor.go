@@ -49,6 +49,7 @@ func (*sensor) Signals() collect.Signals { return cpusignals.All() }
 // Measure reads selected topology and activity files independently.
 // Cancellation fails the call instead of returning a partial snapshot.
 //
+// The cycle bounds the wait for both topology and activity acquisition.
 // Observations target the node with an empty ID: collection is node-local,
 // so the consumer supplies node identity.
 func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
@@ -68,6 +69,37 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		now = timestamppb.New(cycle.StartedAt())
 	}
 	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("collect CPU: %w", err)
+	}
+	if len(selected) == 0 {
+		return batch, nil
+	}
+	cycle := op.Cycle()
+	if cycle == nil {
+		cycle, err = collect.NewCycle("cpu.local", now.AsTime())
+		if err != nil {
+			return nil, err
+		}
+	}
+	result, err := collect.Run(ctx, cycle, ID, func(ctx context.Context) (*observation.ObservationBatch, error) {
+		return s.read(ctx, selected, now, batch.CollectionId)
+	})
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("collect CPU: %w", err)
+	}
+	if err != nil {
+		for _, definition := range selected {
+			batch.Observations = append(batch.Observations, failure(definition, now, "read", readCategory(err), err))
+		}
+		return batch, nil
+	}
+	return result, nil
+}
+
+func (s *sensor) read(ctx context.Context, selected collect.Signals, now *timestamppb.Timestamp, collectionID string) (*observation.ObservationBatch, error) {
+	// This batch belongs to the acquisition callback, which may outlive Run.
+	batch := &observation.ObservationBatch{CollectionId: collectionID}
 	activity := s.readActivity(ctx, selected, now)
 	for _, definition := range selected {
 		if err := ctx.Err(); err != nil {
@@ -110,7 +142,7 @@ func readCategory(err error) observation.CollectionErrorCategory {
 		return observation.CollectionErrorCategoryPermissionDenied
 	case errors.Is(err, fs.ErrNotExist):
 		return observation.CollectionErrorCategoryUnavailable
-	case errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, collect.ErrCollectionTimeout):
 		return observation.CollectionErrorCategoryTimeout
 	default:
 		return observation.CollectionErrorCategorySourceError

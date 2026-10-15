@@ -56,6 +56,39 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		now = timestamppb.New(cycle.StartedAt())
 	}
 	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
+	if len(selected) == 0 {
+		return batch, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	cycle := op.Cycle()
+	if cycle == nil {
+		cycle, err = collect.NewCycle("host.local", now.AsTime())
+		if err != nil {
+			return nil, err
+		}
+	}
+	result, err := collect.Run(ctx, cycle, ID, func(ctx context.Context) (*observation.ObservationBatch, error) {
+		return s.read(ctx, selected, now, batch.CollectionId)
+	})
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err != nil {
+		for _, definition := range selected {
+			batch.Observations = append(batch.Observations, observation.NewCollectionErrorObservation(
+				definition.ID(), definition.Unit(), ID, "read", observation.NodeTarget(""), now,
+				&observation.CollectionError{Category: readCategory(err), Detail: err.Error()},
+			))
+		}
+		return batch, nil
+	}
+	return result, nil
+}
+
+func (s *sensor) read(ctx context.Context, selected collect.Signals, now *timestamppb.Timestamp, collectionID string) (*observation.ObservationBatch, error) {
+	batch := &observation.ObservationBatch{CollectionId: collectionID}
 	cache := make(map[string]fileResult)
 	for _, definition := range selected {
 		if ctx.Err() != nil {
@@ -211,7 +244,7 @@ func readCategory(err error) observation.CollectionErrorCategory {
 	if errors.Is(err, fs.ErrNotExist) {
 		return observation.CollectionErrorCategoryUnavailable
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, collect.ErrCollectionTimeout) {
 		return observation.CollectionErrorCategoryTimeout
 	}
 	return observation.CollectionErrorCategorySourceError

@@ -6,25 +6,19 @@
 package disk
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestNativeUsageAndHostRootConfinement(t *testing.T) {
+func TestNativeUsageHostRootConfinement(t *testing.T) {
 	root := t.TempDir()
-	usage, err := nativeUsage(root, "/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usage.Total == 0 || usage.Free > usage.Total || usage.Used > usage.Total {
-		t.Fatalf("invalid native capacity: %+v", usage)
-	}
 	outside := t.TempDir()
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := nativeUsage(root, "/escape"); err == nil {
+	if _, err := nativeUsage(root, Mount{Point: "/escape", ID: 1}); err == nil || errors.Is(err, ErrUnsupported) || errors.Is(err, os.ErrNotExist) {
 		t.Fatal("statfs escaped the selected host root")
 	}
 }

@@ -5,4 +5,4 @@
 
 package disk
 
-func nativeUsage(string, string) (Usage, error) { return Usage{}, ErrUnsupported }
+func nativeUsage(string, Mount) (Usage, error) { return Usage{}, ErrUnsupported }

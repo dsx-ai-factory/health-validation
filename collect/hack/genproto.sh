@@ -16,4 +16,3 @@ GOBIN="$tools" GOWORK=off go install google.golang.org/grpc/cmd/protoc-gen-go-gr
 	cd "$root"
 	PATH="$tools:$PATH" buf generate
 )
-go run "$root/hack/protolayout.go" -- "$root/proto/go/health/v1/observation.pb.go"

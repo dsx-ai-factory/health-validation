@@ -402,6 +402,8 @@ func (x *GpuInventory) GetEntries() []*GpuInventoryEntry {
 // the same inventory snapshot.
 type GpuInventoryEntry struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// The GPU index assigned by this snapshot's source.
+	SourceIndex uint32 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
 	// Known identity and successfully read attributes, including partial records.
 	Gpu *GpuDevice `protobuf:"bytes,2,opt,name=gpu,proto3" json:"gpu,omitempty"`
 	// GPU unavailable (e.g. Lost), or enrichment query failure.
@@ -413,8 +415,6 @@ type GpuInventoryEntry struct {
 	FieldErrors   map[string]*CollectionError `protobuf:"bytes,4,rep,name=field_errors,json=fieldErrors,proto3" json:"field_errors,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
-	// The GPU index assigned by this snapshot's source.
-	SourceIndex uint32 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
 }
 
 func (x *GpuInventoryEntry) Reset() {
@@ -1173,9 +1173,9 @@ func (x *GpuRef) GetSourceLocalId() string {
 type NvLinkEndpointRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Gpu           *GpuRef                `protobuf:"bytes,1,opt,name=gpu,proto3" json:"gpu,omitempty"`
+	LinkIndex     uint32                 `protobuf:"varint,2,opt,name=link_index,json=linkIndex,proto3" json:"link_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
-	LinkIndex     uint32 `protobuf:"varint,2,opt,name=link_index,json=linkIndex,proto3" json:"link_index,omitempty"`
 }
 
 func (x *NvLinkEndpointRef) Reset() {
@@ -1323,9 +1323,9 @@ func (x *InfiniBandDeviceRef) GetName() string {
 type InfiniBandPortRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Device        *InfiniBandDeviceRef   `protobuf:"bytes,1,opt,name=device,proto3" json:"device,omitempty"`
+	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
-	Port          uint32 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
 }
 
 func (x *InfiniBandPortRef) Reset() {
@@ -1376,9 +1376,9 @@ func (x *InfiniBandPortRef) GetPort() uint32 {
 type KernelRecordRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BootId        string                 `protobuf:"bytes,1,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	Sequence      int64                  `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
-	Sequence      int64 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
 }
 
 func (x *KernelRecordRef) Reset() {
@@ -1429,10 +1429,10 @@ func (x *KernelRecordRef) GetSequence() int64 {
 type ProcessRef struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	BootId         string                 `protobuf:"bytes,1,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	Pid            uint32                 `protobuf:"varint,2,opt,name=pid,proto3" json:"pid,omitempty"`
+	StartTimeTicks uint64                 `protobuf:"varint,3,opt,name=start_time_ticks,json=startTimeTicks,proto3" json:"start_time_ticks,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
-	Pid            uint32 `protobuf:"varint,2,opt,name=pid,proto3" json:"pid,omitempty"`
-	StartTimeTicks uint64 `protobuf:"varint,3,opt,name=start_time_ticks,json=startTimeTicks,proto3" json:"start_time_ticks,omitempty"`
 }
 
 func (x *ProcessRef) Reset() {
@@ -1540,10 +1540,10 @@ func (x *GpuProcessRef) GetProcess() *ProcessRef {
 
 type BlockDeviceRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Major         uint32                 `protobuf:"varint,1,opt,name=major,proto3" json:"major,omitempty"`
+	Minor         uint32                 `protobuf:"varint,2,opt,name=minor,proto3" json:"minor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
-	Major         uint32 `protobuf:"varint,1,opt,name=major,proto3" json:"major,omitempty"`
-	Minor         uint32 `protobuf:"varint,2,opt,name=minor,proto3" json:"minor,omitempty"`
 }
 
 func (x *BlockDeviceRef) Reset() {
@@ -1594,9 +1594,9 @@ func (x *BlockDeviceRef) GetMinor() uint32 {
 type MountRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	MountId       uint64                 `protobuf:"varint,2,opt,name=mount_id,json=mountId,proto3" json:"mount_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
-	MountId       uint64 `protobuf:"varint,2,opt,name=mount_id,json=mountId,proto3" json:"mount_id,omitempty"`
 }
 
 func (x *MountRef) Reset() {
@@ -1690,9 +1690,9 @@ func (x *PCIRef) GetAddress() string {
 type FuseConnectionRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BootId        string                 `protobuf:"bytes,1,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	ConnectionId  uint64                 `protobuf:"varint,2,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
-	ConnectionId  uint64 `protobuf:"varint,2,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 }
 
 func (x *FuseConnectionRef) Reset() {
@@ -1929,14 +1929,14 @@ func (*Value_UintValue) isValue_Kind() {}
 // It carries no health severity; each consumer decides what a failed
 // observation means for its own result.
 type CollectionError struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Operation     string                 `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
-	SourceError   string                 `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
-	Detail        string                 `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Source        string                  `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Operation     string                  `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
+	SourceError   string                  `protobuf:"bytes,4,opt,name=source_error,json=sourceError,proto3" json:"source_error,omitempty"`
+	Detail        string                  `protobuf:"bytes,5,opt,name=detail,proto3" json:"detail,omitempty"`
+	Category      CollectionErrorCategory `protobuf:"varint,3,opt,name=category,proto3,enum=health.v1.CollectionErrorCategory" json:"category,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
-	Category      CollectionErrorCategory `protobuf:"varint,3,opt,name=category,proto3,enum=health.v1.CollectionErrorCategory" json:"category,omitempty"`
 }
 
 func (x *CollectionError) Reset() {
@@ -2009,11 +2009,11 @@ func (x *CollectionError) GetCategory() CollectionErrorCategory {
 // source status that is itself the observed value.
 type NoValue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Reason        NoValueReason          `protobuf:"varint,1,opt,name=reason,proto3,enum=health.v1.NoValueReason" json:"reason,omitempty"`
 	Detail        string                 `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"`
 	SourceStatus  string                 `protobuf:"bytes,3,opt,name=source_status,json=sourceStatus,proto3" json:"source_status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
-	Reason        NoValueReason `protobuf:"varint,1,opt,name=reason,proto3,enum=health.v1.NoValueReason" json:"reason,omitempty"`
 }
 
 func (x *NoValue) Reset() {

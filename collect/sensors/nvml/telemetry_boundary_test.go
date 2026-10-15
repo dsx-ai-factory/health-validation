@@ -68,6 +68,13 @@ func TestTelemetryImpossibleNativeMemoryIsParseFailure(t *testing.T) {
 			require.Equal(t, observation.CollectionErrorCategoryParseError, current.GetCollectionError().Category)
 		}
 	}
+	for _, memory := range []nvml.Memory_v2{{Total: 4, Reserved: 4}, {Total: 4, Reserved: 2, Used: 3}} {
+		batch := &observation.ObservationBatch{}
+		measureTelemetry(context.Background(), batch, timestamppb.Now(), observation.GPUTarget("gpu"), &boundaryTelemetryDevice{memory: memory}, map[string]bool{gpu.FramebufferUsedRatio.ID(): true})
+		require.Len(t, batch.Observations, 1)
+		require.Nil(t, batch.Observations[0].GetValue())
+		require.Equal(t, observation.CollectionErrorCategoryParseError, batch.Observations[0].GetCollectionError().Category)
+	}
 }
 
 func TestTelemetryInvalidNumericValuesDoNotBecomeUnsignedSuccess(t *testing.T) {

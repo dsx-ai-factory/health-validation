@@ -16,6 +16,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
 	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 )
 
@@ -44,7 +45,7 @@ func (s *Server) Check(ctx context.Context) (*observation.ObservationBatch, erro
 	batch := &observation.ObservationBatch{CollectionId: collectionID}
 	for _, sensor := range s.sensors {
 		opts := []collect.OpOption{collect.WithCycle(currentCycle)}
-		if sensor.ID() == nvmlsensor.ID {
+		if sensor.ID() == nvmlsensor.ID || sensor.ID() == dcgmsensor.ID {
 			opts = append(opts, collect.WithGPUInventory())
 		}
 		b, err := sensor.Measure(ctx, opts...)
