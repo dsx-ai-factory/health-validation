@@ -48,10 +48,15 @@ jobs:
       - name: Check external links
         uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2.8.0
         with:
+          # Pages link to each other by Fern path (/health-validation/...), which
+          # is not a file under docs/. --root-dir lets lychee resolve those
+          # links and --exclude skips them; `fern docs broken-links` checks them.
           # Add --exclude-path 'docs/<dir>' to args for each docs/ subdirectory
           # kept out of the published site.
           args: >-
             --no-progress
+            --root-dir docs
+            --exclude '/docs/health-validation/'
             --exclude-loopback
             --exclude 'localhost'
             --exclude 'docs\.nvidia\.com'

@@ -28,7 +28,7 @@ CheckDefinition is the canonical shape of a health check in the catalog. Each de
 | <nobr>`Description`</nobr> | <nobr>`description`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`Name`</nobr> | <nobr>`name`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`ID`</nobr> | <nobr>`id`</nobr> | <nobr>`string`</nobr> |  |
-| <nobr>`Dependencies`</nobr> | <nobr>`dependencies`</nobr> | <nobr>`[]string`</nobr> |  |
+| <nobr>`Dependencies`</nobr> | <nobr>`dependencies`</nobr> | <nobr>`[]string`</nobr> | Dependencies names check IDs whose Critical verdict explains this check's inability to collect. Checks never read each other's results, so a dependency has no effect on whether this check runs, what it reports, or its severity. Its only effect is that a verdict for an entity this check could not read at all gains a message naming the dependency as the cause. An ID that is not registered is an inactive edge by design, so a consumer may register any subset of the catalog. Validate rejects only a check that names itself. |
 | <nobr>`Architectures`</nobr> | <nobr>`architectures`</nobr> | <nobr>`[]string`</nobr> |  |
 | <nobr>`Rules`</nobr> | <nobr>`rules`</nobr> | [<nobr>`[]Rule`</nobr>](#rule) |  |
 | <nobr>`ExecutionContexts`</nobr> | <nobr>`execution_contexts`</nobr> | [<nobr>`[]ExecutionContext`</nobr>](#executioncontext) |  |
@@ -257,7 +257,6 @@ SkipReason provides a machine-readable code for why a check did not run.
 | <nobr>`ArchitectureUnsupported`</nobr> | <nobr>`SIGNAL_UNAVAILABLE_ARCHITECTURE`</nobr> | Wrong GPU architecture. |
 | <nobr>`DeploymentUnsupported`</nobr> | <nobr>`SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL`</nobr> | Requires different execution context. |
 | <nobr>`CheckDisabled`</nobr> | <nobr>`CHECK_DISABLED`</nobr> | Operator disabled this check. |
-| <nobr>`DependencySkipped`</nobr> | <nobr>`DEPENDENCY_SKIPPED`</nobr> | Prerequisite check was skipped. |
 | <nobr>`InsufficientHistory`</nobr> | <nobr>`INSUFFICIENT_HISTORY`</nobr> | Time-window data not yet available. |
 | <nobr>`ThresholdUnconfigured`</nobr> | <nobr>`THRESHOLD_UNCONFIGURED`</nobr> | Required threshold not supplied for this fleet. |
 | <nobr>`NoApplicableMeasurement`</nobr> | <nobr>`NO_APPLICABLE_MEASUREMENT`</nobr> | No supplied measurement carries the check's required signals. |

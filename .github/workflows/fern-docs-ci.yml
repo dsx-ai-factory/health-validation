@@ -27,6 +27,7 @@ on:
       - 'docs/**'
       - 'fern/**'
       - 'tools/check-docs-mdx'
+      - 'tools/check-docs-paths'
       - '.github/workflows/fern-docs-ci.yml'
   workflow_dispatch: {}
 
@@ -43,23 +44,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          # Depth 2 so HEAD^1 (the base side of the PR merge commit) is available.
-          fetch-depth: 2
-
-      - name: Detect docs changes
-        id: changes
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          # --no-renames lists both sides of a rename. Non-PR events always validate.
-          if [ "$EVENT_NAME" = "pull_request" ] && \
-             ! git diff --name-only --no-renames HEAD^1 HEAD \
-               | grep -qE '^(docs/|fern/|tools/check-docs-mdx$|\.github/workflows/fern-docs-ci\.yml$)'; then
-            echo "docs=false" >> "$GITHUB_OUTPUT"
-            echo "No docs-related changes; skipping Fern validation."
-          else
-            echo "docs=true" >> "$GITHUB_OUTPUT"
-          fi
+          persist-credentials: false
 
       - name: Check markdown filename conventions
         run: |
@@ -70,32 +55,37 @@ jobs:
             exit 1
           fi
 
+      - name: Check docs paths stay inside docs
+        # Fern reads any file a page names, and the publish and preview jobs run
+        # it with FERN_TOKEN. fern/generators.yml points at collect/proto by design.
+        run: >-
+          python3 tools/check-docs-paths
+          --exclude 'docs/developer.md'
+          --allow '../docs/index.yml'
+          --allow '../collect/proto'
+          --allow '../collect/proto/health/v1/check.proto'
+          docs fern
+
       - name: Setup Node.js
-        if: steps.changes.outputs.docs == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '22'
 
       - name: Install Fern CLI
-        if: steps.changes.outputs.docs == 'true'
         # Intentionally unpinned: Fern ships often with no LTS channel and the
         # NVIDIA global theme tracks the latest CLI, so a pin goes stale and
         # breaks more than it protects. Do not pin.
         run: npm install -g fern-api@latest
 
       - name: Check MDX safety
-        if: steps.changes.outputs.docs == 'true'
         # developer.md is GitHub-only and not in docs/index.yml.
         run: python3 tools/check-docs-mdx --exclude 'docs/developer.md' docs fern
 
       - name: Fern check
-        if: steps.changes.outputs.docs == 'true'
         run: fern check
 
       - name: Check MDX validity
-        if: steps.changes.outputs.docs == 'true'
         run: fern docs md check
 
       - name: Check broken links
-        if: steps.changes.outputs.docs == 'true'
         run: fern docs broken-links
