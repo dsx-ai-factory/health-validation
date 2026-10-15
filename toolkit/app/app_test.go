@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
@@ -24,6 +26,157 @@ import (
 )
 
 const testNodeID = "node-123"
+
+func TestEvaluateObservationBatches(t *testing.T) {
+	dir := t.TempDir()
+	config := dir + "/config.yaml"
+	input := dir + "/observations.json"
+	write := func(t *testing.T, path string, data []byte) {
+		t.Helper()
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, config, []byte("checks:\n  gpu_count: {}\n  cpu_count: {}\n"))
+	a := New().WithProgramName("test").WithChecks(customCheck())
+	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	a.WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}))
+	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 8, OnlineCPUCount: 8, NUMANodeCount: 34}))
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"collect", "--node-id", testNodeID, "--config", config}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("collect exit = %d: %s", code, stderr.String())
+	}
+	original := slices.Clone(stdout.Bytes())
+	var batch observation.ObservationBatch
+	if err := protojson.Unmarshal(original, &batch); err != nil {
+		t.Fatal(err)
+	}
+	a.host = panicHost{}
+	a.hostname = func() (string, error) { panic("offline evaluation used local hostname") }
+	save := func(t *testing.T, batch *observation.ObservationBatch) {
+		t.Helper()
+		data, err := protojson.Marshal(batch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(t, input, data)
+	}
+	evaluate := func(t *testing.T, want int, extra ...string) health.NodeVerdict {
+		t.Helper()
+		var out, diagnostics bytes.Buffer
+		args := append([]string{"evaluate", "--input", input, "--config", config}, extra...)
+		if code := a.Run(args, &out, &diagnostics); code != want {
+			t.Fatalf("evaluate exit = %d, want %d: %s", code, want, diagnostics.String())
+		}
+		if want == exitError {
+			if out.Len() != 0 {
+				t.Fatalf("invalid input emitted a verdict: %s", out.String())
+			}
+			return health.NodeVerdict{}
+		}
+		var verdict health.NodeVerdict
+		if err := json.Unmarshal(out.Bytes(), &verdict); err != nil {
+			t.Fatal(err)
+		}
+		if verdict.NodeID != testNodeID {
+			t.Fatalf("node = %q", verdict.NodeID)
+		}
+		return verdict
+	}
+	check := func(t *testing.T, verdict health.NodeVerdict, id string) health.CheckVerdict {
+		t.Helper()
+		for _, result := range append(verdict.CheckResults, verdict.SkippedChecks...) {
+			if result.CheckID == id {
+				return result
+			}
+		}
+		t.Fatalf("missing check %s", id)
+		return health.CheckVerdict{}
+	}
+
+	t.Run("collect output evaluates offline with custom checks", func(t *testing.T) {
+		save(t, &batch)
+		verdict := evaluate(t, exitOK)
+		for _, id := range []string{"gpu_count", "cpu_count", "test_custom_check"} {
+			result := check(t, verdict, id)
+			if result.Severity != health.Pass || result.Skipped {
+				t.Fatalf("%s = %+v", id, result)
+			}
+		}
+	})
+	t.Run("configuration and cadence", func(t *testing.T) {
+		save(t, &batch)
+		write(t, config, []byte("checks:\n  gpu_count:\n    expected_gpu_count: 8\n"))
+		if check(t, evaluate(t, exitUnhealthy), "gpu_count").Severity != health.Critical {
+			t.Fatal("override ignored")
+		}
+		write(t, config, []byte("disabled_checks: [gpu_count]\n"))
+		if check(t, evaluate(t, exitOK), "gpu_count").SkipReason != health.CheckDisabled {
+			t.Fatal("disable ignored")
+		}
+		write(t, config, []byte("checks:\n  gpu_count: {}\n"))
+		if check(t, evaluate(t, exitOK, "--cadence", "CONTINUOUS"), "gpu_compute_apps").SkipReason != health.CadenceMismatch {
+			t.Fatal("cadence ignored")
+		}
+	})
+	t.Run("collection timeout stays a failure", func(t *testing.T) {
+		failed := proto.Clone(&batch).(*observation.ObservationBatch)
+		for _, current := range failed.Observations {
+			if current.SignalId == "node.gpu_count" {
+				current.Outcome = &observation.Observation_CollectionError{CollectionError: &observation.CollectionError{
+					Source: "toolkit.node", Operation: "measure", Detail: "node sensor: collection timed out",
+					Category: observation.CollectionErrorCategoryTimeout,
+				}}
+			}
+		}
+		save(t, failed)
+		result := check(t, evaluate(t, exitUnhealthy), "gpu_count")
+		if result.Severity != health.Critical || !strings.Contains(strings.Join(result.Messages, " "), "timed out") {
+			t.Fatalf("%+v", result)
+		}
+	})
+	t.Run("architecture collection failure stays a failure", func(t *testing.T) {
+		failed := proto.Clone(&batch).(*observation.ObservationBatch)
+		for _, current := range failed.Observations {
+			if current.SignalId == "node.architecture" {
+				current.Outcome = &observation.Observation_CollectionError{CollectionError: &observation.CollectionError{Detail: "GPU enumeration failed", Category: observation.CollectionErrorCategorySourceError}}
+			}
+		}
+		save(t, failed)
+		if check(t, evaluate(t, exitUnhealthy), "architecture_discovery").Severity != health.Critical {
+			t.Fatal("lost discovery failure")
+		}
+	})
+	t.Run("older batches require explicit missing context", func(t *testing.T) {
+		old := proto.Clone(&batch).(*observation.ObservationBatch)
+		old.Observations = slices.DeleteFunc(old.Observations, func(current *observation.Observation) bool { return current.SignalId == "node.architecture" })
+		save(t, old)
+		evaluate(t, exitError)
+		evaluate(t, exitOK, "--architecture", "GB200")
+	})
+	t.Run("invalid input never emits a verdict", func(t *testing.T) {
+		for _, data := range [][]byte{[]byte("{"), []byte("{}"), []byte("{\"unknown\":1}"), append(slices.Clone(original), []byte("\n{}")...)} {
+			write(t, input, data)
+			evaluate(t, exitError)
+		}
+		mixed := proto.Clone(&batch).(*observation.ObservationBatch)
+		mixed.Observations[0].Target = observation.NodeTarget("other-node")
+		save(t, mixed)
+		evaluate(t, exitError)
+		save(t, &batch)
+		evaluate(t, exitError, "--node-id", "other-node")
+		evaluate(t, exitError, "--architecture", "H100")
+		evaluate(t, exitError, "--cadence", "invalid")
+		duplicated := proto.Clone(&batch).(*observation.ObservationBatch)
+		for _, current := range batch.Observations {
+			if current.SignalId == "node.architecture" {
+				duplicated.Observations = append(duplicated.Observations, current)
+			}
+		}
+		save(t, duplicated)
+		evaluate(t, exitError)
+	})
+}
 
 func TestCollectionCategoriesWithoutConfigIncludesEveryBuiltinDomain(t *testing.T) {
 	cat := catalog.New()

@@ -30,6 +30,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -42,6 +43,7 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -249,6 +251,8 @@ func (a *App) Close() error { return a.host.close() }
 
 // Run is the health-validation CLI entrypoint:
 //
+//	health-validation [--verbose] collect [--node-id <id>] [--config <path>]
+//	health-validation [--verbose] evaluate --input <path> [--config <path>] [--cadence <window>]
 //	health-validation [--verbose] run [--node-id <id>] [--config <path>]
 //	health-validation [--verbose] version [--short] [--output json]
 //
@@ -294,6 +298,8 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "collect":
 		return a.collectCommand(args[1:], stdout, stderr)
+	case "evaluate":
+		return a.evaluateCommand(args[1:], stdout, stderr)
 	case "run":
 		return a.runCommand(args[1:], stdout, stderr)
 	case "version":
@@ -537,7 +543,7 @@ func (a *App) resolveNodeID(value string, supplied bool) (string, error) {
 
 // usage returns the one-line usage banner for the given program name.
 func usage(prog string) string {
-	return "usage: " + prog + " <collect|run|version> [flags]"
+	return "usage: " + prog + " <collect|evaluate|run|version> [flags]"
 }
 
 var categoryBySensor = map[string]health.Category{
@@ -591,6 +597,8 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	defer a.host.close()
+	architecture, architectureErr := a.host.architecture()
+	architectureObservedAt := timestamppb.Now()
 	allSensors, err := a.sensors(timeout, categories)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
@@ -606,6 +614,22 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: prepare observation batch: %v\n", a.prog, err)
 		return exitError
 	}
+	contextObservation := &observation.Observation{
+		SignalId: "node.architecture", Source: "toolkit.host",
+		Target: observation.NodeTarget(resolvedNodeID), ObservedAt: architectureObservedAt,
+	}
+	if strings.TrimSpace(architecture) == "" && architectureErr == nil {
+		architectureErr = errors.New("architecture is empty")
+	}
+	if architectureErr != nil {
+		contextObservation.Outcome = &observation.Observation_CollectionError{CollectionError: &observation.CollectionError{
+			Source: "toolkit.host", Operation: "architecture", Detail: architectureErr.Error(),
+			Category: observation.CollectionErrorCategorySourceError,
+		}}
+	} else {
+		contextObservation.Outcome = &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_StringValue{StringValue: architecture}}}
+	}
+	batch.Observations = append(batch.Observations, contextObservation)
 	encoded, err := protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(batch)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: encode observation batch: %v\n", a.prog, err)
@@ -616,6 +640,157 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	return exitOK
+}
+
+// evaluateCommand evaluates a saved batch without opening hardware backends.
+func (a *App) evaluateCommand(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet(a.prog+" evaluate", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "", "path to a YAML config that parameterizes and disables checks (optional)")
+	inputPath := fs.String("input", "", "path to ObservationBatch JSON produced by collect")
+	nodeID := fs.String("node-id", a.nodeID, "node identifier when the batch has no node target")
+	architecture := fs.String("architecture", "", "GPU architecture when the batch has no node.architecture observation")
+	cadenceFlag := fs.String("cadence", "", "evaluate checks covering CONTINUOUS, PROLOG, or MAINTENANCE")
+	executionContextFlag := fs.String("execution-context", health.TenantGuest.String(),
+		"execution context used to select checks (OPERATOR_INFRA, TENANT_GUEST, OUT_OF_BAND)")
+	if err := fs.Parse(args); err != nil {
+		return exitError
+	}
+	if fs.NArg() != 0 {
+		fmt.Fprintf(stderr, "%s: unexpected argument %q\n", a.prog, fs.Arg(0))
+		return exitError
+	}
+	supplied := make(map[string]bool)
+	fs.Visit(func(f *flag.Flag) { supplied[f.Name] = true })
+	if strings.TrimSpace(*inputPath) == "" {
+		fmt.Fprintf(stderr, "%s: --input is required\n", a.prog)
+		return exitError
+	}
+	var cadence *health.SchedulingCadence
+	if supplied["cadence"] {
+		value, err := health.SchedulingCadenceFromName(strings.ToUpper(strings.TrimSpace(*cadenceFlag)))
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: --cadence: %v\n", a.prog, err)
+			return exitError
+		}
+		cadence = &value
+	}
+	executionContext, err := health.ExecutionContextFromName(strings.ToUpper(strings.TrimSpace(*executionContextFlag)))
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: --execution-context: %v\n", a.prog, err)
+		return exitError
+	}
+	cfg, err := loadOptionalConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	input, err := os.Open(*inputPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: open observation batch: %v\n", a.prog, err)
+		return exitError
+	}
+	defer input.Close()
+	const maxBatchBytes = 32 << 20
+	data, err := io.ReadAll(io.LimitReader(input, maxBatchBytes+1))
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: read observation batch: %v\n", a.prog, err)
+		return exitError
+	}
+	if len(data) > maxBatchBytes {
+		fmt.Fprintf(stderr, "%s: observation batch exceeds %d bytes\n", a.prog, maxBatchBytes)
+		return exitError
+	}
+	var batch observation.ObservationBatch
+	if err = protojson.Unmarshal(data, &batch); err != nil {
+		fmt.Fprintf(stderr, "%s: decode observation batch: %v\n", a.prog, err)
+		return exitError
+	}
+	if err = observation.ValidateBatch(&batch); err != nil {
+		fmt.Fprintf(stderr, "%s: invalid observation batch: %v\n", a.prog, err)
+		return exitError
+	}
+	recordedNodeID, recordedArch, archErr, err := batchContext(&batch)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	if supplied["node-id"] || a.nodeIDSet {
+		value := strings.TrimSpace(*nodeID)
+		if value == "" || (recordedNodeID != "" && recordedNodeID != value) {
+			fmt.Fprintf(stderr, "%s: --node-id must be nonempty and match the batch's node target\n", a.prog)
+			return exitError
+		}
+		recordedNodeID = value
+	}
+	if recordedNodeID == "" {
+		fmt.Fprintf(stderr, "%s: batch has no node target; supply --node-id\n", a.prog)
+		return exitError
+	}
+	if supplied["architecture"] {
+		value := strings.TrimSpace(*architecture)
+		if value == "" || (recordedArch != "" && recordedArch != value) {
+			fmt.Fprintf(stderr, "%s: --architecture must be nonempty and match the recorded architecture\n", a.prog)
+			return exitError
+		}
+		recordedArch = value
+	}
+	if recordedArch == "" && archErr == nil {
+		fmt.Fprintf(stderr, "%s: batch has no architecture; supply --architecture\n", a.prog)
+		return exitError
+	}
+	cat, _, err := buildCatalog(cfg, a.customChecks, recordedArch, executionContext)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	if archErr != nil {
+		return writeVerdict(discoveryFailureVerdict(archErr), a.prog, recordedNodeID, stdout, stderr)
+	}
+	measurements := observations.ToMeasurements(batch.GetObservations())
+	if len(measurements) == 0 {
+		fmt.Fprintf(stderr, "%s: batch contains no supported health signals\n", a.prog)
+		return exitError
+	}
+	verdict, err := cat.EvaluateAllWithOptions(catalog.EvaluationOptions{Cadence: cadence}, measurements...)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	return writeVerdict(verdict, a.prog, recordedNodeID, stdout, stderr)
+}
+
+// batchContext reads the captured node and architecture, rejecting mixed nodes.
+func batchContext(batch *observation.ObservationBatch) (nodeID, architecture string, architectureErr, err error) {
+	architectureSeen := false
+	for _, current := range batch.GetObservations() {
+		if id := current.GetTarget().GetNode().GetId(); id != "" {
+			if nodeID != "" && nodeID != id {
+				return "", "", nil, fmt.Errorf("observation batch contains multiple nodes")
+			}
+			nodeID = id
+		}
+		if current.GetSignalId() != "node.architecture" {
+			continue
+		}
+		if architectureSeen || current.GetTarget().GetNode() == nil {
+			return "", "", nil, fmt.Errorf("node.architecture must occur once with a node target")
+		}
+		architectureSeen = true
+		switch outcome := current.GetOutcome().(type) {
+		case *observation.Observation_Value:
+			value, ok := outcome.Value.GetKind().(*observation.Value_StringValue)
+			if !ok || strings.TrimSpace(value.StringValue) == "" {
+				return "", "", nil, fmt.Errorf("node.architecture must have a nonempty string value")
+			}
+			architecture = value.StringValue
+		case *observation.Observation_CollectionError:
+			architectureErr = fmt.Errorf("architecture collection failed (%s): %s", outcome.CollectionError.GetCategory(), outcome.CollectionError.GetDetail())
+		case *observation.Observation_NoValue:
+			architectureErr = fmt.Errorf("architecture unavailable (%s): %s", outcome.NoValue.GetReason(), outcome.NoValue.GetDetail())
+		}
+	}
+	return nodeID, architecture, architectureErr, nil
 }
 
 func collectionCategories(cat *catalog.Catalog, cfg *Config) (map[health.Category]bool, error) {

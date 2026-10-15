@@ -27,6 +27,7 @@ go_library(
         "@com_github_google_uuid//:uuid",
         "@in_gopkg_yaml_v3//:yaml_v3",
         "@org_golang_google_protobuf//encoding/protojson",
+        "@org_golang_google_protobuf//types/known/timestamppb",
     ] + select({
         "@rules_go//go/platform:linux": [
             "//toolkit/nvml",
@@ -60,6 +61,7 @@ go_test(
         "//toolkit/internal/collectadapters",
         "//toolkit/observations",
         "@org_golang_google_protobuf//encoding/protojson",
+        "@org_golang_google_protobuf//proto",
         "@org_golang_google_protobuf//types/known/timestamppb",
     ],
 )
