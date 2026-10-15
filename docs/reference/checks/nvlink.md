@@ -56,7 +56,7 @@ Verifies each GPU's NVLink link count and per-link speed match expected values.
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
 | <nobr>`expected_link_count`</nobr> | 18 | count | <nobr>`DEFAULT`</nobr> | Expected NVLinks per GPU. GB200 exposes 18 NVLink 5 links. |
-| <nobr>`expected_speed_mbytes_per_sec`</nobr> | GB200: 53125, GB300: 53125, H100: 26562 | MB/s | <nobr>`DEFAULT`</nobr> | Expected per-link NVLink speed in MegaBytes per second. GB200 NVLink 5 at 53125, GB300 at 53125, H100 NVLink 4 at 26562. |
+| <nobr>`expected_speed_mbytes_per_sec`</nobr> | GB200: 53125, GB300: 53125, H100: 26562, other: 53125 | MB/s | <nobr>`DEFAULT`</nobr> | Expected per-link NVLink speed in MegaBytes per second. GB200 NVLink 5 at 53125, GB300 at 53125, H100 NVLink 4 at 26562. |
 
 **Rules**
 

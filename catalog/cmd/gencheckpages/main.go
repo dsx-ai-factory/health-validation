@@ -320,6 +320,10 @@ func thresholdValue(t threshold) string {
 	for _, arch := range keys(t.PerArchitecture) {
 		parts = append(parts, fmt.Sprintf("%s: %v", arch, t.PerArchitecture[arch]))
 	}
+	// Architectures absent from the map fall back to Value.
+	if t.Value != nil {
+		parts = append(parts, fmt.Sprintf("other: %v", t.Value))
+	}
 	return strings.Join(parts, ", ")
 }
 
