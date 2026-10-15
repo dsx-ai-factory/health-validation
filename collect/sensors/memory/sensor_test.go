@@ -145,8 +145,9 @@ func TestMalformedMemoryAndUnknownSelection(t *testing.T) {
 func TestMeasureRequestContract(t *testing.T) {
 	noIO := noReadFS{t: t}
 	s := New(noIO)
+	var nilCtx context.Context
 	for _, opts := range [][]collect.OpOption{nil, {collect.WithSignalID()}} {
-		if batch, err := s.Measure(nil, opts...); batch != nil || err == nil {
+		if batch, err := s.Measure(nilCtx, opts...); batch != nil || err == nil {
 			t.Fatalf("nil context: %v, %v", batch, err)
 		}
 	}
@@ -191,8 +192,8 @@ func TestBlockedReadTimeoutAndCancellation(t *testing.T) {
 				}
 				completed := make(chan result, 1)
 				go func() {
-					batch, err := s.Measure(ctx, collect.WithCycle(cycle), collect.WithSignalID(selected...))
-					completed <- result{batch: batch, err: err}
+					batch, measureErr := s.Measure(ctx, collect.WithCycle(cycle), collect.WithSignalID(selected...))
+					completed <- result{batch: batch, err: measureErr}
 				}()
 				select {
 				case <-fsys.started:

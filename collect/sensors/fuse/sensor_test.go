@@ -16,8 +16,9 @@ import (
 
 func TestInvalidRequestRejectedBeforeCollection(t *testing.T) {
 	s := New(fstest.MapFS{})
+	var nilCtx context.Context
 	for _, opts := range [][]collect.OpOption{nil, {collect.WithSignalID()}} {
-		if batch, err := s.Measure(nil, opts...); err == nil || batch != nil {
+		if batch, err := s.Measure(nilCtx, opts...); err == nil || batch != nil {
 			t.Fatalf("nil context accepted: %+v %v", batch, err)
 		}
 		inventory := append([]collect.OpOption{collect.WithGPUInventory()}, opts...)
@@ -53,7 +54,7 @@ func TestAbsentAndSelection(t *testing.T) {
 	if err != nil || len(batch.Observations) != 0 {
 		t.Fatalf("%+v %v", batch, err)
 	}
-	if _, err := s.Measure(context.Background(), collect.WithSignalID("unknown")); err == nil {
+	if _, unknownErr := s.Measure(context.Background(), collect.WithSignalID("unknown")); unknownErr == nil {
 		t.Fatal("accepted unknown selection")
 	}
 	batch, err = s.Measure(context.Background(), collect.WithSignalID(signals.Waiting.ID()))

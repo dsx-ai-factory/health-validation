@@ -255,8 +255,8 @@ func TestMeasureTimeoutCoversTopologyAndActivity(t *testing.T) {
 					t.Errorf("timeout observation = %v", o)
 				}
 			}
-			if err := observation.ValidateBatch(batch); err != nil {
-				t.Fatal(err)
+			if validateErr := observation.ValidateBatch(batch); validateErr != nil {
+				t.Fatal(validateErr)
 			}
 			repeated, err := s.Measure(context.Background(), opts...)
 			if err != nil || len(repeated.GetObservations()) != len(ids) || blocked.calls.Load() != 1 {

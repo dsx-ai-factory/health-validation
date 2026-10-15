@@ -48,8 +48,8 @@ func TestExtendedTargetsRoundTrip(t *testing.T) {
 				t.Fatal(err)
 			}
 			var binaryCopy ObservationBatch
-			if err := proto.Unmarshal(wire, &binaryCopy); err != nil {
-				t.Fatal(err)
+			if unmarshalErr := proto.Unmarshal(wire, &binaryCopy); unmarshalErr != nil {
+				t.Fatal(unmarshalErr)
 			}
 			if !proto.Equal(batch, &binaryCopy) {
 				t.Fatalf("binary round trip changed identity/value: %v", &binaryCopy)

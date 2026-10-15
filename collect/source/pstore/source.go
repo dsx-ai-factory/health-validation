@@ -81,8 +81,8 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 		return nil, ErrInUse
 	}
 	defer s.mu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return nil, err
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
 	var readings []Reading
 	seenRoots := make(map[string]bool)
@@ -100,13 +100,13 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 			readings = append(readings, failures(selected, root, fmt.Errorf("%w: root must be a relative directory path", fs.ErrInvalid))...)
 			continue
 		}
-		if err := ctx.Err(); err != nil {
-			readings = append(readings, failures(selected, root, err)...)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			readings = append(readings, failures(selected, root, ctxErr)...)
 			continue
 		}
-		if err := noLinks(s.files, root); err != nil {
-			if !errors.Is(err, fs.ErrNotExist) {
-				readings = append(readings, failures(selected, root, err)...)
+		if linkErr := noLinks(s.files, root); linkErr != nil {
+			if !errors.Is(linkErr, fs.ErrNotExist) {
+				readings = append(readings, failures(selected, root, linkErr)...)
 			}
 			continue
 		}

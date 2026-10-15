@@ -190,8 +190,8 @@ func (s *Source) readBlocks(ctx context.Context, selected collect.Signals) []Rea
 		target := observation.BlockDeviceTarget(major, minor)
 		for _, signal := range selected {
 			reading := Reading{Signal: signal, Target: target}
-			if err := ctx.Err(); err != nil {
-				out = append(out, failed(signal, target, err, base))
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				out = append(out, failed(signal, target, ctxErr, base))
 				continue
 			}
 			switch signal {
@@ -309,8 +309,8 @@ func (s *Source) attribute(base, field string) ([]byte, error) {
 
 func (s *Source) parents(base string) (*observation.Value, error) {
 	var parents []string
-	_, err := fs.Stat(s.files, path.Join(base, "partition"))
-	if err == nil {
+	_, statErr := fs.Stat(s.files, path.Join(base, "partition"))
+	if statErr == nil {
 		link, err := fs.ReadLink(s.files, base)
 		if err != nil {
 			return nil, err
@@ -325,8 +325,8 @@ func (s *Source) parents(base string) (*observation.Value, error) {
 			return nil, parseError(err)
 		}
 		parents = append(parents, fmt.Sprintf("%d:%d", major, minor))
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
+	} else if !errors.Is(statErr, fs.ErrNotExist) {
+		return nil, statErr
 	}
 	entries, err := fs.ReadDir(s.files, path.Join(base, "slaves"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {

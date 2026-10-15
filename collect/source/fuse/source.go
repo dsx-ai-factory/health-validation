@@ -85,8 +85,8 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 		return nil, ErrInUse
 	}
 	defer s.mu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return nil, err
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
 	entries, err := fs.ReadDir(s.files, "sys/fs/fuse/connections")
 	if errors.Is(err, fs.ErrNotExist) || err == nil && len(entries) == 0 {

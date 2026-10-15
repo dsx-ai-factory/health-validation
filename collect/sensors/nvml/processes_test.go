@@ -93,7 +93,7 @@ func TestGPUProcessFailuresAndNoTargets(t *testing.T) {
 	for _, mutation := range []string{"reuse", "disappear", "comm"} {
 		t.Run(mutation, func(t *testing.T) {
 			fsys := gpuProcFS()
-			dev := &processDevice{ret: nvml.SUCCESS, members: []nvml.ProcessInfo{{Pid: 42, UsedGpuMemory: ^uint64(0)}}, onRead: func() {
+			memberDev := &processDevice{ret: nvml.SUCCESS, members: []nvml.ProcessInfo{{Pid: 42, UsedGpuMemory: ^uint64(0)}}, onRead: func() {
 				switch mutation {
 				case "reuse":
 					fsys["proc/42/stat"].Data = gpuProcStat(600)
@@ -103,7 +103,7 @@ func TestGPUProcessFailuresAndNoTargets(t *testing.T) {
 					delete(fsys, "proc/42/comm")
 				}
 			}}
-			batch := measureProcessFixture(dev, fsys)
+			batch := measureProcessFixture(memberDev, fsys)
 			if err := observation.ValidateBatch(batch); err != nil {
 				t.Fatal(err)
 			}

@@ -69,8 +69,8 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		now = timestamppb.New(cycle.StartedAt())
 	}
 	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("collect CPU: %w", err)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("collect CPU: %w", ctxErr)
 	}
 	if len(selected) == 0 {
 		return batch, nil
@@ -85,8 +85,8 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	result, err := collect.Run(ctx, cycle, ID, func(ctx context.Context) (*observation.ObservationBatch, error) {
 		return s.read(ctx, selected, now, batch.CollectionId)
 	})
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("collect CPU: %w", err)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("collect CPU: %w", ctxErr)
 	}
 	if err != nil {
 		for _, definition := range selected {

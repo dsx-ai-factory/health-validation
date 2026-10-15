@@ -47,8 +47,8 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	if len(selected) == 0 {
 		return batch, nil
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
 	cycle := op.Cycle()
 	if cycle == nil {
@@ -60,8 +60,8 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	result, err := collect.Run(ctx, cycle, ID, func(ctx context.Context) (*observation.ObservationBatch, error) {
 		return s.read(ctx, selected, now, batch.CollectionId)
 	})
-	if err := ctx.Err(); err != nil {
-		return nil, err
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
 	if err != nil {
 		for _, definition := range selected {

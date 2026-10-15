@@ -137,8 +137,9 @@ func TestNoDescriptorTargetsAndUnknownSelection(t *testing.T) {
 func TestMeasureRequestContract(t *testing.T) {
 	noIO := noReadFS{t: t}
 	s := New(noIO)
+	var nilCtx context.Context
 	for _, opts := range [][]collect.OpOption{nil, {collect.WithSignalID()}} {
-		if batch, err := s.Measure(nil, opts...); batch != nil || err == nil {
+		if batch, err := s.Measure(nilCtx, opts...); batch != nil || err == nil {
 			t.Fatalf("nil context: %v, %v", batch, err)
 		}
 	}

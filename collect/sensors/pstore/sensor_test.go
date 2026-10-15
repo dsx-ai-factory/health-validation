@@ -22,7 +22,8 @@ func (f *noIO) Open(string) (fs.File, error) { f.calls++; return nil, fs.ErrPerm
 func TestSelectionBeforeIO(t *testing.T) {
 	files := &noIO{}
 	s := New(files)
-	if batch, err := s.Measure(nil, collect.WithSignalID()); err == nil || batch != nil || files.calls != 0 {
+	var nilCtx context.Context
+	if batch, err := s.Measure(nilCtx, collect.WithSignalID()); err == nil || batch != nil || files.calls != 0 {
 		t.Fatalf("nil context with empty selection = %+v, %v, %d calls", batch, err, files.calls)
 	}
 	batch, err := s.Measure(context.Background(), collect.WithSignalID())

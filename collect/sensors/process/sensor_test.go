@@ -35,8 +35,8 @@ func TestSnapshotAndPIDReuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := observation.ValidateBatch(batch); err != nil {
-		t.Fatal(err)
+	if validateErr := observation.ValidateBatch(batch); validateErr != nil {
+		t.Fatal(validateErr)
 	}
 	if batch.CollectionId != "process-cycle" {
 		t.Fatal("cycle identity lost")

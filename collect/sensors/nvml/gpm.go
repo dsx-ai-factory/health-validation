@@ -136,15 +136,15 @@ func (s *gpmSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*obs
 			return allSignalsFailed(selected, now, "Init", observation.CollectionErrorCategoryUnsupported, "NVML library not found"), nil
 		}
 		if op.Refresh() {
-			if err := s.inst.Refresh(); err != nil {
-				return nil, err
+			if refreshErr := s.inst.Refresh(); refreshErr != nil {
+				return nil, refreshErr
 			}
 		}
 		if initErr := s.inst.InitError(); initErr != nil && len(s.inst.Devices()) == 0 {
 			return allSignalsFailed(selected, now, "GetDevices", observation.CollectionErrorCategoryUnavailable, initErr.Error()), nil
 		}
 		out := &observation.ObservationBatch{}
-		err := s.inst.Read(func(devices map[string]device.Device) error {
+		readErr := s.inst.Read(func(devices map[string]device.Device) error {
 			var records []nvmlsource.InventoryDevice
 			if provider, ok := s.inst.(interface {
 				InventoryDevices() []nvmlsource.InventoryDevice
@@ -172,7 +172,7 @@ func (s *gpmSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*obs
 			}
 			return s.sampleDevices(ctx, out, now, devices, selected)
 		})
-		return out, err
+		return out, readErr
 	})
 	if err != nil {
 		category := observation.CollectionErrorCategorySourceError
