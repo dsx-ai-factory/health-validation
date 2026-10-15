@@ -114,6 +114,7 @@ func TestValidateObservationTarget(t *testing.T) {
 		{name: "InfiniBand device", target: InfiniBandDeviceTarget("mlx5_0")},
 		{name: "InfiniBand port", target: InfiniBandPortTarget("mlx5_0", 1)},
 		{name: "kernel record", target: KernelRecordTarget("boot", 42)},
+		{name: "PCI device", target: PCIDeviceTarget("0000:01:00.0")},
 		{name: "empty InfiniBand device", target: &ObservationTarget{Kind: &ObservationTarget_InfiniBandDevice{}}, wantError: "target has an empty InfiniBand device payload"},
 		{name: "nil InfiniBand device", target: &ObservationTarget{Kind: (*ObservationTarget_InfiniBandDevice)(nil)}, wantError: "target has an empty InfiniBand device payload"},
 		{name: "empty InfiniBand port", target: &ObservationTarget{Kind: &ObservationTarget_InfiniBandPort{}}, wantError: "target has an empty InfiniBand port payload"},
@@ -122,6 +123,12 @@ func TestValidateObservationTarget(t *testing.T) {
 		{name: "empty kernel record", target: &ObservationTarget{Kind: &ObservationTarget_KernelRecord{}}, wantError: "target has an empty kernel record payload"},
 		{name: "nil kernel record", target: &ObservationTarget{Kind: (*ObservationTarget_KernelRecord)(nil)}, wantError: "target has an empty kernel record payload"},
 		{name: "missing kind", target: &ObservationTarget{}, wantError: "target has no kind"},
+		{name: "empty PCI device", target: &ObservationTarget{Kind: &ObservationTarget_PCIDevice{}}, wantError: "empty PCI device payload"},
+		{name: "nil PCI device", target: &ObservationTarget{Kind: (*ObservationTarget_PCIDevice)(nil)}, wantError: "empty PCI device payload"},
+		{name: "missing PCI address", target: PCIDeviceTarget(""), wantError: "empty PCI device address"},
+		{name: "blank PCI address", target: PCIDeviceTarget("   "), wantError: "empty PCI device address"},
+		{name: "uppercase PCI address", target: PCIDeviceTarget("0000:AB:00.0"), wantError: "non-normalized PCI device address"},
+		{name: "padded PCI address", target: PCIDeviceTarget(" 0000:01:00.0"), wantError: "non-normalized PCI device address"},
 		{
 			name: "incomplete NVLink endpoint",
 			target: &ObservationTarget{Kind: &ObservationTarget_NVLinkEndpoint{

@@ -790,6 +790,7 @@ type ObservationTarget struct {
 	//	*ObservationTarget_InfiniBandDevice
 	//	*ObservationTarget_InfiniBandPort
 	//	*ObservationTarget_KernelRecord
+	//	*ObservationTarget_PciDevice
 	Kind          isObservationTarget_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -895,6 +896,15 @@ func (x *ObservationTarget) GetKernelRecord() *KernelRecordRef {
 	return nil
 }
 
+func (x *ObservationTarget) GetPciDevice() *PciDeviceRef {
+	if x != nil {
+		if x, ok := x.Kind.(*ObservationTarget_PciDevice); ok {
+			return x.PciDevice
+		}
+	}
+	return nil
+}
+
 type isObservationTarget_Kind interface {
 	isObservationTarget_Kind()
 }
@@ -927,6 +937,10 @@ type ObservationTarget_KernelRecord struct {
 	KernelRecord *KernelRecordRef `protobuf:"bytes,7,opt,name=kernel_record,json=kernelRecord,proto3,oneof"`
 }
 
+type ObservationTarget_PciDevice struct {
+	PciDevice *PciDeviceRef `protobuf:"bytes,8,opt,name=pci_device,json=pciDevice,proto3,oneof"`
+}
+
 func (*ObservationTarget_Node) isObservationTarget_Kind() {}
 
 func (*ObservationTarget_Gpu) isObservationTarget_Kind() {}
@@ -940,6 +954,8 @@ func (*ObservationTarget_InfiniBandDevice) isObservationTarget_Kind() {}
 func (*ObservationTarget_InfiniBandPort) isObservationTarget_Kind() {}
 
 func (*ObservationTarget_KernelRecord) isObservationTarget_Kind() {}
+
+func (*ObservationTarget_PciDevice) isObservationTarget_Kind() {}
 
 type NodeRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1296,6 +1312,53 @@ func (x *KernelRecordRef) GetSequence() int64 {
 	return 0
 }
 
+// PciDeviceRef identifies one host-local PCI function. Address must be
+// non-empty, trimmed, and lowercase; producers should use the kernel's
+// domain:bus:device.function form.
+type PciDeviceRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PciDeviceRef) Reset() {
+	*x = PciDeviceRef{}
+	mi := &file_health_v1_observation_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PciDeviceRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PciDeviceRef) ProtoMessage() {}
+
+func (x *PciDeviceRef) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PciDeviceRef.ProtoReflect.Descriptor instead.
+func (*PciDeviceRef) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PciDeviceRef) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
 // Value is a typed observed value.
 type Value struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1312,7 +1375,7 @@ type Value struct {
 
 func (x *Value) Reset() {
 	*x = Value{}
-	mi := &file_health_v1_observation_proto_msgTypes[15]
+	mi := &file_health_v1_observation_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1324,7 +1387,7 @@ func (x *Value) String() string {
 func (*Value) ProtoMessage() {}
 
 func (x *Value) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[15]
+	mi := &file_health_v1_observation_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1337,7 +1400,7 @@ func (x *Value) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Value.ProtoReflect.Descriptor instead.
 func (*Value) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{15}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Value) GetKind() isValue_Kind {
@@ -1429,7 +1492,7 @@ type CollectionError struct {
 
 func (x *CollectionError) Reset() {
 	*x = CollectionError{}
-	mi := &file_health_v1_observation_proto_msgTypes[16]
+	mi := &file_health_v1_observation_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1441,7 +1504,7 @@ func (x *CollectionError) String() string {
 func (*CollectionError) ProtoMessage() {}
 
 func (x *CollectionError) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[16]
+	mi := &file_health_v1_observation_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1454,7 +1517,7 @@ func (x *CollectionError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectionError.ProtoReflect.Descriptor instead.
 func (*CollectionError) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{16}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *CollectionError) GetSource() string {
@@ -1506,7 +1569,7 @@ type NoValue struct {
 
 func (x *NoValue) Reset() {
 	*x = NoValue{}
-	mi := &file_health_v1_observation_proto_msgTypes[17]
+	mi := &file_health_v1_observation_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1518,7 +1581,7 @@ func (x *NoValue) String() string {
 func (*NoValue) ProtoMessage() {}
 
 func (x *NoValue) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[17]
+	mi := &file_health_v1_observation_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1531,7 +1594,7 @@ func (x *NoValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NoValue.ProtoReflect.Descriptor instead.
 func (*NoValue) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{17}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *NoValue) GetReason() NoValueReason {
@@ -1626,7 +1689,7 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x10collection_error\x18\a \x01(\v2\x1a.health.v1.CollectionErrorH\x00R\x0fcollectionError\x12/\n" +
 	"\bno_value\x18\b \x01(\v2\x12.health.v1.NoValueH\x00R\anoValueB\t\n" +
 	"\aoutcomeB\a\n" +
-	"\x05_unit\"\xc7\x03\n" +
+	"\x05_unit\"\x81\x04\n" +
 	"\x11ObservationTarget\x12(\n" +
 	"\x04node\x18\x01 \x01(\v2\x12.health.v1.NodeRefH\x00R\x04node\x12%\n" +
 	"\x03gpu\x18\x02 \x01(\v2\x11.health.v1.GpuRefH\x00R\x03gpu\x12H\n" +
@@ -1634,7 +1697,9 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\bgpu_pair\x18\x04 \x01(\v2\x15.health.v1.GpuPairRefH\x00R\agpuPair\x12N\n" +
 	"\x12infini_band_device\x18\x05 \x01(\v2\x1e.health.v1.InfiniBandDeviceRefH\x00R\x10infiniBandDevice\x12H\n" +
 	"\x10infini_band_port\x18\x06 \x01(\v2\x1c.health.v1.InfiniBandPortRefH\x00R\x0einfiniBandPort\x12A\n" +
-	"\rkernel_record\x18\a \x01(\v2\x1a.health.v1.KernelRecordRefH\x00R\fkernelRecordB\x06\n" +
+	"\rkernel_record\x18\a \x01(\v2\x1a.health.v1.KernelRecordRefH\x00R\fkernelRecord\x128\n" +
+	"\n" +
+	"pci_device\x18\b \x01(\v2\x17.health.v1.PciDeviceRefH\x00R\tpciDeviceB\x06\n" +
 	"\x04kind\"\x19\n" +
 	"\aNodeRef\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"D\n" +
@@ -1657,7 +1722,9 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x04port\x18\x02 \x01(\rR\x04port\"F\n" +
 	"\x0fKernelRecordRef\x12\x17\n" +
 	"\aboot_id\x18\x01 \x01(\tR\x06bootId\x12\x1a\n" +
-	"\bsequence\x18\x02 \x01(\x03R\bsequence\"\x99\x01\n" +
+	"\bsequence\x18\x02 \x01(\x03R\bsequence\"(\n" +
+	"\fPciDeviceRef\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\"\x99\x01\n" +
 	"\x05Value\x12\x1d\n" +
 	"\tint_value\x18\x01 \x01(\x03H\x00R\bintValue\x12#\n" +
 	"\fdouble_value\x18\x02 \x01(\x01H\x00R\vdoubleValue\x12#\n" +
@@ -1703,7 +1770,7 @@ func file_health_v1_observation_proto_rawDescGZIP() []byte {
 
 var (
 	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 19)
+	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 20)
 	file_health_v1_observation_proto_goTypes   = []any{
 		(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
 		(NoValueReason)(0),            // 1: health.v1.NoValueReason
@@ -1722,11 +1789,12 @@ var (
 		(*InfiniBandDeviceRef)(nil),   // 14: health.v1.InfiniBandDeviceRef
 		(*InfiniBandPortRef)(nil),     // 15: health.v1.InfiniBandPortRef
 		(*KernelRecordRef)(nil),       // 16: health.v1.KernelRecordRef
-		(*Value)(nil),                 // 17: health.v1.Value
-		(*CollectionError)(nil),       // 18: health.v1.CollectionError
-		(*NoValue)(nil),               // 19: health.v1.NoValue
-		nil,                           // 20: health.v1.GpuInventoryEntry.FieldErrorsEntry
-		(*timestamppb.Timestamp)(nil), // 21: google.protobuf.Timestamp
+		(*PciDeviceRef)(nil),          // 17: health.v1.PciDeviceRef
+		(*Value)(nil),                 // 18: health.v1.Value
+		(*CollectionError)(nil),       // 19: health.v1.CollectionError
+		(*NoValue)(nil),               // 20: health.v1.NoValue
+		nil,                           // 21: health.v1.GpuInventoryEntry.FieldErrorsEntry
+		(*timestamppb.Timestamp)(nil), // 22: google.protobuf.Timestamp
 	}
 )
 
@@ -1734,18 +1802,18 @@ var file_health_v1_observation_proto_depIdxs = []int32{
 	8,  // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
 	3,  // 1: health.v1.ObservationBatch.inventory:type_name -> health.v1.HardwareInventory
 	4,  // 2: health.v1.HardwareInventory.gpu_snapshots:type_name -> health.v1.GpuInventorySnapshot
-	21, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
+	22, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
 	5,  // 4: health.v1.GpuInventorySnapshot.inventory:type_name -> health.v1.GpuInventory
-	18, // 5: health.v1.GpuInventorySnapshot.collection_error:type_name -> health.v1.CollectionError
+	19, // 5: health.v1.GpuInventorySnapshot.collection_error:type_name -> health.v1.CollectionError
 	6,  // 6: health.v1.GpuInventory.entries:type_name -> health.v1.GpuInventoryEntry
 	7,  // 7: health.v1.GpuInventoryEntry.gpu:type_name -> health.v1.GpuDevice
-	18, // 8: health.v1.GpuInventoryEntry.collection_error:type_name -> health.v1.CollectionError
-	20, // 9: health.v1.GpuInventoryEntry.field_errors:type_name -> health.v1.GpuInventoryEntry.FieldErrorsEntry
+	19, // 8: health.v1.GpuInventoryEntry.collection_error:type_name -> health.v1.CollectionError
+	21, // 9: health.v1.GpuInventoryEntry.field_errors:type_name -> health.v1.GpuInventoryEntry.FieldErrorsEntry
 	9,  // 10: health.v1.Observation.target:type_name -> health.v1.ObservationTarget
-	21, // 11: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
-	17, // 12: health.v1.Observation.value:type_name -> health.v1.Value
-	18, // 13: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
-	19, // 14: health.v1.Observation.no_value:type_name -> health.v1.NoValue
+	22, // 11: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
+	18, // 12: health.v1.Observation.value:type_name -> health.v1.Value
+	19, // 13: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
+	20, // 14: health.v1.Observation.no_value:type_name -> health.v1.NoValue
 	10, // 15: health.v1.ObservationTarget.node:type_name -> health.v1.NodeRef
 	11, // 16: health.v1.ObservationTarget.gpu:type_name -> health.v1.GpuRef
 	12, // 17: health.v1.ObservationTarget.nv_link_endpoint:type_name -> health.v1.NvLinkEndpointRef
@@ -1753,18 +1821,19 @@ var file_health_v1_observation_proto_depIdxs = []int32{
 	14, // 19: health.v1.ObservationTarget.infini_band_device:type_name -> health.v1.InfiniBandDeviceRef
 	15, // 20: health.v1.ObservationTarget.infini_band_port:type_name -> health.v1.InfiniBandPortRef
 	16, // 21: health.v1.ObservationTarget.kernel_record:type_name -> health.v1.KernelRecordRef
-	11, // 22: health.v1.NvLinkEndpointRef.gpu:type_name -> health.v1.GpuRef
-	11, // 23: health.v1.GpuPairRef.source_gpu:type_name -> health.v1.GpuRef
-	11, // 24: health.v1.GpuPairRef.peer_gpu:type_name -> health.v1.GpuRef
-	14, // 25: health.v1.InfiniBandPortRef.device:type_name -> health.v1.InfiniBandDeviceRef
-	0,  // 26: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
-	1,  // 27: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
-	18, // 28: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
-	29, // [29:29] is the sub-list for method output_type
-	29, // [29:29] is the sub-list for method input_type
-	29, // [29:29] is the sub-list for extension type_name
-	29, // [29:29] is the sub-list for extension extendee
-	0,  // [0:29] is the sub-list for field type_name
+	17, // 22: health.v1.ObservationTarget.pci_device:type_name -> health.v1.PciDeviceRef
+	11, // 23: health.v1.NvLinkEndpointRef.gpu:type_name -> health.v1.GpuRef
+	11, // 24: health.v1.GpuPairRef.source_gpu:type_name -> health.v1.GpuRef
+	11, // 25: health.v1.GpuPairRef.peer_gpu:type_name -> health.v1.GpuRef
+	14, // 26: health.v1.InfiniBandPortRef.device:type_name -> health.v1.InfiniBandDeviceRef
+	0,  // 27: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
+	1,  // 28: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
+	19, // 29: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
+	30, // [30:30] is the sub-list for method output_type
+	30, // [30:30] is the sub-list for method input_type
+	30, // [30:30] is the sub-list for extension type_name
+	30, // [30:30] is the sub-list for extension extendee
+	0,  // [0:30] is the sub-list for field type_name
 }
 
 func init() { file_health_v1_observation_proto_init() }
@@ -1790,8 +1859,9 @@ func file_health_v1_observation_proto_init() {
 		(*ObservationTarget_InfiniBandDevice)(nil),
 		(*ObservationTarget_InfiniBandPort)(nil),
 		(*ObservationTarget_KernelRecord)(nil),
+		(*ObservationTarget_PciDevice)(nil),
 	}
-	file_health_v1_observation_proto_msgTypes[15].OneofWrappers = []any{
+	file_health_v1_observation_proto_msgTypes[16].OneofWrappers = []any{
 		(*Value_IntValue)(nil),
 		(*Value_DoubleValue)(nil),
 		(*Value_StringValue)(nil),
@@ -1803,7 +1873,7 @@ func file_health_v1_observation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_health_v1_observation_proto_rawDesc), len(file_health_v1_observation_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   19,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

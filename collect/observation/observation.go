@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	healthv1 "github.com/dsx-ai-factory/health-validation/collect/proto/go/health/v1"
 	"google.golang.org/protobuf/proto"
@@ -28,6 +29,7 @@ type (
 	InfiniBandDeviceRef     = healthv1.InfiniBandDeviceRef
 	InfiniBandPortRef       = healthv1.InfiniBandPortRef
 	KernelRecordRef         = healthv1.KernelRecordRef
+	PCIDeviceRef            = healthv1.PciDeviceRef
 	Value                   = healthv1.Value
 	CollectionError         = healthv1.CollectionError
 	CollectionErrorCategory = healthv1.CollectionErrorCategory
@@ -53,6 +55,7 @@ type (
 	ObservationTarget_InfiniBandDevice   = healthv1.ObservationTarget_InfiniBandDevice
 	ObservationTarget_InfiniBandPort     = healthv1.ObservationTarget_InfiniBandPort
 	ObservationTarget_KernelRecord       = healthv1.ObservationTarget_KernelRecord
+	ObservationTarget_PCIDevice          = healthv1.ObservationTarget_PciDevice
 )
 
 const (
@@ -121,6 +124,11 @@ func InfiniBandPortTarget(device string, port uint32) *ObservationTarget {
 // KernelRecordTarget identifies one boot-scoped kernel record.
 func KernelRecordTarget(bootID string, sequence int64) *ObservationTarget {
 	return &ObservationTarget{Kind: &ObservationTarget_KernelRecord{KernelRecord: &KernelRecordRef{BootId: bootID, Sequence: sequence}}}
+}
+
+// PCIDeviceTarget identifies one host-local PCI function.
+func PCIDeviceTarget(address string) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_PCIDevice{PciDevice: &PCIDeviceRef{Address: address}}}
 }
 
 // ValidateBatch verifies every observation before a batch crosses a service
@@ -262,6 +270,17 @@ func validateTarget(target *ObservationTarget) error {
 	case *ObservationTarget_KernelRecord:
 		if kind == nil || kind.KernelRecord == nil {
 			return fmt.Errorf("target has an empty kernel record payload")
+		}
+	case *ObservationTarget_PCIDevice:
+		if kind == nil || kind.PciDevice == nil {
+			return fmt.Errorf("target has an empty PCI device payload")
+		}
+		address := kind.PciDevice.GetAddress()
+		if strings.TrimSpace(address) == "" {
+			return fmt.Errorf("target has an empty PCI device address")
+		}
+		if address != strings.TrimSpace(address) || address != strings.ToLower(address) {
+			return fmt.Errorf("target has a non-normalized PCI device address")
 		}
 	default:
 		return fmt.Errorf("target has no kind")
