@@ -5,9 +5,10 @@ For build setup, test commands, and contribution workflow, see
 
 ## Prerequisites
 
-- Go ≥ 1.27
-- Bazel ≥ 9 (pinned version in `.bazelversion`)
-- Linux for NVML-dependent targets (`toolkit/nvml/`); macOS works for catalog and CLI logic
+- Bazelisk or the Bazel version pinned in [`.bazelversion`](../.bazelversion).
+  Bazel supplies the Go SDK declared in [`go.mod`](../go.mod).
+- Linux for full CI validation and hardware collection. macOS can run supported
+  unit tests, but Linux-only code is excluded.
 
 ## Quick Start
 
@@ -60,7 +61,8 @@ remain experimental and outside that lifecycle. All four modules are resolved
 together by Gazelle, so a dependency pin in any of them can change the versions
 linked into the CLI. CI gates `mod tidy -diff` on all four.
 
-Run `go mod tidy` inside each module directory after changing imports.
+Run `bazel run //tools/go -- mod tidy` inside each affected module directory
+after changing imports.
 
 Regenerate collection protobufs with `bash collect/hack/genproto.sh`. The script
 pins both plugins and leaves message layouts as generated. The generated
@@ -141,9 +143,10 @@ public needs no change here.
 
 ## Linux-only Code
 
-`toolkit/nvml/` requires cgo and `libnvidia-ml.so.1`. On macOS, NVML stubs out
-and `health-validation run` exits with a backend error. Use a Linux VM to test
-NVML-dependent paths.
+macOS tests do not exercise files guarded by `//go:build linux`. Use a Linux VM
+or container to validate those paths with the CI configuration. GPU hardware
+collection also requires the NVIDIA driver and NVML; the stock CLI's hardware
+collection is unavailable on macOS.
 
 ### Build a Linux image from macOS
 

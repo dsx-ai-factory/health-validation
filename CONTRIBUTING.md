@@ -51,7 +51,9 @@ New GPU health checks are the most common contribution. Before implementing:
 
 ## Development Setup
 
-**Prerequisites:** Go ≥ 1.23, Bazel ≥ 9 (see `.bazelversion`).
+Use [Bazelisk](https://github.com/bazelbuild/bazelisk) or the Bazel version pinned
+in [`.bazelversion`](.bazelversion). Bazel downloads the Go SDK declared in
+[`go.mod`](go.mod); a separate Go installation is not required for these commands.
 
 ```bash
 git clone https://github.com/dsx-ai-factory/health-validation.git
@@ -70,10 +72,10 @@ bazel run //tools/format
 bazel run //tools/gazelle
 
 # Go mod tidy (repo has four modules; CI gates all four)
-(cd agentkit && go mod tidy)
-(cd catalog && go mod tidy)
-(cd collect && go mod tidy)
-(cd toolkit && go mod tidy)
+(cd agentkit && bazel run //tools/go -- mod tidy)
+(cd catalog && bazel run //tools/go -- mod tidy)
+(cd collect && bazel run //tools/go -- mod tidy)
+(cd toolkit && bazel run //tools/go -- mod tidy)
 
 # Check NOTICE is up to date with actual Go dependencies (see "Updating
 # NOTICE" below)
@@ -100,10 +102,10 @@ against the module's own `LICENSE`/`COPYING` under
 `$(go env GOMODCACHE)/<module>@<version>/` before committing — license
 classifiers err in both directions. Join multiple licenses with `AND`.
 
-> **Linux only:** The `toolkit/nvml/` package requires cgo and
-> `libnvidia-ml.so.1`. On macOS, the NVML backend stubs out and `go test
-> ./catalog/...` works, but `health-validation run` will exit with a backend
-> error. Use a Linux VM or container to test NVML-dependent code.
+> Full CI validation runs on Linux. macOS tests do not exercise Linux-only code;
+> use a Linux VM or container to validate those paths. GPU collection requires
+> the NVIDIA driver and NVML. See the developer guide's
+> [Linux-only code guidance](docs/DEVELOPER.md#linux-only-code).
 
 ## Adding a Health Check
 
@@ -120,10 +122,15 @@ The short version (see the architecture section in `README.md` for context):
 1. Fork the repository and create a branch off `main`.
 2. Make your changes and run `bazel test //...` and `bazel run //tools/format`.
 3. Open a PR using the [pull request template](.github/PULL_REQUEST_TEMPLATE.md).
-4. Sign off every commit with `git commit --signoff` (see **Signing Your Work**
-   below). PRs without sign-offs cannot be merged.
-5. A maintainer will review and may request changes. Address feedback in new
-   commits (do not force-push after review has started).
+4. Sign off and cryptographically sign every commit with `git commit -s -S`
+   (see [Signing Your Work](#signing-your-work)). PRs without sign-offs or
+   verified commit signatures cannot be merged.
+5. A maintainer will review under the [governance process](GOVERNANCE.md#decision-making)
+   and may request changes. Address feedback in new commits (do not force-push
+   after review has started).
+
+If required checks do not start for a PR from a fork, ask a maintainer for help.
+All required checks must pass before merge.
 
 ## Commit and PR Titles
 
@@ -170,23 +177,26 @@ We require that all contributors "sign-off" on their commits. This certifies tha
 the contribution is your original work, or you have rights to submit it under the
 same license, or a compatible license.
 
-Any contribution which contains commits that are not Signed-Off will not be accepted.
+Commits must also be cryptographically signed and show **Verified** on GitHub.
+Configure [commit signing](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits)
+before committing.
 
-To sign off on a commit you simply use the `--signoff` (or `-s`) option when
-committing your changes:
+Use both options when committing: `-s` adds the DCO sign-off, and `-S` attaches
+the cryptographic signature.
 
 ```bash
-git commit -s -m "feat(gpu): add cool feature"
+git commit -s -S -m "docs: clarify development setup"
 ```
 
-This will append the following to your commit message:
+The sign-off appears in the commit message:
 
 ```
 Signed-off-by: Your Name <your@email.com>
 ```
 
-The name and email must match a verified email on your GitHub account. For a series
-of commits, `git rebase --signoff HEAD~N` retro-signs the top N commits.
+Use your name and an email verified on your GitHub account for the sign-off.
+Check each commit's verification status on GitHub before requesting review;
+the `Signed-off-by` trailer alone does not satisfy the signature requirement.
 
 ### Full text of the Developer Certificate of Origin
 

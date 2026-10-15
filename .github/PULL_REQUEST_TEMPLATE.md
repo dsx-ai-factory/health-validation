@@ -26,6 +26,8 @@
 
 - [ ] PR title follows Conventional Commits (`type(scope): subject`)
 - [ ] Commit messages are self-contained and describe *why*, not just *what*
+- [ ] Every commit has a DCO `Signed-off-by` trailer
+- [ ] Every commit is cryptographically signed and shows Verified on GitHub
 - [ ] No internal tooling references, URLs, or credentials in the diff
-- [ ] `go mod tidy` run in affected module(s) (`catalog/` and/or `toolkit/`)
+- [ ] `bazel run //tools/go -- mod tidy` run in affected modules (`agentkit/`, `catalog/`, `collect/`, `toolkit/`)
 - [ ] Struct fields ordered for minimal padding (nogo `fieldalignment` gating CI)
