@@ -99,25 +99,17 @@ jobs:
           set -euo pipefail
           rm -rf trusted/docs
           cp -r docs trusted/docs
-          for d in fern/versions/*-content; do
-            [ -d "$d" ] || continue
-            rm -rf "trusted/$d"
-            cp -r "$d" "trusted/$d"
-          done
           # A symlink in PR content could make the CLI read and upload runner files.
-          # trusted/fern/versions may not exist before the first release, and GNU
-          # find exits 1 on a missing path.
-          for d in trusted/docs trusted/fern/versions; do
-            if [ -d "$d" ]; then find "$d" -type l -delete; fi
-          done
+          find trusted/docs -type l -delete
 
       # Fern reads any file a page names, including ../ and absolute paths, and
       # the next steps run it with FERN_TOKEN. Refuse content that reaches outside
       # docs/. The checker and fern/ config come from the trusted tree; only docs/
-      # is PR content. This runs before the token is in any environment.
+      # is PR content, and every page in it is checked: docs/index.yml can add any file under
+      # docs/ to the navigation. This runs before the token is in any environment.
       - name: Check docs paths stay inside docs
         working-directory: ./trusted
-        run: python3 tools/check-docs-paths --exclude 'docs/developer.md' docs
+        run: python3 tools/check-docs-paths docs
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0

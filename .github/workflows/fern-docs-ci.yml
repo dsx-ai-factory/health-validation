@@ -60,7 +60,6 @@ jobs:
         # it with FERN_TOKEN. fern/generators.yml points at collect/proto by design.
         run: >-
           python3 tools/check-docs-paths
-          --exclude 'docs/developer.md'
           --allow '../docs/index.yml'
           --allow '../collect/proto'
           --allow '../collect/proto/health/v1/check.proto'
