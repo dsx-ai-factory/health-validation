@@ -1,0 +1,25 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_test(
+    name = "xid_test",
+    srcs = [
+        "parse_test.go",
+        "signals_test.go",
+    ],
+    embed = [":xid"],
+    deps = [
+        "//collect",
+        "@com_github_stretchr_testify//require",
+    ],
+)
+
+go_library(
+    name = "xid",
+    srcs = [
+        "parse.go",
+        "signals.go",
+    ],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/xid",
+    visibility = ["//visibility:public"],
+    deps = ["//collect"],
+)

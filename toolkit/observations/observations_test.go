@@ -14,9 +14,11 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 )
 
 func TestToMeasurementsGPU(t *testing.T) {
@@ -380,9 +382,45 @@ func TestMappedSignalsFor(t *testing.T) {
 	if got := MappedSignalsFor(health.CPU); !slices.Equal(got, cpuIDs) {
 		t.Fatalf("CPU signals = %v, want %v", got, cpuIDs)
 	}
+	if got := MappedSignalsFor(health.Xid); !slices.Equal(got, xidsignals.All().IDs()) {
+		t.Fatalf("Xid signals = %v, want %v", got, xidsignals.All().IDs())
+	}
+	// Xid fields build one measurement together, so each feeds every Xid
+	// catalog signal and runnable-check narrowing keeps all or none.
+	xidFeeds := MappedFeeds(health.Xid)
+	if len(xidFeeds) != len(xidsignals.All()) {
+		t.Fatalf("Xid feeds = %v, want one per Xid signal", xidFeeds)
+	}
+	for id, catalog := range xidFeeds {
+		if !slices.Equal(catalog, xid.MeasurementSignals) {
+			t.Fatalf("Xid feed %s = %v, want %v", id, catalog, xid.MeasurementSignals)
+		}
+	}
 	// Every mapped signal belongs to exactly one domain.
-	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink))
+	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid))
 	if !slices.Equal(perDomain, MappedSignals()) {
 		t.Fatalf("per-domain signals %v do not partition %v", perDomain, MappedSignals())
+	}
+}
+
+// TestToMeasurementsRejectsMixedXidForms fails Xid closed when one batch
+// carries canonical and <domain>.<field> Xid observations.
+func TestToMeasurementsRejectsMixedXidForms(t *testing.T) {
+	marker := &observation.Observation{
+		SignalId: xidsignals.ScanWindow.ID(), Source: "xid.journal", Target: observation.NodeTarget(""), ObservedAt: timestamppb.Now(),
+		Outcome: &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_StringValue{StringValue: xidsignals.WindowBoot}}},
+	}
+	field := &observation.Observation{
+		SignalId: "xid.event_count", Source: "toolkit.xid", Target: observation.NodeTarget(""), ObservedAt: timestamppb.Now(),
+		Outcome: &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_IntValue{IntValue: 0}}},
+	}
+	var xids []xid.XidMeasurement
+	for _, m := range ToMeasurements([]*observation.Observation{marker, field}) {
+		if typed, ok := m.(xid.XidMeasurement); ok {
+			xids = append(xids, typed)
+		}
+	}
+	if len(xids) != 1 || len(xids[0].Errors()) != 1 || !slices.Equal(xids[0].Errors()[0].FailedSignals(), xid.MeasurementSignals) {
+		t.Fatalf("mixed Xid forms = %+v, want one errored measurement", xids)
 	}
 }

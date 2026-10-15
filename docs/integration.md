@@ -91,7 +91,10 @@ docker run --rm \
   journal-backed checks report a collection failure rather than a false PASS.
 
 The wrapper includes the complete mount set for journal-backed checks;
-`gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host.
+`gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host. The
+Xid read runs `journalctl --output=json --output-fields=MESSAGE`, which needs
+systemd 236 or later; without a readable kernel journal for the current boot,
+`gpu_xid_*` returns collection-failure verdicts.
 
 ### Static binary (bare metal, Slurm)
 

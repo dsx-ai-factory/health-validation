@@ -768,8 +768,8 @@ func TestWriteVerdictNodeID(t *testing.T) {
 
 // TestWithXidBackendOverridesJournalctl confirms a backend supplied via
 // WithXidBackend is the one the Xid sensor reads from, instead of the default
-// journalctl source. (runCommand picks the override or journalctl, never both,
-// so the override being read proves journalctl was bypassed.)
+// collect sensor. (runCommand uses the override or the collect sensor, never
+// both, so the override being read proves the journal was bypassed.)
 func TestWithXidBackendOverridesJournalctl(t *testing.T) {
 	var xidCalled bool
 

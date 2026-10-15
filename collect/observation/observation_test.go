@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestGPURefNamesAndFallback(t *testing.T) {
@@ -121,6 +122,9 @@ func TestValidateObservationTarget(t *testing.T) {
 		{name: "missing InfiniBand port device", target: &ObservationTarget{Kind: &ObservationTarget_InfiniBandPort{InfiniBandPort: &InfiniBandPortRef{Port: 1}}}, wantError: "target has an incomplete InfiniBand port payload"},
 		{name: "empty kernel record", target: &ObservationTarget{Kind: &ObservationTarget_KernelRecord{}}, wantError: "target has an empty kernel record payload"},
 		{name: "nil kernel record", target: &ObservationTarget{Kind: (*ObservationTarget_KernelRecord)(nil)}, wantError: "target has an empty kernel record payload"},
+		{name: "journal entry", target: JournalEntryTarget("0123abcd", "s=1;i=2")},
+		{name: "empty journal entry", target: &ObservationTarget{Kind: &ObservationTarget_JournalEntry{}}, wantError: "target has an empty journal entry payload"},
+		{name: "nil journal entry", target: &ObservationTarget{Kind: (*ObservationTarget_JournalEntry)(nil)}, wantError: "target has an empty journal entry payload"},
 		{name: "missing kind", target: &ObservationTarget{}, wantError: "target has no kind"},
 		{
 			name: "incomplete NVLink endpoint",
@@ -156,6 +160,44 @@ func TestValidateObservationTarget(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), test.wantError) {
 				t.Fatalf("validate() error = %v, want text %q", err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestJournalEntryTargetRoundTrip(t *testing.T) {
+	batch := &ObservationBatch{CollectionId: "cycle-1", Observations: []*Observation{{
+		SignalId: "xid.event.code",
+		Source:   "xid.journal",
+		Target:   JournalEntryTarget("0123abcd", "s=1;i=2"),
+		Outcome:  &Observation_Value{Value: &Value{Kind: &Value_IntValue{IntValue: 79}}},
+	}}}
+	jsonData, err := protojson.Marshal(batch)
+	if err != nil {
+		t.Fatalf("protojson.Marshal() error = %v", err)
+	}
+	if !strings.Contains(string(jsonData), `"journalEntry"`) {
+		t.Fatalf("protojson output %s lacks journalEntry", jsonData)
+	}
+	binaryData, err := proto.Marshal(batch)
+	if err != nil {
+		t.Fatalf("proto.Marshal() error = %v", err)
+	}
+	for name, unmarshal := range map[string]func(*ObservationBatch) error{
+		"protojson": func(m *ObservationBatch) error { return protojson.Unmarshal(jsonData, m) },
+		"proto":     func(m *ObservationBatch) error { return proto.Unmarshal(binaryData, m) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := &ObservationBatch{}
+			if err := unmarshal(got); err != nil {
+				t.Fatalf("unmarshal error = %v", err)
+			}
+			if err := ValidateBatch(got); err != nil {
+				t.Fatalf("ValidateBatch() error = %v", err)
+			}
+			entry := got.GetObservations()[0].GetTarget().GetJournalEntry()
+			if entry.GetBootId() != "0123abcd" || entry.GetCursor() != "s=1;i=2" {
+				t.Fatalf("journal entry = %v", entry)
 			}
 		})
 	}

@@ -24,6 +24,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
@@ -33,14 +34,33 @@ import (
 
 const customCountSignal = "test.node.custom_count"
 
-func TestCPUDomainDefaultsToCollectSensor(t *testing.T) {
-	sources, adapters := New().builtinCollect()
-	if len(sources) != 1 || sources[0].ID() != cpusensor.ID || len(adapters) != 1 || adapters[0].Name() != "cpu" {
-		t.Fatalf("default CPU domain = %v, %v; want the sysfs collect sensor and cpu adapter", sources, adapters)
+func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
+	builtins := func(a *App) ([]string, []string) {
+		sources, adapters := a.builtinCollect()
+		var sourceIDs, adapterNames []string
+		for _, s := range sources {
+			sourceIDs = append(sourceIDs, s.ID())
+		}
+		for _, adapter := range adapters {
+			adapterNames = append(adapterNames, adapter.Name())
+		}
+		return sourceIDs, adapterNames
 	}
-	sources, adapters = New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})).builtinCollect()
-	if len(sources) != 0 || len(adapters) != 0 {
-		t.Fatalf("WithCPUBackend kept collect CPU domain: %v, %v", sources, adapters)
+	tests := []struct {
+		app      *App
+		name     string
+		sources  []string
+		adapters []string
+	}{
+		{name: "default", app: New(), sources: []string{cpusensor.ID, xidsensor.ID}, adapters: []string{"cpu", "xid"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{xidsensor.ID}, adapters: []string{"xid"}},
+		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{cpusensor.ID}, adapters: []string{"cpu"}},
+	}
+	for _, test := range tests {
+		sources, adapters := builtins(test.app)
+		if !slices.Equal(sources, test.sources) || !slices.Equal(adapters, test.adapters) {
+			t.Errorf("%s: built-ins = %v %v, want %v %v", test.name, sources, adapters, test.sources, test.adapters)
+		}
 	}
 }
 
@@ -489,7 +509,7 @@ func TestWithCollectReportsRegistrationPanics(t *testing.T) {
 }
 
 func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
-	for _, name := range []string{"nil sensor", "typed nil sensor", "nil signal", "no adapter", "nil adapter", "typed nil adapter", "lazy typed nil adapter", "incomplete adapter", "unowned signal", "duplicate producer", "duplicate adapter", "duplicate adapter across calls", "built-in adapter name"} {
+	for _, name := range []string{"nil sensor", "typed nil sensor", "nil signal", "no adapter", "nil adapter", "typed nil adapter", "lazy typed nil adapter", "incomplete adapter", "unowned signal", "duplicate producer", "duplicate adapter", "duplicate adapter across calls", "built-in adapter name", "built-in xid adapter name"} {
 		t.Run(name, func(t *testing.T) {
 			sensor := &collectAppSensor{}
 			var otherCycles []*collect.Cycle
@@ -532,6 +552,11 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 				adapter := customCountAdapter()
 				adapter.name = "cpu"
 				a.WithCollect(sensor).WithCollectAdapters(adapter)
+			case "built-in xid adapter name":
+				a.xid = nil
+				adapter := customCountAdapter()
+				adapter.name = "xid"
+				a.WithCollect(sensor).WithCollectAdapters(adapter)
 			case "duplicate adapter across calls":
 				adapter := customCountAdapter()
 				adapter.signals["test.empty"] = []string{"custom_count"}
@@ -564,6 +589,9 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 			}
 			if name == "built-in adapter name" && !strings.Contains(stderr.String(), `collect adapter name "cpu" is reserved for a built-in domain`) {
 				t.Fatalf("built-in adapter name was not reserved: %q", stderr.String())
+			}
+			if name == "built-in xid adapter name" && !strings.Contains(stderr.String(), `collect adapter name "xid" is reserved for a built-in domain`) {
+				t.Fatalf("built-in xid adapter name was not reserved: %q", stderr.String())
 			}
 			if len(sensor.cycles) != 0 || len(otherCycles) != 0 {
 				t.Fatal("invalid registration was measured")

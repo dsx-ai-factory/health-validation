@@ -1,0 +1,28 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_test(
+    name = "xid_test",
+    srcs = ["sensor_test.go"],
+    embed = [":xid"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/xid",
+        "//collect/source/journal",
+        "@com_github_stretchr_testify//require",
+    ],
+)
+
+go_library(
+    name = "xid",
+    srcs = ["sensor.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/sensors/xid",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "//collect/signals/xid",
+        "//collect/source/journal",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ],
+)

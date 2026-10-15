@@ -21,7 +21,8 @@
 //
 // Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
 // its own per-domain backend, defaulting to the shared host NVML backend for
-// GPU/node/NVLink, sysfs for CPU and InfiniBand, and the journal for Xid. A
+// GPU/node/NVLink, sysfs for CPU and InfiniBand, and the journal (through the
+// collect sensor) for Xid. A
 // With*Backend setter overrides exactly one domain; the
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
@@ -102,7 +103,7 @@ type App struct {
 	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
 	// overrides set by the matching With*Backend setter. A nil override uses the
 	// default: the shared host NVML backend for gpu/node/nvlink, the sysfs
-	// collect sensor for cpu, [toolkit.Journalctl] for xid, and
+	// collect sensor for cpu, the journal collect sensor for xid, and
 	// [toolkit.JournalctlRDMALinkFlap] for rdmaLinkFlap. The generic ib backend
 	// has no default and is opt-in.
 	gpu          toolkit.GPUBackend
@@ -189,8 +190,11 @@ func (a *App) WithCPUBackend(b toolkit.CPUBackend) *App {
 	return a
 }
 
-// WithXidBackend overrides the Xid sensor's backend (default:
-// [toolkit.Journalctl], which reads NVRM Xid events from the system journal).
+// WithXidBackend replaces the collect sensor that reads NVRM Xid events from
+// the system journal with a legacy toolkit Xid sensor over b.
+//
+// Deprecated: pass a collect sensor and the Xid signal IDs it replaces to
+// [App.WithCollect] instead.
 func (a *App) WithXidBackend(b toolkit.XidBackend) *App {
 	a.xid = b
 	return a
@@ -311,7 +315,7 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 // overrides and custom checks), and evaluates it against the six domain
 // sensors. Each sensor's backend is the caller's override if set, else the
 // default: the shared host NVML backend for gpu/node/nvlink, sysfs for cpu and
-// infiniband, and the system journal for xid.
+// infiniband, and the system journal, through the collect sensor, for xid.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -432,10 +436,6 @@ func (a *App) sensors(timeout time.Duration, required requiredSignals) ([]toolki
 	if nvlink == nil {
 		nvlink = a.host.nvlinkBackend()
 	}
-	xid := a.xid
-	if xid == nil {
-		xid = toolkit.Journalctl()
-	}
 	rdmaLinkFlap := a.rdmaLinkFlap
 	if rdmaLinkFlap == nil {
 		rdmaLinkFlap = toolkit.JournalctlRDMALinkFlap()
@@ -445,9 +445,12 @@ func (a *App) sensors(timeout time.Duration, required requiredSignals) ([]toolki
 		toolkit.NewGPUSensor(gpu),
 		toolkit.NewNodeSensor(node),
 		toolkit.NewNVLinkSensor(nvlink),
-		toolkit.NewXidSensor(xid),
-		toolkit.NewRDMALinkFlapSensor(rdmaLinkFlap),
 	}
+	// Without an override, the Xid domain comes from builtinCollect.
+	if a.xid != nil {
+		sensors = append(sensors, toolkit.NewXidSensor(a.xid))
+	}
+	sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(rdmaLinkFlap))
 	// The generic InfiniBand sensor is opt-in: the catalog's built-in
 	// InfiniBand check (rdma_linkflap_fatal) is fed by the link-flap sensor
 	// above, so this one runs only when a consumer supplies a backend (and

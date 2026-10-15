@@ -54,6 +54,9 @@ type XidBackend interface {
 // journal. A read failure (or timeout) yields a single errored
 // [xid.XidMeasurement] rather than an error from Measure, so the
 // catalog fails the applicable Xid checks instead of dropping the host.
+//
+// Deprecated: toolkit/app collects Xid events through the collect sensor in
+// collect/sensors/xid. Journalctl is removed with the other legacy backends.
 func Journalctl() XidBackend {
 	return &journalctlBackend{run: runJournalctl}
 }

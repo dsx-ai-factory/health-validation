@@ -22,10 +22,12 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 )
 
 // mapping relates one collect signal to the catalog
@@ -100,7 +102,7 @@ func MappedSignals() []string {
 	for _, mapped := range mappings {
 		ids = append(ids, mapped.signal.ID())
 	}
-	return ids
+	return append(ids, xidsignals.All().IDs()...)
 }
 
 // MappedSignalsFor returns the mapped collect signal IDs that feed
@@ -108,6 +110,9 @@ func MappedSignals() []string {
 // collect adapter requests what this table maps rather than its own copy.
 // It is empty for a category no mapped signal feeds yet.
 func MappedSignalsFor(category health.Category) []string {
+	if category == health.Xid {
+		return xidsignals.All().IDs()
+	}
 	var ids []string
 	for _, mapped := range mappingsFor(category) {
 		ids = append(ids, mapped.signal.ID())
@@ -119,6 +124,14 @@ func MappedSignalsFor(category health.Category) []string {
 // catalog's measurement for category to the catalog signals it fills.
 func MappedFeeds(category health.Category) map[string][]string {
 	feeds := make(map[string][]string)
+	if category == health.Xid {
+		// The Xid measurement is built from all its event fields together,
+		// so each one feeds every Xid catalog signal.
+		for _, id := range xidsignals.All().IDs() {
+			feeds[id] = slices.Clone(xid.MeasurementSignals)
+		}
+		return feeds
+	}
 	for _, mapped := range mappingsFor(category) {
 		feeds[mapped.signal.ID()] = slices.Clone(mapped.catalog)
 	}
