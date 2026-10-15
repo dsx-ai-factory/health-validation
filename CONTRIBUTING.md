@@ -99,7 +99,7 @@ bazel run //tools:check_notice -- --write   # fix, then review the diff
 `License:` values alone. A module new to NOTICE gets syft's
 classification, or `UNKNOWN` if syft found none. Verify that value
 against the module's own `LICENSE`/`COPYING` under
-`$(go env GOMODCACHE)/<module>@<version>/` before committing — license
+`$(GOENV=off bazel run //tools/go -- env GOMODCACHE)/<module>@<version>/` before committing — license
 classifiers err in both directions. Join multiple licenses with `AND`.
 
 > Full CI validation runs on Linux. macOS tests do not exercise Linux-only code;
