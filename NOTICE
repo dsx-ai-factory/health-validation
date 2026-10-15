@@ -81,7 +81,7 @@ Go module dependencies:
   URL:      https://go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp
 
   go.opentelemetry.io/otel/log  v1.47.0
-  License:  Apache-2.0 AND BSD-3-Clause
+  License:  Apache-2.0
   URL:      https://go.opentelemetry.io/otel/log
 
   go.opentelemetry.io/otel/metric  v1.47.0
