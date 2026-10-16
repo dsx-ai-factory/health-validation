@@ -56,7 +56,7 @@ jobs:
       #
       # commitlint discovers its config from the working tree and `extends`
       # loads code from it, so this must never point at PR-controlled content.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 

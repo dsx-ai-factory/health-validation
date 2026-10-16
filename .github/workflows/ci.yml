@@ -34,7 +34,7 @@ jobs:
       toolkit_version: ${{ steps.status.outputs.toolkit_version }}
       catalog_version: ${{ steps.status.outputs.catalog_version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -69,7 +69,7 @@ jobs:
     runs-on: linux-amd64-cpu4
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -102,7 +102,7 @@ jobs:
     runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -118,7 +118,7 @@ jobs:
     runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -156,7 +156,7 @@ jobs:
     runs-on: linux-arm64-cpu4
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -205,7 +205,7 @@ jobs:
       contents: write
       security-events: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -282,7 +282,7 @@ jobs:
       packages: write
     steps:
       # Version generation needs the module's complete tag history.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
