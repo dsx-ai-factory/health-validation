@@ -104,7 +104,8 @@ func validateThresholdCoverage(checkID, name string, spec ThresholdSpec, archite
 // evaluated and the matches are aggregated: the verdict's severity is the
 // worst across matching rules, Messages holds one entry per matching rule in
 // declaration order, and RecommendedAction comes from the highest-severity
-// matching rule (ties go to declaration order).
+// matching rule (ties go to declaration order); its override applies when
+// present, otherwise the check-level action is used.
 type Rule struct {
 	// Expression is a CEL expression that evaluates to a boolean.
 	// Variables available are the union of signal field names and
