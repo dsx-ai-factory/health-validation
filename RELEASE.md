@@ -129,11 +129,15 @@ GitHub release description.
 
 ## Release notes
 
+Maintain pending user-visible changes under `Unreleased` in `CHANGELOG.md`,
+identifying the affected modules. When preparing a release, finalize only the
+changes included in its target commit; leave the remaining changes unreleased.
+
 Keep the reviewed release narrative in `CHANGELOG.md` and reuse the relevant
-text in each GitHub release description. Scope every entry to the exact module
-tag or tags it covers. A combined entry must distinguish catalog changes from
-toolkit changes; their versions and shipped contents need not match. Keep patch
-notes short and omit empty sections and unchanged background.
+text in each GitHub release description. Scope every finalized entry to the
+exact module tag or tags it covers. A combined entry must distinguish catalog
+changes from toolkit changes; their versions and shipped contents need not
+match. Keep patch notes short and omit empty sections and unchanged background.
 
 ### Release identity
 
