@@ -129,44 +129,76 @@ GitHub release description.
 
 ## Release notes
 
-Keep the reviewed release narrative in `CHANGELOG.md` and reuse it in the
-corresponding GitHub release description. Use the following structure for a
-feature release, shortening patch releases and omitting empty sections:
+Keep the reviewed release narrative in `CHANGELOG.md` and reuse the relevant
+text in each GitHub release description. Scope every entry to the exact module
+tag or tags it covers. A combined entry must distinguish catalog changes from
+toolkit changes; their versions and shipped contents need not match. Keep patch
+notes short and omit empty sections and unchanged background.
 
-1. **Summary and release information.** Describe the main outcome and affected
-   users. Identify the publication date, module tag, actual bundled catalog,
-   catalog dependency required by the toolkit Go module, verdict
-   `schema_version`, and published image and platforms, as applicable.
-2. **Upgrade actions and breaking changes.** Give the previous and replacement
-   wire values, APIs, flags, or defaults, name the affected consumer, and explain
-   the required migration.
-3. **Changes to checks and verdicts.** Name the check IDs and explain changes to
-   triggers, thresholds, severity, recommended actions, and applicability. Include
-   threshold units, architecture-specific defaults, and the effect on explicit
-   overrides when they change.
-4. **Collection and integrations.** Describe relevant CLI, configuration, sensor,
-   metrics, and Go API changes. State whether a capability is experimental,
-   library-only, or available in the stock CLI and container.
-5. **Fixes and security.** Explain the observable behavior corrected and relevant
-   updates to shipped dependencies, with PR or advisory links.
-6. **Compatibility and known limitations.** Distinguish validated hardware from
-   experimental declarations. Include changed prerequisites, known issues,
-   workarounds, and any support-stage transitions required above.
-7. **Installation and references.** Identify the numbered image or verified
-   digest and link to the integration guide, schema, and remediation contract at
-   the producer's tag or commit. Link the full comparison from the previous
-   final release of the same module.
+### Release identity
 
-For toolkit releases, confirm bundled versions using
-`health-validation version --output json` from the released image or its CI
-metadata. Check `toolkit/go.mod` separately: the catalog required by Go consumers
-can differ from the catalog bundled into a CLI. Do not infer either from the
-toolkit version number. The `latest` image follows `main`; use a numbered image
-or verified digest when describing a released deployment.
+Start with a brief summary and the affected users. Record each module's
+publication date, exact tag, and previous final release as the comparison
+baseline, and link its full comparison. Describe notable user-visible changes
+since each baseline, including applicable QA fixes and backports. An RC-to-final
+comparison can supplement the narrative but does not replace it.
 
-For catalog-only releases, identify the catalog changes and their effect on
-library consumers without implying that a new container was published. A stable
-verdict schema does not imply unchanged check behavior or remediation guidance.
-Before finalizing notes, reconcile them with the final target commit, including
-QA fixes and backports, and confirm that each capability is available through
-the described integration path.
+For toolkit releases, identify the published image and platforms, actual bundled
+catalog version, catalog required by `toolkit/go.mod`, and verdict
+`schema_version`. Explain CLI and Go-consumer impact separately when their
+previous catalog sources differ. A catalog-only release must not imply that
+a new CLI or container image was published.
+
+### Upgrade actions
+
+Put required actions before the change details. Identify the affected consumer,
+show old and replacement APIs, wire values, flags, configuration, or defaults,
+and give migration steps. Include changed build and runtime prerequisites,
+deprecations, and removals. Scope any statement that no migration is needed to
+the affected consumer and its comparison baseline.
+
+A stable `schema_version` does not imply unchanged check behavior. Explain
+changes affecting how consumers interpret severity, affected entities, skipped
+checks, recommended actions, or CLI exit behavior.
+
+### Notable changes
+
+Group related changes by their effect on users. Cover the following when
+relevant, and describe each change once:
+
+- **Checks and verdicts:** name check IDs and explain changed triggers,
+  thresholds, severity, messages, or recommended actions. State relevant
+  architecture, execution context, cadence, and skip behavior, including the
+  effect on coverage; skipped checks do not contribute to `overall_severity`.
+  For threshold changes, give units, architecture-specific defaults, and effects
+  on explicit overrides.
+- **Collection and integrations:** explain CLI, configuration, sensor, metrics,
+  and Go API changes, including collection-failure handling. State whether a
+  capability is available in the stock CLI and container, library-only, or
+  experimental. Describe remediation as recommendations the caller acts on.
+- **Fixes and dependencies:** describe the observable correction or shipped
+  update and identify the affected artifact. Link relevant PRs and security
+  advisories.
+- **Compatibility and limitations:** distinguish validated hardware from
+  experimental declarations and include changes to support or licensing that
+  affect adoption. For known issues, state affected versions or environments,
+  impact, and any available issue link or workaround. Identify resolved issues
+  under fixes and include support-stage transitions required above.
+
+### Installation and final checks
+
+For toolkit releases, give a numbered image or verified digest and a
+`health-validation version --output json` example. This checks build identity;
+link deployment instructions for actual health-check execution and host access.
+The `latest` image follows `main`.
+
+Use absolute documentation URLs pinned to the producer's tag or commit for the
+integration guide, verdict schema, and remediation contract. Adapt relative
+changelog links when reusing the text in GitHub Releases. Link unchanged
+prerequisites and coverage instead of reproducing their full documentation.
+
+Confirm bundled versions from the released image or its CI metadata, and check
+`toolkit/go.mod` separately. Do not infer either catalog version from the toolkit
+version; a consumer's module graph determines the catalog it actually selects.
+Before finalizing, reconcile the notes with the final target commit and verify
+each described integration path and link.
