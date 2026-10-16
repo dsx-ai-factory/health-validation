@@ -33,7 +33,7 @@ Improve how findings explain a node's condition and guide the next evaluation.
   condition from a historical event after a successful GPU reset
   ([#133](https://github.com/dsx-ai-factory/health-validation/issues/133)).
 - **Action guidance.** Improve the
-  [existing remediation guidance](docs/REMEDIATION.md) with concrete next steps
+  [existing remediation guidance](docs/remediation.md) with concrete next steps
   and consistent advice on choosing an action when several checks fail
   ([#58](https://github.com/dsx-ai-factory/health-validation/issues/58)).
 - **Collection failures.** Explain when several findings share an underlying
