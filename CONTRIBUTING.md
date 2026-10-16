@@ -105,7 +105,7 @@ classifiers err in both directions. Join multiple licenses with `AND`.
 > Full CI validation runs on Linux. macOS tests do not exercise Linux-only code;
 > use a Linux VM or container to validate those paths. GPU collection requires
 > the NVIDIA driver and NVML. See the developer guide's
-> [Linux-only code guidance](docs/DEVELOPER.md#linux-only-code).
+> [Linux-only code guidance](docs/developer.md#linux-only-code).
 
 ## Adding a Health Check
 

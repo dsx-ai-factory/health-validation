@@ -14,7 +14,7 @@
 // block devices and filesystems, FUSE connections, PCI, and pstore records.
 // NVML GPM profiling is opt-in and requires a sample interval greater than
 // 100 milliseconds. Existing DCGM, InfiniBand, and kernel-message adapters
-// remain separate sources. See docs/INTEGRATION.md in the repository for
+// remain separate sources. See docs/integration.md in the repository for
 // constructors, custom server registration, and source access boundaries.
 //
 // Sensor observations use typed targets, including boot-qualified processes,
