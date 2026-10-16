@@ -5,6 +5,7 @@ package xid
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -17,11 +18,20 @@ import (
 // verdict names exactly which fault fired and carries that bucket as the
 // recommended action.
 type criticalXid struct {
-	description string
-	message     string
-	action      health.RecommendedAction
-	code        int64
+	description   string
+	message       string
+	architectures []string
+	action        health.RecommendedAction
+	code          int64
 }
+
+var (
+	allArchitectures             = []string{"GB200", "GB300", "H100", "H200", "A100"}
+	blackwellArchitectures       = []string{"GB200", "GB300"}
+	hopperBlackwellArchitectures = []string{"GB200", "GB300", "H100", "H200"}
+	ampereHopperArchitectures    = []string{"H100", "H200", "A100"}
+	hopperArchitectures          = []string{"H100", "H200"}
+)
 
 // resetAndService is the remediation sequence for a Xid code
 // whose immediate-action bucket is a GPU-only reset: attempt the reset,
@@ -35,30 +45,34 @@ func resetAndService() health.RecommendedAction {
 // is the immediate-action bucket; codes whose action is IGNORE/empty or
 // that are marked Unused are excluded entirely.
 var criticalXids = []criticalXid{
-	{code: 46, action: resetAndService(), description: "GPU stopped processing"},
-	{code: 48, action: resetAndService(), description: "double bit ECC error"},
-	{code: 62, action: resetAndService(), description: "internal micro-controller halt"},
-	{code: 64, action: resetAndService(), description: "GPU memory remapping failure"},
-	{code: 79, action: resetAndService(), description: "GPU has fallen off the bus"},
-	{code: 95, action: resetAndService(), description: "uncontained memory error"},
-	{code: 109, action: resetAndService(), description: "context switch timeout error"},
-	{code: 110, action: resetAndService(), description: "security fault error"},
-	{code: 119, action: resetAndService(), description: "GSP RPC timeout"},
-	{code: 120, action: resetAndService(), description: "GSP error"},
-	{code: 140, action: resetAndService(), description: "ECC unrecovered error"},
-	{code: 142, action: health.Drain(health.RemediationActionServiceRequired), description: "NVENC3 error"},
-	{code: 143, action: resetAndService(), description: "GPU initialization error"},
+	{code: 46, action: resetAndService(), architectures: allArchitectures, description: "GPU stopped processing"},
+	{code: 48, action: resetAndService(), architectures: allArchitectures, description: "double bit ECC error"},
+	{code: 54, action: health.Drain(health.RemediationActionCheckMechanicals), architectures: ampereHopperArchitectures, description: "auxiliary power is not connected to the GPU board"},
+	{code: 62, action: resetAndService(), architectures: allArchitectures, description: "internal micro-controller halt"},
+	{code: 64, action: resetAndService(), architectures: allArchitectures, description: "GPU memory remapping failure"},
+	{code: 74, action: health.Drain(health.RemediationActionWorkflowNVLinkErr), architectures: ampereHopperArchitectures, description: "NVLink error"},
+	{code: 79, action: resetAndService(), architectures: allArchitectures, description: "GPU has fallen off the bus"},
+	{code: 95, action: resetAndService(), architectures: allArchitectures, description: "uncontained memory error"},
+	{code: 109, action: resetAndService(), architectures: allArchitectures, description: "context switch timeout error"},
+	{code: 110, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "security fault error"},
+	{code: 119, action: resetAndService(), architectures: allArchitectures, description: "GSP RPC timeout"},
+	{code: 120, action: resetAndService(), architectures: allArchitectures, description: "GSP error"},
+	{code: 136, action: resetAndService(), architectures: hopperArchitectures, description: "link training failed"},
+	{code: 140, action: resetAndService(), architectures: allArchitectures, description: "ECC unrecovered error"},
+	{code: 142, action: health.Drain(health.RemediationActionServiceRequired), architectures: blackwellArchitectures, description: "NVENC3 error"},
+	{code: 143, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "GPU initialization error"},
 	// 144-150 (NVLink5/NETIR family) are not listed here: they get their
 	// own severity-differentiated checks below, built by nvlink5Check.
-	{code: 151, action: health.Drain(health.RemediationActionRestartOS), description: "key rotation error"},
-	{code: 155, action: resetAndService(), description: "NVLink SW-defined error"},
-	{code: 156, action: resetAndService(), description: "resource retirement event"},
-	{code: 158, action: resetAndService(), description: "GPU fatal timeout"},
+	{code: 151, action: health.Drain(health.RemediationActionRestartOS), architectures: hopperBlackwellArchitectures, description: "key rotation error"},
+	{code: 155, action: resetAndService(), architectures: blackwellArchitectures, description: "NVLink SW-defined error"},
+	{code: 156, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "resource retirement event"},
+	{code: 158, action: resetAndService(), architectures: allArchitectures, description: "GPU fatal timeout"},
 	{
-		code:        159,
-		action:      resetAndService(),
-		description: "CHI non-data error",
-		message:     "GPU Xid 159 detected: CHI non-data error. NVIDIA's CHECK_UVM guidance is to reset the GPU if UVM or vGPU is in use; otherwise ignore the error. Health Validation cannot determine whether either was in use when this error occurred, so it recommends a GPU reset as a conservative default.",
+		code:          159,
+		action:        resetAndService(),
+		architectures: blackwellArchitectures,
+		description:   "CHI non-data error",
+		message:       "GPU Xid 159 detected: CHI non-data error. NVIDIA's CHECK_UVM guidance is to reset the GPU if UVM or vGPU is in use; otherwise ignore the error. Health Validation cannot determine whether either was in use when this error occurred, so it recommends a GPU reset as a conservative default.",
 	},
 }
 
@@ -217,24 +231,21 @@ func nvlink5SubXidCodeDigit(row nvlink5DecodeRow) (string, bool) {
 	return fmt.Sprintf("%X", v), true
 }
 
-// warningClass groups warning-severity Xid codes that share a
-// resolution bucket. All warning classes live as separate rules in the
-// single consolidated gpu_xid_warning check, each carrying its bucket
-// as the recommended action.
+// warningClass groups warning-severity Xid codes that share an
+// architecture set and resolution bucket.
 type warningClass struct {
 	message string
 	codes   []int64
 	action  health.RecommendedAction
 }
 
-var warningClasses = []warningClass{
+var commonWarningClasses = []warningClass{
 	{
 		action:  health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
 		message: "Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.",
 		codes: []int64{
 			8, 11, 13, 25, 31, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77,
-			82, 83, 84, 85, 86, 88, 89, 94, 96, 97, 98, 99, 100, 101, 102, 103,
-			104, 105, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139,
+			82, 83, 84, 85, 86, 88, 89, 94,
 		},
 	},
 	{
@@ -249,19 +260,37 @@ var warningClasses = []warningClass{
 	},
 }
 
+var ampereHopperWarningClasses = []warningClass{{
+	action:  health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+	message: "GPU Xid 80 detected: corrupted data sent to the GPU. Restart the faulting application; send the node for service if the error persists.",
+	codes:   []int64{80},
+}}
+
+var hopperBlackwellWarningClasses = []warningClass{{
+	action:  health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+	message: "Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.",
+	codes:   []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105},
+}}
+
+var blackwellWarningClasses = []warningClass{{
+	action:  health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+	message: "Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.",
+	codes:   []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139},
+}}
+
 // Checks returns every Xid check shipped with the catalog: one CRITICAL
 // check per critical Xid code, one Fatal/Nonfatal check per NVLink5
 // (144-150) code, one additional per-SubXidCode check for each fault
 // subtype NVIDIA's decode table differentiates that way (see
-// [nvlink5SubXidCodeCheck]), a single consolidated WARNING check
-// covering all warning-severity codes, and an INFO check for Xid 154
-// (a recovery-action notice that only annotates another Xid).
+// [nvlink5SubXidCodeCheck]), architecture-scoped WARNING checks, and an
+// INFO check for Xid 154 (a recovery-action notice that only annotates
+// another Xid).
 //
 // Every check consumes an [XidMeasurement] produced by the journal Xid
 // sensor and tests its xid_counts map. Codes whose immediate action is
 // IGNORE/empty, and Unused codes, are not represented and never fire.
 func Checks() []health.CheckDefinition {
-	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+2)
+	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+5)
 	for _, c := range criticalXids {
 		checks = append(checks, criticalCheck(c))
 	}
@@ -271,7 +300,13 @@ func Checks() []health.CheckDefinition {
 	for _, c := range nvlink5SubXidCodes {
 		checks = append(checks, nvlink5SubXidCodeCheck(c))
 	}
-	checks = append(checks, warningCheck(), xid154Check())
+	checks = append(checks,
+		warningCheck("gpu_xid_warning", "GPU Xid Warnings", allArchitectures, commonWarningClasses),
+		warningCheck("gpu_xid_warning_ampere_hopper", "Ampere and Hopper GPU Xid Warnings", ampereHopperArchitectures, ampereHopperWarningClasses),
+		warningCheck("gpu_xid_warning_hopper_blackwell", "Hopper and Blackwell GPU Xid Warnings", hopperBlackwellArchitectures, hopperBlackwellWarningClasses),
+		warningCheck("gpu_xid_warning_blackwell", "Blackwell GPU Xid Warnings", blackwellArchitectures, blackwellWarningClasses),
+		xid154Check(),
+	)
 	return checks
 }
 
@@ -283,6 +318,7 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 		fmt.Sprintf("Detects NVRM Xid %d in the system journal since boot.", c.code),
 		c.action,
 	)
+	def.Architectures = slices.Clone(c.architectures)
 	message := c.message
 	if message == "" {
 		message = fmt.Sprintf("GPU Xid %d detected: %s.", c.code, c.description)
@@ -326,12 +362,8 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 		health.NoAction,
 	)
 	def.RequiredSignals = []string{SignalXidCounts, SignalFatalXidCounts}
-	// Pinned rather than inherited. This currently matches baseCheck, but
-	// for a different reason: baseCheck is GB200/GB300 because H100/A100
-	// support is deprioritized, while NVLink5 (144-150) is Blackwell-only
-	// per NVIDIA's Xid catalog and does not exist on those parts at all.
-	// If baseCheck's coverage ever widens again, this must not follow it.
-	def.Architectures = []string{"GB200", "GB300"}
+	// NVLink5 (144-150) is Blackwell-only per NVIDIA's Xid catalog.
+	def.Architectures = slices.Clone(blackwellArchitectures)
 	def.Rules = []health.Rule{
 		{
 			Expression:        fmt.Sprintf("%d in fatal_xid_counts", c.code),
@@ -367,7 +399,7 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 		action,
 	)
 	def.RequiredSignals = []string{SignalSubXidCodeCounts}
-	def.Architectures = []string{"GB200", "GB300"}
+	def.Architectures = slices.Clone(blackwellArchitectures)
 	def.Rules = []health.Rule{{
 		Expression: fmt.Sprintf("%q in sub_xid_code_counts", c.subXidCode),
 		Severity:   severity,
@@ -376,17 +408,18 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 	return def
 }
 
-// warningCheck builds the single consolidated WARNING check, one rule
+// warningCheck builds one architecture-scoped WARNING check with one rule
 // per warning resolution bucket.
-func warningCheck() health.CheckDefinition {
+func warningCheck(id, name string, architectures []string, classes []warningClass) health.CheckDefinition {
 	def := baseCheck(
-		"gpu_xid_warning",
-		"GPU Xid Warnings",
+		id,
+		name,
 		"Detects application-level and otherwise recoverable NVRM Xid errors in the system journal since boot, grouped by their NVIDIA Xid-catalog immediate-action resolution bucket.",
 		health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
 	)
-	rules := make([]health.Rule, 0, len(warningClasses))
-	for _, w := range warningClasses {
+	def.Architectures = slices.Clone(architectures)
+	rules := make([]health.Rule, 0, len(classes))
+	for _, w := range classes {
 		rules = append(rules, health.Rule{
 			Expression:        xidMatchExpr(w.codes),
 			Severity:          health.Warning,
@@ -406,6 +439,7 @@ func xid154Check() health.CheckDefinition {
 		"Detects NVRM Xid 154 in the system journal since boot. Informational; correlates with an accompanying Xid.",
 		health.Drain(health.RemediationActionXid154),
 	)
+	def.Architectures = slices.Clone(allArchitectures)
 	def.Rules = []health.Rule{{
 		Expression: "154 in xid_counts",
 		Severity:   health.Info,
@@ -414,8 +448,9 @@ func xid154Check() health.CheckDefinition {
 	return def
 }
 
-// baseCheck returns a CheckDefinition with the fields every Xid check
-// shares; callers set Rules.
+// baseCheck returns a Blackwell-scoped CheckDefinition with the fields
+// every Xid check shares. Callers widen Architectures where applicable
+// and set Rules.
 func baseCheck(id, name, description string, recommendedAction health.RecommendedAction) health.CheckDefinition {
 	return health.CheckDefinition{
 		ID:          id,
@@ -428,7 +463,7 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300"},
+		Architectures:     slices.Clone(blackwellArchitectures),
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,

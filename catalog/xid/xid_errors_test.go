@@ -16,9 +16,13 @@ import (
 )
 
 func xidCatalog(t *testing.T) *catalog.Catalog {
+	return xidCatalogFor(t, "GB200")
+}
+
+func xidCatalogFor(t *testing.T, architecture string) *catalog.Catalog {
 	t.Helper()
 	cat := catalog.NewEmpty(
-		catalog.WithArchitecture("GB200"),
+		catalog.WithArchitecture(architecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 	for _, cd := range xid.Checks() {
@@ -45,12 +49,86 @@ func measurementFor(codes ...int64) xid.XidMeasurement {
 }
 
 func evalXid(t *testing.T, codes ...int64) health.NodeVerdict {
+	return evalXidFor(t, "GB200", codes...)
+}
+
+func evalXidFor(t *testing.T, architecture string, codes ...int64) health.NodeVerdict {
 	t.Helper()
-	nv, err := xidCatalog(t).EvaluateAll(measurementFor(codes...))
+	nv, err := xidCatalogFor(t, architecture).EvaluateAll(measurementFor(codes...))
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
 	return nv
+}
+
+func TestXidErrors_ArchitectureCoverage(t *testing.T) {
+	tests := []struct {
+		name          string
+		checkID       string
+		architectures []string
+	}{
+		{name: "all generations", checkID: "gpu_xid_46", architectures: []string{"GB200", "GB300", "H100", "H200", "A100"}},
+		{name: "Ampere and Hopper", checkID: "gpu_xid_54", architectures: []string{"H100", "H200", "A100"}},
+		{name: "Hopper only", checkID: "gpu_xid_136", architectures: []string{"H100", "H200"}},
+		{name: "Hopper and Blackwell", checkID: "gpu_xid_110", architectures: []string{"GB200", "GB300", "H100", "H200"}},
+		{name: "Blackwell only", checkID: "gpu_xid_142", architectures: []string{"GB200", "GB300"}},
+		{name: "NVLink5 remains Blackwell only", checkID: "gpu_xid_144", architectures: []string{"GB200", "GB300"}},
+		{name: "common warning", checkID: "gpu_xid_warning", architectures: []string{"GB200", "GB300", "H100", "H200", "A100"}},
+		{name: "Ampere and Hopper warning", checkID: "gpu_xid_warning_ampere_hopper", architectures: []string{"H100", "H200", "A100"}},
+		{name: "Hopper and Blackwell warning", checkID: "gpu_xid_warning_hopper_blackwell", architectures: []string{"GB200", "GB300", "H100", "H200"}},
+		{name: "Blackwell warning", checkID: "gpu_xid_warning_blackwell", architectures: []string{"GB200", "GB300"}},
+		{name: "informational all generations", checkID: "gpu_xid_154", architectures: []string{"GB200", "GB300", "H100", "H200", "A100"}},
+	}
+
+	definitions := make(map[string]health.CheckDefinition)
+	for _, def := range xid.Checks() {
+		definitions[def.ID] = def
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			def, ok := definitions[tt.checkID]
+			if !ok {
+				t.Fatalf("check %q not found", tt.checkID)
+			}
+			if !slices.Equal(def.Architectures, tt.architectures) {
+				t.Errorf("Architectures = %v, want %v", def.Architectures, tt.architectures)
+			}
+		})
+	}
+}
+
+func TestXidErrors_NewArchitectureSpecificChecks(t *testing.T) {
+	tests := []struct {
+		name         string
+		architecture string
+		checkID      string
+		wantAction   health.RecommendedAction
+		code         int64
+		wantSeverity health.Severity
+	}{
+		{name: "Xid 54 on A100", architecture: "A100", checkID: "gpu_xid_54", code: 54, wantSeverity: health.Critical, wantAction: health.Drain(health.RemediationActionCheckMechanicals)},
+		{name: "Xid 74 on H100", architecture: "H100", checkID: "gpu_xid_74", code: 74, wantSeverity: health.Critical, wantAction: health.Drain(health.RemediationActionWorkflowNVLinkErr)},
+		{name: "Xid 80 on H200", architecture: "H200", checkID: "gpu_xid_warning_ampere_hopper", code: 80, wantSeverity: health.Warning, wantAction: health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired)},
+		{name: "Xid 136 on H100", architecture: "H100", checkID: "gpu_xid_136", code: 136, wantSeverity: health.Critical, wantAction: resetAndServiceForTest()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, ok := checkResult(evalXidFor(t, tt.architecture, tt.code), tt.checkID)
+			if !ok {
+				t.Fatalf("%s verdict not found", tt.checkID)
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Errorf("Severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if !v.RecommendedAction.Equal(tt.wantAction) {
+				t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, tt.wantAction)
+			}
+		})
+	}
+}
+
+func resetAndServiceForTest() health.RecommendedAction {
+	return health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
 }
 
 func TestXidErrors_SeverityByBucket(t *testing.T) {
