@@ -158,8 +158,8 @@ deprecations, and removals. Scope any statement that no migration is needed to
 the affected consumer and its comparison baseline.
 
 A stable `schema_version` does not imply unchanged check behavior. Explain
-changes affecting how consumers interpret severity, affected entities, skipped
-checks, recommended actions, or CLI exit behavior.
+changes affecting how consumers interpret severity, affected entities, observed
+values, skipped checks, recommended actions, or CLI exit behavior.
 
 ### Notable changes
 
@@ -172,10 +172,11 @@ relevant, and describe each change once:
   effect on coverage; skipped checks do not contribute to `overall_severity`.
   For threshold changes, give units, architecture-specific defaults, and effects
   on explicit overrides.
-- **Collection and integrations:** explain CLI, configuration, sensor, metrics,
-  and Go API changes, including collection-failure handling. State whether a
-  capability is available in the stock CLI and container, library-only, or
-  experimental. Describe remediation as recommendations the caller acts on.
+- **Collection and integrations:** explain changes to the CLI, configuration,
+  sensors, observation formats, metrics, and Go APIs, including collection-failure
+  handling. State whether a capability is available in the stock CLI and
+  container, library-only, or experimental. Describe remediation as
+  recommendations the caller acts on.
 - **Fixes and dependencies:** describe the observable correction or shipped
   update and identify the affected artifact. Link relevant PRs and security
   advisories.
