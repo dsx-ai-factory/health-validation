@@ -126,3 +126,47 @@ No binary/archive artifacts are attached to GitHub releases — the container
 image is the only published release artifact today. There are no user-facing
 release notes generated automatically; summarize notable changes in the tag's
 GitHub release description.
+
+## Release notes
+
+Keep the reviewed release narrative in `CHANGELOG.md` and reuse it in the
+corresponding GitHub release description. Use the following structure for a
+feature release, shortening patch releases and omitting empty sections:
+
+1. **Summary and release information.** Describe the main outcome and affected
+   users. Identify the publication date, module tag, actual bundled catalog,
+   catalog dependency required by the toolkit Go module, verdict
+   `schema_version`, and published image and platforms, as applicable.
+2. **Upgrade actions and breaking changes.** Give the previous and replacement
+   wire values, APIs, flags, or defaults, name the affected consumer, and explain
+   the required migration.
+3. **Changes to checks and verdicts.** Name the check IDs and explain changes to
+   triggers, thresholds, severity, recommended actions, and applicability. Include
+   threshold units, architecture-specific defaults, and the effect on explicit
+   overrides when they change.
+4. **Collection and integrations.** Describe relevant CLI, configuration, sensor,
+   metrics, and Go API changes. State whether a capability is experimental,
+   library-only, or available in the stock CLI and container.
+5. **Fixes and security.** Explain the observable behavior corrected and relevant
+   updates to shipped dependencies, with PR or advisory links.
+6. **Compatibility and known limitations.** Distinguish validated hardware from
+   experimental declarations. Include changed prerequisites, known issues,
+   workarounds, and any support-stage transitions required above.
+7. **Installation and references.** Identify the numbered image or verified
+   digest and link to the integration guide, schema, and remediation contract at
+   the producer's tag or commit. Link the full comparison from the previous
+   final release of the same module.
+
+For toolkit releases, confirm bundled versions using
+`health-validation version --output json` from the released image or its CI
+metadata. Check `toolkit/go.mod` separately: the catalog required by Go consumers
+can differ from the catalog bundled into a CLI. Do not infer either from the
+toolkit version number. The `latest` image follows `main`; use a numbered image
+or verified digest when describing a released deployment.
+
+For catalog-only releases, identify the catalog changes and their effect on
+library consumers without implying that a new container was published. A stable
+verdict schema does not imply unchanged check behavior or remediation guidance.
+Before finalizing notes, reconcile them with the final target commit, including
+QA fixes and backports, and confirm that each capability is available through
+the described integration path.
