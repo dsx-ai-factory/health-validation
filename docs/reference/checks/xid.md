@@ -6,7 +6,7 @@ Xid covers NVRM Xid fault events logged by the NVIDIA driver to the kernel ring 
 
 ## Single-rule checks reading `xid_counts`
 
-These 19 checks share the properties below and each has one rule.
+These 12 checks share the properties below and each has one rule.
 
 | Property | Value |
 |---|---|
@@ -16,7 +16,7 @@ These 19 checks share the properties below and each has one rule.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr> |
 
 | Check | Name | Condition | Severity | Recommended action |
@@ -28,18 +28,11 @@ These 19 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_79`</nobr> | GPU Xid 79 (GPU has fallen off the bus) | <nobr>`79 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_95`</nobr> | GPU Xid 95 (uncontained memory error) | <nobr>`95 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_109`</nobr> | GPU Xid 109 (context switch timeout error) | <nobr>`109 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_110`</nobr> | GPU Xid 110 (security fault error) | <nobr>`110 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_119`</nobr> | GPU Xid 119 (GSP RPC timeout) | <nobr>`119 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_120`</nobr> | GPU Xid 120 (GSP error) | <nobr>`120 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_140`</nobr> | GPU Xid 140 (ECC unrecovered error) | <nobr>`140 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_142`</nobr> | GPU Xid 142 (NVENC3 error) | <nobr>`142 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_143`</nobr> | GPU Xid 143 (GPU initialization error) | <nobr>`143 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_151`</nobr> | GPU Xid 151 (key rotation error) | <nobr>`151 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`restart_os`</nobr> |
 | <nobr>`gpu_xid_154`</nobr> | GPU Xid 154 (GPU recovery action changed) | <nobr>`154 in xid_counts`</nobr> | INFO | <nobr>`drain`</nobr>: <nobr>`xid_154`</nobr> |
-| <nobr>`gpu_xid_155`</nobr> | GPU Xid 155 (NVLink SW-defined error) | <nobr>`155 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_156`</nobr> | GPU Xid 156 (resource retirement event) | <nobr>`156 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_158`</nobr> | GPU Xid 158 (GPU fatal timeout) | <nobr>`158 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_159`</nobr> | GPU Xid 159 (CHI non-data error) | <nobr>`159 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 
 ## Single-rule checks reading `sub_xid_code_counts`
 
@@ -78,6 +71,150 @@ These 20 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_149_28`</nobr> | GPU Xid 149.28 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.28" in sub_xid_code_counts`</nobr> | WARNING | none |
 | <nobr>`gpu_xid_149_a`</nobr> | GPU Xid 149.A (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.A" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_149_f`</nobr> | GPU Xid 149.F (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.F" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+
+## GPU Xid 54 (auxiliary power is not connected to the GPU board)
+
+`gpu_xid_54`
+
+Detects NVRM Xid 54 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **CRITICAL** when `54 in xid_counts`
+  - Message: GPU Xid 54 detected: auxiliary power is not connected to the GPU board.
+
+**Recommended action:** operational state `drain`, then `check_mechanicals`
+
+## GPU Xid 74 (NVLink error)
+
+`gpu_xid_74`
+
+Detects NVRM Xid 74 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **CRITICAL** when `74 in xid_counts`
+  - Message: GPU Xid 74 detected: NVLink error.
+
+**Recommended action:** operational state `drain`, then `workflow_nvlink_err`
+
+## GPU Xid 110 (security fault error)
+
+`gpu_xid_110`
+
+Detects NVRM Xid 110 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **CRITICAL** when `110 in xid_counts`
+  - Message: GPU Xid 110 detected: security fault error.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
+
+## GPU Xid 136 (link training failed)
+
+`gpu_xid_136`
+
+Detects NVRM Xid 136 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **CRITICAL** when `136 in xid_counts`
+  - Message: GPU Xid 136 detected: link training failed.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
+
+## GPU Xid 142 (NVENC3 error)
+
+`gpu_xid_142`
+
+Detects NVRM Xid 142 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **CRITICAL** when `142 in xid_counts`
+  - Message: GPU Xid 142 detected: NVENC3 error.
+
+**Recommended action:** operational state `drain`, then `service_required`
+
+## GPU Xid 143 (GPU initialization error)
+
+`gpu_xid_143`
+
+Detects NVRM Xid 143 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **CRITICAL** when `143 in xid_counts`
+  - Message: GPU Xid 143 detected: GPU initialization error.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
 
 ## GPU Xid 144 (NVLink SAW error)
 
@@ -254,9 +391,161 @@ Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fat
 - **WARNING** when `150 in xid_counts && xid_counts[150] > (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0)`
   - Message: GPU Xid 150 detected: NVLink MSE error (Nonfatal).
 
+## GPU Xid 151 (key rotation error)
+
+`gpu_xid_151`
+
+Detects NVRM Xid 151 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **CRITICAL** when `151 in xid_counts`
+  - Message: GPU Xid 151 detected: key rotation error.
+
+**Recommended action:** operational state `drain`, then `restart_os`
+
+## GPU Xid 155 (NVLink SW-defined error)
+
+`gpu_xid_155`
+
+Detects NVRM Xid 155 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **CRITICAL** when `155 in xid_counts`
+  - Message: GPU Xid 155 detected: NVLink SW-defined error.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
+
+## GPU Xid 156 (resource retirement event)
+
+`gpu_xid_156`
+
+Detects NVRM Xid 156 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **CRITICAL** when `156 in xid_counts`
+  - Message: GPU Xid 156 detected: resource retirement event.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
+
+## GPU Xid 159 (CHI non-data error)
+
+`gpu_xid_159`
+
+Detects NVRM Xid 159 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **CRITICAL** when `159 in xid_counts`
+  - Message: GPU Xid 159 detected: CHI non-data error. NVIDIA's CHECK_UVM guidance is to reset the GPU if UVM or vGPU is in use; otherwise ignore the error. Health Validation cannot determine whether either was in use when this error occurred, so it recommends a GPU reset as a conservative default.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
+
 ## GPU Xid Warnings
 
 `gpu_xid_warning`
+
+Detects application-level and otherwise recoverable NVRM Xid errors in the system journal since boot, grouped by their NVIDIA Xid-catalog immediate-action resolution bucket.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **WARNING** when `xid_counts.exists(k, k in [8, 11, 13, 25, 31, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77, 82, 83, 84, 85, 86, 88, 89, 94])`
+  - Message: Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.
+  - Action: operational state `drain`, then `restart_app` → `service_required`
+- **WARNING** when `xid_counts.exists(k, k in [45])`
+  - Message: GPU Xid 45 (preemptive removal) detected. Follow the Xid 45 workflow.
+  - Action: operational state `drain`, then `workflow_xid_45`
+- **WARNING** when `xid_counts.exists(k, k in [78])`
+  - Message: GPU Xid 78 (vGPU start error) detected. Update GPU software/firmware.
+  - Action: operational state `drain`, then `update_swfw`
+
+**Recommended action:** operational state `drain`, then `restart_app` → `service_required`
+
+## Ampere and Hopper GPU Xid Warnings
+
+`gpu_xid_warning_ampere_hopper`
+
+Detects application-level and otherwise recoverable NVRM Xid errors in the system journal since boot, grouped by their NVIDIA Xid-catalog immediate-action resolution bucket.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **WARNING** when `xid_counts.exists(k, k in [80])`
+  - Message: GPU Xid 80 detected: corrupted data sent to the GPU. Restart the faulting application; send the node for service if the error persists.
+  - Action: operational state `drain`, then `restart_app` → `service_required`
+
+**Recommended action:** operational state `drain`, then `restart_app` → `service_required`
+
+## Blackwell GPU Xid Warnings
+
+`gpu_xid_warning_blackwell`
 
 Detects application-level and otherwise recoverable NVRM Xid errors in the system journal since boot, grouped by their NVIDIA Xid-catalog immediate-action resolution bucket.
 
@@ -273,15 +562,34 @@ Detects application-level and otherwise recoverable NVRM Xid errors in the syste
 
 **Rules**
 
-- **WARNING** when `xid_counts.exists(k, k in [8, 11, 13, 25, 31, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77, 82, 83, 84, 85, 86, 88, 89, 94, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139])`
+- **WARNING** when `xid_counts.exists(k, k in [126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139])`
   - Message: Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.
   - Action: operational state `drain`, then `restart_app` → `service_required`
-- **WARNING** when `xid_counts.exists(k, k in [45])`
-  - Message: GPU Xid 45 (preemptive removal) detected. Follow the Xid 45 workflow.
-  - Action: operational state `drain`, then `workflow_xid_45`
-- **WARNING** when `xid_counts.exists(k, k in [78])`
-  - Message: GPU Xid 78 (vGPU start error) detected. Update GPU software/firmware.
-  - Action: operational state `drain`, then `update_swfw`
+
+**Recommended action:** operational state `drain`, then `restart_app` → `service_required`
+
+## Hopper and Blackwell GPU Xid Warnings
+
+`gpu_xid_warning_hopper_blackwell`
+
+Detects application-level and otherwise recoverable NVRM Xid errors in the system journal since boot, grouped by their NVIDIA Xid-catalog immediate-action resolution bucket.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Rules**
+
+- **WARNING** when `xid_counts.exists(k, k in [96, 97, 98, 99, 100, 101, 102, 103, 104, 105])`
+  - Message: Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.
+  - Action: operational state `drain`, then `restart_app` → `service_required`
 
 **Recommended action:** operational state `drain`, then `restart_app` → `service_required`
 
