@@ -100,9 +100,11 @@ func validateThresholdCoverage(checkID, name string, spec ThresholdSpec, archite
 	return fmt.Errorf("check %q threshold %q: Value is required unless PerArchitecture covers every declared architecture", checkID, name)
 }
 
-// Rule defines a single evaluation condition within a check. Rules are
-// evaluated in declaration order; the first rule whose CEL expression
-// evaluates to true determines the verdict.
+// Rule defines a single evaluation condition within a check. Every rule is
+// evaluated and the matches are aggregated: the verdict's severity is the
+// worst across matching rules, Messages holds one entry per matching rule in
+// declaration order, and RecommendedAction comes from the highest-severity
+// matching rule (ties go to declaration order).
 type Rule struct {
 	// Expression is a CEL expression that evaluates to a boolean.
 	// Variables available are the union of signal field names and
