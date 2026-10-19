@@ -77,6 +77,17 @@ CheckVerdict is the outcome of evaluating a single check against signal values. 
 | <nobr>`Skipped`</nobr> | <nobr>`skipped`</nobr> | <nobr>`bool`</nobr> |  |
 | <nobr>`NVIDIAEndorsed`</nobr> | <nobr>`nvidia_endorsed`</nobr> | <nobr>`bool`</nobr> |  |
 
+### DriverVersion
+
+DriverVersion is the NVIDIA driver version a node is running, e.g. "575.51.03". It is a node-wide host fact, like the GPU architecture. Raw is the text the host reported, which is what an operator sees in nvidia-smi; the numeric parts let code order versions, which text cannot ("99.0" sorts above "570.0" as a string). Order versions in Go rather than in a CEL rule, which would compare them as strings. Build values with [ParseDriverVersion]: a value without Raw reads as unknown whatever its numeric parts.
+
+| Field | JSON name | Type | Description |
+|---|---|---|---|
+| <nobr>`Raw`</nobr> |  | <nobr>`string`</nobr> |  |
+| <nobr>`Major`</nobr> |  | <nobr>`int`</nobr> |  |
+| <nobr>`Minor`</nobr> |  | <nobr>`int`</nobr> |  |
+| <nobr>`Patch`</nobr> |  | <nobr>`int`</nobr> |  |
+
 ### EntityKey
 
 EntityKey is the stable identity of the entity a measurement describes. Evaluation rejects two measurements with one key that feed the same check: it cannot tell which provider to believe, so it reports neither. Construct a key with [NodeEntity], [VerifiedEntity], [ProvisionalEntity], or [SourceEntity]. The zero value is an unidentified entity: a per-entity measurement whose producer could not name it. Like a provisional key, it may only report the collection failure that left it unnamed; collected values under it are rejected, since nothing shows they describe a GPU no other provider reports. Two unidentified measurements for one check are rejected too, since nothing tells them apart.
@@ -93,6 +104,15 @@ FixedThresholdError is returned when an operator attempts to override a threshol
 |---|---|---|---|
 | <nobr>`ThresholdName`</nobr> |  | <nobr>`string`</nobr> |  |
 | <nobr>`CheckID`</nobr> |  | <nobr>`string`</nobr> |  |
+
+### Host
+
+Host is what a run knows about the node it is evaluating, independent of any one measurement. It is supplied once, when the catalog is built, and holds for every check and measurement in that run.
+
+| Field | JSON name | Type | Description |
+|---|---|---|---|
+| <nobr>`Architecture`</nobr> |  | <nobr>`string`</nobr> | Architecture is the node's GPU architecture (e.g. "GB200"). Checks scoped to other architectures are skipped, and per-architecture thresholds resolve against it. |
+| <nobr>`DriverVersion`</nobr> |  | [<nobr>`DriverVersion`</nobr>](#driverversion) | DriverVersion is the node's NVIDIA driver version, for derivations whose meaning changed between driver releases. The zero value means it could not be determined. |
 
 ### NodeVerdict
 
