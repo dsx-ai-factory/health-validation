@@ -28,15 +28,8 @@ func coerceThresholdValue(val any, tt ThresholdType) (any, error) {
 		case int64:
 			return v, nil
 		case float64:
-			// An infinity states intent — an unbounded tolerance — so
-			// saturate. Converting instead yields the opposite extreme and
-			// inverts the rule. A finite value out of range indicates
-			// something went wrong.
-			if math.IsInf(v, 0) {
-				if v > 0 {
-					return int64(math.MaxInt64), nil
-				}
-				return int64(math.MinInt64), nil
+			if err := rejectNonFinite(v, "integer"); err != nil {
+				return nil, err
 			}
 			if v != math.Trunc(v) {
 				return nil, fmt.Errorf("expected an integer, got %v", v)
@@ -57,11 +50,8 @@ func coerceThresholdValue(val any, tt ThresholdType) (any, error) {
 		case int64:
 			return exactFloat64(v)
 		case float64:
-			// NaN compares false against everything, disabling a rule in
-			// both directions; no threshold means that. An infinity does —
-			// an unbounded tolerance — so it passes.
-			if math.IsNaN(v) {
-				return nil, fmt.Errorf("expected a number, got NaN")
+			if err := rejectNonFinite(v, "number"); err != nil {
+				return nil, err
 			}
 			return v, nil
 		default:
@@ -84,6 +74,18 @@ func coerceThresholdValue(val any, tt ThresholdType) (any, error) {
 	default:
 		return nil, fmt.Errorf("unknown threshold value type %s", tt)
 	}
+}
+
+// rejectNonFinite rejects NaN and ±Inf. Neither can be enforced: NaN
+// compares false in both directions, and an infinity widens a rule past
+// every possible reading — disabling the check is how one is switched off.
+// Rejecting here also keeps them out of a resolved threshold, which
+// encoding/json cannot represent, failing output for the whole run.
+func rejectNonFinite(v float64, noun string) error {
+	if math.IsInf(v, 0) || math.IsNaN(v) {
+		return fmt.Errorf("expected a finite %s, got %v", noun, v)
+	}
+	return nil
 }
 
 // exactFloat64 converts v only when float64 holds it exactly. Above 2^53
@@ -119,9 +121,6 @@ func coerceStringList(val any) (any, error) {
 		return nil, fmt.Errorf("expected a list of strings, got %T", val)
 	}
 
-	// Values are kept verbatim: whitespace in a Go literal is the author's,
-	// not a serialization artifact, so stripping it would silently rewrite a
-	// declaration. Trimming a decoded config belongs to whoever decodes it.
 	for i := range items {
 		if items[i] == "" {
 			return nil, fmt.Errorf("expected a list of non-empty strings, item %d is empty", i)

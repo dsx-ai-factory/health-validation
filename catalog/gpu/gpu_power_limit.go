@@ -45,10 +45,8 @@ func GPUPowerLimit() health.CheckDefinition {
 					"GB300": float64(1400),
 					"H100":  float64(700),
 				},
-				ValueType: health.ThresholdFloat64,
-				ValueMin:  float64(0),
-				// The ceiling catches a milliwatt reading passed as watts.
-				ValueMax:    float64(100000),
+				ValueType:   health.ThresholdFloat64,
+				ValueMin:    float64(0),
 				Category:    health.DefaultThreshold,
 				Description: "Current and enforced power limit expected for every GPU.",
 				Unit:        "W",

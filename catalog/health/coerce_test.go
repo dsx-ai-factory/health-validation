@@ -4,6 +4,7 @@
 package health_test
 
 import (
+	"encoding/json"
 	"math"
 	"slices"
 	"strings"
@@ -79,44 +80,24 @@ func TestCoerceInputRejects(t *testing.T) {
 	}
 }
 
-// YAML resolves .inf and .nan to float64, so both reach coercion. An
-// infinity states an unbounded tolerance and is kept; NaN states nothing
-// and compares false against every bound and rule.
+// YAML resolves .inf and .nan to float64, so both reach coercion. Neither
+// is a usable threshold, and a resolved one breaks verdict encoding, so
+// both are rejected — an inapplicable check is disabled, not widened.
 func TestCoerceInputNonFinite(t *testing.T) {
 	ints := health.ThresholdSpec{ValueType: health.ThresholdInt64}
 	floats := health.ThresholdSpec{ValueType: health.ThresholdFloat64}
-
-	// Saturating keeps the rule disabled. Converting would yield the
-	// opposite extreme and make it fire on every measurement instead.
-	for _, tt := range []struct {
-		value any
-		want  any
-	}{
-		{value: math.Inf(1), want: int64(math.MaxInt64)},
-		{value: math.Inf(-1), want: int64(math.MinInt64)},
-		{value: math.Inf(1), want: math.Inf(1)},
-	} {
-		spec := ints
-		if _, isFloat := tt.want.(float64); isFloat {
-			spec = floats
-		}
-		got, err := spec.CoerceInput(tt.value)
-		if err != nil {
-			t.Errorf("CoerceInput(%v) as %s = %v, want %#v", tt.value, spec.ValueType, err, tt.want)
-			continue
-		}
-		if got != tt.want {
-			t.Errorf("CoerceInput(%v) as %s = %#v, want %#v", tt.value, spec.ValueType, got, tt.want)
-		}
-	}
 
 	for _, tt := range []struct {
 		value   any
 		wantErr string
 		spec    health.ThresholdSpec
 	}{
-		{spec: floats, value: math.NaN(), wantErr: "expected a number, got NaN"},
-		{spec: ints, value: math.NaN(), wantErr: "expected an integer, got NaN"},
+		{spec: floats, value: math.Inf(1), wantErr: "expected a finite number, got +Inf"},
+		{spec: floats, value: math.Inf(-1), wantErr: "expected a finite number, got -Inf"},
+		{spec: floats, value: math.NaN(), wantErr: "expected a finite number, got NaN"},
+		{spec: ints, value: math.Inf(1), wantErr: "expected a finite integer, got +Inf"},
+		{spec: ints, value: math.Inf(-1), wantErr: "expected a finite integer, got -Inf"},
+		{spec: ints, value: math.NaN(), wantErr: "expected a finite integer, got NaN"},
 		{spec: ints, value: 1e300, wantErr: "out of range for int64"},
 	} {
 		_, err := tt.spec.CoerceInput(tt.value)
@@ -124,6 +105,24 @@ func TestCoerceInputNonFinite(t *testing.T) {
 			t.Errorf("CoerceInput(%v) as %s error = %v, want %q",
 				tt.value, tt.spec.ValueType, err, tt.wantErr)
 		}
+	}
+}
+
+// The reason non-finite values are rejected at all: a resolved threshold
+// lands in every verdict, including a passing one, and encoding/json fails
+// the whole node verdict rather than just that check's.
+func TestVerdictEncodingRejectsNonFinite(t *testing.T) {
+	v := health.NodeVerdict{
+		CheckResults: []health.CheckVerdict{{
+			CheckID:  "probe",
+			Severity: health.Pass,
+			Thresholds: map[string]health.ResolvedThreshold{
+				"max_power_w": {Value: math.Inf(1), OriginalValue: float64(1500), Overridden: true},
+			},
+		}},
+	}
+	if _, err := json.Marshal(v); err == nil {
+		t.Fatal("marshaling a verdict with an infinite threshold succeeded, want an error")
 	}
 }
 
