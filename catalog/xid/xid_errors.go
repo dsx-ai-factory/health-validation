@@ -47,10 +47,10 @@ func resetAndService() health.RecommendedAction {
 var criticalXids = []criticalXid{
 	{code: 46, action: resetAndService(), architectures: allArchitectures, description: "GPU stopped processing"},
 	{code: 48, action: resetAndService(), architectures: allArchitectures, description: "double bit ECC error"},
-	{code: 54, action: health.Drain(health.RemediationActionCheckMechanicals), architectures: ampereHopperArchitectures, description: "auxiliary power is not connected to the GPU board"},
+	{code: 54, action: health.Drain(health.RemediationActionServiceRequired), architectures: ampereHopperArchitectures, description: "auxiliary power is not connected to the GPU board"},
 	{code: 62, action: resetAndService(), architectures: allArchitectures, description: "internal micro-controller halt"},
 	{code: 64, action: resetAndService(), architectures: allArchitectures, description: "GPU memory remapping failure"},
-	{code: 74, action: health.Drain(health.RemediationActionWorkflowNVLinkErr), architectures: ampereHopperArchitectures, description: "NVLink error"},
+	{code: 74, action: health.GenericDrain(), architectures: ampereHopperArchitectures, description: "NVLink error"},
 	{code: 79, action: resetAndService(), architectures: allArchitectures, description: "GPU has fallen off the bus"},
 	{code: 95, action: resetAndService(), architectures: allArchitectures, description: "uncontained memory error"},
 	{code: 109, action: resetAndService(), architectures: allArchitectures, description: "context switch timeout error"},
@@ -231,66 +231,74 @@ func nvlink5SubXidCodeDigit(row nvlink5DecodeRow) (string, bool) {
 	return fmt.Sprintf("%X", v), true
 }
 
-// warningClass groups warning-severity Xid codes that share an
-// architecture set and resolution bucket.
+// warningClass groups warning-severity Xid codes that share an architecture
+// set and resolution bucket. Each code becomes its own stable check.
 type warningClass struct {
-	message string
-	codes   []int64
-	action  health.RecommendedAction
+	message       string
+	architectures []string
+	codes         []int64
+	action        health.RecommendedAction
 }
 
-var commonWarningClasses = []warningClass{
+var warningClasses = []warningClass{
 	{
-		action:  health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
-		message: "Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.",
+		action:        health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+		architectures: allArchitectures,
+		message:       "GPU Xid %d detected: application-level error. Restart the faulting application; send the node for service if the error persists.",
 		codes: []int64{
 			8, 11, 13, 25, 31, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77,
 			82, 83, 84, 85, 86, 88, 89, 94,
 		},
 	},
 	{
-		action:  health.Drain(health.RemediationActionWorkflowXid45),
-		message: "GPU Xid 45 (preemptive removal) detected. Follow the Xid 45 workflow.",
-		codes:   []int64{45},
+		action:        health.Drain(health.RemediationActionWorkflowXid45),
+		architectures: allArchitectures,
+		message:       "GPU Xid %d (preemptive removal) detected. If Xid 45 occurred alone, restart NVIDIA Fabric Manager. If it accompanied another Xid, follow that Xid's remediation instead; Xid 45 may result from application termination or a GPU reset and is often not a separate fault.",
+		codes:         []int64{45},
 	},
 	{
-		action:  health.Drain(health.RemediationActionUpdateSWFW),
-		message: "GPU Xid 78 (vGPU start error) detected. Update GPU software/firmware.",
-		codes:   []int64{78},
+		action:        health.Drain(health.RemediationActionUpdateSWFW),
+		architectures: allArchitectures,
+		message:       "GPU Xid %d (vGPU start error) detected. Update GPU software/firmware.",
+		codes:         []int64{78},
+	},
+	{
+		action:        health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+		architectures: ampereHopperArchitectures,
+		message:       "GPU Xid %d detected: corrupted data sent to the GPU. Restart the faulting application; send the node for service if the error persists.",
+		codes:         []int64{80},
+	},
+	{
+		action:        health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+		architectures: hopperBlackwellArchitectures,
+		message:       "GPU Xid %d detected: application-level error. Restart the faulting application; send the node for service if the error persists.",
+		codes:         []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105},
+	},
+	{
+		action:        health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+		architectures: blackwellArchitectures,
+		message:       "GPU Xid %d detected: application-level error. Restart the faulting application; send the node for service if the error persists.",
+		codes:         []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139},
 	},
 }
-
-var ampereHopperWarningClasses = []warningClass{{
-	action:  health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
-	message: "GPU Xid 80 detected: corrupted data sent to the GPU. Restart the faulting application; send the node for service if the error persists.",
-	codes:   []int64{80},
-}}
-
-var hopperBlackwellWarningClasses = []warningClass{{
-	action:  health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
-	message: "Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.",
-	codes:   []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105},
-}}
-
-var blackwellWarningClasses = []warningClass{{
-	action:  health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
-	message: "Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.",
-	codes:   []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139},
-}}
 
 // Checks returns every Xid check shipped with the catalog: one CRITICAL
 // check per critical Xid code, one Fatal/Nonfatal check per NVLink5
 // (144-150) code, one additional per-SubXidCode check for each fault
 // subtype NVIDIA's decode table differentiates that way (see
-// [nvlink5SubXidCodeCheck]), architecture-scoped WARNING checks, and an
-// INFO check for Xid 154 (a recovery-action notice that only annotates
+// [nvlink5SubXidCodeCheck]), one architecture-scoped check per warning Xid,
+// and an INFO check for Xid 154 (a recovery-action notice that only annotates
 // another Xid).
 //
 // Every check consumes an [XidMeasurement] produced by the journal Xid
 // sensor and tests its xid_counts map. Codes whose immediate action is
 // IGNORE/empty, and Unused codes, are not represented and never fire.
 func Checks() []health.CheckDefinition {
-	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+5)
+	warningCount := 0
+	for _, class := range warningClasses {
+		warningCount += len(class.codes)
+	}
+	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+1)
 	for _, c := range criticalXids {
 		checks = append(checks, criticalCheck(c))
 	}
@@ -300,13 +308,12 @@ func Checks() []health.CheckDefinition {
 	for _, c := range nvlink5SubXidCodes {
 		checks = append(checks, nvlink5SubXidCodeCheck(c))
 	}
-	checks = append(checks,
-		warningCheck("gpu_xid_warning", "GPU Xid Warnings", allArchitectures, commonWarningClasses),
-		warningCheck("gpu_xid_warning_ampere_hopper", "Ampere and Hopper GPU Xid Warnings", ampereHopperArchitectures, ampereHopperWarningClasses),
-		warningCheck("gpu_xid_warning_hopper_blackwell", "Hopper and Blackwell GPU Xid Warnings", hopperBlackwellArchitectures, hopperBlackwellWarningClasses),
-		warningCheck("gpu_xid_warning_blackwell", "Blackwell GPU Xid Warnings", blackwellArchitectures, blackwellWarningClasses),
-		xid154Check(),
-	)
+	for _, class := range warningClasses {
+		for _, code := range class.codes {
+			checks = append(checks, warningCheck(code, class))
+		}
+	}
+	checks = append(checks, xid154Check())
 	return checks
 }
 
@@ -408,26 +415,20 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 	return def
 }
 
-// warningCheck builds one architecture-scoped WARNING check with one rule
-// per warning resolution bucket.
-func warningCheck(id, name string, architectures []string, classes []warningClass) health.CheckDefinition {
+// warningCheck builds one stable, architecture-scoped check for a warning Xid.
+func warningCheck(code int64, class warningClass) health.CheckDefinition {
 	def := baseCheck(
-		id,
-		name,
-		"Detects application-level and otherwise recoverable NVRM Xid errors in the system journal since boot, grouped by their NVIDIA Xid-catalog immediate-action resolution bucket.",
-		health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+		fmt.Sprintf("gpu_xid_%d", code),
+		fmt.Sprintf("GPU Xid %d Warning", code),
+		fmt.Sprintf("Detects warning-class NVRM Xid %d in the system journal since boot.", code),
+		class.action,
 	)
-	def.Architectures = slices.Clone(architectures)
-	rules := make([]health.Rule, 0, len(classes))
-	for _, w := range classes {
-		rules = append(rules, health.Rule{
-			Expression:        xidMatchExpr(w.codes),
-			Severity:          health.Warning,
-			Message:           w.message,
-			RecommendedAction: w.action,
-		})
-	}
-	def.Rules = rules
+	def.Architectures = slices.Clone(class.architectures)
+	def.Rules = []health.Rule{{
+		Expression: fmt.Sprintf("%d in xid_counts", code),
+		Severity:   health.Warning,
+		Message:    fmt.Sprintf(class.message, code),
+	}}
 	return def
 }
 
@@ -470,16 +471,4 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		MaturityLevel:     health.Stable,
 		RecommendedAction: recommendedAction,
 	}
-}
-
-// xidMatchExpr builds a CEL expression that is true when the xid_counts
-// map contains any of the given Xid codes, e.g.
-//
-//	xid_counts.exists(k, k in [8, 11, 25])
-func xidMatchExpr(codes []int64) string {
-	strs := make([]string, len(codes))
-	for i, c := range codes {
-		strs[i] = strconv.FormatInt(c, 10)
-	}
-	return fmt.Sprintf("xid_counts.exists(k, k in [%s])", strings.Join(strs, ", "))
 }

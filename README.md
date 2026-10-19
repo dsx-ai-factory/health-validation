@@ -214,12 +214,8 @@ The catalog includes these check families:
 | `nvlink_capabilities` | nvlink | Whether each GPU reports its expected NVLink capabilities | None |
 | `nvlink_p2p` | nvlink | Peer GPUs reachable over NVLink P2P | `max_unhealthy_p2p_peers` |
 | `rdma_linkflap_fatal` | infiniband | mlx5 RDMA link outages that stayed down past a window | `min_outage_seconds`, `fatal_flap_threshold` |
-| `gpu_xid_<code>` | xid | One CRITICAL check per critical Xid code seen in the journal | None |
+| `gpu_xid_<code>` | xid | One check per Xid code seen in the journal, with catalog-defined severity and action | None |
 | `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | None |
-| `gpu_xid_warning` | xid | Common warning Xids on A100, H100, H200, GB200, and GB300 | None |
-| `gpu_xid_warning_ampere_hopper` | xid | Xid 80 on A100, H100, and H200 | None |
-| `gpu_xid_warning_hopper_blackwell` | xid | Xids 96–105 on H100, H200, GB200, and GB300 | None |
-| `gpu_xid_warning_blackwell` | xid | Xids 126–135 and 139 on GB200 and GB300 | None |
 | `gpu_xid_154` | xid | Xid 154 (INFO — recovery action changed) | None |
 
 Each check definition carries:
@@ -235,6 +231,7 @@ Each check definition carries:
 Xid checks use the public NVIDIA Xid catalog's per-code applicability. H200
 uses the H100 applicability matrix because both products use the Hopper
 architecture; Xid 144-150 and their subtype checks remain Blackwell-only.
+Warning-class Xids are individual `gpu_xid_<code>` checks.
 
 ## Prerequisites
 

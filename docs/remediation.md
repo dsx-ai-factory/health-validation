@@ -115,8 +115,8 @@ domain in one pass once it does.
 
 ### Xid-catalog actions
 
-The per-code `gpu_xid_<code>` checks and the architecture-scoped
-`gpu_xid_warning*` checks recommend the generic actions above where they fit.
+The per-code `gpu_xid_<code>` checks recommend the generic actions above where
+they fit.
 For example, Xid 151 recommends `restart_os`, and Xid 142 recommends
 `service_required` alone. `service_required` is this repo's name for the bucket
 NVIDIA's Xid catalog calls `CONTACT_SUPPORT`.
@@ -144,11 +144,9 @@ it, and most Nonfatal rows need no remediation at all.
 
 | Action | Description |
 |---|---|
-| <nobr>`check_mechanicals`</nobr> | Check that the GPU is seated correctly and that its auxiliary power and other applicable connections are secure. Recommended for Xid 54. |
-| <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for the architecture-scoped `gpu_xid_warning*` checks, where it is followed by `service_required` (`["restart_app", "service_required"]`) should the error persist after the restart. |
+| <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for warning-class per-Xid checks, where it is followed by `service_required` (`["restart_app", "service_required"]`) should the error persist after the restart. |
 | <nobr>`update_swfw`</nobr> | Update GPU driver/firmware and any related system software to the latest supported versions. Recommended for Xid 78 (vGPU start error). |
-| <nobr>`workflow_nvlink_err`</nobr> | Follow NVIDIA's pre-NVLink5 Xid 74 workflow: decode the reported NVLink registers, inspect the affected link and its mechanical connections, run field diagnostics when indicated, and escalate persistent or unexpected bits. |
-| <nobr>`workflow_xid_45`</nobr> | Follow the Xid 45 (preemptive GPU removal) workflow: restart the fabric manager if the node is solo; otherwise this Xid typically accompanies another Xid and that Xid's guidance applies instead. |
+| <nobr>`workflow_xid_45`</nobr> | Follow the Xid 45 workflow: restart NVIDIA Fabric Manager when Xid 45 occurs alone; otherwise ignore Xid 45 and follow the accompanying Xid's remediation. |
 | <nobr>`xid_154`</nobr> | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
 
 ### Collection-failure actions
