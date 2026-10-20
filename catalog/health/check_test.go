@@ -57,6 +57,30 @@ func TestCheckDefinition_ValidateThresholdValues(t *testing.T) {
 			wantErr: "above the maximum 15",
 		},
 		{
+			name: "inverted range",
+			spec: ThresholdSpec{
+				Value:     int64(7),
+				ValueType: ThresholdInt64,
+				ValueMin:  int64(10),
+				ValueMax:  int64(5),
+				Category:  DefaultThreshold,
+			},
+			wantErr: "ValueMin 10 is above ValueMax 5",
+		},
+		{
+			// Nothing else would catch it: there is no value to test, so
+			// without this the check registers and rejects every override.
+			name: "inverted range on a required override",
+			spec: ThresholdSpec{
+				ValueType:        ThresholdInt64,
+				ValueMin:         int64(10),
+				ValueMax:         int64(5),
+				Category:         DefaultThreshold,
+				RequiredOverride: true,
+			},
+			wantErr: "ValueMin 10 is above ValueMax 5",
+		},
+		{
 			name: "per-architecture value of the wrong type",
 			spec: ThresholdSpec{
 				PerArchitecture: map[string]any{"GB200": "lots"},

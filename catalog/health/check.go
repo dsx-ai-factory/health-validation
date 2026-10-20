@@ -113,6 +113,21 @@ func validateThresholdValues(checkID, name string, spec ThresholdSpec) error {
 		return fmt.Errorf("check %q threshold %q: bounds: %w", checkID, name, err)
 	}
 
+	// Checked before the values, so an inverted range is reported as such
+	// rather than as whichever value it happens to exclude. A threshold the
+	// operator must supply has no value to exclude at all, and would
+	// otherwise register and then reject every override.
+	if spec.ValueMin != nil && spec.ValueMax != nil {
+		order, err := compareThresholdValues(spec.ValueMin, spec.ValueMax)
+		if err != nil {
+			return fmt.Errorf("check %q threshold %q: bounds: %w", checkID, name, err)
+		}
+		if order > 0 {
+			return fmt.Errorf("check %q threshold %q: ValueMin %v is above ValueMax %v",
+				checkID, name, spec.ValueMin, spec.ValueMax)
+		}
+	}
+
 	if spec.Value != nil {
 		if _, err := spec.CoerceInput(spec.Value); err != nil {
 			return fmt.Errorf("check %q threshold %q: Value: %w", checkID, name, err)
