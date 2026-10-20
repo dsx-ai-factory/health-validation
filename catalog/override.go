@@ -41,5 +41,9 @@ func (os *OverrideSet) ForCheck(checkID string) map[string]any {
 	if os.overrides == nil {
 		return nil
 	}
-	return maps.Clone(os.overrides[checkID])
+	out := maps.Clone(os.overrides[checkID])
+	for name, value := range out {
+		out[name] = cloneThresholdValue(value)
+	}
+	return out
 }
