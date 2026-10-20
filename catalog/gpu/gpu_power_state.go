@@ -31,7 +31,7 @@ func GPUPowerState() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300", "H100", "A100"},
+		Architectures:     []string{"GB200", "GB300", "H100", "A100", "VR200"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
@@ -40,7 +40,13 @@ func GPUPowerState() health.CheckDefinition {
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_gpu_pstate": {
-				Value:       int64(0),
+				PerArchitecture: map[string]any{
+					"GB200": int64(0),
+					"GB300": int64(0),
+					"H100":  int64(0),
+					"A100":  int64(0),
+					"VR200": int64(5),
+				},
 				Category:    health.DefaultThreshold,
 				Description: "Performance state every GPU must be in, as the numeric level N in P<N> (0 = P0, maximum performance). Override per fleet.",
 				Unit:        "pstate",

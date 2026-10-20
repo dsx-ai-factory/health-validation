@@ -77,6 +77,27 @@ func TestGPUPowerState(t *testing.T) {
 			wantSeverity: health.Critical,
 		},
 		{
+			name:         "vr200 at expected P5",
+			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("VR200")) },
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 5},
+			wantSeverity: health.Pass,
+		},
+		{
+			name:             "vr200 at P0 is not its expected state",
+			cat:              func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("VR200")) },
+			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
+			wantSeverity:     health.Critical,
+			wantAction:       health.GenericDrain(),
+			wantMessageParts: []string{"GPU-0", "P0", "expected P5"},
+		},
+		{
+			name:             "gb200 still expects P0",
+			cat:              func() *catalog.Catalog { return newCatalog() },
+			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 5},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"P5", "expected P0"},
+		},
+		{
 			name:           "skipped on wrong architecture",
 			cat:            wrongArchitectureCatalog,
 			measurement:    gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
