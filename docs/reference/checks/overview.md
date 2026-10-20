@@ -10,5 +10,5 @@ Every check this build registers, grouped by hardware domain. Each page lists a 
 | [NVLink](/health-validation/reference/checks/nvlink) | 6 | NVLink covers NVLink interconnect health: replay counters, link errors, and fabric state. |
 | [InfiniBand](/health-validation/reference/checks/infiniband) | 1 | InfiniBand covers InfiniBand network health: port state, error rates, and link integrity. |
 | [Node](/health-validation/reference/checks/node) | 1 | Node covers host-wide GPU-system signals that are not bound to any single device — GPU count, driver version, and similar inventory checks. |
-| [Xid](/health-validation/reference/checks/xid) | 99 | Xid covers NVRM Xid fault events logged by the NVIDIA driver to the kernel ring buffer. Xid measurements are collected separately from GPU telemetry and route only to Xid checks. |
+| [Xid](/health-validation/reference/checks/xid) | 98 | Xid covers NVRM Xid fault events logged by the NVIDIA driver to the kernel ring buffer. Xid measurements are collected separately from GPU telemetry and route only to Xid checks. |
 | [CPU](/health-validation/reference/checks/cpu) | 2 | CPU covers host processor inventory and availability signals. |

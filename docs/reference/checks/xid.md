@@ -188,30 +188,6 @@ Detects NVRM Xid 54 in the system journal since boot.
 
 **Recommended action:** operational state `drain`, then `service_required`
 
-## GPU Xid 74 (NVLink error)
-
-`gpu_xid_74`
-
-Detects NVRM Xid 74 in the system journal since boot.
-
-| Property | Value |
-|---|---|
-| Provenance | <nobr>`nvidia`</nobr> |
-| Condition scope | <nobr>`NODE`</nobr> |
-| Execution class | <nobr>`PASSIVE`</nobr> |
-| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
-| Maturity | <nobr>`stable`</nobr> |
-| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr> |
-
-**Rules**
-
-- **CRITICAL** when `74 in xid_counts`
-  - Message: GPU Xid 74 detected: NVLink error.
-
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
-
 ## GPU Xid 80 Warning
 
 `gpu_xid_80`

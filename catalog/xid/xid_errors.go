@@ -50,7 +50,6 @@ var criticalXids = []criticalXid{
 	{code: 54, action: health.Drain(health.RemediationActionServiceRequired), architectures: ampereHopperArchitectures, description: "auxiliary power is not connected to the GPU board"},
 	{code: 62, action: resetAndService(), architectures: allArchitectures, description: "internal micro-controller halt"},
 	{code: 64, action: resetAndService(), architectures: allArchitectures, description: "GPU memory remapping failure"},
-	{code: 74, action: health.GenericDrain(), architectures: ampereHopperArchitectures, description: "NVLink error"},
 	{code: 79, action: resetAndService(), architectures: allArchitectures, description: "GPU has fallen off the bus"},
 	{code: 95, action: resetAndService(), architectures: allArchitectures, description: "uncontained memory error"},
 	{code: 109, action: resetAndService(), architectures: allArchitectures, description: "context switch timeout error"},

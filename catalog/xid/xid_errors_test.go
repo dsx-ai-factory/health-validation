@@ -154,7 +154,6 @@ func TestXidErrors_NewArchitectureSpecificChecks(t *testing.T) {
 		wantSeverity health.Severity
 	}{
 		{name: "Xid 54 on A100", architecture: "A100", checkID: "gpu_xid_54", code: 54, wantSeverity: health.Critical, wantAction: health.Drain(health.RemediationActionServiceRequired)},
-		{name: "Xid 74 on H100", architecture: "H100", checkID: "gpu_xid_74", code: 74, wantSeverity: health.Critical, wantAction: health.GenericDrain()},
 		{name: "Xid 80 on H200", architecture: "H200", checkID: "gpu_xid_80", code: 80, wantSeverity: health.Warning, wantAction: health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired)},
 		{name: "Xid 136 on H100", architecture: "H100", checkID: "gpu_xid_136", code: 136, wantSeverity: health.Critical, wantAction: resetAndServiceForTest()},
 	}
