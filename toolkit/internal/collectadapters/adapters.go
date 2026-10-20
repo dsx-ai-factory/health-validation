@@ -85,12 +85,20 @@ func erroredCPU(err error) []health.Measurement {
 	return []health.Measurement{cpu.ErroredCPU(err)}
 }
 
+// adapterSource names a built-in adapter as the source of a whole-domain
+// failure, distinct from a toolkit sensor failing the same domain.
+func adapterSource(category health.Category) string { return "collect." + category.String() }
+
 func erroredGPU(err error) []health.Measurement {
-	return []health.Measurement{gpu.ErroredGPU(sourceLevelGPU, err, gpu.MeasurementSignals()...)}
+	m := gpu.ErroredGPU(sourceLevelGPU, err, gpu.MeasurementSignals()...)
+	m.SetEntityKey(health.SourceEntity(adapterSource(health.GPU)))
+	return []health.Measurement{m}
 }
 
 func erroredNVLink(err error) []health.Measurement {
-	return []health.Measurement{nvlink.ErroredNVLink(sourceLevelGPU, err, nvlink.MeasurementSignals()...)}
+	m := nvlink.ErroredNVLink(sourceLevelGPU, err, nvlink.MeasurementSignals()...)
+	m.SetEntityKey(health.SourceEntity(adapterSource(health.NVLink)))
+	return []health.Measurement{m}
 }
 
 // adaptCategory groups observations per GPU, or into one group when

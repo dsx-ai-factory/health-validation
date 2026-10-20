@@ -71,6 +71,7 @@ func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 // failures, build the measurement with [ErroredNVLink].
 type NVLinkMeasurement struct {
 	GPUID                         string `json:"gpu_id"`
+	entity                        health.EntityKey
 	errors                        []health.ErroredMeasurement
 	unsupported                   []string
 	LinkCount                     int64 `json:"link_count"`
@@ -114,6 +115,25 @@ func (NVLinkMeasurement) Category() health.Category { return health.NVLink }
 
 // EntityID implements [health.EntityIdentifier].
 func (m NVLinkMeasurement) EntityID() string { return m.GPUID }
+
+// EntityKey implements [health.EntityKeyed]. Without a key from
+// [NVLinkMeasurement.SetEntityKey], a non-empty GPUID is taken as a verified
+// ID and an empty one as unidentified.
+func (m NVLinkMeasurement) EntityKey() health.EntityKey {
+	switch {
+	case m.entity != health.EntityKey{}:
+		return m.entity
+	case m.GPUID == "":
+		return health.EntityKey{}
+	default:
+		return health.VerifiedEntity(m.GPUID)
+	}
+}
+
+// SetEntityKey records the identity evaluation keys this measurement by. Set
+// it whenever GPUID is not a verified UUID, such as a slot whose UUID could
+// not be read; GPUID then only labels the GPU in verdicts.
+func (m *NVLinkMeasurement) SetEntityKey(k health.EntityKey) { m.entity = k }
 
 // Errors implements [health.Measurement].
 func (m NVLinkMeasurement) Errors() []health.ErroredMeasurement { return m.errors }

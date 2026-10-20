@@ -93,8 +93,8 @@ func threeSlotLib() *mock.Interface {
 // TestMeasureGPUs_CustomProber installs a downstream prober via WithProbe and
 // confirms MeasureGPUs drives it once per slot with the backend-owned
 // id-encoding: the usable slot reaches Measure with its UUID; the handle-load
-// failure reaches Errored with id "nvml-index-N"; the UUID-read failure
-// reaches Errored with id "". This is the probe seam, end to end.
+// and UUID-read failures both reach Errored with id "nvml-index-N". This is
+// the probe seam, end to end.
 func TestMeasureGPUs_CustomProber(t *testing.T) {
 	b := nvml.NewWithLibrary(threeSlotLib())
 	t.Cleanup(func() { b.Close() })
@@ -111,7 +111,7 @@ func TestMeasureGPUs_CustomProber(t *testing.T) {
 	if len(p.uuids) != 1 || p.uuids[0] != "GPU-OK" {
 		t.Errorf("Measure uuids = %v, want [GPU-OK]", p.uuids)
 	}
-	wantIDs := []string{"nvml-index-1", ""}
+	wantIDs := []string{"nvml-index-1", "nvml-index-2"}
 	if len(p.ids) != len(wantIDs) {
 		t.Fatalf("Errored ids = %v, want %v", p.ids, wantIDs)
 	}
@@ -139,11 +139,12 @@ func TestMeasureGPUs_DefaultProber(t *testing.T) {
 
 	want := []struct {
 		gpuID     string
+		key       health.EntityKey
 		hasErrors bool
 	}{
-		{"GPU-OK", false},      // usable
-		{"nvml-index-1", true}, // handle load failed
-		{"", true},             // UUID read failed
+		{"GPU-OK", health.VerifiedEntity("GPU-OK"), false},            // usable
+		{"nvml-index-1", health.ProvisionalEntity("nvml", "1"), true}, // handle load failed
+		{"nvml-index-2", health.ProvisionalEntity("nvml", "2"), true}, // UUID read failed
 	}
 	for i, w := range want {
 		m, ok := ms[i].(gpu.GPUMeasurement)
@@ -152,6 +153,9 @@ func TestMeasureGPUs_DefaultProber(t *testing.T) {
 		}
 		if m.GPUID != w.gpuID {
 			t.Errorf("ms[%d].GPUID = %q, want %q", i, m.GPUID, w.gpuID)
+		}
+		if m.EntityKey() != w.key {
+			t.Errorf("ms[%d] entity = %v, want %v", i, m.EntityKey(), w.key)
 		}
 		if gotErr := len(m.Errors()) > 0; gotErr != w.hasErrors {
 			t.Errorf("ms[%d] hasErrors = %v, want %v", i, gotErr, w.hasErrors)

@@ -35,3 +35,7 @@ type Sensor interface {
 	// the resulting verdict's message.
 	Errored(err error) []health.Measurement
 }
+
+// sensorSource names a toolkit sensor as the source of a whole-domain failure,
+// so its key cannot collide with another provider's failure of that domain.
+func sensorSource(name string) string { return "toolkit." + name }

@@ -227,10 +227,12 @@ type ProbeContext struct {
 //   - Measure is called for a usable slot (handle loaded, UUID read) with a
 //     [ProbeContext] carrying the device and its usable peers, so both
 //     per-device and cross-device signals can be read.
-//   - Errored is called for a slot the backend could not fully resolve, with
-//     a pre-computed id: "nvml-index-N" when the handle itself failed to load
-//     (no UUID exists), or "" when the handle loaded but its UUID could not
-//     be read.
+//   - Errored is called for a slot the backend could not fully resolve
+//     (its handle failed to load, or its UUID could not be read), with the
+//     pre-computed id "nvml-index-N". The backend keys a built-in
+//     [gpu.GPUMeasurement] or [nvlink.NVLinkMeasurement] it returns as
+//     [health.ProvisionalEntity]("nvml", "N"); any other type is keyed by its
+//     own [health.EntityKeyed] or EntityID.
 type DeviceProber interface {
 	Measure(pc ProbeContext) health.Measurement
 	Errored(id string, err error) health.Measurement
@@ -238,8 +240,7 @@ type DeviceProber interface {
 
 // probe enumerates devices and turns each into a measurement by calling back
 // into p once per slot: Errored for a slot whose handle or UUID could not be
-// read (id pre-computed — "nvml-index-N" on handle-load failure, "" on
-// UUID-read failure), and Measure for a usable slot. Every slot is resolved
+// read (id pre-computed as "nvml-index-N"), and Measure for a usable slot. Every slot is resolved
 // before the first Measure fires, because a slot's Peers cannot be built
 // until the usable set is fully known. The only error enumeration returns —
 // a DeviceGetCount failure — propagates unchanged.
@@ -256,18 +257,14 @@ func (b *NVMLBackend) probe(p DeviceProber) ([]health.Measurement, error) {
 	measurements := make([]health.Measurement, len(devices))
 	usable := make([]ProbeDevice, 0, len(devices))
 	for i, dev := range devices {
+		// An unresolved slot has no UUID, so it is named by its NVML index.
 		if e, ok := dev.(erroredDevice); ok {
-			// A failed handle has no UUID, so encode the NVML index as the id.
-			measurements[i] = p.Errored(
-				fmt.Sprintf("nvml-index-%d", e.index),
-				&Error{Op: "DeviceGetHandleByIndex", Return: e.ret},
-			)
+			measurements[i] = slotErrored(p, e.index, &Error{Op: "DeviceGetHandleByIndex", Return: e.ret})
 			continue
 		}
 		uuid, ret := dev.GetUUID()
 		if ret != gonvml.SUCCESS {
-			// Handle loaded but UUID unreadable: id left empty.
-			measurements[i] = p.Errored("", &Error{Op: "DeviceGetUUID", Return: ret})
+			measurements[i] = slotErrored(p, i, &Error{Op: "DeviceGetUUID", Return: ret})
 			continue
 		}
 		usable = append(usable, ProbeDevice{Device: dev, UUID: uuid, Index: i})
@@ -280,6 +277,25 @@ func (b *NVMLBackend) probe(p DeviceProber) ([]health.Measurement, error) {
 		})
 	}
 	return measurements, nil
+}
+
+// nvmlSource namespaces NVML slot indexes in provisional entity keys.
+const nvmlSource = "nvml"
+
+// slotErrored builds p's errored measurement for the slot at index, keyed by
+// that slot so it cannot be mistaken for another source's slot or a UUID.
+func slotErrored(p DeviceProber, index int, err error) health.Measurement {
+	m := p.Errored(fmt.Sprintf("nvml-index-%d", index), err)
+	key := health.ProvisionalEntity(nvmlSource, strconv.Itoa(index))
+	switch v := m.(type) {
+	case gpu.GPUMeasurement:
+		v.SetEntityKey(key)
+		return v
+	case nvlink.NVLinkMeasurement:
+		v.SetEntityKey(key)
+		return v
+	}
+	return m
 }
 
 // getPeers returns the usable devices except the one whose enumeration

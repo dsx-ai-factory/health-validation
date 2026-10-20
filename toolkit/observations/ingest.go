@@ -26,9 +26,15 @@ import (
 var errNoObservation = errors.New("no observation was collected for these signals")
 
 // ToMeasurements rebuilds the catalog's measurements from observations, one
-// per measurement type and GPU (or node, for host-wide types). A GPU is
-// identified by UUID; one reported only by a source-local slot is
-// "<source>:<slot>", so slots from different sources stay distinct.
+// per measurement type and entity, keyed by [health.EntityKey] from each
+// observation's typed target. A GPU is a [health.VerifiedEntity] by UUID. One
+// reported only by a source-local slot is a [health.ProvisionalEntity] of its
+// source and slot, labeled slot:"<source>"/"<slot>" so no two slots share a
+// label; a GPU-domain observation with no target is a
+// [health.SourceEntity] of its source. A GPU reference missing its slot, or a
+// slot or source-level failure missing its source, yields an invalid key that
+// evaluation rejects. Host-wide types are one [health.NodeEntity] measurement
+// each: a run evaluates one node, so a node target's ID does not split them.
 //
 // An observation is read as one of two shapes:
 //   - <domain>.<field>, as written by [FromMeasurements], sets that field
@@ -166,7 +172,7 @@ func resolve(current *observation.Observation) (feed, bool) {
 
 type entityKey struct {
 	schema *schema
-	id     string
+	id     health.EntityKey
 }
 
 // entity accumulates one measurement.
@@ -196,8 +202,8 @@ func (b *builder) add(current *observation.Observation) {
 	if !ok {
 		return
 	}
-	id, targetErr := targetID(f.schema, current)
-	e := b.entity(f.schema, id)
+	key, label, targetErr := targetID(f.schema, current)
+	e := b.entity(f.schema, key, label)
 
 	for _, field := range f.catalog {
 		if e.fed[field] && (field != gpuIDField || !e.idFromTarget) {
@@ -230,21 +236,22 @@ func (b *builder) add(current *observation.Observation) {
 	}
 }
 
-// targetID returns the GPU a GPU-scoped observation describes, or the node
-// for a host-wide one. An empty ID groups observations that carry no
-// identity, such as a whole-source failure.
-func targetID(s *schema, current *observation.Observation) (string, error) {
+// targetID returns the entity an observation describes and, for a GPU, the
+// gpu_id label its measurement carries. The label is empty for a source-level
+// observation, which names no GPU.
+func targetID(s *schema, current *observation.Observation) (health.EntityKey, string, error) {
 	target := current.GetTarget()
 	if s.gpuID < 0 {
-		return target.GetNode().GetId(), nil
+		return health.NodeEntity(), "", nil
 	}
+	source := current.GetSource()
 	var ref *observation.GPURef
 	switch {
 	case target == nil:
 		if current.GetValue() != nil {
-			return "", fmt.Errorf("signal %q has no GPU target", current.GetSignalId())
+			return health.SourceEntity(source), "", fmt.Errorf("signal %q has no GPU target", current.GetSignalId())
 		}
-		return "", nil
+		return health.SourceEntity(source), "", nil
 	case target.GetGpu() != nil:
 		ref = target.GetGpu()
 	case target.GetNvLinkEndpoint() != nil:
@@ -252,33 +259,34 @@ func targetID(s *schema, current *observation.Observation) (string, error) {
 	case target.GetGpuPair() != nil:
 		ref = target.GetGpuPair().GetSourceGpu()
 	default:
-		return "", fmt.Errorf("signal %q does not identify a GPU target", current.GetSignalId())
+		return health.SourceEntity(source), "", fmt.Errorf("signal %q does not identify a GPU target", current.GetSignalId())
 	}
 	if uuid := ref.GetUuid(); uuid != "" {
-		return uuid, nil
+		return health.VerifiedEntity(uuid), uuid, nil
 	}
 	// A source-local slot keeps a failed UUID lookup attributable to one GPU,
 	// but only within the source that numbered it: two sources' slot 0 are
 	// not known to be the same GPU, so the slot is qualified by its source.
 	slot := ref.GetSourceLocalId()
+	key := health.ProvisionalEntity(source, slot)
 	switch {
 	case slot == "":
-		return "", fmt.Errorf("signal %q has no GPU identifier", current.GetSignalId())
-	case current.GetSource() == "":
-		return "", fmt.Errorf("signal %q has source-local GPU %q but no source", current.GetSignalId(), slot)
+		return key, "", fmt.Errorf("signal %q has no GPU identifier", current.GetSignalId())
+	case source == "":
+		return key, "", fmt.Errorf("signal %q has source-local GPU %q but no source", current.GetSignalId(), slot)
 	}
-	return current.GetSource() + ":" + slot, nil
+	return key, fmt.Sprintf("slot:%q/%q", source, slot), nil
 }
 
-func (b *builder) entity(s *schema, id string) *entity {
+func (b *builder) entity(s *schema, id health.EntityKey, label string) *entity {
 	key := entityKey{schema: s, id: id}
 	if e := b.entities[key]; e != nil {
 		return e
 	}
 	e := &entity{value: reflect.New(s.typ).Elem(), fed: make(map[string]bool), errIndex: make(map[string]int)}
 	if s.gpuID >= 0 {
-		if id != "" {
-			e.value.Field(s.gpuID).SetString(id)
+		if label != "" {
+			e.value.Field(s.gpuID).SetString(label)
 			e.fed[gpuIDField] = true
 			e.idFromTarget = true
 		} else {
@@ -386,7 +394,7 @@ func (b *builder) measurements() []health.Measurement {
 		if a.schema != b.schema {
 			return slices.Index(schemas(), a.schema) - slices.Index(schemas(), b.schema)
 		}
-		return strings.Compare(a.id, b.id)
+		return strings.Compare(a.id.String(), b.id.String())
 	})
 
 	out := make([]health.Measurement, 0, len(keys))
@@ -403,6 +411,9 @@ func (b *builder) measurements() []health.Measurement {
 		}
 
 		ptr := e.value.Addr().Interface()
+		if keyed, ok := ptr.(interface{ SetEntityKey(health.EntityKey) }); ok {
+			keyed.SetEntityKey(key.id)
+		}
 		adder := ptr.(interface{ AddError(error, ...string) })
 		for _, failure := range e.errs {
 			adder.AddError(failure.err, failure.fields...)

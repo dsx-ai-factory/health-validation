@@ -112,7 +112,7 @@ func TestToMeasurementsGroupsBySourceLocalID(t *testing.T) {
 		o.Target = observation.GPUSourceLocalTarget("3")
 	}
 
-	if m := only[gpu.GPUMeasurement](t, ToMeasurements(observations)); m.GPUID != "dcgm:3" || len(mappedErrors(m)) != 0 {
+	if m := only[gpu.GPUMeasurement](t, ToMeasurements(observations)); m.GPUID != `slot:"dcgm"/"3"` || len(mappedErrors(m)) != 0 {
 		t.Fatalf("unexpected measurement %+v, errors %v", m, m.Errors())
 	}
 }
@@ -137,7 +137,7 @@ func TestToMeasurementsKeepsSourceLocalSlotsPerSource(t *testing.T) {
 		}
 		ids = append(ids, g.GPUID)
 	}
-	if !slices.Equal(ids, []string{"dcgm:0", "nvml:0"}) {
+	if !slices.Equal(ids, []string{`slot:"dcgm"/"0"`, `slot:"nvml"/"0"`}) {
 		t.Fatalf("GPU IDs = %v, want one per source", ids)
 	}
 }

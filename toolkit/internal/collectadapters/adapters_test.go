@@ -75,6 +75,26 @@ func TestDomainAdaptersNamespaceFailedSourceLocalSlots(t *testing.T) {
 		}
 		ids[field] = true
 	}
+	// Evaluation keys them from the typed target, so they stay distinct
+	// whatever their labels.
+	keys := []health.EntityKey{health.KeyOf(got[0]), health.KeyOf(got[1])}
+	if want := []health.EntityKey{health.ProvisionalEntity("a", "b:c"), health.ProvisionalEntity("a:b", "c")}; !slices.Equal(keys, want) {
+		t.Fatalf("keys = %v, want %v", keys, want)
+	}
+}
+
+// A whole-domain failure names no GPU, so it is keyed by its source rather
+// than taking its "gpu" label as a GPU identity.
+func TestDomainAdaptersKeyDomainFailureBySource(t *testing.T) {
+	for _, a := range []*domainAdapter{GPU(), NVLink()} {
+		got := a.Errored(errors.New("unavailable"))
+		if len(got) != 1 || health.KeyOf(got[0]) != health.SourceEntity(adapterSource(a.Category())) {
+			t.Fatalf("%s: Errored = %v keyed %v, want one source-level measurement", a.Name(), got, health.KeyOf(got[0]))
+		}
+	}
+	if got := CPU().Errored(errors.New("unavailable")); health.KeyOf(got[0]) != health.NodeEntity() {
+		t.Fatalf("cpu: Errored keyed %v, want the node", health.KeyOf(got[0]))
+	}
 }
 
 func TestGPUAdapterPreservesAbsenceInterpretation(t *testing.T) {
@@ -237,6 +257,9 @@ func TestCPUAdapterMergesSources(t *testing.T) {
 			var failed []string
 			for _, e := range got.Errors() {
 				failed = append(failed, e.FailedSignals()...)
+			}
+			if health.KeyOf(got) != health.NodeEntity() {
+				t.Fatalf("CPU measurement keyed %v, want the node", health.KeyOf(got))
 			}
 			if got.PossibleCPUCount != 8 || got.OnlineCPUCount != 8 || got.NUMANodeCount != tt.want || !slices.Equal(failed, tt.failed) {
 				t.Fatalf("got %+v, failed %v; want counts 8/8/%d, failed %v", got, failed, tt.want, tt.failed)
