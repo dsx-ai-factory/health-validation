@@ -330,7 +330,7 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 		message = fmt.Sprintf("GPU Xid %d detected: %s.", c.code, c.description)
 	}
 	def.Rules = []health.Rule{{
-		Expression: fmt.Sprintf("%d in xid_counts", c.code),
+		Expression: fmt.Sprintf("%[1]d in xid_counts && xid_counts[%[1]d] >= occurrences", c.code),
 		Severity:   health.Critical,
 		Message:    message,
 	}}
@@ -368,11 +368,25 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 		health.NoAction,
 	)
 	def.RequiredSignals = []string{SignalXidCounts, SignalFatalXidCounts}
+	def.Thresholds = map[string]health.ThresholdSpec{
+		"fatal_occurrences": {
+			Value:       int64(1),
+			Category:    health.DefaultThreshold,
+			Description: "Fatal occurrences since boot that trigger the CRITICAL rule.",
+			Unit:        "count",
+		},
+		"nonfatal_occurrences": {
+			Value:       int64(1),
+			Category:    health.DefaultThreshold,
+			Description: "Nonfatal occurrences since boot that trigger the WARNING rule.",
+			Unit:        "count",
+		},
+	}
 	// NVLink5 (144-150) is Blackwell-only per NVIDIA's Xid catalog.
 	def.Architectures = slices.Clone(blackwellArchitectures)
 	def.Rules = []health.Rule{
 		{
-			Expression:        fmt.Sprintf("%d in fatal_xid_counts", c.code),
+			Expression:        fmt.Sprintf("%[1]d in fatal_xid_counts && fatal_xid_counts[%[1]d] >= fatal_occurrences", c.code),
 			Severity:          health.Critical,
 			Message:           fmt.Sprintf("GPU Xid %d detected: %s (Fatal).", c.code, c.description),
 			RecommendedAction: resetAndService(),
@@ -380,7 +394,7 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 		{
 			// xid_counts includes Fatal occurrences, so a bare membership
 			// test would report a lone Fatal occurrence as Nonfatal too.
-			Expression: fmt.Sprintf("%[1]d in xid_counts && xid_counts[%[1]d] > (%[1]d in fatal_xid_counts ? fatal_xid_counts[%[1]d] : 0)", c.code),
+			Expression: fmt.Sprintf("%[1]d in xid_counts && xid_counts[%[1]d] - (%[1]d in fatal_xid_counts ? fatal_xid_counts[%[1]d] : 0) >= nonfatal_occurrences", c.code),
 			Severity:   health.Warning,
 			Message:    fmt.Sprintf("GPU Xid %d detected: %s (Nonfatal).", c.code, c.description),
 		},
@@ -407,7 +421,7 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 	def.RequiredSignals = []string{SignalSubXidCodeCounts}
 	def.Architectures = slices.Clone(blackwellArchitectures)
 	def.Rules = []health.Rule{{
-		Expression: fmt.Sprintf("%q in sub_xid_code_counts", c.subXidCode),
+		Expression: fmt.Sprintf("%[1]q in sub_xid_code_counts && sub_xid_code_counts[%[1]q] >= occurrences", c.subXidCode),
 		Severity:   severity,
 		Message:    fmt.Sprintf("GPU Xid %s (%s) detected. Investigatory guidance: %s.", c.subXidCode, c.subcode, c.investigatory),
 	}}
@@ -424,7 +438,7 @@ func warningCheck(code int64, class warningClass) health.CheckDefinition {
 	)
 	def.Architectures = slices.Clone(class.architectures)
 	def.Rules = []health.Rule{{
-		Expression: fmt.Sprintf("%d in xid_counts", code),
+		Expression: fmt.Sprintf("%[1]d in xid_counts && xid_counts[%[1]d] >= occurrences", code),
 		Severity:   health.Warning,
 		Message:    fmt.Sprintf(class.message, code),
 	}}
@@ -441,7 +455,7 @@ func xid154Check() health.CheckDefinition {
 	)
 	def.Architectures = slices.Clone(allArchitectures)
 	def.Rules = []health.Rule{{
-		Expression: "154 in xid_counts",
+		Expression: "154 in xid_counts && xid_counts[154] >= occurrences",
 		Severity:   health.Info,
 		Message:    "GPU Xid 154 (GPU recovery action changed) observed. Informational; correlate with the accompanying Xid.",
 	}}
@@ -459,6 +473,14 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		Category:    health.Xid,
 
 		RequiredSignals: []string{SignalXidCounts},
+		Thresholds: map[string]health.ThresholdSpec{
+			"occurrences": {
+				Value:       int64(1),
+				Category:    health.DefaultThreshold,
+				Description: "Number of matching Xid occurrences since boot that causes the check to fire.",
+				Unit:        "count",
+			},
+		},
 
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
