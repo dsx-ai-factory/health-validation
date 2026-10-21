@@ -392,8 +392,8 @@ func TestMappedSignalsFor(t *testing.T) {
 		t.Fatalf("Xid feeds = %v, want one per Xid signal", xidFeeds)
 	}
 	for id, catalog := range xidFeeds {
-		if !slices.Equal(catalog, xid.MeasurementSignals) {
-			t.Fatalf("Xid feed %s = %v, want %v", id, catalog, xid.MeasurementSignals)
+		if !slices.Equal(catalog, xid.MeasurementSignals()) {
+			t.Fatalf("Xid feed %s = %v, want %v", id, catalog, xid.MeasurementSignals())
 		}
 	}
 	// Every mapped signal belongs to exactly one domain.
@@ -420,7 +420,7 @@ func TestToMeasurementsRejectsMixedXidForms(t *testing.T) {
 			xids = append(xids, typed)
 		}
 	}
-	if len(xids) != 1 || len(xids[0].Errors()) != 1 || !slices.Equal(xids[0].Errors()[0].FailedSignals(), xid.MeasurementSignals) {
+	if len(xids) != 1 || len(xids[0].Errors()) != 1 || !slices.Equal(xids[0].Errors()[0].FailedSignals(), xid.MeasurementSignals()) {
 		t.Fatalf("mixed Xid forms = %+v, want one errored measurement", xids)
 	}
 }

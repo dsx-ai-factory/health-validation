@@ -128,7 +128,7 @@ func MappedFeeds(category health.Category) map[string][]string {
 		// The Xid measurement is built from all its event fields together,
 		// so each one feeds every Xid catalog signal.
 		for _, id := range xidsignals.All().IDs() {
-			feeds[id] = slices.Clone(xid.MeasurementSignals)
+			feeds[id] = xid.MeasurementSignals()
 		}
 		return feeds
 	}

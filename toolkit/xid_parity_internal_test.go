@@ -166,10 +166,22 @@ func xidParityVerdicts(t *testing.T, verdict health.NodeVerdict) map[string]xidP
 	for _, result := range verdict.CheckResults {
 		out[result.CheckID] = xidParityVerdict{action: result.RecommendedAction, severity: result.Severity}
 	}
-	if len(out) != len(xid.Checks()) {
-		t.Fatalf("evaluated %d checks %v, want %d", len(out), slices.Sorted(maps.Keys(out)), len(xid.Checks()))
+	if skipped := architectureSkips(verdict); len(out)+skipped != len(xid.Checks()) {
+		t.Fatalf("evaluated %d checks %v and %d architecture skips, want %d", len(out), slices.Sorted(maps.Keys(out)), skipped, len(xid.Checks()))
 	}
 	return out
+}
+
+// architectureSkips counts the Xid checks skipped as inapplicable to the
+// catalog's architecture. Other skips would hide a domain that never ran.
+func architectureSkips(verdict health.NodeVerdict) int {
+	n := 0
+	for _, s := range verdict.SkippedChecks {
+		if s.Category == health.Xid && s.SkipReason == health.ArchitectureUnsupported {
+			n++
+		}
+	}
+	return n
 }
 
 func requireXidParity(ctx context.Context, t *testing.T, f xidParityFixture) {

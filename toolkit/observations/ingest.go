@@ -65,7 +65,7 @@ func ToMeasurements(observations []*observation.Observation) []health.Measuremen
 	m := canonicalXid(xidObservations)
 	if slices.ContainsFunc(out, func(other health.Measurement) bool { return other.Category() == health.Xid }) {
 		out = slices.DeleteFunc(out, func(other health.Measurement) bool { return other.Category() == health.Xid })
-		m = xid.ErroredXid(xidsignals.WindowBoot, errors.New("xid observed in both canonical and field form"), xid.MeasurementSignals...)
+		m = xid.ErroredXid(xidsignals.WindowBoot, errors.New("xid observed in both canonical and field form"), xid.MeasurementSignals()...)
 	}
 	return append(out, m)
 }

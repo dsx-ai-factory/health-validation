@@ -15,5 +15,5 @@ func XID() *domainAdapter {
 }
 
 func erroredXid(err error) []health.Measurement {
-	return []health.Measurement{xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals...)}
+	return []health.Measurement{xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)}
 }

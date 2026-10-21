@@ -33,11 +33,11 @@ var xidSignals = func() map[string]bool {
 // every failure is a timeout.
 func canonicalXid(obs []*observation.Observation) health.Measurement {
 	if err := firstXidFailure(obs); err != nil {
-		return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals...)
+		return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)
 	}
 	m, err := buildXid(obs)
 	if err != nil {
-		return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals...)
+		return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)
 	}
 	return m
 }

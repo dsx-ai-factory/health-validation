@@ -62,8 +62,8 @@ func onlyXidError(t *testing.T, measurements []health.Measurement) error {
 	if len(m.Errors()) != 1 {
 		t.Fatalf("want one error, got %v", m.Errors())
 	}
-	if got := m.Errors()[0].FailedSignals(); !reflect.DeepEqual(got, xid.MeasurementSignals) {
-		t.Fatalf("failed signals = %v, want %v", got, xid.MeasurementSignals)
+	if got := m.Errors()[0].FailedSignals(); !reflect.DeepEqual(got, xid.MeasurementSignals()) {
+		t.Fatalf("failed signals = %v, want %v", got, xid.MeasurementSignals())
 	}
 	return m.Errors()[0].Err()
 }
@@ -206,8 +206,8 @@ func TestXIDAdapterTimeoutKeepsRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(verdict.CheckResults) != len(xid.Checks()) {
-		t.Fatalf("evaluated %d checks, want %d", len(verdict.CheckResults), len(xid.Checks()))
+	if skipped := architectureSkips(verdict); len(verdict.CheckResults)+skipped != len(xid.Checks()) {
+		t.Fatalf("evaluated %d checks and %d architecture skips, want %d", len(verdict.CheckResults), skipped, len(xid.Checks()))
 	}
 	for _, result := range verdict.CheckResults {
 		if result.Severity != health.Critical || !result.RecommendedAction.Equal(health.Drain(health.RemediationActionRetryCollection)) {
@@ -256,4 +256,16 @@ func TestXIDAdapterAgreesWithToMeasurements(t *testing.T) {
 	if direct.XidCounts[79] != 1 {
 		t.Fatalf("ToMeasurements counts = %v, want Xid 79", direct.XidCounts)
 	}
+}
+
+// architectureSkips counts the Xid checks skipped as inapplicable to the
+// catalog's architecture. Other skips would hide a domain that never ran.
+func architectureSkips(verdict health.NodeVerdict) int {
+	n := 0
+	for _, s := range verdict.SkippedChecks {
+		if s.Category == health.Xid && s.SkipReason == health.ArchitectureUnsupported {
+			n++
+		}
+	}
+	return n
 }

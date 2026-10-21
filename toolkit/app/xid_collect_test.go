@@ -59,10 +59,22 @@ func runXidApp(t *testing.T, a *App, wantCode int) map[string]health.CheckVerdic
 			out[result.CheckID] = result
 		}
 	}
-	if len(out) != len(xid.Checks()) {
-		t.Fatalf("got %d Xid verdicts, want %d", len(out), len(xid.Checks()))
+	if skipped := architectureSkips(verdict); len(out)+skipped != len(xid.Checks()) {
+		t.Fatalf("got %d Xid verdicts and %d architecture skips, want %d", len(out), skipped, len(xid.Checks()))
 	}
 	return out
+}
+
+// architectureSkips counts the Xid checks skipped as inapplicable to the
+// catalog's architecture. Other skips would hide a domain that never ran.
+func architectureSkips(verdict health.NodeVerdict) int {
+	n := 0
+	for _, s := range verdict.SkippedChecks {
+		if s.Category == health.Xid && s.SkipReason == health.ArchitectureUnsupported {
+			n++
+		}
+	}
+	return n
 }
 
 func TestRunCommandCollectsXidThroughBridge(t *testing.T) {
