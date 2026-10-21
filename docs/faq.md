@@ -71,7 +71,7 @@ All active overrides appear in `thresholds[name].overridden: true` in the output
 
 ## What Go version is required?
 
-Go 1.27.2, as declared in each module's `go.mod`. The repo has four Go modules: `catalog`, `toolkit`, `collect`, and `agentkit`.
+Go 1.27.3, as declared in each module's `go.mod`. The repo has four Go modules: `catalog`, `toolkit`, `collect`, and `agentkit`.
 
 ## What hardware is covered?
 

@@ -235,7 +235,7 @@ Warning-class Xids are individual `gpu_xid_<code>` checks.
 
 ## Prerequisites
 
-- go 1.27.2
+- go 1.27.3
 - Linux sysfs exposing `/sys/devices/system/cpu/{possible,online}` and `/sys/devices/system/node/online` (required for CPU collection)
 - NVIDIA driver (required for the GPU sensor; not required if you supply measurements directly)
 - NVML (libnvidia-ml) for the NVML-backed sensor
