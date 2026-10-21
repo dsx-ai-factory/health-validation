@@ -568,6 +568,23 @@ func TestXidErrors_NVLink5_OccurrencesThresholdsCanBeOverriddenIndependently(t *
 	}
 }
 
+func TestXidErrors_NVLink5_ZeroNonfatalThresholdDoesNotMatchFatalOccurrence(t *testing.T) {
+	v, err := xidCatalog(
+		t,
+		thresholdOverride("gpu_xid_149", "nonfatal_occurrences", 0),
+	).Evaluate("gpu_xid_149", nvlink5MeasurementFor(149, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Severity != health.Critical {
+		t.Errorf("Severity = %v, want CRITICAL", v.Severity)
+	}
+	want := []string{"GPU Xid 149 detected: NVLink NETIR error (Fatal)."}
+	if !slices.Equal(v.Messages, want) {
+		t.Errorf("Messages = %q, want %q", v.Messages, want)
+	}
+}
+
 // intrInfoForSubXidCode builds an IntrInfo register value whose
 // fault-subtype bits (IntrInfo[25:20]) encode subcode's digit, e.g.
 // "149.4" -> "0x00400000", so a test measurement carries the raw field

@@ -394,7 +394,7 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 		{
 			// xid_counts includes Fatal occurrences, so a bare membership
 			// test would report a lone Fatal occurrence as Nonfatal too.
-			Expression: fmt.Sprintf("%[1]d in xid_counts && xid_counts[%[1]d] - (%[1]d in fatal_xid_counts ? fatal_xid_counts[%[1]d] : 0) >= nonfatal_occurrences", c.code),
+			Expression: fmt.Sprintf("%[1]d in xid_counts && xid_counts[%[1]d] > (%[1]d in fatal_xid_counts ? fatal_xid_counts[%[1]d] : 0) && xid_counts[%[1]d] - (%[1]d in fatal_xid_counts ? fatal_xid_counts[%[1]d] : 0) >= nonfatal_occurrences", c.code),
 			Severity:   health.Warning,
 			Message:    fmt.Sprintf("GPU Xid %d detected: %s (Nonfatal).", c.code, c.description),
 		},

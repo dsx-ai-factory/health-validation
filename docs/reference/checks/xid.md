@@ -1983,7 +1983,7 @@ Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fat
 - **CRITICAL** when `144 in fatal_xid_counts && fatal_xid_counts[144] >= fatal_occurrences`
   - Message: GPU Xid 144 detected: NVLink SAW error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `144 in xid_counts && xid_counts[144] - (144 in fatal_xid_counts ? fatal_xid_counts[144] : 0) >= nonfatal_occurrences`
+- **WARNING** when `144 in xid_counts && xid_counts[144] > (144 in fatal_xid_counts ? fatal_xid_counts[144] : 0) && xid_counts[144] - (144 in fatal_xid_counts ? fatal_xid_counts[144] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 144 detected: NVLink SAW error (Nonfatal).
 
 ## GPU Xid 145 (NVLink RLW error)
@@ -2015,7 +2015,7 @@ Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fat
 - **CRITICAL** when `145 in fatal_xid_counts && fatal_xid_counts[145] >= fatal_occurrences`
   - Message: GPU Xid 145 detected: NVLink RLW error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `145 in xid_counts && xid_counts[145] - (145 in fatal_xid_counts ? fatal_xid_counts[145] : 0) >= nonfatal_occurrences`
+- **WARNING** when `145 in xid_counts && xid_counts[145] > (145 in fatal_xid_counts ? fatal_xid_counts[145] : 0) && xid_counts[145] - (145 in fatal_xid_counts ? fatal_xid_counts[145] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 145 detected: NVLink RLW error (Nonfatal).
 
 ## GPU Xid 146 (NVLink TLW error)
@@ -2047,7 +2047,7 @@ Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fat
 - **CRITICAL** when `146 in fatal_xid_counts && fatal_xid_counts[146] >= fatal_occurrences`
   - Message: GPU Xid 146 detected: NVLink TLW error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `146 in xid_counts && xid_counts[146] - (146 in fatal_xid_counts ? fatal_xid_counts[146] : 0) >= nonfatal_occurrences`
+- **WARNING** when `146 in xid_counts && xid_counts[146] > (146 in fatal_xid_counts ? fatal_xid_counts[146] : 0) && xid_counts[146] - (146 in fatal_xid_counts ? fatal_xid_counts[146] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 146 detected: NVLink TLW error (Nonfatal).
 
 ## GPU Xid 147 (NVLink TREX error)
@@ -2079,7 +2079,7 @@ Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fat
 - **CRITICAL** when `147 in fatal_xid_counts && fatal_xid_counts[147] >= fatal_occurrences`
   - Message: GPU Xid 147 detected: NVLink TREX error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `147 in xid_counts && xid_counts[147] - (147 in fatal_xid_counts ? fatal_xid_counts[147] : 0) >= nonfatal_occurrences`
+- **WARNING** when `147 in xid_counts && xid_counts[147] > (147 in fatal_xid_counts ? fatal_xid_counts[147] : 0) && xid_counts[147] - (147 in fatal_xid_counts ? fatal_xid_counts[147] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 147 detected: NVLink TREX error (Nonfatal).
 
 ## GPU Xid 148 (NVLink NVLPW_CTRL error)
@@ -2111,7 +2111,7 @@ Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fat
 - **CRITICAL** when `148 in fatal_xid_counts && fatal_xid_counts[148] >= fatal_occurrences`
   - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `148 in xid_counts && xid_counts[148] - (148 in fatal_xid_counts ? fatal_xid_counts[148] : 0) >= nonfatal_occurrences`
+- **WARNING** when `148 in xid_counts && xid_counts[148] > (148 in fatal_xid_counts ? fatal_xid_counts[148] : 0) && xid_counts[148] - (148 in fatal_xid_counts ? fatal_xid_counts[148] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error (Nonfatal).
 
 ## GPU Xid 149 (NVLink NETIR error)
@@ -2143,7 +2143,7 @@ Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fat
 - **CRITICAL** when `149 in fatal_xid_counts && fatal_xid_counts[149] >= fatal_occurrences`
   - Message: GPU Xid 149 detected: NVLink NETIR error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `149 in xid_counts && xid_counts[149] - (149 in fatal_xid_counts ? fatal_xid_counts[149] : 0) >= nonfatal_occurrences`
+- **WARNING** when `149 in xid_counts && xid_counts[149] > (149 in fatal_xid_counts ? fatal_xid_counts[149] : 0) && xid_counts[149] - (149 in fatal_xid_counts ? fatal_xid_counts[149] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 149 detected: NVLink NETIR error (Nonfatal).
 
 ## GPU Xid 149.1 (NETIR_LINK_EVT/NETIR_LINK_DOWN)
@@ -2771,7 +2771,7 @@ Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fat
 - **CRITICAL** when `150 in fatal_xid_counts && fatal_xid_counts[150] >= fatal_occurrences`
   - Message: GPU Xid 150 detected: NVLink MSE error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `150 in xid_counts && xid_counts[150] - (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) >= nonfatal_occurrences`
+- **WARNING** when `150 in xid_counts && xid_counts[150] > (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) && xid_counts[150] - (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 150 detected: NVLink MSE error (Nonfatal).
 
 ## GPU Xid 151 (key rotation error)
