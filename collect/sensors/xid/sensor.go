@@ -54,34 +54,41 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	if err != nil {
 		return nil, fmt.Errorf("select Xid signals: %w", err)
 	}
+	// journald stamps entries with its own clock when it writes them, so an
+	// entry written before a backward clock step reads as in the future.
+	now := timestamppb.Now()
+	if cycle := op.Cycle(); cycle != nil {
+		now = timestamppb.New(cycle.StartedAt())
+	}
 	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
 	if len(selected) == 0 {
 		return batch, nil
 	}
 	if !s.mu.TryLock() {
-		batch.Observations = scanFailure(selected, errInUse)
+		batch.Observations = scanFailure(selected, now, errInUse)
 		return batch, nil
 	}
 	defer s.mu.Unlock()
 
-	scan := &scan{want: map[string]bool{}}
+	scan := &scan{want: map[string]bool{}, at: now}
 	for _, definition := range selected {
 		scan.want[definition.ID()] = true
 	}
 	if err := s.reader.ReadKernelBoot(ctx, scan.entry); err != nil {
-		batch.Observations = scanFailure(selected, err)
+		batch.Observations = scanFailure(selected, now, err)
 		return batch, nil
 	}
 	batch.Observations = scan.observations
 	if scan.want[xidsignals.ScanWindow.ID()] {
 		batch.Observations = append(batch.Observations,
-			value(xidsignals.ScanWindow, observation.NodeTarget(""), timestamppb.Now(), stringValue(xidsignals.WindowBoot)))
+			value(xidsignals.ScanWindow, observation.NodeTarget(""), now, stringValue(xidsignals.WindowBoot)))
 	}
 	return batch, nil
 }
 
 type scan struct {
 	want         map[string]bool
+	at           *timestamppb.Timestamp
 	observations []*observation.Observation
 	entries      int
 }
@@ -95,19 +102,13 @@ func (s *scan) entry(e journal.Entry) error {
 		return fmt.Errorf("journal entry %d has no boot ID or cursor: %w", s.entries, journal.ErrMalformedEntry)
 	}
 	target := func() *observation.ObservationTarget { return observation.JournalEntryTarget(e.BootID, e.Cursor) }
-	if e.Realtime.IsZero() {
-		return s.parseFailure(target(), timestamppb.Now(), &xidsignals.ParseError{
-			Reason: xidsignals.ReasonMissingTimestamp, Detail: "the journal entry has no realtime timestamp",
-		})
-	}
-	at := func() *timestamppb.Timestamp { return timestamppb.New(e.Realtime) }
 	event, err := xidsignals.Parse(e.Message)
 	if err != nil {
-		return s.parseFailure(target(), at(), err)
+		return s.parseFailure(target(), err)
 	}
 	add := func(definition collect.Signal, v *observation.Value) {
 		if s.want[definition.ID()] {
-			s.observations = append(s.observations, value(definition, target(), at(), v))
+			s.observations = append(s.observations, value(definition, target(), s.at, v))
 		}
 	}
 	add(xidsignals.Code, intValue(event.Code))
@@ -143,13 +144,13 @@ func (s *scan) entry(e journal.Entry) error {
 
 // parseFailure records a parse error on the entry's code. When the code is
 // not selected there is no signal to carry it, so the scan fails instead.
-func (s *scan) parseFailure(target *observation.ObservationTarget, at *timestamppb.Timestamp, err error) error {
+func (s *scan) parseFailure(target *observation.ObservationTarget, err error) error {
 	var parseErr *xidsignals.ParseError
 	if !errors.As(err, &parseErr) || !s.want[xidsignals.Code.ID()] {
 		return fmt.Errorf("entry %d: %w", s.entries, err)
 	}
 	s.observations = append(s.observations, observation.NewCollectionErrorObservation(
-		xidsignals.Code.ID(), xidsignals.Code.Unit(), ID, "parse", target, at, &observation.CollectionError{
+		xidsignals.Code.ID(), xidsignals.Code.Unit(), ID, "parse", target, s.at, &observation.CollectionError{
 			Category:    observation.CollectionErrorCategoryParseError,
 			SourceError: parseErr.Reason,
 			Detail:      fmt.Sprintf("entry %d: %s", s.entries, parseErr.Detail),
@@ -157,8 +158,7 @@ func (s *scan) parseFailure(target *observation.ObservationTarget, at *timestamp
 	return nil
 }
 
-func scanFailure(selected collect.Signals, err error) []*observation.Observation {
-	now := timestamppb.Now()
+func scanFailure(selected collect.Signals, now *timestamppb.Timestamp, err error) []*observation.Observation {
 	out := make([]*observation.Observation, 0, len(selected))
 	for _, definition := range selected {
 		out = append(out, observation.NewCollectionErrorObservation(

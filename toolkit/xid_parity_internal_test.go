@@ -211,6 +211,7 @@ func TestXidCollectParity(t *testing.T) {
 		{name: "unattributed NVLink5", entries: xidLines("NVRM: Xid (PCI:0018:01:00): 149, pid='<unknown>', name=<unknown>, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)")},
 		{name: "unattributed ordinary", entries: xidLines("NVRM: Xid (PCI:0000:01:00): 79, pid='<unknown>', name=python3, x")},
 		{name: "unterminated NVLink5 tail", entries: xidLines("NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000")},
+		{name: "Xid stamped ahead of the clock", entries: []xidParityEntry{{at: time.Now().Add(time.Hour), message: xid79Line}}},
 		{name: "Xid text without a device group", entries: xidLines(
 			"Out of memory: Killed process 4242 (NVRM: Xid x) total-vm:1024kB, anon-rss:512kB, file-rss:0kB", "NVRM: Xid error: xyz, invalid data", "NVRM: Xid (invalid): some error")},
 		{name: "unreadable journal", legacyErr: errors.New("journal unreadable, cannot confirm Xid state")},

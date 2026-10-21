@@ -23,7 +23,10 @@ import (
 
 const bootID = "0123456789abcdef0123456789abcdef"
 
-var entryTime = time.Date(2026, 10, 1, 12, 0, 0, 123456000, time.UTC)
+var (
+	entryTime = time.Date(2026, 10, 1, 12, 0, 0, 123456000, time.UTC)
+	scanTime  = entryTime.Add(24 * time.Hour)
+)
 
 func entryLine(cursor string, at time.Time, message string) string {
 	return fmt.Sprintf(`{"__CURSOR":%q,"__REALTIME_TIMESTAMP":"%d","_BOOT_ID":%q,"MESSAGE":%q}`+"\n", cursor, at.UnixMicro(), bootID, message)
@@ -50,7 +53,7 @@ func exitError(t *testing.T) error {
 
 func measure(t *testing.T, ctx context.Context, run journal.Runner, opts ...collect.OpOption) *observation.ObservationBatch {
 	t.Helper()
-	cycle, err := collect.NewCycle("cycle-1", time.Now())
+	cycle, err := collect.NewCycle("cycle-1", scanTime)
 	require.NoError(t, err)
 	batch, err := New(journal.New(run)).Measure(ctx, append([]collect.OpOption{collect.WithCycle(cycle)}, opts...)...)
 	require.NoError(t, err)
@@ -103,8 +106,9 @@ func TestMeasureEmitsEventsAndMarker(t *testing.T) {
 		require.Equal(t, int64(1234), got[xidsignals.PID.ID()+"|"+cursor].GetValue().GetIntValue())
 		require.Equal(t, "python3", got[xidsignals.ProcessName.ID()+"|"+cursor].GetValue().GetStringValue())
 	}
-	require.Equal(t, entryTime, got[xidsignals.Code.ID()+"|c2"].GetObservedAt().AsTime())
-	require.Equal(t, entryTime.Add(time.Second), got[xidsignals.Code.ID()+"|c3"].GetObservedAt().AsTime())
+	for _, key := range []string{xidsignals.Code.ID() + "|c2", xidsignals.Code.ID() + "|c3", xidsignals.ScanWindow.ID() + "|"} {
+		require.Equal(t, scanTime, got[key].GetObservedAt().AsTime(), key)
+	}
 
 	require.Equal(t, "NETIR_LINK_EVT", got[xidsignals.NVLink5SubComponent.ID()+"|c4"].GetValue().GetStringValue())
 	require.True(t, got[xidsignals.NVLink5Fatal.ID()+"|c4"].GetValue().GetBoolValue())
@@ -169,16 +173,21 @@ func TestMeasureIgnoresProcessNamedLikeXid(t *testing.T) {
 	require.Equal(t, xidsignals.ScanWindow.ID(), batch.GetObservations()[0].GetSignalId())
 }
 
-func TestMeasureMissingTimestamp(t *testing.T) {
+// TestMeasureStampsScanTime reads entries whatever journald's write time,
+// including one stamped after the scan by a clock later stepped back.
+func TestMeasureStampsScanTime(t *testing.T) {
 	stdout := entryLine("c1", time.UnixMicro(0), "NVRM: Xid (PCI:0000:01:00): 79") +
-		`{"__CURSOR":"c2","_BOOT_ID":"` + bootID + `","MESSAGE":"NVRM: Xid (PCI:0000:01:00): 79"}` + "\n"
+		`{"__CURSOR":"c2","_BOOT_ID":"` + bootID + `","MESSAGE":"NVRM: Xid (PCI:0000:01:00): 79"}` + "\n" +
+		entryLine("c3", scanTime.Add(time.Hour), "NVRM: Xid (PCI:0000:01:00): 79")
 	got := keyed(t, measure(t, context.Background(), lines(stdout)))
-	require.Len(t, got, 3)
-	for _, cursor := range []string{"c1", "c2"} {
-		o := got[xidsignals.Code.ID()+"|"+cursor]
-		require.NotNil(t, o, cursor)
-		require.Equal(t, xidsignals.ReasonMissingTimestamp, o.GetCollectionError().GetSourceError())
-		require.Positive(t, o.GetObservedAt().GetSeconds())
+	require.Len(t, got, 7)
+	for _, cursor := range []string{"c1", "c2", "c3"} {
+		for _, id := range []string{xidsignals.Code.ID(), xidsignals.PCIAddress.ID()} {
+			o := got[id+"|"+cursor]
+			require.NotNil(t, o, id+"|"+cursor)
+			require.NotNil(t, o.GetValue(), id+"|"+cursor)
+			require.Equal(t, scanTime, o.GetObservedAt().AsTime())
+		}
 	}
 }
 

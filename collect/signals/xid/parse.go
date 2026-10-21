@@ -14,7 +14,6 @@ const (
 	ReasonUnrecognizedFormat = "unrecognized_format"
 	ReasonInvalidCode        = "invalid_code"
 	ReasonMissingPCIAddress  = "missing_pci_address"
-	ReasonMissingTimestamp   = "missing_timestamp"
 )
 
 var reasonDetails = map[string]string{
