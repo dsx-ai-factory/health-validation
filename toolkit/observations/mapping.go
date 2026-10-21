@@ -21,11 +21,13 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
 // mapping relates one collect signal to the catalog
@@ -49,6 +51,7 @@ var mappings = []mapping{
 	{signal: cpusignals.PossibleCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalPossibleCPUCount}, unit: "1"},
 	{signal: cpusignals.OnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalOnlineCPUCount}, unit: "1"},
 	{signal: cpusignals.NUMANodeOnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalNUMANodeCount}, unit: "1"},
+	{signal: gpuinventory.GPUCount, measurement: node.NodeMeasurement{}, catalog: []string{node.SignalGPUCount}, unit: "1"},
 	{signal: gpusignals.PowerDraw, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalAveragePowerDrawW}, unit: "watts"},
 	{signal: gpusignals.PowerLimitRequested, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalPowerLimitW}, unit: "watts"},
 	{signal: gpusignals.PowerLimitEnforced, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalEnforcedPowerLimitW}, unit: "watts"},

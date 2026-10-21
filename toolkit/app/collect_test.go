@@ -28,19 +28,41 @@ import (
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const customCountSignal = "test.node.custom_count"
 
-func TestCPUDomainDefaultsToCollectSensor(t *testing.T) {
-	sources, adapters := New().builtinCollect()
-	if len(sources) != 1 || sources[0].ID() != cpusensor.ID || len(adapters) != 1 || adapters[0].Name() != "cpu" {
-		t.Fatalf("default CPU domain = %v, %v; want the sysfs collect sensor and cpu adapter", sources, adapters)
+func TestBuiltinDomainsDefaultToCollectSensors(t *testing.T) {
+	ids := func(sources []collect.Sensor, adapters []CollectAdapter) ([]string, []string) {
+		var sourceIDs, adapterNames []string
+		for _, s := range sources {
+			sourceIDs = append(sourceIDs, s.ID())
+		}
+		for _, a := range adapters {
+			adapterNames = append(adapterNames, a.Name())
+		}
+		return sourceIDs, adapterNames
 	}
-	sources, adapters = New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})).builtinCollect()
-	if len(sources) != 0 || len(adapters) != 0 {
-		t.Fatalf("WithCPUBackend kept collect CPU domain: %v, %v", sources, adapters)
+	host := fakeHost{b: spyBackend{called: new(bool)}}
+	for _, tc := range []struct {
+		app      *App
+		name     string
+		sources  []string
+		adapters []string
+	}{
+		{name: "default", app: New(), sources: []string{cpusensor.ID, gpuinventory.SensorID}, adapters: []string{"cpu", "node"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{gpuinventory.SensorID}, adapters: []string{"node"}},
+		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{cpusensor.ID}, adapters: []string{"cpu"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.app.host = host
+			sources, adapters := ids(tc.app.builtinCollect())
+			if !slices.Equal(sources, tc.sources) || !slices.Equal(adapters, tc.adapters) {
+				t.Fatalf("built-in sources=%v adapters=%v, want %v and %v", sources, adapters, tc.sources, tc.adapters)
+			}
+		})
 	}
 }
 
@@ -506,7 +528,7 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 					return collect.Signals{collect.NewSignal(customCountSignal, "1"), nil}
 				}}).WithCollectAdapters(customCountAdapter())
 			case "no adapter":
-				a.WithCollect(sensor)
+				a.WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})).WithCollect(sensor)
 			case "nil adapter":
 				a.WithCollect(sensor).WithCollectAdapters(nil)
 			case "typed nil adapter":

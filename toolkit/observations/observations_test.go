@@ -17,6 +17,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
 func TestToMeasurementsGPU(t *testing.T) {
@@ -380,8 +381,11 @@ func TestMappedSignalsFor(t *testing.T) {
 	if got := MappedSignalsFor(health.CPU); !slices.Equal(got, cpuIDs) {
 		t.Fatalf("CPU signals = %v, want %v", got, cpuIDs)
 	}
+	if got := MappedSignalsFor(health.Node); !slices.Equal(got, []string{gpuinventory.GPUCount.ID()}) {
+		t.Fatalf("Node signals = %v, want %v", got, gpuinventory.GPUCount.ID())
+	}
 	// Every mapped signal belongs to exactly one domain.
-	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink))
+	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.Node), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink))
 	if !slices.Equal(perDomain, MappedSignals()) {
 		t.Fatalf("per-domain signals %v do not partition %v", perDomain, MappedSignals())
 	}

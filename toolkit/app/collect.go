@@ -94,13 +94,19 @@ func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 
 // builtinCollect returns the stock CLI's collect-backed domains. A domain
 // moves here from the legacy sensor list in runCommand when it migrates; its
-// With*Backend override keeps the legacy sensor instead.
+// With*Backend override keeps the legacy sensor instead. The node domain
+// reads the host GPU inventory that architecture discovery already read in
+// this cycle, so counting GPUs does not enumerate them again.
 func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 	var sources []collect.Sensor
 	var adapters []CollectAdapter
 	if a.cpu == nil {
 		sources = append(sources, cpusensor.New(nil))
 		adapters = append(adapters, collectadapters.CPU())
+	}
+	if a.node == nil {
+		sources = append(sources, a.host.gpuInventory().Sensor())
+		adapters = append(adapters, collectadapters.Node())
 	}
 	return sources, adapters
 }
@@ -153,8 +159,22 @@ type declaredAdapter struct {
 	category health.Category
 }
 
-// collectSensors resolves registered sensors and adapters, plus the given
-// built-ins, collects every source once under one cycle, and returns toolkit
+// newCycle starts one collection pass whose sources each get timeout.
+func newCycle(timeout time.Duration) (*collect.Cycle, error) {
+	return collect.NewCycleWithTimeout(uuid.NewString(), time.Now().UTC(), timeout)
+}
+
+// collectSensors is [App.collectSensorsIn] under a fresh cycle.
+func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter, required requiredSignals) ([]toolkit.Sensor, error) {
+	cycle, err := newCycle(timeout)
+	if err != nil {
+		return nil, err
+	}
+	return a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
+}
+
+// collectSensorsIn resolves registered sensors and adapters, plus the given
+// built-ins, collects every source once under cycle, and returns toolkit
 // sensors that convert the cached observations. required narrows collection to
 // the signals runnable checks require; an adapter or source left with none is
 // skipped. Registrations are validated against every declared signal first,
@@ -162,7 +182,7 @@ type declaredAdapter struct {
 // Each source gets its own timeout budget; the toolkit watchdog then bounds
 // only adapter conversion. Registration errors and panics are returned so the
 // CLI exits 2 before anything is measured.
-func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter, required requiredSignals) (sensors []toolkit.Sensor, err error) {
+func (a *App) collectSensorsIn(cycle *collect.Cycle, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter, required requiredSignals) (sensors []toolkit.Sensor, err error) {
 	adapters := slices.Concat(a.collectAdapters, builtinAdapters)
 	if len(a.collectSources) == 0 && len(builtinSources) == 0 && len(adapters) == 0 {
 		return nil, nil
@@ -177,10 +197,6 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 		}
 	}()
 	declared, err := a.declareAdapters(adapters)
-	if err != nil {
-		return nil, err
-	}
-	cycle, err := collect.NewCycleWithTimeout(uuid.NewString(), time.Now().UTC(), timeout)
 	if err != nil {
 		return nil, err
 	}

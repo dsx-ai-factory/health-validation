@@ -21,7 +21,8 @@
 //
 // Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
 // its own per-domain backend, defaulting to the shared host NVML backend for
-// GPU/node/NVLink, sysfs for CPU and InfiniBand, and the journal for Xid. A
+// GPU/NVLink, the host's collect NVML GPU inventory for node, sysfs for CPU
+// and InfiniBand, and the journal for Xid. A
 // With*Backend setter overrides exactly one domain; the
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
@@ -48,9 +49,11 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/version"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics"
@@ -78,17 +81,16 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 	}
 }
 
-// hostBackend is the platform-split source of the built-in NVML data source.
-// On linux it is one [nvml.NVMLBackend] exposed under each per-domain
-// interface (a single device enumeration feeds the GPU, node, and NVLink
-// sensors); off linux it is a stub that errors at Measure, keeping the command
-// buildable (and `version` runnable) while surfacing a clear runtime error if
-// `run` is invoked there.
+// hostBackend is the platform-split source of the built-in NVML data sources.
+// On linux it is one [nvml.NVMLBackend] feeding the legacy GPU and NVLink
+// sensors, plus the collect NVML GPU inventory that architecture discovery
+// and the node GPU count share; off linux it is a stub that errors at
+// Measure, keeping the command buildable (and `version` runnable) while
+// surfacing a clear runtime error if `run` is invoked there.
 type hostBackend interface {
 	gpuBackend() toolkit.GPUBackend
-	nodeBackend() toolkit.NodeBackend
 	nvlinkBackend() toolkit.NVLinkBackend
-	architecture() (string, error)
+	gpuInventory() *gpuinventory.Inventory
 	close() error
 }
 
@@ -101,8 +103,8 @@ type App struct {
 	hostname func() (string, error)
 	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
 	// overrides set by the matching With*Backend setter. A nil override uses the
-	// default: the shared host NVML backend for gpu/node/nvlink, the sysfs
-	// collect sensor for cpu, [toolkit.Journalctl] for xid, and
+	// default: the shared host NVML backend for gpu/nvlink, the host GPU
+	// inventory for node, the sysfs collect sensor for cpu, [toolkit.Journalctl] for xid, and
 	// [toolkit.JournalctlRDMALinkFlap] for rdmaLinkFlap. The generic ib backend
 	// has no default and is opt-in.
 	gpu          toolkit.GPUBackend
@@ -162,9 +164,11 @@ func (a *App) WithGPUBackend(b toolkit.GPUBackend) *App {
 	return a
 }
 
-// WithNodeBackend overrides the Node sensor's backend (default: the shared
-// host NVML backend, which reports gpu_count). The node domain has no probe
-// seam — gpu_count is a scalar aggregate — so this is a full backend swap.
+// WithNodeBackend replaces the node domain's default — gpu_count from the
+// host's collect NVML GPU inventory, the read architecture discovery shares —
+// with a legacy Node sensor over b. The node domain has no probe seam —
+// gpu_count is a scalar aggregate — so this is a full backend swap.
+// Architecture discovery still reads the host inventory.
 func (a *App) WithNodeBackend(b toolkit.NodeBackend) *App {
 	a.node = b
 	return a
@@ -310,8 +314,8 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 // runCommand parses `run` flags, builds the catalog (applying any config
 // overrides and custom checks), and evaluates it against the six domain
 // sensors. Each sensor's backend is the caller's override if set, else the
-// default: the shared host NVML backend for gpu/node/nvlink, sysfs for cpu and
-// infiniband, and the system journal for xid.
+// default: the shared host NVML backend for gpu/nvlink, the host GPU inventory
+// for node, sysfs for cpu and infiniband, and the system journal for xid.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -362,9 +366,10 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Close only the host backend: per-domain overrides are caller-owned (see
-	// [App.Close]). gpu/node/nvlink default to the one shared host backend, so
-	// the no-override path enumerates NVML once. Deferred before architecture
-	// detection so the NVML handle that detection opens is always released.
+	// [App.Close]). gpu/nvlink default to the one shared host backend, and
+	// architecture discovery and node share one GPU inventory read per cycle.
+	// Deferred before architecture detection so the NVML handle that detection
+	// opens is always released.
 	defer a.host.close()
 
 	// Load the config before touching the hardware so a typo is reported as a
@@ -377,15 +382,20 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
+	// One cycle covers architecture discovery and collection, so discovery
+	// reads the same GPU inventory the node GPU count is derived from.
+	cycle, err := newCycle(collectionTimeout(cfg))
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+
 	// Detect the node architecture so architecture-scoped checks run only
 	// where they apply. A discovery failure is a node fault — the GPUs are
 	// unenumerable or unreadable — so drain for that explicit reason instead
 	// of evaluating with no architecture (Evaluate requires WithArchitecture).
-	arch, err := a.host.architecture()
-	if err != nil || arch == "" {
-		if arch == "" {
-			err = fmt.Errorf("architecture is empty")
-		}
+	arch, err := gpuinventory.Architecture(a.host.gpuInventory().Snapshot(context.Background(), cycle))
+	if err != nil {
 		slog.Warn("architecture discovery failed", "err", err)
 		verdict := discoveryFailureVerdict(err)
 		code := writeVerdict(verdict, a.prog, resolvedNodeID, stdout, stderr)
@@ -404,7 +414,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
 		return exitError
 	}
-	sensors, err := a.sensors(timeout, requiredFor(runnable))
+	sensors, err := a.sensors(cycle, requiredFor(runnable))
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError
@@ -419,14 +429,12 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-func (a *App) sensors(timeout time.Duration, required requiredSignals) ([]toolkit.Sensor, error) {
+// sensors returns the legacy sensors and the collect-backed sensors, whose
+// sources are measured once now under cycle.
+func (a *App) sensors(cycle *collect.Cycle, required requiredSignals) ([]toolkit.Sensor, error) {
 	gpu := a.gpu
 	if gpu == nil {
 		gpu = a.host.gpuBackend()
-	}
-	node := a.node
-	if node == nil {
-		node = a.host.nodeBackend()
 	}
 	nvlink := a.nvlink
 	if nvlink == nil {
@@ -443,7 +451,6 @@ func (a *App) sensors(timeout time.Duration, required requiredSignals) ([]toolki
 
 	sensors := []toolkit.Sensor{
 		toolkit.NewGPUSensor(gpu),
-		toolkit.NewNodeSensor(node),
 		toolkit.NewNVLinkSensor(nvlink),
 		toolkit.NewXidSensor(xid),
 		toolkit.NewRDMALinkFlapSensor(rdmaLinkFlap),
@@ -455,12 +462,15 @@ func (a *App) sensors(timeout time.Duration, required requiredSignals) ([]toolki
 	if a.ib != nil {
 		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
 	}
-	// Without an override, the CPU domain comes from builtinCollect.
+	// Without an override, the CPU and node domains come from builtinCollect.
 	if a.cpu != nil {
 		sensors = append(sensors, toolkit.NewCPUSensor(a.cpu))
 	}
+	if a.node != nil {
+		sensors = append(sensors, toolkit.NewNodeSensor(a.node))
+	}
 	builtinSources, builtinAdapters := a.builtinCollect()
-	collectSensors, err := a.collectSensors(timeout, builtinSources, builtinAdapters, required)
+	collectSensors, err := a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
 	if err != nil {
 		return nil, err
 	}
@@ -605,7 +615,12 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 	for category := range categories {
 		required[category] = nil
 	}
-	allSensors, err := a.sensors(timeout, required)
+	cycle, err := newCycle(timeout)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	allSensors, err := a.sensors(cycle, required)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError
@@ -744,7 +759,7 @@ func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch strin
 		if err := register(c); err != nil {
 			return nil, 0, err
 		}
-		return c, toolkit.DefaultSensorTimeout, nil
+		return c, collectionTimeout(cfg), nil
 	}
 
 	// Validate the config against a catalog that already includes the custom
@@ -771,7 +786,16 @@ func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch strin
 	if err = register(final); err != nil {
 		return nil, 0, err
 	}
-	return final, cfg.CollectionTimeout(), nil
+	return final, collectionTimeout(cfg), nil
+}
+
+// collectionTimeout is the per-sensor timeout cfg sets, or the toolkit
+// default without a config. runCommand needs it before the catalog exists.
+func collectionTimeout(cfg *Config) time.Duration {
+	if cfg == nil {
+		return toolkit.DefaultSensorTimeout
+	}
+	return cfg.CollectionTimeout()
 }
 
 // evaluate runs the sensors through the catalog, prints the node verdict as

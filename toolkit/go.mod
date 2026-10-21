@@ -19,6 +19,7 @@ require (
 
 require (
 	cel.dev/expr v0.25.2 // indirect
+	github.com/NVIDIA/go-nvlib v0.13.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

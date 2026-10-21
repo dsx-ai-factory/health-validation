@@ -15,6 +15,7 @@ go_library(
             "//catalog/health",
             "//catalog/node",
             "//catalog/nvlink",
+            "//toolkit/internal/gpuinventory",
             "@com_github_nvidia_go_nvml//pkg/nvml",
         ],
         "//conditions:default": [],

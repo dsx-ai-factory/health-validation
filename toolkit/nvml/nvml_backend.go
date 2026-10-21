@@ -20,6 +20,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
 // NVMLBackend is the NVML-backed data source. It owns the library handle
@@ -908,14 +909,9 @@ linkLoop:
 	}
 }
 
-// architectureUnknown is the architecture reported when NVML enumerates
-// devices and at least one device name reads, but none maps to a recognized
-// architecture. It is absent from every check's Architectures list, so
-// architecture-scoped checks skip rather than run against another
-// architecture's thresholds — failing safe instead of draining an
-// unrecognized-but-healthy node. Discovery *failures* (no devices, or every
-// device unreadable) are errors, not this value.
-const architectureUnknown = "unknown"
+// architectureUnknown is reported when a device name reads but none maps to
+// a recognized architecture; see [gpuinventory.ArchitectureUnknown].
+const architectureUnknown = gpuinventory.ArchitectureUnknown
 
 // Architecture reports the node's GPU architecture as one of the catalog
 // architecture identifiers (e.g. "GB200", "GB300", "H100"), derived from the
@@ -966,24 +962,6 @@ func (b *NVMLBackend) Architecture() (string, error) {
 	return architectureUnknown, nil
 }
 
-// architectureFromName maps an NVML product name (e.g. "NVIDIA H100 80GB
-// HBM3", "NVIDIA GB300") to the catalog architecture identifier the check
-// definitions are scoped by, or "" for an unrecognized name. More
-// specific tokens are matched first so "NVIDIA GB300" does not fall
-// through to a broader family match.
-func architectureFromName(name string) string {
-	switch {
-	case strings.Contains(name, "GB300"):
-		return "GB300"
-	case strings.Contains(name, "GB200"):
-		return "GB200"
-	case strings.Contains(name, "H200"):
-		return "H200"
-	case strings.Contains(name, "H100"):
-		return "H100"
-	case strings.Contains(name, "A100"):
-		return "A100"
-	default:
-		return ""
-	}
-}
+// architectureFromName is shared with the collect inventory path so both
+// discover the same architecture from the same name.
+func architectureFromName(name string) string { return gpuinventory.ArchitectureFromName(name) }

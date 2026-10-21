@@ -13,10 +13,12 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -247,7 +249,7 @@ func TestCPUAdapterMergesSources(t *testing.T) {
 
 func TestAdapterRequestsMatchConverterMappings(t *testing.T) {
 	var got []string
-	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU()} {
+	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU(), Node()} {
 		got = slices.AppendSeq(got, maps.Keys(adapter.Signals()))
 	}
 	want := observations.MappedSignals()
@@ -255,5 +257,43 @@ func TestAdapterRequestsMatchConverterMappings(t *testing.T) {
 	slices.Sort(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("adapter signals=%v, converter signals=%v", got, want)
+	}
+}
+
+func nodeCountObservation(source string, count int64) *observation.Observation {
+	return &observation.Observation{
+		SignalId:   gpuinventory.GPUCount.ID(),
+		Source:     source,
+		Target:     observation.NodeTarget(""),
+		ObservedAt: timestamppb.Now(),
+		Unit:       gpuinventory.GPUCount.Unit(),
+		Outcome:    &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_IntValue{IntValue: count}}},
+	}
+}
+
+func TestNodeAdapterBuildsGPUCount(t *testing.T) {
+	a := Node()
+	if a.Name() != "node" || a.Category() != health.Node {
+		t.Fatalf("name=%q category=%v, want the node category", a.Name(), a.Category())
+	}
+	m := only[node.NodeMeasurement](t, a.Build([]*observation.Observation{nodeCountObservation(gpuinventory.SensorID, 4)}))
+	if m.GPUCount != 4 || len(m.Errors()) != 0 {
+		t.Fatalf("measurement=%+v errors=%v", m, m.Errors())
+	}
+	empty := only[node.NodeMeasurement](t, a.Build(nil))
+	if len(empty.Errors()) == 0 || !slices.Contains(empty.Errors()[0].FailedSignals(), node.SignalGPUCount) {
+		t.Fatalf("empty input did not fail gpu_count: %v", empty.Errors())
+	}
+}
+
+// A count from one source and another source's source-scoped failure form one
+// node, not one per source, so the failure cannot be dropped as a second host.
+func TestNodeAdapterAssemblesSourcesIntoOneMeasurement(t *testing.T) {
+	failure := observation.NewCollectionErrorObservation(gpuinventory.GPUCount.ID(), gpuinventory.GPUCount.Unit(), "other", "GPUInventory", nil,
+		timestamppb.Now(), &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable})
+	got := Node().Build([]*observation.Observation{nodeCountObservation(gpuinventory.SensorID, 4), failure})
+	m := only[node.NodeMeasurement](t, got)
+	if len(got) != 1 || len(m.Errors()) == 0 || !slices.Contains(m.Errors()[0].FailedSignals(), node.SignalGPUCount) {
+		t.Fatalf("measurements=%+v", got)
 	}
 }

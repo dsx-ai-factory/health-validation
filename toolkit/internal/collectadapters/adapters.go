@@ -12,6 +12,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
@@ -38,6 +39,12 @@ type domainAdapter struct {
 // CPU replaces toolkit.CPUSensor for the stock CLI's CPU domain.
 func CPU() *domainAdapter {
 	return newDomainAdapter(health.CPU, erroredCPU, true)
+}
+
+// Node replaces toolkit.NodeSensor for the stock CLI's node domain. Its
+// gpu_count comes from the shared GPU inventory (gpuinventory.GPUCount).
+func Node() *domainAdapter {
+	return newDomainAdapter(health.Node, erroredNode, true)
 }
 
 // GPU prepares the cutover of toolkit.GPUSensor (toolkit.NewGPUSensor).
@@ -83,6 +90,10 @@ func (a *domainAdapter) Errored(err error) []health.Measurement { return a.error
 
 func erroredCPU(err error) []health.Measurement {
 	return []health.Measurement{cpu.ErroredCPU(err)}
+}
+
+func erroredNode(err error) []health.Measurement {
+	return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals...)}
 }
 
 func erroredGPU(err error) []health.Measurement {
