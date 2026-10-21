@@ -118,8 +118,8 @@ func Parse(message string) (Event, error) {
 		}
 	}
 	if m := pidRE.FindStringSubmatch(rest); m != nil {
-		// A pid that is not a number (pid='<unknown>') ends parsing, as the
-		// legacy parser does, so an unattributed line is not reinterpreted.
+		// A pid that is not a number (pid='<unknown>') ends parsing, so the
+		// name= and NVLink5 fields after it, Fatal included, are not read.
 		if !digitsRE.MatchString(m[1]) {
 			return event, nil
 		}

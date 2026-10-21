@@ -82,7 +82,6 @@ func requireScanFailure(t *testing.T, batch *observation.ObservationBatch, selec
 		require.Nil(t, o.GetTarget(), o.GetSignalId())
 		require.Equal(t, category, o.GetCollectionError().GetCategory(), o.GetSignalId())
 		detail := o.GetCollectionError().GetDetail()
-		require.LessOrEqual(t, len(detail), 256)
 		require.True(t, utf8.ValidString(detail))
 	}
 }
@@ -159,7 +158,6 @@ func TestMeasureParseError(t *testing.T) {
 	require.Equal(t, xidsignals.ReasonInvalidCode, failure.GetSourceError())
 	require.True(t, strings.HasPrefix(failure.GetDetail(), "entry 2:"), failure.GetDetail())
 	require.NotContains(t, failure.GetDetail(), "4242")
-	require.LessOrEqual(t, len(failure.GetDetail()), 256)
 	require.Equal(t, xidsignals.Code.Unit(), bad[0].Unit)
 	require.Contains(t, got, xidsignals.Code.ID()+"|c1")
 	require.Contains(t, got, xidsignals.ScanWindow.ID()+"|")
@@ -225,7 +223,7 @@ func TestMeasureSkipsUnrelatedEntryWithoutIdentity(t *testing.T) {
 	require.Equal(t, xidsignals.ScanWindow.ID(), batch.GetObservations()[0].GetSignalId())
 }
 
-func TestMeasureDetailIsBoundedUTF8(t *testing.T) {
+func TestMeasureDetailIsValidUTF8(t *testing.T) {
 	batch := measure(t, context.Background(), failing("", strings.Repeat("é", 150), exitError(t)))
 	requireScanFailure(t, batch, len(xidsignals.All()), observation.CollectionErrorCategorySourceError)
 }

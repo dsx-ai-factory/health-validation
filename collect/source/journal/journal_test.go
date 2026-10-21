@@ -107,6 +107,7 @@ func TestReadKernelBootFailures(t *testing.T) {
 		{name: "zero entries", run: fakeRunner("", "", nil, nil), wantIs: ErrNoEntries},
 		{name: "malformed json", run: fakeRunner("{not json", "", nil, nil), wantIs: ErrMalformedEntry},
 		{name: "realtime not a number", run: fakeRunner(entryJSON("c1", "abc", "m")+"\n", "", nil, nil), wantIs: ErrMalformedEntry},
+		{name: "unterminated entry before another", run: fakeRunner(`{ "__CURSOR" : "c1", "__REALTIME_TIMESTAMP" : "1", "__MONOTONIC_TIMESTAMP" : "1", "_BOOT_ID" : "`+bootID+`"`+entryJSON("c2", "2", "NVRM: Xid (PCI:0000:01:00): 79")+"\n", "", nil, nil), wantIs: ErrMalformedEntry},
 		{name: "oversized line", run: fakeRunner(strings.Repeat("a", maxLine+1)+"\n", "", nil, nil), wantIs: ErrMalformedEntry},
 		{name: "exit status with stderr", run: fakeRunner("", "Failed to open journal\n", exitErr, nil), wantIs: exitErr, wantText: "Failed to open journal"},
 		{name: "not found", run: fakeRunner("", "", &exec.Error{Name: "journalctl", Err: exec.ErrNotFound}, nil), wantIs: exec.ErrNotFound},

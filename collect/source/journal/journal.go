@@ -106,7 +106,10 @@ func runJournalctl(ctx context.Context, args []string, stdout, stderr io.Writer)
 }
 
 // lineWriter decodes newline-delimited JSON entries. After the first error it
-// discards the rest so journalctl never blocks on a full pipe.
+// discards the rest so journalctl never blocks on a full pipe. A line that
+// does not decode fails the read: journalctl 236-239 leaves a corrupt entry
+// unterminated, so the next entry shares its line and skipping it could drop
+// an Xid.
 type lineWriter struct {
 	err     error
 	each    func(Entry) error

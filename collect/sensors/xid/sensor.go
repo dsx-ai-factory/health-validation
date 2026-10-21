@@ -13,9 +13,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os/exec"
-	"strings"
 	"sync"
-	"unicode/utf8"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -26,8 +24,6 @@ import (
 
 // ID identifies the journal Xid sensor; it is also the observation source.
 const ID = "xid.journal"
-
-const maxDetail = 256
 
 var errInUse = errors.New("xid journal read already in progress")
 
@@ -156,7 +152,7 @@ func (s *scan) parseFailure(target *observation.ObservationTarget, at *timestamp
 		xidsignals.Code.ID(), xidsignals.Code.Unit(), ID, "parse", target, at, &observation.CollectionError{
 			Category:    observation.CollectionErrorCategoryParseError,
 			SourceError: parseErr.Reason,
-			Detail:      boundedUTF8(fmt.Sprintf("entry %d: %s", s.entries, parseErr.Detail), maxDetail),
+			Detail:      fmt.Sprintf("entry %d: %s", s.entries, parseErr.Detail),
 		}))
 	return nil
 }
@@ -168,7 +164,7 @@ func scanFailure(selected collect.Signals, err error) []*observation.Observation
 		out = append(out, observation.NewCollectionErrorObservation(
 			definition.ID(), definition.Unit(), ID, "ReadKernelBoot", nil, now, &observation.CollectionError{
 				Category: category(err),
-				Detail:   boundedUTF8(err.Error(), maxDetail),
+				Detail:   err.Error(),
 			}))
 	}
 	return out
@@ -208,16 +204,4 @@ func intValue(v int64) *observation.Value {
 
 func stringValue(v string) *observation.Value {
 	return &observation.Value{Kind: &observation.Value_StringValue{StringValue: v}}
-}
-
-// boundedUTF8 returns valid UTF-8 of at most n bytes, cut on a rune boundary.
-func boundedUTF8(s string, n int) string {
-	s = strings.ToValidUTF8(s, "�")
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
 }
