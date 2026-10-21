@@ -1,6 +1,6 @@
 module github.com/dsx-ai-factory/health-validation/collect
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/NVIDIA/go-dcgm v1.4611.2

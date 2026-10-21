@@ -74,7 +74,7 @@ All active overrides appear in `thresholds[name].overridden: true` in the output
 
 ## What Go version is required?
 
-Go 1.27.2. This is declared in each module's `go.mod` (the repo is split into the `catalog` and `toolkit` modules).
+Go 1.27.3. This is declared in each module's `go.mod` (the repo is split into the `catalog` and `toolkit` modules).
 
 ## What hardware is covered?
 
