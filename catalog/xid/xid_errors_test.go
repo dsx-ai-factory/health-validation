@@ -135,6 +135,9 @@ func TestXidErrors_AllChecksHaveOccurrencesThreshold(t *testing.T) {
 		if spec.Value != int64(1) {
 			t.Errorf("%s: occurrences default = %v, want 1", def.ID, spec.Value)
 		}
+		if spec.ValueType != health.ThresholdInt64 {
+			t.Errorf("%s: occurrences value type = %v, want ThresholdInt64", def.ID, spec.ValueType)
+		}
 		if spec.Category != health.DefaultThreshold {
 			t.Errorf("%s: occurrences category = %v, want DefaultThreshold", def.ID, spec.Category)
 		}
@@ -160,6 +163,9 @@ func TestXidErrors_NVLink5ChecksHaveSeparateOccurrencesThresholds(t *testing.T) 
 			}
 			if spec.Value != int64(1) {
 				t.Errorf("%s: %s default = %v, want 1", def.ID, name, spec.Value)
+			}
+			if spec.ValueType != health.ThresholdInt64 {
+				t.Errorf("%s: %s value type = %v, want ThresholdInt64", def.ID, name, spec.ValueType)
 			}
 			if spec.Category != health.DefaultThreshold {
 				t.Errorf("%s: %s category = %v, want DefaultThreshold", def.ID, name, spec.Category)

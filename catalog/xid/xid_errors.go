@@ -371,12 +371,14 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 	def.Thresholds = map[string]health.ThresholdSpec{
 		"fatal_occurrences": {
 			Value:       int64(1),
+			ValueType:   health.ThresholdInt64,
 			Category:    health.DefaultThreshold,
 			Description: "Fatal occurrences since boot that trigger the CRITICAL rule.",
 			Unit:        "count",
 		},
 		"nonfatal_occurrences": {
 			Value:       int64(1),
+			ValueType:   health.ThresholdInt64,
 			Category:    health.DefaultThreshold,
 			Description: "Nonfatal occurrences since boot that trigger the WARNING rule.",
 			Unit:        "count",
@@ -476,6 +478,7 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		Thresholds: map[string]health.ThresholdSpec{
 			"occurrences": {
 				Value:       int64(1),
+				ValueType:   health.ThresholdInt64,
 				Category:    health.DefaultThreshold,
 				Description: "Number of matching Xid occurrences since boot that causes the check to fire.",
 				Unit:        "count",
