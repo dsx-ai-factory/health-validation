@@ -43,8 +43,7 @@ docker pull ghcr.io/dsx-ai-factory/health-validation:<tag>
 ```
 
 The image publishes to GitHub Container Registry (GHCR). Image tags drop the
-release tag's `toolkit/` prefix and leading `v` (release git tag
-`toolkit/v1.2.3` → image `:1.2.3`); `latest` floats to the newest `main`. See
+release tag's leading `v` (release git tag `v1.2.3` → image `:1.2.3`); `latest` floats to the newest `main`. See
 [Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md#pulling-a-published-image) for auth and how to
 pull a specific tag or architecture.
 

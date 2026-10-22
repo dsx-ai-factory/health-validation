@@ -1,7 +1,5 @@
 load("@rules_go//go:def.bzl", "go_library")
 
-# gazelle:prefix github.com/dsx-ai-factory/health-validation/agentkit
-
 go_library(
     name = "agentkit",
     srcs = ["doc.go"],

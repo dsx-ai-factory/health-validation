@@ -12,17 +12,17 @@
 # and report the package defaults.
 #
 # Version rules:
-#   * HEALTH_VALIDATION_TOOLKIT_VERSION and HEALTH_VALIDATION_CATALOG_VERSION,
-#     when set, are stamped as given. CI's release-metadata job resolves both
-#     once and every later stamped build in the run reuses them.
-#   * A GitHub tag event named toolkit/vX.Y.Z (or toolkit/vX.Y.Z-rcN) stamps
-#     that semantic version into the operator.
+#   * HEALTH_VALIDATION_VERSION, when set, is stamped as given. CI's
+#     release-metadata job resolves it once and every later stamped build in the
+#     run reuses it.
+#   * A GitHub tag event named vX.Y.Z (or vX.Y.Z-rcN) stamps that semantic
+#     version into the operator.
 #   * Every other build gets a Go pseudo-version derived from the most recent
-#     toolkit release, the commit time, and the 12-character commit SHA. A
-#     final release of the same MAJOR.MINOR line tagged on a release branch
-#     counts as most recent even though HEAD cannot reach it.
-#   * Catalog sources matching their latest release keep that semantic version;
-#     changed sources get a pseudo-version, including in toolkit releases.
+#     release, the commit time, and the 12-character commit SHA. A final
+#     release of the same MAJOR.MINOR line tagged on a release branch counts as
+#     most recent even though HEAD cannot reach it.
+#   * The repository is one Go module, so the operator and the catalog compiled
+#     into it share that single version.
 #   * Unstamped local builds retain the packages' development identifiers.
 #
 # The pseudo-version is deterministic for a commit and a set of tags, sorts
@@ -42,29 +42,28 @@ short="$(git rev-parse --short=12 HEAD)"
 pseudo_ts="$(TZ=UTC git show -s --date=format-local:%Y%m%d%H%M%S --format=%cd HEAD)"
 build_date="$(TZ=UTC git show -s --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd HEAD)"
 
-# Prints the patch number of the newest final release in a module's MAJOR.MINOR
-# line that HEAD does not predate. Finals are tagged on release/vX.Y after QA,
+# Prints the patch number of the newest final release in a MAJOR.MINOR line that
+# HEAD does not predate. Finals are tagged on release/vX.Y after QA,
 # so main never reaches them; without this, main would stay a prerelease of the
 # RC it branched from and sort below a version that has already shipped.
 latest_line_release() {
-	local module="$1" line="$2" tag
+	local line="$1" tag
 
 	while IFS= read -r tag; do
-		[[ "$tag" =~ ^${module}/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+		[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
 		# A release built on top of HEAD is in HEAD's future, not its past.
 		git merge-base --is-ancestor HEAD "${tag}^{commit}" && continue
 		printf '%s\n' "${tag##*.}"
 		return
-	done < <(git tag --list "${module}/v${line}.*" --sort=-v:refname)
+	done < <(git tag --list "v${line}.*" --sort=-v:refname)
 }
 
 pseudo_version() {
-	local module="$1"
 	local base major minor patch released rc=0
 
-	base="$(git describe --tags --abbrev=0 --match "${module}/v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)"
-	base="${base:-${module}/v0.0.0}"
-	base="${base#"${module}/v"}"
+	base="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)"
+	base="${base:-v0.0.0}"
+	base="${base#v}"
 
 	IFS=. read -r major minor patch <<<"$base"
 	if [[ "$patch" =~ ^[0-9]+-rc[0-9]+$ ]]; then
@@ -72,7 +71,7 @@ pseudo_version() {
 	fi
 	patch="${patch%%[-+]*}"
 
-	released="$(latest_line_release "$module" "${major}.${minor}")"
+	released="$(latest_line_release "${major}.${minor}")"
 	if [[ -n "$released" ]] &&
 		((10#$released > 10#$patch || (10#$released == 10#$patch && rc))); then
 		patch="$released"
@@ -89,14 +88,13 @@ pseudo_version() {
 
 semver_re='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
 
-if [[ -n "${HEALTH_VALIDATION_TOOLKIT_VERSION:-}${HEALTH_VALIDATION_CATALOG_VERSION:-}" ]]; then
-	# CI resolves versions once and passes them to every later build. Resolving
-	# again per job would let a tag pushed mid-run stamp a binary with a version
-	# other than the one its image is published under.
-	toolkit_version="${HEALTH_VALIDATION_TOOLKIT_VERSION:-}"
-	catalog_version="${HEALTH_VALIDATION_CATALOG_VERSION:-}"
-	if [[ ! "$toolkit_version" =~ $semver_re || ! "$catalog_version" =~ $semver_re ]]; then
-		echo "workspace_status_release: HEALTH_VALIDATION_TOOLKIT_VERSION and HEALTH_VALIDATION_CATALOG_VERSION must both be set to vX.Y.Z versions; got '$toolkit_version' and '$catalog_version'" >&2
+if [[ -n "${HEALTH_VALIDATION_VERSION:-}" ]]; then
+	# CI resolves the version once and passes it to every later build.
+	# Resolving again per job would let a tag pushed mid-run stamp a binary with
+	# a version other than the one its image is published under.
+	version="$HEALTH_VALIDATION_VERSION"
+	if [[ ! "$version" =~ $semver_re ]]; then
+		echo "workspace_status_release: HEALTH_VALIDATION_VERSION must be a vX.Y.Z version; got '$version'" >&2
 		exit 1
 	fi
 else
@@ -105,31 +103,19 @@ else
 		event_tag="${GITHUB_REF_NAME:-}"
 	fi
 
-	if [[ "$event_tag" =~ ^toolkit/v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
-		# The module prefix belongs to the Git tag, not the embedded version.
-		toolkit_version="${event_tag#toolkit/}"
-	elif [[ -z "$event_tag" || "$event_tag" =~ ^catalog/v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
-		# Main and catalog-release builds advance the patch component of the most
-		# recent toolkit release.
-		# A repository with no toolkit release starts from v0.0.0.
-		toolkit_version="$(pseudo_version toolkit)"
+	if [[ "$event_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+		version="$event_tag"
+	elif [[ -z "$event_tag" ]]; then
+		# Main builds advance the patch component of the most recent release.
+		# A repository with no release starts from v0.0.0.
+		version="$(pseudo_version)"
 	else
-		echo "workspace_status_release: expected toolkit/vX.Y.Z or catalog/vX.Y.Z, optionally followed by -rcN; got '$event_tag'" >&2
+		echo "workspace_status_release: expected vX.Y.Z, optionally followed by -rcN; got '$event_tag'" >&2
 		exit 1
-	fi
-
-	# A catalog release remains the embedded version across toolkit-only commits.
-	# Once catalog/ changes, stamped builds use a catalog pseudo-version.
-	catalog_release_tag="$(git describe --tags --abbrev=0 --match 'catalog/v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)"
-	if [[ "$catalog_release_tag" =~ ^catalog/v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]] &&
-		git diff --quiet "$catalog_release_tag" HEAD -- catalog; then
-		catalog_version="${catalog_release_tag#catalog/}"
-	else
-		catalog_version="$(pseudo_version catalog)"
 	fi
 fi
 
-echo "STABLE_HEALTH_VALIDATION_VERSION ${toolkit_version}"
-echo "STABLE_HEALTH_VALIDATION_CATALOG_VERSION ${catalog_version}"
+echo "STABLE_HEALTH_VALIDATION_VERSION ${version}"
+echo "STABLE_HEALTH_VALIDATION_CATALOG_VERSION ${version}"
 echo "STABLE_GIT_COMMIT ${commit}"
 echo "STABLE_BUILD_DATE ${build_date}"

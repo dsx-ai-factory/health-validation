@@ -10,7 +10,7 @@ go_sdk.nogo(nogo = "//tools/go/nogo")
 use_repo(go_sdk, "go_sdk")
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
-go_deps.from_file(go_work = "//:go.work")
+go_deps.from_file(go_mod = "//:go.mod")
 
 # cel-go ships its own pre-existing BUILD.bazel files, which use the legacy
 # go_default_library-only target naming. That naming convention doesn't get

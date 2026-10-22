@@ -101,21 +101,13 @@ bazel test //tools/format:test
 # Sync BUILD files after adding/removing Go files or imports
 bazel run //tools/gazelle
 
-# Go mod tidy — run this whenever a go.mod changes OR a new import is added.
-# The repo is FOUR modules (agentkit/, catalog/, collect/, toolkit/), so tidy
-# each one. //tools/go
-# runs in BUILD_WORKING_DIRECTORY, so cd into the module first. CI gates on
-# `mod tidy -diff` per module and fails if go.sum would drift (e.g. a
-# transitive testify dep pulls in davecgh/go-spew, pmezard/go-difflib, or
-# gopkg.in/yaml.v3). Commit each go.sum alongside its go.mod.
-(cd agentkit && bazel run //tools/go -- mod tidy)
-(cd catalog && bazel run //tools/go -- mod tidy)
-(cd collect && bazel run //tools/go -- mod tidy)
-(cd toolkit && bazel run //tools/go -- mod tidy)
-(cd agentkit && bazel run //tools/go -- mod tidy -diff)   # verify: exit 0 + no output = CI will pass
-(cd catalog && bazel run //tools/go -- mod tidy -diff)
-(cd collect && bazel run //tools/go -- mod tidy -diff)
-(cd toolkit && bazel run //tools/go -- mod tidy -diff)
+# Go mod tidy — run this whenever go.mod changes OR a new import is added.
+# The repo is ONE module (a single go.mod and go.sum at the root). CI gates on
+# `mod tidy -diff` and fails if go.sum would drift (e.g. a transitive testify
+# dep pulls in davecgh/go-spew, pmezard/go-difflib, or gopkg.in/yaml.v3).
+# Commit go.sum alongside go.mod.
+bazel run //tools/go -- mod tidy
+bazel run //tools/go -- mod tidy -diff   # verify: exit 0 + no output = CI will pass
 
 # Run from a Linux VM or container to catch linux-only build-tag failures
 # (nogo, PIE linking, etc.) that never execute on darwin.
@@ -138,9 +130,8 @@ cp -L bazel-bin/toolkit/cmd/health-validation/health-validation_/health-validati
 
 # Iterate on the platform-agnostic CLI logic locally on darwin (the NVML
 # backend stubs out off-linux, so `run` can't collect, but flag parsing,
-# config loading/validation, and the mock-backed tests all work). The CLI
-# lives in the toolkit module, so run go from there:
-(cd toolkit && go test ./cmd/health-validation)
+# config loading/validation, and the mock-backed tests all work):
+go test ./toolkit/cmd/health-validation
 ```
 
 The repo uses Bazel exclusively — do not use `go build` or `go test` directly for anything other than quick local iteration. See [docs/developer.md](docs/developer.md) for the full CI, publishing, and container workflow.
@@ -153,12 +144,14 @@ This repo is a **hardware health check catalog and evaluation engine** for NVIDI
 
 #### Module layout
 
-The repo is **four Go modules**, joined for local development by a root `go.work` (the root `go.mod` is an anchor only — it holds no packages). `catalog`, `toolkit`, and `collect` are independently versioned and published; `agentkit/` is in-repo only. All four are resolved together by Gazelle, so a pin in any of them can change the versions linked into the CLI:
+The repo is **one Go module** (`github.com/dsx-ai-factory/health-validation`) with a single `go.mod`, a single `go.sum`, and one version: a `vX.Y.Z` tag releases everything. Import paths are the module path plus the directory, so every package below is imported as `github.com/dsx-ai-factory/health-validation/<dir>`. A dependency pin therefore changes the versions linked into every binary built from the repo.
 
-- **`catalog/`** (`…/health-validation/catalog`) — the check catalog and evaluation engine. Self-contained: `health/` (shared vocabulary), `internal/{celeval,evaluation}/`, the `catalog` package at the module root, the per-domain check packages (`cpu/`, `gpu/`, `node/`, `nvlink/`, `xid/`), and the catalog-only codegen/dump binaries under `cmd/`. No dependency on the toolkit.
-- **`toolkit/`** (`…/health-validation/toolkit`) — sensors, the NVML backend (`nvml/`), and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on the catalog module.** Resolved from `../catalog` via a `replace` in `toolkit/go.mod` until catalog is tagged and published.
+- **`catalog/`** — the check catalog and evaluation engine. Self-contained: `health/` (shared vocabulary), `internal/{celeval,evaluation}/`, the `catalog` package at the directory root, the per-domain check packages (`cpu/`, `gpu/`, `node/`, `nvlink/`, `xid/`), and the catalog-only codegen/dump binaries under `cmd/`. No dependency on the toolkit.
+- **`toolkit/`** — sensors, the NVML backend (`nvml/`), and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on `catalog/` and `collect/`.**
+- **`collect/`** — raw collection library (sensors and sources); no dependency on the catalog or toolkit.
+- **`agentkit/`** — in-repo agent scaffolding and examples.
 
-The dependency direction is strict: `catalog → (nothing)`, `toolkit → catalog, collect`. Never add a catalog import of toolkit — it would create a module cycle. (Tests are bound by the same rule: a catalog test that needs sensor-style input builds its measurement structs directly rather than importing the toolkit.) Each module is tidied and version-tagged on its own (`catalog/vX.Y.Z`, `toolkit/vX.Y.Z`, `collect/vX.Y.Z`).
+The dependency direction is strict: `catalog → (nothing)`, `collect → (nothing)`, `toolkit → catalog, collect`. Never add a catalog import of toolkit. One module no longer makes that a module cycle, so only a Go package import cycle stops it, and only where the toolkit package also imports catalog. Keep to the rule regardless, so catalog stays usable without the toolkit's dependencies. Tests are bound by the same rule: a catalog test that needs sensor-style input builds its measurement structs directly rather than importing the toolkit.
 
 #### Package roles
 
@@ -222,9 +215,9 @@ The logic lives in `toolkit/app/`; `toolkit/cmd/health-validation/main.go` is a 
 - `toolkit/app/backend_other.go` (`//go:build !linux`) — `newBackend()` returns an "unavailable on this platform" error.
 - `toolkit/app/app.go` / `toolkit/app/config.go` stay platform-agnostic; `evaluate(cat, …, sensors…)` takes sensors as arguments so tests inject `toolkit.MockGPU`/`MockNode` without hardware or cgo.
 
-Consequence: on darwin `(cd toolkit && go build ./cmd/health-validation)` succeeds (stub backend) and `(cd toolkit && go test ./cmd/health-validation)` passes, but `health-validation run` exits `2` with the backend error — there is no data source off-linux. Follow this split for any future production binary that depends on a build-tagged backend.
+Consequence: on darwin `go build ./toolkit/cmd/health-validation` succeeds (stub backend) and `go test ./toolkit/cmd/health-validation` passes, but `health-validation run` exits `2` with the backend error — there is no data source off-linux. Follow this split for any future production binary that depends on a build-tagged backend.
 
-When adding a direct third-party dep here (this is how `gopkg.in/yaml.v3` arrived), run `bazel run //tools/gazelle` and `(cd toolkit && bazel run //tools/go -- mod tidy)` — tidy must run inside the `toolkit` module since this binary lives there (`//tools/go` runs in `BUILD_WORKING_DIRECTORY`). Both run natively on darwin now that the `-z,lazy` linkopt is scoped to linux builds (see PIE + lazy binding below). The new external repo must also be added to `use_repo(go_deps, …)` in `third_party/go.MODULE.bazel` (gazelle's repo name for `gopkg.in/yaml.v3` is `in_gopkg_yaml_v3`, target `:yaml_v3`).
+When adding a direct third-party dep here (this is how `gopkg.in/yaml.v3` arrived), run `bazel run //tools/gazelle` and `bazel run //tools/go -- mod tidy`. Both run natively on darwin now that the `-z,lazy` linkopt is scoped to linux builds (see PIE + lazy binding below). The new external repo must also be added to `use_repo(go_deps, …)` in `third_party/go.MODULE.bazel` (gazelle's repo name for `gopkg.in/yaml.v3` is `in_gopkg_yaml_v3`, target `:yaml_v3`).
 
 If the dep ends up linked into the CLI, `toolkit/cmd/health-validation/SHIPPED_MODULES.txt` changes too. Regenerate it with `bazel run //toolkit/cmd/health-validation:shipped_modules_update`, then run `bazel run //tools:check_notice -- --write` so `NOTICE` keeps up (without `--write` it only verifies). `//toolkit/cmd/health-validation:shipped_modules_cross_check` also checks the recorded list against the module set the Bazel graph says is linked, which catches a module that is linked but absent from the embedded list.
 
@@ -259,7 +252,7 @@ If the dep ends up linked into the CLI, `toolkit/cmd/health-validation/SHIPPED_M
 
 The standalone tool is a convenient first pass but is **not authoritative** — it tracks a newer x/tools than the pinned nogo and can accept an ordering CI rejects (a plain darwin `bazel test` has likewise passed while CI's linux nogo failed on the same struct).
 
-**Build it with the repo's Go toolchain, or it can't analyze this code.** The tool embeds the `go/types` of whatever Go built it; a binary built with an older Go rejects these modules outright with `package requires newer Go version go1.27 (application built with go1.25)` and analyzes nothing. `go install` builds in x/tools' own module context, so it uses your default toolchain, not the repo's — pin it with `GOTOOLCHAIN` (matching the `go` directive in the module go.mod files):
+**Build it with the repo's Go toolchain, or it can't analyze this code.** The tool embeds the `go/types` of whatever Go built it; a binary built with an older Go rejects this module outright with `package requires newer Go version go1.27 (application built with go1.25)` and analyzes nothing. `go install` builds in x/tools' own module context, so it uses your default toolchain, not the repo's — pin it with `GOTOOLCHAIN` (matching the `go` directive in `go.mod`):
 
 ```shell
 GOTOOLCHAIN=go1.27.3 go install golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment@latest

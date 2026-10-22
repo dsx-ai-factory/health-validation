@@ -2,7 +2,7 @@
 
 NVIDIA Health Validation runs on a GPU node, evaluates hardware and driver state against calibrated thresholds, and returns a structured verdict. The verdict answers one question: is this node ready to accept the next workload?
 
-The repository is `github.com/dsx-ai-factory/health-validation`. It contains four Go modules; the two published and independently versioned ones are:
+The repository is `github.com/dsx-ai-factory/health-validation`. It is a single Go module, released under one version tag, whose main packages are:
 
 - **`catalog`** (`…/health-validation/catalog`): Check definitions, threshold logic, severity classifications, and a CEL-based evaluation engine. No hardware dependency. Import this if you already collect GPU telemetry and want NVIDIA's operational judgment applied to your signal stream.
 - **`toolkit`** (`…/health-validation/toolkit`): Sensor implementations (including NVML-backed GPU collection and CPU collection from Linux sysfs), mock backends for testing, and a `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Import this if you want the full working sensor and evaluation stack.
@@ -10,7 +10,7 @@ The repository is `github.com/dsx-ai-factory/health-validation`. It contains fou
 `toolkit` depends on `catalog`; import `toolkit` to get both.
 
 For raw observations without catalog evaluation, use the experimental `collect`
-module. See [Shared raw collection library](docs/integration.md#shared-raw-collection-library)
+package. See [Shared raw collection library](docs/integration.md#shared-raw-collection-library)
 for its ten collection families, typed targets, and custom sensor registration.
 
 > **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor/backend layer that feeds it is a reference implementation and is subject to change.
@@ -163,7 +163,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
 
-The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers. `catalog_version` names the catalog module that produced the verdict, so consumers can verify which check logic and default thresholds were available when the run occurred.
+The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers. `catalog_version` names the module version, and so the catalog, that produced the verdict, so consumers can verify which check logic and default thresholds were available when the run occurred.
 
 ## How it works
 
@@ -244,7 +244,7 @@ OS: Linux (x86_64, aarch64). CPU collection reads sysfs directly without sudo or
 
 ## Quick start
 
-Import the module (catalog + toolkit):
+Import the module:
 
 ```shell
 go get github.com/dsx-ai-factory/health-validation@latest

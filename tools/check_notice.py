@@ -10,8 +10,8 @@ Two things are checked:
 1. Presence, version, and no extras. Every module actually reachable from this
    repo's packages has a NOTICE entry at its currently-resolved version, and
    NOTICE lists nothing beyond that set. "Reachable" means imported (directly or
-   transitively, including test-only imports) by a package in any of the four
-   go.work modules, pulled in by a go.mod `tool` directive, or reached through a
+   transitively, including test-only imports) by a package in the module,
+   pulled in by a go.mod `tool` directive, or reached through a
    `//go:build tools` file -- catalog/tools.go blank-imports staticcheck that
    way, so without `-tags tools` its whole dependency tree is invisible to
    `go list`.
@@ -34,8 +34,8 @@ Two things are checked:
    NOTICE" section.
 
 syft is never used for versions. It reads go.mod require lines literally, with
-no MVS and no go.work awareness, so it reports cel.dev/expr v0.25.1 where the
-workspace actually builds v0.25.2. Versions come from `go list`.
+no MVS, so it can report an older cel.dev/expr than the one the module
+actually builds. Versions come from `go list`.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ from pathlib import Path
 
 from python.runfiles import runfiles
 
-GO_MODULE_DIRS = ("agentkit", "catalog", "collect", "toolkit")
+GO_MODULE_DIRS = (".",)
 FIRST_PARTY_PREFIX = "github.com/dsx-ai-factory/health-validation"
 
 # Matches what the released container ships, so Linux/cgo-gated files
@@ -121,9 +121,9 @@ def go_toolchain(root: Path) -> tuple[Path, dict[str, str]]:
     everything else is found relative to GOROOT.
 
     The remaining settings pin Go's *behaviour* rather than its binary. Left
-    inherited, each one changes what gets resolved: GOWORK=off drops
-    workspace-wide MVS and resolves lower versions with no error at all, and
-    GOTOOLCHAIN makes the pinned binary hand off to a different toolchain.
+    inherited, each one changes what gets resolved: a stray go.work swaps the
+    module graph, and GOTOOLCHAIN makes the pinned binary hand off to a
+    different toolchain.
     """
     go = tool_from_runfiles("CHECK_NOTICE_GO")
     return go, {
@@ -134,8 +134,8 @@ def go_toolchain(root: Path) -> tuple[Path, dict[str, str]]:
         "GOENV": "off",
         # Drop inherited -mod/-tags, which alter resolution and reachability.
         "GOFLAGS": "",
-        # Resolve across the workspace explicitly rather than by discovery.
-        "GOWORK": str(root / "go.work"),
+        # A single module: never pick up a go.work from an enclosing directory.
+        "GOWORK": "off",
     }
 
 

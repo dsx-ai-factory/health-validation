@@ -114,16 +114,15 @@ Follow the [Code of Conduct](./CODE_OF_CONDUCT.md) when participating. See
 
 ## Support lifecycle
 
-The `catalog` and `toolkit` modules are versioned independently using
-[Semantic Versioning](https://semver.org/). Their tags use `catalog/vX.Y.Z` and
-`toolkit/vX.Y.Z`; their versions need not match. CLI and container release
-support follows the toolkit version and includes its bundled catalog version,
-not arbitrary combinations of module versions.
+The repository is one Go module with one version, using
+[Semantic Versioning](https://semver.org/). Releases are tagged `vX.Y.Z`. CLI
+and container release support follows that version, and the catalog compiled
+into a release carries the same version.
 
 This lifecycle takes effect on adoption of this policy. It covers final
-catalog and toolkit releases available at adoption and subsequent final
-releases, including pre-1.0 releases. The experimental `collect` and `agentkit`
-modules are outside this lifecycle.
+releases available at adoption and subsequent final releases, including pre-1.0
+releases. The experimental `collect` and `agentkit` packages are outside this
+lifecycle.
 
 | Stage | Meaning |
 | --- | --- |
@@ -131,36 +130,30 @@ modules are outside this lifecycle.
 | Maintenance | Eligible for security and critical bug fixes only; no new features. |
 | End of life (EOL) | Receives no upstream fixes. Upgrade to a supported release. |
 
-Within a module's current major version, the latest final minor is Current and
-the previous released final minor is in Maintenance. Older minors are EOL,
-subject to the catalog dependency exception below. A new final minor moves the
-former Current minor to Maintenance and the former Maintenance minor to EOL.
+Within the current major version, the latest final minor is Current and
+the previous released final minor is in Maintenance. Older minors are EOL. A
+new final minor moves the former Current minor to Maintenance and the former
+Maintenance minor to EOL.
 Patch releases and release candidates do not advance these stages. There is
 no fixed release cadence.
 
-When a module's first final release of a new major ships, the previous major's
+When the first final release of a new major ships, the previous major's
 latest released final minor remains in Maintenance for three months, then
-reaches EOL. Other minors of that major are EOL, subject to the catalog
-dependency exception below. This also applies to the `v0`→`v1` transition.
+reaches EOL. Other minors of that major are EOL. This also applies to the
+`v0`→`v1` transition.
 Breaking pre-1.0 minor releases follow the minor lifecycle above rather than
 receiving a separate three-month tail.
 
-A catalog minor used by a supported final toolkit release remains eligible
-for security and critical fixes needed by that toolkit release, even after
-the catalog's own support window ends. The exception ends when no supported
-toolkit release depends on that catalog minor. It can extend the two-minor
-window or previous-major tail; it does not provide feature support.
-
 ### Supported release lines
 
-| Module | Release line | Stage |
-| --- | --- | --- |
-| catalog | `v0.3.x` | Current |
-| catalog | `v0.2.x` | Maintenance |
-| toolkit | `v0.3.x` | Current |
-| toolkit | `v0.2.x` | Maintenance |
+| Release line | Stage |
+| --- | --- |
+| `catalog/v0.3.x` and `toolkit/v0.3.x` | Current |
+| `catalog/v0.2.x` and `toolkit/v0.2.x` | Maintenance |
 
-The `v0.1.x` lines of both modules are EOL.
+The `v0.1.x` lines are EOL. These lines predate the single-module layout and
+were tagged per module; the first `vX.Y.Z` release replaces this table with
+single-tag lines.
 
 Maintainers update this table and the release notes when final releases change
 the supported lines. Backport requests should identify the affected supported
@@ -169,7 +162,7 @@ on a best-effort basis; see [RELEASE.md](./RELEASE.md).
 
 ### Interface compatibility
 
-Both modules are currently **pre-1.0 (`v0.x`)**. Breaking public API or CLI
+The module is currently **pre-1.0 (`v0.x`)**. Breaking public API or CLI
 changes may occur in minor releases; compatible fixes use patch releases.
 From 1.0, breaking changes to the catalog's public Go API or the CLI's
 behavior and flags require a major release. Breaking changes are announced
@@ -187,7 +180,7 @@ release candidates are outside the finalized-release lifecycle.
 The catalog is the intended integration and extension surface, subject to the
 pre-1.0 policy above. Toolkit sensors, backends, collection wiring, and the app
 builder are reference implementations and may change. The `collect` and
-`agentkit` modules are experimental. See the
+`agentkit` packages are experimental. See the
 [developer guide](./docs/developer.md) and [extension guide](./docs/extending.md).
 
 Verdict JSON is versioned separately through `schema_version`.

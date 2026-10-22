@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package version reports the catalog module version compiled into a verdict
+// Package version reports the module version compiled into a verdict
 // producer.
 package version
 
@@ -14,7 +14,7 @@ import (
 const (
 	// modulePath is this module's import path, matched against the entries in
 	// a binary's module graph.
-	modulePath = "github.com/dsx-ai-factory/health-validation/catalog"
+	modulePath = "github.com/dsx-ai-factory/health-validation"
 	// development is reported when no source yields a release version. It
 	// doubles as the sentinel marking the default as unstamped.
 	development = "dev"

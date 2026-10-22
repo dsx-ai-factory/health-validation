@@ -3,6 +3,18 @@
 All notable changes to NVIDIA Health Validation are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Breaking Changes
+
+- The `catalog`, `toolkit`, `collect`, and `agentkit` modules are merged into
+  the single root module `github.com/dsx-ai-factory/health-validation`, with one
+  `go.mod` and one version. Import paths are unchanged. Replace requires on
+  `…/catalog`, `…/toolkit`, and `…/collect` with one require on the root module
+  at the first `vX.Y.Z` release. Releases are tagged `vX.Y.Z` instead of
+  `catalog/vX.Y.Z` and `toolkit/vX.Y.Z`, and the verdict's `catalog_version`
+  equals the CLI version.
+
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
 Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,
@@ -131,6 +143,7 @@ and documentation-only changes are omitted.
 - Operator CLI (`health-validation run`) producing structured JSON verdicts.
 - CEL-based rule evaluation engine with operator-configurable threshold overrides.
 
+[Unreleased]: https://github.com/dsx-ai-factory/health-validation/compare/toolkit/v0.3.1...main
 [catalog/v0.3.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.0
 [toolkit/v0.3.0]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.0
 [catalog/v0.2.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.2.0
