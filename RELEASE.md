@@ -61,7 +61,7 @@ policy.
 
 ## Branch naming and tagging
 
-Tag the release with a plain semantic version, with no module prefix:
+Tag a release with its semantic version:
 
 ```text
 vX.Y.Z

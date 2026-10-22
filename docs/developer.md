@@ -74,10 +74,8 @@ check for the other pinned nogo analyzers.
 
 ## Versioning and Releases
 
-The module follows Semantic Versioning 2.0.0. A release tag is the plain
-version, `vX.Y.Z`, with no module prefix, and versions the whole repository.
-
-- `vX.Y.Z`
+The module follows Semantic Versioning 2.0.0. A release tag is the version,
+`vX.Y.Z`, and versions the whole repository.
 
 - MAJOR identifies an incompatible change to its public API.
 - MINOR identifies backward-compatible functionality.

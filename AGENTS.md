@@ -102,7 +102,7 @@ bazel test //tools/format:test
 bazel run //tools/gazelle
 
 # Go mod tidy — run this whenever go.mod changes OR a new import is added.
-# The repo is ONE module (a single go.mod and go.sum at the root). CI gates on
+# The repo is one module (a single go.mod and go.sum at the root). CI gates on
 # `mod tidy -diff` and fails if go.sum would drift (e.g. a transitive testify
 # dep pulls in davecgh/go-spew, pmezard/go-difflib, or gopkg.in/yaml.v3).
 # Commit go.sum alongside go.mod.
@@ -151,7 +151,7 @@ The repo is **one Go module** (`github.com/dsx-ai-factory/health-validation`) wi
 - **`collect/`** — raw collection library (sensors and sources); no dependency on the catalog or toolkit.
 - **`agentkit/`** — in-repo agent scaffolding and examples.
 
-The dependency direction is strict: `catalog → (nothing)`, `collect → (nothing)`, `toolkit → catalog, collect`. Never add a catalog import of toolkit. One module no longer makes that a module cycle, so only a Go package import cycle stops it, and only where the toolkit package also imports catalog. Keep to the rule regardless, so catalog stays usable without the toolkit's dependencies. Tests are bound by the same rule: a catalog test that needs sensor-style input builds its measurement structs directly rather than importing the toolkit.
+The dependency direction is strict: `catalog → (nothing)`, `collect → (nothing)`, `toolkit → catalog, collect`. Never add a catalog import of toolkit. The build only rejects it when the imported toolkit package also imports catalog, so this is a convention; keep to it so catalog stays usable without the toolkit's dependencies. Tests are bound by the same rule: a catalog test that needs sensor-style input builds its measurement structs directly rather than importing the toolkit.
 
 #### Package roles
 

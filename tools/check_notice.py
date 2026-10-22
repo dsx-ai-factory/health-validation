@@ -134,7 +134,7 @@ def go_toolchain(root: Path) -> tuple[Path, dict[str, str]]:
         "GOENV": "off",
         # Drop inherited -mod/-tags, which alter resolution and reachability.
         "GOFLAGS": "",
-        # A single module: never pick up a go.work from an enclosing directory.
+        # Never pick up a go.work from an enclosing directory.
         "GOWORK": "off",
     }
 

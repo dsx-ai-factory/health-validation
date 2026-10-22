@@ -18,7 +18,6 @@ node_modules/
 # Local OCI image tarballs, including macOS cross-build staging output.
 /dist/
 
-# The repo is a single module and commits no go.work; keep a developer's local
-# workspace files out of the tree.
+# Local Go workspace files are not committed.
 /go.work
 /go.work.sum
