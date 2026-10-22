@@ -19,7 +19,7 @@ import (
 // prevent a match. Group 1 is the PCI address, group 2 the Xid code
 // (required); groups 3 and 4 are the optional pid and process name —
 // some Xid lines (e.g. channel/interrupt dumps) carry neither.
-var xidLineRE = regexp.MustCompile(`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (\d+)(?:,\s*pid=(\d+))?(?:,\s*name=([^,]+))?`)
+var xidLineRE = regexp.MustCompile(`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (\d+)(?:,\s*pid=([^,]*))?(?:,\s*name=([^,]+))?`)
 
 // xidNVLink5RE matches the extended log format NVRM uses for the
 // NVLink5/NVSwitch fault family (Xid 144-150, Blackwell-only), e.g.
@@ -37,9 +37,14 @@ var xidLineRE = regexp.MustCompile(`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (\d+)(?:
 //
 //   - pid= and name= may precede the sub-component. They are not
 //     mutually exclusive with it, despite carrying the same meaning
-//     they do for every other Xid code.
+//     they do for every other Xid code. The pid is matched loosely,
+//     as on Xid 154 lines, since a miss loses the whole decode.
 //   - Fields are separated by runs of whitespace, not single spaces.
 //   - Link is -1 when the fault is not attributable to one link.
+//   - The sub-component may be several words, e.g. "MSE Degraded", as
+//     NVIDIA's decode table spells some of them. Its words exclude
+//     commas so a pid or name the optional groups failed to match is
+//     not read as part of it.
 //
 // Group 1 PCI address, 2 Xid code, 3 pid and 4 process name (both
 // optional), 5 sub-component, 6 Fatal|Nonfatal, 7 crosscontain digit,
@@ -49,8 +54,8 @@ var xidLineRE = regexp.MustCompile(`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (\d+)(?:
 // debug-data register count is not confirmed to be fixed).
 var xidNVLink5RE = regexp.MustCompile(
 	`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (14[4-9]|150),\s*` +
-		`(?:pid=(\d+),\s*)?(?:name=([^,]+),\s*)?` +
-		`(\S+)\s+(Fatal|Nonfatal)\s+XC(\d+)\s+i(\d+)\s+Link\s+(-?\d+)` +
+		`(?:pid=([^,]*),\s*)?(?:name=([^,]+),\s*)?` +
+		`([^\s,]+(?:\s+[^\s,]+)*?)\s+(Fatal|Nonfatal)\s+XC(\d+)\s+i(\d+)\s+Link\s+(-?\d+)` +
 		`(?:\s+\(([^)]*)\))?`)
 
 // ParseXid scans lines for NVRM Xid entries and returns the aggregate
@@ -130,7 +135,7 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 	link, _ := strconv.ParseInt(groups[9], 10, 64)
 
 	detail := &xid.NVLink5Detail{
-		SubComponent: groups[5],
+		SubComponent: strings.Join(strings.Fields(groups[5]), " "),
 		Fatal:        groups[6] == "Fatal",
 		Link:         link,
 	}
@@ -144,7 +149,8 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 		}
 	}
 	// pid/name are optional here but carry the same meaning as on any
-	// other Xid line, so they populate the same event fields.
+	// other Xid line, so they populate the same event fields. A
+	// non-numeric pid records as 0.
 	pid, _ := strconv.ParseInt(groups[3], 10, 64)
 
 	return xid.XidEvent{

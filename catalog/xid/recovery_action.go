@@ -1,0 +1,75 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package xid
+
+// TerminalRecoveryActions maps a GPU's PCI address to the last
+// recovery-action transition reported for it in the window.
+//
+// An Xid 154 reports a transition, not a state, and a GPU can escalate
+// through several in sequence (None -> Drain and Reset -> GPU Reset
+// Required). The To of the final logged transition is therefore the
+// latest action the journal shows for that GPU, which is what a
+// decode-table row resolving to XID_154_EVAL needs in order to mean
+// anything.
+//
+// It is not guaranteed to be the action in effect now. The driver logs
+// no 154 when a GPU is reinitialized, as after a reset, and suppresses
+// it for some transitions it clears itself. So a GPU that was reset
+// still shows its last requested action until the journal window moves
+// past it, as every since-boot Xid check here does.
+//
+// Attribution is by PCI address rather than by proximity in the log.
+// Captured logs show two GPUs reporting the same Xid 145 subtype in one
+// window with only one of them escalating to a recovery action, so
+// anything coarser — "a 154 appeared somewhere in this window" — would
+// hand one GPU's recovery action to another and recommend a reset for a
+// GPU the driver never asked to reset.
+//
+// The result describes the window, not an individual event. Events
+// carry no timestamp, so log order is the only ordering available and a
+// fault logged after the final 154 for its GPU is attributed the same
+// terminal action as one logged before it. Within a single collection
+// window that is the intended reading — the driver settles on one
+// outcome per GPU — but it is why this is deliberately not presented as
+// "the action for this event".
+//
+// Returns nil when no GPU reported one, so an absent action is
+// indistinguishable from an empty map for callers that range over it.
+func TerminalRecoveryActions(events []XidEvent) map[string]RecoveryAction {
+	var terminal map[string]RecoveryAction
+	for _, ev := range events {
+		if ev.RecoveryAction == nil {
+			continue
+		}
+		if terminal == nil {
+			terminal = make(map[string]RecoveryAction)
+		}
+		terminal[ev.PCIAddress] = *ev.RecoveryAction
+	}
+	return terminal
+}
+
+// recoveryActionCounts is the recovery_action_counts signal: the
+// recovery action in effect for each GPU.
+//
+// The value is keyed by the action code rather than its name — the code
+// is what NVRM commits to, while the name is display text — canonicalised
+// so a padded or upper-case rendering keys the same entry, and
+// counts GPUs, not log lines, which is why it takes the output of
+// [TerminalRecoveryActions] rather than the events: a GPU that escalates
+// None -> Drain and Reset -> GPU Reset Required logs three Xid 154
+// lines but is one GPU needing one reset, so counting lines would
+// triple it and counting transitions would count states it has already
+// left.
+//
+// This reports which actions the driver asked for, not which fault
+// asked for them. Joining an individual XID_154_EVAL fault to its GPU's
+// action still needs the decode table, and stays with the decode.
+func recoveryActionCounts(terminal map[string]RecoveryAction) map[string]int64 {
+	counts := make(map[string]int64)
+	for _, action := range terminal {
+		counts[canonicalRecoveryActionCode(action.ToCode)]++
+	}
+	return counts
+}
