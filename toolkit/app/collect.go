@@ -15,6 +15,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
@@ -60,10 +61,11 @@ type CollectAdapter interface {
 // Timeout blocking is keyed by sensor ID, not the underlying source. Shared
 // NVML/DCGM sources must prevent new calls while a timed-out call is running.
 // Late results never replace a cached timeout result.
-// Each built-in domain is collected by its legacy sensor or by its built-in
-// collect sensor, never both. For a domain still on a legacy sensor, override
-// its legacy backend with an empty provider when an adapter supplies that
-// domain's measurements instead.
+// Each built-in measurement type is collected by its legacy sensor or by its
+// built-in collect sensor, never both; a domain may mix the two across types
+// with disjoint signals, as InfiniBand does (journal link flaps, sysfs ports).
+// For a type still on a legacy sensor, override its legacy backend with an
+// empty provider when an adapter supplies those measurements instead.
 func (a *App) WithCollect(sensor collect.Sensor, signalIDs ...string) *App {
 	a.collectSources = append(a.collectSources, collectSource{sensor: sensor, claims: slices.Clone(signalIDs)})
 	return a
@@ -102,6 +104,11 @@ func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 		sources = append(sources, cpusensor.New(nil))
 		adapters = append(adapters, collectadapters.CPU())
 	}
+	// Port state is checked on RoCE ports too, so the stock CLI
+	// widens the sensor's InfiniBand-only default. Signal narrowing keeps
+	// sysfs untouched unless an InfiniBand port check will run.
+	sources = append(sources, ibsensor.New(nil, ibsensor.WithLinkLayers("InfiniBand", "Ethernet")))
+	adapters = append(adapters, collectadapters.InfiniBand())
 	return sources, adapters
 }
 

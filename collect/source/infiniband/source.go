@@ -98,6 +98,11 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 		return nil, nil
 	}
 	devices, err := fs.ReadDir(s.files, ".")
+	if errors.Is(err, fs.ErrNotExist) {
+		// No InfiniBand class means no HCAs, as on a host without RDMA
+		// drivers; only a class that exists but cannot be read is a failure.
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,40 @@
 
 InfiniBand covers InfiniBand network health: port state, error rates, and link integrity.
 
+## InfiniBand Port State
+
+`ib_port_state`
+
+Verifies every port on a checked link layer (InfiniBand and RoCE by default) is in the expected logical state (ACTIVE) and physical link state (LinkUp). Fails CRITICAL per port that is not.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`CLUSTER`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`experimental`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Required signals | <nobr>`ib_device`</nobr>, <nobr>`ib_port`</nobr>, <nobr>`ib_state`</nobr>, <nobr>`ib_physical_state`</nobr>, <nobr>`ib_link_layer`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`checked_link_layers`</nobr> | [InfiniBand Ethernet] |  | <nobr>`DEFAULT`</nobr> | Link layers, as sysfs names them, whose ports this check evaluates; ports on any other link layer are not assessed. Drop "Ethernet" for a fleet whose RoCE ports are uncabled or run at their own speeds, rather than disabling the check. |
+| <nobr>`expected_ib_physical_state`</nobr> | LinkUp | state | <nobr>`DEFAULT`</nobr> | Physical link state every port must report, as sysfs names it in phys_state. Override per fleet. |
+| <nobr>`expected_ib_state`</nobr> | ACTIVE | state | <nobr>`DEFAULT`</nobr> | Logical port state every port must report, as sysfs names it (the text after the colon in /sys/class/infiniband/&lt;dev>/ports/&lt;n>/state). Override per fleet. |
+
+**Rules**
+
+- **CRITICAL** when `ib_link_layer in checked_link_layers && ib_state != expected_ib_state`
+  - Message: Port $\{ib_device\}:$\{ib_port\} ($\{ib_link_layer\}): state $\{ib_state\}, expected $\{expected_ib_state\}.
+- **CRITICAL** when `ib_link_layer in checked_link_layers && ib_physical_state != expected_ib_physical_state`
+  - Message: Port $\{ib_device\}:$\{ib_port\} ($\{ib_link_layer\}): physical state $\{ib_physical_state\}, expected $\{expected_ib_physical_state\}.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+
 ## RDMA Link Flap (Fatal)
 
 `rdma_linkflap_fatal`

@@ -9,6 +9,7 @@ go_library(
         "//catalog/cpu",
         "//catalog/gpu",
         "//catalog/health",
+        "//catalog/infiniband",
         "//catalog/nvlink",
         "//collect/observation",
         "//toolkit/observations",
@@ -17,16 +18,21 @@ go_library(
 
 go_test(
     name = "collectadapters_test",
-    srcs = ["adapters_test.go"],
+    srcs = [
+        "adapters_test.go",
+        "infiniband_test.go",
+    ],
     embed = [":collectadapters"],
     deps = [
         "//catalog/cpu",
         "//catalog/gpu",
         "//catalog/health",
+        "//catalog/infiniband",
         "//collect",
         "//collect/observation",
         "//collect/signals/cpu",
         "//collect/signals/gpu",
+        "//collect/signals/infiniband",
         "//toolkit/observations",
         "@org_golang_google_protobuf//types/known/timestamppb",
     ],

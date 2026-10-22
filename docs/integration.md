@@ -92,6 +92,9 @@ docker run --rm \
 
 The wrapper includes the complete mount set for journal-backed checks;
 `gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host.
+`ib_port_state` reads `/sys/class/infiniband`, which the container sees
+through the host's sysfs without extra mounts; a host with no InfiniBand
+devices skips it rather than failing.
 
 ### Static binary (bare metal, Slurm)
 
@@ -201,7 +204,7 @@ does **not** mean the pod needs `privileged: true`. The intended profiles are:
 | Docker wrapper | Read-only journal, machine-id, `journalctl`, and its `ldd` dependencies; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; no `--privileged`, host PID namespace, or extra capabilities. | All stock CLI checks, provided the container sees all node GPUs. |
 | Kubernetes explicit mounts | The same read-only paths as the wrapper. `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities, `privileged`, host PID namespace, or host networking. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
 | Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, host PID namespace, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
-| GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | GPU/NVLink and CPU/NUMA checks can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
+| GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | GPU/NVLink, CPU/NUMA, and InfiniBand port checks can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
 
 The image runs as root by default. An explicitly non-root Docker user or pod
 may be viable only when its host-mapped UID/GID has journal-read permission;

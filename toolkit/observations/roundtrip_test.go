@@ -140,6 +140,9 @@ func roundTripFixture() []health.Measurement {
 	link.AddError(errors.New("nvlink speed read failed"), nvlink.SignalSpeedMBytesPerSec)
 	link.MarkUnsupported(nvlink.SignalFabricRouteUnhealthy)
 
+	slowPort := infiniband.PortMeasurement{Device: "mlx5_1", Port: 2, State: "ACTIVE", PhysicalState: "LinkUp", LinkLayer: "Ethernet"}
+	slowPort.AddError(errors.New("rate: permission denied"), infiniband.SignalIBRateGbps)
+
 	return []health.Measurement{
 		gpu.GPUMeasurement{
 			GPUID: "GPU-0", AveragePowerDrawW: 412.5, PowerLimitW: 700, EnforcedPowerLimitW: 700,
@@ -165,6 +168,10 @@ func roundTripFixture() []health.Measurement {
 			OutageDurations: []int64{45},
 			FlapEvents:      []infiniband.LinkFlapEvent{{Interface: "mlx5_0", DownAt: "t0", UpAt: "t1", DurationSeconds: 45}},
 		},
+		infiniband.PortMeasurement{Device: "mlx5_0", Port: 1, State: "ACTIVE", PhysicalState: "LinkUp", RateGbps: 400, LinkLayer: "InfiniBand"},
+		slowPort,
+		infiniband.ErroredPort("mlx5_2", 0, errors.New("ports: permission denied"), infiniband.SignalIBState, infiniband.SignalIBPhysicalState, infiniband.SignalIBRateGbps, infiniband.SignalIBLinkLayer),
+		infiniband.ErroredPort("", 0, errors.New("sysfs unreadable"), infiniband.PortMeasurementSignals...),
 	}
 }
 
@@ -189,9 +196,9 @@ func byEntity(t *testing.T, measurements []health.Measurement) map[string]string
 				continue
 			}
 			fields[name] = value.Interface()
-			if name == gpuIDField {
-				id = value.String()
-			}
+		}
+		if identified, ok := m.(health.EntityIdentifier); ok {
+			id = identified.EntityID()
 		}
 		var errs []string
 		for _, entry := range m.Errors() {

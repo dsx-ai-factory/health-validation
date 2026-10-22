@@ -77,6 +77,25 @@ func TestLinkLayerFiltering(t *testing.T) {
 		require.Contains(t, []string{"mlx5_0", "mlx5_1", "mlx5_2", "mlx5_3", "mlx5_4", "mlx5_5", "mlx5_6"}, obs.GetTarget().GetInfiniBandPort().GetDevice().GetName())
 		require.Equal(t, uint32(1), obs.GetTarget().GetInfiniBandPort().GetPort())
 	}
+	// WithLinkLayers admits RoCE ports, matched case-insensitively; Unknown
+	// and empty layers stay excluded, and the default is unchanged.
+	roce := New(ibsource.New(files), WithLinkLayers("InfiniBand", "ethernet"))
+	batch, err = roce.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(ibsignals.State.ID(), ibsignals.Rate.ID()))
+	require.NoError(t, err)
+	require.Len(t, batch.Observations, 16)
+	devices := map[string]bool{}
+	for _, obs := range batch.Observations {
+		devices[obs.GetTarget().GetInfiniBandPort().GetDevice().GetName()] = true
+	}
+	require.True(t, devices["mlx5_7"])
+	require.False(t, devices["mlx5_8"])
+	require.False(t, devices["mlx5_9"])
+	ethernetOnly := New(ibsource.New(files), WithLinkLayers("Ethernet"))
+	batch, err = ethernetOnly.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(ibsignals.State.ID()))
+	require.NoError(t, err)
+	require.Len(t, batch.Observations, 1)
+	require.Equal(t, "mlx5_7", batch.Observations[0].GetTarget().GetInfiniBandPort().GetDevice().GetName())
+
 	// Re-read identity each cycle; do not retain a stale IB classification.
 	files["mlx5_0/ports/1/link_layer"].Data = []byte("Ethernet")
 	delete(files, "mlx5_1/ports/1/link_layer")

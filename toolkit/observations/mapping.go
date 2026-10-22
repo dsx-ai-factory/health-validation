@@ -21,11 +21,13 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 )
 
 // mapping relates one collect signal to the catalog
@@ -90,6 +92,10 @@ var mappings = []mapping{
 		},
 		apply: applyFabricManagerStatus,
 	},
+	{signal: ibsignals.StateName, measurement: infiniband.PortMeasurement{}, catalog: []string{infiniband.SignalIBState}},
+	{signal: ibsignals.PhysicalStateName, measurement: infiniband.PortMeasurement{}, catalog: []string{infiniband.SignalIBPhysicalState}},
+	{signal: ibsignals.RateGbps, measurement: infiniband.PortMeasurement{}, catalog: []string{infiniband.SignalIBRateGbps}, unit: "gigabits_per_second"},
+	{signal: ibsignals.LinkLayer, measurement: infiniband.PortMeasurement{}, catalog: []string{infiniband.SignalIBLinkLayer}},
 }
 
 // MappedSignals returns the mapped collect signal IDs [ToMeasurements]
@@ -116,7 +122,9 @@ func MappedSignalsFor(category health.Category) []string {
 }
 
 // MappedFeeds maps each mapped collect signal ID that feeds the
-// catalog's measurement for category to the catalog signals it fills.
+// catalog's measurement for category to the catalog signals it fills. The
+// identity fields a measurement takes from its target (gpu_id, or ib_device
+// and ib_port) are fed by every observation of it and are not listed.
 func MappedFeeds(category health.Category) map[string][]string {
 	feeds := make(map[string][]string)
 	for _, mapped := range mappingsFor(category) {

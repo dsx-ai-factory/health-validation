@@ -6,6 +6,8 @@ package infiniband
 import (
 	"context"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -110,6 +112,16 @@ func TestParseBoundaries(t *testing.T) {
 	for _, signal := range ibsignals.All() {
 		assert.NotEqual(t, "", paths[signal.ID()])
 	}
+}
+
+// A host without the InfiniBand class has no devices, so Read reports
+// nothing rather than a failure; a class that exists but is unreadable still
+// fails.
+func TestMissingClassIsNoDevices(t *testing.T) {
+	s := New(os.DirFS(filepath.Join(t.TempDir(), "absent")))
+	readings, err := s.Read(context.Background(), collect.Signals{ibsignals.State, ibsignals.FirmwareVersion})
+	require.NoError(t, err)
+	require.Empty(t, readings)
 }
 
 func TestDeviceInventoryWithoutPorts(t *testing.T) {

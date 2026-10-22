@@ -247,7 +247,7 @@ func TestCPUAdapterMergesSources(t *testing.T) {
 
 func TestAdapterRequestsMatchConverterMappings(t *testing.T) {
 	var got []string
-	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU()} {
+	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU(), InfiniBand()} {
 		got = slices.AppendSeq(got, maps.Keys(adapter.Signals()))
 	}
 	want := observations.MappedSignals()

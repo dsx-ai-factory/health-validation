@@ -21,7 +21,9 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 )
@@ -91,6 +93,7 @@ func TestCollectCommandWritesObservationBatch(t *testing.T) {
 	a.WithGPUBackend(toolkit.MockGPU(gpu.GPUMeasurement{GPUID: "GPU-0", PowerLimitW: 700, EnforcedPowerLimitW: 700}))
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	noInfiniBand(a)
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 1}))
 
 	var stdout, stderr bytes.Buffer
@@ -345,6 +348,7 @@ func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	noInfiniBand(a)
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
@@ -447,6 +451,7 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	noInfiniBand(a)
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
@@ -472,6 +477,7 @@ func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	noInfiniBand(a)
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
@@ -559,6 +565,7 @@ func TestWithCPUBackendOverridesSysfs(t *testing.T) {
 	}))
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	noInfiniBand(a)
 	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
 	var stdout, stderr bytes.Buffer
@@ -611,6 +618,7 @@ func TestNUMANodeCountReachesVerdict(t *testing.T) {
 	}))
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	noInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitUnhealthy {
@@ -779,6 +787,7 @@ func TestWithXidBackendOverridesJournalctl(t *testing.T) {
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	a.WithXidBackend(xidSpyBackend{called: &xidCalled})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	noInfiniBand(a)
 	a.WithNodeID(testNodeID)
 
 	var stdout, stderr bytes.Buffer
@@ -801,6 +810,7 @@ func TestIBSensorCollectsWithBackend(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	noInfiniBand(a)
 	a.WithIBBackend(ibSpyBackend{called: &ibCalled})
 
 	var stdout, stderr bytes.Buffer
@@ -892,6 +902,7 @@ func cadenceRunApp() *App {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	noInfiniBand(a)
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	return a
 }
@@ -1047,4 +1058,23 @@ func TestRunCommandCadenceContinuousSkipsPrologChecks(t *testing.T) {
 	if !verdictHasCheck(v, "gpu_count") {
 		t.Error("CONTINUOUS run missing Continuous check gpu_count")
 	}
+}
+
+// noInfiniBand replaces the stock sysfs InfiniBand source with one reporting
+// no ports, so a CLI test never reads the host's /sys/class/infiniband.
+func noInfiniBand(a *App) *App {
+	return a.WithCollect(portlessIBSensor{}, observations.MappedSignalsFor(health.InfiniBand)...)
+}
+
+type portlessIBSensor struct{}
+
+func (portlessIBSensor) ID() string               { return "test.infiniband" }
+func (portlessIBSensor) Signals() collect.Signals { return ibsignals.PortSignals() }
+
+func (s portlessIBSensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	op := collect.NewOp(opts...)
+	if _, err := op.Signals(s.Signals()); err != nil {
+		return nil, err
+	}
+	return &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}, nil
 }

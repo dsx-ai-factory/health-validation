@@ -3,6 +3,27 @@
 All notable changes to NVIDIA Health Validation are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Features
+
+- `ib_port_state`, an InfiniBand port check evaluating the new
+  `infiniband.PortMeasurement` (one per sysfs port, RoCE included): every port
+  must be ACTIVE with its physical link up. Verdicts name the port (`mlx5_0/1`)
+  in `affected_components[].entities`. `checked_link_layers` lets a fleet with
+  uncabled RoCE ports scope the check to InfiniBand.
+- The stock CLI feeds that check from the `collect/sensors/infiniband` sysfs
+  sensor through the collect bridge, requesting port signals only when a port
+  check will run.
+- `collect/sensors/infiniband.New` takes options; `WithLinkLayers` admits
+  non-InfiniBand (RoCE) ports. The default stays InfiniBand-only.
+
+### Changed
+
+- `toolkit/observations` converts several measurement types per category when
+  their signals are disjoint, and carries InfiniBand port and device targets
+  in both directions. The collect bridge validates those targets.
+
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
 Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,

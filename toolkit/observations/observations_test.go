@@ -17,6 +17,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 )
 
 func TestToMeasurementsGPU(t *testing.T) {
@@ -380,8 +381,17 @@ func TestMappedSignalsFor(t *testing.T) {
 	if got := MappedSignalsFor(health.CPU); !slices.Equal(got, cpuIDs) {
 		t.Fatalf("CPU signals = %v, want %v", got, cpuIDs)
 	}
+	ibIDs := []string{
+		ibsignals.StateName.ID(),
+		ibsignals.PhysicalStateName.ID(),
+		ibsignals.RateGbps.ID(),
+		ibsignals.LinkLayer.ID(),
+	}
+	if got := MappedSignalsFor(health.InfiniBand); !slices.Equal(got, ibIDs) {
+		t.Fatalf("InfiniBand signals = %v, want %v", got, ibIDs)
+	}
 	// Every mapped signal belongs to exactly one domain.
-	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink))
+	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink), MappedSignalsFor(health.InfiniBand))
 	if !slices.Equal(perDomain, MappedSignals()) {
 		t.Fatalf("per-domain signals %v do not partition %v", perDomain, MappedSignals())
 	}

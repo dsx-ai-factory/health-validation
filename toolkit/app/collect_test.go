@@ -19,13 +19,17 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
+	ibsource "github.com/dsx-ai-factory/health-validation/collect/source/infiniband"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -35,12 +39,115 @@ const customCountSignal = "test.node.custom_count"
 
 func TestCPUDomainDefaultsToCollectSensor(t *testing.T) {
 	sources, adapters := New().builtinCollect()
-	if len(sources) != 1 || sources[0].ID() != cpusensor.ID || len(adapters) != 1 || adapters[0].Name() != "cpu" {
-		t.Fatalf("default CPU domain = %v, %v; want the sysfs collect sensor and cpu adapter", sources, adapters)
+	if ids, names := sourceIDs(sources), adapterNames(adapters); !slices.Equal(ids, []string{cpusensor.ID, ibsensor.ID}) || !slices.Equal(names, []string{"cpu", "infiniband"}) {
+		t.Fatalf("default collect domains = %v, %v; want the sysfs CPU and InfiniBand sensors and adapters", ids, names)
 	}
 	sources, adapters = New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})).builtinCollect()
-	if len(sources) != 0 || len(adapters) != 0 {
-		t.Fatalf("WithCPUBackend kept collect CPU domain: %v, %v", sources, adapters)
+	if ids, names := sourceIDs(sources), adapterNames(adapters); !slices.Equal(ids, []string{ibsensor.ID}) || !slices.Equal(names, []string{"infiniband"}) {
+		t.Fatalf("WithCPUBackend kept collect CPU domain: %v, %v", ids, names)
+	}
+}
+
+func sourceIDs(sources []collect.Sensor) []string {
+	var ids []string
+	for _, s := range sources {
+		ids = append(ids, s.ID())
+	}
+	return ids
+}
+
+func adapterNames(adapters []CollectAdapter) []string {
+	var names []string
+	for _, a := range adapters {
+		names = append(names, a.Name())
+	}
+	return names
+}
+
+// The stock InfiniBand sensor is measured only when a port check will run,
+// and then only for the signals those checks read; the link-flap check
+// alone, fed by the legacy journal sensor, requests nothing from sysfs.
+func TestBuiltinCollectNarrowsInfiniBandToPortChecks(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		runnable []health.CheckDefinition
+		want     [][]string
+	}{
+		{name: "link flap only", runnable: []health.CheckDefinition{infiniband.RDMALinkFlapFatal()}},
+		{name: "port state", runnable: []health.CheckDefinition{infiniband.PortState()}, want: [][]string{{
+			ibsignals.StateName.ID(), ibsignals.PhysicalStateName.ID(), ibsignals.LinkLayer.ID(),
+		}}},
+		{name: "link flap and port state", runnable: []health.CheckDefinition{infiniband.RDMALinkFlapFatal(), infiniband.PortState()}, want: [][]string{{
+			ibsignals.StateName.ID(), ibsignals.PhysicalStateName.ID(), ibsignals.LinkLayer.ID(),
+		}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := &recordingSensor{id: ibsensor.ID, signals: ibsignals.All()}
+			var runnable []*health.CheckDefinition
+			for i := range test.runnable {
+				runnable = append(runnable, &test.runnable[i])
+			}
+			sensors, err := New().collectSensors(time.Second, []collect.Sensor{source}, []CollectAdapter{collectadapters.InfiniBand()}, requiredFor(runnable))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(source.selected, test.want) || len(sensors) != len(test.want) {
+				t.Fatalf("selected=%v bridged=%d; want %v and %d", source.selected, len(sensors), test.want, len(test.want))
+			}
+		})
+	}
+}
+
+// End to end through the stock wiring: sysfs ports become per-port verdicts
+// that name the failing port, RoCE ports included, and a healthy fleet passes.
+func TestBuiltinCollectInfiniBandPortVerdicts(t *testing.T) {
+	cat, _, err := buildCatalog(nil, nil, "GB200", health.OperatorInfra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnable, err := cat.RunnableChecks(catalog.EvaluationOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sysfs := fstest.MapFS{}
+	for _, port := range []struct{ device, layer, state, phys, rate string }{
+		{"mlx5_0", "Ethernet", "4: ACTIVE", "5: LinkUp", "100 Gb/sec (4X EDR)"},
+		{"mlx5_1", "InfiniBand", "4: ACTIVE", "5: LinkUp", "400 Gb/sec (4X NDR)"},
+		{"mlx5_2", "InfiniBand", "1: DOWN", "2: Polling", "10 Gb/sec (4X SDR)"},
+	} {
+		sysfs[port.device+"/ports/1/link_layer"] = &fstest.MapFile{Data: []byte(port.layer)}
+		sysfs[port.device+"/ports/1/state"] = &fstest.MapFile{Data: []byte(port.state)}
+		sysfs[port.device+"/ports/1/phys_state"] = &fstest.MapFile{Data: []byte(port.phys)}
+		sysfs[port.device+"/ports/1/rate"] = &fstest.MapFile{Data: []byte(port.rate)}
+	}
+	source := ibsensor.New(ibsource.New(sysfs), ibsensor.WithLinkLayers("InfiniBand", "Ethernet"))
+	sensors, err := New().collectSensors(time.Second, []collect.Sensor{source}, []CollectAdapter{collectadapters.InfiniBand()}, requiredFor(runnable))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var measurements []health.Measurement
+	for _, sensor := range sensors {
+		m, measureErr := sensor.Measure(context.Background())
+		if measureErr != nil {
+			t.Fatal(measureErr)
+		}
+		measurements = append(measurements, m...)
+	}
+	if len(measurements) != 3 {
+		t.Fatalf("got %d measurements, want one per port: %v", len(measurements), measurements)
+	}
+	verdict, err := cat.EvaluateAllWithOptions(catalog.EvaluationOptions{}, measurements...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var downPort bool
+	for _, c := range verdict.CheckResults {
+		if c.CheckID == "ib_port_state" && c.Severity == health.Critical {
+			downPort = downPort || slices.Equal(c.AffectedEntities, []string{"mlx5_2/1"})
+		}
+	}
+	if !downPort {
+		t.Fatalf("want ib_port_state CRITICAL naming mlx5_2/1: %+v", verdict.CheckResults)
 	}
 }
 
@@ -72,6 +179,8 @@ func TestCollectionSensorsSelectsBridgeSensorsByAdapterCategory(t *testing.T) {
 func TestLegacyOnlyCollectionIsUnchangedByCollectPlumbing(t *testing.T) {
 	a := cadenceRunApp().WithNodeID(testNodeID).
 		WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}))
+	// The legacy path alone: no caller collect registrations.
+	a.collectSources = nil
 	cpuCalls := 0
 	a.WithCPUBackend(cpuBackendFunc(func(context.Context) (cpu.CPUMeasurement, error) {
 		cpuCalls++
@@ -550,7 +659,9 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 			if name == "nil signal" && !strings.Contains(stderr.String(), "declares a nil signal") {
 				t.Fatalf("nil signal did not cause setup failure: %q", stderr.String())
 			}
-			if name == "no adapter" && !strings.Contains(stderr.String(), "collect sensors registered without adapters; register adapters with WithCollectAdapters") {
+			// Built-in adapters are always present, so a caller sensor without
+			// its own adapter fails for supplying nothing an adapter requests.
+			if name == "no adapter" && !strings.Contains(stderr.String(), `sensor "test.node" supplies no adapter-requested signals`) {
 				t.Fatalf("missing adapters were not explained: %q", stderr.String())
 			}
 			if name == "unowned signal" && !strings.Contains(stderr.String(), "supplies no adapter-requested signals") {
@@ -1156,10 +1267,14 @@ func TestCollectSensorsRequestsOnlyRunnableCheckSignals(t *testing.T) {
 }
 
 // An adapter left with nothing to collect is not built, so a built-in check
-// its mapping cannot feed would silently skip. Every built-in check of a
-// collect-backed domain must therefore be fed by that domain's adapter, from
-// signals its built-in source declares.
+// its mapping cannot feed would silently skip. Every built-in check an
+// adapter feeds at all must therefore be fed completely, from signals its
+// built-in source declares. A check of the same category fed by a legacy
+// sensor (rdma_linkflap_fatal beside the InfiniBand port adapter) is not
+// the adapter's to feed, and identity fields come from every observation's
+// target rather than from a mapped signal.
 func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
+	identity := []string{gpu.SignalGPUID, infiniband.SignalIBDevice, infiniband.SignalIBPort}
 	sources, adapters := New().builtinCollect()
 	var produced []string
 	for _, source := range sources {
@@ -1177,15 +1292,20 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 				fed[s] = true
 			}
 		}
+		var feedsAny int
 		for _, cd := range catalog.New().List(catalog.Filter{}) {
-			if cd.Category != adapter.Category() {
+			if cd.Category != adapter.Category() || !slices.ContainsFunc(cd.RequiredSignals, func(s string) bool { return fed[s] }) {
 				continue
 			}
+			feedsAny++
 			for _, s := range cd.RequiredSignals {
-				if !fed[s] {
+				if !fed[s] && !slices.Contains(identity, s) {
 					t.Errorf("built-in check %s requires %q, which adapter %q does not feed", cd.ID, s, adapter.Name())
 				}
 			}
+		}
+		if feedsAny == 0 {
+			t.Errorf("adapter %q feeds no built-in check", adapter.Name())
 		}
 	}
 }
