@@ -104,6 +104,14 @@ func ParseACS(config []byte) (*ACS, error) {
 	}
 }
 
+// Read returns one reading per selected signal and PCI device under Root.
+// An empty selection returns no readings without accessing the filesystem.
+// If no devices are found, each selected signal gets a NoTargets reading.
+//
+// Read returns errors for unknown signal IDs, a nil context, concurrent use
+// (ErrInUse), or failure to resolve or list Root. Context errors checked before
+// enumeration are returned directly; later ones and per-device read or parse
+// errors are stored in Reading.Failure. Unsupported values use Reading.NoValue.
 func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading, error) {
 	selected, err := collect.NewOp(collect.WithSignalID(selected.IDs()...)).Signals(pcisignals.All())
 	if err != nil || len(selected) == 0 {
@@ -194,6 +202,8 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 				if err == nil {
 					reading.Value = &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: vendor == 0x10de && (class>>8 == 0x0300 || class>>8 == 0x0302 || class>>16 == 0x12)}}
 				}
+			case pcisignals.LinkSpeed.ID(), pcisignals.MaxLinkSpeed.ID(), pcisignals.LinkWidth.ID(), pcisignals.MaxLinkWidth.ID(), pcisignals.LinkGeneration.ID(), pcisignals.MaxLinkGeneration.ID():
+				err = s.property(base, &reading)
 			default:
 				reading.Path = path.Join(base, "config")
 				if !acsRead {

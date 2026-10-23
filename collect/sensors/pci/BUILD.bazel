@@ -16,7 +16,10 @@ go_library(
 
 go_test(
     name = "pci_test",
-    srcs = ["sensor_test.go"],
+    srcs = [
+        "properties_test.go",
+        "sensor_test.go",
+    ],
     embed = [":pci"],
     deps = [
         "//collect",
