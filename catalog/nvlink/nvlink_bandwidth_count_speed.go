@@ -43,7 +43,7 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300", "H100"},
+		Architectures:     []string{"GB200", "GB300", "B200", "H100"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
@@ -56,7 +56,7 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 				ValueType:   health.ThresholdInt64,
 				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
-				Description: "Expected NVLinks per GPU. GB200 exposes 18 NVLink 5 links.",
+				Description: "Expected NVLinks per GPU. GB200, GB300 and B200 expose 18 NVLink 5 links; H100 exposes 18 NVLink 4 links.",
 				Unit:        "count",
 			},
 			"expected_speed_mbytes_per_sec": {
@@ -64,12 +64,13 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 				PerArchitecture: map[string]any{
 					"GB200": int64(53125),
 					"GB300": int64(53125),
+					"B200":  int64(53125),
 					"H100":  int64(26562),
 				},
 				ValueType:   health.ThresholdInt64,
 				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
-				Description: "Expected per-link NVLink speed in MegaBytes per second. GB200 NVLink 5 at 53125, GB300 at 53125, H100 NVLink 4 at 26562.",
+				Description: "Expected per-link NVLink speed in MegaBytes per second. GB200, GB300 and B200 NVLink 5 at 53125, H100 NVLink 4 at 26562.",
 				Unit:        "MB/s",
 			},
 		},

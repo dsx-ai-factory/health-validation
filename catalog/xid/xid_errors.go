@@ -26,11 +26,14 @@ type criticalXid struct {
 }
 
 var (
-	allArchitectures             = []string{"GB200", "GB300", "H100", "H200", "A100"}
-	blackwellArchitectures       = []string{"GB200", "GB300"}
-	hopperBlackwellArchitectures = []string{"GB200", "GB300", "H100", "H200"}
+	allArchitectures             = []string{"GB200", "GB300", "B200", "H100", "H200", "A100"}
+	blackwellArchitectures       = []string{"GB200", "GB300", "B200"}
+	hopperBlackwellArchitectures = []string{"GB200", "GB300", "B200", "H100", "H200"}
 	ampereHopperArchitectures    = []string{"H100", "H200", "A100"}
 	hopperArchitectures          = []string{"H100", "H200"}
+	// graceBlackwellArchitectures covers Xids NVIDIA's catalog marks
+	// GraceBlackwell and do not occur on an HGX B200 baseboard.
+	graceBlackwellArchitectures = []string{"GB200", "GB300"}
 )
 
 // resetAndService is the remediation sequence for a Xid code
@@ -58,7 +61,7 @@ var criticalXids = []criticalXid{
 	{code: 120, action: resetAndService(), architectures: allArchitectures, description: "GSP error"},
 	{code: 136, action: resetAndService(), architectures: hopperArchitectures, description: "link training failed"},
 	{code: 140, action: resetAndService(), architectures: allArchitectures, description: "ECC unrecovered error"},
-	{code: 142, action: health.Drain(health.RemediationActionServiceRequired), architectures: blackwellArchitectures, description: "NVENC3 error"},
+	{code: 142, action: health.Drain(health.RemediationActionServiceRequired), architectures: graceBlackwellArchitectures, description: "NVENC3 error"},
 	{code: 143, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "GPU initialization error"},
 	// 144-150 (NVLink5/NETIR family) are not listed here: they get their
 	// own severity-differentiated checks below, built by nvlink5Check.

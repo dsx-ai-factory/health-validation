@@ -63,17 +63,24 @@ func TestGPUCount(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
-			// The check is scoped to GB200 -- a non-GB200 architecture
-			// skips with ArchitectureUnsupported instead of running the
-			// rule.
-			name: "skipped on wrong architecture",
+			// B200 resolves its PerArchitecture default of 8, so a GB200-style
+			// 4-GPU count is a failure there, not a pass.
+			name:         "B200 accepts 8 GPUs",
+			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("B200")) },
+			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 8} },
+			wantSeverity: health.Pass,
+		},
+		{
+			// An architecture without a canonical count skips with
+			// ArchitectureUnsupported instead of running the rule.
+			name: "skipped on an unlisted architecture",
 			cat: func() *catalog.Catalog {
 				return catalog.New(
 					catalog.WithArchitecture("H100"),
 					catalog.WithExecutionContext(health.OperatorInfra),
 				)
 			},
-			measurement:    func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 4} },
+			measurement:    func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 8} },
 			wantSkipped:    true,
 			wantSkipReason: health.ArchitectureUnsupported,
 		},

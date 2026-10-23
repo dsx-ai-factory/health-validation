@@ -39,7 +39,7 @@ func averagePowerOverrides(minW, maxW float64) catalog.Option {
 
 func TestGPUAveragePowerDraw_Definition(t *testing.T) {
 	definition := gpu.GPUAveragePowerDraw()
-	if got, want := definition.Architectures, []string{"GB200", "GB300"}; !slices.Equal(got, want) {
+	if got, want := definition.Architectures, []string{"GB200", "GB300", "B200"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
 	if definition.SchedulingCadence != health.Continuous {

@@ -18,14 +18,14 @@ Verifies a node enumerated the expected number of GPUs for its architecture.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`gpu_count`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`expected_gpu_count`</nobr> | 4 | count | <nobr>`DEFAULT`</nobr> | Expected number of GPUs on a node. Override per fleet. |
+| <nobr>`expected_gpu_count`</nobr> | B200: 8, GB200: 4, GB300: 4, other: 8 | count | <nobr>`DEFAULT`</nobr> | Expected number of GPUs on a node: 4 on GB200/GB300, 8 on B200. Override per fleet. |
 
 **Rules**
 

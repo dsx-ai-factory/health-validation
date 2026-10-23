@@ -18,7 +18,7 @@ Detects mlx5 RDMA interface link outages that lasted at least min_outage_seconds
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`outage_durations`</nobr> |
 
 **Thresholds**
