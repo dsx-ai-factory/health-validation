@@ -15,3 +15,33 @@ type nativeAPI interface {
 	WatchMetrics([]string) (func() error, error)
 	ReadGPUMetrics(uint, []string) (map[string]FieldValue, error)
 }
+
+// sessionMode selects how a source starts DCGM. The zero value is unset.
+type sessionMode uint8
+
+const (
+	standaloneMode sessionMode = iota + 1
+	embeddedMode
+	autoMode
+)
+
+func (mode sessionMode) String() string {
+	switch mode {
+	case standaloneMode:
+		return "standalone"
+	case embeddedMode:
+		return "embedded"
+	case autoMode:
+		return "auto"
+	default:
+		return "unknown"
+	}
+}
+
+// nativeOptions configures the platform-specific DCGM client.
+type nativeOptions struct {
+	address         string
+	groupNamePrefix string
+	isSocket        bool
+	mode            sessionMode
+}

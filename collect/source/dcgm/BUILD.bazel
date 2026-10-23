@@ -41,6 +41,7 @@ go_test(
         "errors_test.go",
         "fields_linux_test.go",
         "gpu_inventory_linux_test.go",
+        "native_linux_test.go",
         "source_test.go",
     ],
     embed = [":dcgm"],
