@@ -68,7 +68,8 @@ func TestArchitecture_UnrecognizedNameYieldsUnknown(t *testing.T) {
 		DeviceGetCountFunc: func() (int, gonvml.Return) { return 1, gonvml.SUCCESS },
 		DeviceGetHandleByIndexFunc: func(int) (gonvml.Device, gonvml.Return) {
 			return &mock.Device{
-				GetNameFunc: func() (string, gonvml.Return) { return "NVIDIA GeForce RTX 4090", gonvml.SUCCESS },
+				GetNameFunc:    func() (string, gonvml.Return) { return "NVIDIA GeForce RTX 4090", gonvml.SUCCESS },
+				GetPciInfoFunc: func() (gonvml.PciInfo, gonvml.Return) { return gonvml.PciInfo{PciDeviceId: 0x268410DE}, gonvml.SUCCESS },
 			}, gonvml.SUCCESS
 		},
 	}
@@ -134,7 +135,8 @@ func TestArchitecture_UnknownArchSkipsScopedChecks(t *testing.T) {
 		DeviceGetCountFunc: func() (int, gonvml.Return) { return gpuCount, gonvml.SUCCESS },
 		DeviceGetHandleByIndexFunc: func(int) (gonvml.Device, gonvml.Return) {
 			return &mock.Device{
-				GetNameFunc: func() (string, gonvml.Return) { return "NVIDIA GeForce RTX 4090", gonvml.SUCCESS },
+				GetNameFunc:    func() (string, gonvml.Return) { return "NVIDIA GeForce RTX 4090", gonvml.SUCCESS },
+				GetPciInfoFunc: func() (gonvml.PciInfo, gonvml.Return) { return gonvml.PciInfo{PciDeviceId: 0x268410DE}, gonvml.SUCCESS },
 			}, gonvml.SUCCESS
 		},
 	}
@@ -154,5 +156,90 @@ func TestArchitecture_UnknownArchSkipsScopedChecks(t *testing.T) {
 	if !v.Skipped || v.SkipReason != health.ArchitectureUnsupported {
 		t.Errorf("gpu_count: skipped=%v reason=%v, want skipped ArchitectureUnsupported (fail safe, not CRITICAL)",
 			v.Skipped, v.SkipReason)
+	}
+}
+
+// vrDevice mocks a VR GPU as NVML reports it on a VR NVL72 node (driver
+// 620.16): a generic product name and PCI device ID 0x3041.
+func vrDevice(pciRet gonvml.Return) *mock.Device {
+	return &mock.Device{
+		GetNameFunc: func() (string, gonvml.Return) { return "NVIDIA Graphics Device", gonvml.SUCCESS },
+		GetPciInfoFunc: func() (gonvml.PciInfo, gonvml.Return) {
+			return gonvml.PciInfo{PciDeviceId: 0x304110DE}, pciRet
+		},
+	}
+}
+
+func singleDeviceLibrary(d gonvml.Device) *mock.Interface {
+	return &mock.Interface{
+		InitFunc:                   func() gonvml.Return { return gonvml.SUCCESS },
+		ShutdownFunc:               func() gonvml.Return { return gonvml.SUCCESS },
+		DeviceGetCountFunc:         func() (int, gonvml.Return) { return 1, gonvml.SUCCESS },
+		DeviceGetHandleByIndexFunc: func(int) (gonvml.Device, gonvml.Return) { return d, gonvml.SUCCESS },
+	}
+}
+
+// A VR GPU's product name is generic, so its PCI device ID identifies it.
+func TestArchitecture_GenericNameUsesPCIDeviceID(t *testing.T) {
+	b := NewWithLibrary(singleDeviceLibrary(vrDevice(gonvml.SUCCESS)))
+	t.Cleanup(func() { b.Close() })
+
+	arch, err := b.Architecture()
+	if err != nil {
+		t.Fatalf("Architecture: %v", err)
+	}
+	if arch != "VR200" {
+		t.Errorf("Architecture = %q, want VR200", arch)
+	}
+}
+
+// A generic name with an unrecognized PCI device ID is still unknown.
+func TestArchitecture_GenericNameUnknownPCIDeviceIDYieldsUnknown(t *testing.T) {
+	d := &mock.Device{
+		GetNameFunc:    func() (string, gonvml.Return) { return "NVIDIA Graphics Device", gonvml.SUCCESS },
+		GetPciInfoFunc: func() (gonvml.PciInfo, gonvml.Return) { return gonvml.PciInfo{PciDeviceId: 0xFFFF10DE}, gonvml.SUCCESS },
+	}
+	b := NewWithLibrary(singleDeviceLibrary(d))
+	t.Cleanup(func() { b.Close() })
+
+	arch, err := b.Architecture()
+	if err != nil {
+		t.Fatalf("Architecture: %v", err)
+	}
+	if arch != architectureUnknown {
+		t.Errorf("Architecture = %q, want %q", arch, architectureUnknown)
+	}
+}
+
+// If the PCI info cannot be read, a generic name stays unknown rather than
+// guessing an architecture.
+func TestArchitecture_GenericNamePCIReadFailureYieldsUnknown(t *testing.T) {
+	b := NewWithLibrary(singleDeviceLibrary(vrDevice(gonvml.ERROR_UNKNOWN)))
+	t.Cleanup(func() { b.Close() })
+
+	arch, err := b.Architecture()
+	if err != nil {
+		t.Fatalf("Architecture: %v", err)
+	}
+	if arch != architectureUnknown {
+		t.Errorf("Architecture = %q, want %q", arch, architectureUnknown)
+	}
+}
+
+// A GPU recognized by name never consults its PCI device ID; the mock
+// panics if GetPciInfo is called.
+func TestArchitecture_RecognizedNameSkipsPCILookup(t *testing.T) {
+	d := &mock.Device{
+		GetNameFunc: func() (string, gonvml.Return) { return "NVIDIA GB200", gonvml.SUCCESS },
+	}
+	b := NewWithLibrary(singleDeviceLibrary(d))
+	t.Cleanup(func() { b.Close() })
+
+	arch, err := b.Architecture()
+	if err != nil {
+		t.Fatalf("Architecture: %v", err)
+	}
+	if arch != "GB200" {
+		t.Errorf("Architecture = %q, want GB200", arch)
 	}
 }

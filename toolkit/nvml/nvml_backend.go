@@ -919,7 +919,9 @@ const architectureUnknown = "unknown"
 
 // Architecture reports the node's GPU architecture as one of the catalog
 // architecture identifiers (e.g. "GB200", "GB300", "H100"), derived from the
-// NVML product name of the first enumerated device whose name reads.
+// NVML product name of the first enumerated device whose name reads. When
+// that name is unrecognized (e.g. a generic "NVIDIA Graphics Device"), the
+// device's PCI device ID is tried next.
 //
 // [architectureUnknown] is returned only when at least one device name reads
 // but none maps to a known architecture — a healthy but unrecognized GPU that
@@ -959,11 +961,33 @@ func (b *NVMLBackend) Architecture() (string, error) {
 		if arch := architectureFromName(name); arch != "" {
 			return arch, nil
 		}
+		if arch := architectureFromPCI(d); arch != "" {
+			return arch, nil
+		}
 	}
 	if !nameRead {
 		return "", fmt.Errorf("nvml architecture discovery: no GPU name could be read from %d device(s): %w", len(devs), firstFailure)
 	}
 	return architectureUnknown, nil
+}
+
+// pciDeviceArchitectures maps an NVML PCI device ID (device ID in the high
+// 16 bits, vendor ID in the low 16 bits) to a catalog architecture
+// identifier, for GPUs whose product name is generic.
+var pciDeviceArchitectures = map[uint32]string{
+	0x304110DE: "VR200", // reported as "NVIDIA Graphics Device"
+}
+
+// architectureFromPCI maps a device's PCI device ID to a catalog
+// architecture identifier, or "" when the ID is unrecognized or unreadable.
+// It is consulted only after the product name fails to match, so GPUs
+// already recognized by name are unaffected.
+func architectureFromPCI(d gonvml.Device) string {
+	info, ret := d.GetPciInfo()
+	if ret != gonvml.SUCCESS {
+		return ""
+	}
+	return pciDeviceArchitectures[info.PciDeviceId]
 }
 
 // architectureFromName maps an NVML product name (e.g. "NVIDIA H100 80GB
