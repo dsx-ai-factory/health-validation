@@ -151,7 +151,9 @@ receiving a separate three-month tail.
 | `catalog/v0.3.x` and `toolkit/v0.3.x` | Current |
 | `catalog/v0.2.x` and `toolkit/v0.2.x` | Maintenance |
 
-The `v0.1.x` lines are EOL. The first `vX.Y.Z` release replaces these rows.
+The `v0.1.x` lines are EOL. These lines predate the single-module layout and
+were tagged per module; the first `vX.Y.Z` release replaces this table with
+single-tag lines.
 
 Maintainers update this table and the release notes when final releases change
 the supported lines. Backport requests should identify the affected supported
