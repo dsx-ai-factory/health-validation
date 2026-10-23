@@ -10,7 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The `catalog`, `toolkit`, `collect`, and `agentkit` modules are merged into
   the single root module `github.com/dsx-ai-factory/health-validation`, with one
   `go.mod` and one version. Import paths are unchanged. Replace requires on
-  `…/catalog`, `…/toolkit`, and `…/collect` with one require on the root module
+  `…/catalog`, `…/toolkit`, `…/collect`, and `…/agentkit` with one require on the root module
   at the first `vX.Y.Z` release. Releases are tagged `vX.Y.Z` instead of
   `catalog/vX.Y.Z` and `toolkit/vX.Y.Z`, and the verdict's `catalog_version`
   equals the CLI version.

@@ -5,7 +5,7 @@
 // server surface (gRPC and HTTP on one port). It is opt-in — collect
 // stays usable with no agent involved.
 //
-// This module is experimental (v0). Its APIs follow the
-// shared-collection-library proposal and may change until per-module
-// versioning lands.
+// This package is experimental (v0) and outside the project's support
+// lifecycle. Its APIs follow the shared-collection-library proposal and may
+// change.
 package agentkit

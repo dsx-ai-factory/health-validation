@@ -86,7 +86,7 @@ public API change and a PATCH increment for a compatible fix. A MINOR release
 that deprecates public API must document a migration path. Keep the deprecated
 API until a later breaking release removes or changes it.
 
-Prerelease tags use the form `v1.2.3-rc.1`. A prerelease has lower precedence than its associated
+Prerelease tags use the form `v1.2.3-rc1`. A prerelease has lower precedence than its associated
 normal version and can change before the normal release. Semantic Versioning
 build metadata, such as `+build.7`, does not affect version precedence. Release
 tags must not include build metadata. The
