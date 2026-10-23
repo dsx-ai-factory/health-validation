@@ -115,6 +115,13 @@ fern docs md check       # validate the Markdown/MDX
 fern docs dev            # live preview on http://localhost:3000/
 ```
 
+The published site is versioned by toolkit release. A final
+`toolkit/vX.Y.Z` tag, or a manual run of the Fern Docs publish workflow,
+rebuilds one version per toolkit MAJOR.MINOR line from that line's highest
+final tag (`tools/fern_docs_versions.py`). The newest line is the default
+version. Until a toolkit release contains the Fern docs, the site publishes
+unversioned from `main`.
+
 `docs/reference/` (the Check Catalog and Verdict Schema pages) is generated from
 `catalog/` and committed. After changing a check or a verdict type, run
 `bazel run //docs:reference_update`; `bazel test //...` fails when the committed
