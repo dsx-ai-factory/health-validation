@@ -66,7 +66,7 @@ pseudo_version() {
 	base="${base#v}"
 
 	IFS=. read -r major minor patch <<<"$base"
-	if [[ "$patch" =~ ^[0-9]+-rc\.[0-9]+$ ]]; then
+	if [[ "$patch" =~ ^[0-9]+-rc\.(0|[1-9][0-9]*)$ ]]; then
 		rc=1
 	fi
 	patch="${patch%%[-+]*}"
@@ -103,7 +103,7 @@ else
 		event_tag="${GITHUB_REF_NAME:-}"
 	fi
 
-	if [[ "$event_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+	if [[ "$event_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.(0|[1-9][0-9]*))?$ ]]; then
 		version="$event_tag"
 	elif [[ -z "$event_tag" ]]; then
 		# Main builds advance the patch component of the most recent release.
