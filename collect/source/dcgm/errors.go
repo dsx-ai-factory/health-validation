@@ -26,6 +26,13 @@ func (failure *dcgmError) Error() string {
 	return failure.detail
 }
 
+// connectionNotValid reports a hostengine connect that DCGM classified as
+// DCGM_ST_CONNECTION_NOT_VALID.
+func connectionNotValid(err error) bool {
+	var failure *dcgmError
+	return errors.As(err, &failure) && failure.sourceError == "DCGM_ST_CONNECTION_NOT_VALID"
+}
+
 // collectionError converts a cycle or DCGM operation error into the common
 // collection-error format.
 func collectionError(err error) observation.CollectionError {

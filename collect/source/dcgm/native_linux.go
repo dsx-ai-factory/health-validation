@@ -19,24 +19,51 @@ import (
 type nativeLibrary struct {
 	readFields func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error)
 	gpuStatus  func(uint) godcgm.EntityStatus
-	options    StandaloneOptions
+	dcgmInit   func(sessionMode, ...string) (func(), error)
+	// Embedded mode ignores options.Address and options.IsSocket.
+	options StandaloneOptions
+	mode    sessionMode
 }
 
 // metricWatchSequence keeps DCGM group names unique within the process.
 var metricWatchSequence atomic.Uint64
 
-func newNative(options StandaloneOptions) nativeAPI {
-	return &nativeLibrary{options: options, readFields: readGPUFields, gpuStatus: godcgm.GetGPUStatus}
+func newNative(options StandaloneOptions, mode sessionMode) nativeAPI {
+	return &nativeLibrary{
+		options:    options,
+		mode:       mode,
+		readFields: readGPUFields,
+		gpuStatus:  godcgm.GetGPUStatus,
+		dcgmInit:   initDCGM,
+	}
+}
+
+// Tests replace goDCGMInit to check the go-dcgm mode, whose type is unexported.
+var goDCGMInit = godcgm.Init
+
+func initDCGM(mode sessionMode, args ...string) (func(), error) {
+	switch mode {
+	case embeddedMode:
+		return goDCGMInit(godcgm.Embedded)
+	case standaloneMode:
+		return goDCGMInit(godcgm.Standalone, args...)
+	default:
+		return nil, fmt.Errorf("unknown DCGM session mode %d", mode)
+	}
 }
 
 func (library *nativeLibrary) Init() (func(), error) {
-	isSocket := "0"
-	if library.options.IsSocket {
-		isSocket = "1"
+	var args []string
+	if library.mode == standaloneMode {
+		isSocket := "0"
+		if library.options.IsSocket {
+			isSocket = "1"
+		}
+		args = []string{library.options.Address, isSocket}
 	}
 	// go-dcgm already reference-counts Init and Shutdown. Keep its cleanup
 	// function with this source instead of adding another counter.
-	cleanup, err := godcgm.Init(godcgm.Standalone, library.options.Address, isSocket)
+	cleanup, err := library.dcgmInit(library.mode, args...)
 	if err != nil {
 		return nil, dcgmErrorFromError(err)
 	}
