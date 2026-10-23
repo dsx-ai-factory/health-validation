@@ -1,5 +1,7 @@
 # NVIDIA Health Validation
 
+[![CI](https://github.com/dsx-ai-factory/health-validation/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/dsx-ai-factory/health-validation/actions/workflows/ci.yml)
+
 NVIDIA Health Validation runs on a GPU node, evaluates hardware and driver state against calibrated thresholds, and returns a structured verdict. The verdict answers one question: is this node ready to accept the next workload?
 
 The repository is `github.com/dsx-ai-factory/health-validation`. It contains four Go modules; the two published and independently versioned ones are:
