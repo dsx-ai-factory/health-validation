@@ -1,0 +1,44 @@
+# Affiliation classification requires explicit pilot activation.
+name: Contribution intake pilot
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: contribution-intake-${{ github.repository }}-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  intake:
+    if: github.repository == 'dsx-ai-factory/health-validation' && vars.HEALTH_VALIDATION_INTAKE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Contribution metadata is untrusted; only reviewed default-branch code runs.
+      - name: Checkout trusted main only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+          allow-unsafe-pr-checkout: false
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.20.0'
+          package-manager-cache: false
+
+      - name: Classify affiliation
+        env:
+          HEALTH_VALIDATION_APPLY_LABELS: 'true'
+          GITHUB_TOKEN: ${{ github.token }}
+          HEALTH_VALIDATION_REVIEWED_DECISIONS_JSON: ${{ secrets.HEALTH_VALIDATION_REVIEWED_DECISIONS_JSON }}
+        run: node tools/contributor-intake/actions-intake.mjs intake

@@ -1,6 +1,6 @@
 name: Task / Question
 description: General question, documentation gap, or a task that is neither a bug nor a feature.
-labels: ["question"]
+labels: ["question", "needs-triage"]
 body:
   - type: markdown
     attributes:
