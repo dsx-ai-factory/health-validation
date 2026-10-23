@@ -67,7 +67,7 @@ Tag a release with its semantic version:
 vX.Y.Z
 ```
 
-Release candidates use a `-rcN` suffix (e.g. `v1.2.0-rc1`); commits after an RC
+Release candidates use a `-rc.N` suffix (e.g. `v1.2.0-rc.1`); commits after an RC
 tag continue to version as prereleases of that same final version until the
 final tag lands.
 
@@ -75,9 +75,9 @@ A minor release goes through QA as an RC, without freezing `main`:
 
 1. Merge a PR to `main` that adds the `CHANGELOG.md` entry. Point the entry's
    link at the final `vX.Y.0` tag, even though it does not exist yet.
-2. Tag that commit `vX.Y.0-rc1`, and create `release/vX.Y` from the tag.
+2. Tag that commit `vX.Y.0-rc.1`, and create `release/vX.Y` from the tag.
 3. Land QA fixes on `main` first, then cherry-pick them onto `release/vX.Y`
-   and tag the next `-rcN` there.
+   and tag the next `-rc.N` there.
 4. Tag `vX.Y.0` on `release/vX.Y` once QA passes. Later patch releases for that
    line are tagged on the same branch.
 
@@ -92,7 +92,7 @@ added.
 
 ## What CI does automatically
 
-Pushing a `vX.Y.Z` (or `-rcN`) tag, or merging to `main`, runs the full
+Pushing a `vX.Y.Z` (or `-rc.N`) tag, or merging to `main`, runs the full
 `.github/workflows/ci.yml` pipeline: lint, test, build and smoke-test the image
 on both architectures, and a Grype vulnerability scan that blocks on any fixable
 Critical. If all of that passes, `publish-image` builds the multi-architecture

@@ -86,7 +86,7 @@ public API change and a PATCH increment for a compatible fix. A MINOR release
 that deprecates public API must document a migration path. Keep the deprecated
 API until a later breaking release removes or changes it.
 
-Prerelease tags use the form `v1.2.3-rc1`. A prerelease has lower precedence than its associated
+Prerelease tags use the form `v1.2.3-rc.1`. A prerelease has lower precedence than its associated
 normal version and can change before the normal release. Semantic Versioning
 build metadata, such as `+build.7`, does not affect version precedence. Release
 tags must not include build metadata. The
@@ -157,7 +157,7 @@ docker pull ghcr.io/dsx-ai-factory/health-validation:<tag>
 | Trigger | Image tags |
 |---|---|
 | Commit to `main` | `<pseudo-version>` and `latest` |
-| Git tag `vX.Y.Z` or `vX.Y.Z-rcN` | `X.Y.Z` or `X.Y.Z-rcN` |
+| Git tag `vX.Y.Z` or `vX.Y.Z-rc.N` | `X.Y.Z` or `X.Y.Z-rc.N` |
 
 The binary keeps the leading `v`, while the image tag omits it. For example,
 `v1.2.3` stamps the binary as `v1.2.3` and publishes the image as

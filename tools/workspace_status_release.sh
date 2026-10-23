@@ -15,7 +15,7 @@
 #   * HEALTH_VALIDATION_VERSION, when set, is stamped as given. CI's
 #     release-metadata job resolves it once and every later stamped build in the
 #     run reuses it.
-#   * A GitHub tag event named vX.Y.Z (or vX.Y.Z-rcN) stamps that semantic
+#   * A GitHub tag event named vX.Y.Z (or vX.Y.Z-rc.N) stamps that semantic
 #     version into the operator.
 #   * Every other build gets a Go pseudo-version derived from the most recent
 #     release, the commit time, and the 12-character commit SHA. A final
@@ -28,7 +28,7 @@
 # The pseudo-version is deterministic for a commit and a set of tags, sorts
 # after its base release and before the next release, and identifies the exact
 # main-branch build. Tagging a final release on a release branch moves main's
-# later builds from vX.Y.Z-rcN.0.* to vX.Y.(Z+1)-0.*. Image
+# later builds from vX.Y.Z-rc.N.0.* to vX.Y.(Z+1)-0.*. Image
 # publishing removes its leading v and also applies latest on main.
 
 set -euo pipefail
@@ -66,7 +66,7 @@ pseudo_version() {
 	base="${base#v}"
 
 	IFS=. read -r major minor patch <<<"$base"
-	if [[ "$patch" =~ ^[0-9]+-rc[0-9]+$ ]]; then
+	if [[ "$patch" =~ ^[0-9]+-rc\.[0-9]+$ ]]; then
 		rc=1
 	fi
 	patch="${patch%%[-+]*}"
@@ -103,14 +103,14 @@ else
 		event_tag="${GITHUB_REF_NAME:-}"
 	fi
 
-	if [[ "$event_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+	if [[ "$event_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
 		version="$event_tag"
 	elif [[ -z "$event_tag" ]]; then
 		# Main builds advance the patch component of the most recent release.
 		# A repository with no release starts from v0.0.0.
 		version="$(pseudo_version)"
 	else
-		echo "workspace_status_release: expected vX.Y.Z, optionally followed by -rcN; got '$event_tag'" >&2
+		echo "workspace_status_release: expected vX.Y.Z, optionally followed by -rc.N; got '$event_tag'" >&2
 		exit 1
 	fi
 fi
