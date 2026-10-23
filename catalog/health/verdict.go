@@ -6,7 +6,7 @@ package health
 import (
 	"time"
 
-	"github.com/dsx-ai-factory/health-validation/catalog/version"
+	"github.com/dsx-ai-factory/health-validation/internal/version"
 	"github.com/google/uuid"
 )
 

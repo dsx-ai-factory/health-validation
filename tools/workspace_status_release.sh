@@ -21,8 +21,8 @@
 #     release, the commit time, and the 12-character commit SHA. A final
 #     release of the same MAJOR.MINOR line tagged on a release branch counts as
 #     most recent even though HEAD cannot reach it.
-#   * The repository is one Go module, so the operator and the catalog compiled
-#     into it share that single version.
+#   * The repository is one Go module, so one version covers the operator and
+#     the catalog compiled into it.
 #   * Unstamped local builds retain the packages' development identifiers.
 #
 # The pseudo-version is deterministic for a commit and a set of tags, sorts
@@ -116,6 +116,5 @@ else
 fi
 
 echo "STABLE_HEALTH_VALIDATION_VERSION ${version}"
-echo "STABLE_HEALTH_VALIDATION_CATALOG_VERSION ${version}"
 echo "STABLE_GIT_COMMIT ${commit}"
 echo "STABLE_BUILD_DATE ${build_date}"

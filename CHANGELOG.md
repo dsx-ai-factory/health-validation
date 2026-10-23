@@ -14,6 +14,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   at the first `vX.Y.Z` release. Releases are tagged `vX.Y.Z` instead of
   `catalog/vX.Y.Z` and `toolkit/vX.Y.Z`, and the verdict's `catalog_version`
   equals the CLI version.
+- The public `catalog/version` package is removed. Read the version from a
+  verdict's `catalog_version`. In unstamped builds, `health-validation version`
+  now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`.
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 

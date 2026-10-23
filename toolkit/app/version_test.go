@@ -27,9 +27,9 @@ func TestVersionShort(t *testing.T) {
 	if code := versionCommand([]string{"--short"}, &out, &errOut, versionProg); code != 0 {
 		t.Fatalf("versionCommand(--short) = %d, want 0; stderr=%q", code, errOut.String())
 	}
-	// Unstamped test build reports the "dev" sentinel as a bare line.
-	if got := strings.TrimSpace(out.String()); got != "dev" {
-		t.Errorf("version --short = %q, want %q", got, "dev")
+	// An unstamped test build reports a development version as a bare line.
+	if got := strings.TrimSpace(out.String()); got != "dev" && !strings.HasPrefix(got, "dev+") {
+		t.Errorf("version --short = %q, want a dev or dev+<commit> version", got)
 	}
 }
 

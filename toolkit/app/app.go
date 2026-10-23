@@ -50,9 +50,9 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	"github.com/dsx-ai-factory/health-validation/internal/version"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
-	"github.com/dsx-ai-factory/health-validation/toolkit/internal/version"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics"
 )
