@@ -1,0 +1,18 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package health
+
+// Host is what a run knows about the node it is evaluating, independent
+// of any one measurement. It is supplied once, when the catalog is built,
+// and holds for every check and measurement in that run.
+type Host struct {
+	// Architecture is the node's GPU architecture (e.g. "GB200"). Checks
+	// scoped to other architectures are skipped, and per-architecture
+	// thresholds resolve against it.
+	Architecture string
+	// DriverVersion is the node's NVIDIA driver version, for derivations
+	// whose meaning changed between driver releases. The zero value means
+	// it could not be determined.
+	DriverVersion DriverVersion
+}

@@ -917,6 +917,25 @@ linkLoop:
 // device unreadable) are errors, not this value.
 const architectureUnknown = "unknown"
 
+// DriverVersion reports the NVIDIA driver version NVML sees, e.g.
+// "575.51.03". It is the fallback for hosts that expose NVML but not
+// /proc/driver/nvidia/version — a container given the NVML library and
+// device nodes without the driver's proc tree.
+//
+// Unlike [NVMLBackend.Architecture], a failure here is not a node
+// fault: nothing is drained for an unknown driver version, it only
+// narrows what version-gated code will attempt.
+func (b *NVMLBackend) DriverVersion() (string, error) {
+	if err := b.ensure(); err != nil {
+		return "", err
+	}
+	v, ret := b.lib.SystemGetDriverVersion()
+	if ret != gonvml.SUCCESS {
+		return "", &Error{Op: "SystemGetDriverVersion", Return: ret}
+	}
+	return v, nil
+}
+
 // Architecture reports the node's GPU architecture as one of the catalog
 // architecture identifiers (e.g. "GB200", "GB300", "H100"), derived from the
 // NVML product name of the first enumerated device whose name reads.

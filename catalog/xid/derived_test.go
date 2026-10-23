@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/internal/evaluation"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
@@ -17,8 +18,13 @@ import (
 func TestXidMeasurement_DerivedSignalContract(t *testing.T) {
 	populated := xid.XidMeasurement{Events: []xid.XidEvent{
 		{XidCode: 149, NVLink5: &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: "0x004505c6"}},
+		{XidCode: 154, RecoveryAction: &xid.RecoveryAction{FromCode: "0x0", FromName: "None", ToCode: "0x1", ToName: "GPU Reset Required"}},
 	}}
-	if err := catalog.CheckDerivedSignalKeysStable(populated); err != nil {
+	driver, ok := health.ParseDriverVersion("575.51.03")
+	if !ok {
+		t.Fatal("ParseDriverVersion failed")
+	}
+	if err := catalog.CheckDerivedSignalKeysStable(populated, health.Host{Architecture: "GB200", DriverVersion: driver}); err != nil {
 		t.Error(err)
 	}
 	if err := catalog.CheckDerivedSignals(xid.XidMeasurement{}); err != nil {
@@ -33,7 +39,7 @@ func TestSubXidCodeCounts_ReachesCEL(t *testing.T) {
 	m := xid.XidMeasurement{Events: []xid.XidEvent{
 		{XidCode: 149, NVLink5: &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: "0x004505c6"}},
 	}}
-	counts, ok := evaluation.ToSignals(m)[xid.SignalSubXidCodeCounts].(map[string]int64)
+	counts, ok := evaluation.ToSignals(m, health.Host{})[xid.SignalSubXidCodeCounts].(map[string]int64)
 	if !ok {
 		t.Fatalf("%s missing or wrong type in CEL signals", xid.SignalSubXidCodeCounts)
 	}

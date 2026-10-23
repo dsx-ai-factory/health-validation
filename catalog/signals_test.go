@@ -172,7 +172,7 @@ type shadowingMeasurement struct {
 
 func (shadowingMeasurement) Category() health.Category           { return health.Node }
 func (shadowingMeasurement) Errors() []health.ErroredMeasurement { return nil }
-func (shadowingMeasurement) DerivedSignals() map[string]any {
+func (shadowingMeasurement) DerivedSignals(health.Host) map[string]any {
 	return map[string]any{"widget_count": int64(0)}
 }
 
@@ -195,7 +195,7 @@ type unstableMeasurement struct {
 
 func (unstableMeasurement) Category() health.Category           { return health.Node }
 func (unstableMeasurement) Errors() []health.ErroredMeasurement { return nil }
-func (m unstableMeasurement) DerivedSignals() map[string]any {
+func (m unstableMeasurement) DerivedSignals(health.Host) map[string]any {
 	if m.Count == 0 {
 		return map[string]any{}
 	}
@@ -203,7 +203,7 @@ func (m unstableMeasurement) DerivedSignals() map[string]any {
 }
 
 func TestCheckDerivedSignalKeysStable_DetectsDataDependentKey(t *testing.T) {
-	err := catalog.CheckDerivedSignalKeysStable(unstableMeasurement{Count: 3})
+	err := catalog.CheckDerivedSignalKeysStable(unstableMeasurement{Count: 3}, health.Host{})
 	if err == nil {
 		t.Fatal("expected an error for a key that appears only when populated, got nil")
 	}
@@ -216,11 +216,11 @@ func TestCheckDerivedSignalKeysStable_DetectsDataDependentKey(t *testing.T) {
 // arrives is equally broken, since routing promised a signal the
 // evaluated measurement then does not carry.
 func TestCheckDerivedSignalKeysStable_DetectsDisappearingKey(t *testing.T) {
-	err := catalog.CheckDerivedSignalKeysStable(unstableMeasurement{})
+	err := catalog.CheckDerivedSignalKeysStable(unstableMeasurement{}, health.Host{})
 	if err != nil {
 		t.Fatalf("a zero value alone cannot show the instability: %v", err)
 	}
-	if err := catalog.CheckDerivedSignalKeysStable(vanishingMeasurement{Count: 3}); err == nil {
+	if err := catalog.CheckDerivedSignalKeysStable(vanishingMeasurement{Count: 3}, health.Host{}); err == nil {
 		t.Error("expected an error for a key that disappears once populated, got nil")
 	}
 }
@@ -231,12 +231,52 @@ type vanishingMeasurement struct {
 
 func (vanishingMeasurement) Category() health.Category           { return health.Node }
 func (vanishingMeasurement) Errors() []health.ErroredMeasurement { return nil }
-func (m vanishingMeasurement) DerivedSignals() map[string]any {
+func (m vanishingMeasurement) DerivedSignals(health.Host) map[string]any {
 	if m.Count == 0 {
 		return map[string]any{"widget_states": map[string]int64{}}
 	}
 	return map[string]any{}
 }
+
+// hostDependentMeasurement advertises its derived signal only once the
+// host is known. Routing reads a zero Host, so a check requiring
+// widget_arch would never be handed one of these.
+type hostDependentMeasurement struct {
+	Count int64 `json:"widget_count"`
+}
+
+func (hostDependentMeasurement) Category() health.Category           { return health.Node }
+func (hostDependentMeasurement) Errors() []health.ErroredMeasurement { return nil }
+func (hostDependentMeasurement) DerivedSignals(host health.Host) map[string]any {
+	if host.Architecture == "" {
+		return map[string]any{}
+	}
+	return map[string]any{"widget_arch": host.Architecture}
+}
+
+func TestCheckDerivedSignalKeysStable_DetectsHostDependentKey(t *testing.T) {
+	if err := catalog.CheckDerivedSignalKeysStable(hostDependentMeasurement{}, health.Host{}); err != nil {
+		t.Fatalf("a zero host alone cannot show the dependence: %v", err)
+	}
+	err := catalog.CheckDerivedSignalKeysStable(hostDependentMeasurement{}, health.Host{Architecture: "GB200"})
+	if err == nil {
+		t.Fatal("expected an error for a key that appears only once the host is known, got nil")
+	}
+	if !strings.Contains(err.Error(), "widget_arch") {
+		t.Errorf("error = %q, want it to name widget_arch", err.Error())
+	}
+}
+
+// The fixtures above only exercise the checkers if they really implement
+// the interface; a signature that drifted from it would compile and quietly
+// turn every test here into a no-op.
+var (
+	_ health.DerivedSignaler = shadowingMeasurement{}
+	_ health.DerivedSignaler = unstableMeasurement{}
+	_ health.DerivedSignaler = vanishingMeasurement{}
+	_ health.DerivedSignaler = hostDependentMeasurement{}
+	_ health.DerivedSignaler = optionOnlyMeasurement{}
+)
 
 // A measurement that derives nothing must pass both checks rather than
 // being rejected for not implementing an optional interface.
@@ -244,7 +284,7 @@ func TestDerivedSignalChecks_IgnoreNonDerivers(t *testing.T) {
 	if err := catalog.CheckDerivedSignals(node.NodeMeasurement{}); err != nil {
 		t.Errorf("CheckDerivedSignals rejected a non-deriving measurement: %v", err)
 	}
-	if err := catalog.CheckDerivedSignalKeysStable(node.NodeMeasurement{}); err != nil {
+	if err := catalog.CheckDerivedSignalKeysStable(node.NodeMeasurement{}, health.Host{Architecture: "GB200"}); err != nil {
 		t.Errorf("CheckDerivedSignalKeysStable rejected a non-deriving measurement: %v", err)
 	}
 }
@@ -258,7 +298,7 @@ type optionOnlyMeasurement struct {
 
 func (optionOnlyMeasurement) Category() health.Category           { return health.Node }
 func (optionOnlyMeasurement) Errors() []health.ErroredMeasurement { return nil }
-func (optionOnlyMeasurement) DerivedSignals() map[string]any {
+func (optionOnlyMeasurement) DerivedSignals(health.Host) map[string]any {
 	return map[string]any{"Count": int64(0)}
 }
 

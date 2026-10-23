@@ -66,6 +66,17 @@ CheckVerdict is the outcome of evaluating a single check against signal values. 
 | <nobr>`Skipped`</nobr> | <nobr>`skipped`</nobr> | <nobr>`bool`</nobr> |  |
 | <nobr>`NVIDIAEndorsed`</nobr> | <nobr>`nvidia_endorsed`</nobr> | <nobr>`bool`</nobr> |  |
 
+### DriverVersion
+
+DriverVersion is the NVIDIA driver version a node is running, e.g. "575.51.03". It is a node-wide host fact, like the GPU architecture. Raw is the text the host reported, which is what an operator sees in nvidia-smi; the numeric parts let code order versions, which text cannot ("99.0" sorts above "570.0" as a string). Order versions in Go rather than in a CEL rule, which would compare them as strings. Build values with [ParseDriverVersion]: a value without Raw reads as unknown whatever its numeric parts.
+
+| Field | JSON name | Type | Description |
+|---|---|---|---|
+| <nobr>`Raw`</nobr> |  | <nobr>`string`</nobr> |  |
+| <nobr>`Major`</nobr> |  | <nobr>`int`</nobr> |  |
+| <nobr>`Minor`</nobr> |  | <nobr>`int`</nobr> |  |
+| <nobr>`Patch`</nobr> |  | <nobr>`int`</nobr> |  |
+
 ### ErroredMeasurement
 
 ErroredMeasurement records one per-signal collection failure on a measurement. Sensors append entries via the typed measurement's AddError method (e.g. [GPUMeasurement.AddError]) as they encounter failures while measuring different fields, so a single measurement may carry several entries — one per failing call. The catalog fails a check Critical when any entry's FailedSignals overlaps with the check's RequiredSignals; the verdict's message joins the matching entries' Err.Error() strings. Checks whose required signals were all collected still run normally on the partial data. The zero value is not valid; construct entries with [NewErroredMeasurement] (or via the typed measurement's AddError), which guarantees Err is non-nil so consumers always have a surfaceable failure cause.
@@ -78,6 +89,15 @@ FixedThresholdError is returned when an operator attempts to override a threshol
 |---|---|---|---|
 | <nobr>`ThresholdName`</nobr> |  | <nobr>`string`</nobr> |  |
 | <nobr>`CheckID`</nobr> |  | <nobr>`string`</nobr> |  |
+
+### Host
+
+Host is what a run knows about the node it is evaluating, independent of any one measurement. It is supplied once, when the catalog is built, and holds for every check and measurement in that run.
+
+| Field | JSON name | Type | Description |
+|---|---|---|---|
+| <nobr>`Architecture`</nobr> |  | <nobr>`string`</nobr> | Architecture is the node's GPU architecture (e.g. "GB200"). Checks scoped to other architectures are skipped, and per-architecture thresholds resolve against it. |
+| <nobr>`DriverVersion`</nobr> |  | [<nobr>`DriverVersion`</nobr>](#driverversion) | DriverVersion is the node's NVIDIA driver version, for derivations whose meaning changed between driver releases. The zero value means it could not be determined. |
 
 ### NodeVerdict
 

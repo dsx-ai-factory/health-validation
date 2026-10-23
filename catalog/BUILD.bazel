@@ -34,6 +34,7 @@ go_test(
         "entities_test.go",
         "evaluate_test.go",
         "filter_test.go",
+        "host_test.go",
         "override_test.go",
         "runnable_test.go",
         "signals_test.go",

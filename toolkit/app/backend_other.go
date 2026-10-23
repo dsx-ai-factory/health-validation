@@ -29,7 +29,13 @@ func (stubHost) nvlinkBackend() toolkit.NVLinkBackend { return unavailableBacken
 // so evaluation runs without architecture filtering. `run` still fails loudly
 // at collection via unavailableBackend, so this never masks a real run.
 func (stubHost) architecture() (string, error) { return "", nil }
-func (stubHost) close() error                  { return nil }
+
+// driverVersion still tries the proc read: it needs no NVML, so a
+// non-linux host that happens to expose the file is read correctly
+// rather than assumed unknown.
+func (stubHost) driverVersion() (health.DriverVersion, bool) { return toolkit.DetectDriverVersion() }
+
+func (stubHost) close() error { return nil }
 
 // unavailableBackend implements every per-domain backend interface on a
 // platform with no NVML support; every measure method returns a clear error so

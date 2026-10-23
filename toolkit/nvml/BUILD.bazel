@@ -29,6 +29,7 @@ go_test(
         "nvml_backend_average_power_draw_test.go",
         "nvml_backend_capabilities_test.go",
         "nvml_backend_compute_apps_test.go",
+        "nvml_backend_driver_version_test.go",
         "nvml_backend_fabric_test.go",
         "nvml_backend_internal_test.go",
         "nvml_backend_links_test.go",

@@ -14,5 +14,6 @@ go_test(
     deps = [
         ":xid",
         "//catalog/health",
+        "//catalog/xid",
     ],
 )

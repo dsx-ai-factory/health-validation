@@ -6,6 +6,7 @@
 package app
 
 import (
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/nvml"
 )
@@ -40,7 +41,11 @@ func (h *nvmlHost) gpuBackend() toolkit.GPUBackend       { return h.lazy }
 func (h *nvmlHost) nodeBackend() toolkit.NodeBackend     { return h.lazy }
 func (h *nvmlHost) nvlinkBackend() toolkit.NVLinkBackend { return h.lazy }
 func (h *nvmlHost) architecture() (string, error)        { return h.b.Architecture() }
-func (h *nvmlHost) close() error                         { return h.lazy.Close() }
+
+func (h *nvmlHost) driverVersion() (health.DriverVersion, bool) {
+	return discoverDriverVersion(toolkit.DetectDriverVersion, h.b.DriverVersion)
+}
+func (h *nvmlHost) close() error { return h.lazy.Close() }
 
 // One NVMLBackend backs the GPU, node, and NVLink sensors: it implements each
 // narrow per-domain interface (and MultiBackend for the lazy wrapper), so a

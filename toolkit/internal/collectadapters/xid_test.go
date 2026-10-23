@@ -126,7 +126,9 @@ func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
 				DebugData: []string{"0x00000001", "0x00000002"},
 			}},
 			{PCIAddress: "0000:01:00", XidCode: 145, NVLink5: &xid.NVLink5Detail{SubComponent: "RLW_REMAP", Link: 2}},
-			{PCIAddress: "0000:01:00", XidCode: 154},
+			{PCIAddress: "0000:01:00", XidCode: 154, RecoveryAction: &xid.RecoveryAction{
+				FromCode: "0x0", FromName: "None", ToCode: "0x1", ToName: "GPU Reset Required",
+			}},
 		},
 	}
 	requireXid(t, got, want)
@@ -168,6 +170,12 @@ func TestXIDAdapterFailsClosed(t *testing.T) {
 			wantText: "xid event 1: incomplete NVLink5 fields",
 			obs: append(xidEvent("a", 145),
 				xidString(xidsignals.NVLink5SubComponent, "a", "RLW_REMAP"), xidInt(xidsignals.NVLink5Link, "a", 2), xidMarker()),
+		},
+		{
+			name:     "incomplete recovery-action fields",
+			wantText: "xid event 1: incomplete recovery-action fields",
+			obs: append(xidEvent("a", 154),
+				xidString(xidsignals.RecoveryActionToCode, "a", "0x1"), xidString(xidsignals.RecoveryActionToName, "a", "GPU Reset Required"), xidMarker()),
 		},
 		{name: "wrong kind", wantText: "xid event 1: signal xid.event.code has the wrong value kind", obs: []*observation.Observation{wrongKind, xidString(xidsignals.PCIAddress, "a", "0000:01:00"), xidMarker()}},
 		{name: "source-scoped failure", wantText: "SOURCE_ERROR", obs: allFailed(observation.CollectionErrorCategorySourceError)},
@@ -230,7 +238,7 @@ func TestXIDAdapterMixedTimeoutAndParseError(t *testing.T) {
 func TestXIDAdapterFailureCoversDerivedSignals(t *testing.T) {
 	m := only[xid.XidMeasurement](t, XID().Build(nil))
 	failed := m.Errors()[0].FailedSignals()
-	for key := range (xid.XidMeasurement{}).DerivedSignals() {
+	for key := range (xid.XidMeasurement{}).DerivedSignals(health.Host{}) {
 		if !slices.Contains(failed, key) {
 			t.Fatalf("derived signal %q not failed: %v", key, failed)
 		}

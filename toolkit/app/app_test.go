@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -157,7 +158,7 @@ func customCheck() health.CheckDefinition {
 // TestWithChecksRegistersCustomCheck confirms a check supplied via the
 // WithChecks SPI is registered into the catalog alongside the built-ins.
 func TestWithChecksRegistersCustomCheck(t *testing.T) {
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, "", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, health.Host{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -173,7 +174,7 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	canonical := customCheck()
 	canonical.Provenance = health.NVIDIA
 
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, "", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, health.Host{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -194,7 +195,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 	collide := customCheck()
 	collide.ID = "gpu_count" // collides with a built-in
 
-	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, "", health.OperatorInfra)
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, health.Host{}, health.OperatorInfra)
 	if err == nil {
 		t.Fatal("expected duplicate-ID error, got nil")
 	}
@@ -207,7 +208,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 // wired into the catalog: a check skips on an architecture it does not cover
 // (A100 here) instead of running with the wrong thresholds.
 func TestBuildCatalogAppliesArchitecture(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "A100", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, nil, health.Host{Architecture: "A100"}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -221,6 +222,102 @@ func TestBuildCatalogAppliesArchitecture(t *testing.T) {
 		t.Errorf("skipped=%v reason=%v, want skipped with SIGNAL_UNAVAILABLE_ARCHITECTURE on A100",
 			v.Skipped, v.SkipReason)
 	}
+}
+
+// echoedDriverVersion is the version the driver-echo tests discover.
+const echoedDriverVersion = "575.51.03"
+
+func mustDriverVersion(t *testing.T) health.DriverVersion {
+	t.Helper()
+	v, ok := health.ParseDriverVersion(echoedDriverVersion)
+	if !ok {
+		t.Fatalf("ParseDriverVersion(%q) failed", echoedDriverVersion)
+	}
+	return v
+}
+
+// driverEchoCheck goes CRITICAL when a [driverEchoMeasurement] derives
+// [echoedDriverVersion].
+func driverEchoCheck() health.CheckDefinition {
+	return health.CheckDefinition{
+		ID:              "test_driver_echo",
+		Name:            "Test Driver Echo",
+		Category:        health.Node,
+		RequiredSignals: []string{"seen_driver"},
+		Rules: []health.Rule{{
+			Expression: fmt.Sprintf("seen_driver == %q", echoedDriverVersion),
+			Severity:   health.Critical,
+			Message:    "derivation saw the discovered driver version",
+		}},
+	}
+}
+
+// driverEchoMeasurement derives the driver version its catalog was built
+// with, so a rule can observe what buildCatalog handed the catalog.
+type driverEchoMeasurement struct {
+	Count int64 `json:"echo_count"`
+}
+
+func (driverEchoMeasurement) Category() health.Category           { return health.Node }
+func (driverEchoMeasurement) Errors() []health.ErroredMeasurement { return nil }
+func (driverEchoMeasurement) DerivedSignals(host health.Host) map[string]any {
+	return map[string]any{"seen_driver": host.DriverVersion.Raw}
+}
+
+// TestBuildCatalogAppliesDriverVersion confirms the discovered driver
+// version reaches the catalog, where derived signals read it, rather than
+// being dropped between discovery and evaluation.
+func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
+	cat, _, err := buildCatalog(&Config{}, []health.CheckDefinition{driverEchoCheck()}, health.Host{Architecture: "GB200", DriverVersion: mustDriverVersion(t)}, health.OperatorInfra)
+	if err != nil {
+		t.Fatalf("buildCatalog: %v", err)
+	}
+	got, err := cat.Evaluate("test_driver_echo", driverEchoMeasurement{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Severity != health.Critical {
+		t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", got.Severity)
+	}
+}
+
+// echoIBBackend yields a [driverEchoMeasurement] through the opt-in
+// InfiniBand sensor.
+type echoIBBackend struct{}
+
+func (echoIBBackend) MeasureIB(context.Context) ([]health.Measurement, error) {
+	return []health.Measurement{driverEchoMeasurement{}}, nil
+}
+func (echoIBBackend) Errored(error) []health.Measurement { return nil }
+
+// TestRunCommandPassesDriverVersion confirms runCommand hands the version
+// the host discovered to the catalog it evaluates with.
+func TestRunCommandPassesDriverVersion(t *testing.T) {
+	a := New().WithProgramName("test").WithChecks(driverEchoCheck())
+	a.host = fakeHost{b: spyBackend{called: new(bool)}, version: mustDriverVersion(t)}
+	a.WithXidBackend(xidSpyBackend{called: new(bool)})
+	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
+	// The opt-in InfiniBand sensor accepts any measurement, so it carries
+	// the echo into an otherwise stock run.
+	a.WithIBBackend(echoIBBackend{})
+
+	var stdout, stderr bytes.Buffer
+	a.runCommand([]string{"--node-id", "n1"}, &stdout, &stderr)
+
+	var verdict health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+		t.Fatalf("unmarshal verdict: %v; stdout = %s; stderr = %s", err, stdout.String(), stderr.String())
+	}
+	for _, v := range verdict.CheckResults {
+		if v.CheckID == "test_driver_echo" {
+			if v.Severity != health.Critical {
+				t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", v.Severity)
+			}
+			return
+		}
+	}
+	t.Fatal("test_driver_echo verdict not found")
 }
 
 // --- Per-domain backend override locks ------------------------------------
@@ -278,7 +375,8 @@ func (x xidSpyBackend) Measure(context.Context) ([]health.Measurement, error) {
 // so this must be a real generation. catalogtest.DummyArchitecture would skip
 // scoped checks (see TestNUMANodeCountReachesVerdict). Empty is a discovery failure.
 type fakeHost struct {
-	b spyBackend
+	b       spyBackend
+	version health.DriverVersion
 }
 
 func (h fakeHost) gpuBackend() toolkit.GPUBackend       { return h.b }
@@ -287,6 +385,10 @@ func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (fakeHost) architecture() (string, error)          { return "GB200", nil }
 func (fakeHost) close() error                           { return nil }
 
+// driverVersion reports none unless a test sets one: the run must proceed
+// regardless, since an unknown driver version is not a node fault.
+func (h fakeHost) driverVersion() (health.DriverVersion, bool) { return h.version, h.version.Known() }
+
 // panicHost ensures invalid input returns before touching the host backend.
 type panicHost struct{}
 
@@ -294,7 +396,10 @@ func (panicHost) gpuBackend() toolkit.GPUBackend       { panic("unexpected GPU b
 func (panicHost) nodeBackend() toolkit.NodeBackend     { panic("unexpected node backend access") }
 func (panicHost) nvlinkBackend() toolkit.NVLinkBackend { panic("unexpected NVLink backend access") }
 func (panicHost) architecture() (string, error)        { panic("unexpected architecture discovery") }
-func (panicHost) close() error                         { panic("unexpected host backend close") }
+func (panicHost) driverVersion() (health.DriverVersion, bool) {
+	panic("unexpected driver version discovery")
+}
+func (panicHost) close() error { panic("unexpected host backend close") }
 
 func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
 	tests := []struct {
@@ -825,6 +930,12 @@ func (h erroringHost) nodeBackend() toolkit.NodeBackend     { return h.b }
 func (h erroringHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (erroringHost) architecture() (string, error)          { return "", errors.New("no GPUs enumerated") }
 func (erroringHost) close() error                           { return nil }
+
+// driverVersion panics: architecture discovery fails first and drains,
+// so the run must never reach driver-version discovery.
+func (erroringHost) driverVersion() (health.DriverVersion, bool) {
+	panic("driver version discovered after architecture discovery failed")
+}
 
 // TestRunCommandArchDiscoveryFailureDrains confirms an architecture-discovery
 // error yields a Critical verdict and does NOT collect: a healthy node is not
