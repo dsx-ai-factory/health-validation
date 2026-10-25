@@ -1,0 +1,3957 @@
+{
+  "schema_version": "0.3",
+  "catalog_version": "v0.0.0-20261023185001-fea178518f08",
+  "timestamp": "2026-10-25T09:05:10.422097165Z",
+  "node_id": "b200-node",
+  "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+  "severity_by_domain": {
+    "cpu": "PASS",
+    "gpu": "PASS",
+    "infiniband": "PASS",
+    "node": "CRITICAL",
+    "nvlink": "CRITICAL",
+    "xid": "PASS"
+  },
+  "affected_components": [
+    {
+      "check_ids": [
+        "gpu_count"
+      ],
+      "category": "node",
+      "max_severity": "CRITICAL"
+    },
+    {
+      "check_ids": [
+        "nvlink_bandwidth_count_speed",
+        "nvlink_bandwidth_count_speed",
+        "nvlink_bandwidth_count_speed",
+        "nvlink_bandwidth_count_speed",
+        "nvlink_bandwidth_count_speed",
+        "nvlink_bandwidth_count_speed",
+        "nvlink_bandwidth_count_speed",
+        "nvlink_bandwidth_count_speed"
+      ],
+      "entities": [
+        "GPU-redacted",
+        "GPU-redacted",
+        "GPU-redacted",
+        "GPU-redacted",
+        "GPU-redacted",
+        "GPU-redacted",
+        "GPU-redacted",
+        "GPU-redacted"
+      ],
+      "category": "nvlink",
+      "max_severity": "CRITICAL"
+    }
+  ],
+  "check_results": [
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "online_cpu_count": 256,
+        "possible_cpu_count": 256
+      },
+      "check_id": "cpu_count",
+      "span_id": "6f69692a-f4b4-4c0b-9df4-06524fb8b976",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "cpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_count": 8
+      },
+      "thresholds": {
+        "expected_gpu_count": {
+          "value": 9,
+          "original_value": 8,
+          "category": "DEFAULT",
+          "overridden": true
+        }
+      },
+      "check_id": "gpu_count",
+      "span_id": "afe330c5-7b76-4efd-9040-eb5b2d0ab22a",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "messages": [
+        "Expected 9 GPUs, found 8."
+      ],
+      "recommended_action": {
+        "remediation_actions": [
+          "reset_gpu",
+          "restart_os",
+          "service_required"
+        ],
+        "operational_state": "drain"
+      },
+      "severity": "CRITICAL",
+      "category": "node",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "average_power_draw_w": 198.231,
+        "gpu_id": "GPU-redacted"
+      },
+      "thresholds": {
+        "max_power_w": {
+          "value": 1500,
+          "original_value": 1500,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "min_power_w": {
+          "value": 65,
+          "original_value": 65,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_average_power_draw",
+      "span_id": "6fbe82aa-7979-47f1-914f-33245e3ec68d",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "average_power_draw_w": 195.081,
+        "gpu_id": "GPU-redacted"
+      },
+      "thresholds": {
+        "max_power_w": {
+          "value": 1500,
+          "original_value": 1500,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "min_power_w": {
+          "value": 65,
+          "original_value": 65,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_average_power_draw",
+      "span_id": "227561e8-0446-4e62-92d2-418b210d3b97",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "average_power_draw_w": 195.863,
+        "gpu_id": "GPU-redacted"
+      },
+      "thresholds": {
+        "max_power_w": {
+          "value": 1500,
+          "original_value": 1500,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "min_power_w": {
+          "value": 65,
+          "original_value": 65,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_average_power_draw",
+      "span_id": "f159744f-444e-4187-bd99-b27fe4a279a5",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "average_power_draw_w": 194.934,
+        "gpu_id": "GPU-redacted"
+      },
+      "thresholds": {
+        "max_power_w": {
+          "value": 1500,
+          "original_value": 1500,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "min_power_w": {
+          "value": 65,
+          "original_value": 65,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_average_power_draw",
+      "span_id": "96031907-c1be-421e-9c1b-7e9ae9cdd476",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "average_power_draw_w": 198.255,
+        "gpu_id": "GPU-redacted"
+      },
+      "thresholds": {
+        "max_power_w": {
+          "value": 1500,
+          "original_value": 1500,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "min_power_w": {
+          "value": 65,
+          "original_value": 65,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_average_power_draw",
+      "span_id": "9004b33b-b29c-4eeb-8f23-0663accf66b6",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "average_power_draw_w": 196.031,
+        "gpu_id": "GPU-redacted"
+      },
+      "thresholds": {
+        "max_power_w": {
+          "value": 1500,
+          "original_value": 1500,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "min_power_w": {
+          "value": 65,
+          "original_value": 65,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_average_power_draw",
+      "span_id": "11e7362a-53a7-4d0f-a268-95d450bf60ed",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "average_power_draw_w": 202.01,
+        "gpu_id": "GPU-redacted"
+      },
+      "thresholds": {
+        "max_power_w": {
+          "value": 1500,
+          "original_value": 1500,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "min_power_w": {
+          "value": 65,
+          "original_value": 65,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_average_power_draw",
+      "span_id": "501b3b20-9734-4e28-94f1-c798e22d4193",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "average_power_draw_w": 196.697,
+        "gpu_id": "GPU-redacted"
+      },
+      "thresholds": {
+        "max_power_w": {
+          "value": 1500,
+          "original_value": 1500,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "min_power_w": {
+          "value": 65,
+          "original_value": 65,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_average_power_draw",
+      "span_id": "903a5531-921a-4b17-841a-8f2b4c1f2a3f",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "gpu_pstate": 0
+      },
+      "thresholds": {
+        "expected_gpu_pstate": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_power_state",
+      "span_id": "67ec018e-3a74-4160-b7c8-5ee2599f6105",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "gpu_pstate": 0
+      },
+      "thresholds": {
+        "expected_gpu_pstate": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_power_state",
+      "span_id": "c9340e6a-c0dd-47f7-80c8-3e1d35dbae9c",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "gpu_pstate": 0
+      },
+      "thresholds": {
+        "expected_gpu_pstate": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_power_state",
+      "span_id": "84f61471-1fa3-4446-a5ea-c60c9c67fc71",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "gpu_pstate": 0
+      },
+      "thresholds": {
+        "expected_gpu_pstate": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_power_state",
+      "span_id": "d44cbe4f-dc6f-40c7-8cdc-d04d5936f726",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "gpu_pstate": 0
+      },
+      "thresholds": {
+        "expected_gpu_pstate": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_power_state",
+      "span_id": "701da451-6715-4fed-994a-d93e93e1b17b",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "gpu_pstate": 0
+      },
+      "thresholds": {
+        "expected_gpu_pstate": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_power_state",
+      "span_id": "90bd9bbf-68cc-44be-8a57-a0e68b0ed1da",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "gpu_pstate": 0
+      },
+      "thresholds": {
+        "expected_gpu_pstate": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_power_state",
+      "span_id": "a276c84d-9cd6-40f2-9d0f-fa5dd9be8278",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "gpu_pstate": 0
+      },
+      "thresholds": {
+        "expected_gpu_pstate": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_power_state",
+      "span_id": "5799a88f-e9c6-44c5-88a8-609a7ad51034",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "hw_power_brake_slowdown": false,
+        "hw_slowdown": false,
+        "hw_thermal_slowdown": false
+      },
+      "check_id": "gpu_sensor_throttle",
+      "span_id": "b9a15032-dc99-4077-9d1c-bfeb767d8d4f",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "hw_power_brake_slowdown": false,
+        "hw_slowdown": false,
+        "hw_thermal_slowdown": false
+      },
+      "check_id": "gpu_sensor_throttle",
+      "span_id": "58004d12-54a1-41e6-9c9f-4f9b6a7fb098",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "hw_power_brake_slowdown": false,
+        "hw_slowdown": false,
+        "hw_thermal_slowdown": false
+      },
+      "check_id": "gpu_sensor_throttle",
+      "span_id": "f77c58c7-9704-481c-9404-9cd4c37554b3",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "hw_power_brake_slowdown": false,
+        "hw_slowdown": false,
+        "hw_thermal_slowdown": false
+      },
+      "check_id": "gpu_sensor_throttle",
+      "span_id": "35df4056-7a55-4754-b7a4-e8f945cba60a",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "hw_power_brake_slowdown": false,
+        "hw_slowdown": false,
+        "hw_thermal_slowdown": false
+      },
+      "check_id": "gpu_sensor_throttle",
+      "span_id": "175093de-ca52-4703-9aab-7f3d23579bd4",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "hw_power_brake_slowdown": false,
+        "hw_slowdown": false,
+        "hw_thermal_slowdown": false
+      },
+      "check_id": "gpu_sensor_throttle",
+      "span_id": "5c1f0e60-46c5-4403-9857-b08a09dc681e",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "hw_power_brake_slowdown": false,
+        "hw_slowdown": false,
+        "hw_thermal_slowdown": false
+      },
+      "check_id": "gpu_sensor_throttle",
+      "span_id": "cb7f9621-fdba-4bf5-b190-ebe3f43cf6a3",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "hw_power_brake_slowdown": false,
+        "hw_slowdown": false,
+        "hw_thermal_slowdown": false
+      },
+      "check_id": "gpu_sensor_throttle",
+      "span_id": "bbe04619-c10b-46e1-9fa2-ae67beb3c1a0",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_100",
+      "span_id": "5fd6e86f-7887-48e9-8b19-689974230025",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_101",
+      "span_id": "0787ee85-19cb-4cb8-9602-d19a016ea6b1",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_102",
+      "span_id": "7d5e8b75-d173-4726-b92b-f0e502767b74",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_103",
+      "span_id": "5bacb5df-91ce-4dcd-be56-651f5c6c00c5",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_104",
+      "span_id": "39ec8f83-6cd3-4e44-957f-0c21088b7d84",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_105",
+      "span_id": "3cdcf67a-08cf-43ac-9e4e-2aaea0a83d35",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_109",
+      "span_id": "285887f4-05e8-42d5-89d1-931d27f85d2a",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_11",
+      "span_id": "a219ed93-3543-4943-be36-e3cf365cedcc",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_110",
+      "span_id": "1ddb3b05-1f4d-4866-aa92-99b20bf64e18",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_119",
+      "span_id": "525906a2-e4a8-4b90-a92b-ee0809112b31",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_120",
+      "span_id": "16e4b3b7-d9c3-4d38-9e25-0aa35ec88219",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_126",
+      "span_id": "a6af9a2b-8c5b-4a4c-b95e-3f4f4f469ffe",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_127",
+      "span_id": "4aa5b591-f129-4c12-b345-9609360ca4e1",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_128",
+      "span_id": "635a080a-bdf9-4caf-8d05-0050aa29a232",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_129",
+      "span_id": "ba0cb9b4-b7af-40fe-9daa-aaec783e5b9e",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_13",
+      "span_id": "d8863296-3c13-4341-b892-e71a4dbfb81b",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_130",
+      "span_id": "092ec35f-c2ff-4011-9edc-066e76d692a8",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_131",
+      "span_id": "266d1014-8e39-4eee-9e90-ceb7d8f6155f",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_132",
+      "span_id": "a5cd0326-7942-4f23-b808-95c973be639e",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_133",
+      "span_id": "c612c248-6b79-4936-bb82-79d816b7471a",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_134",
+      "span_id": "802c7b89-8896-40d4-8874-d798489ff2c4",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_135",
+      "span_id": "78732bc6-4ce0-421b-b0c7-a2b450fd1faa",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_139",
+      "span_id": "c4d9c4d1-ac31-4eeb-9484-a8f49db1782b",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_140",
+      "span_id": "95775baf-8ec7-4145-8d0e-cbd923854ce5",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_143",
+      "span_id": "71739081-02a8-4b9d-a935-b00905293a4d",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "fatal_xid_counts": null,
+        "xid_counts": null
+      },
+      "thresholds": {
+        "fatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "nonfatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_144",
+      "span_id": "d1c1d47c-3d3f-4e2b-ac8a-3aeb0fd9aaad",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "fatal_xid_counts": null,
+        "xid_counts": null
+      },
+      "thresholds": {
+        "fatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "nonfatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_145",
+      "span_id": "12252ca9-d8d7-4d98-b150-0f8d81bb94c4",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "fatal_xid_counts": null,
+        "xid_counts": null
+      },
+      "thresholds": {
+        "fatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "nonfatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_146",
+      "span_id": "7477d5d9-b9f7-40c1-8238-568060a13d95",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "fatal_xid_counts": null,
+        "xid_counts": null
+      },
+      "thresholds": {
+        "fatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "nonfatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_147",
+      "span_id": "487bcc26-df5f-4b1e-96a3-ff4907cec13f",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "fatal_xid_counts": null,
+        "xid_counts": null
+      },
+      "thresholds": {
+        "fatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "nonfatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_148",
+      "span_id": "0d6319bf-be74-466b-8618-f66f7a983a97",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "fatal_xid_counts": null,
+        "xid_counts": null
+      },
+      "thresholds": {
+        "fatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "nonfatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149",
+      "span_id": "823b59d5-f2df-4258-ad5f-b050ef6195a0",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_1",
+      "span_id": "edb8f854-abf1-4ac2-89c8-2ca944500d5a",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_10",
+      "span_id": "46019bc6-6bba-4ff6-a887-9e4c6660494d",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_11",
+      "span_id": "d623a1a5-0f05-4b83-9831-6ec85394a321",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_12",
+      "span_id": "cac3e0e9-40af-4b18-8f42-024e400271b7",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_15",
+      "span_id": "ba71c6f5-5500-4d8a-b4ac-b1e3f7734b96",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_16",
+      "span_id": "369ebf27-bca3-4a06-b985-3e00a6b80c7e",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_2",
+      "span_id": "ef74966c-191a-4a91-89d9-bfa61d24effd",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_20",
+      "span_id": "2061256c-302b-4588-80c1-b5a9fa21e014",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_21",
+      "span_id": "17cba759-b599-4fbb-b474-0072eb8bb55e",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_22",
+      "span_id": "6d1343dd-409c-4e2b-af06-2e8ba3fa3c26",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_23",
+      "span_id": "6822e090-e3cd-4db1-9e6c-7c2c7348e638",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_24",
+      "span_id": "01e150e2-76a0-4c26-ae81-a3e072b092a5",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_25",
+      "span_id": "cae86f12-5554-401e-8e20-2347e6416f43",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_26",
+      "span_id": "36bc18fa-6d1b-4e68-a1f1-b26cf4d4d235",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_28",
+      "span_id": "98a3266f-faec-489a-84b2-aed476b2fdd9",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_2a",
+      "span_id": "1b138d3a-4bce-414d-b3d7-6f2b43c8ada3",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_2b",
+      "span_id": "58007e4f-5052-4bbb-b530-ae8aa95ec167",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_4",
+      "span_id": "e287c912-7d43-4457-a13f-30080839adde",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_a",
+      "span_id": "9a3ef654-5c83-429a-932b-161b8ae3de35",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "sub_xid_code_counts": {}
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_149_f",
+      "span_id": "03dbbc7e-eef0-4b0a-b37b-56294a28b7e9",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "fatal_xid_counts": null,
+        "xid_counts": null
+      },
+      "thresholds": {
+        "fatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "nonfatal_occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_150",
+      "span_id": "f1b10485-be15-489c-8590-0384508a4bb5",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_151",
+      "span_id": "aded57e1-8b01-46b3-9515-c68d6a0ff313",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_154",
+      "span_id": "c3d7bc52-3994-4fb7-a17f-ab1427a9fe2b",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_155",
+      "span_id": "e4212e99-b1ae-43e3-9c0b-08fd20a62c14",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_156",
+      "span_id": "a36d519a-6b3e-43cd-88fd-5bfb357636d7",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_158",
+      "span_id": "8fef320c-239d-467f-92f8-b24e44d54f5f",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_159",
+      "span_id": "2262e17c-3012-4cbc-adee-e1ee4884eb71",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_25",
+      "span_id": "fa5999c3-d006-4dff-93cb-b212e9c852d4",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_31",
+      "span_id": "80b87f41-031b-4185-aec5-462eb2d373c2",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_32",
+      "span_id": "7ccfd662-288e-4a29-b469-991569ad6765",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_39",
+      "span_id": "36366d75-353e-4b35-a4fc-5597f2113c30",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_40",
+      "span_id": "7fddca24-c8a3-49cc-97b4-1a4ced2d3bc9",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_41",
+      "span_id": "2a5ec372-440c-4cb8-8024-c8fc0dff3946",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_45",
+      "span_id": "d018c6d9-c92c-4182-b9d5-39106c4b5e32",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_46",
+      "span_id": "d5cacab3-a0b0-482f-8194-206972ab97c2",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_48",
+      "span_id": "fbe6ac7e-77f6-4dab-a1d8-9beb3834de84",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_60",
+      "span_id": "0c67654a-1ea4-4833-b2ed-982718e373a5",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_62",
+      "span_id": "0ef38b6f-4d9a-41b0-b41a-d31e5f657ff3",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_64",
+      "span_id": "9f37c0d0-70b4-413e-8456-859af5a2f484",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_68",
+      "span_id": "4b1b12cf-a1d7-4813-8f89-696594e96458",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_69",
+      "span_id": "2300133d-997f-4545-be43-24dc5678c56a",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_70",
+      "span_id": "99e7dce1-015e-4e34-a8d6-770137a4b5f1",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_71",
+      "span_id": "97012254-d5d5-4997-9c4a-64f2ea080ffb",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_72",
+      "span_id": "bc87bcc8-0a64-4cbf-a550-4df76bd6307b",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_75",
+      "span_id": "35864a9d-7941-42f3-a992-749a8be0baf9",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_76",
+      "span_id": "203c2eb4-994f-4144-9ae0-99c801747fc1",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_77",
+      "span_id": "a25a7a7b-f93a-4d58-957b-cc4f47eb74e9",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_78",
+      "span_id": "084afebc-9f55-4997-a67b-40f36b1b0528",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_79",
+      "span_id": "5fdf5215-41f5-49a6-82ab-a07ebe32bfe8",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_8",
+      "span_id": "0a009798-02fb-4a74-b0db-4d50caf8541f",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_82",
+      "span_id": "4e10788c-32d9-4209-8c78-484ceb026d71",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_83",
+      "span_id": "60f88d03-dc12-4000-b913-231e5af3a347",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_84",
+      "span_id": "abe926dc-a92a-4204-b8eb-ba7e3c1793f9",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_85",
+      "span_id": "8b99993c-a8cb-4308-818a-f749d20f48e5",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_86",
+      "span_id": "239e4d24-bfb9-4561-bc95-95a3722eb709",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_88",
+      "span_id": "457d0239-13e4-470d-93fd-746bfde7bb18",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_89",
+      "span_id": "aecdf735-ca58-4862-a6be-f08556175a5c",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_94",
+      "span_id": "1cec867e-dc55-4f87-a8b9-f49d92a881bf",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_95",
+      "span_id": "545b6f20-2da0-4b7a-a6af-20bd4068a0eb",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_96",
+      "span_id": "3b0e0633-1f92-4873-8598-0cdd51a537ab",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_97",
+      "span_id": "e1667dc5-f7ef-44d2-8bc3-c3ecea23d4bb",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_98",
+      "span_id": "4b74c3d6-d672-4017-9778-ef283dd38475",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "xid_counts": null
+      },
+      "thresholds": {
+        "occurrences": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "gpu_xid_99",
+      "span_id": "2f393001-25bb-41f6-b12b-9369573a7784",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "inactive_count": 0
+      },
+      "thresholds": {
+        "max_inactive_nvlinks": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_active",
+      "span_id": "31eee60e-4e07-4fcd-b744-3a6c275434b4",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "inactive_count": 0
+      },
+      "thresholds": {
+        "max_inactive_nvlinks": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_active",
+      "span_id": "429612fa-44c6-45d1-9803-c4f0859a0144",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "inactive_count": 0
+      },
+      "thresholds": {
+        "max_inactive_nvlinks": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_active",
+      "span_id": "c236036c-29c2-4dc1-ac4a-163fb1c8deba",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "inactive_count": 0
+      },
+      "thresholds": {
+        "max_inactive_nvlinks": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_active",
+      "span_id": "e1b3abce-3f8f-4707-ae5f-25c32552d5be",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "inactive_count": 0
+      },
+      "thresholds": {
+        "max_inactive_nvlinks": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_active",
+      "span_id": "6e48f9ff-5ace-4134-a72c-e7c78ca2b7ba",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "inactive_count": 0
+      },
+      "thresholds": {
+        "max_inactive_nvlinks": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_active",
+      "span_id": "844de3b6-3fa8-4dd1-ba1e-8677059c59d3",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "inactive_count": 0
+      },
+      "thresholds": {
+        "max_inactive_nvlinks": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_active",
+      "span_id": "c460eb3b-822b-421f-8fc6-59c2072909a2",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "inactive_count": 0
+      },
+      "thresholds": {
+        "max_inactive_nvlinks": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_active",
+      "span_id": "966e83ee-e818-4353-aef5-d4667816d3f2",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "link_count": 18,
+        "speed_mbytes_per_sec": 53125
+      },
+      "thresholds": {
+        "expected_link_count": {
+          "value": 19,
+          "original_value": 18,
+          "category": "DEFAULT",
+          "overridden": true
+        },
+        "expected_speed_mbytes_per_sec": {
+          "value": 53125,
+          "original_value": 53125,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_bandwidth_count_speed",
+      "span_id": "300aefe8-a64d-45ca-98af-4f1e14e5863f",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "messages": [
+        "GPU GPU-redacted: expected 19 NVLinks, found 18."
+      ],
+      "affected_entities": [
+        "GPU-redacted"
+      ],
+      "recommended_action": {
+        "remediation_actions": [
+          "reset_gpu",
+          "restart_os",
+          "service_required"
+        ],
+        "operational_state": "drain"
+      },
+      "severity": "CRITICAL",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "link_count": 18,
+        "speed_mbytes_per_sec": 53125
+      },
+      "thresholds": {
+        "expected_link_count": {
+          "value": 19,
+          "original_value": 18,
+          "category": "DEFAULT",
+          "overridden": true
+        },
+        "expected_speed_mbytes_per_sec": {
+          "value": 53125,
+          "original_value": 53125,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_bandwidth_count_speed",
+      "span_id": "c909e1e8-3bf8-45e1-9ac9-160fb7a6a203",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "messages": [
+        "GPU GPU-redacted: expected 19 NVLinks, found 18."
+      ],
+      "affected_entities": [
+        "GPU-redacted"
+      ],
+      "recommended_action": {
+        "remediation_actions": [
+          "reset_gpu",
+          "restart_os",
+          "service_required"
+        ],
+        "operational_state": "drain"
+      },
+      "severity": "CRITICAL",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "link_count": 18,
+        "speed_mbytes_per_sec": 53125
+      },
+      "thresholds": {
+        "expected_link_count": {
+          "value": 19,
+          "original_value": 18,
+          "category": "DEFAULT",
+          "overridden": true
+        },
+        "expected_speed_mbytes_per_sec": {
+          "value": 53125,
+          "original_value": 53125,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_bandwidth_count_speed",
+      "span_id": "de6712ad-862d-4755-bd5e-3bda3ac0874e",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "messages": [
+        "GPU GPU-redacted: expected 19 NVLinks, found 18."
+      ],
+      "affected_entities": [
+        "GPU-redacted"
+      ],
+      "recommended_action": {
+        "remediation_actions": [
+          "reset_gpu",
+          "restart_os",
+          "service_required"
+        ],
+        "operational_state": "drain"
+      },
+      "severity": "CRITICAL",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "link_count": 18,
+        "speed_mbytes_per_sec": 53125
+      },
+      "thresholds": {
+        "expected_link_count": {
+          "value": 19,
+          "original_value": 18,
+          "category": "DEFAULT",
+          "overridden": true
+        },
+        "expected_speed_mbytes_per_sec": {
+          "value": 53125,
+          "original_value": 53125,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_bandwidth_count_speed",
+      "span_id": "628d0980-7486-420d-adf1-46c0d5a30fbd",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "messages": [
+        "GPU GPU-redacted: expected 19 NVLinks, found 18."
+      ],
+      "affected_entities": [
+        "GPU-redacted"
+      ],
+      "recommended_action": {
+        "remediation_actions": [
+          "reset_gpu",
+          "restart_os",
+          "service_required"
+        ],
+        "operational_state": "drain"
+      },
+      "severity": "CRITICAL",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "link_count": 18,
+        "speed_mbytes_per_sec": 53125
+      },
+      "thresholds": {
+        "expected_link_count": {
+          "value": 19,
+          "original_value": 18,
+          "category": "DEFAULT",
+          "overridden": true
+        },
+        "expected_speed_mbytes_per_sec": {
+          "value": 53125,
+          "original_value": 53125,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_bandwidth_count_speed",
+      "span_id": "293f7814-3906-4a1e-a42a-a283d59a255e",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "messages": [
+        "GPU GPU-redacted: expected 19 NVLinks, found 18."
+      ],
+      "affected_entities": [
+        "GPU-redacted"
+      ],
+      "recommended_action": {
+        "remediation_actions": [
+          "reset_gpu",
+          "restart_os",
+          "service_required"
+        ],
+        "operational_state": "drain"
+      },
+      "severity": "CRITICAL",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "link_count": 18,
+        "speed_mbytes_per_sec": 53125
+      },
+      "thresholds": {
+        "expected_link_count": {
+          "value": 19,
+          "original_value": 18,
+          "category": "DEFAULT",
+          "overridden": true
+        },
+        "expected_speed_mbytes_per_sec": {
+          "value": 53125,
+          "original_value": 53125,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_bandwidth_count_speed",
+      "span_id": "3c14e1a0-116e-41ba-ad87-e7e087d3a03e",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "messages": [
+        "GPU GPU-redacted: expected 19 NVLinks, found 18."
+      ],
+      "affected_entities": [
+        "GPU-redacted"
+      ],
+      "recommended_action": {
+        "remediation_actions": [
+          "reset_gpu",
+          "restart_os",
+          "service_required"
+        ],
+        "operational_state": "drain"
+      },
+      "severity": "CRITICAL",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "link_count": 18,
+        "speed_mbytes_per_sec": 53125
+      },
+      "thresholds": {
+        "expected_link_count": {
+          "value": 19,
+          "original_value": 18,
+          "category": "DEFAULT",
+          "overridden": true
+        },
+        "expected_speed_mbytes_per_sec": {
+          "value": 53125,
+          "original_value": 53125,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_bandwidth_count_speed",
+      "span_id": "c4623890-c11f-467f-af97-b7906060dbc6",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "messages": [
+        "GPU GPU-redacted: expected 19 NVLinks, found 18."
+      ],
+      "affected_entities": [
+        "GPU-redacted"
+      ],
+      "recommended_action": {
+        "remediation_actions": [
+          "reset_gpu",
+          "restart_os",
+          "service_required"
+        ],
+        "operational_state": "drain"
+      },
+      "severity": "CRITICAL",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "link_count": 18,
+        "speed_mbytes_per_sec": 53125
+      },
+      "thresholds": {
+        "expected_link_count": {
+          "value": 19,
+          "original_value": 18,
+          "category": "DEFAULT",
+          "overridden": true
+        },
+        "expected_speed_mbytes_per_sec": {
+          "value": 53125,
+          "original_value": 53125,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_bandwidth_count_speed",
+      "span_id": "c1b3c851-3d16-4fbf-8a61-69ab50cb98b9",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "messages": [
+        "GPU GPU-redacted: expected 19 NVLinks, found 18."
+      ],
+      "affected_entities": [
+        "GPU-redacted"
+      ],
+      "recommended_action": {
+        "remediation_actions": [
+          "reset_gpu",
+          "restart_os",
+          "service_required"
+        ],
+        "operational_state": "drain"
+      },
+      "severity": "CRITICAL",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "all_links_support_link": true,
+        "all_links_support_p2p": true,
+        "all_links_support_p2p_atomics": true,
+        "all_links_support_sli": true,
+        "all_links_support_sysmem_access": true,
+        "all_links_support_sysmem_atomics": true,
+        "gpu_id": "GPU-redacted"
+      },
+      "check_id": "nvlink_capabilities",
+      "span_id": "79fa75a1-555f-4ec4-86fc-3404f8291bcd",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "all_links_support_link": true,
+        "all_links_support_p2p": true,
+        "all_links_support_p2p_atomics": true,
+        "all_links_support_sli": true,
+        "all_links_support_sysmem_access": true,
+        "all_links_support_sysmem_atomics": true,
+        "gpu_id": "GPU-redacted"
+      },
+      "check_id": "nvlink_capabilities",
+      "span_id": "88cbcbd1-53b4-412b-a4be-435f26d4c824",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "all_links_support_link": true,
+        "all_links_support_p2p": true,
+        "all_links_support_p2p_atomics": true,
+        "all_links_support_sli": true,
+        "all_links_support_sysmem_access": true,
+        "all_links_support_sysmem_atomics": true,
+        "gpu_id": "GPU-redacted"
+      },
+      "check_id": "nvlink_capabilities",
+      "span_id": "a0af212d-688d-4355-ac65-38381f588fa8",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "all_links_support_link": true,
+        "all_links_support_p2p": true,
+        "all_links_support_p2p_atomics": true,
+        "all_links_support_sli": true,
+        "all_links_support_sysmem_access": true,
+        "all_links_support_sysmem_atomics": true,
+        "gpu_id": "GPU-redacted"
+      },
+      "check_id": "nvlink_capabilities",
+      "span_id": "d82c02ca-69cf-461c-a8cb-b446000271a5",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "all_links_support_link": true,
+        "all_links_support_p2p": true,
+        "all_links_support_p2p_atomics": true,
+        "all_links_support_sli": true,
+        "all_links_support_sysmem_access": true,
+        "all_links_support_sysmem_atomics": true,
+        "gpu_id": "GPU-redacted"
+      },
+      "check_id": "nvlink_capabilities",
+      "span_id": "89e3f261-fc68-4f61-9ae5-2219189d15f7",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "all_links_support_link": true,
+        "all_links_support_p2p": true,
+        "all_links_support_p2p_atomics": true,
+        "all_links_support_sli": true,
+        "all_links_support_sysmem_access": true,
+        "all_links_support_sysmem_atomics": true,
+        "gpu_id": "GPU-redacted"
+      },
+      "check_id": "nvlink_capabilities",
+      "span_id": "d2d12bef-93f1-4ed0-b77f-84ee455f84b6",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "all_links_support_link": true,
+        "all_links_support_p2p": true,
+        "all_links_support_p2p_atomics": true,
+        "all_links_support_sli": true,
+        "all_links_support_sysmem_access": true,
+        "all_links_support_sysmem_atomics": true,
+        "gpu_id": "GPU-redacted"
+      },
+      "check_id": "nvlink_capabilities",
+      "span_id": "a536a5cc-2a55-4177-9492-2ba95d09b046",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "all_links_support_link": true,
+        "all_links_support_p2p": true,
+        "all_links_support_p2p_atomics": true,
+        "all_links_support_sli": true,
+        "all_links_support_sysmem_access": true,
+        "all_links_support_sysmem_atomics": true,
+        "gpu_id": "GPU-redacted"
+      },
+      "check_id": "nvlink_capabilities",
+      "span_id": "06abdf37-dfb3-4198-8536-e18811041caf",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "unhealthy_p2p_peer_count": 0
+      },
+      "thresholds": {
+        "max_unhealthy_p2p_peers": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_p2p",
+      "span_id": "26a23c29-092f-44c7-af7e-7696d52e41b2",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "unhealthy_p2p_peer_count": 0
+      },
+      "thresholds": {
+        "max_unhealthy_p2p_peers": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_p2p",
+      "span_id": "40c7e348-72a4-44ce-9a7f-7ce2a3c42887",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "unhealthy_p2p_peer_count": 0
+      },
+      "thresholds": {
+        "max_unhealthy_p2p_peers": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_p2p",
+      "span_id": "dd25f719-022a-4965-9c11-25ee9f62dfa1",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "unhealthy_p2p_peer_count": 0
+      },
+      "thresholds": {
+        "max_unhealthy_p2p_peers": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_p2p",
+      "span_id": "1e29248c-c502-4f5d-816e-144628094de4",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "unhealthy_p2p_peer_count": 0
+      },
+      "thresholds": {
+        "max_unhealthy_p2p_peers": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_p2p",
+      "span_id": "afd1a87a-6e21-4295-b534-57f6243aa688",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "unhealthy_p2p_peer_count": 0
+      },
+      "thresholds": {
+        "max_unhealthy_p2p_peers": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_p2p",
+      "span_id": "136be283-48bc-4567-aa4c-27938d30e779",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "unhealthy_p2p_peer_count": 0
+      },
+      "thresholds": {
+        "max_unhealthy_p2p_peers": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_p2p",
+      "span_id": "5a7ce760-e32d-459f-9512-fdde2217ad10",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "gpu_id": "GPU-redacted",
+        "unhealthy_p2p_peer_count": 0
+      },
+      "thresholds": {
+        "max_unhealthy_p2p_peers": {
+          "value": 0,
+          "original_value": 0,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "nvlink_p2p",
+      "span_id": "54332184-fb07-4d25-87f9-19fe685b022e",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "NODE",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "observed_values": {
+        "outage_durations": null
+      },
+      "thresholds": {
+        "fatal_flap_threshold": {
+          "value": 1,
+          "original_value": 1,
+          "category": "DEFAULT",
+          "overridden": false
+        },
+        "min_outage_seconds": {
+          "value": 30,
+          "original_value": 30,
+          "category": "DEFAULT",
+          "overridden": false
+        }
+      },
+      "check_id": "rdma_linkflap_fatal",
+      "span_id": "0f3bbe6f-419b-4b10-a25d-a70c4d5f0f6c",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "severity": "PASS",
+      "category": "infiniband",
+      "condition_scope": "CLUSTER",
+      "maturity_level": "stable",
+      "skipped": false,
+      "nvidia_endorsed": true
+    }
+  ],
+  "skipped_checks": [
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "check_id": "gpu_compute_apps",
+      "span_id": "e0cc35c2-3744-4a9c-9a68-81baab05ed0e",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "skip_detail": "check requires [TENANT_GUEST], running in OPERATOR_INFRA",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "skip_reason": "SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL",
+      "maturity_level": "stable",
+      "skipped": true,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "check_id": "gpu_power_limit",
+      "span_id": "677ee36b-6647-4b58-8f2f-307e7bfd968a",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "skip_detail": "check requires [GB200 GB300 H100], running on B200",
+      "severity": "PASS",
+      "category": "gpu",
+      "condition_scope": "NODE",
+      "skip_reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE",
+      "maturity_level": "stable",
+      "skipped": true,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "check_id": "gpu_xid_136",
+      "span_id": "5c47c56e-ac43-4735-afbb-c50ad2984486",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "skip_detail": "check requires [H100 H200], running on B200",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "skip_reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE",
+      "maturity_level": "stable",
+      "skipped": true,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "check_id": "gpu_xid_142",
+      "span_id": "85173305-9f0d-4e89-b587-beeb04aaece3",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "skip_detail": "check requires [GB200 GB300], running on B200",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "skip_reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE",
+      "maturity_level": "stable",
+      "skipped": true,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "check_id": "gpu_xid_54",
+      "span_id": "0a96fd53-ea25-4b1e-b840-e5c8ae511eda",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "skip_detail": "check requires [H100 H200 A100], running on B200",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "skip_reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE",
+      "maturity_level": "stable",
+      "skipped": true,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "check_id": "gpu_xid_80",
+      "span_id": "054aa712-b796-4617-9ab7-3109c81230de",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "skip_detail": "check requires [H100 H200 A100], running on B200",
+      "severity": "PASS",
+      "category": "xid",
+      "condition_scope": "NODE",
+      "skip_reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE",
+      "maturity_level": "stable",
+      "skipped": true,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "check_id": "numa_node_count",
+      "span_id": "6b5c94dd-fbc2-4205-8ac3-3a47b1a6360c",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "skip_detail": "check requires [GB200 GB300], running on B200",
+      "severity": "PASS",
+      "category": "cpu",
+      "condition_scope": "NODE",
+      "skip_reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE",
+      "maturity_level": "stable",
+      "skipped": true,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "check_id": "nvlink_fabric",
+      "span_id": "b83b981d-421a-4d4f-8707-ee37a6034b9d",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "skip_detail": "check requires [GB200 GB300], running on B200",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "DOMAIN",
+      "skip_reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE",
+      "maturity_level": "stable",
+      "skipped": true,
+      "nvidia_endorsed": true
+    },
+    {
+      "timestamp": "2026-10-25T09:05:10.400498523Z",
+      "check_id": "nvlink_fabric_health",
+      "span_id": "13ab555c-2f04-4be8-8c11-757cc6e952b8",
+      "trace_id": "cdcffe73-9961-44e6-871b-25ba0ef46d11",
+      "skip_detail": "check requires [GB200 GB300], running on B200",
+      "severity": "PASS",
+      "category": "nvlink",
+      "condition_scope": "DOMAIN",
+      "skip_reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE",
+      "maturity_level": "stable",
+      "skipped": true,
+      "nvidia_endorsed": true
+    }
+  ],
+  "overall_severity": "CRITICAL"
+}

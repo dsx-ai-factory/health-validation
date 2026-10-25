@@ -234,6 +234,8 @@ Each check definition carries:
 
 > **GB300 support.** Most checks in the catalog declare support for both GB200 and GB300 in their `Architectures` field. GB200 support has been validated; GB300 support has not yet completed the same validation pass. Treat GB300 results as directionally correct but experimental and subject to change until this note is removed.
 
+> **B200 support.** Checks that declare B200 were validated on an HGX B200 node (8 × B200, driver 580.178.04), including a negative run that confirms they fail on a mismatch. See [docs/validation/hgx-b200.md](docs/validation/hgx-b200.md) for the results and the native verdicts.
+
 Xid checks use the public NVIDIA Xid catalog's per-code applicability. H200
 uses the H100 applicability matrix because both products use the Hopper
 architecture; Xid 144-150 and their subtype checks remain Blackwell-only.
