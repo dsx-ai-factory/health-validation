@@ -15,6 +15,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
@@ -114,6 +115,12 @@ func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 	if a.xid == nil {
 		sources = append(sources, xidsensor.New(nil))
 		adapters = append(adapters, collectadapters.XID())
+	}
+	// RDMA fabric ports, InfiniBand and RoCE. A caller IB backend
+	// (WithIBBackend) owns the InfiniBand domain instead.
+	if a.ib == nil {
+		sources = append(sources, ibsensor.New(nil, ibsensor.WithEthernetPorts()))
+		adapters = append(adapters, collectadapters.RDMAPorts())
 	}
 	return sources, adapters
 }
