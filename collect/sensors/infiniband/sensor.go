@@ -19,15 +19,34 @@ import (
 
 const ID = "infiniband.sysfs"
 
-type sensor struct{ source *ibsource.Source }
+type sensor struct {
+	source   *ibsource.Source
+	ethernet bool
+}
+
+// Option configures a sensor returned by [New].
+type Option func(*sensor)
+
+// WithEthernetPorts also reports ports whose link layer is Ethernet: RoCE
+// ports on the same mlx5 HCAs. GPU east-west fabrics built on RoCE expose
+// their rails only this way, so a check of fabric port state needs them.
+// Every port reading still carries the port's link layer.
+func WithEthernetPorts() Option {
+	return func(s *sensor) { s.ethernet = true }
+}
 
 // New returns a sensor using the supplied source, or the host sysfs when nil.
-// Like GPUd, it excludes ports whose link layer is not InfiniBand.
-func New(source *ibsource.Source) collect.Sensor {
+// Like GPUd, it excludes ports whose link layer is not InfiniBand, unless
+// [WithEthernetPorts] also admits Ethernet (RoCE) ports.
+func New(source *ibsource.Source, opts ...Option) collect.Sensor {
 	if source == nil {
 		source = ibsource.New(nil)
 	}
-	return &sensor{source: source}
+	s := &sensor{source: source}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (*sensor) ID() string               { return ID }
@@ -58,7 +77,7 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	for _, reading := range readings {
 		// GPUd components/accelerator/nvidia/infiniband/types.IBPort.IsIBPort.
 		// Preserve failures when link_layer itself could not be read.
-		if reading.LinkLayer != nil && !strings.EqualFold(*reading.LinkLayer, "infiniband") {
+		if reading.LinkLayer != nil && !s.admits(*reading.LinkLayer) {
 			continue
 		}
 		if reading.Failure != nil {
@@ -79,4 +98,9 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		})
 	}
 	return batch, nil
+}
+
+// admits reports whether a port with linkLayer is reported.
+func (s *sensor) admits(linkLayer string) bool {
+	return strings.EqualFold(linkLayer, "infiniband") || (s.ethernet && strings.EqualFold(linkLayer, "ethernet"))
 }
