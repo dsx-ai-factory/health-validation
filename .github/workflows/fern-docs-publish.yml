@@ -21,6 +21,10 @@
 # so the site never depends on state left by an earlier publish. Until a release
 # tag contains the Fern site, the checked-out docs are published unversioned.
 #
+# A manual run rebuilds the released versions from their tags; it does not
+# publish page changes merged to main since the last release. Those ship with
+# the next release, or a patch release on the affected line.
+#
 # The Fern configuration and tooling always come from main, so a patch tag on an
 # older release branch cannot publish with that branch's older configuration.
 #
