@@ -25,9 +25,11 @@ const (
 //
 // Construct a key with [NodeEntity], [VerifiedEntity], [ProvisionalEntity], or
 // [SourceEntity]. The zero value is an unidentified entity: a per-entity
-// measurement whose producer could not name it. One unidentified measurement
-// per check is evaluated as before; two are rejected, since nothing shows they
-// describe different entities.
+// measurement whose producer could not name it. Like a provisional key, it may
+// only report the collection failure that left it unnamed; collected values
+// under it are rejected, since nothing shows they describe a GPU no other
+// provider reports. Two unidentified measurements for one check are rejected
+// too, since nothing tells them apart.
 type EntityKey struct {
 	source string
 	id     string
@@ -106,8 +108,10 @@ func (k EntityKey) String() string {
 // A measurement that does not implement it is keyed for compatibility: by
 // [EntityIdentifier.EntityID] as a [VerifiedEntity] when that is non-empty,
 // as unidentified when it is empty, and as [NodeEntity] when the type does not
-// implement EntityIdentifier at all. Implement EntityKeyed when an ID is not a
-// stable hardware identity, such as a source-local slot.
+// implement EntityIdentifier at all. An empty EntityID is accepted only on a
+// measurement reporting a collection failure; one carrying values must name
+// its entity. Implement EntityKeyed when an ID is not a stable hardware
+// identity, such as a source-local slot.
 type EntityKeyed interface {
 	EntityKey() EntityKey
 }

@@ -156,7 +156,7 @@ A measurement's entity is its `health.EntityKey`:
 | Your measurement | Key |
 |---|---|
 | Implements `health.EntityKeyed` | Whatever `EntityKey()` returns |
-| Implements only `health.EntityIdentifier` | `health.VerifiedEntity(EntityID())`, or unidentified when the ID is empty |
+| Implements only `health.EntityIdentifier` | `health.VerifiedEntity(EntityID())`, or unidentified when the ID is empty (see below) |
 | Implements neither (host-wide) | `health.NodeEntity()`: one per run, whatever node ID the producer recorded |
 
 Implement `EntityIdentifier` on any type that describes one of several like
@@ -172,8 +172,21 @@ stable hardware identity:
 - `health.SourceEntity(source)` is for a whole-source failure that names no
   entity. The same rule applies.
 
+An unidentified key (an empty `EntityID()`, or a zero `health.EntityKey`) is
+allowed only for a collection failure:
+
+- **Allowed:** an unidentified measurement whose errors fail a signal the check
+  reads, such as a GPU whose UUID lookup failed. The check fails CRITICAL as a
+  collection failure. Two of them feeding one check are still rejected, since
+  nothing tells them apart.
+- **Rejected:** an unidentified measurement carrying values the check reads,
+  even from the only provider. Nothing shows it isn't a GPU another provider
+  also reports, as when an ID-less `nvidia-smi` path is left running beside
+  NVML. Set an ID or implement `EntityKeyed`.
+
 The built-in `gpu.GPUMeasurement` and `nvlink.NVLinkMeasurement` take a key
-through `SetEntityKey`. Without one, a non-empty `GPUID` is treated as verified.
+through `SetEntityKey`. Without one, a non-empty `GPUID` is treated as verified
+and an empty one as unidentified.
 
 ## Getting your signals collected (demonstration wiring — subject to change)
 

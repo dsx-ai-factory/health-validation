@@ -139,16 +139,22 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 	}
 
 	order := TopologicalOrder(checks)
+	// Decide each check's params and measurement-independent skip once; the
+	// validation pass and the evaluation loop both read them.
 	params := make(map[string]Params, len(order))
+	skips := make(map[string]health.CheckVerdict)
 	for _, id := range order {
 		params[id] = paramsFor(id)
+		if v, isSkip := checkLevelSkip(checks[id], params[id], now); isSkip {
+			skips[id] = v
+		}
 	}
 
 	// Validate every check's input before evaluating any, so an ambiguous
 	// run returns no verdicts rather than a partial set.
 	for _, id := range order {
 		cd := checks[id]
-		if _, isSkip := checkLevelSkip(cd, params[id], now); isSkip {
+		if _, isSkip := skips[id]; isSkip {
 			continue
 		}
 		var routed []observed
@@ -169,7 +175,7 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 		cd := checks[id]
 
 		p := params[id]
-		if v, isSkip := checkLevelSkip(cd, p, now); isSkip {
+		if v, isSkip := skips[id]; isSkip {
 			verdicts = append(verdicts, v)
 			continue
 		}
@@ -235,14 +241,14 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 }
 
 // checkEntities rejects the measurements routed to cd unless each describes a
-// distinct, validly keyed entity, and each provisionally keyed one reports a
-// failure of a signal cd reads. Concrete types do not matter: two providers'
-// types that both route to cd for one entity are duplicates.
+// distinct, validly keyed entity, and each provisional or unidentified one
+// reports a failure of a signal cd reads. Concrete types do not matter: two
+// providers' types that both route to cd for one entity are duplicates.
 //
 // A provisional key names a source-local slot or a whole source, which no
-// other source can be joined to. Values under such a key would be a successful
-// measurement of a GPU no verified identity ties to its other measurements, so
-// it may only carry the failure that left it unidentified.
+// other source can be joined to, and an unidentified one names nothing at all.
+// Values under either could describe a GPU another provider also reports, so
+// such a measurement may only carry the failure that left it unidentified.
 func checkEntities(cd *health.CheckDefinition, routed []observed) error {
 	ambiguous := func(key health.EntityKey, reason string, ms ...observed) error {
 		types := make([]string, len(ms))
@@ -258,6 +264,9 @@ func checkEntities(cd *health.CheckDefinition, routed []observed) error {
 		}
 		if o.key.Provisional() && !reportsFailure(cd, o) {
 			return ambiguous(o.key, "a provisional identity carries collected values; joining them to a GPU requires a verified ID", o)
+		}
+		if o.key.Unidentified() && !reportsFailure(cd, o) {
+			return ambiguous(o.key, "collected values name no entity, so they may duplicate another provider's; supply a verified ID", o)
 		}
 		if prev, dup := seen[o.key]; dup {
 			reason := "more than one measurement for one entity"

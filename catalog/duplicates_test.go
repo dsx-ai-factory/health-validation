@@ -255,14 +255,55 @@ func TestEvaluateAll_MissingIdentityFailsClosed(t *testing.T) {
 	}
 }
 
-// One GPU whose producer could not name it still evaluates; two cannot be
+// A GPU whose producer could not name it may report the collection failure
+// that left it unnamed, which fails the check. Two such failures cannot be
 // told apart.
-func TestEvaluateAll_UnidentifiedGPUs(t *testing.T) {
+func TestEvaluateAll_UnidentifiedCollectionFailures(t *testing.T) {
 	lost := gpu.ErroredGPU("", errors.New("lost"), gpu.MeasurementSignals()...)
-	if _, err := probeCatalog().EvaluateAll(lost, gpu.GPUMeasurement{GPUID: "GPU-A"}); err != nil {
+	nv, err := probeCatalog().EvaluateAll(lost, gpu.GPUMeasurement{GPUID: "GPU-A"})
+	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
+	// GPU-A passes; the unidentified failure is the one CRITICAL.
+	var severities []health.Severity
+	for _, v := range nv.CheckResults {
+		if v.CheckID == "gpu_pstate_probe" {
+			severities = append(severities, v.Severity)
+		}
+	}
+	slices.Sort(severities)
+	if want := []health.Severity{health.Pass, health.Critical}; !slices.Equal(severities, want) {
+		t.Errorf("gpu_pstate_probe severities = %v, want %v", severities, want)
+	}
 	wantAmbiguous(t, probeCatalog(), "gpu_pstate_probe", health.EntityKey{}, lost, lost)
+}
+
+// Collected values without an identity may describe a GPU another provider
+// also reports, as when an ID-less nvidia-smi path is left running beside
+// NVML. Evaluation cannot tell, so it rejects them even from a sole provider.
+func TestEvaluateAll_UnidentifiedValuesAreRejected(t *testing.T) {
+	// The power read failed, but the probe reads gpu_pstate, which was
+	// collected, so the check would still evaluate a value.
+	partial := gpu.GPUMeasurement{GPUPstate: 8}
+	partial.AddError(errors.New("power read failed"), gpu.SignalAveragePowerDrawW)
+
+	for _, tc := range []struct {
+		name string
+		ms   []health.Measurement
+	}{
+		{name: "sole provider", ms: []health.Measurement{gpu.GPUMeasurement{GPUPstate: 0}}},
+		{name: "beside an identified GPU", ms: []health.Measurement{gpu.GPUMeasurement{GPUID: "GPU-A"}, gpu.GPUMeasurement{GPUPstate: 8}}},
+		{name: "beside an unidentified failure", ms: []health.Measurement{gpu.ErroredGPU("", errors.New("lost")), gpu.GPUMeasurement{}}},
+		{name: "failure on a signal the check does not read", ms: []health.Measurement{partial}},
+		{name: "private type with an empty EntityID", ms: []health.Measurement{privateGPU{Pstate: 0}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := wantAmbiguous(t, probeCatalog(), "gpu_pstate_probe", health.EntityKey{}, tc.ms...)
+			if !strings.Contains(got.Reason, "name no entity") {
+				t.Errorf("Reason = %q, want it to say the values name no entity", got.Reason)
+			}
+		})
+	}
 }
 
 // The guard is per check. Duplicates reaching only a check that will not run

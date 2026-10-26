@@ -79,7 +79,7 @@ CheckVerdict is the outcome of evaluating a single check against signal values. 
 
 ### EntityKey
 
-EntityKey is the stable identity of the entity a measurement describes. Evaluation rejects two measurements with one key that feed the same check: it cannot tell which provider to believe, so it reports neither. Construct a key with [NodeEntity], [VerifiedEntity], [ProvisionalEntity], or [SourceEntity]. The zero value is an unidentified entity: a per-entity measurement whose producer could not name it. One unidentified measurement per check is evaluated as before; two are rejected, since nothing shows they describe different entities.
+EntityKey is the stable identity of the entity a measurement describes. Evaluation rejects two measurements with one key that feed the same check: it cannot tell which provider to believe, so it reports neither. Construct a key with [NodeEntity], [VerifiedEntity], [ProvisionalEntity], or [SourceEntity]. The zero value is an unidentified entity: a per-entity measurement whose producer could not name it. Like a provisional key, it may only report the collection failure that left it unnamed; collected values under it are rejected, since nothing shows they describe a GPU no other provider reports. Two unidentified measurements for one check are rejected too, since nothing tells them apart.
 
 ### ErroredMeasurement
 
