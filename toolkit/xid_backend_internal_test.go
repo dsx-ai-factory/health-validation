@@ -184,3 +184,45 @@ func TestXidJournalArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestXidJournalTimeRange(t *testing.T) {
+	from, to := int64(1792600000), int64(1792603600)
+	for _, tt := range []struct {
+		name string
+		from *int64
+		to   *int64
+		want []string
+	}{
+		{name: "unbounded"},
+		{name: "from only", from: &from, want: []string{"--since=@1792600000.000001"}},
+		{name: "to only", to: &to, want: []string{"--until=@1792603599.999999"}},
+		{name: "both", from: &from, to: &to, want: []string{"--since=@1792600000.000001", "--until=@1792603599.999999"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			backend, err := JournalctlWithTimeRange(tt.from, tt.to)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := backend.(*journalctlBackend)
+			var calls [][]string
+			b.run = cannedRun(func(_ context.Context, args ...string) ([]byte, error) {
+				calls = append(calls, args)
+				if slices.Contains(args, "-n") {
+					return []byte("readable journal\n"), nil
+				}
+				return nil, nil
+			})
+			ms, err := b.Measure(context.Background())
+			if err != nil || len(ms) != 1 || len(ms[0].Errors()) != 0 {
+				t.Fatalf("empty window must pass with a readable journal: %v, %v", ms, err)
+			}
+			want := append([]string{"--dmesg", "--boot", "--no-pager", "--quiet", "--output=cat"}, tt.want...)
+			if len(calls) != 2 || !slices.Equal(calls[0], want) {
+				t.Fatalf("calls = %v, want scoped read %v and liveness probe", calls, want)
+			}
+			if !slices.Equal(calls[1], []string{"--boot", "--no-pager", "--output=cat", "-n", "1"}) {
+				t.Fatalf("liveness probe must remain unbounded: %v", calls[1])
+			}
+		})
+	}
+}

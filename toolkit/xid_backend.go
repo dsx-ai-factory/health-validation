@@ -5,6 +5,7 @@ package toolkit
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -61,24 +62,53 @@ func Journalctl() XidBackend {
 	return &journalctlBackend{run: runJournalctl}
 }
 
+// JournalctlWithTimeRange limits the current boot's Xid journal to the open
+// interval (from, to), expressed as Unix seconds. A nil bound is unbounded.
+func JournalctlWithTimeRange(from, to *int64) (XidBackend, error) {
+	if from != nil && *from < 0 {
+		return nil, fmt.Errorf("--xid-from must be a non-negative Unix timestamp in seconds")
+	}
+	if to != nil && *to <= 0 {
+		return nil, fmt.Errorf("--xid-to must be a positive Unix timestamp in seconds")
+	}
+	if from != nil && to != nil && *from >= *to {
+		return nil, fmt.Errorf("--xid-from must be less than --xid-to")
+	}
+	b := &journalctlBackend{run: runJournalctl}
+	// journalctl's bounds are inclusive and journal timestamps have microsecond
+	// precision. Move each bound inward by one microsecond, without float rounding.
+	if from != nil {
+		b.args = append(b.args, fmt.Sprintf("--since=@%d.000001", *from))
+	}
+	if to != nil {
+		b.args = append(b.args, fmt.Sprintf("--until=@%d.999999", *to-1))
+	}
+	return b, nil
+}
+
 // journalctlBackend reads Xid lines from the journal. run is a seam so
 // tests can exercise the parsing and error handling without a host
 // journal; production uses runJournalctl.
 type journalctlBackend struct {
-	run runFunc
+	run  runFunc
+	args []string
 }
 
 // Measure reads the current boot's Xid lines. It scopes the read to
 // kernel-transport entries (--dmesg), then filters for Xid lines in Go.
 // See [readJournal] for the clean-boot vs unreadable-journal handling.
 func (b *journalctlBackend) Measure(ctx context.Context) ([]health.Measurement, error) {
+	since := sinceBoot
+	if len(b.args) > 0 {
+		since += " " + strings.Join(b.args, " ")
+	}
 	return readJournal(ctx, b.run, journalMatcher{
-		args:    []string{"--output=cat"},
+		args:    append([]string{"--output=cat"}, b.args...),
 		subject: "Xid state",
 		match:   func(line string) bool { return strings.Contains(line, "NVRM: Xid ") },
-		parse:   func(lines []string) health.Measurement { return xidparse.ParseXid(sinceBoot, lines) },
+		parse:   func(lines []string) health.Measurement { return xidparse.ParseXid(since, lines) },
 		errored: func(err error) health.Measurement {
-			return xid.ErroredXid(sinceBoot, err, xid.MeasurementSignals()...)
+			return xid.ErroredXid(since, err, xid.MeasurementSignals()...)
 		},
 	})
 }

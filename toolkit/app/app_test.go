@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -894,6 +896,77 @@ func cadenceRunApp() *App {
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	return a
+}
+
+func TestXidTimeFlags(t *testing.T) {
+	for _, command := range []string{"run", "collect"} {
+		t.Run(command, func(t *testing.T) {
+			dir := t.TempDir()
+			argsPath := filepath.Join(dir, "args")
+			t.Setenv("XID_TEST_ARGS", argsPath)
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$XID_TEST_ARGS\"\nprintf 'NVRM: Xid (PCI:0000:01:00): 79\\n'\n"
+			if err := os.WriteFile(filepath.Join(dir, "journalctl"), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, flags := range [][]string{
+				nil,
+				{"--xid-from", "0"},
+				{"--xid-to", "1792603600"},
+				{"--xid-from", "1792600000", "--xid-to", "1792603600"},
+			} {
+				a := cadenceRunApp()
+				a.xid = nil
+				var stdout, stderr bytes.Buffer
+				args := append([]string{command, "--node-id", testNodeID}, flags...)
+				if code := a.Run(args, &stdout, &stderr); code == exitError {
+					t.Fatalf("%v: stderr = %s", args, stderr.String())
+				}
+				data, err := os.ReadFile(argsPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := strings.Split(strings.TrimSpace(string(data)), "\n")
+				want := []string{"--dmesg", "--boot", "--no-pager", "--quiet", "--output=cat"}
+				if slices.Contains(flags, "--xid-from") {
+					if slices.Contains(flags, "0") {
+						want = append(want, "--since=@0.000001")
+					} else {
+						want = append(want, "--since=@1792600000.000001")
+					}
+				}
+				if slices.Contains(flags, "--xid-to") {
+					want = append(want, "--until=@1792603599.999999")
+				}
+				if !slices.Equal(got, want) {
+					t.Fatalf("%v: journalctl args = %v, want %v", args, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestInvalidXidTimeFlags(t *testing.T) {
+	for _, command := range []string{"run", "collect"} {
+		for _, flags := range [][]string{
+			{"--xid-from", "invalid"},
+			{"--xid-to", "1.5"},
+			{"--xid-from", "9223372036854775808"},
+			{"--xid-from", "-1"},
+			{"--xid-to", "0"},
+			{"--xid-to", "-1"},
+			{"--xid-from", "100", "--xid-to", "100"},
+			{"--xid-from", "101", "--xid-to", "100"},
+		} {
+			a := New().WithProgramName("test")
+			a.host = panicHost{}
+			var stdout, stderr bytes.Buffer
+			args := append([]string{command}, flags...)
+			if code := a.Run(args, &stdout, &stderr); code != exitError || stdout.Len() != 0 || !strings.Contains(stderr.String(), "xid-") {
+				t.Errorf("%v: code = %d, stdout = %q, stderr = %q", args, code, stdout.String(), stderr.String())
+			}
+		}
+	}
 }
 
 func TestRunCommandRejectsInvalidCadence(t *testing.T) {

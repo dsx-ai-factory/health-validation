@@ -275,6 +275,20 @@ The execution context defaults to `TENANT_GUEST`. Use
 `--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND` to select checks
 for a different execution context.
 
+Both `run` and `collect` accept optional `--xid-from <unix-seconds>` and
+`--xid-to <unix-seconds>` flags to restrict Xid journal collection to
+`xid-from < entry timestamp < xid-to`. Both bounds are exclusive, including
+for entries with subsecond timestamps. Either bound may be omitted; when
+neither flag is supplied, collection covers the entire current boot. The lower bound
+must be non-negative and the upper bound positive; when both are supplied,
+`xid-from` must be less than `xid-to`. Reads remain scoped to the current boot.
+These flags affect the default Xid journal backend, not other journal sensors
+or a backend supplied through `WithXidBackend`.
+
+```shell
+./health-validation run --xid-from 1792600000 --xid-to 1792603600
+```
+
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 
 Run with a config file (threshold overrides):

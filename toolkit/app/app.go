@@ -327,11 +327,17 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		"evaluate checks whose scheduling cadence covers this window (CONTINUOUS, PROLOG, MAINTENANCE); omit to run every registered check")
 	executionContextFlag := fs.String("execution-context", health.TenantGuest.String(),
 		"execution context used to select checks (OPERATOR_INFRA, TENANT_GUEST, OUT_OF_BAND)")
+	registerXidTimeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitError
 	}
 	if fs.NArg() != 0 {
 		fmt.Fprintf(stderr, "%s: unexpected argument %q\n", a.prog, fs.Arg(0))
+		return exitError
+	}
+	xidJournal, err := xidJournalFromFlags(fs)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
 
@@ -408,7 +414,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
 		return exitError
 	}
-	sensors, err := a.sensors(timeout, requiredFor(runnable))
+	sensors, err := a.sensors(timeout, requiredFor(runnable), xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError
@@ -423,7 +429,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-func (a *App) sensors(timeout time.Duration, required requiredSignals) ([]toolkit.Sensor, error) {
+func (a *App) sensors(timeout time.Duration, required requiredSignals, xidJournal toolkit.XidBackend) ([]toolkit.Sensor, error) {
 	gpu := a.gpu
 	if gpu == nil {
 		gpu = a.host.gpuBackend()
@@ -435,6 +441,10 @@ func (a *App) sensors(timeout time.Duration, required requiredSignals) ([]toolki
 	nvlink := a.nvlink
 	if nvlink == nil {
 		nvlink = a.host.nvlinkBackend()
+	}
+	xid := a.xid
+	if xid == nil {
+		xid = xidJournal
 	}
 	rdmaLinkFlap := a.rdmaLinkFlap
 	if rdmaLinkFlap == nil {
@@ -551,6 +561,26 @@ func usage(prog string) string {
 	return "usage: " + prog + " <collect|run|version> [flags]"
 }
 
+func registerXidTimeFlags(fs *flag.FlagSet) {
+	fs.Int64("xid-from", 0, "read Xid journal entries strictly after this Unix timestamp in seconds (non-negative; optional)")
+	fs.Int64("xid-to", 0, "read Xid journal entries strictly before this Unix timestamp in seconds (positive; optional)")
+}
+
+func xidJournalFromFlags(fs *flag.FlagSet) (toolkit.XidBackend, error) {
+	var from, to *int64
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "xid-from":
+			value := f.Value.(flag.Getter).Get().(int64)
+			from = &value
+		case "xid-to":
+			value := f.Value.(flag.Getter).Get().(int64)
+			to = &value
+		}
+	})
+	return toolkit.JournalctlWithTimeRange(from, to)
+}
+
 var categoryBySensor = map[string]health.Category{
 	"cpu":           health.CPU,
 	"gpu":           health.GPU,
@@ -568,11 +598,17 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 	configPath := fs.String("config", "", "path to a YAML config listing checks to collect")
 	nodeID := fs.String("node-id", a.nodeID,
 		"identifier of the node under test, the target of host-wide observations (overrides the configured default or system hostname)")
+	registerXidTimeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitError
 	}
 	if fs.NArg() != 0 {
 		fmt.Fprintf(stderr, "%s: unexpected argument %q\n", a.prog, fs.Arg(0))
+		return exitError
+	}
+	xidJournal, err := xidJournalFromFlags(fs)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
 	nodeIDSet := a.nodeIDSet
@@ -608,7 +644,7 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 	for category := range categories {
 		required[category] = nil
 	}
-	allSensors, err := a.sensors(timeout, required)
+	allSensors, err := a.sensors(timeout, required, xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError
