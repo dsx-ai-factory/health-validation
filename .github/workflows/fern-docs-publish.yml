@@ -64,6 +64,7 @@ jobs:
           ref: main
           # Fern checks out each version's tag, so it needs the tags and history.
           fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
 
       - name: Write docs versions

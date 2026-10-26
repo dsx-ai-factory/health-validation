@@ -30,6 +30,3 @@ versions:
   - display-name: Latest
     path: ../docs/index.yml
     slug: latest
-  - display-name: ref-test
-    ref: a50a7daadf05890ce60c261b380ba8b4ba2866ea
-    slug: ref-test
