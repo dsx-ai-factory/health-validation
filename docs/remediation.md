@@ -146,8 +146,15 @@ it, and most Nonfatal rows need no remediation at all.
 |---|---|
 | <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for warning-class per-Xid checks, where it is followed by `service_required` (`["restart_app", "service_required"]`) should the error persist after the restart. |
 | <nobr>`update_swfw`</nobr> | Update GPU driver/firmware and any related system software to the latest supported versions. Recommended for Xid 78 (vGPU start error). |
-| <nobr>`workflow_xid_45`</nobr> | Follow the Xid 45 workflow: restart NVIDIA Fabric Manager when Xid 45 occurs alone; otherwise ignore Xid 45 and follow the accompanying Xid's remediation. |
 | <nobr>`xid_154`</nobr> | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
+
+Xid 45 (preemptive removal) usually follows an application's GPU channels
+being torn down rather than a GPU fault. When another Xid has been seen since
+boot, `gpu_xid_45` is INFO with no action; follow that Xid's remediation. Xid
+154 does not count, since it only annotates another Xid. When Xid 45 is the
+only one, it is WARNING with `["restart_app"]` alone, with no
+`service_required` step: restart the application, and report the issue if Xid
+45 keeps recurring with no other Xid.
 
 ### Collection-failure actions
 

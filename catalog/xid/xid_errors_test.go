@@ -186,6 +186,7 @@ func TestXidErrors_OccurrencesOverride(t *testing.T) {
 	}{
 		{name: "critical", checkID: "gpu_xid_79", code: 79, wantSeverity: health.Critical},
 		{name: "warning", checkID: "gpu_xid_8", code: 8, wantSeverity: health.Warning},
+		{name: "xid 45 alone", checkID: "gpu_xid_45", code: 45, wantSeverity: health.Warning},
 		{name: "informational", checkID: "gpu_xid_154", code: 154, wantSeverity: health.Info},
 	}
 
@@ -334,7 +335,6 @@ func TestXidErrors_WarningActionByBucket(t *testing.T) {
 	}{
 		{"app fault (13)", health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired), 13},
 		{"memory page fault (31)", health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired), 31},
-		{"preemptive removal (45)", health.Drain(health.RemediationActionWorkflowXid45), 45},
 		{"vgpu start (78)", health.Drain(health.RemediationActionUpdateSWFW), 78},
 	}
 	for _, tc := range tests {
@@ -354,14 +354,60 @@ func TestXidErrors_WarningActionByBucket(t *testing.T) {
 	}
 }
 
-func TestXidErrors_Xid45ExplainsRestartFMCondition(t *testing.T) {
-	v, ok := checkResult(evalXid(t, 45), "gpu_xid_45")
-	if !ok {
-		t.Fatalf("gpu_xid_45 verdict not found")
+func TestXidErrors_Xid45Workflow(t *testing.T) {
+	tests := []struct {
+		name         string
+		message      string
+		codes        []int64
+		action       health.RecommendedAction
+		wantSeverity health.Severity
+	}{
+		{
+			name:         "alone",
+			codes:        []int64{45},
+			wantSeverity: health.Warning,
+			action:       health.Drain(health.RemediationActionRestartApp),
+			message:      "GPU Xid 45 occurred alone; restart the application. If Xid 45 recurs with no other Xid, report the issue.",
+		},
+		{
+			name:         "with another Xid",
+			codes:        []int64{45, 46},
+			wantSeverity: health.Info,
+			action:       health.NoAction,
+			message:      "GPU Xid 45 accompanied another Xid; no Xid 45-specific remediation is needed. Follow the accompanying Xid's guidance.",
+		},
+		{
+			name:         "with an Xid that has no check",
+			codes:        []int64{45, 137},
+			wantSeverity: health.Info,
+			action:       health.NoAction,
+			message:      "GPU Xid 45 accompanied another Xid; no Xid 45-specific remediation is needed. Follow the accompanying Xid's guidance.",
+		},
+		{
+			name:         "Xid 154 does not count as a companion",
+			codes:        []int64{45, 154},
+			wantSeverity: health.Warning,
+			action:       health.Drain(health.RemediationActionRestartApp),
+			message:      "GPU Xid 45 occurred alone; restart the application. If Xid 45 recurs with no other Xid, report the issue.",
+		},
 	}
-	want := "GPU Xid 45 (preemptive removal) detected. If Xid 45 occurred alone, restart NVIDIA Fabric Manager. If it accompanied another Xid, follow that Xid's remediation instead; Xid 45 may result from application termination or a GPU reset and is often not a separate fault."
-	if len(v.Messages) != 1 || v.Messages[0] != want {
-		t.Errorf("Messages = %q, want [%q]", v.Messages, want)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, ok := checkResult(evalXid(t, tt.codes...), "gpu_xid_45")
+			if !ok {
+				t.Fatal("gpu_xid_45 verdict not found")
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Errorf("Severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if !v.RecommendedAction.Equal(tt.action) {
+				t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, tt.action)
+			}
+			if len(v.Messages) != 1 || v.Messages[0] != tt.message {
+				t.Errorf("Messages = %q, want [%q]", v.Messages, tt.message)
+			}
+		})
 	}
 }
 

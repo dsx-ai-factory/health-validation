@@ -74,12 +74,11 @@ const (
 	// software investigation through the operator's own service path.
 	RemediationActionServiceRequired RemediationAction = "service_required"
 
-	RemediationActionResetGPU      RemediationAction = "reset_gpu"
-	RemediationActionRestartApp    RemediationAction = "restart_app"
-	RemediationActionRestartOS     RemediationAction = "restart_os"
-	RemediationActionUpdateSWFW    RemediationAction = "update_swfw"
-	RemediationActionWorkflowXid45 RemediationAction = "workflow_xid_45"
-	RemediationActionXid154        RemediationAction = "xid_154"
+	RemediationActionResetGPU   RemediationAction = "reset_gpu"
+	RemediationActionRestartApp RemediationAction = "restart_app"
+	RemediationActionRestartOS  RemediationAction = "restart_os"
+	RemediationActionUpdateSWFW RemediationAction = "update_swfw"
+	RemediationActionXid154     RemediationAction = "xid_154"
 
 	// RemediationActionHold marks a node as drained but not yet
 	// individually remediated: hold it out of scheduling until a
