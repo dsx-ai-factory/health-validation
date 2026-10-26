@@ -20,8 +20,6 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
-	"github.com/dsx-ai-factory/health-validation/collect"
-	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
 	"github.com/dsx-ai-factory/health-validation/collect/source/nvml/device"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
@@ -145,8 +143,8 @@ func (i *parityInstance) Read(read func(map[string]device.Device) error) error {
 	return read(i.devices)
 }
 
-// parityDevice answers the reads collect's NVML inventory makes; optional
-// attributes are unsupported.
+// parityDevice answers only the basic reads discovery makes. Its nil embedded
+// device panics on any other call, so enrichment cannot gate the run.
 type parityDevice struct {
 	device.Device
 	slot  gpuSlot
@@ -154,42 +152,7 @@ type parityDevice struct {
 }
 
 func (d *parityDevice) UUID() string                     { return fmt.Sprintf("GPU-%d", d.index) }
-func (d *parityDevice) PCIBusID() string                 { return fmt.Sprintf("0000:%02x:00.0", d.index) }
-func (d *parityDevice) GetIndex() (int, gonvml.Return)   { return d.index, gonvml.SUCCESS }
-func (d *parityDevice) GetUUID() (string, gonvml.Return) { return d.UUID(), d.slot.uuid }
 func (d *parityDevice) GetName() (string, gonvml.Return) { return d.slot.name, gonvml.SUCCESS }
-func (*parityDevice) GetSerial() (string, gonvml.Return) { return "", gonvml.ERROR_NOT_SUPPORTED }
-func (*parityDevice) GetVbiosVersion() (string, gonvml.Return) {
-	return "", gonvml.ERROR_NOT_SUPPORTED
-}
-
-func (*parityDevice) GetBrand() (gonvml.BrandType, gonvml.Return) {
-	return 0, gonvml.ERROR_NOT_SUPPORTED
-}
-func (*parityDevice) GetMinorNumber() (int, gonvml.Return) { return 0, gonvml.ERROR_NOT_SUPPORTED }
-func (*parityDevice) GetPciInfo() (gonvml.PciInfo, gonvml.Return) {
-	return gonvml.PciInfo{}, gonvml.ERROR_NOT_SUPPORTED
-}
-
-func (*parityDevice) GetCudaComputeCapability() (int, int, gonvml.Return) {
-	return 0, 0, gonvml.ERROR_NOT_SUPPORTED
-}
-
-func (*parityDevice) GetMemoryInfo_v2() (gonvml.Memory_v2, gonvml.Return) {
-	return gonvml.Memory_v2{}, gonvml.ERROR_NOT_SUPPORTED
-}
-
-func (*parityDevice) GetMemoryInfo() (gonvml.Memory, gonvml.Return) {
-	return gonvml.Memory{}, gonvml.ERROR_NOT_SUPPORTED
-}
-
-func (*parityDevice) GetPlatformInfo() (gonvml.PlatformInfo, gonvml.Return) {
-	return gonvml.PlatformInfo{}, gonvml.ERROR_NOT_SUPPORTED
-}
-
-func (*parityDevice) GetGpuFabricInfo() (gonvml.GpuFabricInfo, gonvml.Return) {
-	return gonvml.GpuFabricInfo{}, gonvml.ERROR_NOT_SUPPORTED
-}
 
 // parityHost serves one collect NVML inventory to the app.
 type parityHost struct {
@@ -241,7 +204,7 @@ func runCollect(t *testing.T, n parityNode) (discovery, health.NodeVerdict, int3
 	t.Helper()
 	inst := n.collectInstance()
 	a := New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{}))
-	a.host = parityHost{inventory: gpuinventory.New(func() (collect.Sensor, error) { return nvmlsensor.New(inst), nil })}
+	a.host = parityHost{inventory: gpuinventory.New(func() (gpuinventory.Reader, error) { return gpuinventory.NVML(inst), nil })}
 	cycle, err := newCycle(n.timeout())
 	if err != nil {
 		t.Fatal(err)

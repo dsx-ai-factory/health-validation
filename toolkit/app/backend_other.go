@@ -10,7 +10,6 @@ import (
 	"runtime"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -28,7 +27,7 @@ func (stubHost) nvlinkBackend() toolkit.NVLinkBackend { return unavailableBacken
 
 // stubInventory fails to open off-linux, so `run` reports an architecture
 // discovery failure and the node GPU count is unobservable.
-var stubInventory = gpuinventory.New(func() (collect.Sensor, error) {
+var stubInventory = gpuinventory.New(func() (gpuinventory.Reader, error) {
 	return nil, fmt.Errorf("NVML GPU inventory is only available on linux (current platform: %s)", runtime.GOOS)
 })
 

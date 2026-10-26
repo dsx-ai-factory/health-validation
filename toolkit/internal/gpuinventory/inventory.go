@@ -25,31 +25,41 @@ var GPUCount = collect.NewSignal("node.gpu.count", "1")
 // SensorID identifies the collect sensor that reports [GPUCount].
 const SensorID = "node.gpu_inventory"
 
-// handleOperation is the operation collect's NVML inventory reports for a
-// slot whose device handle could not be retrieved.
+// handleOperation is the operation an NVML inventory reports for a slot
+// whose device handle could not be retrieved.
 const handleOperation = "DeviceGetHandleByIndex"
 
-// Inventory reads the GPU inventory of one collect sensor at most once per
-// collection cycle and serves every later request in that cycle from the
-// cached snapshot.
+// Reader reads the basic GPU inventory the node needs before its catalog is
+// built: enumeration, each slot's identity, and enough GPU models to name
+// the architecture. Optional enrichment does not belong here, so a hung
+// attribute read cannot block discovery or every other check.
+type Reader interface {
+	// ID keys the reader's timeout in the collection cycle.
+	ID() string
+	// Read returns one snapshot; a failed enumeration is a snapshot carrying
+	// a collection error, and an error means the read itself failed.
+	Read(ctx context.Context) (*observation.GPUInventorySnapshot, error)
+}
+
+// Inventory reads one basic GPU inventory per collection cycle and serves
+// every later request in that cycle from the cached snapshot.
 type Inventory struct {
-	open     func() (collect.Sensor, error)
-	source   collect.Sensor
+	open     func() (Reader, error)
+	reader   Reader
 	cycle    *collect.Cycle
 	snapshot *observation.GPUInventorySnapshot
 	mu       sync.Mutex
 }
 
-// New returns an Inventory over the sensor open returns. open runs on the
-// first read, bounded by that cycle's timeout, and its sensor is reused.
-// The sensor must support WithGPUInventory.
-func New(open func() (collect.Sensor, error)) *Inventory {
+// New returns an Inventory over the reader open returns. open runs on the
+// first read, bounded by that cycle's timeout, and its reader is reused.
+func New(open func() (Reader, error)) *Inventory {
 	return &Inventory{open: open}
 }
 
 // Snapshot returns cycle's GPU inventory. It never returns nil: a failed
-// open, a failed Measure, or a batch without exactly one snapshot becomes a
-// snapshot carrying a collection error. Callers must not modify the result.
+// open or read becomes a snapshot carrying a collection error. Callers must
+// not modify the result.
 func (i *Inventory) Snapshot(ctx context.Context, cycle *collect.Cycle) *observation.GPUInventorySnapshot {
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -65,54 +75,52 @@ func (i *Inventory) read(ctx context.Context, cycle *collect.Cycle) *observation
 	if cycle != nil {
 		at = timestamppb.New(cycle.StartedAt())
 	}
-	failed := func(category observation.CollectionErrorCategory, detail string) *observation.GPUInventorySnapshot {
+	failed := func(operation string, err error) *observation.GPUInventorySnapshot {
+		category := observation.CollectionErrorCategoryUnavailable
+		if errors.Is(err, collect.ErrCollectionTimeout) {
+			category = observation.CollectionErrorCategoryTimeout
+		}
 		return &observation.GPUInventorySnapshot{Source: SensorID, CollectedAt: at, Outcome: &observation.GPUInventorySnapshot_CollectionError{
-			CollectionError: &observation.CollectionError{Source: SensorID, Operation: "GPUInventory", Category: category, Detail: detail},
+			CollectionError: &observation.CollectionError{Source: SensorID, Operation: operation, Category: category, Detail: err.Error()},
 		}}
 	}
-	if i.source == nil {
-		source, err := i.openSource(ctx, cycle)
-		if err != nil {
-			category := observation.CollectionErrorCategoryUnavailable
-			if errors.Is(err, collect.ErrCollectionTimeout) {
-				category = observation.CollectionErrorCategoryTimeout
+	if i.reader == nil {
+		reader, err := run(ctx, cycle, SensorID, func(context.Context) (Reader, error) {
+			reader, err := i.open()
+			if err == nil && reader == nil {
+				err = errors.New("no GPU inventory reader")
 			}
-			return failed(category, fmt.Sprintf("open GPU inventory source: %v", err))
+			return reader, err
+		})
+		if err != nil {
+			return failed("Open", fmt.Errorf("open GPU inventory source: %w", err))
 		}
-		i.source = source
+		i.reader = reader
 	}
-	batch, err := i.source.Measure(ctx, collect.WithCycle(cycle), collect.WithSignalID(), collect.WithGPUInventory())
+	snapshot, err := run(ctx, cycle, i.reader.ID(), i.reader.Read)
+	if err == nil && snapshot == nil {
+		err = fmt.Errorf("%s returned no GPU inventory", i.reader.ID())
+	}
 	if err != nil {
-		return failed(observation.CollectionErrorCategorySourceError, err.Error())
+		return failed("GPUInventory", err)
 	}
-	snapshots := batch.GetInventory().GetGpuSnapshots()
-	if len(snapshots) != 1 {
-		return failed(observation.CollectionErrorCategorySourceError, fmt.Sprintf("%s returned %d GPU inventory snapshots, want 1", i.source.ID(), len(snapshots)))
-	}
-	snapshot := proto.Clone(snapshots[0]).(*observation.GPUInventorySnapshot)
+	snapshot = proto.Clone(snapshot).(*observation.GPUInventorySnapshot)
 	if snapshot.GetCollectedAt() == nil {
 		snapshot.CollectedAt = at
 	}
 	if snapshot.GetSource() == "" {
-		snapshot.Source = i.source.ID()
+		snapshot.Source = i.reader.ID()
 	}
 	return snapshot
 }
 
-// openSource runs open under cycle's timeout, so a hung library load fails
-// the inventory instead of the run.
-func (i *Inventory) openSource(ctx context.Context, cycle *collect.Cycle) (collect.Sensor, error) {
-	open := func(context.Context) (collect.Sensor, error) {
-		source, err := i.open()
-		if err == nil && source == nil {
-			err = errors.New("no GPU inventory source")
-		}
-		return source, err
-	}
+// run bounds call by cycle's timeout, so a hung library load or native read
+// fails the inventory instead of the run.
+func run[T any](ctx context.Context, cycle *collect.Cycle, source string, call func(context.Context) (T, error)) (T, error) {
 	if cycle == nil {
-		return open(ctx)
+		return call(ctx)
 	}
-	return collect.Run(ctx, cycle, SensorID, open)
+	return collect.Run(ctx, cycle, source, call)
 }
 
 // Count returns how many GPUs a successful snapshot enumerated, or false when

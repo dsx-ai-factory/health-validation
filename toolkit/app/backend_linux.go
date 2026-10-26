@@ -9,8 +9,6 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/dsx-ai-factory/health-validation/collect"
-	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
@@ -26,7 +24,8 @@ import (
 // degrades the GPU-side sensors (while the independent Xid sensor still runs)
 // instead of hanging before any verdict — and so close skips shutdown while a
 // timed-out Measure may still be parked inside the cgo call. The inventory
-// opens its NVML instance on first read, under the cycle's timeout.
+// opens its NVML instance on first read, under the cycle's timeout, and reads
+// only the basic inventory discovery and gpu_count need.
 //
 // The one lazy backend is shared across both per-domain accessors, so the
 // GPU and NVLink sensors report the same resource key and the circuit
@@ -51,7 +50,7 @@ func newHostBackend() hostBackend {
 	return h
 }
 
-func (h *nvmlHost) openInventory() (collect.Sensor, error) {
+func (h *nvmlHost) openInventory() (gpuinventory.Reader, error) {
 	inst, err := nvmlsource.New()
 	if err != nil {
 		return nil, err
@@ -59,7 +58,7 @@ func (h *nvmlHost) openInventory() (collect.Sensor, error) {
 	h.mu.Lock()
 	h.inst = inst
 	h.mu.Unlock()
-	return nvmlsensor.New(inst), nil
+	return gpuinventory.NVML(inst), nil
 }
 
 func (h *nvmlHost) gpuBackend() toolkit.GPUBackend        { return h.lazy }

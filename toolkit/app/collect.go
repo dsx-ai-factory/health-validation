@@ -164,15 +164,6 @@ func newCycle(timeout time.Duration) (*collect.Cycle, error) {
 	return collect.NewCycleWithTimeout(uuid.NewString(), time.Now().UTC(), timeout)
 }
 
-// collectSensors is [App.collectSensorsIn] under a fresh cycle.
-func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter, required requiredSignals) ([]toolkit.Sensor, error) {
-	cycle, err := newCycle(timeout)
-	if err != nil {
-		return nil, err
-	}
-	return a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
-}
-
 // collectSensorsIn resolves registered sensors and adapters, plus the given
 // built-ins, collects every source once under cycle, and returns toolkit
 // sensors that convert the cached observations. required narrows collection to

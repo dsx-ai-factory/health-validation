@@ -12,35 +12,30 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
-	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// inventorySource returns a fixed batch and records each call's options.
-type inventorySource struct {
-	batch *observation.ObservationBatch
-	err   error
-	ops   []*collect.Op
+// fakeReader returns a fixed snapshot and counts reads.
+type fakeReader struct {
+	snapshot *observation.GPUInventorySnapshot
+	err      error
+	block    chan struct{}
+	reads    int
 }
 
-func (*inventorySource) ID() string { return "gpu.test" }
+func (*fakeReader) ID() string { return "fake" }
 
-func (*inventorySource) Signals() collect.Signals { return collect.Signals{gpusignals.PowerDraw} }
-
-func (s *inventorySource) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
-	op := collect.NewOp(opts...)
-	s.ops = append(s.ops, op)
-	if s.err != nil {
-		return nil, s.err
+func (r *fakeReader) Read(context.Context) (*observation.GPUInventorySnapshot, error) {
+	r.reads++
+	if r.block != nil {
+		<-r.block
 	}
-	batch := proto.Clone(s.batch).(*observation.ObservationBatch)
-	batch.CollectionId = op.Cycle().CollectionID()
-	return batch, nil
+	return r.snapshot, r.err
 }
 
-func opened(source collect.Sensor) func() (collect.Sensor, error) {
-	return func() (collect.Sensor, error) { return source, nil }
+func opened(reader Reader) func() (Reader, error) {
+	return func() (Reader, error) { return reader, nil }
 }
 
 func testCycle(t *testing.T, id string) *collect.Cycle {
@@ -50,10 +45,6 @@ func testCycle(t *testing.T, id string) *collect.Cycle {
 		t.Fatal(err)
 	}
 	return cycle
-}
-
-func snapshotBatch(snapshots ...*observation.GPUInventorySnapshot) *observation.ObservationBatch {
-	return &observation.ObservationBatch{Inventory: &observation.HardwareInventory{GpuSnapshots: snapshots}}
 }
 
 func inventory(entries ...*observation.GPUInventoryEntry) *observation.GPUInventorySnapshot {
@@ -122,7 +113,7 @@ func TestGPUCountFromInventory(t *testing.T) {
 		{name: "partial identity", snapshot: inventory(gpuEntry(0, gb200), failedEntry(1, "GetUUID"), failedEntry(2, "NewDevice"), failedEntry(3, "GetIndex")), want: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			o := measureCount(t, New(opened(&inventorySource{batch: snapshotBatch(tc.snapshot)})))
+			o := measureCount(t, New(opened(&fakeReader{snapshot: tc.snapshot})))
 			if _, isInt := o.GetValue().GetKind().(*observation.Value_IntValue); !isInt || o.GetValue().GetIntValue() != tc.want {
 				t.Fatalf("count=%v, want int %d", o.GetValue(), tc.want)
 			}
@@ -137,26 +128,16 @@ func TestGPUCountFromInventory(t *testing.T) {
 }
 
 func TestGPUCountFailures(t *testing.T) {
-	noTargets := observation.NewNoValueObservation(gpusignals.PowerDraw.ID(), gpusignals.PowerDraw.Unit(), "nvml", nil,
-		timestamppb.New(time.Now().Add(-time.Second)), &observation.NoValue{Reason: observation.NoValueReasonNoTargets})
 	for _, tc := range []struct {
-		open     func() (collect.Sensor, error)
+		open     func() (Reader, error)
 		name     string
 		category observation.CollectionErrorCategory
 	}{
-		{name: "enumeration failure", open: opened(&inventorySource{batch: snapshotBatch(enumerationFailure())}), category: observation.CollectionErrorCategoryUnavailable},
-		{name: "no snapshot", open: opened(&inventorySource{batch: &observation.ObservationBatch{}}), category: observation.CollectionErrorCategorySourceError},
-		// NO_TARGETS is not inventory proof: without a snapshot the count is
-		// unknown, not zero.
-		{
-			name:     "no targets without inventory",
-			open:     opened(&inventorySource{batch: &observation.ObservationBatch{Observations: []*observation.Observation{noTargets}}}),
-			category: observation.CollectionErrorCategorySourceError,
-		},
-		{name: "two snapshots", open: opened(&inventorySource{batch: snapshotBatch(inventory(), inventory())}), category: observation.CollectionErrorCategorySourceError},
-		{name: "measure error", open: opened(&inventorySource{err: errors.New("source failed")}), category: observation.CollectionErrorCategorySourceError},
-		{name: "open error", open: func() (collect.Sensor, error) { return nil, errors.New("no driver") }, category: observation.CollectionErrorCategoryUnavailable},
-		{name: "nil source", open: func() (collect.Sensor, error) { return nil, nil }, category: observation.CollectionErrorCategoryUnavailable},
+		{name: "enumeration failure", open: opened(&fakeReader{snapshot: enumerationFailure()}), category: observation.CollectionErrorCategoryUnavailable},
+		{name: "read error", open: opened(&fakeReader{err: errors.New("NVML in use")}), category: observation.CollectionErrorCategoryUnavailable},
+		{name: "no snapshot", open: opened(&fakeReader{}), category: observation.CollectionErrorCategoryUnavailable},
+		{name: "open error", open: func() (Reader, error) { return nil, errors.New("no driver") }, category: observation.CollectionErrorCategoryUnavailable},
+		{name: "nil reader", open: func() (Reader, error) { return nil, nil }, category: observation.CollectionErrorCategoryUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := measureCount(t, New(tc.open))
@@ -170,56 +151,53 @@ func TestGPUCountFailures(t *testing.T) {
 	}
 	t.Run("enumeration failure keeps detail", func(t *testing.T) {
 		want := enumerationFailure()
-		o := measureCount(t, New(opened(&inventorySource{batch: snapshotBatch(want)})))
+		o := measureCount(t, New(opened(&fakeReader{snapshot: want})))
 		if !proto.Equal(o.GetCollectionError(), want.GetCollectionError()) || o.GetSource() != "nvml" {
 			t.Fatalf("failure=%v source=%q, want %v from nvml", o.GetCollectionError(), o.GetSource(), want.GetCollectionError())
 		}
 	})
 }
 
-func TestOpenIsBoundedByCycleTimeout(t *testing.T) {
+func TestOpenAndReadAreBoundedByCycleTimeout(t *testing.T) {
 	release := make(chan struct{})
 	defer close(release)
-	inv := New(func() (collect.Sensor, error) {
-		<-release
-		return &inventorySource{}, nil
-	})
-	o := measureCount(t, inv)
-	if o.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
-		t.Fatalf("observation=%v, want a timeout", o)
+	for name, inv := range map[string]*Inventory{
+		"open": New(func() (Reader, error) {
+			<-release
+			return &fakeReader{}, nil
+		}),
+		"read": New(opened(&fakeReader{snapshot: inventory(), block: release})),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if o := measureCount(t, inv); o.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
+				t.Fatalf("observation=%v, want a timeout", o)
+			}
+		})
 	}
 }
 
 // Architecture discovery and the count read one snapshot per cycle, so the
 // count needs no second enumeration.
 func TestInventoryReadsOncePerCycle(t *testing.T) {
-	source := &inventorySource{batch: snapshotBatch(inventory(gpuEntry(0, "NVIDIA GB200")))}
+	reader := &fakeReader{snapshot: inventory(gpuEntry(0, "NVIDIA GB200"))}
 	opens := 0
-	inv := New(func() (collect.Sensor, error) { opens++; return source, nil })
+	inv := New(func() (Reader, error) { opens++; return reader, nil })
 	cycle := testCycle(t, "first")
 	first := inv.Snapshot(context.Background(), cycle)
 	if _, err := inv.Sensor().Measure(context.Background(), collect.WithCycle(cycle)); err != nil {
 		t.Fatal(err)
 	}
-	if again := inv.Snapshot(context.Background(), cycle); again != first || len(source.ops) != 1 {
-		t.Fatalf("source measured %d times in one cycle, want 1", len(source.ops))
-	}
-	op := source.ops[0]
-	selected, err := op.Signals(source.Signals())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !op.GPUInventory() || op.Cycle() != cycle || len(selected) != 0 {
-		t.Fatalf("source op inventory=%v cycle=%v signals=%v, want inventory only in the active cycle", op.GPUInventory(), op.Cycle(), selected.IDs())
+	if again := inv.Snapshot(context.Background(), cycle); again != first || reader.reads != 1 {
+		t.Fatalf("read %d times in one cycle, want 1", reader.reads)
 	}
 	inv.Snapshot(context.Background(), testCycle(t, "second"))
-	if len(source.ops) != 2 || opens != 1 {
-		t.Fatalf("measures=%d opens=%d, want a fresh read per cycle from one opened source", len(source.ops), opens)
+	if reader.reads != 2 || opens != 1 {
+		t.Fatalf("reads=%d opens=%d, want a fresh read per cycle from one opened reader", reader.reads, opens)
 	}
 }
 
 func TestSensorContract(t *testing.T) {
-	s := New(opened(&inventorySource{batch: snapshotBatch(inventory())})).Sensor()
+	s := New(opened(&fakeReader{snapshot: inventory()})).Sensor()
 	if s.ID() != SensorID || len(s.Signals()) != 1 || s.Signals()[0].ID() != GPUCount.ID() {
 		t.Fatalf("id=%q signals=%v", s.ID(), s.Signals().IDs())
 	}

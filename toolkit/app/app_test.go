@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
@@ -23,7 +22,6 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
-	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
@@ -288,33 +286,25 @@ type fakeHost struct {
 func (h fakeHost) gpuBackend() toolkit.GPUBackend       { return h.b }
 func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (fakeHost) gpuInventory() *gpuinventory.Inventory {
-	return gpuinventory.New(func() (collect.Sensor, error) { return inventorySensor{gpus: 4, model: "NVIDIA GB200"}, nil })
+	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: 4, model: "NVIDIA GB200"}, nil })
 }
 func (fakeHost) close() error { return nil }
 
-// inventorySensor reports a GPU inventory of identical GPUs without NVML.
-type inventorySensor struct {
+// inventoryReader reports a basic inventory of identical GPUs without NVML.
+type inventoryReader struct {
 	model string
 	gpus  int
 }
 
-func (inventorySensor) ID() string               { return "gpu.fake" }
-func (inventorySensor) Signals() collect.Signals { return nil }
+func (inventoryReader) ID() string { return "fake" }
 
-func (s inventorySensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
-	op := collect.NewOp(opts...)
+func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapshot, error) {
 	inventory := &observation.GPUInventory{}
-	for i := range s.gpus {
-		uuid, model := fmt.Sprintf("GPU-%d", i), s.model
+	for i := range r.gpus {
+		uuid, model := fmt.Sprintf("GPU-%d", i), r.model
 		inventory.Entries = append(inventory.Entries, &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}})
 	}
-	return &observation.ObservationBatch{
-		CollectionId: op.Cycle().CollectionID(),
-		Inventory: &observation.HardwareInventory{GpuSnapshots: []*observation.GPUInventorySnapshot{{
-			Source: "fake", CollectedAt: timestamppb.New(op.Cycle().StartedAt()),
-			Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: inventory},
-		}}},
-	}, nil
+	return &observation.GPUInventorySnapshot{Source: "fake", Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: inventory}}, nil
 }
 
 // panicHost ensures invalid input returns before touching the host backend.
@@ -852,7 +842,7 @@ type erroringHost struct {
 func (h erroringHost) gpuBackend() toolkit.GPUBackend       { return h.b }
 func (h erroringHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (erroringHost) gpuInventory() *gpuinventory.Inventory {
-	return gpuinventory.New(func() (collect.Sensor, error) { return inventorySensor{}, nil })
+	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })
 }
 func (erroringHost) close() error { return nil }
 
