@@ -148,13 +148,10 @@ it, and most Nonfatal rows need no remediation at all.
 | <nobr>`update_swfw`</nobr> | Update GPU driver/firmware and any related system software to the latest supported versions. Recommended for Xid 78 (vGPU start error). |
 | <nobr>`xid_154`</nobr> | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
 
-Xid 45 (preemptive removal) usually follows an application's GPU channels
-being torn down rather than a GPU fault. When another Xid has been seen since
-boot, `gpu_xid_45` is INFO with no action; follow that Xid's remediation. Xid
-154 does not count, since it only annotates another Xid. When Xid 45 is the
-only one, it is WARNING with `["restart_app"]` alone, with no
-`service_required` step: restart the application, and report the issue if Xid
-45 keeps recurring with no other Xid.
+`gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at
+WARNING when Xid 45 is the only Xid seen since boot. When another Xid is
+present, it is INFO with no action; follow the accompanying Xid's guidance.
+Xid 154 is not counted as another Xid, since it only annotates one.
 
 ### Collection-failure actions
 
