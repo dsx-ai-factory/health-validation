@@ -6,7 +6,7 @@ Xid covers NVRM Xid fault events logged by the NVIDIA driver to the kernel ring 
 
 ## Single-rule checks reading `xid_counts`
 
-These 39 checks share the properties below and each has one rule.
+These 38 checks share the properties below and each has one rule.
 
 | Property | Value |
 |---|---|
@@ -29,7 +29,6 @@ These 39 checks share the properties below and each has one rule.
 |---|---|---|---|---|
 | <nobr>`gpu_xid_8`</nobr> | GPU Xid 8 Warning | <nobr>`8 in xid_counts && xid_counts[8] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> |
 | <nobr>`gpu_xid_11`</nobr> | GPU Xid 11 Warning | <nobr>`11 in xid_counts && xid_counts[11] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> |
-| <nobr>`gpu_xid_13`</nobr> | GPU Xid 13 Warning | <nobr>`13 in xid_counts && xid_counts[13] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> |
 | <nobr>`gpu_xid_25`</nobr> | GPU Xid 25 Warning | <nobr>`25 in xid_counts && xid_counts[25] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> |
 | <nobr>`gpu_xid_31`</nobr> | GPU Xid 31 Warning | <nobr>`31 in xid_counts && xid_counts[31] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> |
 | <nobr>`gpu_xid_32`</nobr> | GPU Xid 32 Warning | <nobr>`32 in xid_counts && xid_counts[32] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> |
@@ -185,6 +184,36 @@ These 20 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_149_28`</nobr> | GPU Xid 149.28 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.28" in sub_xid_code_counts && sub_xid_code_counts["149.28"] >= occurrences`</nobr> | WARNING | none |
 | <nobr>`gpu_xid_149_a`</nobr> | GPU Xid 149.A (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.A" in sub_xid_code_counts && sub_xid_code_counts["149.A"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_149_f`</nobr> | GPU Xid 149.F (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.F" in sub_xid_code_counts && sub_xid_code_counts["149.F"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+
+## GPU Xid 13 Warning
+
+`gpu_xid_13`
+
+Detects warning-class NVRM Xid 13 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
+**Rules**
+
+- **WARNING** when `13 in xid_counts && xid_counts[13] >= occurrences`
+  - Message: GPU Xid 13 detected: application-level error. Restart the faulting application.
+
+**Recommended action:** operational state `drain`, then `restart_app`
 
 ## GPU Xid 45 (preemptive removal)
 

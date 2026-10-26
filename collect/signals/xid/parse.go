@@ -75,13 +75,13 @@ var (
 	// example an OOM kill report, but cannot also supply the address.
 	lineRE = regexp.MustCompile(`NVRM: Xid \((?:PCI:)?[0-9a-fA-F]{4,}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}`)
 	// MIG GPU and compute instance attribution follows the address.
-	deviceRE   = regexp.MustCompile(`^(?:PCI:)?([0-9a-fA-F:.]+)(?:\s+GPU-I:\d+)?(?:\s+GPU-CI:\d+)?$`)
-	codeRE     = regexp.MustCompile(`^: (\d+)`)
-	pidRE      = regexp.MustCompile(`^,\s*pid=([^,]*)`)
-	nameRE     = regexp.MustCompile(`^,\s*name=([^,]*)`)
-	digitsRE   = regexp.MustCompile(`^\d+$`)
-	nvlink5RE  = regexp.MustCompile(`^,\s*(\S+)\s+(Fatal|Nonfatal)\s+XC\d+\s+i\d+\s+Link\s+(-?\d+)(?:\s+\(([^)]*)\))?`)
-	recoveryRE = regexp.MustCompile(`GPU recovery action changed from (0x[0-9a-fA-F]+) \(([^)]*)\) to (0x[0-9a-fA-F]+) \(([^)]*)\)`)
+	deviceRE       = regexp.MustCompile(`^(?:PCI:)?([0-9a-fA-F:.]+)(?:\s+GPU-I:\d+)?(?:\s+GPU-CI:\d+)?$`)
+	codeRE         = regexp.MustCompile(`^: (\d+)`)
+	pidRE          = regexp.MustCompile(`^,\s*pid=([^,]*)`)
+	nameRE         = regexp.MustCompile(`^,\s*name=([^,]*)`)
+	digitsRE       = regexp.MustCompile(`^\d+$`)
+	nvlink5RE      = regexp.MustCompile(`^,\s*(\S+)\s+(Fatal|Nonfatal)\s+XC\d+\s+i\d+\s+Link\s+(-?\d+)(?:\s+\(([^)]*)\))?`)
+	recoveryRE     = regexp.MustCompile(`GPU recovery action changed from (0x[0-9a-fA-F]+) \(([^)]*)\) to (0x[0-9a-fA-F]+) \(([^)]*)\)`)
 	graphicsUnitRE = regexp.MustCompile(`\(GPC\s+(\d+),\s*TPC\s+(\d+),\s*SM\s+(\d+)\)`)
 )
 

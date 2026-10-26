@@ -455,6 +455,10 @@ func warningCheck(code int64, class warningClass) health.CheckDefinition {
 		Severity:   health.Warning,
 		Message:    fmt.Sprintf(class.message, code),
 	}}
+
+	if code == 13 {
+		def.RequiredSignals = append(def.RequiredSignals, SignalEvents)
+	}
 	return def
 }
 
