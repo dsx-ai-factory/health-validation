@@ -119,6 +119,15 @@ func (s *scan) entry(e journal.Entry) error {
 	if event.ProcessName != "" {
 		add(xidsignals.ProcessName, stringValue(event.ProcessName))
 	}
+	if event.GPC != nil {
+		add(xidsignals.GPC, intValue(*event.GPC))
+	}
+	if event.TPC != nil {
+		add(xidsignals.TPC, intValue(*event.TPC))
+	}
+	if event.SM != nil {
+		add(xidsignals.SM, intValue(*event.SM))
+	}
 	if n := event.NVLink5; n != nil {
 		add(xidsignals.NVLink5SubComponent, stringValue(n.SubComponent))
 		add(xidsignals.NVLink5Fatal, &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: n.Fatal}})

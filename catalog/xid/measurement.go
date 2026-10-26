@@ -45,9 +45,14 @@ func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 // ProcessName are populated only when the driver attributed the fault
 // to a process; some Xid lines carry neither. NVLink5 is populated only
 // for the NVLink5/NVSwitch fault family (Xid 144-150), which carries a
-// sub-component and severity instead of pid/name.
+// sub-component and severity instead of pid/name. GPC, TPC, and SM are
+// the graphics unit an Xid 13 exception names, all nil when the line
+// does not name one.
 type XidEvent struct {
 	NVLink5     *NVLink5Detail `json:"nvlink5,omitempty"`
+	GPC         *int64         `json:"gpc,omitempty"`
+	TPC         *int64         `json:"tpc,omitempty"`
+	SM          *int64         `json:"sm,omitempty"`
 	ProcessName string         `json:"process_name"`
 	PCIAddress  string         `json:"pci_address"`
 	XidCode     int64          `json:"xid_code"`

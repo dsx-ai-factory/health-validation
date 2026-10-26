@@ -19,6 +19,9 @@ var (
 	PCIAddress          = collect.NewSignal("xid.event.pci_address", "")
 	PID                 = collect.NewSignal("xid.event.pid", "1")
 	ProcessName         = collect.NewSignal("xid.event.process_name", "")
+	GPC                 = collect.NewSignal("xid.event.gpc", "1")
+	TPC                 = collect.NewSignal("xid.event.tpc", "1")
+	SM                  = collect.NewSignal("xid.event.sm", "1")
 	NVLink5SubComponent = collect.NewSignal("xid.event.nvlink5.sub_component", "")
 	NVLink5Fatal        = collect.NewSignal("xid.event.nvlink5.fatal", "")
 	NVLink5Link         = collect.NewSignal("xid.event.nvlink5.link", "1")
@@ -45,7 +48,7 @@ func All() collect.Signals {
 // EventSignals returns the per-event signals.
 func EventSignals() collect.Signals {
 	return collect.Signals{
-		Code, PCIAddress, PID, ProcessName,
+		Code, PCIAddress, PID, ProcessName, GPC, TPC, SM,
 		NVLink5SubComponent, NVLink5Fatal, NVLink5Link, NVLink5IntrInfo, NVLink5ErrorStatus, NVLink5DebugData,
 		RecoveryActionFromCode, RecoveryActionFromName, RecoveryActionToCode, RecoveryActionToName,
 	}
