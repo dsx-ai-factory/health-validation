@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package pci exposes read-only PCI inventory and raw ACS registers.
+// Package pci exposes read-only PCI inventory, link properties, and raw ACS registers.
 package pci
 
 import (

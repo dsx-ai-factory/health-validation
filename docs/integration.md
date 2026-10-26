@@ -537,7 +537,7 @@ Several families share the NVML sensor and its caller-owned instance.
 | Host memory, CPU, and resources | Memory and BPF JIT bytes; CPU topology, cumulative mode times and load; kernel file handles, visible descriptors, and task counters | `sensors/memory.New(fsys)`, `sensors/cpu.New(fsys)`, `sensors/host.New(fsys)` |
 | Block devices and filesystems | Block identity, metadata, size and parents; mount metadata and eligible filesystem capacity | `sensors/disk.New(fsys, ...source/disk.Option)` |
 | FUSE | Connection waiting/background/congestion counts and mount correlation | `sensors/fuse.New(fsys, ...source/fuse.Option)` |
-| PCI | PCI address, vendor/device/class identity, driver, bound module, and raw ACS control | `sensors/pci.New(fsys)` |
+| PCI | PCI address, vendor/device/class identity, driver, bound module, raw ACS, and current/maximum link speed, width, and generation | `sensors/pci.New(fsys)` |
 | Persistent crash records | Live and archived pstore paths, text or base64 content, hashes, and root provenance | `sensors/pstore.New(fsys)` or `NewWithRoots(fsys, roots...)` |
 
 GPM profiling is a separate, opt-in NVML sensor:
@@ -690,6 +690,34 @@ Disk text and archived pstore paths that are not valid UTF-8 report parse errors
 PCI addresses retain domain-qualified identity, including four- to eight-digit
 domains used by VMD devices. ACS traversal preserves raw registers and follows
 placeholder capabilities without interpreting them as health policy.
+
+### PCI link properties
+
+The native `pci.sysfs` sensor advertises these additional link observations.
+Every observation keeps the device identity in `target.pci.address`. Existing
+address/vendor/device/class, driver/module, GPU-presence, and ACS signals remain.
+
+| Signal ID | Sysfs source | Value type |
+|---|---|---|
+| `pci.link.speed` | `current_link_speed` | Double, GT/s |
+| `pci.link.speed.max` | `max_link_speed` | Double, GT/s |
+| `pci.link.width` | `current_link_width` | int64 |
+| `pci.link.width.max` | `max_link_width` | int64 |
+| `pci.link.generation` | Derived from current speed | uint64 |
+| `pci.link.generation.max` | Derived from maximum speed | uint64 |
+
+Link widths of `0` or `255` produce `no_value` with `NOT_SUPPORTED`, covering
+devices without link registers and the kernel's unknown-width sentinel. Negative
+widths are malformed. Generation maps 2.5, 5, 8, 16, 32, 64, and 128 GT/s to
+generations 1 through 7. `Unknown` or
+`Unknown speed` yields no value for speed and generation; an unrecognized
+numeric speed is retained, while its generation is unsupported. No generation
+is inferred from the width or another device's speed.
+
+An absent link attribute on an existing device produces `no_value` with
+`NOT_SUPPORTED`. Permission errors, malformed values, other read failures,
+and dangling links remain collection errors. Reads use the source's bounded
+reads and confined symlink resolution. These observations add no catalog checks.
 
 FUSE correlation uses the kernel `dev_t` identity, `(major << 20) | minor`,
 so both anonymous-device FUSE mounts and block-device `fuseblk` mounts match
