@@ -110,13 +110,13 @@ job resolves the version once, and every later stamped build in the run reuses
 it, so a tag pushed mid-run cannot split an image's tag from its embedded
 version.
 
-A final `toolkit/vX.Y.Z` tag also runs
-`.github/workflows/fern-docs-publish.yml`, which republishes the docs site with
-one version per toolkit MAJOR.MINOR line, each built from that line's highest
-final tag. The newest line is the default; older lines stay available under
-`/vX.Y/`. Release candidates and `catalog/` tags do not publish docs. Docs
-merged to `main` reach the site with the next toolkit release, or sooner by
-running the workflow manually.
+A final `vX.Y.Z` tag also runs `.github/workflows/fern-docs-publish.yml`,
+which republishes the docs site with one version per MAJOR.MINOR line. Fern
+builds each version from that line's highest final tag, so a release's docs are
+the docs at its tag. The newest line is the default; older lines stay available
+under `/vX.Y/`. Release candidates do not publish docs. Docs merged to `main`
+after a release appear in the next one; a manual run of the workflow
+republishes the released versions but does not add `main`'s changes.
 
 No binary/archive artifacts are attached to GitHub releases — the container
 image is the only published release artifact today. There are no user-facing

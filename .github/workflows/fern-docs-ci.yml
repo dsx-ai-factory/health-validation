@@ -91,16 +91,13 @@ jobs:
         run: fern docs broken-links
 
       - name: Check versioned configuration
-        # Publishing rewrites docs.yml into a versioned product built from
-        # toolkit tags. Stage that layout from this checkout under a local
-        # placeholder tag so the rewrite is validated before a release needs it.
+        # Publishing replaces the docs.yml version list with ref-backed release
+        # versions. Write that list under a local placeholder tag so a docs.yml
+        # change that breaks the rewrite, or a list Fern rejects, fails here
+        # rather than at release time.
         run: |
           set -eo pipefail
-          git tag toolkit/v999.0.0
+          git tag v999.0.0
           python3 tools/fern_docs_versions.py --fern-dir fern
-          test -f fern/versions/v999.0/index.yml
-          python3 tools/check-docs-paths \
-            --allow '../collect/proto' \
-            --allow '../collect/proto/health/v1/check.proto' \
-            fern
+          grep -q '^    ref: v999.0.0$' fern/docs.yml
           fern check

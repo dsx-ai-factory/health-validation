@@ -12,12 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import fern_docs_versions  # noqa: E402
 
-DOCS_YML = """\
-products:
-  - display-name: Health Validation
-    path: ../docs/index.yml
-    slug: /
-"""
+DOCS_YML = "title: Test\n\n" + fern_docs_versions.WORKING_TREE_VERSIONS
+FERN_FILES = {"fern/docs.yml": DOCS_YML, "docs/index.yml": "nav"}
 
 
 class FernDocsVersionsTest(unittest.TestCase):
@@ -66,65 +62,44 @@ class FernDocsVersionsTest(unittest.TestCase):
         finally:
             sys.argv = argv
 
-    def test_no_docs_bearing_tag_leaves_site_unversioned(self):
-        self.commit({"README.md": "x"}, "toolkit/v0.1.0")
-        self.commit({"docs/index.yml": "nav"}, "catalog/v0.2.0", "toolkit/v0.2.0-rc1")
+    def docs_yml(self):
+        return (self.fern / "docs.yml").read_text()
+
+    def test_no_fern_bearing_tag_leaves_docs_yml_unchanged(self):
+        self.commit({"docs/index.yml": "nav"}, "v0.1.0")
+        self.commit({"fern/docs.yml": DOCS_YML}, "v0.2.0-rc.1", "toolkit/v0.2.0")
 
         self.assertEqual(self.run_main(), 0)
-        self.assertEqual((self.fern / "docs.yml").read_text(), DOCS_YML)
-        self.assertFalse((self.fern / "versions").exists())
+        self.assertEqual(self.docs_yml(), DOCS_YML)
 
-    def test_one_version_per_line_newest_first(self):
-        self.commit({"README.md": "x"}, "toolkit/v0.3.0")
-        self.commit(
-            {"docs/index.yml": "nav 0.4.0", "docs/a/b.md": "old"}, "toolkit/v0.4.0"
-        )
-        self.commit(
-            {"docs/index.yml": "nav 0.4.1", "docs/a/b.md": "patched"}, "toolkit/v0.4.1"
-        )
-        self.commit({"docs/index.yml": "nav 0.5.0-rc1"}, "toolkit/v0.5.0-rc1")
-        self.commit(
-            {"docs/index.yml": "nav 0.10.0"}, "toolkit/v0.10.0", "catalog/v0.11.0"
-        )
+    def test_one_ref_per_line_newest_first(self):
+        self.commit({"README.md": "x"}, "v0.3.0")
+        self.commit(FERN_FILES, "v0.4.0")
+        self.commit({}, "v0.4.1", "v0.5.0-rc.1", "v0.4")
+        self.commit({}, "v0.10.0")
 
         self.assertEqual(self.run_main(), 0)
-
-        versions = self.fern / "versions"
-        self.assertEqual(sorted(p.name for p in versions.iterdir()), ["v0.10", "v0.4"])
-        self.assertEqual((versions / "v0.4" / "index.yml").read_text(), "nav 0.4.1")
-        self.assertEqual((versions / "v0.4" / "a" / "b.md").read_text(), "patched")
-        self.assertEqual((versions / "v0.10" / "index.yml").read_text(), "nav 0.10.0")
         self.assertEqual(
-            (self.fern / "docs.yml").read_text(),
+            self.docs_yml(),
             """\
-products:
-  - display-name: Health Validation
-    path: versions/v0.10/index.yml
-    versions:
-      - display-name: v0.10.0
-        path: versions/v0.10/index.yml
-        slug: v0.10
-      - display-name: v0.4.1
-        path: versions/v0.4/index.yml
-        slug: v0.4
-    slug: /
+title: Test
+
+versions:
+  - display-name: v0.10.0
+    ref: v0.10.0
+    slug: v0.10
+  - display-name: v0.4.1
+    ref: v0.4.1
+    slug: v0.4
 """,
         )
 
-    def test_rejects_symlink(self):
-        self.commit({"docs/index.yml": "nav"})
-        os.symlink("/etc/passwd", self.repo / "docs" / "leak.md")
-        self.commit({}, "toolkit/v1.0.0")
-
-        with self.assertRaises(ValueError):
-            self.run_main()
-
-    def test_refuses_existing_versions_dir(self):
-        self.commit({"docs/index.yml": "nav"}, "toolkit/v1.0.0")
-        (self.fern / "versions").mkdir()
+    def test_rejects_unexpected_docs_yml(self):
+        (self.fern / "docs.yml").write_text("products:\n")
+        self.commit(FERN_FILES, "v1.0.0")
 
         self.assertEqual(self.run_main(), 1)
-        self.assertEqual((self.fern / "docs.yml").read_text(), DOCS_YML)
+        self.assertEqual(self.docs_yml(), "products:\n")
 
 
 if __name__ == "__main__":

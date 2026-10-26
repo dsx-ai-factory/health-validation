@@ -2,25 +2,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Stage one Fern docs version per toolkit release line.
+"""Point the Fern site at one ref-backed version per release line.
 
-The toolkit release tag (toolkit/vX.Y.Z) defines the docs version, because the
-toolkit is what operators deploy and it pins the catalog it ships. Each
-MAJOR.MINOR line becomes one version, built from that line's highest final
-tag; release candidates are skipped. A tag whose tree has no docs/index.yml
-predates the Fern site and is skipped too.
+Each MAJOR.MINOR line becomes one version, built by Fern from that line's
+highest final vX.Y.Z tag; release candidates are skipped. A tag without
+fern/docs.yml and docs/index.yml predates the Fern site and is skipped too,
+because Fern builds a ref-backed version from the Fern folder at that ref.
 
-For each version, the tag's docs/ tree is written to
-<fern-dir>/versions/vX.Y/, and the product in <fern-dir>/docs.yml is pointed at
-those copies. The newest line is first, so Fern serves it as the default at
-unversioned URLs and older lines under /vX.Y/.
+The version list in <fern-dir>/docs.yml is replaced with those entries, newest
+first, so Fern serves the newest line at unversioned URLs and older lines under
+/vX.Y/.
 
-Files are read from git objects rather than extracted from an archive, and
-only regular files are written. The publish job still runs check-docs-paths
-over the result before Fern sees it.
-
-With no eligible tag the Fern directory is left untouched, so the site is
-published unversioned from the checked-out docs.
+With no eligible tag docs.yml is left untouched, so the site is published from
+the checked-out docs.
 
 Usage: fern_docs_versions.py [--repo DIR] [--fern-dir DIR]
 """
@@ -33,36 +27,40 @@ import subprocess
 import sys
 from pathlib import Path
 
-TAG_PREFIX = "toolkit/"
-FINAL_TAG = re.compile(r"^toolkit/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-DOCS_DIR = "docs"
-NAV_FILE = "index.yml"
-VERSIONS_DIR = "versions"
-# The product line in fern/docs.yml that the version list replaces.
-UNVERSIONED_PATH = "    path: ../docs/index.yml"
-REGULAR_FILE_MODES = {"100644", "100755"}
+FINAL_TAG = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+REQUIRED_FILES = ("fern/docs.yml", "docs/index.yml")
+# The committed working-tree version list that the release versions replace.
+WORKING_TREE_VERSIONS = """\
+versions:
+  - display-name: Latest
+    path: ../docs/index.yml
+    slug: latest
+"""
 
 
-def git(repo: Path, *args: str) -> bytes:
-    return subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True
-    ).stdout
-
-
-def has_nav(repo: Path, tag: str) -> bool:
-    result = subprocess.run(
-        ["git", "-C", str(repo), "cat-file", "-e", f"{tag}:{DOCS_DIR}/{NAV_FILE}"],
-        capture_output=True,
+def has_files(repo: Path, tag: str) -> bool:
+    return all(
+        subprocess.run(
+            ["git", "-C", str(repo), "cat-file", "-e", f"{tag}:{path}"],
+            capture_output=True,
+        ).returncode
+        == 0
+        for path in REQUIRED_FILES
     )
-    return result.returncode == 0
 
 
 def release_lines(repo: Path) -> list[tuple[str, str]]:
-    """Return (slug, tag) for each docs-bearing release line, newest first."""
+    """Return (slug, tag) for each Fern-bearing release line, newest first."""
+    tags = subprocess.run(
+        ["git", "-C", str(repo), "tag", "--list", "v*"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
     newest: dict[tuple[int, int], tuple[int, str]] = {}
-    for tag in git(repo, "tag", "--list", f"{TAG_PREFIX}v*").decode().split():
+    for tag in tags:
         match = FINAL_TAG.match(tag)
-        if not match or not has_nav(repo, tag):
+        if not match or not has_files(repo, tag):
             continue
         major, minor, patch = (int(part) for part in match.groups())
         current = newest.get((major, minor))
@@ -74,38 +72,15 @@ def release_lines(repo: Path) -> list[tuple[str, str]]:
     ]
 
 
-def stage_tree(repo: Path, tag: str, destination: Path) -> None:
-    """Write the regular files under the tag's docs/ to destination."""
-    listing = git(repo, "ls-tree", "-r", "-z", f"{tag}:{DOCS_DIR}")
-    for entry in listing.split(b"\0"):
-        if not entry:
-            continue
-        meta, name = entry.split(b"\t", 1)
-        mode, kind, obj = meta.decode().split()
-        path = name.decode()
-        if kind != "blob" or mode not in REGULAR_FILE_MODES:
-            raise ValueError(
-                f"{tag}:{DOCS_DIR}/{path}: not a regular file (mode {mode})"
-            )
-        if any(part in ("", ".", "..") for part in path.split("/")):
-            raise ValueError(
-                f"{tag}:{DOCS_DIR}/{path}: path leaves the version directory"
-            )
-        target = destination / path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(git(repo, "cat-file", "blob", obj))
-
-
 def versions_block(lines: list[tuple[str, str]]) -> str:
-    default_slug = lines[0][0]
-    block = [f"    path: {VERSIONS_DIR}/{default_slug}/{NAV_FILE}", "    versions:"]
+    block = ["versions:"]
     for slug, tag in lines:
         block += [
-            f"      - display-name: {tag.removeprefix(TAG_PREFIX)}",
-            f"        path: {VERSIONS_DIR}/{slug}/{NAV_FILE}",
-            f"        slug: {slug}",
+            f"  - display-name: {tag}",
+            f"    ref: {tag}",
+            f"    slug: {slug}",
         ]
-    return "\n".join(block)
+    return "\n".join(block) + "\n"
 
 
 def main() -> int:
@@ -119,32 +94,24 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    lines = release_lines(args.repo)
-    if not lines:
-        print("No toolkit release tag has Fern docs; leaving the site unversioned.")
-        return 0
-
-    versions_root = args.fern_dir / VERSIONS_DIR
-    if versions_root.exists():
-        print(
-            f"{versions_root} already exists; refusing to overwrite it.",
-            file=sys.stderr,
-        )
-        return 1
-
     docs_yml = args.fern_dir / "docs.yml"
     config = docs_yml.read_text()
-    if config.count(UNVERSIONED_PATH + "\n") != 1:
+    if config.count(WORKING_TREE_VERSIONS) != 1:
         print(
-            f"{docs_yml}: expected exactly one line {UNVERSIONED_PATH.strip()!r}",
+            f"{docs_yml}: expected exactly one working-tree version list:\n"
+            + WORKING_TREE_VERSIONS,
             file=sys.stderr,
         )
         return 1
 
+    lines = release_lines(args.repo)
+    if not lines:
+        print("No release tag has Fern docs; publishing the checked-out docs.")
+        return 0
+
     for slug, tag in lines:
-        stage_tree(args.repo, tag, versions_root / slug)
         print(f"{slug}: {tag}")
-    docs_yml.write_text(config.replace(UNVERSIONED_PATH, versions_block(lines)))
+    docs_yml.write_text(config.replace(WORKING_TREE_VERSIONS, versions_block(lines)))
     return 0
 
 

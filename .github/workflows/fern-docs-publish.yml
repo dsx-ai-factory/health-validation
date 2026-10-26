@@ -13,14 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Publishes the Fern docs site, one version per toolkit release line.
+# Publishes the Fern docs site, one version per release line.
 #
-# The toolkit release tag (toolkit/vX.Y.Z) defines the docs version: operators
-# deploy the toolkit, and it pins the catalog it ships. Every run rebuilds each
-# MAJOR.MINOR line from its highest final tag, so the site never depends on
-# state left by an earlier publish; tools/fern_docs_versions.py documents the
-# selection. Until a toolkit release contains the Fern docs, the site publishes
-# unversioned from main.
+# Each MAJOR.MINOR line is a ref-backed Fern version built from its highest
+# final vX.Y.Z tag, so Fern reads that tag's own docs, navigation, and API
+# reference. tools/fern_docs_versions.py writes the version list on every run,
+# so the site never depends on state left by an earlier publish. Until a release
+# tag contains the Fern site, the checked-out docs are published unversioned.
 #
 # The Fern configuration and tooling always come from main, so a patch tag on an
 # older release branch cannot publish with that branch's older configuration.
@@ -34,7 +33,7 @@ on:
   push:
     tags:
       # Final releases only; release candidates do not change the docs.
-      - "toolkit/v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch: {}
 
 permissions:
@@ -48,10 +47,10 @@ jobs:
   publish:
     name: Publish
     # Secrets are exposed to this job, so publish only from the upstream
-    # repository, on a toolkit release tag or a manual run from main.
+    # repository, on a release tag or a manual run from main.
     if: >-
       github.repository == 'dsx-ai-factory/health-validation' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/toolkit/v'))
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: linux-amd64-cpu4
     timeout-minutes: 15
     steps:
@@ -59,16 +58,16 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
-          # Every toolkit tag is needed to rebuild every version.
+          # Fern checks out each version's tag, so it needs the tags and history.
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Stage docs versions
+      - name: Write docs versions
         run: python3 tools/fern_docs_versions.py --fern-dir fern
 
       - name: Check docs paths stay inside docs
-        # Versions are staged from release tags, so check what Fern will read
-        # with FERN_TOKEN in its environment.
+        # Covers the checked-out tree only. Fern reads each ref-backed version
+        # from its tag, whose docs passed this check when they merged.
         run: >-
           python3 tools/check-docs-paths
           --allow '../docs/index.yml'
