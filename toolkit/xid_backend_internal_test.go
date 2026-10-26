@@ -187,19 +187,35 @@ func TestXidJournalArgs(t *testing.T) {
 
 func TestXidJournalTimeRange(t *testing.T) {
 	from, to := int64(1792600000), int64(1792603600)
+	negative, zero := int64(-1), int64(0)
 	for _, tt := range []struct {
-		name string
-		from *int64
-		to   *int64
-		want []string
+		name      string
+		wantError string
+		from      *int64
+		to        *int64
+		want      []string
 	}{
 		{name: "unbounded"},
 		{name: "from only", from: &from, want: []string{"--since=@1792600000.000001"}},
 		{name: "to only", to: &to, want: []string{"--until=@1792603599.999999"}},
 		{name: "both", from: &from, to: &to, want: []string{"--since=@1792600000.000001", "--until=@1792603599.999999"}},
+		{name: "negative from", from: &negative, wantError: "--xid-from must be a non-negative Unix timestamp in seconds"},
+		{name: "negative to", to: &negative, wantError: "--xid-to must be a positive Unix timestamp in seconds"},
+		{name: "zero to", to: &zero, wantError: "--xid-to must be a positive Unix timestamp in seconds"},
+		{name: "equal bounds", from: &from, to: &from, wantError: "--xid-from must be less than --xid-to"},
+		{name: "reversed bounds", from: &to, to: &from, wantError: "--xid-from must be less than --xid-to"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			backend, err := JournalctlWithTimeRange(tt.from, tt.to)
+			if tt.wantError != "" {
+				if err == nil || err.Error() != tt.wantError {
+					t.Fatalf("error = %v, want %q", err, tt.wantError)
+				}
+				if backend != nil {
+					t.Fatalf("backend = %v, want nil for invalid bounds", backend)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
