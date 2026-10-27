@@ -282,11 +282,20 @@ for entries with subsecond timestamps. Either bound may be omitted; when
 neither flag is supplied, collection covers the entire current boot. The lower bound
 must be non-negative and the upper bound positive; when both are supplied,
 `xid-from` must be less than `xid-to`. Reads remain scoped to the current boot.
+Repeat `--xid-from PCI_ADDRESS=unix-seconds` to set a start time for individual
+GPUs after resetting them. Addresses use `dddd:bb:dd` (optionally `.0`), with
+case-insensitive hex digits. Each GPU-specific bound overrides the node-wide
+start time for that GPU; other GPUs keep the node-wide bound, or the entire
+boot when none is given. `--xid-to` applies to every GPU. Duplicate GPU bounds
+or multiple node-wide start times are rejected.
+
 These flags affect the default Xid journal backend, not other journal sensors
 or a backend supplied through `WithXidBackend`.
 
 ```shell
 ./health-validation run --xid-from 1792600000 --xid-to 1792603600
+# Ignore pre-reset events only on these GPUs; retain other GPUs' boot history.
+./health-validation run --xid-from 0008:06:00=1792600000 --xid-from 0009:06:00=1792603600
 ```
 
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.

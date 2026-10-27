@@ -41,6 +41,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,7 +50,9 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	"github.com/dsx-ai-factory/health-validation/internal/version"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
@@ -429,7 +432,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-func (a *App) sensors(timeout time.Duration, required requiredSignals, xidJournal toolkit.XidBackend) ([]toolkit.Sensor, error) {
+func (a *App) sensors(timeout time.Duration, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
 	gpu := a.gpu
 	if gpu == nil {
 		gpu = a.host.gpuBackend()
@@ -441,10 +444,6 @@ func (a *App) sensors(timeout time.Duration, required requiredSignals, xidJourna
 	nvlink := a.nvlink
 	if nvlink == nil {
 		nvlink = a.host.nvlinkBackend()
-	}
-	xid := a.xid
-	if xid == nil {
-		xid = xidJournal
 	}
 	rdmaLinkFlap := a.rdmaLinkFlap
 	if rdmaLinkFlap == nil {
@@ -473,6 +472,13 @@ func (a *App) sensors(timeout time.Duration, required requiredSignals, xidJourna
 		sensors = append(sensors, toolkit.NewCPUSensor(a.cpu))
 	}
 	builtinSources, builtinAdapters := a.builtinCollect()
+	if xidJournal != nil {
+		for i, source := range builtinSources {
+			if source.ID() == xidsensor.ID {
+				builtinSources[i] = xidJournal
+			}
+		}
+	}
 	collectSensors, err := a.collectSensors(timeout, builtinSources, builtinAdapters, required)
 	if err != nil {
 		return nil, err
@@ -562,23 +568,56 @@ func usage(prog string) string {
 }
 
 func registerXidTimeFlags(fs *flag.FlagSet) {
-	fs.Int64("xid-from", 0, "read Xid journal entries strictly after this Unix timestamp in seconds (non-negative; optional)")
+	fs.Var(new(xidFromFlag), "xid-from", "read Xid entries strictly after Unix seconds; repeat PCI_ADDRESS=SECONDS for per-GPU bounds")
 	fs.Int64("xid-to", 0, "read Xid journal entries strictly before this Unix timestamp in seconds (positive; optional)")
 }
 
-func xidJournalFromFlags(fs *flag.FlagSet) (toolkit.XidBackend, error) {
-	var from, to *int64
+type xidFromFlag struct {
+	from    *int64
+	gpuFrom map[string]int64
+}
+
+func (f *xidFromFlag) String() string { return "" }
+
+func (f *xidFromFlag) Set(value string) error {
+	address, raw, perGPU := strings.Cut(value, "=")
+	if !perGPU {
+		raw = value
+	}
+	timestamp, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return fmt.Errorf("--xid-from requires Unix seconds or PCI_ADDRESS=SECONDS: %w", err)
+	}
+	if !perGPU {
+		if f.from != nil {
+			return fmt.Errorf("--xid-from: node-wide bound supplied more than once")
+		}
+		f.from = &timestamp
+		return nil
+	}
+	if address == "" {
+		return fmt.Errorf("--xid-from requires a GPU PCI address before '='")
+	}
+	if f.gpuFrom == nil {
+		f.gpuFrom = make(map[string]int64)
+	}
+	if _, exists := f.gpuFrom[address]; exists {
+		return fmt.Errorf("--xid-from: duplicate GPU PCI address %q", address)
+	}
+	f.gpuFrom[address] = timestamp
+	return nil
+}
+
+func xidJournalFromFlags(fs *flag.FlagSet) (collect.Sensor, error) {
+	from := fs.Lookup("xid-from").Value.(*xidFromFlag)
+	var to *int64
 	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "xid-from":
-			value := f.Value.(flag.Getter).Get().(int64)
-			from = &value
-		case "xid-to":
+		if f.Name == "xid-to" {
 			value := f.Value.(flag.Getter).Get().(int64)
 			to = &value
 		}
 	})
-	return toolkit.JournalctlWithTimeRange(from, to)
+	return xidsensor.NewWithTimeRanges(nil, from.from, to, from.gpuFrom)
 }
 
 var categoryBySensor = map[string]health.Category{

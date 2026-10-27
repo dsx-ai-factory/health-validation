@@ -29,6 +29,7 @@ var errInUse = errors.New("xid journal read already in progress")
 
 type sensor struct {
 	reader *journal.Reader
+	ranges timeRanges
 	mu     sync.Mutex
 }
 
@@ -70,7 +71,7 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	}
 	defer s.mu.Unlock()
 
-	scan := &scan{want: map[string]bool{}, at: now}
+	scan := &scan{want: map[string]bool{}, at: now, ranges: s.ranges}
 	for _, definition := range selected {
 		scan.want[definition.ID()] = true
 	}
@@ -81,12 +82,13 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	batch.Observations = scan.observations
 	if scan.want[xidsignals.ScanWindow.ID()] {
 		batch.Observations = append(batch.Observations,
-			value(xidsignals.ScanWindow, observation.NodeTarget(""), now, stringValue(xidsignals.WindowBoot)))
+			value(xidsignals.ScanWindow, observation.NodeTarget(""), now, stringValue(s.ranges.description())))
 	}
 	return batch, nil
 }
 
 type scan struct {
+	ranges       timeRanges
 	want         map[string]bool
 	at           *timestamppb.Timestamp
 	observations []*observation.Observation
@@ -97,6 +99,14 @@ func (s *scan) entry(e journal.Entry) error {
 	s.entries++
 	if !xidsignals.Match(e.Message) {
 		return nil
+	}
+	if s.ranges.bounded() {
+		if e.Realtime.IsZero() {
+			return fmt.Errorf("Xid entry %d has no realtime timestamp: %w", s.entries, journal.ErrMalformedEntry)
+		}
+		if s.ranges.excludes(e.Realtime, e.Message) {
+			return nil
+		}
 	}
 	if e.BootID == "" || e.Cursor == "" {
 		return fmt.Errorf("journal entry %d has no boot ID or cursor: %w", s.entries, journal.ErrMalformedEntry)

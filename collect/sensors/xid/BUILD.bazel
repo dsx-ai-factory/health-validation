@@ -15,7 +15,10 @@ go_test(
 
 go_library(
     name = "xid",
-    srcs = ["sensor.go"],
+    srcs = [
+        "sensor.go",
+        "time_range.go",
+    ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/sensors/xid",
     visibility = ["//visibility:public"],
     deps = [
