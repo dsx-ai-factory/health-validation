@@ -498,8 +498,11 @@ type GpuDevice struct {
 	FramebufferTotalBytes  *uint64                `protobuf:"varint,13,opt,name=framebuffer_total_bytes,json=framebufferTotalBytes,proto3,oneof" json:"framebuffer_total_bytes,omitempty"`
 	DriverVersion          *string                `protobuf:"bytes,14,opt,name=driver_version,json=driverVersion,proto3,oneof" json:"driver_version,omitempty"`
 	CudaDriverVersion      *string                `protobuf:"bytes,15,opt,name=cuda_driver_version,json=cudaDriverVersion,proto3,oneof" json:"cuda_driver_version,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// PCI device ID with the device ID in the high 16 bits and the vendor ID
+	// in the low 16 bits, as NVML reports it (e.g. 0x233010DE).
+	PciDeviceId   *uint32 `protobuf:"varint,16,opt,name=pci_device_id,json=pciDeviceId,proto3,oneof" json:"pci_device_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GpuDevice) Reset() {
@@ -635,6 +638,13 @@ func (x *GpuDevice) GetCudaDriverVersion() string {
 		return *x.CudaDriverVersion
 	}
 	return ""
+}
+
+func (x *GpuDevice) GetPciDeviceId() uint32 {
+	if x != nil && x.PciDeviceId != nil {
+		return *x.PciDeviceId
+	}
+	return 0
 }
 
 type Observation struct {
@@ -2167,7 +2177,7 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\ffield_errors\x18\x04 \x03(\v2-.health.v1.GpuInventoryEntry.FieldErrorsEntryR\vfieldErrors\x1aZ\n" +
 	"\x10FieldErrorsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x120\n" +
-	"\x05value\x18\x02 \x01(\v2\x1a.health.v1.CollectionErrorR\x05value:\x028\x01\"\xa8\a\n" +
+	"\x05value\x18\x02 \x01(\v2\x1a.health.v1.CollectionErrorR\x05value:\x028\x01\"\xe3\a\n" +
 	"\tGpuDevice\x12\x17\n" +
 	"\x04uuid\x18\x01 \x01(\tH\x00R\x04uuid\x88\x01\x01\x12\x19\n" +
 	"\x05model\x18\x02 \x01(\tH\x01R\x05model\x88\x01\x01\x12\x1b\n" +
@@ -2185,7 +2195,8 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x18compute_capability_minor\x18\f \x01(\rH\vR\x16computeCapabilityMinor\x88\x01\x01\x12;\n" +
 	"\x17framebuffer_total_bytes\x18\r \x01(\x04H\fR\x15framebufferTotalBytes\x88\x01\x01\x12*\n" +
 	"\x0edriver_version\x18\x0e \x01(\tH\rR\rdriverVersion\x88\x01\x01\x123\n" +
-	"\x13cuda_driver_version\x18\x0f \x01(\tH\x0eR\x11cudaDriverVersion\x88\x01\x01B\a\n" +
+	"\x13cuda_driver_version\x18\x0f \x01(\tH\x0eR\x11cudaDriverVersion\x88\x01\x01\x12'\n" +
+	"\rpci_device_id\x18\x10 \x01(\rH\x0fR\vpciDeviceId\x88\x01\x01B\a\n" +
 	"\x05_uuidB\b\n" +
 	"\x06_modelB\t\n" +
 	"\a_serialB\t\n" +
@@ -2200,7 +2211,8 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x19_compute_capability_minorB\x1a\n" +
 	"\x18_framebuffer_total_bytesB\x11\n" +
 	"\x0f_driver_versionB\x16\n" +
-	"\x14_cuda_driver_version\"\x92\x04\n" +
+	"\x14_cuda_driver_versionB\x10\n" +
+	"\x0e_pci_device_id\"\x92\x04\n" +
 	"\vObservation\x12\x1b\n" +
 	"\tsignal_id\x18\x01 \x01(\tR\bsignalId\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x124\n" +
@@ -2327,43 +2339,40 @@ func file_health_v1_observation_proto_rawDescGZIP() []byte {
 	return file_health_v1_observation_proto_rawDescData
 }
 
-var (
-	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 27)
-	file_health_v1_observation_proto_goTypes   = []any{
-		(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
-		(NoValueReason)(0),            // 1: health.v1.NoValueReason
-		(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
-		(*HardwareInventory)(nil),     // 3: health.v1.HardwareInventory
-		(*GpuInventorySnapshot)(nil),  // 4: health.v1.GpuInventorySnapshot
-		(*GpuInventory)(nil),          // 5: health.v1.GpuInventory
-		(*GpuInventoryEntry)(nil),     // 6: health.v1.GpuInventoryEntry
-		(*GpuDevice)(nil),             // 7: health.v1.GpuDevice
-		(*Observation)(nil),           // 8: health.v1.Observation
-		(*ObservationTarget)(nil),     // 9: health.v1.ObservationTarget
-		(*NodeRef)(nil),               // 10: health.v1.NodeRef
-		(*GpuRef)(nil),                // 11: health.v1.GpuRef
-		(*NvLinkEndpointRef)(nil),     // 12: health.v1.NvLinkEndpointRef
-		(*GpuPairRef)(nil),            // 13: health.v1.GpuPairRef
-		(*InfiniBandDeviceRef)(nil),   // 14: health.v1.InfiniBandDeviceRef
-		(*InfiniBandPortRef)(nil),     // 15: health.v1.InfiniBandPortRef
-		(*KernelRecordRef)(nil),       // 16: health.v1.KernelRecordRef
-		(*ProcessRef)(nil),            // 17: health.v1.ProcessRef
-		(*GpuProcessRef)(nil),         // 18: health.v1.GpuProcessRef
-		(*BlockDeviceRef)(nil),        // 19: health.v1.BlockDeviceRef
-		(*MountRef)(nil),              // 20: health.v1.MountRef
-		(*PCIRef)(nil),                // 21: health.v1.PCIRef
-		(*FuseConnectionRef)(nil),     // 22: health.v1.FuseConnectionRef
-		(*PstoreRecordRef)(nil),       // 23: health.v1.PstoreRecordRef
-		(*JournalEntryRef)(nil),       // 24: health.v1.JournalEntryRef
-		(*Value)(nil),                 // 25: health.v1.Value
-		(*CollectionError)(nil),       // 26: health.v1.CollectionError
-		(*NoValue)(nil),               // 27: health.v1.NoValue
-		nil,                           // 28: health.v1.GpuInventoryEntry.FieldErrorsEntry
-		(*timestamppb.Timestamp)(nil), // 29: google.protobuf.Timestamp
-	}
-)
-
+var file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_health_v1_observation_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_health_v1_observation_proto_goTypes = []any{
+	(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
+	(NoValueReason)(0),            // 1: health.v1.NoValueReason
+	(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
+	(*HardwareInventory)(nil),     // 3: health.v1.HardwareInventory
+	(*GpuInventorySnapshot)(nil),  // 4: health.v1.GpuInventorySnapshot
+	(*GpuInventory)(nil),          // 5: health.v1.GpuInventory
+	(*GpuInventoryEntry)(nil),     // 6: health.v1.GpuInventoryEntry
+	(*GpuDevice)(nil),             // 7: health.v1.GpuDevice
+	(*Observation)(nil),           // 8: health.v1.Observation
+	(*ObservationTarget)(nil),     // 9: health.v1.ObservationTarget
+	(*NodeRef)(nil),               // 10: health.v1.NodeRef
+	(*GpuRef)(nil),                // 11: health.v1.GpuRef
+	(*NvLinkEndpointRef)(nil),     // 12: health.v1.NvLinkEndpointRef
+	(*GpuPairRef)(nil),            // 13: health.v1.GpuPairRef
+	(*InfiniBandDeviceRef)(nil),   // 14: health.v1.InfiniBandDeviceRef
+	(*InfiniBandPortRef)(nil),     // 15: health.v1.InfiniBandPortRef
+	(*KernelRecordRef)(nil),       // 16: health.v1.KernelRecordRef
+	(*ProcessRef)(nil),            // 17: health.v1.ProcessRef
+	(*GpuProcessRef)(nil),         // 18: health.v1.GpuProcessRef
+	(*BlockDeviceRef)(nil),        // 19: health.v1.BlockDeviceRef
+	(*MountRef)(nil),              // 20: health.v1.MountRef
+	(*PCIRef)(nil),                // 21: health.v1.PCIRef
+	(*FuseConnectionRef)(nil),     // 22: health.v1.FuseConnectionRef
+	(*PstoreRecordRef)(nil),       // 23: health.v1.PstoreRecordRef
+	(*JournalEntryRef)(nil),       // 24: health.v1.JournalEntryRef
+	(*Value)(nil),                 // 25: health.v1.Value
+	(*CollectionError)(nil),       // 26: health.v1.CollectionError
+	(*NoValue)(nil),               // 27: health.v1.NoValue
+	nil,                           // 28: health.v1.GpuInventoryEntry.FieldErrorsEntry
+	(*timestamppb.Timestamp)(nil), // 29: google.protobuf.Timestamp
+}
 var file_health_v1_observation_proto_depIdxs = []int32{
 	8,  // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
 	3,  // 1: health.v1.ObservationBatch.inventory:type_name -> health.v1.HardwareInventory
