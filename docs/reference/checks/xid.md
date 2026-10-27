@@ -6,7 +6,7 @@ Xid covers NVRM Xid fault events logged by the NVIDIA driver to the kernel ring 
 
 ## Single-rule checks reading `xid_counts`
 
-These 40 checks share the properties below and each has one rule.
+These 39 checks share the properties below and each has one rule.
 
 | Property | Value |
 |---|---|
@@ -36,7 +36,6 @@ These 40 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_39`</nobr> | GPU Xid 39 Warning | <nobr>`39 in xid_counts && xid_counts[39] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_40`</nobr> | GPU Xid 40 Warning | <nobr>`40 in xid_counts && xid_counts[40] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_41`</nobr> | GPU Xid 41 Warning | <nobr>`41 in xid_counts && xid_counts[41] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_45`</nobr> | GPU Xid 45 Warning | <nobr>`45 in xid_counts && xid_counts[45] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`workflow_xid_45`</nobr> |
 | <nobr>`gpu_xid_46`</nobr> | GPU Xid 46 (GPU stopped processing) | <nobr>`46 in xid_counts && xid_counts[46] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_48`</nobr> | GPU Xid 48 (double bit ECC error) | <nobr>`48 in xid_counts && xid_counts[48] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_60`</nobr> | GPU Xid 60 Warning | <nobr>`60 in xid_counts && xid_counts[60] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
@@ -187,6 +186,37 @@ These 20 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_149_28`</nobr> | GPU Xid 149.28 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.28" in sub_xid_code_counts && sub_xid_code_counts["149.28"] >= occurrences`</nobr> | WARNING | none |
 | <nobr>`gpu_xid_149_a`</nobr> | GPU Xid 149.A (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.A" in sub_xid_code_counts && sub_xid_code_counts["149.A"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_149_f`</nobr> | GPU Xid 149.F (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.F" in sub_xid_code_counts && sub_xid_code_counts["149.F"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+
+## GPU Xid 45 (preemptive removal)
+
+`gpu_xid_45`
+
+Detects NVRM Xid 45 in the system journal since boot; informational when another Xid is present.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
+**Rules**
+
+- **INFO** when `45 in xid_counts && xid_counts[45] >= occurrences && xid_counts.exists(c, c != 45 && c != 154)`
+  - Message: GPU Xid 45 accompanied another Xid; no Xid 45-specific remediation is needed. Follow the accompanying Xid's guidance.
+- **WARNING** when `45 in xid_counts && xid_counts[45] >= occurrences && !xid_counts.exists(c, c != 45 && c != 154)`
+  - Message: GPU Xid 45 occurred alone; restart the application. If Xid 45 recurs with no other Xid, report the issue.
+  - Action: operational state `drain`, then `restart_app`
 
 ## GPU Xid 54 (auxiliary power is not connected to the GPU board)
 

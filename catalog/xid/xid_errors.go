@@ -250,12 +250,6 @@ var warningClasses = []warningClass{
 		},
 	},
 	{
-		action:        health.Drain(health.RemediationActionWorkflowXid45),
-		architectures: allArchitectures,
-		message:       "GPU Xid %d (preemptive removal) detected. If Xid 45 occurred alone, restart NVIDIA Fabric Manager. If it accompanied another Xid, follow that Xid's remediation instead; Xid 45 may result from application termination or a GPU reset and is often not a separate fault.",
-		codes:         []int64{45},
-	},
-	{
 		action:        health.Drain(health.RemediationActionUpdateSWFW),
 		architectures: allArchitectures,
 		message:       "GPU Xid %d (vGPU start error) detected. Update GPU software/firmware.",
@@ -297,7 +291,7 @@ func Checks() []health.CheckDefinition {
 	for _, class := range warningClasses {
 		warningCount += len(class.codes)
 	}
-	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+1)
+	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+2)
 	for _, c := range criticalXids {
 		checks = append(checks, criticalCheck(c))
 	}
@@ -312,6 +306,7 @@ func Checks() []health.CheckDefinition {
 			checks = append(checks, warningCheck(code, class))
 		}
 	}
+	checks = append(checks, xid45Check())
 	checks = append(checks, xid154Check())
 	return checks
 }
@@ -444,6 +439,40 @@ func warningCheck(code int64, class warningClass) health.CheckDefinition {
 		Severity:   health.Warning,
 		Message:    fmt.Sprintf(class.message, code),
 	}}
+	return def
+}
+
+// xid45Check builds the check for Xid 45 (preemptive removal), following
+// NVIDIA's WORKFLOW_XID_45 resolution bucket:
+//
+//   - Xid 45 is the only Xid since boot: WARNING, recommending restart_app.
+//   - Another Xid is present: INFO with no action; that Xid's own check
+//     carries the remediation.
+//
+// Xid 154 is not counted as another Xid because it only annotates one.
+func xid45Check() health.CheckDefinition {
+	def := baseCheck(
+		"gpu_xid_45",
+		"GPU Xid 45 (preemptive removal)",
+		"Detects NVRM Xid 45 in the system journal since boot; informational when another Xid is present.",
+		health.NoAction,
+	)
+	def.Architectures = slices.Clone(allArchitectures)
+	present := "45 in xid_counts && xid_counts[45] >= occurrences"
+	companion := "xid_counts.exists(c, c != 45 && c != 154)"
+	def.Rules = []health.Rule{
+		{
+			Expression: fmt.Sprintf("%s && %s", present, companion),
+			Severity:   health.Info,
+			Message:    "GPU Xid 45 accompanied another Xid; no Xid 45-specific remediation is needed. Follow the accompanying Xid's guidance.",
+		},
+		{
+			Expression:        fmt.Sprintf("%s && !%s", present, companion),
+			Severity:          health.Warning,
+			Message:           "GPU Xid 45 occurred alone; restart the application. If Xid 45 recurs with no other Xid, report the issue.",
+			RecommendedAction: health.Drain(health.RemediationActionRestartApp),
+		},
+	}
 	return def
 }
 
