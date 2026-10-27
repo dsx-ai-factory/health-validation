@@ -40,7 +40,9 @@ py_test(
         "fern_docs_versions.py",
         "fern_docs_versions_test.py",
     ],
+    data = ["//:fern/docs.yml"],
     main = "fern_docs_versions_test.py",
     # Builds throwaway repositories with the host git.
     tags = ["local"],
+    deps = ["@rules_python//python/runfiles"],
 )

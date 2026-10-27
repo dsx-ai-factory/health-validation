@@ -3,4 +3,7 @@
 # The repo is a single Go module; its path is the import-path prefix for every
 # package. No Go packages live at the repo root.
 
-exports_files(["MODULE.bazel"])
+exports_files([
+    "MODULE.bazel",
+    "fern/docs.yml",
+])

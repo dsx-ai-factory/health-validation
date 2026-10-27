@@ -12,7 +12,25 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import fern_docs_versions  # noqa: E402
 
-DOCS_YML = "title: Test\n\n" + fern_docs_versions.WORKING_TREE_VERSIONS
+
+def committed_docs_yml() -> str:
+    try:
+        from python.runfiles import runfiles
+
+        path = runfiles.Create().Rlocation("_main/fern/docs.yml")
+    except ImportError:
+        path = None
+    if not path:
+        path = Path(__file__).resolve().parent.parent / "fern" / "docs.yml"
+    return Path(path).read_text()
+
+
+def versions_section(config: str) -> str:
+    """Return the versions list, the last top-level key in docs.yml."""
+    return config[config.index("\nversions:\n") + 1 :]
+
+
+DOCS_YML = committed_docs_yml()
 FERN_FILES = {"fern/docs.yml": DOCS_YML, "docs/index.yml": "nav"}
 
 
@@ -71,6 +89,15 @@ class FernDocsVersionsTest(unittest.TestCase):
 
         self.assertEqual(self.run_main(), 0)
         self.assertEqual(self.docs_yml(), DOCS_YML)
+        self.assertEqual(
+            versions_section(self.docs_yml()),
+            """\
+versions:
+  - display-name: Latest
+    path: ../docs/index.yml
+    slug: latest
+""",
+        )
 
     def test_one_ref_per_line_newest_first(self):
         self.commit({"README.md": "x"}, "v0.3.0")
@@ -79,11 +106,10 @@ class FernDocsVersionsTest(unittest.TestCase):
         self.commit({}, "v0.10.0")
 
         self.assertEqual(self.run_main(), 0)
+        config = self.docs_yml()
         self.assertEqual(
-            self.docs_yml(),
+            versions_section(config),
             """\
-title: Test
-
 versions:
   - display-name: v0.10.0
     ref: v0.10.0
@@ -92,6 +118,11 @@ versions:
     ref: v0.4.1
     slug: v0.4
 """,
+        )
+        # Everything before the versions list is kept.
+        self.assertEqual(
+            config[: config.index("\nversions:\n")],
+            DOCS_YML[: DOCS_YML.index("\nversions:\n")],
         )
 
     def test_rejects_unexpected_docs_yml(self):
