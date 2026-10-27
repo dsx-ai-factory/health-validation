@@ -56,7 +56,8 @@ func (p *captureProbe) Errored(id string, err error) health.Measurement {
 // failure.
 func threeSlotLib() *mock.Interface {
 	usable := &mock.Device{
-		GetUUIDFunc: func() (string, gonvml.Return) { return "GPU-OK", gonvml.SUCCESS },
+		GetUUIDFunc:    func() (string, gonvml.Return) { return "GPU-OK", gonvml.SUCCESS },
+		GetPciInfoFunc: pciAt(0),
 		GetPerformanceStateFunc: func() (gonvml.Pstates, gonvml.Return) {
 			return gonvml.PSTATE_0, gonvml.SUCCESS
 		},

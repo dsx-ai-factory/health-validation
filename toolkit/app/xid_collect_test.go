@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
+	"github.com/dsx-ai-factory/health-validation/toolkit"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -103,6 +106,70 @@ func TestRunCommandCollectsXidThroughBridge(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("claimed Xid sensor measured %d times, want 1", calls)
+	}
+}
+
+const xidTestUUID = "GPU-1ca2785e-36e2-9732-d151-d6b1625701e9"
+
+// fillingBackend stands in for the NVML backend, which records each GPU's
+// UUID while the GPU sensor measures.
+type fillingBackend struct {
+	uuids map[string]string
+}
+
+func (f fillingBackend) MeasureGPUs() ([]health.Measurement, error) {
+	f.uuids["0000:89:00"] = xidTestUUID
+	return nil, nil
+}
+func (fillingBackend) MeasureNVLink() ([]health.Measurement, error) { return nil, nil }
+
+// uuidHost's lookup is empty until its GPU backend measures. Like the NVML
+// host it returns a copy, so a lookup read too early stays empty.
+type uuidHost struct {
+	b fillingBackend
+}
+
+func (h uuidHost) gpuBackend() toolkit.GPUBackend       { return h.b }
+func (h uuidHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
+func (uuidHost) gpuInventory() *gpuinventory.Inventory  { return fakeHost{}.gpuInventory() }
+func (uuidHost) close() error                           { return nil }
+func (h uuidHost) gpuUUIDsByPCI() map[string]string     { return maps.Clone(h.b.uuids) }
+
+// The Xid adapter reads the host's lookup when it builds, after the GPU
+// sensor ran; a GPU the lookup does not name keeps its PCI address.
+func TestRunCommandResolvesXidGPUUUIDs(t *testing.T) {
+	a := cadenceRunApp()
+	a.host = uuidHost{b: fillingBackend{uuids: map[string]string{}}}
+	a.xid = nil
+	var obs []*observation.Observation
+	for cursor, pci := range map[string]string{"c1": "0000:89:00", "c2": "0000:c1:00"} {
+		entry := observation.JournalEntryTarget("b", cursor)
+		obs = append(obs,
+			xidAppValue(xidsignals.Code, entry, &observation.Value{Kind: &observation.Value_IntValue{IntValue: 48}}),
+			xidAppValue(xidsignals.PCIAddress, entry, &observation.Value{Kind: &observation.Value_StringValue{StringValue: pci}}))
+	}
+	a.WithCollect(xidAppSensor{calls: new(int), obs: append(obs, xidAppMarker())}, xidsignals.All().IDs()...)
+
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code != exitUnhealthy {
+		t.Fatalf("exit = %d, want %d; stderr = %q", code, exitUnhealthy, stderr.String())
+	}
+	var verdict health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][2]any{}
+	for _, result := range verdict.CheckResults {
+		if result.CheckID == "gpu_xid_48" && result.Severity == health.Critical {
+			got[strings.Join(result.AffectedEntities, ",")] = [2]any{result.ObservedValues[xid.SignalGPUID], result.ObservedValues[xid.SignalPCIAddress]}
+		}
+	}
+	want := map[string][2]any{
+		xidTestUUID:  {xidTestUUID, "0000:89:00"},
+		"0000:c1:00": {"", "0000:c1:00"},
+	}
+	if !maps.Equal(got, want) {
+		t.Fatalf("CRITICAL gpu_xid_48 results (entities: gpu_id, pci_address) = %v, want %v", got, want)
 	}
 }
 

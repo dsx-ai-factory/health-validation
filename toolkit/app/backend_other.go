@@ -24,6 +24,7 @@ func newHostBackend() hostBackend { return stubHost{} }
 
 func (stubHost) gpuBackend() toolkit.GPUBackend       { return unavailableBackend{} }
 func (stubHost) nvlinkBackend() toolkit.NVLinkBackend { return unavailableBackend{} }
+func (stubHost) gpuUUIDsByPCI() map[string]string     { return nil }
 
 // stubInventory fails to open off-linux, so `run` reports an architecture
 // discovery failure and the node GPU count is unobservable.

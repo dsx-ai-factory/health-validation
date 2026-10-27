@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "pciaddr",
+    srcs = ["pciaddr.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/toolkit/internal/pciaddr",
+    visibility = ["//toolkit:__subpackages__"],
+)
+
+go_test(
+    name = "pciaddr_test",
+    srcs = ["pciaddr_test.go"],
+    embed = [":pciaddr"],
+)

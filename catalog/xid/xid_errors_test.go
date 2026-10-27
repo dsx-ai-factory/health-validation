@@ -937,3 +937,87 @@ func TestXidErrors_CHINonDataError_ResetsGPU(t *testing.T) {
 		t.Errorf("Messages = %q, want [%q]", v.Messages, want)
 	}
 }
+
+func TestXidErrors_AllChecksRequireGPUIdentity(t *testing.T) {
+	for _, def := range xid.Checks() {
+		if len(def.RequiredSignals) < 2 || !slices.Equal(def.RequiredSignals[:2], []string{xid.SignalGPUID, xid.SignalPCIAddress}) {
+			t.Errorf("%s: RequiredSignals = %v, want gpu_id and pci_address first", def.ID, def.RequiredSignals)
+		}
+	}
+}
+
+// resultsFor returns checkID's results keyed by the entity each names, or by
+// the GPU ID in observed_values for a PASS result, which names none.
+func resultsFor(nv health.NodeVerdict, checkID string) map[string]health.CheckVerdict {
+	out := make(map[string]health.CheckVerdict)
+	for _, v := range nv.CheckResults {
+		if v.CheckID != checkID {
+			continue
+		}
+		key, _ := v.ObservedValues[xid.SignalGPUID].(string)
+		if len(v.AffectedEntities) > 0 {
+			key = v.AffectedEntities[0]
+		}
+		out[key] = v
+	}
+	return out
+}
+
+func onGPU(m xid.XidMeasurement, gpuID, pci string) xid.XidMeasurement {
+	m.GPUID, m.PCIAddress = gpuID, pci
+	return m
+}
+
+func TestXidErrors_OccurrencesCountPerGPU(t *testing.T) {
+	cat := xidCatalog(t, occurrencesOverride("gpu_xid_79", 2))
+
+	t.Run("one each", func(t *testing.T) {
+		nv, err := cat.EvaluateAll(onGPU(measurementFor(79), "GPU-a", "0000:01:00"), onGPU(measurementFor(79), "GPU-b", "0000:02:00"))
+		if err != nil {
+			t.Fatalf("EvaluateAll: %v", err)
+		}
+		results := resultsFor(nv, "gpu_xid_79")
+		if len(results) != 2 {
+			t.Fatalf("got gpu_xid_79 results %v, want one per GPU", results)
+		}
+		for gpu, v := range results {
+			if v.Severity != health.Pass {
+				t.Errorf("%s: gpu_xid_79 = %v, want PASS: one occurrence per GPU is below 2", gpu, v.Severity)
+			}
+		}
+	})
+
+	t.Run("two on one GPU", func(t *testing.T) {
+		nv, err := cat.EvaluateAll(onGPU(measurementFor(79, 79), "GPU-a", "0000:01:00"))
+		if err != nil {
+			t.Fatalf("EvaluateAll: %v", err)
+		}
+		v, ok := resultsFor(nv, "gpu_xid_79")["GPU-a"]
+		if !ok || v.Severity != health.Critical || !slices.Equal(v.AffectedEntities, []string{"GPU-a"}) {
+			t.Errorf("gpu_xid_79 = %+v, want CRITICAL naming GPU-a", v)
+		}
+	})
+}
+
+// A Fatal 149 on one GPU and a Nonfatal 149 on another are two findings, not
+// one node result carrying both messages.
+func TestXidErrors_NVLink5PerGPU(t *testing.T) {
+	nv, err := xidCatalog(t).EvaluateAll(
+		onGPU(nvlink5SubXidCodeMeasurementFor("149.4", true), "GPU-a", "0018:01:00"),
+		onGPU(nvlink5MeasurementFor(149, false), "GPU-b", "0019:01:00"),
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	results := resultsFor(nv, "gpu_xid_149")
+	if v := results["GPU-a"]; v.Severity != health.Critical || !slices.Equal(v.Messages, []string{"GPU Xid 149 detected: NVLink NETIR error (Fatal)."}) {
+		t.Errorf("GPU-a gpu_xid_149 = %v %q, want CRITICAL with only the Fatal message", v.Severity, v.Messages)
+	}
+	if v := results["GPU-b"]; v.Severity != health.Warning || !slices.Equal(v.Messages, []string{"GPU Xid 149 detected: NVLink NETIR error (Nonfatal)."}) {
+		t.Errorf("GPU-b gpu_xid_149 = %v %q, want WARNING with only the Nonfatal message", v.Severity, v.Messages)
+	}
+	subCode := resultsFor(nv, "gpu_xid_149_4")
+	if subCode["GPU-a"].Severity != health.Critical || subCode["GPU-b"].Severity != health.Pass {
+		t.Errorf("gpu_xid_149_4 = GPU-a %v, GPU-b %v; want CRITICAL, PASS", subCode["GPU-a"].Severity, subCode["GPU-b"].Severity)
+	}
+}

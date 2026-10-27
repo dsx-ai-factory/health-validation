@@ -169,7 +169,7 @@ func roundTripFixture() []health.Measurement {
 	}
 }
 
-// byEntity summarizes measurements by type and GPU so the comparison ignores
+// byEntity summarizes measurements by type and entity so the comparison ignores
 // order: every json field, each error's message, timeout, and signals, and
 // the unsupported signals. An empty map or slice compares equal to nil.
 func byEntity(t *testing.T, measurements []health.Measurement) map[string]string {
@@ -211,6 +211,9 @@ func byEntity(t *testing.T, measurements []health.Measurement) map[string]string
 		}{fields, errs, unsupported})
 		if err != nil {
 			t.Fatal(err)
+		}
+		if entity, ok := m.(health.EntityIdentifier); ok {
+			id = entity.EntityID()
 		}
 		key := fmt.Sprintf("%T/%s", m, id)
 		if _, dup := out[key]; dup {
@@ -338,6 +341,40 @@ func TestRoundTripKeepsEveryErrorOnASignal(t *testing.T) {
 			restored := ToMeasurements(observations)
 			original := []health.Measurement{m}
 			if got, want := verdictSummary(t, "H100", health.OperatorInfra, restored), verdictSummary(t, "H100", health.OperatorInfra, original); !slices.Equal(got, want) {
+				t.Fatalf("verdicts differ:\n got  %v\n want %v", got, want)
+			}
+		})
+	}
+}
+
+// Per-GPU Xid measurements come back as the same GPUs, whether a GPU was
+// named by UUID, by PCI address, or not at all.
+func TestRoundTripKeepsXidIdentity(t *testing.T) {
+	xid48 := func(gpuID, pci string) xid.XidMeasurement {
+		return xid.XidMeasurement{
+			GPUID: gpuID, PCIAddress: pci, Since: "boot", EventCount: 1,
+			XidCounts: map[int64]int64{48: 1},
+			Events:    []xid.XidEvent{{XidCode: 48, PCIAddress: pci}},
+		}
+	}
+	for name, tc := range map[string]struct {
+		nodeID       string
+		measurements []health.Measurement
+	}{
+		"UUID, PCI address and none": {testNode, []health.Measurement{xid48("GPU-a", "0000:89:00"), xid48("", "0000:c1:00"), xid.XidMeasurement{Since: "boot"}}},
+		"no node ID":                 {"", []health.Measurement{xid48("", "")}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			observations, err := FromMeasurements("xid", tc.nodeID, time.Unix(1, 0), tc.measurements...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			restored := ToMeasurements(observations)
+			if got, want := byEntity(t, restored), byEntity(t, tc.measurements); !reflect.DeepEqual(got, want) {
+				t.Fatalf("restored measurements differ:\n got  %v\n want %v", got, want)
+			}
+			got, want := verdictSummary(t, "GB200", health.TenantGuest, restored), verdictSummary(t, "GB200", health.TenantGuest, tc.measurements)
+			if !slices.Equal(got, want) {
 				t.Fatalf("verdicts differ:\n got  %v\n want %v", got, want)
 			}
 		})

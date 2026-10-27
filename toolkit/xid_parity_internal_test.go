@@ -86,18 +86,54 @@ func legacyXidMeasurement(ctx context.Context, t *testing.T, f xidParityFixture)
 	return onlyXid(t, measurements)
 }
 
-func collectXidMeasurement(ctx context.Context, t *testing.T, f xidParityFixture) xid.XidMeasurement {
+// collectXidMeasurements returns the collect path's Xid measurements, one per GPU.
+func collectXidMeasurements(ctx context.Context, t *testing.T, f xidParityFixture) []health.Measurement {
 	t.Helper()
 	cycle, err := collect.NewCycle("parity", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	return onlyXid(t, bridgedXid(ctx, t, cycle, collectXidRun(f)))
+	return bridgedXid(ctx, t, cycle, collectXidRun(f))
+}
+
+// splitLegacyByPCI groups the legacy sensor's node-wide measurement per GPU
+// the way the collect path does, so the two parsers compare GPU by GPU. A
+// failed or event-less measurement is returned unchanged.
+func splitLegacyByPCI(m xid.XidMeasurement) []health.Measurement {
+	if len(m.Errors()) > 0 || len(m.Events) == 0 {
+		return []health.Measurement{m}
+	}
+	var gpus []xid.XidMeasurement
+	index := map[string]int{}
+	for _, e := range m.Events {
+		gpu := e.PCIAddress
+		i, ok := index[gpu]
+		if !ok {
+			i = len(gpus)
+			index[gpu] = i
+			gpus = append(gpus, xid.XidMeasurement{Since: m.Since, PCIAddress: gpu, XidCounts: map[int64]int64{}})
+		}
+		g := &gpus[i]
+		g.Events = append(g.Events, e)
+		g.XidCounts[e.XidCode]++
+		g.EventCount++
+		if e.NVLink5 != nil && e.NVLink5.Fatal {
+			if g.FatalXidCounts == nil {
+				g.FatalXidCounts = map[int64]int64{}
+			}
+			g.FatalXidCounts[e.XidCode]++
+		}
+	}
+	out := make([]health.Measurement, len(gpus))
+	for i, g := range gpus {
+		out[i] = g
+	}
+	return out
 }
 
 func bridgedXid(ctx context.Context, t *testing.T, cycle *collect.Cycle, run journal.Runner) []health.Measurement {
 	t.Helper()
-	adapter := collectadapters.XID()
+	adapter := collectadapters.XID(nil)
 	signals := slices.Sorted(maps.Keys(adapter.Signals()))
 	runner := collectbridge.NewRunner(cycle)
 	if err := runner.Register(xidsensor.New(journal.New(run)), signals...); err != nil {
@@ -125,19 +161,28 @@ func onlyXid(t *testing.T, measurements []health.Measurement) xid.XidMeasurement
 	return m
 }
 
-// xidStored lists the stored fields; comparing whole measurements would also
-// compare their errors.
-func xidStored(m xid.XidMeasurement) []any {
-	return []any{m.Events, m.XidCounts, m.FatalXidCounts, m.EventCount, m.Since}
+// xidStored lists each measurement's stored fields; comparing whole
+// measurements would also compare their errors.
+func xidStored(measurements []health.Measurement) [][]any {
+	var out [][]any
+	for _, m := range measurements {
+		x := m.(xid.XidMeasurement)
+		out = append(out, []any{x.GPUID, x.PCIAddress, x.Events, x.XidCounts, x.FatalXidCounts, x.EventCount, x.Since})
+	}
+	return out
 }
 
-func failedXidSignals(m xid.XidMeasurement) []string {
-	var out []string
-	for _, e := range m.Errors() {
-		out = append(out, e.FailedSignals()...)
+func failedXidSignals(measurements []health.Measurement) [][]string {
+	var out [][]string
+	for _, m := range measurements {
+		var failed []string
+		for _, e := range m.Errors() {
+			failed = append(failed, e.FailedSignals()...)
+		}
+		slices.Sort(failed)
+		out = append(out, slices.Compact(failed))
 	}
-	slices.Sort(out)
-	return slices.Compact(out)
+	return out
 }
 
 func xidParityCatalog(t *testing.T) *catalog.Catalog {
@@ -151,19 +196,24 @@ func xidParityCatalog(t *testing.T) *catalog.Catalog {
 	return cat
 }
 
-func evaluateXid(t *testing.T, m health.Measurement) health.NodeVerdict {
+func evaluateXid(t *testing.T, measurements ...health.Measurement) health.NodeVerdict {
 	t.Helper()
-	verdict, err := xidParityCatalog(t).EvaluateAll(m)
+	verdict, err := xidParityCatalog(t).EvaluateAll(measurements...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return verdict
 }
 
+// xidParityVerdicts keeps each check's worst result across GPUs: the node's
+// outcome, which per-GPU results leave unchanged at the default thresholds.
 func xidParityVerdicts(t *testing.T, verdict health.NodeVerdict) map[string]xidParityVerdict {
 	t.Helper()
 	out := make(map[string]xidParityVerdict)
 	for _, result := range verdict.CheckResults {
+		if prev, ok := out[result.CheckID]; ok && prev.severity >= result.Severity {
+			continue
+		}
 		out[result.CheckID] = xidParityVerdict{action: result.RecommendedAction, severity: result.Severity}
 	}
 	if skipped := architectureSkips(verdict); len(out)+skipped != len(xid.Checks()) {
@@ -186,14 +236,15 @@ func architectureSkips(verdict health.NodeVerdict) int {
 
 func requireXidParity(ctx context.Context, t *testing.T, f xidParityFixture) {
 	t.Helper()
-	legacy, bridged := legacyXidMeasurement(ctx, t, f), collectXidMeasurement(ctx, t, f)
-	if l, c := xidStored(legacy), xidStored(bridged); !reflect.DeepEqual(l, c) {
-		t.Errorf("measurements differ:\n legacy=%+v\n collect=%+v", legacy, bridged)
+	legacy, bridged := legacyXidMeasurement(ctx, t, f), collectXidMeasurements(ctx, t, f)
+	split := splitLegacyByPCI(legacy)
+	if l, c := xidStored(split), xidStored(bridged); !reflect.DeepEqual(l, c) {
+		t.Errorf("measurements differ:\n legacy=%+v\n collect=%+v", split, bridged)
 	}
-	if l, c := failedXidSignals(legacy), failedXidSignals(bridged); !slices.Equal(l, c) {
+	if l, c := failedXidSignals(split), failedXidSignals(bridged); !reflect.DeepEqual(l, c) {
 		t.Errorf("failed signals differ: legacy=%v collect=%v", l, c)
 	}
-	if l, c := xidParityVerdicts(t, evaluateXid(t, legacy)), xidParityVerdicts(t, evaluateXid(t, bridged)); !reflect.DeepEqual(l, c) {
+	if l, c := xidParityVerdicts(t, evaluateXid(t, legacy)), xidParityVerdicts(t, evaluateXid(t, bridged...)); !reflect.DeepEqual(l, c) {
 		t.Errorf("verdicts differ:\n legacy=%v\n collect=%v", l, c)
 	}
 }
@@ -309,7 +360,7 @@ func TestXidCollectDocumentedDivergences(t *testing.T) {
 	failsClosed := func(t *testing.T, f xidParityFixture) {
 		t.Helper()
 		requireXidAll(t, evaluateXid(t, legacyXidMeasurement(ctx, t, f)), health.Pass, nil)
-		requireXidAll(t, evaluateXid(t, collectXidMeasurement(ctx, t, f)), health.Critical, &checkCollection)
+		requireXidAll(t, evaluateXid(t, collectXidMeasurements(ctx, t, f)...), health.Critical, &checkCollection)
 	}
 	counts := func(t *testing.T, line string, code int64) {
 		t.Helper()
@@ -317,14 +368,14 @@ func TestXidCollectDocumentedDivergences(t *testing.T) {
 		if legacy := legacyXidMeasurement(ctx, t, f); legacy.EventCount != 0 {
 			t.Fatalf("legacy counted %v", legacy.XidCounts)
 		}
-		if bridged := collectXidMeasurement(ctx, t, f); bridged.XidCounts[code] != 1 {
+		if bridged := onlyXid(t, collectXidMeasurements(ctx, t, f)); bridged.XidCounts[code] != 1 {
 			t.Fatalf("collect counts = %v, want Xid %d", bridged.XidCounts, code)
 		}
 	}
 	event := func(t *testing.T, line string) (xid.XidEvent, xid.XidEvent) {
 		t.Helper()
 		f := xidParityFixture{entries: xidLines(line)}
-		legacy, bridged := legacyXidMeasurement(ctx, t, f), collectXidMeasurement(ctx, t, f)
+		legacy, bridged := legacyXidMeasurement(ctx, t, f), onlyXid(t, collectXidMeasurements(ctx, t, f))
 		if len(legacy.Events) != 1 || len(bridged.Events) != 1 {
 			t.Fatalf("events legacy=%v collect=%v", legacy.Events, bridged.Events)
 		}
@@ -336,6 +387,31 @@ func TestXidCollectDocumentedDivergences(t *testing.T) {
 	})
 	t.Run("MIG attribution", func(t *testing.T) {
 		counts(t, "NVRM: Xid (PCI:0000:01:00 GPU-I:01): 79, pid=1, name=a, x", 79)
+	})
+	t.Run("MIG and plain lines share a GPU", func(t *testing.T) {
+		f := xidParityFixture{entries: xidLines("NVRM: Xid (PCI:0000:01:00 GPU-I:01): 79, pid=1, name=a, x", "NVRM: Xid (PCI:0000:01:00): 48, x")}
+		m := onlyXid(t, collectXidMeasurements(ctx, t, f))
+		if m.PCIAddress != "0000:01:00" || !maps.Equal(m.XidCounts, map[int64]int64{79: 1, 48: 1}) {
+			t.Fatalf("collect = %s %v, want one 0000:01:00 measurement with Xid 79 and 48", m.PCIAddress, m.XidCounts)
+		}
+	})
+	t.Run("per-GPU results", func(t *testing.T) {
+		f := xidParityFixture{entries: xidLines(xid79Line, xid149Fatal)}
+		named := func(verdict health.NodeVerdict) [][]string {
+			var out [][]string
+			for _, result := range verdict.CheckResults {
+				if result.CheckID == "gpu_xid_79" {
+					out = append(out, result.AffectedEntities)
+				}
+			}
+			return out
+		}
+		if got := named(evaluateXid(t, legacyXidMeasurement(ctx, t, f))); !slices.EqualFunc(got, [][]string{nil}, slices.Equal) {
+			t.Fatalf("legacy gpu_xid_79 entities = %v, want one result naming no GPU", got)
+		}
+		if got := named(evaluateXid(t, collectXidMeasurements(ctx, t, f)...)); !slices.EqualFunc(got, [][]string{{"0000:01:00"}, nil}, slices.Equal) {
+			t.Fatalf("collect gpu_xid_79 entities = %v, want one result per GPU, the failing one naming 0000:01:00", got)
+		}
 	})
 	t.Run("PCI token absent", func(t *testing.T) {
 		counts(t, "NVRM: Xid (0000:03:00): 14, Channel 00000001", 14)

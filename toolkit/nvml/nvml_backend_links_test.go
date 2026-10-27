@@ -534,6 +534,7 @@ func TestMeasureNVLink_CollectsLinks(t *testing.T) {
 		DeviceGetHandleByIndexFunc: func(int) (gonvml.Device, gonvml.Return) {
 			return &mock.Device{
 				GetUUIDFunc:        func() (string, gonvml.Return) { return "GPU-0", gonvml.SUCCESS },
+				GetPciInfoFunc:     pciAt(0),
 				GetFieldValuesFunc: linkFieldValues(50000, 18, gonvml.SUCCESS, gonvml.SUCCESS),
 				GetNvLinkStateFunc: allLinksPresent(18),
 				GetNvLinkCapabilityFunc: func(int, gonvml.NvLinkCapability) (uint32, gonvml.Return) {

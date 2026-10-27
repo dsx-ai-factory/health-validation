@@ -4,7 +4,7 @@
 // Package xid defines the measurement type for NVRM Xid errors parsed
 // from the system journal. Xid errors are GPU faults the NVIDIA driver
 // logs to the kernel ring buffer / syslog; a sensor collects them and
-// the catalog evaluates the aggregate against GPU checks.
+// the catalog evaluates each GPU's events against the Xid checks.
 package xid
 
 import (
@@ -17,6 +17,8 @@ import (
 // expressions and must match the RequiredSignals declared in checks
 // that consume Xid measurements.
 const (
+	SignalGPUID            = "gpu_id"
+	SignalPCIAddress       = "pci_address"
 	SignalEvents           = "events"
 	SignalXidCounts        = "xid_counts"
 	SignalFatalXidCounts   = "fatal_xid_counts"
@@ -26,6 +28,8 @@ const (
 )
 
 var measurementSignals = []string{
+	SignalGPUID,
+	SignalPCIAddress,
 	SignalEvents,
 	SignalXidCounts,
 	SignalFatalXidCounts,
@@ -81,10 +85,12 @@ type NVLink5Detail struct {
 	Fatal        bool     `json:"fatal"`
 }
 
-// XidMeasurement is the aggregate of every Xid event observed in the
-// window described by Since. One measurement is produced per sensor
-// pass, even when no events were found (EventCount == 0), so a check
-// always runs and can report PASS.
+// XidMeasurement holds the Xid events one GPU logged in the window
+// described by Since, so its counts and events are that GPU's. A window
+// with no Xid events yields one measurement with no GPU identity, so every
+// check still runs and can report PASS. The toolkit's deprecated
+// journalctl sensor still produces one identity-less measurement for all
+// GPUs.
 //
 // XidCounts maps each Xid code to the number of times it occurred and
 // is the headline signal for catalog rules (e.g. xid_counts[79] > 0).
@@ -101,10 +107,16 @@ type NVLink5Detail struct {
 type XidMeasurement struct {
 	XidCounts      map[int64]int64 `json:"xid_counts"`
 	FatalXidCounts map[int64]int64 `json:"fatal_xid_counts"`
-	Since          string          `json:"since"`
-	Events         []XidEvent      `json:"events"`
-	errors         []health.ErroredMeasurement
-	EventCount     int64 `json:"event_count"`
+	// GPUID is the GPU's UUID as NVML reports it, empty when the PCI
+	// address did not resolve to one.
+	GPUID string `json:"gpu_id"`
+	// PCIAddress is the GPU's address as its Xid lines print it, such as
+	// 0000:89:00. It is empty when the measurement names no GPU.
+	PCIAddress string     `json:"pci_address"`
+	Since      string     `json:"since"`
+	Events     []XidEvent `json:"events"`
+	errors     []health.ErroredMeasurement
+	EventCount int64 `json:"event_count"`
 }
 
 // ErroredXid returns an XidMeasurement marked errored for a whole-query
@@ -133,3 +145,21 @@ func (XidMeasurement) Category() health.Category { return health.Xid }
 
 // Errors implements [health.Measurement].
 func (m XidMeasurement) Errors() []health.ErroredMeasurement { return m.errors }
+
+// EntityID implements [health.EntityIdentifier], so a failing check names the
+// GPU: its UUID, or its PCI address when no UUID resolved.
+func (m XidMeasurement) EntityID() string {
+	if m.GPUID != "" {
+		return m.GPUID
+	}
+	return m.PCIAddress
+}
+
+// EntityKey implements [health.EntityKeyed]. A measurement that names no GPU,
+// from a clean or failed scan, describes the node.
+func (m XidMeasurement) EntityKey() health.EntityKey {
+	if id := m.EntityID(); id != "" {
+		return health.VerifiedEntity(id)
+	}
+	return health.NodeEntity()
+}

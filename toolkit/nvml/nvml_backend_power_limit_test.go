@@ -20,7 +20,8 @@ import (
 // power limits (plus a successful pstate read for the shared gpuProbe).
 func powerLimitDevice(current, enforced uint32) *mock.Device {
 	return &mock.Device{
-		GetUUIDFunc: func() (string, gonvml.Return) { return "GPU-0", gonvml.SUCCESS },
+		GetUUIDFunc:    func() (string, gonvml.Return) { return "GPU-0", gonvml.SUCCESS },
+		GetPciInfoFunc: pciAt(0),
 		GetPerformanceStateFunc: func() (gonvml.Pstates, gonvml.Return) {
 			return gonvml.PSTATE_0, gonvml.SUCCESS
 		},
