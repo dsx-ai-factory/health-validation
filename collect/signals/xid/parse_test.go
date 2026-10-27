@@ -143,9 +143,22 @@ func TestParse(t *testing.T) {
 			}},
 		},
 		{
-			name:  "13 SM exception",
-			input: "NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Global Exception on (GPC 11, TPC 0, SM 0): Multiple Warp Errors",
-			want:  Event{PCIAddress: "0000:85:00", Code: 13, GPC: new(int64(11)), TPC: new(int64(0)), SM: new(int64(0))},
+			name:  "13 multiple warp errors",
+			input: "NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Global Exception on (GPC 11, TPC 2, SM 1): Multiple Warp Errors",
+			want:  Event{PCIAddress: "0000:85:00", Code: 13, GPC: new(int64(11)), TPC: new(int64(2)), SM: new(int64(1))},
+		},
+		{
+			name:  "13 out of range register",
+			input: "NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Warp Exception on (GPC 2, TPC 0, SM 0): Out Of Range Register",
+			want:  Event{PCIAddress: "0000:85:00", Code: 13, GPC: new(int64(2)), TPC: new(int64(0)), SM: new(int64(0))},
+		},
+		{
+			name:  "13 out of range address with attribution",
+			input: "NVRM: Xid (PCI:0000:89:00): 13, pid=1582259, name=nvc:[driver], Graphics SM Warp Exception on (GPC 1, TPC 3, SM 0): Out Of Range Address",
+			want: Event{
+				PCIAddress: "0000:89:00", Code: 13, PID: 1582259, HasPID: true, ProcessName: "nvc:[driver]",
+				GPC: new(int64(1)), TPC: new(int64(3)), SM: new(int64(0)),
+			},
 		},
 		{
 			name:  "13 SM exception with uneven spacing",
@@ -183,30 +196,6 @@ func TestParse(t *testing.T) {
 			got, err := Parse(test.input)
 			require.NoError(t, err)
 			require.Equal(t, test.want, got)
-		})
-	}
-}
-
-// TestParseProductionXid13 covers one production line for each Xid 13
-// message seen so far, so each exception kind keeps its unit (or has none).
-func TestParseProductionXid13(t *testing.T) {
-	tests := []struct {
-		input        string
-		pciAddress   string
-		gpc, tpc, sm *int64
-	}{
-		{`NVRM: Xid (PCI:0001:00:00): 13, Graphics SM Warp Exception on (GPC 0, TPC 1, SM 1): Out Of Range Address`, "0001:00:00", new(int64(0)), new(int64(1)), new(int64(1))},
-		{`NVRM: Xid (PCI:0000:83:00): 13, Graphics Exception: ESR 0x54e730=0xc12000e 0x54e734=0x24 0x54e728=0xf81eb60 0x54e72c=0x1174`, "0000:83:00", nil, nil, nil},
-		{`NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Global Exception on (GPC 11, TPC 2, SM 1): Multiple Warp Errors`, "0000:85:00", new(int64(11)), new(int64(2)), new(int64(1))},
-		{`NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Warp Exception on (GPC 10, TPC 0, SM 0): Illegal Instruction Encoding`, "0000:85:00", new(int64(10)), new(int64(0)), new(int64(0))},
-		{`NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Warp Exception on (GPC 2, TPC 0, SM 0): Out Of Range Register`, "0000:85:00", new(int64(2)), new(int64(0)), new(int64(0))},
-	}
-	for _, test := range tests {
-		t.Run(test.input, func(t *testing.T) {
-			got, err := Parse(test.input)
-			require.NoError(t, err)
-			want := Event{PCIAddress: test.pciAddress, Code: 13, GPC: test.gpc, TPC: test.tpc, SM: test.sm}
-			require.Equal(t, want, got)
 		})
 	}
 }
