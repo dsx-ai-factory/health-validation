@@ -75,6 +75,18 @@ func (k EntityKey) Provisional() bool {
 // failed source rather than any one entity.
 func (k EntityKey) SourceLevel() bool { return k.kind == entitySource }
 
+// Source returns the source of a [ProvisionalEntity] or [SourceEntity] key,
+// and "" for any other.
+func (k EntityKey) Source() string { return k.source }
+
+// Slot returns the slot of a [ProvisionalEntity] key, and "" for any other.
+func (k EntityKey) Slot() string {
+	if k.kind != entityProvisional {
+		return ""
+	}
+	return k.id
+}
+
 // Validate reports a key built from an empty value, which cannot be told
 // apart from another producer's empty value.
 func (k EntityKey) Validate() error {

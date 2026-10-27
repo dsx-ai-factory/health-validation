@@ -688,8 +688,9 @@ func collectionSensors(sensors []toolkit.Sensor, categories map[health.Category]
 }
 
 // collectionOutput builds the ObservationBatch the collect command emits,
-// attributing each sensor's observations to "toolkit.<sensor>". Host-wide
-// measurements target nodeID.
+// attributing each sensor's observations to "toolkit.<sensor>", or to the
+// source of a provisional or source-level entity key. Host-wide measurements
+// target nodeID.
 func collectionOutput(collectionID, nodeID string, groups []toolkit.SensorMeasurements) (*observation.ObservationBatch, error) {
 	batch := &observation.ObservationBatch{CollectionId: collectionID}
 	for _, group := range groups {

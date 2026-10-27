@@ -6,6 +6,7 @@ package observations
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,57 +158,66 @@ func TestToMeasurementsHostWideIgnoresNodeID(t *testing.T) {
 	}
 }
 
-// The CLI exports toolkit measurements and ingests them back. Each failed
-// NVML slot keeps its own provisional key and gpu_id through that round trip,
-// rather than collapsing into one source-level failure, and a whole-source
-// failure stays targetless rather than becoming a GPU slot.
-func TestRoundTripKeepsProvisionalSlotsDistinct(t *testing.T) {
-	slot := func(index string) health.Measurement {
-		m := gpu.ErroredGPU("nvml-index-"+index, errors.New("DeviceGetUUID failed"), gpu.MeasurementSignals()...)
-		m.SetEntityKey(health.ProvisionalEntity("nvml", index))
+// The collect command exports toolkit measurements and evaluation ingests
+// them back. Each key survives that round trip as the producer set it: two
+// sources' failed slot 0 stay distinct and keep their own source, and a
+// whole-source failure stays source-level and targetless.
+func TestRoundTripPreservesProvisionalAndSourceKeys(t *testing.T) {
+	keyed := func(gpuID string, key health.EntityKey, err error) health.Measurement {
+		m := gpu.ErroredGPU(gpuID, err, gpu.MeasurementSignals()...)
+		m.SetEntityKey(key)
 		return m
 	}
-	exported, err := FromMeasurements("gpu", testNode, time.Unix(1, 0),
-		slot("0"), slot("1"), gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0})
+	want := []health.EntityKey{
+		health.ProvisionalEntity("nvml", "0"),
+		health.ProvisionalEntity("smi", "0"),
+		health.SourceEntity("smi"),
+	}
+	errs := []error{errors.New("nvml DeviceGetUUID failed"), errors.New("smi uuid unreadable"), errors.New("smi timed out")}
+	original := []health.Measurement{
+		keyed("nvml-index-0", want[0], errs[0]),
+		keyed("smi-index-0", want[1], errs[1]),
+		keyed("gpu", want[2], errs[2]),
+	}
+
+	exported, err := FromMeasurements("gpu", testNode, time.Unix(1, 0), original...)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, o := range exported {
+		if o.GetSource() == "smi" && o.GetTarget() == nil {
+			continue
+		}
+		if o.GetTarget().GetGpu().GetSourceLocalId() != "0" {
+			t.Fatalf("%s from %s target = %v, want slot 0 or none", o.GetSignalId(), o.GetSource(), o.GetTarget())
+		}
 	}
 	ms := ToMeasurements(exported)
 
-	want := []health.EntityKey{
-		health.VerifiedEntity("GPU-0"),
-		health.ProvisionalEntity("toolkit.gpu", "nvml-index-0"),
-		health.ProvisionalEntity("toolkit.gpu", "nvml-index-1"),
-	}
-	if got := keysOf(ms); !slices.Equal(got, want) {
+	got := keysOf(ms)
+	if !slices.Equal(slices.SortedFunc(slices.Values(got), compareKeys), slices.SortedFunc(slices.Values(want), compareKeys)) {
 		t.Fatalf("keys = %v, want %v", got, want)
 	}
-
-	whole := gpu.ErroredGPU("gpu", errors.New("sensor timed out"), gpu.MeasurementSignals()...)
-	whole.SetEntityKey(health.SourceEntity("toolkit.gpu"))
-	exportedWhole, err := FromMeasurements("gpu", testNode, time.Unix(1, 0), whole)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, o := range exportedWhole {
-		if o.GetTarget() != nil {
-			t.Fatalf("%s target = %v, want none for a source-level failure", o.GetSignalId(), o.GetTarget())
+	for _, m := range ms {
+		wantErr := errs[slices.Index(want, health.KeyOf(m))]
+		if !slices.ContainsFunc(m.Errors(), func(e health.ErroredMeasurement) bool { return e.Err().Error() == wantErr.Error() }) {
+			t.Errorf("%v errors = %v, want %q kept", health.KeyOf(m), m.Errors(), wantErr)
 		}
 	}
-	if got, want := keysOf(ToMeasurements(exportedWhole)), []health.EntityKey{health.SourceEntity("toolkit.gpu")}; !slices.Equal(got, want) {
-		t.Fatalf("source-level keys = %v, want %v", got, want)
-	}
+
 	nv, err := entityCatalog(t).EvaluateAll(ms...)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	var failed []string
+	critical := 0
 	for _, v := range nv.CheckResults {
 		if v.Severity == health.Critical {
-			failed = append(failed, v.AffectedEntities...)
+			critical++
 		}
 	}
-	if !slices.Equal(failed, []string{"nvml-index-0", "nvml-index-1"}) {
-		t.Fatalf("failed entities = %v, want each slot by its original gpu_id", failed)
+	if critical != len(want) {
+		t.Fatalf("CRITICAL results = %d, want %d: %+v", critical, len(want), nv.CheckResults)
 	}
 }
+
+func compareKeys(a, b health.EntityKey) int { return strings.Compare(a.String(), b.String()) }

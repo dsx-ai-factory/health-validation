@@ -91,4 +91,8 @@ func TestEntityKeyIdentity(t *testing.T) {
 	if !health.SourceEntity("nvml").SourceLevel() || health.ProvisionalEntity("nvml", "0").SourceLevel() {
 		t.Error("SourceLevel misclassifies a key")
 	}
+	slot, source := health.ProvisionalEntity("nvml", "0"), health.SourceEntity("smi")
+	if slot.Source() != "nvml" || slot.Slot() != "0" || source.Source() != "smi" || source.Slot() != "" || health.VerifiedEntity("x").Slot() != "" {
+		t.Error("Source or Slot misreports a key's parts")
+	}
 }

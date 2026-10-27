@@ -31,8 +31,7 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // observation's typed target. A GPU is a [health.VerifiedEntity] by UUID. One
 // reported only by a source-local slot is a [health.ProvisionalEntity] of its
 // source and slot, labeled slot:"<source>"/"<slot>" so no two slots share a
-// label, or by the slot alone when [FromMeasurements] exported it, since that
-// slot is the original gpu_id; a GPU-domain observation with no target is a
+// label; a GPU-domain observation with no target is a
 // [health.SourceEntity] of its source. A GPU reference missing its slot, or a
 // slot or source-level failure missing its source, yields an invalid key that
 // evaluation rejects. Host-wide types are one [health.NodeEntity] measurement
@@ -243,7 +242,7 @@ func (b *builder) add(current *observation.Observation) {
 	case targetErr != nil:
 		e.addError(targetErr, append([]string{gpuIDField}, f.catalog...)...)
 	case current.GetCollectionError() != nil:
-		e.addError(collectionFailure(current.GetSource(), current.GetCollectionError()), f.catalog...)
+		e.addError(collectionFailure(current.GetCollectionError()), f.catalog...)
 	case current.GetNoValue() != nil:
 		if f.neutral && current.GetNoValue().GetReason() == observation.NoValueReasonNotSupported {
 			e.unsupported = append(e.unsupported, f.catalog...)
@@ -295,9 +294,6 @@ func targetID(s *schema, current *observation.Observation) (health.EntityKey, st
 		return key, "", fmt.Errorf("signal %q has no GPU identifier", current.GetSignalId())
 	case source == "":
 		return key, "", fmt.Errorf("signal %q has source-local GPU %q but no source", current.GetSignalId(), slot)
-	case strings.HasPrefix(source, toolkitSourcePrefix):
-		// FromMeasurements exports a provisional GPU's own gpu_id as its slot.
-		return key, slot, nil
 	}
 	return key, fmt.Sprintf("slot:%q/%q", source, slot), nil
 }
@@ -466,9 +462,9 @@ func (e restoredError) Is(target error) bool {
 // collectionFailure turns a CollectionError back into a measurement error.
 // A failure FromMeasurements exported carries the original message as its
 // detail, so it is restored verbatim; any other names its source.
-func collectionFailure(source string, failure *observation.CollectionError) error {
+func collectionFailure(failure *observation.CollectionError) error {
 	timeout := failure.GetCategory() == observation.CollectionErrorCategoryTimeout
-	if strings.HasPrefix(source, toolkitSourcePrefix) && failure.GetOperation() == exportOperation && failure.GetDetail() != "" {
+	if strings.HasPrefix(failure.GetSource(), toolkitSourcePrefix) && failure.GetOperation() == exportOperation && failure.GetDetail() != "" {
 		return restoredError{msg: failure.GetDetail(), timeout: timeout}
 	}
 	msg := fmt.Sprintf("%s operation %q failed with %s", failure.GetSource(), failure.GetOperation(), failure.GetCategory())
