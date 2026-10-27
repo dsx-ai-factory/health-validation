@@ -68,7 +68,7 @@ func TestAdvertisedPropertiesAndObservationContract(t *testing.T) {
 				t.Fatal(obs)
 			}
 		case "pci.link.width", "pci.link.width.max":
-			if obs.GetValue() == nil || obs.GetValue().GetIntValue() != 16 {
+			if obs.GetValue() == nil || obs.GetValue().GetUintValue() != 16 {
 				t.Fatal(obs)
 			}
 		case "pci.link.generation":
@@ -105,9 +105,6 @@ func TestCapturedDeviceLinks(t *testing.T) {
 	speed := func(n float64) *observation.Value {
 		return &observation.Value{Kind: &observation.Value_DoubleValue{DoubleValue: n}}
 	}
-	width := func(n int64) *observation.Value {
-		return &observation.Value{Kind: &observation.Value_IntValue{IntValue: n}}
-	}
 	integer := func(n uint64) *observation.Value {
 		return &observation.Value{Kind: &observation.Value_UintValue{UintValue: n}}
 	}
@@ -133,8 +130,8 @@ func TestCapturedDeviceLinks(t *testing.T) {
 				"pci.class.code":          integer(0x030200),
 				"pci.link.speed":          speed(64),
 				"pci.link.speed.max":      speed(64),
-				"pci.link.width":          width(16),
-				"pci.link.width.max":      width(16),
+				"pci.link.width":          integer(16),
+				"pci.link.width.max":      integer(16),
 				"pci.link.generation":     integer(6),
 				"pci.link.generation.max": integer(6),
 			},
@@ -153,8 +150,8 @@ func TestCapturedDeviceLinks(t *testing.T) {
 				"pci.class.code":          integer(0x020000),
 				"pci.link.speed":          speed(32),
 				"pci.link.speed.max":      speed(32),
-				"pci.link.width":          width(16),
-				"pci.link.width.max":      width(16),
+				"pci.link.width":          integer(16),
+				"pci.link.width.max":      integer(16),
 				"pci.link.generation":     integer(5),
 				"pci.link.generation.max": integer(5),
 			},
@@ -173,8 +170,8 @@ func TestCapturedDeviceLinks(t *testing.T) {
 				"pci.class.code":          integer(0x060400),
 				"pci.link.speed":          speed(8),
 				"pci.link.speed.max":      speed(32),
-				"pci.link.width":          width(1),
-				"pci.link.width.max":      width(8),
+				"pci.link.width":          integer(1),
+				"pci.link.width.max":      integer(8),
 				"pci.link.generation":     integer(3),
 				"pci.link.generation.max": integer(5),
 			},
@@ -193,8 +190,8 @@ func TestCapturedDeviceLinks(t *testing.T) {
 				"pci.class.code":          integer(0x060400),
 				"pci.link.speed":          speed(64),
 				"pci.link.speed.max":      speed(64),
-				"pci.link.width":          width(16),
-				"pci.link.width.max":      width(16),
+				"pci.link.width":          integer(16),
+				"pci.link.width.max":      integer(16),
 				"pci.link.generation":     integer(6),
 				"pci.link.generation.max": integer(6),
 			},

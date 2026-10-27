@@ -11,8 +11,8 @@
 //
 //   - pci.link.speed: current_link_speed as a double in GT/s.
 //   - pci.link.speed.max: max_link_speed as a double in GT/s.
-//   - pci.link.width: current_link_width as an int64 lane count.
-//   - pci.link.width.max: max_link_width as an int64 lane count.
+//   - pci.link.width: current_link_width as a uint64 lane count.
+//   - pci.link.width.max: max_link_width as a uint64 lane count.
 //   - pci.link.generation: generation derived from current speed, as a uint64.
 //   - pci.link.generation.max: generation derived from maximum speed, as a uint64.
 //

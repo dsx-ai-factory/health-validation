@@ -65,7 +65,7 @@ func (s *Source) property(base string, r *Reading, cache map[string]propertyResu
 				err = fmt.Errorf("%w: link width is %d", errNotSupported, n)
 			}
 			if err == nil {
-				r.Value = &observation.Value{Kind: &observation.Value_IntValue{IntValue: n}}
+				r.Value = number(uint64(n))
 			}
 		} else {
 			r.Value, err = linkSpeed(value, generation)

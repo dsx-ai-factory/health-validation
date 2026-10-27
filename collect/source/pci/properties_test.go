@@ -31,10 +31,6 @@ func propertyFixture(field, value string) fstest.MapFS {
 	return fstest.MapFS{Root + "/0000:01:00.0": {Mode: fs.ModeDir | 0o755}, Root + "/0000:01:00.0/" + field: {Data: []byte(value)}}
 }
 
-func signed(n int64) *observation.Value {
-	return &observation.Value{Kind: &observation.Value_IntValue{IntValue: n}}
-}
-
 func double(n float64) *observation.Value {
 	return &observation.Value{Kind: &observation.Value_DoubleValue{DoubleValue: n}}
 }
@@ -52,8 +48,8 @@ func TestLinkValues(t *testing.T) {
 		{field: "max_link_speed", raw: "64.0 GT/s PCIe\n", signal: pcisignals.MaxLinkSpeed, want: double(64)},
 		{field: "current_link_speed", raw: "16.0 GT/s PCIe\n", signal: pcisignals.LinkGeneration, want: number(4)},
 		{field: "max_link_speed", raw: "64.0 GT/s PCIe\n", signal: pcisignals.MaxLinkGeneration, want: number(6)},
-		{field: "current_link_width", raw: "16\n", signal: pcisignals.LinkWidth, want: signed(16)},
-		{field: "max_link_width", raw: "32\n", signal: pcisignals.MaxLinkWidth, want: signed(32)},
+		{field: "current_link_width", raw: "16\n", signal: pcisignals.LinkWidth, want: number(16)},
+		{field: "max_link_width", raw: "32\n", signal: pcisignals.MaxLinkWidth, want: number(32)},
 	} {
 		t.Run(test.signal.ID()+"/"+strings.TrimSpace(test.raw), func(t *testing.T) {
 			r := readProperty(t, propertyFixture(test.field, test.raw), test.signal)
