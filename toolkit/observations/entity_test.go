@@ -159,7 +159,8 @@ func TestToMeasurementsHostWideIgnoresNodeID(t *testing.T) {
 
 // The CLI exports toolkit measurements and ingests them back. Each failed
 // NVML slot keeps its own provisional key and gpu_id through that round trip,
-// rather than collapsing into one source-level failure.
+// rather than collapsing into one source-level failure, and a whole-source
+// failure stays targetless rather than becoming a GPU slot.
 func TestRoundTripKeepsProvisionalSlotsDistinct(t *testing.T) {
 	slot := func(index string) health.Measurement {
 		m := gpu.ErroredGPU("nvml-index-"+index, errors.New("DeviceGetUUID failed"), gpu.MeasurementSignals()...)
@@ -180,6 +181,21 @@ func TestRoundTripKeepsProvisionalSlotsDistinct(t *testing.T) {
 	}
 	if got := keysOf(ms); !slices.Equal(got, want) {
 		t.Fatalf("keys = %v, want %v", got, want)
+	}
+
+	whole := gpu.ErroredGPU("gpu", errors.New("sensor timed out"), gpu.MeasurementSignals()...)
+	whole.SetEntityKey(health.SourceEntity("toolkit.gpu"))
+	exportedWhole, err := FromMeasurements("gpu", testNode, time.Unix(1, 0), whole)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range exportedWhole {
+		if o.GetTarget() != nil {
+			t.Fatalf("%s target = %v, want none for a source-level failure", o.GetSignalId(), o.GetTarget())
+		}
+	}
+	if got, want := keysOf(ToMeasurements(exportedWhole)), []health.EntityKey{health.SourceEntity("toolkit.gpu")}; !slices.Equal(got, want) {
+		t.Fatalf("source-level keys = %v, want %v", got, want)
 	}
 	nv, err := entityCatalog(t).EvaluateAll(ms...)
 	if err != nil {

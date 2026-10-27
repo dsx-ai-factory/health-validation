@@ -124,18 +124,19 @@ func export(source, nodeID string, at *timestamppb.Timestamp, m health.Measureme
 // measurementTarget returns the GPU a measurement describes, or the node for
 // a host-wide measurement. A provisional key's gpu_id is a source-local name,
 // not a UUID, so it targets that slot and stays one GPU per slot through
-// [ToMeasurements]. Any other failed GPU identity lookup leaves gpu_id as a
-// placeholder, so that measurement carries no target.
+// [ToMeasurements]. A source-level failure names no GPU, and any other failed
+// GPU identity lookup leaves gpu_id as a placeholder, so those carry no
+// target.
 func measurementTarget(m health.Measurement, v reflect.Value, nodeID string, failures map[string][]error) *observation.ObservationTarget {
 	for i := range v.NumField() {
 		if name, ok := signalName(v.Type().Field(i)); !ok || name != gpuIDField || v.Field(i).Kind() != reflect.String {
 			continue
 		}
-		gpuID := v.Field(i).String()
+		gpuID, key := v.Field(i).String(), health.KeyOf(m)
 		switch {
-		case gpuID == "":
+		case gpuID == "" || key.SourceLevel():
 			return nil
-		case health.KeyOf(m).Provisional():
+		case key.Provisional():
 			return observation.GPUSourceLocalTarget(gpuID)
 		case len(failures[gpuIDField]) == 0:
 			return observation.GPUTarget(gpuID)

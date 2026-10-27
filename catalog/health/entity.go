@@ -71,6 +71,10 @@ func (k EntityKey) Provisional() bool {
 	return k.kind == entityProvisional || k.kind == entitySource
 }
 
+// SourceLevel reports whether k is a [SourceEntity] key, which stands for a
+// failed source rather than any one entity.
+func (k EntityKey) SourceLevel() bool { return k.kind == entitySource }
+
 // Validate reports a key built from an empty value, which cannot be told
 // apart from another producer's empty value.
 func (k EntityKey) Validate() error {

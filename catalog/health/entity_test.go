@@ -88,4 +88,7 @@ func TestEntityKeyIdentity(t *testing.T) {
 	if !health.ProvisionalEntity("nvml", "0").Provisional() || !health.SourceEntity("nvml").Provisional() || health.VerifiedEntity("x").Provisional() {
 		t.Error("Provisional misclassifies a key")
 	}
+	if !health.SourceEntity("nvml").SourceLevel() || health.ProvisionalEntity("nvml", "0").SourceLevel() {
+		t.Error("SourceLevel misclassifies a key")
+	}
 }
