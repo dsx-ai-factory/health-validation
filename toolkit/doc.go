@@ -18,7 +18,8 @@
 //   - the toolkit/nvml backend, which collects GPU, node, and NVLink state;
 //   - [SysfsCPU], which reads the Linux possible and online CPU lists and the
 //     online NUMA node list, and emits one host-wide measurement;
-//   - [Journalctl], which reads Xid events from the system journal; and
+//   - [Journalctl] (deprecated; the CLI collects Xid through collect/sensors/xid),
+//     which reads Xid events from the system journal; and
 //   - [MockGPU], [MockCPU], and the other mock constructors used in tests.
 //
 // SysfsCPU reports the kernel's CPU availability and NUMA topology view, not

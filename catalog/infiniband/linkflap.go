@@ -37,12 +37,17 @@ func RDMALinkFlapFatal() health.CheckDefinition {
 		Thresholds: map[string]health.ThresholdSpec{
 			"min_outage_seconds": {
 				Value:       int64(30),
+				ValueType:   health.ThresholdInt64,
+				ValueMin:    int64(0),
 				Category:    health.DefaultThreshold,
 				Description: "Minimum down→up outage length, in seconds, for an RDMA link transition to count as a fatal flap. Override per fleet.",
 				Unit:        "seconds",
 			},
 			"fatal_flap_threshold": {
-				Value:       int64(1),
+				Value:     int64(1),
+				ValueType: health.ThresholdInt64,
+				// At 0 the rule is unconditionally true: a count is always >= 0.
+				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
 				Description: "Number of outages at or above min_outage_seconds that fails the check. Override per fleet.",
 				Unit:        "count",

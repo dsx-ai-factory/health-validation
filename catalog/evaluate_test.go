@@ -167,9 +167,9 @@ func TestEvaluateAll_RoutesByRequiredSignals_NoCrossMeasurementSkips(t *testing.
 // Registering a check declares that its sensor is expected, so a category
 // that supplies no measurement is a hole in the assessment rather than a
 // domain that was out of scope. Every registered check must yield a
-// verdict: the collected domain's checks evaluate, and every other
-// domain's checks are visible as SENSOR_MISSING skips instead of
-// vanishing from the output.
+// verdict: applicable checks in the collected domain evaluate,
+// architecture-inapplicable checks skip, and every other domain's checks
+// are visible as SENSOR_MISSING skips instead of vanishing from the output.
 func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 	// Xid 79 is CRITICAL; the measurement carries all xid signals. The full
 	// catalog also holds gpu/node/nvlink/cpu checks in other categories.
@@ -200,7 +200,9 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 	for _, v := range nv.SkippedChecks {
 		seen[v.CheckID] = true
 		if v.Category == health.Xid {
-			t.Errorf("CheckID %q: collected category skipped with %v", v.CheckID, v.SkipReason)
+			if v.SkipReason != health.ArchitectureUnsupported {
+				t.Errorf("CheckID %q: collected category skipped with %v, want SIGNAL_UNAVAILABLE_ARCHITECTURE", v.CheckID, v.SkipReason)
+			}
 			continue
 		}
 		// Only Xid supplies a measurement here, so every other check skips
@@ -1044,6 +1046,7 @@ func requiredThresholdCheck() health.CheckDefinition {
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_first": {
 				Value:            int64(0),
+				ValueType:        health.ThresholdInt64,
 				Category:         health.DefaultThreshold,
 				RequiredOverride: true,
 			},

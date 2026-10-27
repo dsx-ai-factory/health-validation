@@ -15,16 +15,33 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
-func xidCatalog(t *testing.T) *catalog.Catalog {
+func xidCatalog(t *testing.T, opts ...catalog.Option) *catalog.Catalog {
+	return xidCatalogFor(t, "GB200", opts...)
+}
+
+func xidCatalogFor(t *testing.T, architecture string, opts ...catalog.Option) *catalog.Catalog {
 	t.Helper()
-	cat := catalog.NewEmpty(
-		catalog.WithArchitecture("GB200"),
+	defaults := []catalog.Option{
+		catalog.WithArchitecture(architecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
-	)
+	}
+	cat := catalog.NewEmpty(append(defaults, opts...)...)
 	for _, cd := range xid.Checks() {
 		cat.MustRegister(cd)
 	}
 	return cat
+}
+
+func thresholdOverride(checkID, thresholdName string, value int64) catalog.Option {
+	return catalog.WithOverrides(catalog.NewOverrideSet(catalog.Override{
+		CheckID:       checkID,
+		ThresholdName: thresholdName,
+		Value:         value,
+	}))
+}
+
+func occurrencesOverride(checkID string, occurrences int64) catalog.Option {
+	return thresholdOverride(checkID, "occurrences", occurrences)
 }
 
 // measurementFor builds an XidMeasurement directly from raw Xid codes —
@@ -45,12 +62,240 @@ func measurementFor(codes ...int64) xid.XidMeasurement {
 }
 
 func evalXid(t *testing.T, codes ...int64) health.NodeVerdict {
+	return evalXidFor(t, "GB200", codes...)
+}
+
+func evalXidFor(t *testing.T, architecture string, codes ...int64) health.NodeVerdict {
 	t.Helper()
-	nv, err := xidCatalog(t).EvaluateAll(measurementFor(codes...))
+	nv, err := xidCatalogFor(t, architecture).EvaluateAll(measurementFor(codes...))
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
 	return nv
+}
+
+func TestXidErrors_ArchitectureCoverage(t *testing.T) {
+	tests := []struct {
+		name          string
+		checkID       string
+		architectures []string
+	}{
+		{name: "all generations", checkID: "gpu_xid_46", architectures: []string{"GB200", "GB300", "H100", "H200", "A100"}},
+		{name: "Ampere and Hopper", checkID: "gpu_xid_54", architectures: []string{"H100", "H200", "A100"}},
+		{name: "Hopper only", checkID: "gpu_xid_136", architectures: []string{"H100", "H200"}},
+		{name: "Hopper and Blackwell", checkID: "gpu_xid_110", architectures: []string{"GB200", "GB300", "H100", "H200"}},
+		{name: "Blackwell only", checkID: "gpu_xid_142", architectures: []string{"GB200", "GB300"}},
+		{name: "NVLink5 remains Blackwell only", checkID: "gpu_xid_144", architectures: []string{"GB200", "GB300"}},
+		{name: "common warning", checkID: "gpu_xid_8", architectures: []string{"GB200", "GB300", "H100", "H200", "A100"}},
+		{name: "Ampere and Hopper warning", checkID: "gpu_xid_80", architectures: []string{"H100", "H200", "A100"}},
+		{name: "Hopper and Blackwell warning", checkID: "gpu_xid_96", architectures: []string{"GB200", "GB300", "H100", "H200"}},
+		{name: "Blackwell warning", checkID: "gpu_xid_126", architectures: []string{"GB200", "GB300"}},
+		{name: "informational all generations", checkID: "gpu_xid_154", architectures: []string{"GB200", "GB300", "H100", "H200", "A100"}},
+	}
+
+	definitions := make(map[string]health.CheckDefinition)
+	for _, def := range xid.Checks() {
+		definitions[def.ID] = def
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			def, ok := definitions[tt.checkID]
+			if !ok {
+				t.Fatalf("check %q not found", tt.checkID)
+			}
+			if !slices.Equal(def.Architectures, tt.architectures) {
+				t.Errorf("Architectures = %v, want %v", def.Architectures, tt.architectures)
+			}
+		})
+	}
+}
+
+// nvlink5Checks lists the Xid 144-150 checks, which split occurrences
+// into fatal_occurrences and nonfatal_occurrences.
+var nvlink5Checks = map[string]bool{
+	"gpu_xid_144": true,
+	"gpu_xid_145": true,
+	"gpu_xid_146": true,
+	"gpu_xid_147": true,
+	"gpu_xid_148": true,
+	"gpu_xid_149": true,
+	"gpu_xid_150": true,
+}
+
+func TestXidErrors_AllChecksHaveOccurrencesThreshold(t *testing.T) {
+	for _, def := range xid.Checks() {
+		if nvlink5Checks[def.ID] {
+			continue
+		}
+		spec, ok := def.Thresholds["occurrences"]
+		if !ok {
+			t.Errorf("%s: missing occurrences threshold", def.ID)
+			continue
+		}
+		if spec.Value != int64(1) {
+			t.Errorf("%s: occurrences default = %v, want 1", def.ID, spec.Value)
+		}
+		if spec.ValueType != health.ThresholdInt64 {
+			t.Errorf("%s: occurrences value type = %v, want ThresholdInt64", def.ID, spec.ValueType)
+		}
+		if spec.Category != health.DefaultThreshold {
+			t.Errorf("%s: occurrences category = %v, want DefaultThreshold", def.ID, spec.Category)
+		}
+		if spec.Unit != "count" {
+			t.Errorf("%s: occurrences unit = %q, want count", def.ID, spec.Unit)
+		}
+	}
+}
+
+func TestXidErrors_NVLink5ChecksHaveSeparateOccurrencesThresholds(t *testing.T) {
+	for _, def := range xid.Checks() {
+		if !nvlink5Checks[def.ID] {
+			continue
+		}
+		if len(def.Thresholds) != 2 {
+			t.Errorf("%s: thresholds = %v, want fatal_occurrences and nonfatal_occurrences", def.ID, def.Thresholds)
+		}
+		for _, name := range []string{"fatal_occurrences", "nonfatal_occurrences"} {
+			spec, ok := def.Thresholds[name]
+			if !ok {
+				t.Errorf("%s: missing %s threshold", def.ID, name)
+				continue
+			}
+			if spec.Value != int64(1) {
+				t.Errorf("%s: %s default = %v, want 1", def.ID, name, spec.Value)
+			}
+			if spec.ValueType != health.ThresholdInt64 {
+				t.Errorf("%s: %s value type = %v, want ThresholdInt64", def.ID, name, spec.ValueType)
+			}
+			if spec.Category != health.DefaultThreshold {
+				t.Errorf("%s: %s category = %v, want DefaultThreshold", def.ID, name, spec.Category)
+			}
+			if spec.Unit != "count" {
+				t.Errorf("%s: %s unit = %q, want count", def.ID, name, spec.Unit)
+			}
+		}
+	}
+}
+
+func TestXidErrors_OccurrencesOverride(t *testing.T) {
+	tests := []struct {
+		name         string
+		checkID      string
+		code         int64
+		wantSeverity health.Severity
+	}{
+		{name: "critical", checkID: "gpu_xid_79", code: 79, wantSeverity: health.Critical},
+		{name: "warning", checkID: "gpu_xid_8", code: 8, wantSeverity: health.Warning},
+		{name: "informational", checkID: "gpu_xid_154", code: 154, wantSeverity: health.Info},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cat := xidCatalog(t, occurrencesOverride(tt.checkID, 2))
+			for _, tc := range []struct {
+				name string
+				m    xid.XidMeasurement
+				want health.Severity
+			}{
+				{name: "below threshold", m: measurementFor(tt.code), want: health.Pass},
+				{name: "at threshold", m: measurementFor(tt.code, tt.code), want: tt.wantSeverity},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					v, err := cat.Evaluate(tt.checkID, tc.m)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if v.Severity != tc.want {
+						t.Errorf("Severity = %v, want %v", v.Severity, tc.want)
+					}
+					resolved := v.Thresholds["occurrences"]
+					if resolved.Value != int64(2) || resolved.OriginalValue != int64(1) || !resolved.Overridden {
+						t.Errorf("resolved occurrences = %+v, want overridden 2 from default 1", resolved)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestXidErrors_WarningArchitectureMatrix(t *testing.T) {
+	tests := []struct {
+		architectures []string
+		codes         []int64
+	}{
+		{
+			architectures: []string{"GB200", "GB300", "H100", "H200", "A100"},
+			codes:         []int64{8, 11, 13, 25, 31, 32, 39, 40, 41, 45, 60, 68, 69, 70, 71, 72, 75, 76, 77, 78, 82, 83, 84, 85, 86, 88, 89, 94},
+		},
+		{architectures: []string{"H100", "H200", "A100"}, codes: []int64{80}},
+		{architectures: []string{"GB200", "GB300", "H100", "H200"}, codes: []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105}},
+		{architectures: []string{"GB200", "GB300"}, codes: []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139}},
+	}
+
+	definitions := make(map[string]health.CheckDefinition)
+	for _, def := range xid.Checks() {
+		definitions[def.ID] = def
+	}
+	for _, tt := range tests {
+		for _, code := range tt.codes {
+			id := fmt.Sprintf("gpu_xid_%d", code)
+			def, ok := definitions[id]
+			if !ok {
+				t.Errorf("check %q not found", id)
+				continue
+			}
+			if !slices.Equal(def.Architectures, tt.architectures) {
+				t.Errorf("%s Architectures = %v, want %v", id, def.Architectures, tt.architectures)
+			}
+		}
+	}
+}
+
+func TestXidErrors_BlackwellWarningSkipsOnHopper(t *testing.T) {
+	nv := evalXidFor(t, "H100", 126)
+	for _, v := range nv.SkippedChecks {
+		if v.CheckID != "gpu_xid_126" {
+			continue
+		}
+		if v.SkipReason != health.ArchitectureUnsupported {
+			t.Errorf("SkipReason = %v, want %v", v.SkipReason, health.ArchitectureUnsupported)
+		}
+		return
+	}
+	t.Fatal("gpu_xid_126 architecture skip not found")
+}
+
+func TestXidErrors_NewArchitectureSpecificChecks(t *testing.T) {
+	tests := []struct {
+		name         string
+		architecture string
+		checkID      string
+		wantAction   health.RecommendedAction
+		code         int64
+		wantSeverity health.Severity
+	}{
+		{name: "Xid 54 on A100", architecture: "A100", checkID: "gpu_xid_54", code: 54, wantSeverity: health.Critical, wantAction: health.Drain(health.RemediationActionServiceRequired)},
+		{name: "Xid 80 on H200", architecture: "H200", checkID: "gpu_xid_80", code: 80, wantSeverity: health.Warning, wantAction: health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired)},
+		{name: "Xid 136 on H100", architecture: "H100", checkID: "gpu_xid_136", code: 136, wantSeverity: health.Critical, wantAction: resetAndServiceForTest()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, ok := checkResult(evalXidFor(t, tt.architecture, tt.code), tt.checkID)
+			if !ok {
+				t.Fatalf("%s verdict not found", tt.checkID)
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Errorf("Severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if !v.RecommendedAction.Equal(tt.wantAction) {
+				t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, tt.wantAction)
+			}
+		})
+	}
+}
+
+func resetAndServiceForTest() health.RecommendedAction {
+	return health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
 }
 
 func TestXidErrors_SeverityByBucket(t *testing.T) {
@@ -94,14 +339,29 @@ func TestXidErrors_WarningActionByBucket(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			v, ok := checkResult(evalXid(t, tc.code), "gpu_xid_warning")
+			v, ok := checkResult(evalXid(t, tc.code), fmt.Sprintf("gpu_xid_%d", tc.code))
 			if !ok {
-				t.Fatalf("gpu_xid_warning verdict not found")
+				t.Fatalf("gpu_xid_%d verdict not found", tc.code)
 			}
 			if !v.RecommendedAction.Equal(tc.want) {
 				t.Errorf("code %d: RecommendedAction = %v, want %v", tc.code, v.RecommendedAction, tc.want)
 			}
+			wantCode := fmt.Sprintf("Xid %d", tc.code)
+			if len(v.Messages) != 1 || !strings.Contains(v.Messages[0], wantCode) {
+				t.Errorf("code %d: Messages = %q, want one message containing %q", tc.code, v.Messages, wantCode)
+			}
 		})
+	}
+}
+
+func TestXidErrors_Xid45ExplainsRestartFMCondition(t *testing.T) {
+	v, ok := checkResult(evalXid(t, 45), "gpu_xid_45")
+	if !ok {
+		t.Fatalf("gpu_xid_45 verdict not found")
+	}
+	want := "GPU Xid 45 (preemptive removal) detected. If Xid 45 occurred alone, restart NVIDIA Fabric Manager. If it accompanied another Xid, follow that Xid's remediation instead; Xid 45 may result from application termination or a GPU reset and is often not a separate fault."
+	if len(v.Messages) != 1 || v.Messages[0] != want {
+		t.Errorf("Messages = %q, want [%q]", v.Messages, want)
 	}
 }
 
@@ -225,6 +485,112 @@ func TestXidErrors_NVLink5_FatalAndNonfatalReportsBoth(t *testing.T) {
 	}
 }
 
+func TestXidErrors_NVLink5_OccurrencesCountFatalAndNonfatalSeparately(t *testing.T) {
+	m := nvlink5MeasurementFor(149, true)
+	m.XidCounts[149] = 2
+	m.EventCount = 2
+	m.Events = append(m.Events, xid.XidEvent{
+		PCIAddress: "0000:01:00",
+		XidCode:    149,
+		NVLink5:    &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", Link: 9},
+	})
+
+	// WithOverrides replaces the whole set, so both thresholds go in one.
+	cat := xidCatalog(t, catalog.WithOverrides(catalog.NewOverrideSet(
+		catalog.Override{CheckID: "gpu_xid_149", ThresholdName: "fatal_occurrences", Value: int64(2)},
+		catalog.Override{CheckID: "gpu_xid_149", ThresholdName: "nonfatal_occurrences", Value: int64(2)},
+	)))
+	v, err := cat.Evaluate("gpu_xid_149", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Severity != health.Pass {
+		t.Errorf("one Fatal plus one Nonfatal severity = %v, want PASS", v.Severity)
+	}
+
+	m.XidCounts[149] = 3
+	m.FatalXidCounts[149] = 2
+	m.EventCount = 3
+	m.Events = append(m.Events, xid.XidEvent{
+		PCIAddress: "0000:01:00",
+		XidCode:    149,
+		NVLink5:    &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", Fatal: true, Link: 10},
+	})
+	v, err = cat.Evaluate("gpu_xid_149", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Severity != health.Critical {
+		t.Errorf("two Fatal plus one Nonfatal severity = %v, want CRITICAL", v.Severity)
+	}
+	want := []string{"GPU Xid 149 detected: NVLink NETIR error (Fatal)."}
+	if !slices.Equal(v.Messages, want) {
+		t.Errorf("Messages = %q, want %q", v.Messages, want)
+	}
+}
+
+func TestXidErrors_NVLink5_OccurrencesThresholdsCanBeOverriddenIndependently(t *testing.T) {
+	m := nvlink5MeasurementFor(149, true)
+	m.XidCounts[149] = 2
+	m.EventCount = 2
+	m.Events = append(m.Events, xid.XidEvent{
+		PCIAddress: "0000:01:00",
+		XidCode:    149,
+		NVLink5:    &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", Link: 9},
+	})
+
+	tests := []struct {
+		name         string
+		option       catalog.Option
+		wantMessage  string
+		wantSeverity health.Severity
+	}{
+		{
+			name:         "raising Nonfatal threshold leaves Fatal detection unchanged",
+			option:       thresholdOverride("gpu_xid_149", "nonfatal_occurrences", 2),
+			wantSeverity: health.Critical,
+			wantMessage:  "GPU Xid 149 detected: NVLink NETIR error (Fatal).",
+		},
+		{
+			name:         "raising Fatal threshold leaves Nonfatal detection unchanged",
+			option:       thresholdOverride("gpu_xid_149", "fatal_occurrences", 2),
+			wantSeverity: health.Warning,
+			wantMessage:  "GPU Xid 149 detected: NVLink NETIR error (Nonfatal).",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := xidCatalog(t, tt.option).Evaluate("gpu_xid_149", m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Errorf("Severity = %v, want %v", v.Severity, tt.wantSeverity)
+			}
+			if !slices.Equal(v.Messages, []string{tt.wantMessage}) {
+				t.Errorf("Messages = %q, want [%q]", v.Messages, tt.wantMessage)
+			}
+		})
+	}
+}
+
+func TestXidErrors_NVLink5_ZeroNonfatalThresholdDoesNotMatchFatalOccurrence(t *testing.T) {
+	v, err := xidCatalog(
+		t,
+		thresholdOverride("gpu_xid_149", "nonfatal_occurrences", 0),
+	).Evaluate("gpu_xid_149", nvlink5MeasurementFor(149, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Severity != health.Critical {
+		t.Errorf("Severity = %v, want CRITICAL", v.Severity)
+	}
+	want := []string{"GPU Xid 149 detected: NVLink NETIR error (Fatal)."}
+	if !slices.Equal(v.Messages, want) {
+		t.Errorf("Messages = %q, want %q", v.Messages, want)
+	}
+}
+
 // intrInfoForSubXidCode builds an IntrInfo register value whose
 // fault-subtype bits (IntrInfo[25:20]) encode subcode's digit, e.g.
 // "149.4" -> "0x00400000", so a test measurement carries the raw field
@@ -296,6 +662,39 @@ func TestXidErrors_NVLink5SubXidCode_Warning(t *testing.T) {
 	}
 	if !v.RecommendedAction.Equal(health.NoAction) {
 		t.Errorf("RecommendedAction = %v, want NoAction", v.RecommendedAction)
+	}
+}
+
+func TestXidErrors_NVLink5SubXidCode_OccurrencesOverride(t *testing.T) {
+	m := nvlink5SubXidCodeMeasurementFor("149.4", true)
+	cat := xidCatalog(t, occurrencesOverride("gpu_xid_149_4", 2))
+
+	nv, err := cat.EvaluateAll(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, ok := checkResult(nv, "gpu_xid_149_4")
+	if !ok {
+		t.Fatal("gpu_xid_149_4 verdict not found")
+	}
+	if v.Severity != health.Pass {
+		t.Errorf("one occurrence severity = %v, want PASS", v.Severity)
+	}
+
+	m.Events = append(m.Events, m.Events[0])
+	m.XidCounts[149] = 2
+	m.FatalXidCounts[149] = 2
+	m.EventCount = 2
+	nv, err = cat.EvaluateAll(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, ok = checkResult(nv, "gpu_xid_149_4")
+	if !ok {
+		t.Fatal("gpu_xid_149_4 verdict not found")
+	}
+	if v.Severity != health.Critical {
+		t.Errorf("two occurrences severity = %v, want CRITICAL", v.Severity)
 	}
 }
 

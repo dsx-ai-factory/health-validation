@@ -1,7 +1,7 @@
 # Collection API
 
 > [!NOTE]
-> The collection API is experimental (v0). It is part of the `agentkit` module,
+> The collection API is experimental (v0). It is part of the `agentkit` package,
 > which is outside the project's support lifecycle, and it may change.
 
 `health-validation run` returns a verdict. The collection API returns the raw

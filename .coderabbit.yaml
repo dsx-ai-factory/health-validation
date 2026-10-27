@@ -67,10 +67,9 @@ reviews:
         platforms.
     - path: "**/go.mod"
       instructions: >-
-        This repository has four Go modules (agentkit, catalog, collect,
-        toolkit); catalog and toolkit are independently versioned and published. Review dependency changes for module-boundary correctness,
-        minimal additions, replace directives, and whether mod tidy has been
-        applied to each affected module.
+        This repository is a single Go module released under one version tag.
+        Review dependency changes for minimal additions, replace directives,
+        and whether mod tidy has been applied.
     - path: "**/go.sum"
       instructions: >-
         Review checksum changes for unexpected dependency churn and consistency

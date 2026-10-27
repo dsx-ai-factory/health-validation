@@ -48,7 +48,8 @@ linked version.
 
 ## Module Layout
 
-The repo contains four Go modules, joined by a root `go.work`:
+The repo is a single Go module with one `go.mod` and one version. Its packages
+are grouped by directory:
 
 - **`catalog/`** — check catalog and CEL evaluation engine (no external deps)
 - **`toolkit/`** — NVML backend, sensors, and the `health-validation` CLI
@@ -56,13 +57,12 @@ The repo contains four Go modules, joined by a root `go.work`:
 - **`agentkit/`** — gRPC/HTTP server exposing `collect`
 
 The [support lifecycle](../SUPPORT.md#support-lifecycle) applies to the
-independently versioned `catalog` and `toolkit` modules. `collect` and `agentkit`
-remain experimental and outside that lifecycle. All four modules are resolved
-together by Gazelle, so a dependency pin in any of them can change the versions
-linked into the CLI. CI gates `mod tidy -diff` on all four.
+module as a whole. `collect` and `agentkit` remain experimental and outside that
+lifecycle. A dependency pin affects every package, so it can change the versions
+linked into the CLI. CI gates `mod tidy -diff`.
 
-Run `bazel run //tools/go -- mod tidy` inside each affected module directory
-after changing imports.
+Run `bazel run //tools/go -- mod tidy` from the repository root after changing
+imports.
 
 Regenerate collection protobufs with `bash collect/hack/genproto.sh`. The script
 pins both plugins and leaves message layouts as generated. The generated
@@ -74,13 +74,8 @@ check for the other pinned nogo analyzers.
 
 ## Versioning and Releases
 
-The `catalog` and `toolkit` modules follow Semantic Versioning 2.0.0
-independently. Each release tag prefixes the module's version:
-
-- `catalog/vX.Y.Z`
-- `toolkit/vX.Y.Z`
-
-The module versions do not need to match. For each module:
+The module follows Semantic Versioning 2.0.0. A release tag is the version,
+`vX.Y.Z`, and versions the whole repository.
 
 - MAJOR identifies an incompatible change to its public API.
 - MINOR identifies backward-compatible functionality.
@@ -91,22 +86,18 @@ public API change and a PATCH increment for a compatible fix. A MINOR release
 that deprecates public API must document a migration path. Keep the deprecated
 API until a later breaking release removes or changes it.
 
-Prerelease tags use the scoped forms `catalog/v1.2.3-rc.1` and
-`toolkit/v1.2.3-rc.1`. A prerelease has lower precedence than its associated
+Prerelease tags use the form `v1.2.3-rc.1`. A prerelease has lower precedence than its associated
 normal version and can change before the normal release. Semantic Versioning
-build metadata, such as `+build.7`, does not affect version precedence. The
-catalog and toolkit Go module release tags must not include build metadata. The
+build metadata, such as `+build.7`, does not affect version precedence. Release
+tags must not include build metadata. The
 Go command treats such a tag as non-canonical and can resolve its commit as a
 pseudo-version.
 
-The current module paths have no major-version suffix and support v0 and v1.
-Before a v2 or later release, change the applicable `go.mod` module path and all
-of its imports to the `/vN` suffix. The scoped tags remain, for example,
-`catalog/v2.0.0` and `toolkit/v2.0.0` after the `/v2` migration.
+The current module path has no major-version suffix and supports v0 and v1.
+Before a v2 or later release, change the `go.mod` module path and all of its
+imports to the `/vN` suffix.
 
-When a toolkit release needs a new catalog version, tag the catalog release
-first. Then update the toolkit `require` directive to that catalog version,
-test the combined modules, and tag the toolkit release. See
+Land the change on `main`, test it, and tag the release. See
 [RELEASE.md](../RELEASE.md) for the RC/QA process, release stamping and image
 publishing, and Maintenance backports. The
 [supported release lines](../SUPPORT.md#supported-release-lines) track fix
@@ -166,17 +157,15 @@ docker pull ghcr.io/dsx-ai-factory/health-validation:<tag>
 | Trigger | Image tags |
 |---|---|
 | Commit to `main` | `<pseudo-version>` and `latest` |
-| Git tag `toolkit/vX.Y.Z` or `toolkit/vX.Y.Z-rcN` | `X.Y.Z` or `X.Y.Z-rcN` |
-| Git tag `catalog/vX.Y.Z` or `catalog/vX.Y.Z-rcN` | No image; CI validates the catalog release |
+| Git tag `vX.Y.Z` or `vX.Y.Z-rc.N` | `X.Y.Z` or `X.Y.Z-rc.N` |
 
 The binary keeps the leading `v`, while the image tag omits it. For example,
-`toolkit/v1.2.3` stamps the binary as `v1.2.3` and publishes the image as
+`v1.2.3` stamps the binary as `v1.2.3` and publishes the image as
 `ghcr.io/dsx-ai-factory/health-validation:1.2.3`. Package visibility controls
 whether pulling requires `docker login ghcr.io`; private packages require a
 token with package read access.
 
-Images use a toolkit release version on toolkit tags and a pseudo-version on
-main. They embed the matching catalog release or a catalog pseudo-version when
-sources have changed. Existing images remain unchanged; new tags apply to the
+Images use the release version on release tags and a pseudo-version on main.
+The embedded catalog version is the same value. Existing images remain unchanged; new tags apply to the
 next image build. Before publishing, CI runs both architectures and verifies the
-embedded toolkit and catalog versions.
+embedded version and catalog version.

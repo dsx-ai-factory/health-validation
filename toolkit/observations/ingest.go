@@ -20,6 +20,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 )
 
 // errNoObservation marks catalog signals no observation in the batch fed.
@@ -42,6 +43,11 @@ var errNoObservation = errors.New("no observation was collected for these signal
 //   - A mapped collect signal ID sets the catalog fields the mapping
 //     table assigns it, as during migration to collect sensors.
 //
+// Canonical Xid signals instead build one Xid measurement from their
+// journal-entry events; a batch that also carries <domain>.<field> Xid
+// observations yields one errored Xid measurement, since the two cannot be
+// merged.
+//
 // Both shapes may appear in one batch and feed one measurement. Other
 // signals are ignored. Collection failures attach to the affected catalog
 // signals, so unrelated checks still evaluate. A catalog signal nothing fed,
@@ -50,10 +56,24 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // observations yields no measurement, so its checks are skipped as missing.
 func ToMeasurements(observations []*observation.Observation) []health.Measurement {
 	b := &builder{entities: make(map[entityKey]*entity)}
+	var xidObservations []*observation.Observation
 	for _, current := range observations {
+		if xidSignals[current.GetSignalId()] {
+			xidObservations = append(xidObservations, current)
+			continue
+		}
 		b.add(current)
 	}
-	return b.measurements()
+	out := b.measurements()
+	if len(xidObservations) == 0 {
+		return out
+	}
+	m := canonicalXid(xidObservations)
+	if slices.ContainsFunc(out, func(other health.Measurement) bool { return other.Category() == health.Xid }) {
+		out = slices.DeleteFunc(out, func(other health.Measurement) bool { return other.Category() == health.Xid })
+		m = xid.ErroredXid(xidsignals.WindowBoot, errors.New("xid observed in both canonical and field form"), xid.MeasurementSignals()...)
+	}
+	return append(out, m)
 }
 
 // measurementTypes are the measurement types ToMeasurements rebuilds. Each

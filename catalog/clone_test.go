@@ -23,7 +23,13 @@ func clonableCheck() health.CheckDefinition {
 		Name:            "Clone",
 		RequiredSignals: []string{"a", "b"},
 		Thresholds: map[string]health.ThresholdSpec{
-			"limit": {Value: 1, PerArchitecture: map[string]any{"H100": 2}, Category: health.DefaultThreshold},
+			"limit": {Value: 1, PerArchitecture: map[string]any{"H100": 2}, ValueType: health.ThresholdInt64, Category: health.DefaultThreshold},
+			"devices": {
+				Value:           []string{"dev0"},
+				PerArchitecture: map[string]any{"H100": []string{"dev1"}},
+				ValueType:       health.ThresholdStringList,
+				Category:        health.DefaultThreshold,
+			},
 		},
 		Rules: []health.Rule{{
 			Expression:        "true",
@@ -36,6 +42,9 @@ func mutateDefinition(cd *health.CheckDefinition) {
 	cd.RequiredSignals[0] = "mutated"
 	cd.Thresholds["limit"].PerArchitecture["H100"] = 99
 	cd.Thresholds["added"] = health.ThresholdSpec{}
+	// A string list is the one threshold value a spec copy does not detach.
+	cd.Thresholds["devices"].Value.([]string)[0] = "mutated"
+	cd.Thresholds["devices"].PerArchitecture["H100"].([]string)[0] = "mutated"
 	cd.Rules[0].RecommendedAction.RemediationActions[0] = health.RemediationActionServiceRequired
 }
 
@@ -44,11 +53,20 @@ func assertDefinitionPristine(t *testing.T, cd *health.CheckDefinition) {
 	if cd.RequiredSignals[0] != "a" {
 		t.Errorf("RequiredSignals[0] = %q, want %q", cd.RequiredSignals[0], "a")
 	}
-	if got := cd.Thresholds["limit"].PerArchitecture["H100"]; got != 2 {
-		t.Errorf("PerArchitecture[H100] = %v, want 2", got)
+	// Registration normalizes PerArchitecture to the declared ValueType, so
+	// the author's untyped 2 is stored as int64.
+	if got := cd.Thresholds["limit"].PerArchitecture["H100"]; got != int64(2) {
+		t.Errorf("PerArchitecture[H100] = %#v, want int64(2)", got)
 	}
 	if _, ok := cd.Thresholds["added"]; ok {
 		t.Error("Thresholds gained an entry from a caller mutation")
+	}
+	devices := cd.Thresholds["devices"]
+	if got := devices.Value.([]string); !slices.Equal(got, []string{"dev0"}) {
+		t.Errorf("devices Value = %v, want [dev0]", got)
+	}
+	if got := devices.PerArchitecture["H100"].([]string); !slices.Equal(got, []string{"dev1"}) {
+		t.Errorf("devices PerArchitecture[H100] = %v, want [dev1]", got)
 	}
 	if got := cd.Rules[0].RecommendedAction.RemediationActions[0]; got != health.RemediationActionRestartOS {
 		t.Errorf("rule remediation action = %v, want %v", got, health.RemediationActionRestartOS)
@@ -133,6 +151,21 @@ func TestErroredHelpersDefaultToEveryRegisteredSignal(t *testing.T) {
 		if len(tc.got) != 1 || !slices.Equal(tc.got[0].FailedSignals(), tc.want) {
 			t.Errorf("%s: FailedSignals = %v, want %v", name, tc.got, tc.want)
 		}
+	}
+}
+
+// An override can hold a string list too, and the set outlives the caller
+// that read it.
+func TestOverrideSet_ForCheckCopiesStringList(t *testing.T) {
+	os := NewOverrideSet(Override{
+		CheckID: "probe", ThresholdName: "devices", Value: []string{"dev0"},
+	})
+
+	got := os.ForCheck("probe")
+	got["devices"].([]string)[0] = "mutated"
+
+	if again := os.ForCheck("probe")["devices"].([]string); again[0] != "dev0" {
+		t.Errorf("stored override = %v, want [dev0]", again)
 	}
 }
 

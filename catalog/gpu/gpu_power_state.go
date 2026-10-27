@@ -40,7 +40,11 @@ func GPUPowerState() health.CheckDefinition {
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_gpu_pstate": {
-				Value:       int64(0),
+				Value:     int64(0),
+				ValueType: health.ThresholdInt64,
+				// NVML exposes P0 through P15.
+				ValueMin:    int64(0),
+				ValueMax:    int64(15),
 				Category:    health.DefaultThreshold,
 				Description: "Performance state every GPU must be in, as the numeric level N in P<N> (0 = P0, maximum performance). Override per fleet.",
 				Unit:        "pstate",

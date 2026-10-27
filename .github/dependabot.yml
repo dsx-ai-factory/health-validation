@@ -8,11 +8,7 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: gomod
-    directories:
-      - /catalog
-      - /toolkit
-      - /collect
-      - /agentkit
+    directory: /
     schedule:
       interval: cron
       cronjob: "0 9 1,15 * *"

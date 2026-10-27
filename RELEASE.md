@@ -2,14 +2,13 @@
 
 ## What gets versioned
 
-The repository publishes two independently versioned Go modules — `catalog`
-and `toolkit` — plus a multi-architecture (`linux/amd64` + `linux/arm64`)
-container image built from `toolkit/cmd/health-validation` and published to
-[GHCR](https://ghcr.io/dsx-ai-factory/health-validation). `catalog` and
-`toolkit` are tagged separately; `toolkit` depends on `catalog`, so a `catalog`
-release that changes its public API is usually followed by a `toolkit` release
-that picks it up. Only `toolkit` tags publish a container image, since the
-image packages the `toolkit/cmd/health-validation` CLI.
+The repository is a single Go module, `github.com/dsx-ai-factory/health-validation`,
+released under one version: one `go.mod`, one `vX.Y.Z` tag. That tag versions
+every package in the repository (`catalog`, `toolkit`, `collect`, and
+`agentkit`) together, and also stamps the multi-architecture
+(`linux/amd64` + `linux/arm64`) container image built from
+`toolkit/cmd/health-validation` and published to
+[GHCR](https://ghcr.io/dsx-ai-factory/health-validation).
 
 ## Cadence
 
@@ -20,10 +19,8 @@ land on `main` — not on a calendar schedule.
 ## Supported release lines and backports
 
 [SUPPORT.md](SUPPORT.md#support-lifecycle) defines the Current, Maintenance,
-and EOL stages for each module, including the pre-1.0 policy and the
-three-month previous-major Maintenance tail. Catalog lines required by a
-supported toolkit line remain eligible for security and critical fixes needed
-by that toolkit line while it is supported.
+and EOL stages for each release line, including the pre-1.0 policy and the
+three-month previous-major Maintenance tail.
 
 When publishing a final release, update the
 [supported release lines](SUPPORT.md#supported-release-lines) and identify
@@ -42,10 +39,10 @@ fixes in a Maintenance release.
 
 ## Versioning
 
-Both modules follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
+The module follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
-- **MAJOR** — a breaking change to the module's public Go API (`catalog`) or
-  the CLI's behavior/flags (`toolkit`). For the verdict JSON contract
+- **MAJOR** — a breaking change to the module's public Go API or the CLI's
+  behavior/flags. For the verdict JSON contract
   specifically, `schema_version` (documented in
   [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json))
   is the authoritative breaking-change signal, independent of the module's own
@@ -54,7 +51,7 @@ Both modules follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PAT
   a new exported function).
 - **PATCH** — backward-compatible bug fixes.
 
-**Before 1.0.0** (both modules are currently `v0.x`), project policy departs
+**Before 1.0.0** (the module is currently `v0.x`), project policy departs
 from the scheme above: a breaking public-API change bumps **MINOR** instead of
 MAJOR, and a compatible fix bumps **PATCH**. A MINOR release that deprecates
 public API must document a migration path and keep the deprecated API until a
@@ -64,37 +61,28 @@ policy.
 
 ## Branch naming and tagging
 
-Tag each module independently with its module name as a prefix:
+Tag a release with its semantic version:
 
 ```text
-catalog/vX.Y.Z
-toolkit/vX.Y.Z
+vX.Y.Z
 ```
 
-Release candidates use a `-rcN` suffix (e.g. `toolkit/v1.2.0-rc1`); commits
-after an RC tag continue to version as prereleases of that same final version
-until the final tag lands.
+Release candidates use a `-rc.N` suffix (e.g. `v1.2.0-rc.1`); commits after an RC
+tag continue to version as prereleases of that same final version until the
+final tag lands.
 
-A minor release goes through QA as a toolkit RC, without freezing `main`:
+A minor release goes through QA as an RC, without freezing `main`:
 
-1. Tag `catalog/vX.Y.0` on `main`.
-2. Merge a PR to `main` that bumps `toolkit/go.mod`'s catalog `require` to
-   `vX.Y.0` and adds the `CHANGELOG.md` entry. Point the entry's links at the
-   final `vX.Y.0` tags, even though the toolkit one does not exist yet.
-3. Before tagging, confirm `catalog/` is unchanged since the catalog tag
-   (`git diff --quiet catalog/vX.Y.0 <commit> -- catalog`). If it changed, the
-   image reports a catalog pseudo-version instead of `vX.Y.0`.
-4. Tag that commit `toolkit/vX.Y.0-rc1`, and create `release/vX.Y` from the
-   tag.
-5. Land QA fixes on `main` first, then cherry-pick them onto `release/vX.Y`
-   and tag the next `-rcN` there. A catalog fix ships as `catalog/vX.Y.1`,
-   with the release branch's catalog `require` bumped to match.
-6. Tag `toolkit/vX.Y.0` on `release/vX.Y` once QA passes. Later patch
-   releases for that line are tagged on the same branch.
+1. Merge a PR to `main` that adds the `CHANGELOG.md` entry. Point the entry's
+   link at the final `vX.Y.0` tag, even though it does not exist yet.
+2. Tag that commit `vX.Y.0-rc.1`, and create `release/vX.Y` from the tag.
+3. Land QA fixes on `main` first, then cherry-pick them onto `release/vX.Y`
+   and tag the next `-rc.N` there.
+4. Tag `vX.Y.0` on `release/vX.Y` once QA passes. Later patch releases for that
+   line are tagged on the same branch.
 
-This matches Go's module-tagging convention for a multi-module repository, so
-`go get github.com/dsx-ai-factory/health-validation/catalog@vX.Y.Z` resolves
-correctly.
+Because the module lives at the repository root, `go get
+github.com/dsx-ai-factory/health-validation@vX.Y.Z` resolves the tag directly.
 
 ## Who can trigger a release
 
@@ -104,22 +92,22 @@ added.
 
 ## What CI does automatically
 
-Pushing a `toolkit/vX.Y.Z` (or `-rcN`) tag, or merging to `main`, runs the full
+Pushing a `vX.Y.Z` (or `-rc.N`) tag, or merging to `main`, runs the full
 `.github/workflows/ci.yml` pipeline: lint, test, build and smoke-test the image
 on both architectures, and a Grype vulnerability scan that blocks on any fixable
 Critical. If all of that passes, `publish-image` builds the multi-architecture
 OCI index and pushes it to `ghcr.io/dsx-ai-factory/health-validation`:
 
-- **`toolkit/vX.Y.Z` tag** → publishes only the immutable `X.Y.Z` tag.
+- **`vX.Y.Z` tag** → publishes only the immutable `X.Y.Z` tag.
 - **`main`** → publishes an immutable pseudo-version tag (derived from the last
-  toolkit release, commit time, and short SHA) and moves `latest`.
+  release, commit time, and short SHA) and moves `latest`.
 
 The version and commit metadata baked into each image (and reported by
 `health-validation version`) comes from `tools/workspace_status_release.sh`,
 which CI invokes via `--config=release-ci`; a plain local build stays
 unstamped and reports the package's "dev" defaults. CI's `release-metadata`
-job resolves the versions once, and every later stamped build in the run reuses
-them, so a tag pushed mid-run cannot split an image's tag from its embedded
+job resolves the version once, and every later stamped build in the run reuses
+it, so a tag pushed mid-run cannot split an image's tag from its embedded
 version.
 
 No binary/archive artifacts are attached to GitHub releases — the container

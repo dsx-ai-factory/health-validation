@@ -10,6 +10,9 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // for architecture becomes its base value (else Value); an operator override
 // then applies on top. Returns an error if an override targets a Fixed
 // threshold.
+//
+// Overrides are coerced and bounds-checked here, the authoritative gate: a
+// programmatic override never passes through the CLI's config validation.
 func resolveThresholds(checkID string, specs map[string]health.ThresholdSpec, overrides map[string]any, architecture string) (map[string]health.ResolvedThreshold, error) {
 	resolved := make(map[string]health.ResolvedThreshold, len(specs))
 
@@ -32,7 +35,15 @@ func resolveThresholds(checkID string, specs map[string]health.ThresholdSpec, ov
 					CheckID:       checkID,
 				}
 			}
-			rt.Value = override
+			coerced, err := spec.CoerceInput(override)
+			if err != nil {
+				return nil, &health.ThresholdValueError{
+					ThresholdName: name,
+					CheckID:       checkID,
+					Err:           err,
+				}
+			}
+			rt.Value = coerced
 			rt.Overridden = true
 		}
 

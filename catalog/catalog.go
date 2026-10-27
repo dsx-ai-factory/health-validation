@@ -121,6 +121,12 @@ func (c *Catalog) Register(cd health.CheckDefinition) error {
 		return err
 	}
 
+	normalized, err := normalizeThresholds(cd.ID, cd.Thresholds)
+	if err != nil {
+		return err
+	}
+	cd.Thresholds = normalized
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -137,6 +143,29 @@ func (c *Catalog) MustRegister(cd health.CheckDefinition) {
 	if err := c.Register(cd); err != nil {
 		panic(err)
 	}
+}
+
+// normalizeThresholds returns a copy of specs with every catalog-authored
+// value and bound coerced to its declared type, so CEL evaluates the type
+// the check declared rather than whichever literal the author wrote.
+//
+// The map is rebuilt rather than mutated: Register takes the definition by
+// value, but a struct copy shares its maps' backing store with the caller.
+func normalizeThresholds(checkID string, specs map[string]health.ThresholdSpec) (map[string]health.ThresholdSpec, error) {
+	if len(specs) == 0 {
+		return specs, nil
+	}
+
+	out := make(map[string]health.ThresholdSpec, len(specs))
+	for name, spec := range specs {
+		normalized, err := spec.Normalize()
+		if err != nil {
+			return nil, &health.ThresholdValueError{ThresholdName: name, CheckID: checkID, Err: err}
+		}
+		out[name] = normalized
+	}
+
+	return out, nil
 }
 
 // Get returns a copy of the check definition with the given ID, or an error

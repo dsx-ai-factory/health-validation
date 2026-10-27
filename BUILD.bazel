@@ -1,6 +1,6 @@
 # gazelle:map_kind go_binary go_binary //build/rules/go:defs.bzl
-# The repo is split into two independently versioned Go modules; the
-# import-path prefix is set per-module in catalog/BUILD.bazel and
-# toolkit/BUILD.bazel. No Go packages live at the repo root.
+# gazelle:prefix github.com/dsx-ai-factory/health-validation
+# The repo is a single Go module; its path is the import-path prefix for every
+# package. No Go packages live at the repo root.
 
 exports_files(["MODULE.bazel"])

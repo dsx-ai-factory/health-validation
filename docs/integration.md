@@ -43,8 +43,7 @@ docker pull ghcr.io/dsx-ai-factory/health-validation:<tag>
 ```
 
 The image publishes to GitHub Container Registry (GHCR). Image tags drop the
-release tag's `toolkit/` prefix and leading `v` (release git tag
-`toolkit/v1.2.3` → image `:1.2.3`); `latest` floats to the newest `main`. See
+release tag's leading `v` (release git tag `v1.2.3` → image `:1.2.3`); `latest` floats to the newest `main`. See
 [Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md#pulling-a-published-image) for auth and how to
 pull a specific tag or architecture.
 
@@ -91,7 +90,10 @@ docker run --rm \
   journal-backed checks report a collection failure rather than a false PASS.
 
 The wrapper includes the complete mount set for journal-backed checks;
-`gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host.
+`gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host. The
+Xid read runs `journalctl --output=json --output-fields=MESSAGE`, which needs
+systemd 236 or later; without a readable kernel journal for the current boot,
+`gpu_xid_*` returns collection-failure verdicts.
 
 ### Static binary (bare metal, Slurm)
 

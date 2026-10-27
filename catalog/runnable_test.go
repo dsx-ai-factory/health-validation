@@ -42,7 +42,9 @@ func TestRunnableChecks_MatchesEvaluateAllSkips(t *testing.T) {
 			cd.ExecutionContexts = []health.ExecutionContext{health.TenantGuest}
 		}),
 		check("unconfigured_threshold", func(cd *health.CheckDefinition) {
-			cd.Thresholds = map[string]health.ThresholdSpec{"limit": {RequiredOverride: true}}
+			cd.Thresholds = map[string]health.ThresholdSpec{
+				"limit": {ValueType: health.ThresholdInt64, RequiredOverride: true},
+			}
 		}),
 	}
 	cat := catalog.NewEmpty(

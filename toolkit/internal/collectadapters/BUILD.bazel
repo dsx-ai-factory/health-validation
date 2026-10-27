@@ -2,7 +2,10 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "collectadapters",
-    srcs = ["adapters.go"],
+    srcs = [
+        "adapters.go",
+        "xid.go",
+    ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters",
     visibility = ["//toolkit:__subpackages__"],
     deps = [
@@ -10,23 +13,31 @@ go_library(
         "//catalog/gpu",
         "//catalog/health",
         "//catalog/nvlink",
+        "//catalog/xid",
         "//collect/observation",
+        "//collect/signals/xid",
         "//toolkit/observations",
     ],
 )
 
 go_test(
     name = "collectadapters_test",
-    srcs = ["adapters_test.go"],
+    srcs = [
+        "adapters_test.go",
+        "xid_test.go",
+    ],
     embed = [":collectadapters"],
     deps = [
+        "//catalog",
         "//catalog/cpu",
         "//catalog/gpu",
         "//catalog/health",
+        "//catalog/xid",
         "//collect",
         "//collect/observation",
         "//collect/signals/cpu",
         "//collect/signals/gpu",
+        "//collect/signals/xid",
         "//toolkit/observations",
         "@org_golang_google_protobuf//types/known/timestamppb",
     ],

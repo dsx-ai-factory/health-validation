@@ -6,7 +6,109 @@ Xid covers NVRM Xid fault events logged by the NVIDIA driver to the kernel ring 
 
 ## Single-rule checks reading `xid_counts`
 
-These 19 checks share the properties below and each has one rule.
+These 40 checks share the properties below and each has one rule.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
+| Check | Name | Condition | Severity | Recommended action |
+|---|---|---|---|---|
+| <nobr>`gpu_xid_8`</nobr> | GPU Xid 8 Warning | <nobr>`8 in xid_counts && xid_counts[8] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_11`</nobr> | GPU Xid 11 Warning | <nobr>`11 in xid_counts && xid_counts[11] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_13`</nobr> | GPU Xid 13 Warning | <nobr>`13 in xid_counts && xid_counts[13] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_25`</nobr> | GPU Xid 25 Warning | <nobr>`25 in xid_counts && xid_counts[25] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_31`</nobr> | GPU Xid 31 Warning | <nobr>`31 in xid_counts && xid_counts[31] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_32`</nobr> | GPU Xid 32 Warning | <nobr>`32 in xid_counts && xid_counts[32] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_39`</nobr> | GPU Xid 39 Warning | <nobr>`39 in xid_counts && xid_counts[39] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_40`</nobr> | GPU Xid 40 Warning | <nobr>`40 in xid_counts && xid_counts[40] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_41`</nobr> | GPU Xid 41 Warning | <nobr>`41 in xid_counts && xid_counts[41] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_45`</nobr> | GPU Xid 45 Warning | <nobr>`45 in xid_counts && xid_counts[45] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`workflow_xid_45`</nobr> |
+| <nobr>`gpu_xid_46`</nobr> | GPU Xid 46 (GPU stopped processing) | <nobr>`46 in xid_counts && xid_counts[46] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_48`</nobr> | GPU Xid 48 (double bit ECC error) | <nobr>`48 in xid_counts && xid_counts[48] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_60`</nobr> | GPU Xid 60 Warning | <nobr>`60 in xid_counts && xid_counts[60] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_62`</nobr> | GPU Xid 62 (internal micro-controller halt) | <nobr>`62 in xid_counts && xid_counts[62] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_64`</nobr> | GPU Xid 64 (GPU memory remapping failure) | <nobr>`64 in xid_counts && xid_counts[64] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_68`</nobr> | GPU Xid 68 Warning | <nobr>`68 in xid_counts && xid_counts[68] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_69`</nobr> | GPU Xid 69 Warning | <nobr>`69 in xid_counts && xid_counts[69] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_70`</nobr> | GPU Xid 70 Warning | <nobr>`70 in xid_counts && xid_counts[70] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_71`</nobr> | GPU Xid 71 Warning | <nobr>`71 in xid_counts && xid_counts[71] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_72`</nobr> | GPU Xid 72 Warning | <nobr>`72 in xid_counts && xid_counts[72] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_75`</nobr> | GPU Xid 75 Warning | <nobr>`75 in xid_counts && xid_counts[75] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_76`</nobr> | GPU Xid 76 Warning | <nobr>`76 in xid_counts && xid_counts[76] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_77`</nobr> | GPU Xid 77 Warning | <nobr>`77 in xid_counts && xid_counts[77] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_78`</nobr> | GPU Xid 78 Warning | <nobr>`78 in xid_counts && xid_counts[78] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`update_swfw`</nobr> |
+| <nobr>`gpu_xid_79`</nobr> | GPU Xid 79 (GPU has fallen off the bus) | <nobr>`79 in xid_counts && xid_counts[79] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_82`</nobr> | GPU Xid 82 Warning | <nobr>`82 in xid_counts && xid_counts[82] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_83`</nobr> | GPU Xid 83 Warning | <nobr>`83 in xid_counts && xid_counts[83] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_84`</nobr> | GPU Xid 84 Warning | <nobr>`84 in xid_counts && xid_counts[84] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_85`</nobr> | GPU Xid 85 Warning | <nobr>`85 in xid_counts && xid_counts[85] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_86`</nobr> | GPU Xid 86 Warning | <nobr>`86 in xid_counts && xid_counts[86] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_88`</nobr> | GPU Xid 88 Warning | <nobr>`88 in xid_counts && xid_counts[88] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_89`</nobr> | GPU Xid 89 Warning | <nobr>`89 in xid_counts && xid_counts[89] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_94`</nobr> | GPU Xid 94 Warning | <nobr>`94 in xid_counts && xid_counts[94] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_95`</nobr> | GPU Xid 95 (uncontained memory error) | <nobr>`95 in xid_counts && xid_counts[95] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_109`</nobr> | GPU Xid 109 (context switch timeout error) | <nobr>`109 in xid_counts && xid_counts[109] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_119`</nobr> | GPU Xid 119 (GSP RPC timeout) | <nobr>`119 in xid_counts && xid_counts[119] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_120`</nobr> | GPU Xid 120 (GSP error) | <nobr>`120 in xid_counts && xid_counts[120] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_140`</nobr> | GPU Xid 140 (ECC unrecovered error) | <nobr>`140 in xid_counts && xid_counts[140] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_154`</nobr> | GPU Xid 154 (GPU recovery action changed) | <nobr>`154 in xid_counts && xid_counts[154] >= occurrences`</nobr> | INFO | <nobr>`drain`</nobr>: <nobr>`xid_154`</nobr> |
+| <nobr>`gpu_xid_158`</nobr> | GPU Xid 158 (GPU fatal timeout) | <nobr>`158 in xid_counts && xid_counts[158] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+
+## Single-rule checks reading `xid_counts`
+
+These 14 checks share the properties below and each has one rule.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
+| Check | Name | Condition | Severity | Recommended action |
+|---|---|---|---|---|
+| <nobr>`gpu_xid_96`</nobr> | GPU Xid 96 Warning | <nobr>`96 in xid_counts && xid_counts[96] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_97`</nobr> | GPU Xid 97 Warning | <nobr>`97 in xid_counts && xid_counts[97] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_98`</nobr> | GPU Xid 98 Warning | <nobr>`98 in xid_counts && xid_counts[98] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_99`</nobr> | GPU Xid 99 Warning | <nobr>`99 in xid_counts && xid_counts[99] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_100`</nobr> | GPU Xid 100 Warning | <nobr>`100 in xid_counts && xid_counts[100] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_101`</nobr> | GPU Xid 101 Warning | <nobr>`101 in xid_counts && xid_counts[101] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_102`</nobr> | GPU Xid 102 Warning | <nobr>`102 in xid_counts && xid_counts[102] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_103`</nobr> | GPU Xid 103 Warning | <nobr>`103 in xid_counts && xid_counts[103] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_104`</nobr> | GPU Xid 104 Warning | <nobr>`104 in xid_counts && xid_counts[104] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_105`</nobr> | GPU Xid 105 Warning | <nobr>`105 in xid_counts && xid_counts[105] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_110`</nobr> | GPU Xid 110 (security fault error) | <nobr>`110 in xid_counts && xid_counts[110] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_143`</nobr> | GPU Xid 143 (GPU initialization error) | <nobr>`143 in xid_counts && xid_counts[143] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_151`</nobr> | GPU Xid 151 (key rotation error) | <nobr>`151 in xid_counts && xid_counts[151] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`restart_os`</nobr> |
+| <nobr>`gpu_xid_156`</nobr> | GPU Xid 156 (resource retirement event) | <nobr>`156 in xid_counts && xid_counts[156] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+
+## Single-rule checks reading `xid_counts`
+
+These 14 checks share the properties below and each has one rule.
 
 | Property | Value |
 |---|---|
@@ -19,27 +121,28 @@ These 19 checks share the properties below and each has one rule.
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr> |
 
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
 | Check | Name | Condition | Severity | Recommended action |
 |---|---|---|---|---|
-| <nobr>`gpu_xid_46`</nobr> | GPU Xid 46 (GPU stopped processing) | <nobr>`46 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_48`</nobr> | GPU Xid 48 (double bit ECC error) | <nobr>`48 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_62`</nobr> | GPU Xid 62 (internal micro-controller halt) | <nobr>`62 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_64`</nobr> | GPU Xid 64 (GPU memory remapping failure) | <nobr>`64 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_79`</nobr> | GPU Xid 79 (GPU has fallen off the bus) | <nobr>`79 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_95`</nobr> | GPU Xid 95 (uncontained memory error) | <nobr>`95 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_109`</nobr> | GPU Xid 109 (context switch timeout error) | <nobr>`109 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_110`</nobr> | GPU Xid 110 (security fault error) | <nobr>`110 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_119`</nobr> | GPU Xid 119 (GSP RPC timeout) | <nobr>`119 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_120`</nobr> | GPU Xid 120 (GSP error) | <nobr>`120 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_140`</nobr> | GPU Xid 140 (ECC unrecovered error) | <nobr>`140 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_142`</nobr> | GPU Xid 142 (NVENC3 error) | <nobr>`142 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_143`</nobr> | GPU Xid 143 (GPU initialization error) | <nobr>`143 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_151`</nobr> | GPU Xid 151 (key rotation error) | <nobr>`151 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`restart_os`</nobr> |
-| <nobr>`gpu_xid_154`</nobr> | GPU Xid 154 (GPU recovery action changed) | <nobr>`154 in xid_counts`</nobr> | INFO | <nobr>`drain`</nobr>: <nobr>`xid_154`</nobr> |
-| <nobr>`gpu_xid_155`</nobr> | GPU Xid 155 (NVLink SW-defined error) | <nobr>`155 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_156`</nobr> | GPU Xid 156 (resource retirement event) | <nobr>`156 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_158`</nobr> | GPU Xid 158 (GPU fatal timeout) | <nobr>`158 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_159`</nobr> | GPU Xid 159 (CHI non-data error) | <nobr>`159 in xid_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_126`</nobr> | GPU Xid 126 Warning | <nobr>`126 in xid_counts && xid_counts[126] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_127`</nobr> | GPU Xid 127 Warning | <nobr>`127 in xid_counts && xid_counts[127] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_128`</nobr> | GPU Xid 128 Warning | <nobr>`128 in xid_counts && xid_counts[128] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_129`</nobr> | GPU Xid 129 Warning | <nobr>`129 in xid_counts && xid_counts[129] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_130`</nobr> | GPU Xid 130 Warning | <nobr>`130 in xid_counts && xid_counts[130] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_131`</nobr> | GPU Xid 131 Warning | <nobr>`131 in xid_counts && xid_counts[131] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_132`</nobr> | GPU Xid 132 Warning | <nobr>`132 in xid_counts && xid_counts[132] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_133`</nobr> | GPU Xid 133 Warning | <nobr>`133 in xid_counts && xid_counts[133] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_134`</nobr> | GPU Xid 134 Warning | <nobr>`134 in xid_counts && xid_counts[134] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_135`</nobr> | GPU Xid 135 Warning | <nobr>`135 in xid_counts && xid_counts[135] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_139`</nobr> | GPU Xid 139 Warning | <nobr>`139 in xid_counts && xid_counts[139] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_142`</nobr> | GPU Xid 142 (NVENC3 error) | <nobr>`142 in xid_counts && xid_counts[142] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_155`</nobr> | GPU Xid 155 (NVLink SW-defined error) | <nobr>`155 in xid_counts && xid_counts[155] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_159`</nobr> | GPU Xid 159 (CHI non-data error) | <nobr>`159 in xid_counts && xid_counts[159] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 
 ## Single-rule checks reading `sub_xid_code_counts`
 
@@ -56,28 +159,124 @@ These 20 checks share the properties below and each has one rule.
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`sub_xid_code_counts`</nobr> |
 
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
 | Check | Name | Condition | Severity | Recommended action |
 |---|---|---|---|---|
-| <nobr>`gpu_xid_149_1`</nobr> | GPU Xid 149.1 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.1" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_2`</nobr> | GPU Xid 149.2 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.2" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_2a`</nobr> | GPU Xid 149.2A (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.2A" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_2b`</nobr> | GPU Xid 149.2B (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.2B" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_4`</nobr> | GPU Xid 149.4 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.4" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_10`</nobr> | GPU Xid 149.10 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.10" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_11`</nobr> | GPU Xid 149.11 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.11" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_12`</nobr> | GPU Xid 149.12 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.12" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_15`</nobr> | GPU Xid 149.15 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.15" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_16`</nobr> | GPU Xid 149.16 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.16" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_20`</nobr> | GPU Xid 149.20 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.20" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_21`</nobr> | GPU Xid 149.21 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.21" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_22`</nobr> | GPU Xid 149.22 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.22" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_23`</nobr> | GPU Xid 149.23 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.23" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_24`</nobr> | GPU Xid 149.24 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.24" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_25`</nobr> | GPU Xid 149.25 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.25" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_26`</nobr> | GPU Xid 149.26 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.26" in sub_xid_code_counts`</nobr> | WARNING | none |
-| <nobr>`gpu_xid_149_28`</nobr> | GPU Xid 149.28 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.28" in sub_xid_code_counts`</nobr> | WARNING | none |
-| <nobr>`gpu_xid_149_a`</nobr> | GPU Xid 149.A (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.A" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_f`</nobr> | GPU Xid 149.F (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.F" in sub_xid_code_counts`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_1`</nobr> | GPU Xid 149.1 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.1" in sub_xid_code_counts && sub_xid_code_counts["149.1"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_2`</nobr> | GPU Xid 149.2 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.2" in sub_xid_code_counts && sub_xid_code_counts["149.2"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_2a`</nobr> | GPU Xid 149.2A (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.2A" in sub_xid_code_counts && sub_xid_code_counts["149.2A"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_2b`</nobr> | GPU Xid 149.2B (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.2B" in sub_xid_code_counts && sub_xid_code_counts["149.2B"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_4`</nobr> | GPU Xid 149.4 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.4" in sub_xid_code_counts && sub_xid_code_counts["149.4"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_10`</nobr> | GPU Xid 149.10 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.10" in sub_xid_code_counts && sub_xid_code_counts["149.10"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_11`</nobr> | GPU Xid 149.11 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.11" in sub_xid_code_counts && sub_xid_code_counts["149.11"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_12`</nobr> | GPU Xid 149.12 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.12" in sub_xid_code_counts && sub_xid_code_counts["149.12"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_15`</nobr> | GPU Xid 149.15 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.15" in sub_xid_code_counts && sub_xid_code_counts["149.15"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_16`</nobr> | GPU Xid 149.16 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.16" in sub_xid_code_counts && sub_xid_code_counts["149.16"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_20`</nobr> | GPU Xid 149.20 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.20" in sub_xid_code_counts && sub_xid_code_counts["149.20"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_21`</nobr> | GPU Xid 149.21 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.21" in sub_xid_code_counts && sub_xid_code_counts["149.21"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_22`</nobr> | GPU Xid 149.22 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.22" in sub_xid_code_counts && sub_xid_code_counts["149.22"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_23`</nobr> | GPU Xid 149.23 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.23" in sub_xid_code_counts && sub_xid_code_counts["149.23"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_24`</nobr> | GPU Xid 149.24 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.24" in sub_xid_code_counts && sub_xid_code_counts["149.24"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_25`</nobr> | GPU Xid 149.25 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.25" in sub_xid_code_counts && sub_xid_code_counts["149.25"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_26`</nobr> | GPU Xid 149.26 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.26" in sub_xid_code_counts && sub_xid_code_counts["149.26"] >= occurrences`</nobr> | WARNING | none |
+| <nobr>`gpu_xid_149_28`</nobr> | GPU Xid 149.28 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.28" in sub_xid_code_counts && sub_xid_code_counts["149.28"] >= occurrences`</nobr> | WARNING | none |
+| <nobr>`gpu_xid_149_a`</nobr> | GPU Xid 149.A (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.A" in sub_xid_code_counts && sub_xid_code_counts["149.A"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+| <nobr>`gpu_xid_149_f`</nobr> | GPU Xid 149.F (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.F" in sub_xid_code_counts && sub_xid_code_counts["149.F"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
+
+## GPU Xid 54 (auxiliary power is not connected to the GPU board)
+
+`gpu_xid_54`
+
+Detects NVRM Xid 54 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
+**Rules**
+
+- **CRITICAL** when `54 in xid_counts && xid_counts[54] >= occurrences`
+  - Message: GPU Xid 54 detected: auxiliary power is not connected to the GPU board.
+
+**Recommended action:** operational state `drain`, then `service_required`
+
+## GPU Xid 80 Warning
+
+`gpu_xid_80`
+
+Detects warning-class NVRM Xid 80 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
+**Rules**
+
+- **WARNING** when `80 in xid_counts && xid_counts[80] >= occurrences`
+  - Message: GPU Xid 80 detected: corrupted data sent to the GPU. Restart the faulting application; send the node for service if the error persists.
+
+**Recommended action:** operational state `drain`, then `restart_app` → `service_required`
+
+## GPU Xid 136 (link training failed)
+
+`gpu_xid_136`
+
+Detects NVRM Xid 136 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
+**Rules**
+
+- **CRITICAL** when `136 in xid_counts && xid_counts[136] >= occurrences`
+  - Message: GPU Xid 136 detected: link training failed.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
 
 ## GPU Xid 144 (NVLink SAW error)
 
@@ -96,12 +295,19 @@ Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fat
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+
 **Rules**
 
-- **CRITICAL** when `144 in fatal_xid_counts`
+- **CRITICAL** when `144 in fatal_xid_counts && fatal_xid_counts[144] >= fatal_occurrences`
   - Message: GPU Xid 144 detected: NVLink SAW error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `144 in xid_counts && xid_counts[144] > (144 in fatal_xid_counts ? fatal_xid_counts[144] : 0)`
+- **WARNING** when `144 in xid_counts && xid_counts[144] > (144 in fatal_xid_counts ? fatal_xid_counts[144] : 0) && xid_counts[144] - (144 in fatal_xid_counts ? fatal_xid_counts[144] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 144 detected: NVLink SAW error (Nonfatal).
 
 ## GPU Xid 145 (NVLink RLW error)
@@ -121,12 +327,19 @@ Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fat
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+
 **Rules**
 
-- **CRITICAL** when `145 in fatal_xid_counts`
+- **CRITICAL** when `145 in fatal_xid_counts && fatal_xid_counts[145] >= fatal_occurrences`
   - Message: GPU Xid 145 detected: NVLink RLW error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `145 in xid_counts && xid_counts[145] > (145 in fatal_xid_counts ? fatal_xid_counts[145] : 0)`
+- **WARNING** when `145 in xid_counts && xid_counts[145] > (145 in fatal_xid_counts ? fatal_xid_counts[145] : 0) && xid_counts[145] - (145 in fatal_xid_counts ? fatal_xid_counts[145] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 145 detected: NVLink RLW error (Nonfatal).
 
 ## GPU Xid 146 (NVLink TLW error)
@@ -146,12 +359,19 @@ Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fat
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+
 **Rules**
 
-- **CRITICAL** when `146 in fatal_xid_counts`
+- **CRITICAL** when `146 in fatal_xid_counts && fatal_xid_counts[146] >= fatal_occurrences`
   - Message: GPU Xid 146 detected: NVLink TLW error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `146 in xid_counts && xid_counts[146] > (146 in fatal_xid_counts ? fatal_xid_counts[146] : 0)`
+- **WARNING** when `146 in xid_counts && xid_counts[146] > (146 in fatal_xid_counts ? fatal_xid_counts[146] : 0) && xid_counts[146] - (146 in fatal_xid_counts ? fatal_xid_counts[146] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 146 detected: NVLink TLW error (Nonfatal).
 
 ## GPU Xid 147 (NVLink TREX error)
@@ -171,12 +391,19 @@ Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fat
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+
 **Rules**
 
-- **CRITICAL** when `147 in fatal_xid_counts`
+- **CRITICAL** when `147 in fatal_xid_counts && fatal_xid_counts[147] >= fatal_occurrences`
   - Message: GPU Xid 147 detected: NVLink TREX error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `147 in xid_counts && xid_counts[147] > (147 in fatal_xid_counts ? fatal_xid_counts[147] : 0)`
+- **WARNING** when `147 in xid_counts && xid_counts[147] > (147 in fatal_xid_counts ? fatal_xid_counts[147] : 0) && xid_counts[147] - (147 in fatal_xid_counts ? fatal_xid_counts[147] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 147 detected: NVLink TREX error (Nonfatal).
 
 ## GPU Xid 148 (NVLink NVLPW_CTRL error)
@@ -196,12 +423,19 @@ Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fat
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+
 **Rules**
 
-- **CRITICAL** when `148 in fatal_xid_counts`
+- **CRITICAL** when `148 in fatal_xid_counts && fatal_xid_counts[148] >= fatal_occurrences`
   - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `148 in xid_counts && xid_counts[148] > (148 in fatal_xid_counts ? fatal_xid_counts[148] : 0)`
+- **WARNING** when `148 in xid_counts && xid_counts[148] > (148 in fatal_xid_counts ? fatal_xid_counts[148] : 0) && xid_counts[148] - (148 in fatal_xid_counts ? fatal_xid_counts[148] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error (Nonfatal).
 
 ## GPU Xid 149 (NVLink NETIR error)
@@ -221,12 +455,19 @@ Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fat
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+
 **Rules**
 
-- **CRITICAL** when `149 in fatal_xid_counts`
+- **CRITICAL** when `149 in fatal_xid_counts && fatal_xid_counts[149] >= fatal_occurrences`
   - Message: GPU Xid 149 detected: NVLink NETIR error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `149 in xid_counts && xid_counts[149] > (149 in fatal_xid_counts ? fatal_xid_counts[149] : 0)`
+- **WARNING** when `149 in xid_counts && xid_counts[149] > (149 in fatal_xid_counts ? fatal_xid_counts[149] : 0) && xid_counts[149] - (149 in fatal_xid_counts ? fatal_xid_counts[149] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 149 detected: NVLink NETIR error (Nonfatal).
 
 ## GPU Xid 150 (NVLink MSE error)
@@ -246,42 +487,18 @@ Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fat
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+
 **Rules**
 
-- **CRITICAL** when `150 in fatal_xid_counts`
+- **CRITICAL** when `150 in fatal_xid_counts && fatal_xid_counts[150] >= fatal_occurrences`
   - Message: GPU Xid 150 detected: NVLink MSE error (Fatal).
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `150 in xid_counts && xid_counts[150] > (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0)`
+- **WARNING** when `150 in xid_counts && xid_counts[150] > (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) && xid_counts[150] - (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 150 detected: NVLink MSE error (Nonfatal).
-
-## GPU Xid Warnings
-
-`gpu_xid_warning`
-
-Detects application-level and otherwise recoverable NVRM Xid errors in the system journal since boot, grouped by their NVIDIA Xid-catalog immediate-action resolution bucket.
-
-| Property | Value |
-|---|---|
-| Provenance | <nobr>`nvidia`</nobr> |
-| Condition scope | <nobr>`NODE`</nobr> |
-| Execution class | <nobr>`PASSIVE`</nobr> |
-| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
-| Maturity | <nobr>`stable`</nobr> |
-| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr> |
-
-**Rules**
-
-- **WARNING** when `xid_counts.exists(k, k in [8, 11, 13, 25, 31, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77, 82, 83, 84, 85, 86, 88, 89, 94, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139])`
-  - Message: Application-level GPU Xid error detected. Restart the faulting application; send the node for service if the error persists.
-  - Action: operational state `drain`, then `restart_app` → `service_required`
-- **WARNING** when `xid_counts.exists(k, k in [45])`
-  - Message: GPU Xid 45 (preemptive removal) detected. Follow the Xid 45 workflow.
-  - Action: operational state `drain`, then `workflow_xid_45`
-- **WARNING** when `xid_counts.exists(k, k in [78])`
-  - Message: GPU Xid 78 (vGPU start error) detected. Update GPU software/firmware.
-  - Action: operational state `drain`, then `update_swfw`
-
-**Recommended action:** operational state `drain`, then `restart_app` → `service_required`
 

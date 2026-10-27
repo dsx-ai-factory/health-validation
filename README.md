@@ -2,7 +2,7 @@
 
 NVIDIA Health Validation runs on a GPU node, evaluates hardware and driver state against calibrated thresholds, and returns a structured verdict. The verdict answers one question: is this node ready to accept the next workload?
 
-The repository is `github.com/dsx-ai-factory/health-validation`. It contains four Go modules; the two published and independently versioned ones are:
+The repository is `github.com/dsx-ai-factory/health-validation`. It is a single Go module, released under one version tag, whose main packages are:
 
 - **`catalog`** (`…/health-validation/catalog`): Check definitions, threshold logic, severity classifications, and a CEL-based evaluation engine. No hardware dependency. Import this if you already collect GPU telemetry and want NVIDIA's operational judgment applied to your signal stream.
 - **`toolkit`** (`…/health-validation/toolkit`): Sensor implementations (including NVML-backed GPU collection and CPU collection from Linux sysfs), mock backends for testing, and a `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Import this if you want the full working sensor and evaluation stack.
@@ -10,7 +10,7 @@ The repository is `github.com/dsx-ai-factory/health-validation`. It contains fou
 `toolkit` depends on `catalog`; import `toolkit` to get both.
 
 For raw observations without catalog evaluation, use the experimental `collect`
-module. See [Shared raw collection library](docs/integration.md#shared-raw-collection-library)
+package. See [Shared raw collection library](docs/integration.md#shared-raw-collection-library)
 for its ten collection families, typed targets, and custom sensor registration.
 
 > **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor/backend layer that feeds it is a reference implementation and is subject to change.
@@ -163,7 +163,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
 
-The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers. `catalog_version` names the catalog module that produced the verdict, so consumers can verify which check logic and default thresholds were available when the run occurred.
+The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers. `catalog_version` names the module version, and so the catalog, that produced the verdict, so consumers can verify which check logic and default thresholds were available when the run occurred.
 
 ## How it works
 
@@ -214,10 +214,9 @@ The catalog includes these check families:
 | `nvlink_capabilities` | nvlink | Whether each GPU reports its expected NVLink capabilities | None |
 | `nvlink_p2p` | nvlink | Peer GPUs reachable over NVLink P2P | `max_unhealthy_p2p_peers` |
 | `rdma_linkflap_fatal` | infiniband | mlx5 RDMA link outages that stayed down past a window | `min_outage_seconds`, `fatal_flap_threshold` |
-| `gpu_xid_<code>` | xid | One CRITICAL check per critical Xid code seen in the journal | None |
-| `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | None |
-| `gpu_xid_warning` | xid | Consolidated WARNING check for warning-class Xid codes | None |
-| `gpu_xid_154` | xid | Xid 154 (INFO — recovery action changed) | None |
+| `gpu_xid_<code>` | xid | One check per Xid code seen in the journal, with catalog-defined severity and action | `occurrences`; Xids 144–150 use `fatal_occurrences`, `nonfatal_occurrences` |
+| `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | `occurrences` |
+| `gpu_xid_154` | xid | Xid 154 (INFO — recovery action changed) | `occurrences` |
 
 Each check definition carries:
 
@@ -229,9 +228,14 @@ Each check definition carries:
 
 > **GB300 support.** Most checks in the catalog declare support for both GB200 and GB300 in their `Architectures` field. GB200 support has been validated; GB300 support has not yet completed the same validation pass. Treat GB300 results as directionally correct but experimental and subject to change until this note is removed.
 
+Xid checks use the public NVIDIA Xid catalog's per-code applicability. H200
+uses the H100 applicability matrix because both products use the Hopper
+architecture; Xid 144-150 and their subtype checks remain Blackwell-only.
+Warning-class Xids are individual `gpu_xid_<code>` checks.
+
 ## Prerequisites
 
-- go 1.27.2
+- go 1.27.3
 - Linux sysfs exposing `/sys/devices/system/cpu/{possible,online}` and `/sys/devices/system/node/online` (required for CPU collection)
 - NVIDIA driver (required for the GPU sensor; not required if you supply measurements directly)
 - NVML (libnvidia-ml) for the NVML-backed sensor
@@ -240,7 +244,7 @@ OS: Linux (x86_64, aarch64). CPU collection reads sysfs directly without sudo or
 
 ## Quick start
 
-Import the module (catalog + toolkit):
+Import the module:
 
 ```shell
 go get github.com/dsx-ai-factory/health-validation@latest
@@ -385,6 +389,11 @@ checks:
     expected_gpu_count: 8
   nvlink_active:
     max_inactive_nvlinks: 0
+  gpu_xid_79:
+    occurrences: 2
+  gpu_xid_149:
+    fatal_occurrences: 1
+    nonfatal_occurrences: 5
 disabled_checks:
   - gpu_power_state
 ```

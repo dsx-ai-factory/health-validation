@@ -4,14 +4,14 @@
 
 | Package | Role |
 |---|---|
-| <nobr>`catalog/health`</nobr> | Shared vocabulary and node-verdict aggregation. Defines all domain types: `CheckDefinition`, `CheckVerdict`, `NodeVerdict`, the `Measurement` interface, and all enums. It depends on the leaf `catalog/version` package for verdict provenance and does not import check-domain or evaluation packages. |
+| <nobr>`catalog/health`</nobr> | Shared vocabulary and node-verdict aggregation. Defines all domain types: `CheckDefinition`, `CheckVerdict`, `NodeVerdict`, the `Measurement` interface, and all enums. It depends on the module's leaf `internal/version` package for verdict provenance and does not import check-domain or evaluation packages. |
 | <nobr>`catalog`</nobr> | Check registry and evaluation entry point. `Catalog` is a thread-safe registry that holds check definitions and exposes `EvaluateAll(measurements...)` plus per-run configuration through `EvaluateAllWithOptions`. Built-in checks are registered in `checks.go`. |
 | <nobr>`catalog/cpu`</nobr> | `cpu.CPUMeasurement` and the host-wide `CPUCount` and `NUMANodeCount` check definitions. |
 | <nobr>`catalog/gpu`</nobr> | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPowerState` check definitions. |
 | <nobr>`catalog/node`</nobr> | `node.NodeMeasurement` struct and the node-level `GPUCount` check definition. |
 | <nobr>`catalog/nvlink`</nobr> | `nvlink.NVLinkMeasurement` struct and its NVLink check definitions (`NVLinkActive`, `NVLinkFabricHealth`, `NVLinkFabric`, `NVLinkBandwidthCountSpeed`, `NVLinkCapabilities`, `NVLinkP2P`). |
 | <nobr>`catalog/infiniband`</nobr> | `infiniband.LinkFlapMeasurement` struct and the `RDMALinkFlapFatal` check definition (category `infiniband`). |
-| <nobr>`catalog/xid`</nobr> | `xid.XidMeasurement` struct and the Xid check factory `xid.Checks()`, which returns one CRITICAL check per critical Xid code, a consolidated WARNING check (`gpu_xid_warning`), and the INFO `gpu_xid_154` check. |
+| <nobr>`catalog/xid`</nobr> | `xid.XidMeasurement` struct and the Xid check factory `xid.Checks()`, which returns one CRITICAL check per critical Xid code, architecture-scoped WARNING checks, and the INFO `gpu_xid_154` check. |
 | <nobr>`toolkit`</nobr> | Sensor and per-domain backend interfaces, `Collect()` / `CollectWithOptions()`, production backends including `SysfsCPU`, and mock helpers. |
 | <nobr>`catalog/internal/celeval`</nobr> | Evaluates CEL expressions from check `Rule` definitions against signal values and resolved thresholds. Not a public API. |
 | <nobr>`catalog/internal/evaluation`</nobr> | Orchestrates a single check evaluation: filters by architecture/context, resolves threshold overrides, calls CEL, returns `CheckVerdict`. Not a public API. |
@@ -37,7 +37,7 @@ Each sensor produces one or more measurements. Device sensors normally emit one 
 Two distinct concepts:
 
 - **Sensor** implements `toolkit.Sensor`. It holds a backend and produces `[]health.Measurement` for `Collect`. For example, `GPUSensor` wraps a `GPUBackend`, and `CPUSensor` wraps a `CPUBackend`.
-- **Backend** is a data source defined as an interface in `toolkit`. The NVML-backed implementation lives in `toolkit/nvml/` (Linux only, requires cgo). `SysfsCPU` (deprecated; the CLI uses the `collect/sensors/cpu` collect sensor through the toolkit bridge) and its replacement read `/sys/devices/system/cpu/possible`, `/sys/devices/system/cpu/online`, and `/sys/devices/system/node/online` without sudo or an external executable. Mock backends are available for testing without hardware.
+- **Backend** is a data source defined as an interface in `toolkit`. The NVML-backed implementation lives in `toolkit/nvml/` (Linux only, requires cgo). `SysfsCPU` (deprecated; the CLI uses the `collect/sensors/cpu` collect sensor through the toolkit bridge) and its replacement read `/sys/devices/system/cpu/possible`, `/sys/devices/system/cpu/online`, and `/sys/devices/system/node/online` without sudo or an external executable. `Journalctl` (deprecated; the CLI uses the `collect/sensors/xid` collect sensor through the toolkit bridge) and its replacement read the current boot's kernel journal through `journalctl`. Mock backends are available for testing without hardware.
 
 `SysfsCPU` observes the kernel CPU topology exposed in its execution environment. The `cpu_count` check compares the possible and online logical CPU counts, requires no operator value, and reports CRITICAL when they differ. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM/SKU count, process affinity, or cgroup CPU limits; inside a container, it evaluates the sysfs view exposed by the runtime.
 
@@ -79,7 +79,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | Field | Type | JSON name | Description |
 |---|---|---|---|
 | SchemaVersion | string | `schema_version` | JSON schema version of this verdict (MAJOR.MINOR); always present. Consumers must check it before acting. |
-| CatalogVersion | string | `catalog_version` | Catalog module version that produced this verdict; stamped builds use a release or pseudo-version, while unstamped local builds use `dev` or `dev+<commit>`. |
+| CatalogVersion | string | `catalog_version` | Catalog module version that produced this verdict; stamped builds use a release or pseudo-version, while unstamped local builds use the module version Go embeds, `dev+<commit>`, or `dev`. |
 | Timestamp | time.Time | `timestamp` | When the evaluation completed. |
 | NodeID | string | `node_id` | Opaque identifier for the node under test; the CLI defaults it to the system hostname. |
 | TraceID | string | `trace_id` | UUID identifying this run; echoed on every `CheckVerdict` it produced. |

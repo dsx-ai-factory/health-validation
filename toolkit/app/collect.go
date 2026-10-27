@@ -15,9 +15,11 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
+	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/google/uuid"
 )
 
@@ -54,7 +56,8 @@ type CollectAdapter interface {
 // With signalIDs it supplies exactly those, replacing the built-in collect
 // source for them; this succeeds the With*Backend overrides for collect-backed
 // domains. Each claimed signal must be declared by the sensor and requested by
-// an adapter. A built-in source left with no requested signals never runs, and
+// an adapter. The Xid signals are claimed all together or not at all. A
+// built-in source left with no requested signals never runs, and
 // built-in adapters read claimed signals from this sensor.
 // Each registered collect source has its own timeout budget.
 // Timeout blocking is keyed by sensor ID, not the underlying source. Shared
@@ -78,7 +81,7 @@ type collectSource struct {
 // WithCollectAdapters adds adapters that assemble domain measurements from
 // facts across all sensors registered with [App.WithCollect]. Calls append to
 // the adapter list; names must be unique across calls. Built-in domains use
-// adapters named after their catalog category (for example "cpu"), and a
+// adapters named after their catalog category (for example "cpu" or "xid"), and a
 // caller adapter cannot reuse the name of an active built-in adapter. A domain
 // whose built-in is replaced by a With*Backend override or still on its
 // legacy sensor has no built-in adapter, so its name is free. A built-in
@@ -101,6 +104,10 @@ func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 	if a.cpu == nil {
 		sources = append(sources, cpusensor.New(nil))
 		adapters = append(adapters, collectadapters.CPU())
+	}
+	if a.xid == nil {
+		sources = append(sources, xidsensor.New(nil))
+		adapters = append(adapters, collectadapters.XID())
 	}
 	return sources, adapters
 }
@@ -283,6 +290,15 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 		}
 		signals := requested
 		if len(source.claims) > 0 {
+			// One Xid event's fields must come from one journal read; a split
+			// claim lets reads at different times drop fields such as Fatal.
+			// Dedupe first so a repeated ID cannot stand in for a missing one.
+			xidSignals := observations.MappedSignalsFor(health.Xid)
+			xidClaims := slices.Compact(slices.Sorted(slices.Values(source.claims)))
+			xidClaims = slices.DeleteFunc(xidClaims, func(id string) bool { return !slices.Contains(xidSignals, id) })
+			if len(xidClaims) > 0 && len(xidClaims) < len(xidSignals) {
+				return nil, fmt.Errorf("collect sensor %q claims only part of the Xid signals; claim all of them or none", source.sensor.ID())
+			}
 			signals = nil
 			sensorSignals := source.sensor.Signals()
 			for _, id := range source.claims {

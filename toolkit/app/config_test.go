@@ -70,39 +70,63 @@ func TestOverridesCoercesAveragePowerDrawBounds(t *testing.T) {
 	}
 }
 
-// coerce handles []string thresholds (whitespace-trimmed, rejecting
-// non-lists, non-string items, and empties). Exercised directly on the
-// coercion helper since no built-in check currently declares a []string
-// threshold to route it through Overrides.
-func TestCoerceStringList(t *testing.T) {
-	got, err := coerce([]any{" mlx5_0 ", "mlx5_1"}, []string{})
+// stringListCatalog holds one check whose only threshold is a string list,
+// a shape no built-in check uses yet.
+func stringListCatalog(t *testing.T) *catalog.Catalog {
+	t.Helper()
+	cat := catalog.NewEmpty()
+	err := cat.Register(health.CheckDefinition{
+		ID:              "device_inventory",
+		Name:            "Device inventory",
+		Category:        health.Node,
+		RequiredSignals: []string{"gpu_count"},
+		Thresholds: map[string]health.ThresholdSpec{
+			"expected_devices": {
+				Value:       []string{"mlx5_0"},
+				ValueType:   health.ThresholdStringList,
+				Category:    health.DefaultThreshold,
+				Description: "Arbitrary test threshold.",
+			},
+		},
+		Rules: []health.Rule{{Expression: "gpu_count < 0", Severity: health.Critical, Message: "unused"}},
+	})
 	if err != nil {
-		t.Fatalf("coerce: %v", err)
+		t.Fatalf("register: %v", err)
 	}
-	want := []string{"mlx5_0", "mlx5_1"}
-	if !slices.Equal(got.([]string), want) {
-		t.Fatalf("string list = %#v, want %#v", got, want)
+	return cat
+}
+
+// A YAML list item can pick up whitespace the operator never meant, so the
+// config trims it. Coercion does not, which is why this lives here.
+func TestOverridesTrimsStringListItems(t *testing.T) {
+	cfg := &Config{Checks: map[string]map[string]any{
+		"device_inventory": {"expected_devices": []any{" mlx5_0 ", "mlx5_1"}},
+	}}
+
+	os, err := cfg.Overrides(stringListCatalog(t))
+	if err != nil {
+		t.Fatalf("Overrides: %v", err)
+	}
+
+	got, ok := os.ForCheck("device_inventory")["expected_devices"].([]string)
+	if !ok {
+		t.Fatalf("expected_devices = %#v, want []string", os.ForCheck("device_inventory")["expected_devices"])
+	}
+	if want := []string{"mlx5_0", "mlx5_1"}; !slices.Equal(got, want) {
+		t.Fatalf("expected_devices = %#v, want %#v", got, want)
 	}
 }
 
-func TestCoerceRejectsInvalidStringList(t *testing.T) {
-	tests := []struct {
-		name    string
-		value   any
-		wantErr string
-	}{
-		{name: "not a list", value: "mlx5_0", wantErr: "expected a list of strings"},
-		{name: "non-string", value: []any{"mlx5_0", 1}, wantErr: "item 1 is int"},
-		{name: "empty", value: []any{"mlx5_0", " "}, wantErr: "item 1 is empty"},
-	}
+// An all-whitespace item has to stay an error: trimming leaves it empty and
+// coercion rejects it, so the two halves still compose.
+func TestOverridesRejectsWhitespaceStringListItem(t *testing.T) {
+	cfg := &Config{Checks: map[string]map[string]any{
+		"device_inventory": {"expected_devices": []any{"mlx5_0", "  "}},
+	}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := coerce(tt.value, []string{})
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("error = %v, want %q", err, tt.wantErr)
-			}
-		})
+	_, err := cfg.Overrides(stringListCatalog(t))
+	if err == nil || !strings.Contains(err.Error(), "item 1 is empty") {
+		t.Fatalf("error = %v, want one naming an empty item", err)
 	}
 }
 
@@ -133,13 +157,22 @@ func TestOverridesRejectsBadConfig(t *testing.T) {
 			wantErr: `expected an integer, got 3.5`,
 		},
 		{
-			// Regression for #85: gpu_power_limit's expected_power_limit_w
-			// threshold has no flat Value, only PerArchitecture entries, so
-			// coerce must still validate against their type instead of
-			// letting ref==nil pass anything through unchecked.
-			name:    "non-coercible value for PerArchitecture-only threshold",
+			// Regression for #85: expected_power_limit_w carries no flat
+			// Value, only PerArchitecture entries, so its type comes from
+			// ValueType rather than from a default to compare against.
+			name:    "non-coercible value for a per-architecture-only threshold",
 			checks:  map[string]map[string]any{"gpu_power_limit": {"expected_power_limit_w": "not-a-number"}},
 			wantErr: `expected a number, got string`,
+		},
+		{
+			name:    "below minimum",
+			checks:  map[string]map[string]any{"gpu_count": {"expected_gpu_count": 0}},
+			wantErr: `below the minimum 1`,
+		},
+		{
+			name:    "above maximum",
+			checks:  map[string]map[string]any{"gpu_power_state": {"expected_gpu_pstate": 16}},
+			wantErr: `above the maximum 15`,
 		},
 	}
 
