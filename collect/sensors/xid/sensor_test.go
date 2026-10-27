@@ -295,12 +295,12 @@ func TestPerGPUTimeRanges(t *testing.T) {
 	from, to := entryTime.Unix(), entryTime.Unix()+10
 	for _, globalFrom := range []*int64{nil, &from} {
 		var stdout strings.Builder
-		for _, address := range []string{"0008:0a:00", "0009:06:00", "000a:06:00"} {
+		for _, address := range []string{"0008:0a:00", "0009:06:00", "000a:06:00", "10000:e0:17.0"} {
 			for i, offset := range []time.Duration{-time.Second, 0, time.Microsecond, 5 * time.Second, 5*time.Second + time.Microsecond, 10*time.Second - time.Microsecond, 10 * time.Second} {
 				stdout.WriteString(entryLine(fmt.Sprintf("%s-%d", address, i), time.Unix(from, 0).Add(offset), "NVRM: Xid (PCI:"+address+"): 79"))
 			}
 		}
-		s, err := NewWithTimeRanges(journal.New(lines(stdout.String())), globalFrom, &to, map[string]int64{"0008:0A:00.0": from + 5, "0009:06:00": from - 2})
+		s, err := NewWithTimeRanges(journal.New(lines(stdout.String())), globalFrom, &to, map[string]int64{"0008:0A:00.0": from + 5, "0009:06:00": from - 2, "10000:E0:17": from + 5})
 		require.NoError(t, err)
 		cycle, err := collect.NewCycle("cycle-1", scanTime)
 		require.NoError(t, err)
@@ -321,7 +321,7 @@ func TestPerGPUTimeRanges(t *testing.T) {
 		if globalFrom != nil {
 			other = 4
 		}
-		require.Equal(t, map[string]int{"0008:0a:00": 2, "0009:06:00": 6, "000a:06:00": other}, counts)
+		require.Equal(t, map[string]int{"0008:0a:00": 2, "0009:06:00": 6, "000a:06:00": other, "10000:e0:17.0": 2}, counts)
 	}
 }
 
@@ -377,6 +377,8 @@ func TestTimeRangesFilterMalformedEntries(t *testing.T) {
 		{name: "before end", message: malformed, to: &to, seconds: 199, nanos: 999999000, wantFailure: true},
 		{name: "at end", message: malformed, to: &to, seconds: 200},
 		{name: "after end", message: unknownAddress, to: &to, seconds: 201},
+		{name: "wide domain before GPU start", message: "NVRM: Xid (PCI:10000:e0:17.0): invalid", gpuFrom: map[string]int64{"10000:E0:17": 150}, seconds: 149},
+		{name: "wide domain after GPU start", message: "NVRM: Xid (PCI:10000:e0:17): invalid", gpuFrom: map[string]int64{"10000:e0:17.0": 150}, seconds: 151, wantFailure: true},
 		{name: "before GPU start", message: malformed, gpuFrom: map[string]int64{"0008:0A:00.0": 150}, seconds: 149},
 		{name: "at GPU start", message: malformed, gpuFrom: map[string]int64{"0008:0A:00.0": 150}, seconds: 150},
 		{name: "after GPU start", message: malformed, gpuFrom: map[string]int64{"0008:0A:00.0": 150}, seconds: 150, nanos: 1000, wantFailure: true},

@@ -284,8 +284,8 @@ must be non-negative and the upper bound positive; when both are supplied,
 `xid-from` must be less than `xid-to`. Reads remain scoped to the current boot.
 Repeat `--xid-from PCI_ADDRESS=unix-seconds` to set a start time for individual
 GPUs after resetting them. Addresses use `dddd:bb:dd` (optionally `.0`), with
-case-insensitive hex digits. Each GPU-specific bound overrides the node-wide
-start time for that GPU; other GPUs keep the node-wide bound, or the entire
+case-insensitive hex digits and domains of four or more digits. Each GPU-specific
+bound overrides the node-wide start time for that GPU; other GPUs keep the node-wide bound, or the entire
 boot when none is given. `--xid-to` applies to every GPU. Duplicate GPU bounds
 or multiple node-wide start times are rejected.
 

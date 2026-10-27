@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	pciAddressRE = regexp.MustCompile(`(?i)^[0-9a-f]{4}:[0-9a-f]{2}:[01][0-9a-f](?:\.0)?$`)
-	xidAddressRE = regexp.MustCompile(`NVRM: Xid \((?:PCI:)?([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[01][0-9a-fA-F](?:\.0)?)(?:[ )\s]|$)`)
+	pciAddressRE = regexp.MustCompile(`(?i)^[0-9a-f]{4,}:[0-9a-f]{2}:[01][0-9a-f](?:\.0)?$`)
+	xidAddressRE = regexp.MustCompile(`NVRM: Xid \((?:PCI:)?([0-9a-fA-F]{4,}:[0-9a-fA-F]{2}:[01][0-9a-fA-F](?:\.0)?)(?:[ )\s]|$)`)
 )
 
 type timeRanges struct {
@@ -27,7 +27,8 @@ type timeRanges struct {
 
 // NewWithTimeRanges filters the current boot's Xid entries to exclusive Unix
 // second bounds. Nil bounds are unbounded. gpuFrom replaces from for the
-// specified domain-qualified PCI addresses (dddd:bb:dd, optionally .0).
+// specified domain-qualified PCI addresses (dddd:bb:dd, optionally .0),
+// whose domains contain at least four hexadecimal digits.
 func NewWithTimeRanges(reader *journal.Reader, from, to *int64, gpuFrom map[string]int64) (collect.Sensor, error) {
 	if from != nil && *from < 0 {
 		return nil, fmt.Errorf("--xid-from must be a non-negative Unix timestamp in seconds")
