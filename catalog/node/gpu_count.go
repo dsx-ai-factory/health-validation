@@ -44,6 +44,8 @@ func GPUCount() health.CheckDefinition {
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_gpu_count": {
 				Value:       int64(4),
+				ValueType:   health.ThresholdInt64,
+				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
 				Description: "Expected number of GPUs on a node. Override per fleet.",
 				Unit:        "count",

@@ -6,7 +6,7 @@ package health
 import (
 	"time"
 
-	"github.com/dsx-ai-factory/health-validation/catalog/version"
+	"github.com/dsx-ai-factory/health-validation/internal/version"
 	"github.com/google/uuid"
 )
 
@@ -75,27 +75,6 @@ type AffectedComponent struct {
 	Entities    []string `json:"entities,omitempty"`
 	Category    Category `json:"category"`
 	MaxSeverity Severity `json:"max_severity"`
-}
-
-// ExitCode returns the process exit code for this verdict:
-//
-//	0: all checks passed or INFO only
-//	1: at least one CRITICAL
-//	2: tool failure / could not run
-//	3: at least one WARNING, no CRITICAL
-func (nv *NodeVerdict) ExitCode() int {
-	switch nv.OverallSeverity {
-	case Pass, Info:
-		return 0
-	case Critical:
-		return 1
-	case Unknown:
-		return 2
-	case Warning:
-		return 3
-	default:
-		return 2
-	}
 }
 
 // AggregateNodeVerdict builds a NodeVerdict from a set of check verdicts.

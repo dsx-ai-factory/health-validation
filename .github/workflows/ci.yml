@@ -1,6 +1,6 @@
 name: CI
 
-# Triggered on pushes to main, module release tags, and pull-request/* branches.
+# Triggered on pushes to main, release tags, and pull-request/* branches.
 #
 # pull-request/<number> branches are created by copy-pr-bot when a pull request
 # is opened against this repository, so self-hosted runners are not triggered
@@ -11,8 +11,7 @@ on:
       - main
       - "pull-request/[0-9]+"
     tags:
-      - "toolkit/v*"
-      - "catalog/v*"
+      - "v*"
 
 permissions:
   contents: read
@@ -25,14 +24,13 @@ concurrency:
 jobs:
 
   # Resolve the versions once for the workflow. This also rejects malformed
-  # module tags before any release artifact can be published.
+  # release tags before any release artifact can be published.
   release-metadata:
     if: github.repository == 'dsx-ai-factory/health-validation'
     runs-on: linux-amd64-cpu4
     timeout-minutes: 5
     outputs:
-      toolkit_version: ${{ steps.status.outputs.toolkit_version }}
-      catalog_version: ${{ steps.status.outputs.catalog_version }}
+      version: ${{ steps.status.outputs.version }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -45,23 +43,16 @@ jobs:
           status="$(./tools/workspace_status_release.sh)"
           printf '%s\n' "$status"
 
-          toolkit_version="$(
+          version="$(
             printf '%s\n' "$status" |
               awk '$1 == "STABLE_HEALTH_VALIDATION_VERSION" { print $2; exit }'
           )"
-          catalog_version="$(
-            printf '%s\n' "$status" |
-              awk '$1 == "STABLE_HEALTH_VALIDATION_CATALOG_VERSION" { print $2; exit }'
-          )"
-          if [[ -z "$toolkit_version" || -z "$catalog_version" ]]; then
-            echo "could not determine toolkit and catalog versions" >&2
+          if [[ -z "$version" ]]; then
+            echo "could not determine the version" >&2
             exit 1
           fi
 
-          {
-            echo "toolkit_version=$toolkit_version"
-            echo "catalog_version=$catalog_version"
-          } >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   lint:
     # Guard: only run on the canonical repository, not forks.
@@ -82,17 +73,8 @@ jobs:
       - name: Gazelle check
         run: bazel run //tools/gazelle:ci
 
-      - name: Go mod tidy check (agentkit)
-        run: cd agentkit && bazel run //tools/go -- mod tidy -diff
-
-      - name: Go mod tidy check (catalog)
-        run: cd catalog && bazel run //tools/go -- mod tidy -diff
-
-      - name: Go mod tidy check (collect)
-        run: cd collect && bazel run //tools/go -- mod tidy -diff
-
-      - name: Go mod tidy check (toolkit)
-        run: cd toolkit && bazel run //tools/go -- mod tidy -diff
+      - name: Go mod tidy check
+        run: bazel run //tools/go -- mod tidy -diff
 
       - name: NOTICE up to date check
         run: bazel run //tools:check_notice
@@ -128,10 +110,8 @@ jobs:
 
       - name: Build and smoke-test image (linux/amd64)
         env:
-          EXPECTED_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
-          EXPECTED_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
-          HEALTH_VALIDATION_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
-          HEALTH_VALIDATION_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
+          EXPECTED_VERSION: ${{ needs.release-metadata.outputs.version }}
+          HEALTH_VALIDATION_VERSION: ${{ needs.release-metadata.outputs.version }}
         run: |
           set -euo pipefail
           bazel build --config=release-ci --platforms=//build/platforms:linux_amd64 \
@@ -141,11 +121,11 @@ jobs:
             bazel-bin/toolkit/cmd/health-validation/health-validation.image.local_load/tarball.tar
 
           metadata="$(docker run --rm health-validation:latest version --output json)"
-          embedded_toolkit="$(printf '%s\n' "$metadata" | jq -er '.version')"
+          embedded_version="$(printf '%s\n' "$metadata" | jq -er '.version')"
           embedded_catalog="$(printf '%s\n' "$metadata" | jq -er '.catalogVersion')"
-          if [[ "$embedded_toolkit" != "$EXPECTED_TOOLKIT_VERSION" ||
-                "$embedded_catalog" != "$EXPECTED_CATALOG_VERSION" ]]; then
-            echo "version stamp mismatch: toolkit='$embedded_toolkit' catalog='$embedded_catalog'; expected toolkit='$EXPECTED_TOOLKIT_VERSION' catalog='$EXPECTED_CATALOG_VERSION'" >&2
+          if [[ "$embedded_version" != "$EXPECTED_VERSION" ||
+                "$embedded_catalog" != "$EXPECTED_VERSION" ]]; then
+            echo "version stamp mismatch: version='$embedded_version' catalog='$embedded_catalog'; expected '$EXPECTED_VERSION'" >&2
             exit 1
           fi
 
@@ -166,10 +146,8 @@ jobs:
 
       - name: Build and smoke-test image (linux/arm64)
         env:
-          EXPECTED_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
-          EXPECTED_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
-          HEALTH_VALIDATION_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
-          HEALTH_VALIDATION_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
+          EXPECTED_VERSION: ${{ needs.release-metadata.outputs.version }}
+          HEALTH_VALIDATION_VERSION: ${{ needs.release-metadata.outputs.version }}
         run: |
           set -euo pipefail
           bazel build --config=release-ci --platforms=//build/platforms:linux_arm64 \
@@ -179,11 +157,11 @@ jobs:
             bazel-bin/toolkit/cmd/health-validation/health-validation.image.local_load/tarball.tar
 
           metadata="$(docker run --rm health-validation:latest version --output json)"
-          embedded_toolkit="$(printf '%s\n' "$metadata" | jq -er '.version')"
+          embedded_version="$(printf '%s\n' "$metadata" | jq -er '.version')"
           embedded_catalog="$(printf '%s\n' "$metadata" | jq -er '.catalogVersion')"
-          if [[ "$embedded_toolkit" != "$EXPECTED_TOOLKIT_VERSION" ||
-                "$embedded_catalog" != "$EXPECTED_CATALOG_VERSION" ]]; then
-            echo "version stamp mismatch: toolkit='$embedded_toolkit' catalog='$embedded_catalog'; expected toolkit='$EXPECTED_TOOLKIT_VERSION' catalog='$EXPECTED_CATALOG_VERSION'" >&2
+          if [[ "$embedded_version" != "$EXPECTED_VERSION" ||
+                "$embedded_catalog" != "$EXPECTED_VERSION" ]]; then
+            echo "version stamp mismatch: version='$embedded_version' catalog='$embedded_catalog'; expected '$EXPECTED_VERSION'" >&2
             exit 1
           fi
 
@@ -199,7 +177,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       # write: sbom-action attaches the SBOM to the tag's GitHub Release when
-      # one exists, which is the case for toolkit release tags. It downloads
+      # one exists, which is the case for release tags. It downloads
       # the SBOM artifact it just uploaded to do so, which needs actions: read.
       actions: read
       contents: write
@@ -230,7 +208,7 @@ jobs:
       # visible there without failing the build.
       - name: Grype vulnerability scan
         id: scan
-        uses: dsx-ai-factory/dsx-github-actions/.github/actions/security-container-scan@79ee22291ed2c112fdc492d086ea40ed162bb7e1 # v1.25.1
+        uses: dsx-ai-factory/dsx-github-actions/.github/actions/security-container-scan@803f81b0431a6814ffffc68172e272485fbc18c9 # v1.27.3
         with:
           image: health-validation:latest
           fail-on: critical
@@ -259,15 +237,15 @@ jobs:
           "${{ steps.scan.outputs.report_json }}"
 
   # Publish one OCI index containing linux/amd64 and linux/arm64. Main advances
-  # both its immutable pseudo-version and latest; toolkit release tags publish
+  # both its immutable pseudo-version and latest; release tags publish
   # only the immutable semantic version. The architecture build jobs execute
-  # each stamped image and verify its toolkit and catalog versions first. The
+  # each stamped image and verify its version first. The
   # GITHUB_TOKEN is scoped to this job, and rules_oci reads the credentials
   # written by docker login.
   publish-image:
     if: >-
       github.repository == 'dsx-ai-factory/health-validation' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/toolkit/v'))
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     needs:
       - release-metadata
       - lint
@@ -299,11 +277,10 @@ jobs:
       - name: Publish multi-architecture image
         env:
           IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
-          EXPECTED_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
-          HEALTH_VALIDATION_TOOLKIT_VERSION: ${{ needs.release-metadata.outputs.toolkit_version }}
-          HEALTH_VALIDATION_CATALOG_VERSION: ${{ needs.release-metadata.outputs.catalog_version }}
+          EXPECTED_VERSION: ${{ needs.release-metadata.outputs.version }}
+          HEALTH_VALIDATION_VERSION: ${{ needs.release-metadata.outputs.version }}
         run: |
-          version="$EXPECTED_TOOLKIT_VERSION"
+          version="$EXPECTED_VERSION"
           if [[ -z "$version" ]]; then
             echo "could not determine the image version" >&2
             exit 1

@@ -29,5 +29,5 @@
 - [ ] Every commit has a DCO `Signed-off-by` trailer
 - [ ] Every commit is cryptographically signed and shows Verified on GitHub
 - [ ] No internal tooling references, URLs, or credentials in the diff
-- [ ] `bazel run //tools/go -- mod tidy` run in affected modules (`agentkit/`, `catalog/`, `collect/`, `toolkit/`)
+- [ ] `bazel run //tools/go -- mod tidy` run
 - [ ] Struct fields ordered for minimal padding (nogo `fieldalignment` gating CI)

@@ -143,7 +143,7 @@ func TestRDMALinkFlapFatal(t *testing.T) {
 			// pass it: the required signal is unavailable.
 			name:         "errored journal forces critical",
 			cat:          func() *catalog.Catalog { return linkflapCatalog() },
-			measurement:  infiniband.ErroredLinkFlap("boot", errors.New("journal unreadable"), infiniband.MeasurementSignals...),
+			measurement:  infiniband.ErroredLinkFlap("boot", errors.New("journal unreadable"), infiniband.MeasurementSignals()...),
 			wantSeverity: health.Critical,
 		},
 		{

@@ -99,7 +99,7 @@ func TestEvaluateAll_ErroredMeasurementNamesItsEntity(t *testing.T) {
 	cat.MustRegister(gpuPstateCheck())
 
 	nv, err := cat.EvaluateAll(
-		gpu.ErroredGPU("GPU-3", errors.New("GPU is lost"), gpu.MeasurementSignals...),
+		gpu.ErroredGPU("GPU-3", errors.New("GPU is lost"), gpu.MeasurementSignals()...),
 	)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)

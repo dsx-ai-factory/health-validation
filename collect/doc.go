@@ -4,10 +4,10 @@
 // Package collect is the shared collection library: source clients,
 // sensors, and the observation types they emit.
 //
-// This module is experimental (v0). Its contracts follow the
-// shared-collection-library proposal and may change until per-module
-// versioning lands. Nothing in this module applies health judgment; it
-// collects and normalizes only.
+// This package is experimental (v0) and outside the project's support
+// lifecycle. Its contracts follow the shared-collection-library proposal and
+// may change. Nothing in this package applies health judgment; it collects and
+// normalizes only.
 //
 // Raw families cover GPU inventory and telemetry, memory reliability, NVLink
 // and fabric, GPU processes, Linux processes, host memory/CPU/resources,
@@ -19,7 +19,8 @@
 //
 // Sensor observations use typed targets, including boot-qualified processes,
 // GPU processes, block devices, namespace-qualified mounts, PCI addresses,
-// FUSE connections, and path/hash-qualified pstore records. Unsigned counters
+// FUSE connections, path/hash-qualified pstore records, and journal entries by
+// journald boot ID and cursor. Unsigned counters
 // use Value.uint_value; protobuf JSON retains uint64 precision as decimal
 // strings. A sysfs counter reporting "N/A (no PMA)" produces NoValue, while
 // a failed file read produces CollectionError. Consumers must inspect the

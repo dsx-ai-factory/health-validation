@@ -3,7 +3,11 @@
 
 package nvlink
 
-import "github.com/dsx-ai-factory/health-validation/catalog/health"
+import (
+	"slices"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
+)
 
 // NVLink signal field names. These are the keys used in CEL rule
 // expressions and must match the RequiredSignals declared in NVLink
@@ -28,12 +32,7 @@ const (
 	SignalUnhealthyP2PPeerCount         = "unhealthy_p2p_peer_count"
 )
 
-// MeasurementSignals lists every signal an NVLinkMeasurement carries.
-// Sensors pass it as the failedSignals argument when they cannot
-// observe the device at all (e.g. a device handle that failed to load),
-//
-//	telling the catalog that no signal is trustworthy for this entity.
-var MeasurementSignals = []string{
+var measurementSignals = []string{
 	SignalGPUID,
 	SignalFabricBandwidthDegraded,
 	SignalFabricRouteRecoveryInProgress,
@@ -52,6 +51,15 @@ var MeasurementSignals = []string{
 	SignalAllLinksSupportLink,
 	SignalUnhealthyP2PPeerCount,
 }
+
+// MeasurementSignals lists every signal an NVLinkMeasurement carries.
+// Sensors pass it as the failedSignals argument when they cannot
+// observe the device at all (e.g. a device handle that failed to load),
+//
+//	telling the catalog that no signal is trustworthy for this entity.
+//
+// The returned slice is a copy.
+func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 
 // NVLinkMeasurement captures NVLink interconnect signals for a single
 // GPU. Sensors populate it from their telemetry source (NVML,
@@ -88,6 +96,9 @@ type NVLinkMeasurement struct {
 // as failedSignals when the device is entirely unobservable — e.g. its
 // handle failed to load, so even the GPU ID is unknown.
 func ErroredNVLink(gpuID string, err error, failedSignals ...string) NVLinkMeasurement {
+	if len(failedSignals) == 0 {
+		failedSignals = measurementSignals
+	}
 	m := NVLinkMeasurement{GPUID: gpuID}
 	m.AddError(err, failedSignals...)
 	return m

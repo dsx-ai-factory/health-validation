@@ -62,9 +62,13 @@ func GPUClockCapped() health.CheckDefinition {
 		Provenance: health.Private,
 
 		// Operator-tunable threshold. FixedThreshold values cannot be overridden.
+		// ValueType is mandatory; ValueMin/ValueMax are optional inclusive
+		// bounds that an override must also satisfy.
 		Thresholds: map[string]health.ThresholdSpec{
 			"min_sm_clock_mhz": {
 				Value:       int64(1200),
+				ValueType:   health.ThresholdInt64,
+				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
 				Description: "Minimum acceptable sustained SM clock.",
 				Unit:        "MHz",
@@ -91,7 +95,13 @@ Fields worth knowing:
   the verdict; `${name}` placeholders interpolate signal and threshold values.
 - **`Thresholds`** are operator-tunable by default. `FixedThreshold` values can
   never be overridden; `RequiredOverride` means the check skips until a fleet
-  supplies a value.
+  supplies a value. Every threshold must declare a **`ValueType`** — CEL
+  comparisons are type-sensitive, so the type is declared rather than inferred
+  from whichever value happens to be present, and registration rejects a
+  threshold without one. `ValueType` also types operator overrides, including
+  on a threshold whose only values live in `PerArchitecture`. **`ValueMin`** and
+  **`ValueMax`** are optional inclusive bounds, legal on the numeric types
+  only; see [thresholds](#thresholds-types-and-bounds).
 - **`RecommendedAction`**'s `RemediationActions` is an open `[]RemediationAction`
   (a string type, not a closed enum): use the `health.RemediationAction*`
   constants for steps NVIDIA's own catalog uses, or supply your own string for
@@ -140,6 +150,46 @@ if err := cat.CheckCoverage(mygpu.Measurement{}, /* … */); err != nil {
 	t.Fatal(err)
 }
 ```
+
+## Thresholds: types and bounds
+
+Each threshold declares the Go type of its values. CEL is type-sensitive, and a
+threshold can legitimately carry no `Value` at all — a per-architecture default
+lives only in `PerArchitecture`, and a `RequiredOverride` threshold has no value
+until a fleet supplies one. So the type is declared rather than inferred from
+whichever value is present:
+
+| `ValueType` | Go type | Accepts bounds |
+|---|---|---|
+| `health.ThresholdInt64` | `int64` | yes |
+| `health.ThresholdFloat64` | `float64` | yes |
+| `health.ThresholdBool` | `bool` | no |
+| `health.ThresholdString` | `string` | no |
+| `health.ThresholdStringList` | `[]string` | no |
+
+Registration rejects a threshold that declares no type, and normalizes every
+value to the declared one. That normalization is what lets you write the plain
+literal `1200` rather than `int64(1200)` and still have CEL compare an `int64`.
+An operator override is coerced the same way, so a YAML integer lands on a
+`float64` threshold as a `float64`. A value that cannot convert without loss —
+`3.5` for an `int64` threshold, or any string for a numeric one — is an error,
+not a silent truncation.
+
+`ValueMin` and `ValueMax` are optional inclusive bounds, independently settable,
+and legal only on the two numeric types. They apply to the declared default,
+every `PerArchitecture` entry, and any override.
+
+Bound a threshold when an out-of-range value is unambiguously a mistake rather
+than an unusual policy. A value compared for equality is the clear case: a GPU
+performance state is bounded `0`–`15` because NVML defines no others, and a
+negative expected count would make the rule fire on every node. **An upper-bound
+tolerance is the opposite case** — setting one very high is how an operator asks
+not to be alerted, so those declare a floor and no ceiling. Leaving `ValueMax`
+unset is a deliberate choice, not an oversight.
+
+An `AdjustableThreshold` must declare at least one bound. That category promises
+operators a documented tunable range; without a bound it is indistinguishable
+from `DefaultThreshold`.
 
 ## Getting your signals collected (demonstration wiring — subject to change)
 

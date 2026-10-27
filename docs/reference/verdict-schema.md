@@ -24,7 +24,6 @@ CheckDefinition is the canonical shape of a health check in the catalog. Each de
 | Field | JSON name | Type | Description |
 |---|---|---|---|
 | <nobr>`Thresholds`</nobr> | <nobr>`thresholds`</nobr> | [<nobr>`map[string]ThresholdSpec`</nobr>](#thresholdspec) |  |
-| <nobr>`FeasibilityClass`</nobr> | <nobr>`feasibility_class`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`Description`</nobr> | <nobr>`description`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`Name`</nobr> | <nobr>`name`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`ID`</nobr> | <nobr>`id`</nobr> | <nobr>`string`</nobr> |  |
@@ -139,16 +138,29 @@ Rule defines a single evaluation condition within a check. Every rule is evaluat
 
 ### ThresholdSpec
 
-ThresholdSpec defines a threshold in a check definition. It carries the catalog-authored value and its governance classification.
+ThresholdSpec defines a threshold in a check definition. The value-bearing fields are typed any because one Thresholds map holds thresholds of different types; ValueType names the type they actually hold. Registration establishes that invariant via [ThresholdSpec.Normalize], so code reading a spec out of a catalog may assert those fields directly. An unregistered spec holds whatever literal its author wrote. Coercion belongs at the two boundaries that take untyped input — registration and override resolution — and nowhere else.
 
 | Field | JSON name | Type | Description |
 |---|---|---|---|
 | <nobr>`Value`</nobr> | <nobr>`value`</nobr> | <nobr>`any`</nobr> |  |
+| <nobr>`ValueMin`</nobr> | <nobr>`value_min`</nobr> | <nobr>`any`</nobr> | ValueMin and ValueMax are inclusive bounds on Value, every PerArchitecture entry, and any operator override. Both are optional and legal only when ValueType is [ThresholdType.Ordered]. Bound a threshold only where out-of-range is unambiguously a mistake: setting a tolerance very high is how an operator asks not to be alerted, so those carry no ValueMax. |
+| <nobr>`ValueMax`</nobr> | <nobr>`value_max`</nobr> | <nobr>`any`</nobr> |  |
 | <nobr>`PerArchitecture`</nobr> | <nobr>`per_architecture`</nobr> | <nobr>`map[string]any`</nobr> | PerArchitecture overrides Value for a specific detected architecture (keyed by the catalog architecture identifier, e.g. "H100"). It lets one check carry per-architecture defaults — e.g. NVLink speed differs by GPU generation. Architectures absent from the map fall back to Value. When the check declares Architectures, registration requires this map to include every listed architecture; Value may then be omitted. |
 | <nobr>`Description`</nobr> | <nobr>`description`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`Unit`</nobr> | <nobr>`unit`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`Category`</nobr> | <nobr>`category`</nobr> | [<nobr>`ThresholdCategory`</nobr>](#thresholdcategory) |  |
+| <nobr>`ValueType`</nobr> | <nobr>`value_type`</nobr> | [<nobr>`ThresholdType`</nobr>](#thresholdtype) | ValueType is the declared Go type of Value, the PerArchitecture entries, the bounds, and any override. Mandatory — see [ThresholdSpec]. |
 | <nobr>`RequiredOverride`</nobr> | <nobr>`required_override`</nobr> | <nobr>`bool`</nobr> | RequiredOverride marks a threshold with no meaningful catalog value that the operator must supply per fleet. It is independent of Category, which governs whether an override is permitted at all; pairing it with [FixedThreshold] is rejected at registration. A check whose RequiredOverride threshold is unset is skipped with [ThresholdUnconfigured] rather than evaluated. |
+
+### ThresholdValueError
+
+ThresholdValueError is returned when a threshold value cannot be coerced to its declared type or falls outside its declared bounds.
+
+| Field | JSON name | Type | Description |
+|---|---|---|---|
+| <nobr>`Err`</nobr> |  | <nobr>`error`</nobr> |  |
+| <nobr>`ThresholdName`</nobr> |  | <nobr>`string`</nobr> |  |
+| <nobr>`CheckID`</nobr> |  | <nobr>`string`</nobr> |  |
 
 ## Enums
 
@@ -272,4 +284,17 @@ ThresholdCategory classifies how a threshold value may be modified by operators.
 | <nobr>`DefaultThreshold`</nobr> | <nobr>`DEFAULT`</nobr> | DefaultThreshold is NVIDIA's recommended starting value. Operators may override it via a parameter file. |
 | <nobr>`FixedThreshold`</nobr> | <nobr>`FIXED`</nobr> | FixedThreshold is a hard boundary that cannot be overridden. Attempts to override produce an error and the check will not run with an invalid override applied. |
 | <nobr>`AdjustableThreshold`</nobr> | <nobr>`ADJUSTABLE`</nobr> | AdjustableThreshold may be tuned by operators within documented bounds. |
+
+### ThresholdType
+
+ThresholdType names the Go type a threshold's values and overrides must have. CEL comparisons are type-sensitive, so the catalog declares the type rather than inferring it from whichever value happens to be present.
+
+| Name | JSON value | Description |
+|---|---|---|
+| <nobr>`ThresholdTypeUnspecified`</nobr> |  | ThresholdTypeUnspecified is the zero value and is rejected at registration: unlike [ThresholdCategory], no type is safe to assume. |
+| <nobr>`ThresholdInt64`</nobr> | <nobr>`INT64`</nobr> |  |
+| <nobr>`ThresholdFloat64`</nobr> | <nobr>`FLOAT64`</nobr> |  |
+| <nobr>`ThresholdBool`</nobr> | <nobr>`BOOL`</nobr> |  |
+| <nobr>`ThresholdString`</nobr> | <nobr>`STRING`</nobr> |  |
+| <nobr>`ThresholdStringList`</nobr> | <nobr>`STRING_LIST`</nobr> |  |
 

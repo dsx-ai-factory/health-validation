@@ -3,6 +3,8 @@
 
 package health
 
+import "slices"
+
 // Measurement is the interface all domain measurement types implement.
 //
 // Each measurement carries data for one entity (e.g. one GPU) in one
@@ -55,7 +57,7 @@ func NewErroredMeasurement(err error, failedSignals ...string) ErroredMeasuremen
 	if err == nil {
 		panic("health: ErroredMeasurement requires non-nil Err")
 	}
-	return ErroredMeasurement{err: err, failedSignals: failedSignals}
+	return ErroredMeasurement{err: err, failedSignals: slices.Clone(failedSignals)}
 }
 
 // Err returns the underlying sensor error that prevented the listed
@@ -73,7 +75,7 @@ func (m ErroredMeasurement) Err() error { return m.err }
 // whole-entity failures the entry includes every signal in the
 // measurement schema; for per-field failures, only the specific
 // signals the failing call would have populated.
-func (m ErroredMeasurement) FailedSignals() []string { return m.failedSignals }
+func (m ErroredMeasurement) FailedSignals() []string { return slices.Clone(m.failedSignals) }
 
 // UnsupportedSignaler is an optional interface a measurement may implement
 // to name signals its source explicitly reported as unsupported.

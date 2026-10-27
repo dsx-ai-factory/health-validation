@@ -14,6 +14,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"google.golang.org/protobuf/proto"
 )
@@ -25,6 +26,7 @@ const (
 	targetNVLinkEndpoint = "NVLink endpoint"
 	targetGPUPair        = "GPU pair"
 	targetGPUProcess     = "GPU process"
+	targetJournalEntry   = "journal entry"
 )
 
 // canonicalTargets lists the target kind each canonical signal accepts.
@@ -45,6 +47,8 @@ var canonicalTargets = []canonicalTarget{
 	{kind: targetNode, signals: collect.Signals{gpuinventory.GPUCount}},
 	{kind: targetNVLinkEndpoint, signals: gpusignals.EndpointSignals()},
 	{kind: targetGPUProcess, signals: gpusignals.ProcessEntitySignals()},
+	{kind: targetJournalEntry, signals: xidsignals.EventSignals()},
+	{kind: targetNode, signals: collect.Signals{xidsignals.ScanWindow}},
 }
 
 type canonicalTarget struct {
@@ -84,6 +88,8 @@ func targetKind(target *observation.ObservationTarget) string {
 		return targetGPUPair
 	case *observation.ObservationTarget_GPUProcess:
 		return targetGPUProcess
+	case *observation.ObservationTarget_JournalEntry:
+		return targetJournalEntry
 	default:
 		return ""
 	}
@@ -176,6 +182,9 @@ func validateCollectObservation(o *observation.Observation, s collect.Signal) er
 	}
 	if collectSourceLocal(o.GetTarget()) && o.GetCollectionError() == nil {
 		return fmt.Errorf("source-local GPU identity requires a collection error")
+	}
+	if entry := o.GetTarget().GetJournalEntry(); entry != nil && (strings.TrimSpace(entry.GetBootId()) == "" || strings.TrimSpace(entry.GetCursor()) == "") {
+		return fmt.Errorf("journal entry target requires a boot ID and cursor")
 	}
 	switch outcome := o.GetOutcome().(type) {
 	case *observation.Observation_Value:

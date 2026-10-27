@@ -458,12 +458,12 @@ func decodeProcCmdline(raw []byte, max int) string {
 }
 
 func (gpuProbe) Errored(id string, err error) health.Measurement {
-	return gpu.ErroredGPU(id, err, gpu.MeasurementSignals...)
+	return gpu.ErroredGPU(id, err, gpu.MeasurementSignals()...)
 }
 
 // MeasureNode returns one [node.NodeMeasurement] populated with the
 // visible gpu_count. A DeviceGetCount failure flags every signal in
-// [node.MeasurementSignals] (no telemetry is trustworthy); a node-level
+// [node.MeasurementSignals()] (no telemetry is trustworthy); a node-level
 // check fails Critical only when one of its RequiredSignals overlaps
 // with the failed entry.
 //
@@ -480,7 +480,7 @@ func (b *NVMLBackend) MeasureNode() ([]health.Measurement, error) {
 	if err != nil {
 		// devices() only fails on DeviceGetCount failure; the
 		// typed *Error travels through unchanged.
-		m.AddError(err, node.MeasurementSignals...)
+		m.AddError(err, node.MeasurementSignals()...)
 		return []health.Measurement{m}, nil
 	}
 
@@ -537,7 +537,7 @@ func (nvlinkProbe) Measure(pc ProbeContext) health.Measurement {
 }
 
 func (nvlinkProbe) Errored(id string, err error) health.Measurement {
-	return nvlink.ErroredNVLink(id, err, nvlink.MeasurementSignals...)
+	return nvlink.ErroredNVLink(id, err, nvlink.MeasurementSignals()...)
 }
 
 // measureDeviceP2P counts the peer GPUs this device cannot reach over

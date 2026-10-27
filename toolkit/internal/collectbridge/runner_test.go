@@ -18,6 +18,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
 	"google.golang.org/protobuf/proto"
@@ -84,7 +85,7 @@ func countAdapter(signals ...string) collectbridge.Binding {
 		}
 		return []health.Measurement{m}
 	}, Errored: func(err error) []health.Measurement {
-		return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals...)}
+		return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
 	}}
 }
 
@@ -284,7 +285,7 @@ func TestCollectRunnerFailureAndValidPartialResults(t *testing.T) {
 				return measurements
 			}
 			adapter.Errored = func(err error) []health.Measurement {
-				return []health.Measurement{cpu.ErroredCPU(err, cpu.MeasurementSignals...)}
+				return []health.Measurement{cpu.ErroredCPU(err, cpu.MeasurementSignals()...)}
 			}
 			cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
 			for _, check := range []health.CheckDefinition{cpu.CPUCount(), node.GPUCount()} {
@@ -472,5 +473,71 @@ func TestCollectRunnerDistinctSensorsShareCallerOwnedSnapshot(t *testing.T) {
 	r.Observe(runnerCount.ID(), other.ID())
 	if acquisitions != 1 || len(obs) != 2 || obs[0].GetValue().GetIntValue() != 4 || obs[1].GetValue().GetIntValue() != 4 {
 		t.Fatalf("shared snapshot repeated: acquisitions=%d batch=%v", acquisitions, obs)
+	}
+}
+
+func xidValue(s collect.Signal, cursor string, v *observation.Value) *observation.Observation {
+	return &observation.Observation{SignalId: s.ID(), Source: "xid", Target: observation.JournalEntryTarget("boot", cursor), ObservedAt: timestamppb.Now(), Unit: s.Unit(), Outcome: &observation.Observation_Value{Value: v}}
+}
+
+func xidCode(cursor string, code int64) *observation.Observation {
+	return xidValue(xidsignals.Code, cursor, &observation.Value{Kind: &observation.Value_IntValue{IntValue: code}})
+}
+
+func xidPCI(cursor string) *observation.Observation {
+	return xidValue(xidsignals.PCIAddress, cursor, &observation.Value{Kind: &observation.Value_StringValue{StringValue: "0000:01:00"}})
+}
+
+func xidMarker() *observation.Observation {
+	return &observation.Observation{SignalId: xidsignals.ScanWindow.ID(), Source: "xid", Target: observation.NodeTarget(""), ObservedAt: timestamppb.Now(), Outcome: &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_StringValue{StringValue: "boot"}}}}
+}
+
+func xidParseError(cursor string) *observation.Observation {
+	return observation.NewCollectionErrorObservation(xidsignals.Code.ID(), xidsignals.Code.Unit(), "xid", "parse", observation.JournalEntryTarget("boot", cursor), nil,
+		&observation.CollectionError{Category: observation.CollectionErrorCategoryParseError, SourceError: "unrecognized_format"})
+}
+
+func TestCollectRunnerKeepsJournalEntryEventsDistinct(t *testing.T) {
+	r := newCollectRunner(t, time.Second)
+	registerRunner(t, r, runnerSource{id: "xid", signals: xidsignals.All(), measure: runnerBatch(
+		xidCode("c1", 79), xidCode("c2", 79), xidParseError("c3"), xidParseError("c4"), xidMarker())})
+	r.Collect()
+	got := r.Observe(xidsignals.Code.ID())
+	if len(got) != 4 || got[0].GetValue().GetIntValue() != 79 || got[1].GetValue().GetIntValue() != 79 ||
+		got[2].GetCollectionError().GetSourceError() != "unrecognized_format" || got[3].GetCollectionError().GetSourceError() != "unrecognized_format" {
+		t.Fatalf("journal entries collapsed or failed: %v", got)
+	}
+}
+
+func TestCollectRunnerPreservesSensorBatchOrder(t *testing.T) {
+	r := newCollectRunner(t, time.Second)
+	batch := []*observation.Observation{xidCode("c1", 79), xidPCI("c1"), xidCode("c2", 48), xidPCI("c2"), xidPCI("c3"), xidCode("c3", 31), xidMarker()}
+	registerRunner(t, r, runnerSource{id: "xid", signals: xidsignals.All(), measure: runnerBatch(batch...)})
+	r.Collect()
+	got := r.Observe(xidsignals.All().IDs()...)
+	if len(got) != len(batch) {
+		t.Fatalf("got %d observations, want %d: %v", len(got), len(batch), got)
+	}
+	for i, o := range got {
+		if !proto.Equal(o, batch[i]) {
+			t.Fatalf("observation %d = %v, want %v", i, o, batch[i])
+		}
+	}
+}
+
+func TestCollectRunnerRejectsFutureJournalEntry(t *testing.T) {
+	r := newCollectRunner(t, time.Second)
+	future := xidCode("c1", 79)
+	future.ObservedAt = timestamppb.New(time.Now().Add(time.Hour))
+	registerRunner(t, r, runnerSource{id: "xid", signals: xidsignals.All(), measure: runnerBatch(future, xidMarker())})
+	r.Collect()
+	got := r.Observe(xidsignals.All().IDs()...)
+	if len(got) != len(xidsignals.All()) {
+		t.Fatalf("got %d observations, want one failure per owned signal: %v", len(got), got)
+	}
+	for _, o := range got {
+		if o.GetTarget() != nil || o.GetCollectionError().GetCategory() != observation.CollectionErrorCategorySourceError {
+			t.Fatalf("future entry not rejected: %v", o)
+		}
 	}
 }

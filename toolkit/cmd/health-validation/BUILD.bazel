@@ -31,10 +31,9 @@ go_binary(
     # builds leave the version defaults ("dev"). The {STABLE_*} keys are
     # produced by the --workspace_status_command set in .bazel/release.bazelrc.
     x_defs = {
-        "github.com/dsx-ai-factory/health-validation/catalog/version.version": "{STABLE_HEALTH_VALIDATION_CATALOG_VERSION}",
-        "github.com/dsx-ai-factory/health-validation/toolkit/internal/version.version": "{STABLE_HEALTH_VALIDATION_VERSION}",
-        "github.com/dsx-ai-factory/health-validation/toolkit/internal/version.commit": "{STABLE_GIT_COMMIT}",
-        "github.com/dsx-ai-factory/health-validation/toolkit/internal/version.date": "{STABLE_BUILD_DATE}",
+        "github.com/dsx-ai-factory/health-validation/internal/version.version": "{STABLE_HEALTH_VALIDATION_VERSION}",
+        "github.com/dsx-ai-factory/health-validation/internal/version.commit": "{STABLE_GIT_COMMIT}",
+        "github.com/dsx-ai-factory/health-validation/internal/version.date": "{STABLE_BUILD_DATE}",
     },
 )
 

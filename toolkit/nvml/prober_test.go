@@ -30,7 +30,7 @@ func (p *captureNVLink) Measure(pc nvml.ProbeContext) health.Measurement {
 }
 
 func (p *captureNVLink) Errored(id string, err error) health.Measurement {
-	return nvlink.ErroredNVLink(id, err, nvlink.MeasurementSignals...)
+	return nvlink.ErroredNVLink(id, err, nvlink.MeasurementSignals()...)
 }
 
 // captureProbe records the id/uuid it is called with and emits a real GPU
@@ -48,7 +48,7 @@ func (p *captureProbe) Measure(pc nvml.ProbeContext) health.Measurement {
 
 func (p *captureProbe) Errored(id string, err error) health.Measurement {
 	p.ids = append(p.ids, id)
-	return gpu.ErroredGPU(id, err, gpu.MeasurementSignals...)
+	return gpu.ErroredGPU(id, err, gpu.MeasurementSignals()...)
 }
 
 // threeSlotLib enumerates three GPUs covering the slot states the backend

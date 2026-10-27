@@ -53,10 +53,82 @@ func (tc *ThresholdCategory) UnmarshalJSON(data []byte) error {
 	return unmarshalEnum(data, thresholdCategoryFromName, tc, "threshold category")
 }
 
-// ThresholdSpec defines a threshold in a check definition. It carries
-// the catalog-authored value and its governance classification.
+// ThresholdType names the Go type a threshold's values and overrides must
+// have. CEL comparisons are type-sensitive, so the catalog declares the
+// type rather than inferring it from whichever value happens to be present.
+type ThresholdType int
+
+const (
+	// ThresholdTypeUnspecified is the zero value and is rejected at
+	// registration: unlike [ThresholdCategory], no type is safe to assume.
+	ThresholdTypeUnspecified ThresholdType = iota
+
+	ThresholdInt64
+	ThresholdFloat64
+	ThresholdBool
+	ThresholdString
+	ThresholdStringList
+)
+
+var thresholdTypeNames = map[ThresholdType]string{
+	ThresholdInt64:      "INT64",
+	ThresholdFloat64:    "FLOAT64",
+	ThresholdBool:       "BOOL",
+	ThresholdString:     "STRING",
+	ThresholdStringList: "STRING_LIST",
+}
+
+var thresholdTypeFromName = map[string]ThresholdType{
+	"INT64":       ThresholdInt64,
+	"FLOAT64":     ThresholdFloat64,
+	"BOOL":        ThresholdBool,
+	"STRING":      ThresholdString,
+	"STRING_LIST": ThresholdStringList,
+}
+
+func (tt ThresholdType) String() string {
+	if name, ok := thresholdTypeNames[tt]; ok {
+		return name
+	}
+	return fmt.Sprintf("ThresholdType(%d)", int(tt))
+}
+
+func (tt ThresholdType) MarshalJSON() ([]byte, error) {
+	return marshalEnum(tt, thresholdTypeNames)
+}
+
+func (tt *ThresholdType) UnmarshalJSON(data []byte) error {
+	return unmarshalEnum(data, thresholdTypeFromName, tt, "threshold type")
+}
+
+// Ordered reports whether the type supports range bounds. Only the
+// numeric types do; equality is meaningful for the rest, ordering is not.
+func (tt ThresholdType) Ordered() bool {
+	return tt == ThresholdInt64 || tt == ThresholdFloat64
+}
+
+// ThresholdSpec defines a threshold in a check definition.
+//
+// The value-bearing fields are typed any because one Thresholds map holds
+// thresholds of different types; ValueType names the type they actually
+// hold. Registration establishes that invariant via
+// [ThresholdSpec.Normalize], so code reading a spec out of a catalog may
+// assert those fields directly. An unregistered spec holds whatever literal
+// its author wrote.
+//
+// Coercion belongs at the two boundaries that take untyped input —
+// registration and override resolution — and nowhere else.
 type ThresholdSpec struct {
 	Value any `json:"value,omitempty"`
+	// ValueMin and ValueMax are inclusive bounds on Value, every
+	// PerArchitecture entry, and any operator override. Both are optional
+	// and legal only when ValueType is [ThresholdType.Ordered].
+	//
+	// Bound a threshold only where out-of-range is unambiguously a mistake:
+	// setting a tolerance very high is how an operator asks not to be
+	// alerted, so those carry no ValueMax.
+	ValueMin any `json:"value_min,omitempty"`
+	ValueMax any `json:"value_max,omitempty"`
 	// PerArchitecture overrides Value for a specific detected architecture
 	// (keyed by the catalog architecture identifier, e.g. "H100"). It lets one
 	// check carry per-architecture defaults — e.g. NVLink speed differs by GPU
@@ -67,6 +139,9 @@ type ThresholdSpec struct {
 	Description     string            `json:"description,omitempty"`
 	Unit            string            `json:"unit,omitempty"`
 	Category        ThresholdCategory `json:"category"`
+	// ValueType is the declared Go type of Value, the PerArchitecture
+	// entries, the bounds, and any override. Mandatory — see [ThresholdSpec].
+	ValueType ThresholdType `json:"value_type"`
 	// RequiredOverride marks a threshold with no meaningful catalog value
 	// that the operator must supply per fleet. It is independent of
 	// Category, which governs whether an override is permitted at all;
@@ -85,43 +160,6 @@ type ResolvedThreshold struct {
 	OriginalValue any               `json:"original_value"`
 	Category      ThresholdCategory `json:"category"`
 	Overridden    bool              `json:"overridden"`
-}
-
-// ResolveThresholds merges catalog-authored thresholds with operator
-// overrides for the given architecture. A threshold's PerArchitecture entry
-// for architecture becomes its base value (else Value); an operator override
-// then applies on top. Returns an error if an override targets a Fixed
-// threshold.
-func ResolveThresholds(checkID string, specs map[string]ThresholdSpec, overrides map[string]any, architecture string) (map[string]ResolvedThreshold, error) {
-	resolved := make(map[string]ResolvedThreshold, len(specs))
-
-	for name, spec := range specs {
-		base := spec.Value
-		if archValue, ok := spec.PerArchitecture[architecture]; ok {
-			base = archValue
-		}
-
-		rt := ResolvedThreshold{
-			Value:         base,
-			Category:      spec.Category,
-			OriginalValue: base,
-		}
-
-		if override, ok := overrides[name]; ok {
-			if spec.Category == FixedThreshold {
-				return nil, &FixedThresholdError{
-					ThresholdName: name,
-					CheckID:       checkID,
-				}
-			}
-			rt.Value = override
-			rt.Overridden = true
-		}
-
-		resolved[name] = rt
-	}
-
-	return resolved, nil
 }
 
 // FixedThresholdError is returned when an operator attempts to override

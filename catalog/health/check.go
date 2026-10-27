@@ -5,6 +5,7 @@ package health
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 )
@@ -17,11 +18,10 @@ import (
 // Check definitions are data. They carry no sensor or hardware dependencies.
 // Evaluation happens when a caller provides signal values to [Catalog.Evaluate].
 type CheckDefinition struct {
-	Thresholds       map[string]ThresholdSpec `json:"thresholds"`
-	FeasibilityClass string                   `json:"feasibility_class,omitempty"`
-	Description      string                   `json:"description"`
-	Name             string                   `json:"name"`
-	ID               string                   `json:"id"`
+	Thresholds  map[string]ThresholdSpec `json:"thresholds"`
+	Description string                   `json:"description"`
+	Name        string                   `json:"name"`
+	ID          string                   `json:"id"`
 	// Dependencies names check IDs whose Critical verdict explains this check's
 	// inability to collect. Checks never read each other's results, so a
 	// dependency has no effect on whether this check runs, what it reports, or
@@ -56,6 +56,11 @@ type CheckDefinition struct {
 // skip without one and reject one). When PerArchitecture is set, every architecture in
 // Architectures must be a key. Value may be omitted only when that coverage
 // is complete; unrestricted checks (empty Architectures) still need a Value.
+//
+// Every threshold must declare a ValueType, and each catalog-authored
+// value must be coercible to it and within any declared bounds. Validate
+// reports those problems without rewriting anything; [Catalog.Register]
+// performs the coercion.
 func (cd CheckDefinition) Validate() error {
 	names := make([]string, 0, len(cd.Thresholds))
 	for name := range cd.Thresholds {
@@ -75,7 +80,65 @@ func (cd CheckDefinition) Validate() error {
 		if err := validateThresholdCoverage(cd.ID, name, spec, cd.Architectures); err != nil {
 			return err
 		}
+		if err := validateThresholdValues(cd.ID, name, spec); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+// validateThresholdValues requires a declared ValueType, bounds that suit
+// it, and catalog-authored values that satisfy both.
+func validateThresholdValues(checkID, name string, spec ThresholdSpec) error {
+	if spec.ValueType == ThresholdTypeUnspecified {
+		return fmt.Errorf("check %q threshold %q: ValueType is required", checkID, name)
+	}
+
+	bounded := spec.ValueMin != nil || spec.ValueMax != nil
+	if bounded && !spec.ValueType.Ordered() {
+		return fmt.Errorf("check %q threshold %q: ValueMin/ValueMax require an ordered value type, got %s",
+			checkID, name, spec.ValueType)
+	}
+	// Adjustable promises operators a tunable range; without a bound it is
+	// indistinguishable from Default.
+	if spec.Category == AdjustableThreshold && !bounded {
+		return fmt.Errorf("check %q threshold %q: an adjustable threshold must declare ValueMin or ValueMax",
+			checkID, name)
+	}
+
+	// Not registered yet, so the bounds are still author literals; the
+	// value checks below need them at the declared type.
+	var err error
+	if spec, err = spec.coerceBounds(); err != nil {
+		return fmt.Errorf("check %q threshold %q: bounds: %w", checkID, name, err)
+	}
+
+	// Checked before the values, so an inverted range is reported as such
+	// rather than as whichever value it happens to exclude. A threshold the
+	// operator must supply has no value to exclude at all, and would
+	// otherwise register and then reject every override.
+	if spec.ValueMin != nil && spec.ValueMax != nil {
+		order, err := compareThresholdValues(spec.ValueMin, spec.ValueMax)
+		if err != nil {
+			return fmt.Errorf("check %q threshold %q: bounds: %w", checkID, name, err)
+		}
+		if order > 0 {
+			return fmt.Errorf("check %q threshold %q: ValueMin %v is above ValueMax %v",
+				checkID, name, spec.ValueMin, spec.ValueMax)
+		}
+	}
+
+	if spec.Value != nil {
+		if _, err := spec.CoerceInput(spec.Value); err != nil {
+			return fmt.Errorf("check %q threshold %q: Value: %w", checkID, name, err)
+		}
+	}
+	for _, arch := range slices.Sorted(maps.Keys(spec.PerArchitecture)) {
+		if _, err := spec.CoerceInput(spec.PerArchitecture[arch]); err != nil {
+			return fmt.Errorf("check %q threshold %q: PerArchitecture[%q]: %w", checkID, name, arch, err)
+		}
+	}
+
 	return nil
 }
 

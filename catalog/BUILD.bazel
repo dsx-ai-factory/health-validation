@@ -1,12 +1,11 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
-# gazelle:prefix github.com/dsx-ai-factory/health-validation/catalog
-
 go_library(
     name = "catalog",
     srcs = [
         "catalog.go",
         "checks.go",
+        "clone.go",
         "doc.go",
         "filter.go",
         "override.go",
@@ -31,6 +30,7 @@ go_test(
     srcs = [
         "catalog_test.go",
         "checks_test.go",
+        "clone_test.go",
         "entities_test.go",
         "evaluate_test.go",
         "filter_test.go",

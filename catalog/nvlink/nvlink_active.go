@@ -40,6 +40,8 @@ func NVLinkActive() health.CheckDefinition {
 		Thresholds: map[string]health.ThresholdSpec{
 			"max_inactive_nvlinks": {
 				Value:       int64(0),
+				ValueType:   health.ThresholdInt64,
+				ValueMin:    int64(0),
 				Category:    health.DefaultThreshold,
 				Description: "Maximum inactive NVLinks tolerated per GPU before the GPU is considered failing.",
 				Unit:        "count",

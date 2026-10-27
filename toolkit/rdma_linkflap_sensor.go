@@ -39,5 +39,5 @@ func (s *RDMALinkFlapSensor) Measure(ctx context.Context) ([]health.Measurement,
 // Errored reports the journal as unreadable so the link-flap check fails
 // Critical when collection could not run.
 func (s *RDMALinkFlapSensor) Errored(err error) []health.Measurement {
-	return []health.Measurement{infiniband.ErroredLinkFlap(sinceBoot, err, infiniband.MeasurementSignals...)}
+	return []health.Measurement{infiniband.ErroredLinkFlap(sinceBoot, err, infiniband.MeasurementSignals()...)}
 }

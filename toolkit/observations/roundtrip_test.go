@@ -146,7 +146,7 @@ func roundTripFixture() []health.Measurement {
 			ComputeProcessCount: 1, ComputeProcessCmdlines: "123 'python train.py'",
 		},
 		partialGPU,
-		gpu.ErroredGPU("gpu", errors.New("nvml device handle failed"), gpu.MeasurementSignals...),
+		gpu.ErroredGPU("gpu", errors.New("nvml device handle failed"), gpu.MeasurementSignals()...),
 		link,
 		cpu.CPUMeasurement{PossibleCPUCount: 64, OnlineCPUCount: 63, NUMANodeCount: 2},
 		node.NodeMeasurement{GPUCount: 8},

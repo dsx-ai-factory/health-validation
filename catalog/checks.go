@@ -33,8 +33,8 @@ func builtinChecks() []health.CheckDefinition {
 		nvlink.NVLinkCapabilities(),
 		nvlink.NVLinkP2P(),
 	}
-	// One CRITICAL check per critical Xid code, plus a consolidated
-	// WARNING check and the Xid 154 INFO check.
+	// One CRITICAL check per critical Xid code, plus architecture-scoped
+	// WARNING checks and the Xid 154 INFO check.
 	checks = append(checks, xid.Checks()...)
 	return checks
 }

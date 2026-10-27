@@ -172,7 +172,7 @@ func TestFromMeasurementsReportsErrorsAndUnsupported(t *testing.T) {
 }
 
 func TestFromMeasurementsWholeSensorFailureHasNoTarget(t *testing.T) {
-	failed := gpu.ErroredGPU("gpu", errors.New("NVML init failed"), gpu.MeasurementSignals...)
+	failed := gpu.ErroredGPU("gpu", errors.New("NVML init failed"), gpu.MeasurementSignals()...)
 
 	for signal, o := range exportBySignal(t, failed) {
 		if o.GetTarget() != nil || o.GetCollectionError() == nil {

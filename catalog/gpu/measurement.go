@@ -3,7 +3,11 @@
 
 package gpu
 
-import "github.com/dsx-ai-factory/health-validation/catalog/health"
+import (
+	"slices"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
+)
 
 // GPU signal field names. These are the keys used in CEL rule
 // expressions and must match the RequiredSignals declared in GPU
@@ -21,11 +25,7 @@ const (
 	SignalComputeProcessCmdlines = "compute_process_cmdlines"
 )
 
-// MeasurementSignals lists every signal a GPUMeasurement carries.
-// Sensors pass it as the failedSignals argument when they cannot
-// observe the GPU at all (e.g. a device handle that failed to load),
-// telling the catalog that no signal is trustworthy for this entity.
-var MeasurementSignals = []string{
+var measurementSignals = []string{
 	SignalGPUID,
 	SignalGPUPstate,
 	SignalAveragePowerDrawW,
@@ -37,6 +37,13 @@ var MeasurementSignals = []string{
 	SignalComputeProcessCount,
 	SignalComputeProcessCmdlines,
 }
+
+// MeasurementSignals lists every signal a GPUMeasurement carries.
+// Sensors pass it as the failedSignals argument when they cannot
+// observe the GPU at all (e.g. a device handle that failed to load),
+// telling the catalog that no signal is trustworthy for this entity.
+// The returned slice is a copy.
+func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 
 // GPUMeasurement is a single observation of one GPU's health state.
 // Partners populate this struct from their telemetry source (nvidia-smi,
@@ -90,6 +97,9 @@ type GPUMeasurement struct {
 // pass a domain-specific error type (e.g. nvml.Error) so consumers can
 // type-assert for structured failure details.
 func ErroredGPU(gpuID string, err error, failedSignals ...string) GPUMeasurement {
+	if len(failedSignals) == 0 {
+		failedSignals = measurementSignals
+	}
 	m := GPUMeasurement{GPUID: gpuID}
 	m.AddError(err, failedSignals...)
 	return m

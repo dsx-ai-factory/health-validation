@@ -12,8 +12,6 @@ The exit code is a coarse health signal:
 
 The exit code does not distinguish CRITICAL from UNKNOWN or INFO from WARNING. For the precise level, read `overall_severity` from the JSON — Slurm prolog scripts that need more than the coarse signal should do so.
 
-The catalog library's `health.NodeVerdict.ExitCode()` method uses a separate 0/1/2/3 scheme that the CLI does not use.
-
 ## What happens if a sensor cannot read from a GPU?
 
 It depends on how the sensor reports the failure. If the sensor can identify the GPU but cannot read one or more fields, it calls `AddError()` on the measurement for those failing fields. The catalog evaluates each check against the partial measurement: checks that require only the available signals proceed normally; checks that require a failed signal produce a CRITICAL verdict rather than silently passing.
@@ -69,11 +67,15 @@ It depends on the `ThresholdCategory`:
 - **ADJUSTABLE**: Operator can override within documented bounds.
 - **FIXED**: Non-overridable. Attempting to override returns an error before the check runs.
 
+Two further constraints apply to any override the category permits. It must match the threshold's declared `value_type`, and it must fall within `value_min`/`value_max` when those are published. Both are rejected before the check runs rather than producing a misleading verdict — a threshold compared for equality against a nonsensical value would otherwise fail on every node. A value that converts cleanly is accepted, so an integer supplied for a `FLOAT64` threshold is fine; one that would lose information, such as `3.5` for an `INT64` threshold, is not.
+
+Not every threshold publishes bounds, and an absent `value_max` is deliberate rather than an omission. Where the threshold *is* the tolerance — the maximum inactive NVLinks you accept, say — raising it is how you ask not to be alerted, so capping it would remove a legitimate control.
+
 All active overrides appear in `thresholds[name].overridden: true` in the output, alongside the original NVIDIA value in `thresholds[name].original_value`.
 
 ## What Go version is required?
 
-Go 1.27.2, as declared in each module's `go.mod`. The repo has four Go modules: `catalog`, `toolkit`, `collect`, and `agentkit`.
+Go 1.27.3, as declared in `go.mod`. The repo is a single Go module; `catalog`, `toolkit`, `collect`, and `agentkit` are packages within it.
 
 ## What hardware is covered?
 

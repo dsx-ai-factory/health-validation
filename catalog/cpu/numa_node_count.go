@@ -44,6 +44,8 @@ func NUMANodeCount() health.CheckDefinition {
 					"GB200": int64(34),
 					"GB300": int64(34),
 				},
+				ValueType:   health.ThresholdInt64,
+				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
 				Description: "Expected number of NUMA nodes online. GB200 and GB300 at 34. Override per fleet.",
 				Unit:        "count",

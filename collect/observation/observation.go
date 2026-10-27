@@ -38,6 +38,7 @@ type (
 	PCIRef                  = healthv1.PCIRef
 	FUSEConnectionRef       = healthv1.FuseConnectionRef
 	PstoreRecordRef         = healthv1.PstoreRecordRef
+	JournalEntryRef         = healthv1.JournalEntryRef
 	Value                   = healthv1.Value
 	CollectionError         = healthv1.CollectionError
 	CollectionErrorCategory = healthv1.CollectionErrorCategory
@@ -71,6 +72,7 @@ type (
 	ObservationTarget_FUSEConnection     = healthv1.ObservationTarget_FuseConnection
 	ObservationTarget_PstoreRecord       = healthv1.ObservationTarget_PstoreRecord
 	Value_UintValue                      = healthv1.Value_UintValue
+	ObservationTarget_JournalEntry       = healthv1.ObservationTarget_JournalEntry
 )
 
 const (
@@ -174,6 +176,11 @@ func FUSEConnectionTarget(bootID string, connectionID uint64) *ObservationTarget
 // PstoreRecordTarget identifies a persistent record by path and content digest.
 func PstoreRecordTarget(path, sha256 string) *ObservationTarget {
 	return &ObservationTarget{Kind: &ObservationTarget_PstoreRecord{PstoreRecord: &PstoreRecordRef{Path: path, Sha256: sha256}}}
+}
+
+// JournalEntryTarget identifies one systemd journal entry within one boot.
+func JournalEntryTarget(bootID, cursor string) *ObservationTarget {
+	return &ObservationTarget{Kind: &ObservationTarget_JournalEntry{JournalEntry: &JournalEntryRef{BootId: bootID, Cursor: cursor}}}
 }
 
 // ValidateBatch verifies every observation before a batch crosses a service
@@ -365,6 +372,10 @@ func validateTarget(target *ObservationTarget) error {
 			return fmt.Errorf("target has an empty pstore record payload")
 		}
 		return validatePstoreRecordRef(kind.PstoreRecord)
+	case *ObservationTarget_JournalEntry:
+		if kind == nil || kind.JournalEntry == nil {
+			return fmt.Errorf("target has an empty journal entry payload")
+		}
 	default:
 		return fmt.Errorf("target has no kind")
 	}

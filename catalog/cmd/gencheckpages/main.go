@@ -212,14 +212,26 @@ func splitRun(s string) (run, rest string) {
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 func isCompact(c check) bool {
-	return len(c.Rules) == 1 && len(c.Thresholds) == 0 && c.Rules[0].RecommendedAction == nil
+	return len(c.Rules) == 1 && c.Rules[0].RecommendedAction == nil
 }
 
 func propertySignature(c check) string {
 	return strings.Join([]string{
 		c.Provenance, c.ConditionScope, c.ExecutionClass, c.Cadence, c.MaturityLevel,
 		strings.Join(c.Contexts, ","), strings.Join(c.Architectures, ","), strings.Join(c.Signals, ","),
+		thresholdSignature(c.Thresholds),
 	}, "\x00")
+}
+
+func thresholdSignature(thresholds map[string]threshold) string {
+	var parts []string
+	for _, name := range keys(thresholds) {
+		t := thresholds[name]
+		parts = append(parts, strings.Join([]string{
+			name, thresholdValue(t), t.Unit, t.Category, t.Description,
+		}, "\x00"))
+	}
+	return strings.Join(parts, "\x00")
 }
 
 func writeCompactGroup(b *strings.Builder, group []check) {
@@ -227,6 +239,7 @@ func writeCompactGroup(b *strings.Builder, group []check) {
 	fmt.Fprintf(b, "## Single-rule checks reading %s\n\n", codeList(first.Signals))
 	fmt.Fprintf(b, "These %d checks share the properties below and each has one rule.\n\n", len(group))
 	writeProperties(b, first)
+	writeThresholds(b, first.Thresholds)
 	b.WriteString("| Check | Name | Condition | Severity | Recommended action |\n|---|---|---|---|---|\n")
 	for _, c := range group {
 		r := c.Rules[0]
@@ -255,15 +268,7 @@ func writeCheck(b *strings.Builder, c check) {
 
 	writeProperties(b, c)
 
-	if len(c.Thresholds) > 0 {
-		b.WriteString("**Thresholds**\n\n| Name | Value | Unit | Category | Description |\n|---|---|---|---|---|\n")
-		for _, name := range keys(c.Thresholds) {
-			t := c.Thresholds[name]
-			fmt.Fprintf(b, "| %s | %s | %s | %s | %s |\n",
-				tcode(name), cell(thresholdValue(t)), cell(t.Unit), tcode(t.Category), cell(t.Description))
-		}
-		b.WriteString("\n")
-	}
+	writeThresholds(b, c.Thresholds)
 
 	if len(c.Rules) > 0 {
 		b.WriteString("**Rules**\n\n")
@@ -280,6 +285,19 @@ func writeCheck(b *strings.Builder, c check) {
 	if c.RecommendedAction != nil {
 		fmt.Fprintf(b, "**Recommended action:** %s\n\n", actionText(c.RecommendedAction))
 	}
+}
+
+func writeThresholds(b *strings.Builder, thresholds map[string]threshold) {
+	if len(thresholds) == 0 {
+		return
+	}
+	b.WriteString("**Thresholds**\n\n| Name | Value | Unit | Category | Description |\n|---|---|---|---|---|\n")
+	for _, name := range keys(thresholds) {
+		t := thresholds[name]
+		fmt.Fprintf(b, "| %s | %s | %s | %s | %s |\n",
+			tcode(name), cell(thresholdValue(t)), cell(t.Unit), tcode(t.Category), cell(t.Description))
+	}
+	b.WriteString("\n")
 }
 
 func writeProperties(b *strings.Builder, c check) {

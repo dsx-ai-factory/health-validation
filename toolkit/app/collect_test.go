@@ -24,6 +24,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
@@ -44,35 +45,35 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 	return a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
 }
 
-func TestBuiltinDomainsDefaultToCollectSensors(t *testing.T) {
-	ids := func(sources []collect.Sensor, adapters []CollectAdapter) ([]string, []string) {
+func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
+	builtins := func(a *App) ([]string, []string) {
+		a.host = fakeHost{b: spyBackend{called: new(bool)}}
+		sources, adapters := a.builtinCollect()
 		var sourceIDs, adapterNames []string
 		for _, s := range sources {
 			sourceIDs = append(sourceIDs, s.ID())
 		}
-		for _, a := range adapters {
-			adapterNames = append(adapterNames, a.Name())
+		for _, adapter := range adapters {
+			adapterNames = append(adapterNames, adapter.Name())
 		}
 		return sourceIDs, adapterNames
 	}
-	host := fakeHost{b: spyBackend{called: new(bool)}}
-	for _, tc := range []struct {
+	tests := []struct {
 		app      *App
 		name     string
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{cpusensor.ID, gpuinventory.SensorID}, adapters: []string{"cpu", "node"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{gpuinventory.SensorID}, adapters: []string{"node"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{cpusensor.ID}, adapters: []string{"cpu"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			tc.app.host = host
-			sources, adapters := ids(tc.app.builtinCollect())
-			if !slices.Equal(sources, tc.sources) || !slices.Equal(adapters, tc.adapters) {
-				t.Fatalf("built-in sources=%v adapters=%v, want %v and %v", sources, adapters, tc.sources, tc.adapters)
-			}
-		})
+		{name: "default", app: New(), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"cpu", "node", "xid"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"node", "xid"}},
+		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{cpusensor.ID, xidsensor.ID}, adapters: []string{"cpu", "xid"}},
+		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID}, adapters: []string{"cpu", "node"}},
+	}
+	for _, test := range tests {
+		sources, adapters := builtins(test.app)
+		if !slices.Equal(sources, test.sources) || !slices.Equal(adapters, test.adapters) {
+			t.Errorf("%s: built-ins = %v %v, want %v %v", test.name, sources, adapters, test.sources, test.adapters)
+		}
 	}
 }
 
@@ -521,7 +522,7 @@ func TestWithCollectReportsRegistrationPanics(t *testing.T) {
 }
 
 func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
-	for _, name := range []string{"nil sensor", "typed nil sensor", "nil signal", "no adapter", "nil adapter", "typed nil adapter", "lazy typed nil adapter", "incomplete adapter", "unowned signal", "duplicate producer", "duplicate adapter", "duplicate adapter across calls", "built-in adapter name"} {
+	for _, name := range []string{"nil sensor", "typed nil sensor", "nil signal", "no adapter", "nil adapter", "typed nil adapter", "lazy typed nil adapter", "incomplete adapter", "unowned signal", "duplicate producer", "duplicate adapter", "duplicate adapter across calls", "built-in adapter name", "built-in xid adapter name"} {
 		t.Run(name, func(t *testing.T) {
 			sensor := &collectAppSensor{}
 			var otherCycles []*collect.Cycle
@@ -564,6 +565,11 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 				adapter := customCountAdapter()
 				adapter.name = "cpu"
 				a.WithCollect(sensor).WithCollectAdapters(adapter)
+			case "built-in xid adapter name":
+				a.xid = nil
+				adapter := customCountAdapter()
+				adapter.name = "xid"
+				a.WithCollect(sensor).WithCollectAdapters(adapter)
 			case "duplicate adapter across calls":
 				adapter := customCountAdapter()
 				adapter.signals["test.empty"] = []string{"custom_count"}
@@ -596,6 +602,9 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 			}
 			if name == "built-in adapter name" && !strings.Contains(stderr.String(), `collect adapter name "cpu" is reserved for a built-in domain`) {
 				t.Fatalf("built-in adapter name was not reserved: %q", stderr.String())
+			}
+			if name == "built-in xid adapter name" && !strings.Contains(stderr.String(), `collect adapter name "xid" is reserved for a built-in domain`) {
+				t.Fatalf("built-in xid adapter name was not reserved: %q", stderr.String())
 			}
 			if len(sensor.cycles) != 0 || len(otherCycles) != 0 {
 				t.Fatal("invalid registration was measured")

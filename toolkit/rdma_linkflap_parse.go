@@ -36,7 +36,7 @@ type linkEvent struct {
 	down bool
 }
 
-// ParseLinkFlaps scans short-full journal lines for mlx5 link
+// parseLinkFlaps scans short-full journal lines for mlx5 link
 // transitions and returns the aggregate outage measurement for the
 // window described by since (e.g. "boot"). Per interface it pairs each
 // "Link down" with the next not-yet-consumed "Link up" and records that
@@ -48,7 +48,7 @@ type linkEvent struct {
 // one continuous outage. Lines that do not parse are skipped.
 // The measurement always has meaning even with zero outages, which a check
 // reads as "no fatal link flaps observed".
-func ParseLinkFlaps(since string, lines []string) infiniband.LinkFlapMeasurement {
+func parseLinkFlaps(since string, lines []string) infiniband.LinkFlapMeasurement {
 	byIface := make(map[string][]linkEvent)
 	for _, line := range lines {
 		g := linkFlapLineRE.FindStringSubmatch(line)

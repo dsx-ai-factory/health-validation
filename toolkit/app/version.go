@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/dsx-ai-factory/health-validation/toolkit/internal/version"
+	"github.com/dsx-ai-factory/health-validation/internal/version"
 )
 
 // versionCommand prints build-time version metadata. The default output is a

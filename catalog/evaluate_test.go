@@ -163,9 +163,9 @@ func TestEvaluateAll_RoutesByRequiredSignals_NoCrossMeasurementSkips(t *testing.
 // Registering a check declares that its sensor is expected, so a category
 // that supplies no measurement is a hole in the assessment rather than a
 // domain that was out of scope. Every registered check must yield a
-// verdict: the collected domain's checks evaluate, and every other
-// domain's checks are visible as SENSOR_MISSING skips instead of
-// vanishing from the output.
+// verdict: applicable checks in the collected domain evaluate,
+// architecture-inapplicable checks skip, and every other domain's checks
+// are visible as SENSOR_MISSING skips instead of vanishing from the output.
 func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 	// Xid 79 is CRITICAL; the measurement carries all xid signals. The full
 	// catalog also holds gpu/node/nvlink/cpu checks in other categories.
@@ -196,7 +196,9 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 	for _, v := range nv.SkippedChecks {
 		seen[v.CheckID] = true
 		if v.Category == health.Xid {
-			t.Errorf("CheckID %q: collected category skipped with %v", v.CheckID, v.SkipReason)
+			if v.SkipReason != health.ArchitectureUnsupported {
+				t.Errorf("CheckID %q: collected category skipped with %v, want SIGNAL_UNAVAILABLE_ARCHITECTURE", v.CheckID, v.SkipReason)
+			}
 			continue
 		}
 		// Only Xid supplies a measurement here, so every other check skips
@@ -379,7 +381,7 @@ func TestEvaluateAll_ErroredMeasurement(t *testing.T) {
 
 	nv, err := cat.EvaluateAll(
 		xid.ErroredXid("boot", errors.New("journal unavailable: ERROR_READ_FAILED"),
-			xid.MeasurementSignals...),
+			xid.MeasurementSignals()...),
 	)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
@@ -440,7 +442,7 @@ func TestEvaluateAll_ErroredMeasurement_GatesOnRequiredSignals(t *testing.T) {
 	cat.MustRegister(thermal)
 
 	nv, err := cat.EvaluateAll(gpu.ErroredGPU("GPU-4", errors.New("GPU is lost"),
-		gpu.MeasurementSignals...))
+		gpu.MeasurementSignals()...))
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
@@ -659,7 +661,7 @@ func TestEvaluateAll_MixedErroredAndHealthy(t *testing.T) {
 
 	healthy := gpu.GPUMeasurement{GPUID: "GPU-0"}
 	errored := gpu.ErroredGPU("GPU-7", errors.New("GPU-7 fell off the bus"),
-		gpu.MeasurementSignals...)
+		gpu.MeasurementSignals()...)
 
 	nv, err := cat.EvaluateAll(healthy, errored)
 	if err != nil {
@@ -673,8 +675,8 @@ func TestEvaluateAll_MixedErroredAndHealthy(t *testing.T) {
 		t.Errorf("CheckResults = %d, want 2 (1 check x 2 measurements)",
 			len(nv.CheckResults))
 	}
-	if nv.ExitCode() != 1 {
-		t.Errorf("ExitCode = %d, want 1 (CRITICAL)", nv.ExitCode())
+	if nv.OverallSeverity != health.Critical {
+		t.Errorf("OverallSeverity = %v, want CRITICAL", nv.OverallSeverity)
 	}
 }
 
@@ -726,6 +728,60 @@ func TestEvaluate_RuleRecommendedActionOverridesCheckDefault(t *testing.T) {
 	}
 	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionResetGPU)) {
 		t.Errorf("RecommendedAction = %v, want %v (check default)", v.RecommendedAction, "drain")
+	}
+}
+
+// A verdict's RecommendedAction must not share its RemediationActions with the
+// registered definition, or a caller editing the verdict would change every
+// later verdict from that check.
+func TestEvaluate_VerdictActionDoesNotAliasRegistry(t *testing.T) {
+	check := health.CheckDefinition{
+		ID:                "node_action_alias",
+		Category:          health.Node,
+		RequiredSignals:   []string{"first", "second"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		RecommendedAction: health.Drain(health.RemediationActionResetGPU),
+		Rules: []health.Rule{
+			{
+				Expression:        "second > 0",
+				Severity:          health.Warning,
+				Message:           "second nonzero",
+				RecommendedAction: health.Drain(health.RemediationActionRestartOS),
+			},
+			{
+				Expression: "first < 4",
+				Severity:   health.Critical,
+				Message:    "first too low",
+			},
+		},
+	}
+	cat := catalog.NewEmpty(
+		catalog.WithArchitecture(catalogtest.DummyArchitecture),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+	cat.MustRegister(check)
+
+	for name, tc := range map[string]struct {
+		want health.RemediationAction
+		m    twoSignalMeasurement
+	}{
+		"rule override": {health.RemediationActionRestartOS, twoSignalMeasurement{First: 4, Second: 1}},
+		"check default": {health.RemediationActionResetGPU, twoSignalMeasurement{First: 3}},
+	} {
+		v, err := cat.Evaluate("node_action_alias", tc.m)
+		if err != nil {
+			t.Fatalf("%s: Evaluate: %v", name, err)
+		}
+		v.RecommendedAction.RemediationActions[0] = health.RemediationActionServiceRequired
+
+		again, err := cat.Evaluate("node_action_alias", tc.m)
+		if err != nil {
+			t.Fatalf("%s: second Evaluate: %v", name, err)
+		}
+		if got := again.RecommendedAction.RemediationActions[0]; got != tc.want {
+			t.Errorf("%s: later verdict action = %v, want %v (verdict edit leaked into the registry)", name, got, tc.want)
+		}
 	}
 }
 
@@ -875,9 +931,6 @@ func TestEvaluateAll_NodeVerdict(t *testing.T) {
 	if nv.OverallSeverity != health.Critical {
 		t.Errorf("overall = %v, want CRITICAL", nv.OverallSeverity)
 	}
-	if nv.ExitCode() != 1 {
-		t.Errorf("exit code = %d, want 1", nv.ExitCode())
-	}
 }
 
 // Every verdict the catalog aggregates must name the catalog that produced
@@ -989,6 +1042,7 @@ func requiredThresholdCheck() health.CheckDefinition {
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_first": {
 				Value:            int64(0),
+				ValueType:        health.ThresholdInt64,
 				Category:         health.DefaultThreshold,
 				RequiredOverride: true,
 			},
@@ -1229,9 +1283,9 @@ func TestEvaluateAll_LostGPUNamesGPUCount(t *testing.T) {
 	verdict, err := cat.EvaluateAll(
 		node.NodeMeasurement{GPUCount: 3},
 		healthyGPU("GPU-0"), healthyGPU("GPU-1"), healthyGPU("GPU-2"),
-		gpu.ErroredGPU("", cause, gpu.MeasurementSignals...),
+		gpu.ErroredGPU("", cause, gpu.MeasurementSignals()...),
 		nvlink.NVLinkMeasurement{GPUID: "GPU-0"},
-		nvlink.ErroredNVLink("", cause, nvlink.MeasurementSignals...),
+		nvlink.ErroredNVLink("", cause, nvlink.MeasurementSignals()...),
 	)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
@@ -1271,7 +1325,7 @@ func TestEvaluateAll_PartialSignalFailureIsNotAttributedToDependency(t *testing.
 	cat := catalog.New(catalog.WithArchitecture("GB200"))
 
 	// Slot 3 off the bus: every signal unreadable.
-	lost := gpu.ErroredGPU("", errors.New("device handle unavailable"), gpu.MeasurementSignals...)
+	lost := gpu.ErroredGPU("", errors.New("device handle unavailable"), gpu.MeasurementSignals()...)
 
 	// GPU-1 enumerated fine; one power read failed on its own.
 	partial := healthyGPU("GPU-1")
@@ -1371,7 +1425,7 @@ func TestEvaluateAll_CollectionFailureKeepsItsPrefixOnEveryMessage(t *testing.T)
 	verdict, err := cat.EvaluateAll(
 		node.NodeMeasurement{GPUCount: 3},
 		healthyGPU("GPU-0"),
-		gpu.ErroredGPU("", cause, gpu.MeasurementSignals...),
+		gpu.ErroredGPU("", cause, gpu.MeasurementSignals()...),
 	)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
@@ -1407,8 +1461,8 @@ func TestEvaluateAll_UnobservedDependencyExplainsNothing(t *testing.T) {
 	// The whole NVML source is wedged: gpu_count is Critical from its own
 	// errored measurement rather than from a count it actually read.
 	verdict, err := cat.EvaluateAll(
-		node.ErroredNode(cause, node.MeasurementSignals...),
-		gpu.ErroredGPU("", cause, gpu.MeasurementSignals...),
+		node.ErroredNode(cause, node.MeasurementSignals()...),
+		gpu.ErroredGPU("", cause, gpu.MeasurementSignals()...),
 	)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
@@ -1430,7 +1484,7 @@ func TestEvaluateAll_NoAnnotationWhereGPUCountDoesNotApply(t *testing.T) {
 
 	verdict, err := cat.EvaluateAll(
 		healthyGPU("GPU-0"),
-		gpu.ErroredGPU("", cause, gpu.MeasurementSignals...),
+		gpu.ErroredGPU("", cause, gpu.MeasurementSignals()...),
 	)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
@@ -1484,7 +1538,7 @@ func TestEvaluateAll_MultipleDependenciesNamesFirstDeclared(t *testing.T) {
 
 	nv, err := cat.EvaluateAll(
 		node.NodeMeasurement{GPUCount: 3},
-		gpu.ErroredGPU("", errors.New("handle unavailable"), gpu.MeasurementSignals...),
+		gpu.ErroredGPU("", errors.New("handle unavailable"), gpu.MeasurementSignals()...),
 	)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
@@ -1505,7 +1559,7 @@ func TestEvaluateAll_MultipleDependenciesNamesFirstDeclared(t *testing.T) {
 // Dependencies has no effect. catalog.go documents this contract.
 func TestEvaluate_SingleCheckIgnoresDependencies(t *testing.T) {
 	cat := catalog.New(catalog.WithArchitecture("GB200"))
-	lost := gpu.ErroredGPU("", errors.New("device handle unavailable"), gpu.MeasurementSignals...)
+	lost := gpu.ErroredGPU("", errors.New("device handle unavailable"), gpu.MeasurementSignals()...)
 
 	v, err := cat.Evaluate("gpu_power_limit", lost)
 	if err != nil {
@@ -1527,7 +1581,7 @@ func TestEvaluateAll_AnnotatedVerdictShape(t *testing.T) {
 	verdict, err := cat.EvaluateAll(
 		node.NodeMeasurement{GPUCount: 3},
 		healthyGPU("GPU-0"),
-		gpu.ErroredGPU("", errors.New("device handle unavailable"), gpu.MeasurementSignals...),
+		gpu.ErroredGPU("", errors.New("device handle unavailable"), gpu.MeasurementSignals()...),
 	)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
@@ -1586,7 +1640,7 @@ func TestEvaluateAll_UnknownDependencyExplains(t *testing.T) {
 
 	nv, err := cat.EvaluateAll(
 		node.NodeMeasurement{GPUCount: 3},
-		gpu.ErroredGPU("", errors.New("handle unavailable"), gpu.MeasurementSignals...),
+		gpu.ErroredGPU("", errors.New("handle unavailable"), gpu.MeasurementSignals()...),
 	)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)

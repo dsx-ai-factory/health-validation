@@ -7,7 +7,11 @@
 // the catalog evaluates the aggregate against GPU checks.
 package xid
 
-import "github.com/dsx-ai-factory/health-validation/catalog/health"
+import (
+	"slices"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
+)
 
 // Xid signal field names. These are the keys used in CEL rule
 // expressions and must match the RequiredSignals declared in checks
@@ -21,11 +25,7 @@ const (
 	SignalEventCount       = "event_count"
 )
 
-// MeasurementSignals lists every signal an XidMeasurement carries.
-// Sensors pass it as the failedSignals argument when they cannot query
-// the journal at all, telling the catalog that no signal is
-// trustworthy for this measurement.
-var MeasurementSignals = []string{
+var measurementSignals = []string{
 	SignalEvents,
 	SignalXidCounts,
 	SignalFatalXidCounts,
@@ -33,6 +33,13 @@ var MeasurementSignals = []string{
 	SignalSince,
 	SignalEventCount,
 }
+
+// MeasurementSignals lists every signal an XidMeasurement carries.
+// Sensors pass it as the failedSignals argument when they cannot query
+// the journal at all, telling the catalog that no signal is
+// trustworthy for this measurement.
+// The returned slice is a copy.
+func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 
 // XidEvent is a single parsed "NVRM: Xid …" log line. Pid and
 // ProcessName are populated only when the driver attributed the fault
@@ -101,6 +108,9 @@ type XidMeasurement struct {
 // applies fails Critical rather than running CEL against an empty
 // measurement. since records the window that was attempted.
 func ErroredXid(since string, err error, failedSignals ...string) XidMeasurement {
+	if len(failedSignals) == 0 {
+		failedSignals = measurementSignals
+	}
 	m := XidMeasurement{Since: since}
 	m.AddError(err, failedSignals...)
 	return m

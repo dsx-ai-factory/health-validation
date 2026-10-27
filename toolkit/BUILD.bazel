@@ -1,7 +1,5 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
-# gazelle:prefix github.com/dsx-ai-factory/health-validation/toolkit
-
 go_library(
     name = "toolkit",
     srcs = [
@@ -39,7 +37,7 @@ go_library(
         "//catalog/node",
         "//catalog/nvlink",
         "//catalog/xid",
-        "//toolkit/xid",
+        "//toolkit/internal/xid",
     ],
 )
 
@@ -50,6 +48,7 @@ go_test(
         "cpu_parity_internal_test.go",
         "cpu_sensor_test.go",
         "example_test.go",
+        "export_test.go",
         "gpu_sensor_test.go",
         "journal_internal_test.go",
         "lazy_backend_test.go",
@@ -60,6 +59,7 @@ go_test(
         "sysfs_cpu_backend_internal_test.go",
         "sysfs_list_test.go",
         "xid_backend_internal_test.go",
+        "xid_parity_internal_test.go",
         "xid_sensor_test.go",
     ],
     embed = [":toolkit"],
@@ -75,6 +75,8 @@ go_test(
         "//catalog/xid",
         "//collect",
         "//collect/sensors/cpu",
+        "//collect/sensors/xid",
+        "//collect/source/journal",
         "//toolkit/internal/collectadapters",
         "//toolkit/internal/collectbridge",
     ],

@@ -20,7 +20,7 @@ type GPUSensor struct {
 //
 // For production:
 //
-//	sensor := toolkit.NewGPUSensor(toolkit.NvidiaSMI())
+//	sensor := toolkit.NewGPUSensor(backend)
 //
 // For testing:
 //
@@ -44,7 +44,7 @@ func (s *GPUSensor) Measure(_ context.Context) ([]health.Measurement, error) {
 // measurement covering every GPU signal — so per-GPU checks fail
 // Critical when collection could not run.
 func (s *GPUSensor) Errored(err error) []health.Measurement {
-	return []health.Measurement{gpu.ErroredGPU(s.Name(), err, gpu.MeasurementSignals...)}
+	return []health.Measurement{gpu.ErroredGPU(s.Name(), err, gpu.MeasurementSignals()...)}
 }
 
 // ResourceKey groups this sensor with the others sharing its backend (the

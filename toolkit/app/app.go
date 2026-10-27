@@ -22,7 +22,7 @@
 // Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
 // its own per-domain backend, defaulting to the shared host NVML backend for
 // GPU/NVLink, the host's collect NVML GPU inventory for node, sysfs for CPU
-// and InfiniBand, and the journal for Xid. A
+// and InfiniBand, and the journal (through the collect sensor) for Xid. A
 // With*Backend setter overrides exactly one domain; the
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
@@ -51,10 +51,10 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	"github.com/dsx-ai-factory/health-validation/internal/version"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
-	"github.com/dsx-ai-factory/health-validation/toolkit/internal/version"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics"
 )
@@ -62,8 +62,7 @@ import (
 // Exit codes returned by Run. The split is verdict-vs-no-verdict: 0/1 report a
 // verdict the caller can act on, 2 means one was never produced — so 2 is
 // deliberately distinct from an UNKNOWN verdict (1). WARNING maps to 0 for now;
-// making that configurable is deferred until there is a concrete need. This is
-// the CLI's own policy, separate from the catalog's [health.NodeVerdict.ExitCode].
+// making that configurable is deferred until there is a concrete need.
 const (
 	exitOK        = 0 // PASS, INFO, WARNING
 	exitUnhealthy = 1 // CRITICAL, UNKNOWN
@@ -105,7 +104,8 @@ type App struct {
 	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
 	// overrides set by the matching With*Backend setter. A nil override uses the
 	// default: the shared host NVML backend for gpu/nvlink, the host GPU
-	// inventory for node, the sysfs collect sensor for cpu, [toolkit.Journalctl] for xid, and
+	// inventory for node, the sysfs collect sensor for cpu, the journal collect
+	// sensor for xid, and
 	// [toolkit.JournalctlRDMALinkFlap] for rdmaLinkFlap. The generic ib backend
 	// has no default and is opt-in.
 	gpu          toolkit.GPUBackend
@@ -194,8 +194,11 @@ func (a *App) WithCPUBackend(b toolkit.CPUBackend) *App {
 	return a
 }
 
-// WithXidBackend overrides the Xid sensor's backend (default:
-// [toolkit.Journalctl], which reads NVRM Xid events from the system journal).
+// WithXidBackend replaces the collect sensor that reads NVRM Xid events from
+// the system journal with a legacy toolkit Xid sensor over b.
+//
+// Deprecated: pass a collect sensor and the Xid signal IDs it replaces to
+// [App.WithCollect] instead.
 func (a *App) WithXidBackend(b toolkit.XidBackend) *App {
 	a.xid = b
 	return a
@@ -316,7 +319,8 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 // overrides and custom checks), and evaluates it against the six domain
 // sensors. Each sensor's backend is the caller's override if set, else the
 // default: the shared host NVML backend for gpu/nvlink, the host GPU inventory
-// for node, sysfs for cpu and infiniband, and the system journal for xid.
+// for node, sysfs for cpu and infiniband, and the system journal, through the
+// collect sensor, for xid.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -441,10 +445,6 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals) ([]toolkit
 	if nvlink == nil {
 		nvlink = a.host.nvlinkBackend()
 	}
-	xid := a.xid
-	if xid == nil {
-		xid = toolkit.Journalctl()
-	}
 	rdmaLinkFlap := a.rdmaLinkFlap
 	if rdmaLinkFlap == nil {
 		rdmaLinkFlap = toolkit.JournalctlRDMALinkFlap()
@@ -453,9 +453,12 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals) ([]toolkit
 	sensors := []toolkit.Sensor{
 		toolkit.NewGPUSensor(gpu),
 		toolkit.NewNVLinkSensor(nvlink),
-		toolkit.NewXidSensor(xid),
-		toolkit.NewRDMALinkFlapSensor(rdmaLinkFlap),
 	}
+	// Without an override, the Xid domain comes from builtinCollect.
+	if a.xid != nil {
+		sensors = append(sensors, toolkit.NewXidSensor(a.xid))
+	}
+	sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(rdmaLinkFlap))
 	// The generic InfiniBand sensor is opt-in: the catalog's built-in
 	// InfiniBand check (rdma_linkflap_fatal) is fed by the link-flap sensor
 	// above, so this one runs only when a consumer supplies a backend (and

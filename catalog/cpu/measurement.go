@@ -3,7 +3,11 @@
 
 package cpu
 
-import "github.com/dsx-ai-factory/health-validation/catalog/health"
+import (
+	"slices"
+
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
+)
 
 const (
 	// SignalPossibleCPUCount is the number of logical CPU IDs in the kernel's possible mask.
@@ -16,12 +20,15 @@ const (
 	SignalNUMANodeCount = "numa_node_count"
 )
 
-// MeasurementSignals lists every signal a CPUMeasurement carries.
-var MeasurementSignals = []string{
+var measurementSignals = []string{
 	SignalPossibleCPUCount,
 	SignalOnlineCPUCount,
 	SignalNUMANodeCount,
 }
+
+// MeasurementSignals lists every signal a CPUMeasurement carries.
+// The returned slice is a copy.
+func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 
 // CPUMeasurement captures host-wide CPU availability and topology.
 type CPUMeasurement struct {
@@ -35,7 +42,7 @@ type CPUMeasurement struct {
 // An unattributed failure applies to every CPU signal.
 func ErroredCPU(err error, failedSignals ...string) CPUMeasurement {
 	if len(failedSignals) == 0 {
-		failedSignals = MeasurementSignals
+		failedSignals = measurementSignals
 	}
 	var m CPUMeasurement
 	m.AddError(err, failedSignals...)

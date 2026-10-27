@@ -39,6 +39,8 @@ func NVLinkP2P() health.CheckDefinition {
 		Thresholds: map[string]health.ThresholdSpec{
 			"max_unhealthy_p2p_peers": {
 				Value:       int64(0),
+				ValueType:   health.ThresholdInt64,
+				ValueMin:    int64(0),
 				Category:    health.DefaultThreshold,
 				Description: "Maximum peer GPUs unreachable over NVLink P2P tolerated per GPU before the GPU is considered failing.",
 				Unit:        "count",
