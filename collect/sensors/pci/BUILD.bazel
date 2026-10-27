@@ -2,7 +2,10 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "pci",
-    srcs = ["sensor.go"],
+    srcs = [
+        "doc.go",
+        "sensor.go",
+    ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/sensors/pci",
     visibility = ["//visibility:public"],
     deps = [
