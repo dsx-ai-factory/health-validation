@@ -87,7 +87,7 @@ func export(source, nodeID string, at *timestamppb.Timestamp, m health.Measureme
 		}
 	}
 
-	target := measurementTarget(v, nodeID, failures)
+	target := measurementTarget(m, v, nodeID, failures)
 	prefix := m.Category().String() + "."
 	var out []*observation.Observation
 	for i := range v.NumField() {
@@ -122,14 +122,22 @@ func export(source, nodeID string, at *timestamppb.Timestamp, m health.Measureme
 }
 
 // measurementTarget returns the GPU a measurement describes, or the node for
-// a host-wide measurement. A failed GPU identity lookup leaves gpu_id as a
-// placeholder rather than a UUID, so that measurement carries no target.
-func measurementTarget(v reflect.Value, nodeID string, failures map[string][]error) *observation.ObservationTarget {
+// a host-wide measurement. A provisional key's gpu_id is a source-local name,
+// not a UUID, so it targets that slot and stays one GPU per slot through
+// [ToMeasurements]. Any other failed GPU identity lookup leaves gpu_id as a
+// placeholder, so that measurement carries no target.
+func measurementTarget(m health.Measurement, v reflect.Value, nodeID string, failures map[string][]error) *observation.ObservationTarget {
 	for i := range v.NumField() {
 		if name, ok := signalName(v.Type().Field(i)); !ok || name != gpuIDField || v.Field(i).Kind() != reflect.String {
 			continue
 		}
-		if gpuID := v.Field(i).String(); gpuID != "" && len(failures[gpuIDField]) == 0 {
+		gpuID := v.Field(i).String()
+		switch {
+		case gpuID == "":
+			return nil
+		case health.KeyOf(m).Provisional():
+			return observation.GPUSourceLocalTarget(gpuID)
+		case len(failures[gpuIDField]) == 0:
 			return observation.GPUTarget(gpuID)
 		}
 		return nil

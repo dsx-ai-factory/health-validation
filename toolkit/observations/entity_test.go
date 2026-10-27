@@ -7,6 +7,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
@@ -153,5 +154,44 @@ func TestToMeasurementsHostWideIgnoresNodeID(t *testing.T) {
 	m := only[cpu.CPUMeasurement](t, ToMeasurements(observations))
 	if health.KeyOf(m) != health.NodeEntity() || len(mappedErrors(m)) != 0 {
 		t.Fatalf("CPU measurement %+v keyed %v, errors %v", m, health.KeyOf(m), m.Errors())
+	}
+}
+
+// The CLI exports toolkit measurements and ingests them back. Each failed
+// NVML slot keeps its own provisional key and gpu_id through that round trip,
+// rather than collapsing into one source-level failure.
+func TestRoundTripKeepsProvisionalSlotsDistinct(t *testing.T) {
+	slot := func(index string) health.Measurement {
+		m := gpu.ErroredGPU("nvml-index-"+index, errors.New("DeviceGetUUID failed"), gpu.MeasurementSignals()...)
+		m.SetEntityKey(health.ProvisionalEntity("nvml", index))
+		return m
+	}
+	exported, err := FromMeasurements("gpu", testNode, time.Unix(1, 0),
+		slot("0"), slot("1"), gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := ToMeasurements(exported)
+
+	want := []health.EntityKey{
+		health.VerifiedEntity("GPU-0"),
+		health.ProvisionalEntity("toolkit.gpu", "nvml-index-0"),
+		health.ProvisionalEntity("toolkit.gpu", "nvml-index-1"),
+	}
+	if got := keysOf(ms); !slices.Equal(got, want) {
+		t.Fatalf("keys = %v, want %v", got, want)
+	}
+	nv, err := entityCatalog(t).EvaluateAll(ms...)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	var failed []string
+	for _, v := range nv.CheckResults {
+		if v.Severity == health.Critical {
+			failed = append(failed, v.AffectedEntities...)
+		}
+	}
+	if !slices.Equal(failed, []string{"nvml-index-0", "nvml-index-1"}) {
+		t.Fatalf("failed entities = %v, want each slot by its original gpu_id", failed)
 	}
 }
