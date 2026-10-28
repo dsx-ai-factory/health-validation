@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package xid is the journal-backed Xid sensor for one-shot collection. It
-// reads the systemd journal for the current boot rather than /dev/kmsg: the
-// kernel ring buffer evicts old records, so a kmsg snapshot cannot show that
-// no Xid was logged since boot.
+// reads the current boot's systemd journal, optionally filtering Xids by global
+// and per-GPU time bounds. Without bounds, it evaluates the entire current boot.
+// The kernel ring buffer (/dev/kmsg) can evict records needed for that history.
 package xid
 
 import (

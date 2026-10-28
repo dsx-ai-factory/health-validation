@@ -149,8 +149,9 @@ it, and most Nonfatal rows need no remediation at all.
 | <nobr>`xid_154`</nobr> | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
 
 `gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at
-WARNING when Xid 45 is the only Xid seen since boot. When another Xid is
-present, it is INFO with no action; follow the accompanying Xid's guidance.
+WARNING when Xid 45 is the only Xid seen within the collection window. When
+another Xid is present in that window, it is INFO with no action; follow the
+accompanying Xid's guidance.
 Xid 154 is not counted as another Xid, since it only annotates one.
 
 ### Collection-failure actions
