@@ -38,6 +38,9 @@ type mapping struct {
 	// apply writes the observed value into a pointer to the measurement.
 	// When nil, the value is assigned to the single catalog field.
 	apply func(measurement any, o *observation.Observation) error
+	// unsupportedValue, when set, is the value a reported-unsupported NoValue
+	// stands for.
+	unsupportedValue *observation.Value
 	// unit, when set, is the unit the observation must carry.
 	unit    string
 	catalog []string
@@ -45,6 +48,10 @@ type mapping struct {
 	// unsupported, when the source reports the signal unsupported, instead
 	// of failing the checks that read them.
 	unsupportedIsNeutral bool
+	// aggregated rows feed NVLink fields that ToMeasurements computes per GPU
+	// from several observations (see nvlinkLinks): per-link and per-pair
+	// facts, and the link count and common speed the speed fallback reads.
+	aggregated bool
 }
 
 var mappings = []mapping{
@@ -90,13 +97,26 @@ var mappings = []mapping{
 			nvlink.SignalFabricRegistrationIncomplete,
 			nvlink.SignalFabricRegistrationFailed,
 		},
-		apply: applyFabricManagerStatus,
+		apply:            applyFabricManagerStatus,
+		unsupportedValue: &observation.Value{Kind: &observation.Value_IntValue{IntValue: gpusignals.FabricManagerStatusNotSupported}},
 	},
+	{signal: gpusignals.NVLinkState, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalInactiveCount}, aggregated: true},
+	{signal: gpusignals.NVLinkLinkCount, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalLinkCount}, aggregated: true},
+	{signal: gpusignals.NVLinkSpeedCommon, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalSpeedMBytesPerSec}, aggregated: true},
+	{signal: gpusignals.NVLinkEndpointSpeed, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalSpeedMBytesPerSec}, aggregated: true},
+	{signal: gpusignals.NVLinkEndpointCapabilityP2PSupported, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalAllLinksSupportP2P}, aggregated: true},
+	{signal: gpusignals.NVLinkEndpointCapabilitySysmemAccess, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalAllLinksSupportSysmemAccess}, aggregated: true},
+	{signal: gpusignals.NVLinkEndpointCapabilityP2PAtomics, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalAllLinksSupportP2PAtomics}, aggregated: true},
+	{signal: gpusignals.NVLinkEndpointCapabilitySysmemAtomics, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalAllLinksSupportSysmemAtomics}, aggregated: true},
+	{signal: gpusignals.NVLinkEndpointCapabilitySLIBridge, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalAllLinksSupportSLI}, aggregated: true},
+	{signal: gpusignals.NVLinkEndpointCapabilityValid, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalAllLinksSupportLink}, aggregated: true},
+	{signal: gpusignals.NVLinkP2PStatus, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalUnhealthyP2PPeerCount}, aggregated: true},
 }
 
 // MappedSignals returns the mapped collect signal IDs [ToMeasurements]
 // reads, across every domain. A single-source sensor rejects signals it does
-// not collect, so restrict one with [MappedSignalsFor] instead.
+// not collect, so restrict one to the signals it produces; a domain such as
+// NVLink maps signals from more than one source.
 func MappedSignals() []string {
 	ids := make([]string, 0, len(mappings))
 	for _, mapped := range mappings {
@@ -146,8 +166,10 @@ func mappingsFor(category health.Category) []mapping {
 }
 
 // applyFabricManagerStatus maps the raw Fabric Manager status onto the two
-// registration signals the NVLink fabric check reads. A source-level
-// unsupported result arrives as a NoValue and never reaches here.
+// registration signals the NVLink fabric check reads. A status reported
+// unsupported reads as FabricManagerStatusNotSupported: fabric registration
+// is mandatory where the fabric checks run, so a GPU that cannot report it is
+// unregistered, as the legacy NVML sensor treats it.
 func applyFabricManagerStatus(measurement any, current *observation.Observation) error {
 	m := measurement.(*nvlink.NVLinkMeasurement)
 	integer, ok := current.GetValue().GetKind().(*observation.Value_IntValue)

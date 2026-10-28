@@ -117,13 +117,32 @@ func run(cfg config) error {
 	return nil
 }
 
+// checks is the one list newValidationCatalog registers and watchedSignals
+// narrows the DCGM watch to.
+func checks() []health.CheckDefinition {
+	return []health.CheckDefinition{
+		cataloggpu.GPUAveragePowerDraw(),
+		cataloggpu.GPUPowerLimit(),
+		cataloggpu.GPUPowerState(),
+		cataloggpu.GPUSensorThrottle(),
+		catalognvlink.NVLinkFabric(),
+		catalognvlink.NVLinkFabricHealth(),
+	}
+}
+
 // watchedSignals selects only the signals the registered checks require,
 // which also fixes the DCGM field watch before its first lazy native read.
 func watchedSignals() []string {
-	return slices.Concat(
-		observations.MappedSignalsFor(health.GPU),
-		observations.MappedSignalsFor(health.NVLink),
-	)
+	var ids []string
+	for _, check := range checks() {
+		for id, feeds := range observations.MappedFeeds(check.Category) {
+			if !slices.Contains(ids, id) && slices.ContainsFunc(feeds, func(s string) bool { return slices.Contains(check.RequiredSignals, s) }) {
+				ids = append(ids, id)
+			}
+		}
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 func newValidationCatalog(architecture string) (*catalog.Catalog, error) {
@@ -131,14 +150,7 @@ func newValidationCatalog(architecture string) (*catalog.Catalog, error) {
 		catalog.WithArchitecture(architecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
-	for _, check := range []health.CheckDefinition{
-		cataloggpu.GPUAveragePowerDraw(),
-		cataloggpu.GPUPowerLimit(),
-		cataloggpu.GPUPowerState(),
-		cataloggpu.GPUSensorThrottle(),
-		catalognvlink.NVLinkFabric(),
-		catalognvlink.NVLinkFabricHealth(),
-	} {
+	for _, check := range checks() {
 		if err := validationCatalog.Register(check); err != nil {
 			return nil, fmt.Errorf("register check %q: %w", check.ID, err)
 		}

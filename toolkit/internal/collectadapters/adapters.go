@@ -49,7 +49,6 @@ func GPU() *domainAdapter {
 
 // NVLink prepares the cutover of toolkit.NVLinkSensor (toolkit.NewNVLinkSensor).
 // The app still registers that legacy sensor; only tests use this adapter.
-// Per-link catalog signals remain unmapped until cutover coverage is complete.
 func NVLink() *domainAdapter {
 	return newDomainAdapter(health.NVLink, erroredNVLink, false)
 }
@@ -90,7 +89,8 @@ func erroredGPU(err error) []health.Measurement {
 }
 
 func erroredNVLink(err error) []health.Measurement {
-	return []health.Measurement{nvlink.ErroredNVLink(sourceLevelGPU, err, nvlink.MeasurementSignals()...)}
+	// The legacy NVLink sensor names a whole-domain failure after its domain.
+	return []health.Measurement{nvlink.ErroredNVLink(health.NVLink.String(), err, nvlink.MeasurementSignals()...)}
 }
 
 // adaptCategory groups observations per GPU, or into one group when
@@ -138,26 +138,36 @@ func adaptCategory(category health.Category, feeds map[string][]string, nodeScop
 	return out
 }
 
-// adapterKey identifies one GPU group: by UUID, by source-local slot, or by
-// source for source-scoped observations.
+// adapterKey identifies one GPU group: by UUID, by source-local slot, or one
+// shared group for every source's source-scoped observations.
 type adapterKey struct {
 	namespace string
 	gpuID     string
 	kind      string
 }
 
-// label renders k as a sortable, source-qualified GPU ID.
+// label renders k as a sortable GPU ID, qualified by source for a slot.
 func (k adapterKey) label() string { return fmt.Sprintf("%s:%q/%q", k.kind, k.namespace, k.gpuID) }
 
-// adapterGroup assigns o to its GPU group. Slots are namespaced by source so
-// two producers' slot 0 are never merged without a UUID.
+// adapterGroup assigns o to its GPU group: an NVLink endpoint's GPU or a
+// pair's source GPU, as observations.targetID does. Slots are namespaced by
+// source so two producers' slot 0 are never merged without a UUID.
+// Source-scoped observations name no GPU, so every source's share one group:
+// split per source, each would fail the fields only the others feed.
 func adapterGroup(o *observation.Observation) adapterKey {
-	ref := o.GetTarget().GetGpu()
+	target := o.GetTarget()
+	ref := target.GetGpu()
+	switch {
+	case target.GetNvLinkEndpoint() != nil:
+		ref = target.GetNvLinkEndpoint().GetGpu()
+	case target.GetGpuPair() != nil:
+		ref = target.GetGpuPair().GetSourceGpu()
+	}
 	if ref.GetUuid() != "" {
 		return adapterKey{kind: "uuid", gpuID: ref.GetUuid()}
 	}
 	if slot := ref.GetSourceLocalId(); slot != "" {
 		return adapterKey{kind: "slot", namespace: o.GetSource(), gpuID: slot}
 	}
-	return adapterKey{kind: "source", namespace: o.GetSource()}
+	return adapterKey{kind: "source"}
 }

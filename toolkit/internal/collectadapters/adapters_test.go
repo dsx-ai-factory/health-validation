@@ -47,6 +47,38 @@ func TestDomainAdaptersPreserveExistingMappings(t *testing.T) {
 	}
 }
 
+// Endpoint and pair observations group with the GPU they belong to; a
+// per-source group would merge every GPU's links and stamp the source label
+// as their GPU ID.
+func TestAdapterGroupKeysEndpointsAndPairsByGPU(t *testing.T) {
+	at := func(target *observation.ObservationTarget) *observation.Observation {
+		return &observation.Observation{Source: "nvml", Target: target}
+	}
+	first := adapterGroup(at(observation.GPUTarget("GPU-1")))
+	second := adapterGroup(at(observation.GPUTarget("GPU-2")))
+	if first == second {
+		t.Fatal("two GPUs share a group")
+	}
+	for _, test := range []struct {
+		target *observation.ObservationTarget
+		want   adapterKey
+	}{
+		{observation.NVLinkEndpointTarget("GPU-1", 0), first},
+		{observation.NVLinkEndpointTarget("GPU-2", 17), second},
+		{observation.GPUPairTarget("GPU-2", "GPU-1"), second},
+	} {
+		if got := adapterGroup(at(test.target)); got != test.want {
+			t.Errorf("adapterGroup(%v) = %v, want %v", test.target, got, test.want)
+		}
+	}
+	// Source-scoped observations from different sources share one group.
+	other := at(nil)
+	other.Source = "dcgm"
+	if adapterGroup(at(nil)) != adapterGroup(other) {
+		t.Error("source-scoped observations from two sources are split")
+	}
+}
+
 func TestDomainAdaptersNamespaceFailedSourceLocalSlots(t *testing.T) {
 	first := failedObservation(gpusignals.PerformanceState.ID(), &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable})
 	first.Source = "a:b"

@@ -31,6 +31,31 @@ func TestCanonicalTargetKinds(t *testing.T) {
 		t.Fatalf("node target for a GPU signal: err=%v", err)
 	}
 
+	at := timestamppb.New(time.Unix(1, 0))
+	lost := &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable}
+	for _, test := range []struct {
+		o       *observation.Observation
+		signal  collect.Signal
+		name    string
+		wantErr string
+	}{
+		{name: "P2P on a pair", signal: gpusignals.NVLinkP2PStatus, o: value(gpusignals.NVLinkP2PStatus, observation.GPUPairTarget("GPU-1", "GPU-2"))},
+		{name: "P2P value on a GPU", signal: gpusignals.NVLinkP2PStatus, o: value(gpusignals.NVLinkP2PStatus, observation.GPUTarget("GPU-1")), wantErr: "requires a GPU pair target"},
+		{
+			name: "P2P failure on its source GPU", signal: gpusignals.NVLinkP2PStatus,
+			o: observation.NewCollectionErrorObservation(gpusignals.NVLinkP2PStatus.ID(), gpusignals.NVLinkP2PStatus.Unit(), "test", "read", observation.GPUTarget("GPU-1"), at, lost),
+		},
+		{name: "link speed on an endpoint", signal: gpusignals.NVLinkEndpointSpeed, o: value(gpusignals.NVLinkEndpointSpeed, observation.NVLinkEndpointTarget("GPU-1", 3))},
+		{name: "link speed value on a GPU", signal: gpusignals.NVLinkEndpointSpeed, o: value(gpusignals.NVLinkEndpointSpeed, observation.GPUTarget("GPU-1")), wantErr: "NVLink endpoint target"},
+		{name: "link count on a GPU", signal: gpusignals.NVLinkLinkCount, o: value(gpusignals.NVLinkLinkCount, observation.GPUTarget("GPU-1"))},
+		{name: "P2P on a self-pair", signal: gpusignals.NVLinkP2PStatus, o: value(gpusignals.NVLinkP2PStatus, observation.GPUPairTarget("GPU-1", "GPU-1")), wantErr: "two distinct GPUs"},
+	} {
+		err := validateCollectObservation(test.o, test.signal)
+		if (err == nil) != (test.wantErr == "") || (err != nil && !strings.Contains(err.Error(), test.wantErr)) {
+			t.Errorf("%s: err=%v, want %q", test.name, err, test.wantErr)
+		}
+	}
+
 	// A later entry overrides an earlier one, so a per-link signal can be
 	// carved out of the whole-GPU entry.
 	index := canonicalIndex([]canonicalTarget{

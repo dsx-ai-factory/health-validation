@@ -44,6 +44,7 @@ var canonicalTargets = []canonicalTarget{
 	{kind: targetGPU, signals: gpusignals.All()},
 	{kind: targetNode, signals: cpusignals.All()},
 	{kind: targetNVLinkEndpoint, signals: gpusignals.EndpointSignals()},
+	{kind: targetGPUPair, signals: gpusignals.PairSignals()},
 	{kind: targetGPUProcess, signals: gpusignals.ProcessEntitySignals()},
 	{kind: targetJournalEntry, signals: xidsignals.EventSignals()},
 	{kind: targetNode, signals: collect.Signals{xidsignals.ScanWindow}},
@@ -178,6 +179,9 @@ func validateCollectObservation(o *observation.Observation, s collect.Signal) er
 			return fmt.Errorf("GPU target requires exactly one UUID or source-local ID")
 		}
 	}
+	if pair := o.GetTarget().GetGpuPair(); pair != nil && pair.GetSourceGpu().GetUuid() != "" && pair.GetSourceGpu().GetUuid() == pair.GetPeerGpu().GetUuid() {
+		return fmt.Errorf("GPU pair target requires two distinct GPUs")
+	}
 	if collectSourceLocal(o.GetTarget()) && o.GetCollectionError() == nil {
 		return fmt.Errorf("source-local GPU identity requires a collection error")
 	}
@@ -244,10 +248,11 @@ func collectSourceLocal(target *observation.ObservationTarget) bool {
 	return slices.ContainsFunc(gpuRefs(target), func(ref *observation.GPURef) bool { return ref.GetSourceLocalId() != "" })
 }
 
-// A parent GPU scopes failed entity enumeration without inventing an endpoint or process.
+// A parent GPU scopes failed entity enumeration without inventing an
+// endpoint, pair or process.
 func gpuParentOutcome(o *observation.Observation, s collect.Signal) bool {
 	rule, ok := canonical[s.ID()]
-	if !ok || (rule.target != targetNVLinkEndpoint && rule.target != targetGPUProcess) || targetKind(o.GetTarget()) != targetGPU || o.GetValue() != nil {
+	if !ok || (rule.target != targetNVLinkEndpoint && rule.target != targetGPUPair && rule.target != targetGPUProcess) || targetKind(o.GetTarget()) != targetGPU || o.GetValue() != nil {
 		return false
 	}
 	return o.GetCollectionError() != nil || o.GetNoValue() != nil

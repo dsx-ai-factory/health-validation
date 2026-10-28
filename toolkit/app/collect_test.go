@@ -904,12 +904,30 @@ func (s *collectHardwareSensor) Measure(_ context.Context, opts ...collect.OpOpt
 				value.Kind = &observation.Value_IntValue{IntValue: 0}
 			case gpusignals.FabricManagerStatus.ID():
 				value.Kind = &observation.Value_IntValue{IntValue: gpusignals.FabricManagerStatusSuccess}
+			case gpusignals.NVLinkState.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 1}
+			case gpusignals.NVLinkLinkCount.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 18}
+			case gpusignals.NVLinkSpeedCommon.ID(), gpusignals.NVLinkEndpointSpeed.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 53125}
+			case gpusignals.NVLinkP2PStatus.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 0}
+			}
+			if slices.Contains(gpusignals.EndpointCapabilitySignals().IDs(), signal.ID()) {
+				value.Kind = &observation.Value_UintValue{UintValue: 1}
 			}
 			if override, ok := s.values[signal.ID()]; ok {
 				value = override
 			}
+			target := observation.GPUTarget(gpuID)
+			switch {
+			case slices.Contains(gpusignals.EndpointSignals().IDs(), signal.ID()):
+				target = observation.NVLinkEndpointTarget(gpuID, 0)
+			case slices.Contains(gpusignals.PairSignals().IDs(), signal.ID()):
+				target = observation.GPUPairTarget(gpuID, "GPU-peer")
+			}
 			batch.Observations = append(batch.Observations, &observation.Observation{
-				SignalId: signal.ID(), Source: s.ID(), Target: observation.GPUTarget(gpuID),
+				SignalId: signal.ID(), Source: s.ID(), Target: target,
 				ObservedAt: timestamppb.Now(), Unit: signal.Unit(),
 				Outcome: &observation.Observation_Value{Value: value},
 			})

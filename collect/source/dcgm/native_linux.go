@@ -180,6 +180,13 @@ func decodeMetricValue(mapping fieldMapping, value godcgm.FieldValue_v1) FieldVa
 		return FieldValue{CollectionError: &failure}
 	}
 	if sentinel, found := checkSentinel(value); found {
+		if sentinel == sentinelNotSupported && mapping.unsupportedAsNoValue {
+			return FieldValue{NoValue: &observation.NoValue{
+				Reason:       observation.NoValueReasonNotSupported,
+				SourceStatus: sentinel.sourceError(),
+				Detail:       "DCGM field value is " + sentinel.String(),
+			}}
+		}
 		failure := fieldErrorFromSentinel(sentinel)
 		return FieldValue{CollectionError: &failure}
 	}

@@ -51,13 +51,19 @@ var errNoObservation = errors.New("no observation was collected for these signal
 func ToMeasurements(observations []*observation.Observation) []health.Measurement {
 	b := &builder{entities: make(map[entityKey]*entity)}
 	var xidObservations []*observation.Observation
+	links := make(nvlinkLinks)
 	for _, current := range observations {
 		if xidSignals[current.GetSignalId()] {
 			xidObservations = append(xidObservations, current)
 			continue
 		}
-		b.add(current)
+		f, ok := resolve(current)
+		if !ok || links.add(current, f) {
+			continue
+		}
+		b.add(current, f)
 	}
+	links.feed(b)
 	out := b.measurements()
 	if len(xidObservations) == 0 {
 		return out
@@ -153,11 +159,16 @@ var neutralFields = sync.OnceValue(func() map[string]bool {
 
 // feed is how one observation writes into a measurement.
 type feed struct {
-	schema  *schema
-	apply   func(measurement any, o *observation.Observation) error
-	unit    string
-	catalog []string
-	neutral bool
+	schema           *schema
+	apply            func(measurement any, o *observation.Observation) error
+	unit             string
+	unsupportedValue *observation.Value
+	catalog          []string
+	neutral          bool
+	aggregated       bool
+	// mapped marks a collect signal from the mapping table, which never
+	// carries gpu_id itself, unlike the <domain>.<field> form.
+	mapped bool
 }
 
 // resolve returns how current feeds a measurement, or false for a signal no
@@ -173,11 +184,14 @@ func resolve(current *observation.Observation) (feed, bool) {
 	for _, mapped := range mappings {
 		if mapped.signal.ID() == current.GetSignalId() {
 			return feed{
-				schema:  schemaFor(mapped.measurement),
-				apply:   mapped.apply,
-				catalog: mapped.catalog,
-				unit:    mapped.unit,
-				neutral: mapped.unsupportedIsNeutral,
+				schema:           schemaFor(mapped.measurement),
+				apply:            mapped.apply,
+				catalog:          mapped.catalog,
+				unit:             mapped.unit,
+				neutral:          mapped.unsupportedIsNeutral,
+				aggregated:       mapped.aggregated,
+				unsupportedValue: mapped.unsupportedValue,
+				mapped:           true,
 			}, true
 		}
 	}
@@ -199,6 +213,10 @@ type entity struct {
 	// idFromTarget reports that gpu_id so far comes only from the target,
 	// so an explicit gpu_id observation is not a second feed.
 	idFromTarget bool
+	// slot marks a GPU known only by a source-local slot; valued records
+	// that some observation of it was not a collection error.
+	slot   bool
+	valued bool
 }
 
 type entityError struct {
@@ -211,16 +229,19 @@ type builder struct {
 	order    []entityKey
 }
 
-func (b *builder) add(current *observation.Observation) {
-	f, ok := resolve(current)
-	if !ok {
-		return
-	}
+func (b *builder) add(current *observation.Observation, f feed) {
 	id, targetErr := targetID(f.schema, current)
 	e := b.entity(f.schema, id)
+	if f.schema.gpuID >= 0 && current.GetTarget() != nil && gpuRef(current.GetTarget()).GetUuid() == "" {
+		e.slot = true
+	}
+	e.valued = e.valued || current.GetCollectionError() == nil
 
+	// Aggregated rows can share a field, so their failures without a GPU add
+	// to it rather than repeating it.
+	shared := f.aggregated && current.GetValue() == nil
 	for _, field := range f.catalog {
-		if e.fed[field] && (field != gpuIDField || !e.idFromTarget) {
+		if e.fed[field] && (field != gpuIDField || !e.idFromTarget) && !shared {
 			e.addError(fmt.Errorf("signal %q was observed more than once", current.GetSignalId()), f.catalog...)
 			return
 		}
@@ -236,11 +257,27 @@ func (b *builder) add(current *observation.Observation) {
 	case targetErr != nil:
 		e.addError(targetErr, append([]string{gpuIDField}, f.catalog...)...)
 	case current.GetCollectionError() != nil:
-		e.addError(collectionFailure(current.GetSource(), current.GetCollectionError()), f.catalog...)
+		fields := f.catalog
+		// A whole-source failure leaves every GPU unidentified, as the legacy
+		// sensors report it, so gpu_id carries the same failure.
+		if f.mapped && f.schema.gpuID >= 0 && current.GetTarget() == nil {
+			fields = append([]string{gpuIDField}, fields...)
+			e.fed[gpuIDField] = true
+		}
+		e.addError(collectionFailure(current.GetSource(), current.GetCollectionError()), fields...)
 	case current.GetNoValue() != nil:
-		if f.neutral && current.GetNoValue().GetReason() == observation.NoValueReasonNotSupported {
-			e.unsupported = append(e.unsupported, f.catalog...)
-			return
+		if current.GetNoValue().GetReason() == observation.NoValueReasonNotSupported {
+			if f.neutral {
+				e.unsupported = append(e.unsupported, f.catalog...)
+				return
+			}
+			if f.unsupportedValue != nil {
+				reported := &observation.Observation{SignalId: current.GetSignalId(), Unit: current.Unit, Outcome: &observation.Observation_Value{Value: f.unsupportedValue}}
+				if err := e.apply(f, reported); err != nil {
+					e.addError(err, f.catalog...)
+				}
+				return
+			}
 		}
 		e.addError(noValueFailure(current.GetSource(), current.GetNoValue()), f.catalog...)
 	default:
@@ -258,20 +295,14 @@ func targetID(s *schema, current *observation.Observation) (string, error) {
 	if s.gpuID < 0 {
 		return target.GetNode().GetId(), nil
 	}
-	var ref *observation.GPURef
-	switch {
-	case target == nil:
+	if target == nil {
 		if current.GetValue() != nil {
 			return "", fmt.Errorf("signal %q has no GPU target", current.GetSignalId())
 		}
 		return "", nil
-	case target.GetGpu() != nil:
-		ref = target.GetGpu()
-	case target.GetNvLinkEndpoint() != nil:
-		ref = target.GetNvLinkEndpoint().GetGpu()
-	case target.GetGpuPair() != nil:
-		ref = target.GetGpuPair().GetSourceGpu()
-	default:
+	}
+	ref := gpuRef(target)
+	if ref == nil {
 		return "", fmt.Errorf("signal %q does not identify a GPU target", current.GetSignalId())
 	}
 	if uuid := ref.GetUuid(); uuid != "" {
@@ -288,6 +319,21 @@ func targetID(s *schema, current *observation.Observation) (string, error) {
 		return "", fmt.Errorf("signal %q has source-local GPU %q but no source", current.GetSignalId(), slot)
 	}
 	return current.GetSource() + ":" + slot, nil
+}
+
+// gpuRef returns the GPU target describes: an NVLink endpoint's GPU or a
+// pair's source GPU. It is nil for any other target.
+func gpuRef(target *observation.ObservationTarget) *observation.GPURef {
+	switch {
+	case target.GetGpu() != nil:
+		return target.GetGpu()
+	case target.GetNvLinkEndpoint() != nil:
+		return target.GetNvLinkEndpoint().GetGpu()
+	case target.GetGpuPair() != nil:
+		return target.GetGpuPair().GetSourceGpu()
+	default:
+		return nil
+	}
 }
 
 func (b *builder) entity(s *schema, id string) *entity {
@@ -420,6 +466,11 @@ func (b *builder) measurements() []health.Measurement {
 		}
 		if len(missing) > 0 {
 			e.addError(errNoObservation, missing...)
+		}
+		// A slot that reported nothing but failures could not be read at all,
+		// as when its handle failed, so gpu_id carries its first failure.
+		if e.slot && !e.valued && len(e.errs) > 0 {
+			e.errs[0].fields = append(e.errs[0].fields, gpuIDField)
 		}
 
 		ptr := e.value.Addr().Interface()

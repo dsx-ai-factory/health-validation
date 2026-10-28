@@ -531,7 +531,7 @@ Several families share the NVML sensor and its caller-owned instance.
 | --- | --- | --- |
 | GPU inventory and telemetry | Structured GPU inventory; temperature, power, framebuffer memory, utilization, clocks, and device metadata | `sensors/nvml.New(inst)`; request inventory with `collect.WithGPUInventory()` |
 | GPU memory reliability | ECC modes and counts by location and lifetime; row-remapper counts and native status | `sensors/nvml.New(inst)` |
-| NVLink and fabric | Local endpoint state and error counters; fabric state, status, identity, and health fields | `sensors/nvml.New(inst)` |
+| NVLink and fabric | Link count and common speed; per-link state, error counters, speed, and capability results; P2P status per ordered GPU pair; fabric state, status, identity, and health fields | `sensors/nvml.New(inst)` |
 | GPU processes | Compute-process membership, process count, framebuffer use, and host process name/state | `sensors/nvml.New(inst)` or explicit diagnostic options with `NewWithOptions` |
 | Linux processes | Current process state, name, boot/start identity, and visible process totals/state counts | `sensors/process.New(fsys)` |
 | Host memory, CPU, and resources | Memory and BPF JIT bytes; CPU topology, cumulative mode times and load; kernel file handles, visible descriptors, and task counters | `sensors/memory.New(fsys)`, `sensors/cpu.New(fsys)`, `sensors/host.New(fsys)` |
