@@ -23,15 +23,15 @@ import (
 // enrichment.
 type basicDevice struct {
 	device.Device
+	// pci answers GetPciInfo; nil fails the test, since only a GPU whose
+	// model is not recognized has its PCI device ID read.
+	pci     *nvml.PciInfo
 	name    string
 	uuid    string
 	nameRet nvml.Return
+	pciRet  nvml.Return
 	// nameRead fails the test when GetName is called.
 	nameRead bool
-	// pci answers GetPciInfo; nil fails the test, since only a GPU whose
-	// model is not recognized has its PCI device ID read.
-	pci    *nvml.PciInfo
-	pciRet nvml.Return
 }
 
 func (d *basicDevice) UUID() string { return d.uuid }
