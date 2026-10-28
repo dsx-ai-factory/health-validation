@@ -79,7 +79,7 @@ func TestMeasureNode_CountFailureFlagsAllSignals(t *testing.T) {
 	if len(errs) != 1 {
 		t.Fatalf("Errors() = %v, want 1 entry", errs)
 	}
-	want := []string{node.SignalGPUCount}
+	want := node.MeasurementSignals()
 	if !slices.Equal(errs[0].FailedSignals(), want) {
 		t.Errorf("FailedSignals = %v, want %v", errs[0].FailedSignals(), want)
 	}

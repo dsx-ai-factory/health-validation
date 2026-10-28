@@ -22,7 +22,12 @@ import (
 // readable handle, observed on NodeTarget(""), the producing node.
 var GPUCount = collect.NewSignal("node.gpu.count", "1")
 
-// SensorID identifies the collect sensor that reports [GPUCount].
+// DriverVersionSignal is the NVIDIA driver version a successful inventory
+// recorded, as the driver reported it, observed on NodeTarget("").
+var DriverVersionSignal = collect.NewSignal("node.driver.version", "")
+
+// SensorID identifies the collect sensor that reports [GPUCount] and
+// [DriverVersionSignal].
 const SensorID = "node.gpu_inventory"
 
 // handleOperation is the operation an NVML inventory reports for a slot
@@ -142,17 +147,20 @@ func Count(snapshot *observation.GPUInventorySnapshot) (int64, bool) {
 	return count, true
 }
 
-// Sensor reports [GPUCount] from the cycle's shared snapshot.
-func (i *Inventory) Sensor() collect.Sensor { return countSensor{inventory: i} }
+// Sensor reports [GPUCount] and [DriverVersionSignal] from the cycle's
+// shared snapshot.
+func (i *Inventory) Sensor() collect.Sensor { return nodeSensor{inventory: i} }
 
-type countSensor struct {
+type nodeSensor struct {
 	inventory *Inventory
 }
 
-func (countSensor) ID() string               { return SensorID }
-func (countSensor) Signals() collect.Signals { return collect.Signals{GPUCount} }
+func (nodeSensor) ID() string { return SensorID }
+func (nodeSensor) Signals() collect.Signals {
+	return collect.Signals{GPUCount, DriverVersionSignal}
+}
 
-func (s countSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+func (s nodeSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	op := collect.NewOp(opts...)
 	selected, err := op.Signals(s.Signals())
 	if err != nil {
@@ -166,7 +174,15 @@ func (s countSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*ob
 	if len(selected) == 0 {
 		return batch, nil
 	}
-	batch.Observations = append(batch.Observations, countObservation(s.inventory.Snapshot(ctx, cycle)))
+	snapshot := s.inventory.Snapshot(ctx, cycle)
+	for _, signal := range selected {
+		switch signal.ID() {
+		case GPUCount.ID():
+			batch.Observations = append(batch.Observations, countObservation(snapshot))
+		case DriverVersionSignal.ID():
+			batch.Observations = append(batch.Observations, driverVersionObservation(snapshot))
+		}
+	}
 	return batch, nil
 }
 
@@ -186,4 +202,34 @@ func countObservation(snapshot *observation.GPUInventorySnapshot) *observation.O
 		Unit:       GPUCount.Unit(),
 		Outcome:    &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_IntValue{IntValue: count}}},
 	}
+}
+
+// driverVersionObservation turns snapshot into one [DriverVersionSignal]
+// observation: the first version an entry recorded, or why none was read.
+func driverVersionObservation(snapshot *observation.GPUInventorySnapshot) *observation.Observation {
+	if snapshot.GetInventory() == nil {
+		return observation.NewCollectionErrorObservation(DriverVersionSignal.ID(), DriverVersionSignal.Unit(), snapshot.GetSource(), "GPUInventory", nil,
+			snapshot.GetCollectedAt(), snapshot.GetCollectionError())
+	}
+	var failure *observation.CollectionError
+	for _, entry := range snapshot.GetInventory().GetEntries() {
+		if raw := entry.GetGpu().GetDriverVersion(); raw != "" {
+			return &observation.Observation{
+				SignalId:   DriverVersionSignal.ID(),
+				Source:     snapshot.GetSource(),
+				Target:     observation.NodeTarget(""),
+				ObservedAt: snapshot.GetCollectedAt(),
+				Unit:       DriverVersionSignal.Unit(),
+				Outcome:    &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_StringValue{StringValue: raw}}},
+			}
+		}
+		if failure == nil {
+			failure = entry.GetFieldErrors()["driver_version"]
+		}
+	}
+	if failure == nil {
+		failure = &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable, Detail: "no GPU inventory entry recorded a driver version"}
+	}
+	return observation.NewCollectionErrorObservation(DriverVersionSignal.ID(), DriverVersionSignal.Unit(), snapshot.GetSource(), "SystemGetDriverVersion", nil,
+		snapshot.GetCollectedAt(), failure)
 }

@@ -383,8 +383,9 @@ func TestMappedSignalsFor(t *testing.T) {
 	if got := MappedSignalsFor(health.CPU); !slices.Equal(got, cpuIDs) {
 		t.Fatalf("CPU signals = %v, want %v", got, cpuIDs)
 	}
-	if got := MappedSignalsFor(health.Node); !slices.Equal(got, []string{gpuinventory.GPUCount.ID()}) {
-		t.Fatalf("Node signals = %v, want %v", got, gpuinventory.GPUCount.ID())
+	nodeIDs := []string{gpuinventory.GPUCount.ID(), gpuinventory.DriverVersionSignal.ID()}
+	if got := MappedSignalsFor(health.Node); !slices.Equal(got, nodeIDs) {
+		t.Fatalf("Node signals = %v, want %v", got, nodeIDs)
 	}
 	if got := MappedSignalsFor(health.Xid); !slices.Equal(got, xidsignals.All().IDs()) {
 		t.Fatalf("Xid signals = %v, want %v", got, xidsignals.All().IDs())

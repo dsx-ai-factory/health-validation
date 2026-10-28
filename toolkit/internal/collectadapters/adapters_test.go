@@ -294,14 +294,33 @@ func nodeCountObservation(source string, count int64) *observation.Observation {
 	}
 }
 
+func nodeDriverObservation(source, version string) *observation.Observation {
+	return &observation.Observation{
+		SignalId:   gpuinventory.DriverVersionSignal.ID(),
+		Source:     source,
+		Target:     observation.NodeTarget(""),
+		ObservedAt: timestamppb.Now(),
+		Unit:       gpuinventory.DriverVersionSignal.Unit(),
+		Outcome:    &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_StringValue{StringValue: version}}},
+	}
+}
+
 func TestNodeAdapterBuildsGPUCount(t *testing.T) {
 	a := Node()
 	if a.Name() != "node" || a.Category() != health.Node {
 		t.Fatalf("name=%q category=%v, want the node category", a.Name(), a.Category())
 	}
-	m := only[node.NodeMeasurement](t, a.Build([]*observation.Observation{nodeCountObservation(gpuinventory.SensorID, 4)}))
-	if m.GPUCount != 4 || len(m.Errors()) != 0 {
+	m := only[node.NodeMeasurement](t, a.Build([]*observation.Observation{
+		nodeCountObservation(gpuinventory.SensorID, 4), nodeDriverObservation(gpuinventory.SensorID, "575.51.03"),
+	}))
+	if m.GPUCount != 4 || m.DriverVersion != "575.51.03" || len(m.Errors()) != 0 {
 		t.Fatalf("measurement=%+v errors=%v", m, m.Errors())
+	}
+	// A missing driver version fails only that signal.
+	countOnly := only[node.NodeMeasurement](t, a.Build([]*observation.Observation{nodeCountObservation(gpuinventory.SensorID, 4)}))
+	if countOnly.GPUCount != 4 || countOnly.ParsedDriverVersion().Known() || len(countOnly.Errors()) != 1 ||
+		!slices.Equal(countOnly.Errors()[0].FailedSignals(), []string{node.SignalDriverVersion}) {
+		t.Fatalf("count only: measurement=%+v errors=%v", countOnly, countOnly.Errors())
 	}
 	empty := only[node.NodeMeasurement](t, a.Build(nil))
 	if len(empty.Errors()) == 0 || !slices.Contains(empty.Errors()[0].FailedSignals(), node.SignalGPUCount) {

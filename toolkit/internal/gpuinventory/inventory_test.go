@@ -6,6 +6,7 @@ package gpuinventory
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -80,8 +81,13 @@ func enumerationFailure() *observation.GPUInventorySnapshot {
 // measureCount reads GPUCount through the sensor and validates its batch.
 func measureCount(t *testing.T, inv *Inventory) *observation.Observation {
 	t.Helper()
+	return measureSignal(t, inv, GPUCount)
+}
+
+func measureSignal(t *testing.T, inv *Inventory, signal collect.Signal) *observation.Observation {
+	t.Helper()
 	cycle := testCycle(t, "cycle")
-	batch, err := inv.Sensor().Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(GPUCount.ID()))
+	batch, err := inv.Sensor().Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(signal.ID()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +204,7 @@ func TestInventoryReadsOncePerCycle(t *testing.T) {
 
 func TestSensorContract(t *testing.T) {
 	s := New(opened(&fakeReader{snapshot: inventory()})).Sensor()
-	if s.ID() != SensorID || len(s.Signals()) != 1 || s.Signals()[0].ID() != GPUCount.ID() {
+	if s.ID() != SensorID || !slices.Equal(s.Signals().IDs(), []string{GPUCount.ID(), DriverVersionSignal.ID()}) {
 		t.Fatalf("id=%q signals=%v", s.ID(), s.Signals().IDs())
 	}
 	if _, err := s.Measure(context.Background()); err == nil {
