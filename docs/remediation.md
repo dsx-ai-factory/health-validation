@@ -146,7 +146,7 @@ resolve to:
   asking for a reboot or bus reset.
 - **WARNING** with `["service_required"]` when the Xid 154 names an action
   this catalog does not map or could not be read; with
-  `["restart_app", "service_required"]` when the row defers to an Xid 154
+  `["restart_app"]` when the row defers to an Xid 154
   and none was found; and with no action when the log line could not be
   decoded.
 - **INFO** with no action when the occurrence resolves to no action.

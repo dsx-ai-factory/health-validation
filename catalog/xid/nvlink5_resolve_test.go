@@ -456,7 +456,7 @@ func TestNVLink5Check_No154MeansRestartApp(t *testing.T) {
 	if v.Severity != health.Warning {
 		t.Errorf("severity = %v, want WARNING", v.Severity)
 	}
-	if want := health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired); !v.RecommendedAction.Equal(want) {
+	if want := health.Drain(health.RemediationActionRestartApp); !v.RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
 	}
 }
@@ -601,7 +601,7 @@ func TestNVLink5Check_WarningTiesKeepTheirAction(t *testing.T) {
 	}{
 		{
 			name:   "undecoded and missing",
-			want:   health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+			want:   health.Drain(health.RemediationActionRestartApp),
 			events: []xid.XidEvent{undecoded, srcTrackEvent("0019:01:00", deferToXid154)},
 		},
 		{

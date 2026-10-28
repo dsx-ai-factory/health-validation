@@ -466,8 +466,8 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 		{
 			Expression:        key(ResolutionXid154Missing),
 			Severity:          health.Warning,
-			Message:           fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to Xid 154, and no Xid 154 was found for the affected GPU, which normally means the driver requested no recovery action. Restart the faulting application; send the node for service if the error persists.", c.code, c.description),
-			RecommendedAction: health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to Xid 154, and no Xid 154 was found for the affected GPU, which normally means the driver requested no recovery action. Restart the faulting application.", c.code, c.description),
+			RecommendedAction: health.Drain(health.RemediationActionRestartApp),
 		},
 		{
 			Expression: key(ResolutionUndecoded),
