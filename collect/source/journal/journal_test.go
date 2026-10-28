@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -171,4 +172,58 @@ func TestDefaultRunnerStopsOnDeadline(t *testing.T) {
 	_, err := read(t, ctx, New(nil))
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Less(t, time.Since(start), 10*time.Second)
+}
+
+func TestReadKernelSince(t *testing.T) {
+	since := time.Date(2026, 10, 1, 11, 0, 0, 900000000, time.UTC)
+	readSince := func(r *Reader) ([]Entry, error) {
+		var entries []Entry
+		err := r.ReadKernelSince(context.Background(), since, func(e Entry) error {
+			entries = append(entries, e)
+			return nil
+		})
+		return entries, err
+	}
+	// calls returns a runner answering the nth journalctl call with outputs[n].
+	calls := func(argv *[][]string, outputs ...string) Runner {
+		return func(_ context.Context, args []string, out, _ io.Writer) error {
+			*argv = append(*argv, args)
+			_, _ = io.WriteString(out, outputs[len(*argv)-1])
+			return nil
+		}
+	}
+
+	t.Run("window entries", func(t *testing.T) {
+		var argv [][]string
+		entries, err := readSince(New(calls(&argv, entryJSON("c1", "1", "m")+"\n")))
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		require.Len(t, argv, 1)
+		require.Equal(t, append(slices.Clone(kernelBootArgs), fmt.Sprintf("--since=@%d", since.Unix())), argv[0])
+	})
+	t.Run("quiet window on a readable boot", func(t *testing.T) {
+		var argv [][]string
+		entries, err := readSince(New(calls(&argv, "", entryJSON("c9", "1", "older")+"\n")))
+		require.NoError(t, err)
+		require.Empty(t, entries)
+		require.Len(t, argv, 2)
+		require.Equal(t, append(slices.Clone(kernelBootArgs), "--lines=1"), argv[1])
+	})
+	t.Run("empty boot", func(t *testing.T) {
+		var argv [][]string
+		_, err := readSince(New(calls(&argv, "", "")))
+		require.ErrorIs(t, err, ErrNoEntries)
+	})
+	t.Run("probe failure", func(t *testing.T) {
+		n := 0
+		_, err := readSince(New(func(_ context.Context, _ []string, _, errOut io.Writer) error {
+			n++
+			if n == 2 {
+				_, _ = io.WriteString(errOut, "Failed to open journal")
+				return exitError(t)
+			}
+			return nil
+		}))
+		require.ErrorContains(t, err, "Failed to open journal")
+	})
 }

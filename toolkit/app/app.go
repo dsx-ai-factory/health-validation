@@ -21,8 +21,8 @@
 //
 // Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
 // its own per-domain backend, defaulting to the shared host NVML backend for
-// GPU/NVLink, the host's collect NVML GPU inventory for node, sysfs for CPU
-// and InfiniBand, and the journal (through the collect sensor) for Xid. A
+// GPU/NVLink, the host's collect NVML GPU inventory for node, sysfs for CPU,
+// and the journal (through collect sensors) for Xid and InfiniBand link flaps. A
 // With*Backend setter overrides exactly one domain; the
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
@@ -104,10 +104,9 @@ type App struct {
 	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
 	// overrides set by the matching With*Backend setter. A nil override uses the
 	// default: the shared host NVML backend for gpu/nvlink, the host GPU
-	// inventory for node, the sysfs collect sensor for cpu, the journal collect
-	// sensor for xid, and
-	// [toolkit.JournalctlRDMALinkFlap] for rdmaLinkFlap. The generic ib backend
-	// has no default and is opt-in.
+	// inventory for node, the sysfs collect sensor for cpu, and the journal
+	// collect sensors for xid and rdmaLinkFlap. The generic ib backend has no
+	// default and is opt-in.
 	gpu          toolkit.GPUBackend
 	node         toolkit.NodeBackend
 	nvlink       toolkit.NVLinkBackend
@@ -204,10 +203,12 @@ func (a *App) WithXidBackend(b toolkit.XidBackend) *App {
 	return a
 }
 
-// WithRDMALinkFlapBackend overrides the RDMA link-flap sensor's backend
-// (default: [toolkit.JournalctlRDMALinkFlap], which reads mlx5 link transitions
-// from the system journal). This sensor feeds the built-in rdma_linkflap_fatal
-// check and runs by default, like the Xid sensor.
+// WithRDMALinkFlapBackend replaces the collect sensor that reads mlx5 RDMA
+// link transitions from the system journal, which feeds the built-in
+// rdma_linkflap_fatal check, with a legacy toolkit link-flap sensor over b.
+//
+// Deprecated: pass a collect sensor and the link-flap signal IDs it replaces
+// to [App.WithCollect] instead.
 func (a *App) WithRDMALinkFlapBackend(b toolkit.RDMALinkFlapBackend) *App {
 	a.rdmaLinkFlap = b
 	return a
@@ -319,8 +320,8 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 // overrides and custom checks), and evaluates it against the six domain
 // sensors. Each sensor's backend is the caller's override if set, else the
 // default: the shared host NVML backend for gpu/nvlink, the host GPU inventory
-// for node, sysfs for cpu and infiniband, and the system journal, through the
-// collect sensor, for xid.
+// for node, sysfs for cpu, and the system journal, through collect sensors,
+// for xid and the InfiniBand link-flap measurement.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -445,11 +446,6 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals) ([]toolkit
 	if nvlink == nil {
 		nvlink = a.host.nvlinkBackend()
 	}
-	rdmaLinkFlap := a.rdmaLinkFlap
-	if rdmaLinkFlap == nil {
-		rdmaLinkFlap = toolkit.JournalctlRDMALinkFlap()
-	}
-
 	sensors := []toolkit.Sensor{
 		toolkit.NewGPUSensor(gpu),
 		toolkit.NewNVLinkSensor(nvlink),
@@ -458,11 +454,14 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals) ([]toolkit
 	if a.xid != nil {
 		sensors = append(sensors, toolkit.NewXidSensor(a.xid))
 	}
-	sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(rdmaLinkFlap))
+	// Without an override, the link-flap measurement comes from builtinCollect.
+	if a.rdmaLinkFlap != nil {
+		sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(a.rdmaLinkFlap))
+	}
 	// The generic InfiniBand sensor is opt-in: the catalog's built-in
-	// InfiniBand check (rdma_linkflap_fatal) is fed by the link-flap sensor
-	// above, so this one runs only when a consumer supplies a backend (and
-	// its own checks) via WithIBBackend.
+	// InfiniBand check (rdma_linkflap_fatal) is fed by the link-flap sensor,
+	// so this one runs only when a consumer supplies a backend (and its own
+	// checks) via WithIBBackend.
 	if a.ib != nil {
 		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
 	}

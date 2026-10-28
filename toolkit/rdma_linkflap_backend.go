@@ -86,6 +86,10 @@ func WithLinkFlapBootOffset(d time.Duration) RDMALinkFlapOption {
 // read failure (or timeout) yields a single errored measurement rather than
 // an error from Measure, so the catalog fails the link-flap check instead of
 // dropping the host.
+//
+// Deprecated: toolkit/app collects link transitions through the collect
+// sensor in collect/sensors/linkflap. JournalctlRDMALinkFlap is removed with
+// the other legacy backends.
 func JournalctlRDMALinkFlap(opts ...RDMALinkFlapOption) RDMALinkFlapBackend {
 	b := &rdmaLinkFlapBackend{
 		run:        runJournalctl,

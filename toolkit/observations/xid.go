@@ -32,7 +32,7 @@ var xidSignals = func() map[string]bool {
 // single error, because evaluation recommends retry_collection only when
 // every failure is a timeout.
 func canonicalXid(obs []*observation.Observation) health.Measurement {
-	if err := firstXidFailure(obs); err != nil {
+	if err := firstFailure(obs); err != nil {
 		return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)
 	}
 	m, err := buildXid(obs)
@@ -42,9 +42,9 @@ func canonicalXid(obs []*observation.Observation) health.Measurement {
 	return m
 }
 
-// firstXidFailure returns the first non-timeout failure, else the first
+// firstFailure returns the first non-timeout failure, else the first
 // timeout, else nil.
-func firstXidFailure(obs []*observation.Observation) error {
+func firstFailure(obs []*observation.Observation) error {
 	var timeout error
 	for _, o := range obs {
 		var err error

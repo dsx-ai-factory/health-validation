@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -71,30 +72,62 @@ func New(run Runner) *Reader {
 // ReadKernelBoot calls each for every kernel entry of the current boot, in
 // journal order. An error from each stops the read and is returned.
 func (r *Reader) ReadKernelBoot(ctx context.Context, each func(Entry) error) error {
-	lines := &lineWriter{each: each}
-	stderr := &prefixWriter{max: maxStderr}
-	runErr := r.run(ctx, kernelBootArgs, lines, stderr)
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("journalctl: %w", err)
-	}
-	if lines.err != nil {
-		return lines.err
-	}
-	if runErr != nil {
-		if detail := boundedUTF8(strings.TrimSpace(stderr.buf.String()), maxErrorMsg); detail != "" {
-			return fmt.Errorf("journalctl: %w: %s", runErr, detail)
-		}
-		return fmt.Errorf("journalctl: %w", runErr)
-	}
-	if err := lines.flush(); err != nil {
+	entries, err := r.read(ctx, kernelBootArgs, each)
+	if err != nil {
 		return err
 	}
 	// Without a grep every kernel entry of the boot is read, so none means the
 	// journal is unreadable or does not capture kernel messages.
-	if lines.entries == 0 {
+	if entries == 0 {
 		return ErrNoEntries
 	}
 	return nil
+}
+
+// ReadKernelSince calls each for every kernel entry of the current boot
+// logged at or after since, truncated to the second, in journal order. A
+// quiet window is not a failure, so when it holds no entry a second read
+// confirms the boot has at least one kernel entry, else it returns
+// [ErrNoEntries]. An error from each stops the read and is returned.
+func (r *Reader) ReadKernelSince(ctx context.Context, since time.Time, each func(Entry) error) error {
+	// @<seconds> is an epoch timestamp, so the host's time zone cannot shift
+	// the window.
+	args := append(slices.Clone(kernelBootArgs), "--since=@"+strconv.FormatInt(since.Unix(), 10))
+	entries, err := r.read(ctx, args, each)
+	if err != nil || entries > 0 {
+		return err
+	}
+	latest, err := r.read(ctx, append(slices.Clone(kernelBootArgs), "--lines=1"), func(Entry) error { return nil })
+	if err != nil {
+		return err
+	}
+	if latest == 0 {
+		return ErrNoEntries
+	}
+	return nil
+}
+
+// read runs journalctl with args and returns how many entries it decoded.
+func (r *Reader) read(ctx context.Context, args []string, each func(Entry) error) (int, error) {
+	lines := &lineWriter{each: each}
+	stderr := &prefixWriter{max: maxStderr}
+	runErr := r.run(ctx, args, lines, stderr)
+	if err := ctx.Err(); err != nil {
+		return 0, fmt.Errorf("journalctl: %w", err)
+	}
+	if lines.err != nil {
+		return 0, lines.err
+	}
+	if runErr != nil {
+		if detail := boundedUTF8(strings.TrimSpace(stderr.buf.String()), maxErrorMsg); detail != "" {
+			return 0, fmt.Errorf("journalctl: %w: %s", runErr, detail)
+		}
+		return 0, fmt.Errorf("journalctl: %w", runErr)
+	}
+	if err := lines.flush(); err != nil {
+		return 0, err
+	}
+	return lines.entries, nil
 }
 
 func runJournalctl(ctx context.Context, args []string, stdout, stderr io.Writer) error {
