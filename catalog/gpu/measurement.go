@@ -64,6 +64,7 @@ type GPUMeasurement struct {
 	// PIDs still holding this GPU (pid plus quoted /proc cmdline when
 	// readable), one process per line.
 	ComputeProcessCmdlines string `json:"compute_process_cmdlines"`
+	entity                 health.EntityKey
 	errors                 []health.ErroredMeasurement
 	unsupported            []string
 	AveragePowerDrawW      float64 `json:"average_power_draw_w"`
@@ -122,6 +123,25 @@ func (GPUMeasurement) Category() health.Category { return health.GPU }
 
 // EntityID implements [health.EntityIdentifier].
 func (m GPUMeasurement) EntityID() string { return m.GPUID }
+
+// EntityKey implements [health.EntityKeyed]. Without a key from
+// [GPUMeasurement.SetEntityKey], a non-empty GPUID is taken as a verified ID and an
+// empty one as unidentified.
+func (m GPUMeasurement) EntityKey() health.EntityKey {
+	switch {
+	case m.entity != health.EntityKey{}:
+		return m.entity
+	case m.GPUID == "":
+		return health.EntityKey{}
+	default:
+		return health.VerifiedEntity(m.GPUID)
+	}
+}
+
+// SetEntityKey records the identity evaluation keys this measurement by. Set
+// it whenever GPUID is not a verified UUID, such as a slot whose UUID could
+// not be read; GPUID then only labels the GPU in verdicts.
+func (m *GPUMeasurement) SetEntityKey(k health.EntityKey) { m.entity = k }
 
 // Errors implements [health.Measurement].
 func (m GPUMeasurement) Errors() []health.ErroredMeasurement { return m.errors }

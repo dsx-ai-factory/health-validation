@@ -13,10 +13,12 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -74,6 +76,26 @@ func TestDomainAdaptersNamespaceFailedSourceLocalSlots(t *testing.T) {
 			t.Fatalf("display identity collision: %q", field)
 		}
 		ids[field] = true
+	}
+	// Evaluation keys them from the typed target, so they stay distinct
+	// whatever their labels.
+	keys := []health.EntityKey{health.KeyOf(got[0]), health.KeyOf(got[1])}
+	if want := []health.EntityKey{health.ProvisionalEntity("a", "b:c"), health.ProvisionalEntity("a:b", "c")}; !slices.Equal(keys, want) {
+		t.Fatalf("keys = %v, want %v", keys, want)
+	}
+}
+
+// A whole-domain failure names no GPU, so it is keyed by its source rather
+// than taking its "gpu" label as a GPU identity.
+func TestDomainAdaptersKeyDomainFailureBySource(t *testing.T) {
+	for _, a := range []*domainAdapter{GPU(), NVLink()} {
+		got := a.Errored(errors.New("unavailable"))
+		if len(got) != 1 || health.KeyOf(got[0]) != health.SourceEntity(adapterSource(a.Category())) {
+			t.Fatalf("%s: Errored = %v keyed %v, want one source-level measurement", a.Name(), got, health.KeyOf(got[0]))
+		}
+	}
+	if got := CPU().Errored(errors.New("unavailable")); health.KeyOf(got[0]) != health.NodeEntity() {
+		t.Fatalf("cpu: Errored keyed %v, want the node", health.KeyOf(got[0]))
 	}
 }
 
@@ -238,6 +260,9 @@ func TestCPUAdapterMergesSources(t *testing.T) {
 			for _, e := range got.Errors() {
 				failed = append(failed, e.FailedSignals()...)
 			}
+			if health.KeyOf(got) != health.NodeEntity() {
+				t.Fatalf("CPU measurement keyed %v, want the node", health.KeyOf(got))
+			}
 			if got.PossibleCPUCount != 8 || got.OnlineCPUCount != 8 || got.NUMANodeCount != tt.want || !slices.Equal(failed, tt.failed) {
 				t.Fatalf("got %+v, failed %v; want counts 8/8/%d, failed %v", got, failed, tt.want, tt.failed)
 			}
@@ -247,7 +272,7 @@ func TestCPUAdapterMergesSources(t *testing.T) {
 
 func TestAdapterRequestsMatchConverterMappings(t *testing.T) {
 	var got []string
-	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU(), XID()} {
+	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU(), Node(), XID()} {
 		got = slices.AppendSeq(got, maps.Keys(adapter.Signals()))
 	}
 	want := observations.MappedSignals()
@@ -255,5 +280,43 @@ func TestAdapterRequestsMatchConverterMappings(t *testing.T) {
 	slices.Sort(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("adapter signals=%v, converter signals=%v", got, want)
+	}
+}
+
+func nodeCountObservation(source string, count int64) *observation.Observation {
+	return &observation.Observation{
+		SignalId:   gpuinventory.GPUCount.ID(),
+		Source:     source,
+		Target:     observation.NodeTarget(""),
+		ObservedAt: timestamppb.Now(),
+		Unit:       gpuinventory.GPUCount.Unit(),
+		Outcome:    &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_IntValue{IntValue: count}}},
+	}
+}
+
+func TestNodeAdapterBuildsGPUCount(t *testing.T) {
+	a := Node()
+	if a.Name() != "node" || a.Category() != health.Node {
+		t.Fatalf("name=%q category=%v, want the node category", a.Name(), a.Category())
+	}
+	m := only[node.NodeMeasurement](t, a.Build([]*observation.Observation{nodeCountObservation(gpuinventory.SensorID, 4)}))
+	if m.GPUCount != 4 || len(m.Errors()) != 0 {
+		t.Fatalf("measurement=%+v errors=%v", m, m.Errors())
+	}
+	empty := only[node.NodeMeasurement](t, a.Build(nil))
+	if len(empty.Errors()) == 0 || !slices.Contains(empty.Errors()[0].FailedSignals(), node.SignalGPUCount) {
+		t.Fatalf("empty input did not fail gpu_count: %v", empty.Errors())
+	}
+}
+
+// A count from one source and another source's source-scoped failure form one
+// node, not one per source, so the failure cannot be dropped as a second host.
+func TestNodeAdapterAssemblesSourcesIntoOneMeasurement(t *testing.T) {
+	failure := observation.NewCollectionErrorObservation(gpuinventory.GPUCount.ID(), gpuinventory.GPUCount.Unit(), "other", "GPUInventory", nil,
+		timestamppb.Now(), &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable})
+	got := Node().Build([]*observation.Observation{nodeCountObservation(gpuinventory.SensorID, 4), failure})
+	m := only[node.NodeMeasurement](t, got)
+	if len(got) != 1 || len(m.Errors()) == 0 || !slices.Contains(m.Errors()[0].FailedSignals(), node.SignalGPUCount) {
+		t.Fatalf("measurements=%+v", got)
 	}
 }

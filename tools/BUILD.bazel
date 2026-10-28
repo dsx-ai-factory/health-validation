@@ -32,3 +32,17 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = ["@rules_python//python/runfiles"],
 )
+
+py_test(
+    name = "fern_docs_versions_test",
+    size = "small",
+    srcs = [
+        "fern_docs_versions.py",
+        "fern_docs_versions_test.py",
+    ],
+    data = ["//:fern/docs.yml"],
+    main = "fern_docs_versions_test.py",
+    # Builds throwaway repositories with the host git.
+    tags = ["local"],
+    deps = ["@rules_python//python/runfiles"],
+)

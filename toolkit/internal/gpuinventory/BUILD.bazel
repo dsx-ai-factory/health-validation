@@ -1,0 +1,47 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "gpuinventory",
+    srcs = [
+        "architecture.go",
+        "inventory.go",
+        "nvml_linux.go",
+    ],
+    importpath = "github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory",
+    visibility = ["//toolkit:__subpackages__"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ] + select({
+        "@rules_go//go/platform:linux": [
+            "//collect/source/nvml",
+            "//collect/source/nvml/device",
+            "@com_github_nvidia_go_nvml//pkg/nvml",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_test(
+    name = "gpuinventory_test",
+    srcs = [
+        "inventory_test.go",
+        "nvml_linux_test.go",
+    ],
+    embed = [":gpuinventory"],
+    deps = [
+        "//collect",
+        "//collect/observation",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ] + select({
+        "@rules_go//go/platform:linux": [
+            "//collect/source/nvml",
+            "//collect/source/nvml/device",
+            "@com_github_nvidia_go_nvml//pkg/nvml",
+        ],
+        "//conditions:default": [],
+    }),
+)

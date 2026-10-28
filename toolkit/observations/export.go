@@ -25,18 +25,25 @@ const exportOperation = "measure"
 // gpuIDField is the json field that identifies a GPU-scoped measurement.
 const gpuIDField = "gpu_id"
 
-// toolkitSourcePrefix starts the source of every observation FromMeasurements
-// writes, which is how ToMeasurements recognizes the errors it exported.
+// toolkitSourcePrefix starts the source of every CollectionError
+// FromMeasurements writes, which is how ToMeasurements recognizes the errors
+// it exported.
 const toolkitSourcePrefix = "toolkit."
 
 // FromMeasurements converts toolkit measurements into observations, one per
 // json-tagged measurement field, attributed to source "toolkit.<sensor>".
+// A measurement keyed by a [health.ProvisionalEntity] or
+// [health.SourceEntity] is instead attributed to its key's source, since the
+// identity [ToMeasurements] rebuilds is scoped to that source; its
+// CollectionErrors still name "toolkit.<sensor>".
 // Each signal ID is the measurement's category and the field name the
 // catalog's checks read, e.g. "nvlink.inactive_count", so the batch carries
 // what the checks consume without depending on canonical collect signal
 // definitions. [ToMeasurements] reverses it.
 //
-// A measurement with a gpu_id targets that GPU; any other measurement
+// A measurement with a gpu_id targets that GPU, or its source-local slot
+// when provisional; a source-level failure has no target; any other
+// measurement
 // targets the node, or carries no target when nodeID is empty. Scalar
 // fields keep their type; maps, slices, and structs are encoded as a JSON
 // string. A field named by a measurement error becomes a CollectionError,
@@ -87,7 +94,11 @@ func export(source, nodeID string, at *timestamppb.Timestamp, m health.Measureme
 		}
 	}
 
-	target := measurementTarget(v, nodeID, failures)
+	target := measurementTarget(m, v, nodeID, failures)
+	sensorSource := source
+	if key := health.KeyOf(m); key.Provisional() {
+		source = key.Source()
+	}
 	prefix := m.Category().String() + "."
 	var out []*observation.Observation
 	for i := range v.NumField() {
@@ -98,7 +109,7 @@ func export(source, nodeID string, at *timestamppb.Timestamp, m health.Measureme
 		signalID := prefix + field
 		if errs := failures[field]; len(errs) > 0 {
 			out = append(out, observation.NewCollectionErrorObservation(
-				signalID, nil, source, exportOperation, target, at, collectionError(errs)))
+				signalID, nil, source, exportOperation, target, at, collectionError(sensorSource, errs)))
 			continue
 		}
 		if unsupported[field] {
@@ -122,14 +133,22 @@ func export(source, nodeID string, at *timestamppb.Timestamp, m health.Measureme
 }
 
 // measurementTarget returns the GPU a measurement describes, or the node for
-// a host-wide measurement. A failed GPU identity lookup leaves gpu_id as a
-// placeholder rather than a UUID, so that measurement carries no target.
-func measurementTarget(v reflect.Value, nodeID string, failures map[string][]error) *observation.ObservationTarget {
+// a host-wide measurement. A provisional key targets its source-local slot,
+// not gpu_id, which is only a label. A source-level failure names no GPU, and
+// any other failed GPU identity lookup leaves gpu_id as a placeholder, so
+// those carry no target.
+func measurementTarget(m health.Measurement, v reflect.Value, nodeID string, failures map[string][]error) *observation.ObservationTarget {
 	for i := range v.NumField() {
 		if name, ok := signalName(v.Type().Field(i)); !ok || name != gpuIDField || v.Field(i).Kind() != reflect.String {
 			continue
 		}
-		if gpuID := v.Field(i).String(); gpuID != "" && len(failures[gpuIDField]) == 0 {
+		gpuID, key := v.Field(i).String(), health.KeyOf(m)
+		switch {
+		case gpuID == "" || key.SourceLevel():
+			return nil
+		case key.Provisional():
+			return observation.GPUSourceLocalTarget(key.Slot())
+		case len(failures[gpuIDField]) == 0:
 			return observation.GPUTarget(gpuID)
 		}
 		return nil
@@ -205,7 +224,7 @@ func encodeJSON(v reflect.Value) (string, error) {
 // messages are joined as the catalog joins them in a verdict, and the
 // failure is a timeout only if every error was one, since evaluation ranks
 // any other failure above a timeout.
-func collectionError(errs []error) *observation.CollectionError {
+func collectionError(source string, errs []error) *observation.CollectionError {
 	category := observation.CollectionErrorCategoryTimeout
 	messages := make([]string, 0, len(errs))
 	for _, err := range errs {
@@ -214,7 +233,7 @@ func collectionError(errs []error) *observation.CollectionError {
 		}
 		messages = append(messages, err.Error())
 	}
-	return &observation.CollectionError{Category: category, Detail: strings.Join(messages, "; ")}
+	return &observation.CollectionError{Source: source, Category: category, Detail: strings.Join(messages, "; ")}
 }
 
 func doubleValue(v float64) *observation.Value {

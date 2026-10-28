@@ -23,6 +23,7 @@ go_library(
         "//toolkit",
         "//toolkit/internal/collectadapters",
         "//toolkit/internal/collectbridge",
+        "//toolkit/internal/gpuinventory",
         "//toolkit/observations",
         "//toolkit/otelmetrics",
         "@com_github_google_uuid//:uuid",
@@ -30,6 +31,7 @@ go_library(
         "@org_golang_google_protobuf//encoding/protojson",
     ] + select({
         "@rules_go//go/platform:linux": [
+            "//collect/source/nvml",
             "//toolkit/nvml",
         ],
         "//conditions:default": [],
@@ -42,6 +44,9 @@ go_test(
         "app_test.go",
         "collect_test.go",
         "config_test.go",
+        "discovery_linux_test.go",
+        "entity_test.go",
+        "node_parity_linux_test.go",
         "version_test.go",
         "xid_collect_test.go",
     ],
@@ -64,8 +69,18 @@ go_test(
         "//collect/signals/xid",
         "//toolkit",
         "//toolkit/internal/collectadapters",
+        "//toolkit/internal/gpuinventory",
         "//toolkit/observations",
         "@org_golang_google_protobuf//encoding/protojson",
         "@org_golang_google_protobuf//types/known/timestamppb",
-    ],
+    ] + select({
+        "@rules_go//go/platform:linux": [
+            "//collect/source/nvml",
+            "//collect/source/nvml/device",
+            "//toolkit/nvml",
+            "@com_github_nvidia_go_nvml//pkg/nvml",
+            "@com_github_nvidia_go_nvml//pkg/nvml/mock",
+        ],
+        "//conditions:default": [],
+    }),
 )

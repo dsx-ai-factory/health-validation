@@ -47,6 +47,7 @@ go_test(
         "collect_test.go",
         "cpu_parity_internal_test.go",
         "cpu_sensor_test.go",
+        "entity_test.go",
         "example_test.go",
         "export_test.go",
         "gpu_sensor_test.go",

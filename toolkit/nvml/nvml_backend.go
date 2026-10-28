@@ -20,6 +20,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
 // NVMLBackend is the NVML-backed data source. It owns the library handle
@@ -227,10 +228,12 @@ type ProbeContext struct {
 //   - Measure is called for a usable slot (handle loaded, UUID read) with a
 //     [ProbeContext] carrying the device and its usable peers, so both
 //     per-device and cross-device signals can be read.
-//   - Errored is called for a slot the backend could not fully resolve, with
-//     a pre-computed id: "nvml-index-N" when the handle itself failed to load
-//     (no UUID exists), or "" when the handle loaded but its UUID could not
-//     be read.
+//   - Errored is called for a slot the backend could not fully resolve
+//     (its handle failed to load, or its UUID could not be read), with the
+//     pre-computed id "nvml-index-N". The backend keys a built-in
+//     [gpu.GPUMeasurement] or [nvlink.NVLinkMeasurement] it returns as
+//     [health.ProvisionalEntity]("nvml", "N"); any other type is keyed by its
+//     own [health.EntityKeyed] or EntityID.
 type DeviceProber interface {
 	Measure(pc ProbeContext) health.Measurement
 	Errored(id string, err error) health.Measurement
@@ -238,8 +241,7 @@ type DeviceProber interface {
 
 // probe enumerates devices and turns each into a measurement by calling back
 // into p once per slot: Errored for a slot whose handle or UUID could not be
-// read (id pre-computed — "nvml-index-N" on handle-load failure, "" on
-// UUID-read failure), and Measure for a usable slot. Every slot is resolved
+// read (id pre-computed as "nvml-index-N"), and Measure for a usable slot. Every slot is resolved
 // before the first Measure fires, because a slot's Peers cannot be built
 // until the usable set is fully known. The only error enumeration returns —
 // a DeviceGetCount failure — propagates unchanged.
@@ -256,18 +258,14 @@ func (b *NVMLBackend) probe(p DeviceProber) ([]health.Measurement, error) {
 	measurements := make([]health.Measurement, len(devices))
 	usable := make([]ProbeDevice, 0, len(devices))
 	for i, dev := range devices {
+		// An unresolved slot has no UUID, so it is named by its NVML index.
 		if e, ok := dev.(erroredDevice); ok {
-			// A failed handle has no UUID, so encode the NVML index as the id.
-			measurements[i] = p.Errored(
-				fmt.Sprintf("nvml-index-%d", e.index),
-				&Error{Op: "DeviceGetHandleByIndex", Return: e.ret},
-			)
+			measurements[i] = slotErrored(p, e.index, &Error{Op: "DeviceGetHandleByIndex", Return: e.ret})
 			continue
 		}
 		uuid, ret := dev.GetUUID()
 		if ret != gonvml.SUCCESS {
-			// Handle loaded but UUID unreadable: id left empty.
-			measurements[i] = p.Errored("", &Error{Op: "DeviceGetUUID", Return: ret})
+			measurements[i] = slotErrored(p, i, &Error{Op: "DeviceGetUUID", Return: ret})
 			continue
 		}
 		usable = append(usable, ProbeDevice{Device: dev, UUID: uuid, Index: i})
@@ -280,6 +278,25 @@ func (b *NVMLBackend) probe(p DeviceProber) ([]health.Measurement, error) {
 		})
 	}
 	return measurements, nil
+}
+
+// nvmlSource namespaces NVML slot indexes in provisional entity keys.
+const nvmlSource = "nvml"
+
+// slotErrored builds p's errored measurement for the slot at index, keyed by
+// that slot so it cannot be mistaken for another source's slot or a UUID.
+func slotErrored(p DeviceProber, index int, err error) health.Measurement {
+	m := p.Errored(fmt.Sprintf("nvml-index-%d", index), err)
+	key := health.ProvisionalEntity(nvmlSource, strconv.Itoa(index))
+	switch v := m.(type) {
+	case gpu.GPUMeasurement:
+		v.SetEntityKey(key)
+		return v
+	case nvlink.NVLinkMeasurement:
+		v.SetEntityKey(key)
+		return v
+	}
+	return m
 }
 
 // getPeers returns the usable devices except the one whose enumeration
@@ -908,14 +925,9 @@ linkLoop:
 	}
 }
 
-// architectureUnknown is the architecture reported when NVML enumerates
-// devices and at least one device name reads, but none maps to a recognized
-// architecture. It is absent from every check's Architectures list, so
-// architecture-scoped checks skip rather than run against another
-// architecture's thresholds — failing safe instead of draining an
-// unrecognized-but-healthy node. Discovery *failures* (no devices, or every
-// device unreadable) are errors, not this value.
-const architectureUnknown = "unknown"
+// architectureUnknown is reported when a device name reads but none maps to
+// a recognized architecture; see [gpuinventory.ArchitectureUnknown].
+const architectureUnknown = gpuinventory.ArchitectureUnknown
 
 // Architecture reports the node's GPU architecture as one of the catalog
 // architecture identifiers (e.g. "GB200", "GB300", "H100"), derived from the
@@ -966,24 +978,6 @@ func (b *NVMLBackend) Architecture() (string, error) {
 	return architectureUnknown, nil
 }
 
-// architectureFromName maps an NVML product name (e.g. "NVIDIA H100 80GB
-// HBM3", "NVIDIA GB300") to the catalog architecture identifier the check
-// definitions are scoped by, or "" for an unrecognized name. More
-// specific tokens are matched first so "NVIDIA GB300" does not fall
-// through to a broader family match.
-func architectureFromName(name string) string {
-	switch {
-	case strings.Contains(name, "GB300"):
-		return "GB300"
-	case strings.Contains(name, "GB200"):
-		return "GB200"
-	case strings.Contains(name, "H200"):
-		return "H200"
-	case strings.Contains(name, "H100"):
-		return "H100"
-	case strings.Contains(name, "A100"):
-		return "A100"
-	default:
-		return ""
-	}
-}
+// architectureFromName is shared with the collect inventory path so both
+// discover the same architecture from the same name.
+func architectureFromName(name string) string { return gpuinventory.ArchitectureFromName(name) }

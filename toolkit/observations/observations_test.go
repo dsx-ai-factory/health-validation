@@ -19,6 +19,7 @@ import (
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
 func TestToMeasurementsGPU(t *testing.T) {
@@ -114,7 +115,7 @@ func TestToMeasurementsGroupsBySourceLocalID(t *testing.T) {
 		o.Target = observation.GPUSourceLocalTarget("3")
 	}
 
-	if m := only[gpu.GPUMeasurement](t, ToMeasurements(observations)); m.GPUID != "dcgm:3" || len(mappedErrors(m)) != 0 {
+	if m := only[gpu.GPUMeasurement](t, ToMeasurements(observations)); m.GPUID != `slot:"dcgm"/"3"` || len(mappedErrors(m)) != 0 {
 		t.Fatalf("unexpected measurement %+v, errors %v", m, m.Errors())
 	}
 }
@@ -139,7 +140,7 @@ func TestToMeasurementsKeepsSourceLocalSlotsPerSource(t *testing.T) {
 		}
 		ids = append(ids, g.GPUID)
 	}
-	if !slices.Equal(ids, []string{"dcgm:0", "nvml:0"}) {
+	if !slices.Equal(ids, []string{`slot:"dcgm"/"0"`, `slot:"nvml"/"0"`}) {
 		t.Fatalf("GPU IDs = %v, want one per source", ids)
 	}
 }
@@ -382,6 +383,9 @@ func TestMappedSignalsFor(t *testing.T) {
 	if got := MappedSignalsFor(health.CPU); !slices.Equal(got, cpuIDs) {
 		t.Fatalf("CPU signals = %v, want %v", got, cpuIDs)
 	}
+	if got := MappedSignalsFor(health.Node); !slices.Equal(got, []string{gpuinventory.GPUCount.ID()}) {
+		t.Fatalf("Node signals = %v, want %v", got, gpuinventory.GPUCount.ID())
+	}
 	if got := MappedSignalsFor(health.Xid); !slices.Equal(got, xidsignals.All().IDs()) {
 		t.Fatalf("Xid signals = %v, want %v", got, xidsignals.All().IDs())
 	}
@@ -397,7 +401,7 @@ func TestMappedSignalsFor(t *testing.T) {
 		}
 	}
 	// Every mapped signal belongs to exactly one domain.
-	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid))
+	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.Node), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid))
 	if !slices.Equal(perDomain, MappedSignals()) {
 		t.Fatalf("per-domain signals %v do not partition %v", perDomain, MappedSignals())
 	}

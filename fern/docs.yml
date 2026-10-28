@@ -22,7 +22,11 @@ navbar-links:
   - type: github
     value: https://github.com/dsx-ai-factory/health-validation
 
-products:
-  - display-name: Health Validation
+# One working-tree version. Every release tag carries this file, and a ref-backed
+# version builds its tag's default version, so it serves that tag's own docs.
+# The publish job replaces this list with one ref entry per release line
+# (tools/fern_docs_versions.py).
+versions:
+  - display-name: Latest
     path: ../docs/index.yml
-    slug: /
+    slug: latest

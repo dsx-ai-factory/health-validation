@@ -15,6 +15,7 @@ go_library(
         "//collect/signals/cpu",
         "//collect/signals/gpu",
         "//collect/signals/xid",
+        "//toolkit/internal/gpuinventory",
         "@org_golang_google_protobuf//proto",
     ],
 )

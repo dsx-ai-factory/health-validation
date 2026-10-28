@@ -11,6 +11,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
 // stubHost is the off-linux hostBackend. The NVML backend is gated on
@@ -22,14 +23,16 @@ type stubHost struct{}
 func newHostBackend() hostBackend { return stubHost{} }
 
 func (stubHost) gpuBackend() toolkit.GPUBackend       { return unavailableBackend{} }
-func (stubHost) nodeBackend() toolkit.NodeBackend     { return unavailableBackend{} }
 func (stubHost) nvlinkBackend() toolkit.NVLinkBackend { return unavailableBackend{} }
 
-// architecture reports no architecture off-linux: there is no NVML to query,
-// so evaluation runs without architecture filtering. `run` still fails loudly
-// at collection via unavailableBackend, so this never masks a real run.
-func (stubHost) architecture() (string, error) { return "", nil }
-func (stubHost) close() error                  { return nil }
+// stubInventory fails to open off-linux, so `run` reports an architecture
+// discovery failure and the node GPU count is unobservable.
+var stubInventory = gpuinventory.New(func() (gpuinventory.Reader, error) {
+	return nil, fmt.Errorf("NVML GPU inventory is only available on linux (current platform: %s)", runtime.GOOS)
+})
+
+func (stubHost) gpuInventory() *gpuinventory.Inventory { return stubInventory }
+func (stubHost) close() error                          { return nil }
 
 // unavailableBackend implements every per-domain backend interface on a
 // platform with no NVML support; every measure method returns a clear error so

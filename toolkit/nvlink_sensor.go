@@ -42,7 +42,9 @@ func (s *NVLinkSensor) Measure(_ context.Context) ([]health.Measurement, error) 
 // Errored reports the whole NVLink domain as unobservable so NVLink
 // checks fail Critical when collection could not run.
 func (s *NVLinkSensor) Errored(err error) []health.Measurement {
-	return []health.Measurement{nvlink.ErroredNVLink(s.Name(), err, nvlink.MeasurementSignals()...)}
+	m := nvlink.ErroredNVLink(s.Name(), err, nvlink.MeasurementSignals()...)
+	m.SetEntityKey(health.SourceEntity(sensorSource(s.Name())))
+	return []health.Measurement{m}
 }
 
 // ResourceKey groups this sensor with the others sharing its backend (see

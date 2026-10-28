@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 )
 
@@ -272,31 +274,49 @@ func (x xidSpyBackend) Measure(context.Context) ([]health.Measurement, error) {
 }
 
 // fakeHost stands in for the platform host backend so these tests run anywhere
-// (no NVML, no cgo). One spy backs all three per-domain accessors, mirroring
-// the real host where a single NVML backend does. Installed by overwriting
-// App.host.
+// (no NVML, no cgo). One spy backs both legacy per-domain accessors,
+// mirroring the real host where a single NVML backend does. Installed by
+// overwriting App.host.
 //
-// architecture reports GB200: runCommand Evaluates the full builtin catalog,
-// so this must be a real generation. catalogtest.DummyArchitecture would skip
-// scoped checks (see TestNUMANodeCountReachesVerdict). Empty is a discovery failure.
+// Its inventory is a healthy GB200 node: runCommand Evaluates the full builtin
+// catalog, so discovery must find a real generation.
+// catalogtest.DummyArchitecture would skip scoped checks (see
+// TestNUMANodeCountReachesVerdict).
 type fakeHost struct {
 	b spyBackend
 }
 
 func (h fakeHost) gpuBackend() toolkit.GPUBackend       { return h.b }
-func (h fakeHost) nodeBackend() toolkit.NodeBackend     { return h.b }
 func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
-func (fakeHost) architecture() (string, error)          { return "GB200", nil }
-func (fakeHost) close() error                           { return nil }
+func (fakeHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: 4, model: "NVIDIA GB200"}, nil })
+}
+func (fakeHost) close() error { return nil }
+
+// inventoryReader reports a basic inventory of identical GPUs without NVML.
+type inventoryReader struct {
+	model string
+	gpus  int
+}
+
+func (inventoryReader) ID() string { return "fake" }
+
+func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapshot, error) {
+	inventory := &observation.GPUInventory{}
+	for i := range r.gpus {
+		uuid, model := fmt.Sprintf("GPU-%d", i), r.model
+		inventory.Entries = append(inventory.Entries, &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}})
+	}
+	return &observation.GPUInventorySnapshot{Source: "fake", Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: inventory}}, nil
+}
 
 // panicHost ensures invalid input returns before touching the host backend.
 type panicHost struct{}
 
-func (panicHost) gpuBackend() toolkit.GPUBackend       { panic("unexpected GPU backend access") }
-func (panicHost) nodeBackend() toolkit.NodeBackend     { panic("unexpected node backend access") }
-func (panicHost) nvlinkBackend() toolkit.NVLinkBackend { panic("unexpected NVLink backend access") }
-func (panicHost) architecture() (string, error)        { panic("unexpected architecture discovery") }
-func (panicHost) close() error                         { panic("unexpected host backend close") }
+func (panicHost) gpuBackend() toolkit.GPUBackend        { panic("unexpected GPU backend access") }
+func (panicHost) nvlinkBackend() toolkit.NVLinkBackend  { panic("unexpected NVLink backend access") }
+func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
+func (panicHost) close() error                          { panic("unexpected host backend close") }
 
 func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
 	tests := []struct {
@@ -823,10 +843,11 @@ type erroringHost struct {
 }
 
 func (h erroringHost) gpuBackend() toolkit.GPUBackend       { return h.b }
-func (h erroringHost) nodeBackend() toolkit.NodeBackend     { return h.b }
 func (h erroringHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
-func (erroringHost) architecture() (string, error)          { return "", errors.New("no GPUs enumerated") }
-func (erroringHost) close() error                           { return nil }
+func (erroringHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })
+}
+func (erroringHost) close() error { return nil }
 
 // TestRunCommandArchDiscoveryFailureDrains confirms an architecture-discovery
 // error yields a Critical verdict and does NOT collect: a healthy node is not

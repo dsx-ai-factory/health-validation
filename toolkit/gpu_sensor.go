@@ -44,7 +44,9 @@ func (s *GPUSensor) Measure(_ context.Context) ([]health.Measurement, error) {
 // measurement covering every GPU signal — so per-GPU checks fail
 // Critical when collection could not run.
 func (s *GPUSensor) Errored(err error) []health.Measurement {
-	return []health.Measurement{gpu.ErroredGPU(s.Name(), err, gpu.MeasurementSignals()...)}
+	m := gpu.ErroredGPU(s.Name(), err, gpu.MeasurementSignals()...)
+	m.SetEntityKey(health.SourceEntity(sensorSource(s.Name())))
+	return []health.Measurement{m}
 }
 
 // ResourceKey groups this sensor with the others sharing its backend (the

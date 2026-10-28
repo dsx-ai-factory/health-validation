@@ -117,8 +117,8 @@ domain in one pass once it does.
 
 The per-code `gpu_xid_<code>` checks recommend the generic actions above where
 they fit.
-For example, Xid 151 recommends `restart_os`, and Xid 142 recommends
-`service_required` alone. `service_required` is this repo's name for the bucket
+For example, Xid 79 and Xid 151 recommend `["restart_os", "service_required"]`,
+and Xid 142 recommends `service_required` alone. `service_required` is this repo's name for the bucket
 NVIDIA's Xid catalog calls `CONTACT_SUPPORT`.
 
 The actions below are specific to individual Xid codes. They map to the
@@ -144,8 +144,8 @@ it, and most Nonfatal rows need no remediation at all.
 
 | Action | Description |
 |---|---|
-| <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for warning-class per-Xid checks, where it is followed by `service_required` (`["restart_app", "service_required"]`) should the error persist after the restart. |
-| <nobr>`update_swfw`</nobr> | Update GPU driver/firmware and any related system software to the latest supported versions. Recommended for Xid 78 (vGPU start error). |
+| <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for warning-class per-Xid checks. |
+| <nobr>`update_swfw`</nobr> | Bring the GPU driver/firmware and related software to compatible versions, or correct the vGPU configuration. Recommended for Xid 78 (vGPU start error), raised when the guest VM's driver is incompatible with the host vGPU Manager or the vGPU type is not supported for the guest OS or GPU. The guest driver is installed inside the VM; the host vGPU Manager and the vGPU type are managed by the infrastructure operator. |
 | <nobr>`xid_154`</nobr> | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
 
 `gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at

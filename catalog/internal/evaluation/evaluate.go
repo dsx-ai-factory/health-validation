@@ -59,11 +59,32 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 	if v, isSkip := checkLevelSkip(cd, p, now); isSkip {
 		return v, nil
 	}
-	signals := ToSignals(m)
-	if !routes(cd, m.Category(), signals) {
+	o := observe(m)
+	if !routes(cd, o.category, o.signals) {
 		return skippedVerdict(cd, now, health.NoApplicableMeasurement, noApplicableDetail(cd)), nil
 	}
-	return e.evaluateAgainst(cd, signals, m.Errors(), entityID(m), p, now)
+	if err := checkEntities(cd, []observed{o}); err != nil {
+		return health.CheckVerdict{}, err
+	}
+	return e.evaluateAgainst(cd, o.signals, o.errs, o.entity, p, now)
+}
+
+// observed is one measurement with everything evaluation reads from it
+// extracted once. Fields are ordered for nogo's pointer-scan metric.
+type observed struct {
+	m        health.Measurement
+	signals  map[string]any
+	entity   string
+	key      health.EntityKey
+	errs     []health.ErroredMeasurement
+	category health.Category
+}
+
+func observe(m health.Measurement) observed {
+	return observed{
+		m: m, signals: ToSignals(m), entity: entityID(m),
+		key: health.KeyOf(m), errs: m.Errors(), category: m.Category(),
+	}
 }
 
 // EvaluateBatch routes every measurement to the checks it can feed and
@@ -80,6 +101,10 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 // measurement. A dependency is not among them: it is examined per
 // measurement, and only to name the cause on a verdict for an entity this
 // check could not read at all. See [lostEntity].
+//
+// Before evaluating anything, every check that will run is given at most one
+// measurement per [health.EntityKey]; see [checkEntities]. Otherwise the batch
+// returns a [health.AmbiguousMeasurementError] and no verdicts.
 //
 // A check whose Category supplied no measurement at all skips
 // [health.SensorMissing]. Registering a check is what declares the
@@ -106,31 +131,51 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 	now := time.Now()
 
 	// Extract each measurement's signals once; every check reuses them.
-	// entity precedes errs to satisfy nogo's pointer-scan metric, not
-	// largest-first ordering.
-	type observed struct {
-		signals  map[string]any
-		entity   string
-		errs     []health.ErroredMeasurement
-		category health.Category
-	}
 	obs := make([]observed, len(measurements))
 	presentCategories := make(map[health.Category]bool)
 	for i, m := range measurements {
-		cat := m.Category()
-		obs[i] = observed{ToSignals(m), entityID(m), m.Errors(), cat}
-		presentCategories[cat] = true
+		obs[i] = observe(m)
+		presentCategories[obs[i].category] = true
 	}
 
 	order := TopologicalOrder(checks)
+	// Decide each check's params and measurement-independent skip once; the
+	// validation pass and the evaluation loop both read them.
+	params := make(map[string]Params, len(order))
+	skips := make(map[string]health.CheckVerdict)
+	for _, id := range order {
+		params[id] = paramsFor(id)
+		if v, isSkip := checkLevelSkip(checks[id], params[id], now); isSkip {
+			skips[id] = v
+		}
+	}
+
+	// Validate every check's input before evaluating any, so an ambiguous
+	// run returns no verdicts rather than a partial set.
+	for _, id := range order {
+		cd := checks[id]
+		if _, isSkip := skips[id]; isSkip {
+			continue
+		}
+		var routed []observed
+		for _, o := range obs {
+			if routes(cd, o.category, o.signals) {
+				routed = append(routed, o)
+			}
+		}
+		if err := checkEntities(cd, routed); err != nil {
+			return nil, err
+		}
+	}
+
 	verdicts := make([]health.CheckVerdict, 0, len(order))
 	failed := make(map[string]health.Severity, len(order))
 
 	for _, id := range order {
 		cd := checks[id]
 
-		p := paramsFor(id)
-		if v, isSkip := checkLevelSkip(cd, p, now); isSkip {
+		p := params[id]
+		if v, isSkip := skips[id]; isSkip {
 			verdicts = append(verdicts, v)
 			continue
 		}
@@ -193,6 +238,57 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 	}
 
 	return verdicts, nil
+}
+
+// checkEntities rejects the measurements routed to cd unless each describes a
+// distinct, validly keyed entity, and each provisional or unidentified one
+// reports a failure of a signal cd reads. Concrete types do not matter: two
+// providers' types that both route to cd for one entity are duplicates.
+//
+// A provisional key names a source-local slot or a whole source, which no
+// other source can be joined to, and an unidentified one names nothing at all.
+// Values under either could describe a GPU another provider also reports, so
+// such a measurement may only carry the failure that left it unidentified.
+func checkEntities(cd *health.CheckDefinition, routed []observed) error {
+	ambiguous := func(key health.EntityKey, reason string, ms ...observed) error {
+		types := make([]string, len(ms))
+		for i, o := range ms {
+			types[i] = fmt.Sprintf("%T", o.m)
+		}
+		return &health.AmbiguousMeasurementError{CheckID: cd.ID, Entity: key, Reason: reason, Types: types}
+	}
+	seen := make(map[health.EntityKey]observed, len(routed))
+	for _, o := range routed {
+		if err := o.key.Validate(); err != nil {
+			return ambiguous(o.key, err.Error(), o)
+		}
+		if o.key.Provisional() && !reportsFailure(cd, o) {
+			return ambiguous(o.key, "a provisional identity carries collected values; joining them to a GPU requires a verified ID", o)
+		}
+		if o.key.Unidentified() && !reportsFailure(cd, o) {
+			return ambiguous(o.key, "collected values name no entity, so they may duplicate another provider's; supply a verified ID", o)
+		}
+		if prev, dup := seen[o.key]; dup {
+			reason := "more than one measurement for one entity"
+			if o.key.Unidentified() {
+				reason = "more than one measurement names no entity, so they cannot be told apart"
+			}
+			return ambiguous(o.key, reason, prev, o)
+		}
+		seen[o.key] = o
+	}
+	return nil
+}
+
+// reportsFailure reports whether o's errors fail a signal cd reads. A check
+// that requires no signals reads them all, so o must have lost every signal it
+// carries; a partial failure would leave values that check can read.
+func reportsFailure(cd *health.CheckDefinition, o observed) bool {
+	if len(cd.RequiredSignals) == 0 {
+		return lostEntity(o.errs, o.signals)
+	}
+	detail, _ := matchingError(o.errs, cd.RequiredSignals)
+	return detail != ""
 }
 
 // routes reports whether a measurement of the given category and signal

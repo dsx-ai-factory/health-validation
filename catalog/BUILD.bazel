@@ -31,6 +31,7 @@ go_test(
         "catalog_test.go",
         "checks_test.go",
         "clone_test.go",
+        "duplicates_test.go",
         "entities_test.go",
         "evaluate_test.go",
         "filter_test.go",
