@@ -306,6 +306,10 @@ Both time bounds are exclusive. Start times must be non-negative, and the end ti
 positive and later than every supplied start time. Either bound may be omitted.
 Duplicate GPU bounds or multiple node-wide start times will result in an error.
 
+These flags filter the default Xid journal sensor within the current boot.
+Other journal sensors, including RDMA link-flap detection, and backends supplied
+through `WithXidBackend` keep their own collection behavior.
+
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 
 Run with a config file (threshold overrides):
