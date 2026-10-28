@@ -16,6 +16,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
+	"google.golang.org/protobuf/proto"
 )
 
 // sourceLevelGPU identifies failures not attributable to one GPU.
@@ -56,7 +57,6 @@ func GPU() *domainAdapter {
 
 // NVLink prepares the cutover of toolkit.NVLinkSensor (toolkit.NewNVLinkSensor).
 // The app still registers that legacy sensor; only tests use this adapter.
-// Per-link catalog signals remain unmapped until cutover coverage is complete.
 func NVLink() *domainAdapter {
 	return newDomainAdapter(health.NVLink, erroredNVLink, false)
 }
@@ -107,7 +107,8 @@ func erroredGPU(err error) []health.Measurement {
 }
 
 func erroredNVLink(err error) []health.Measurement {
-	m := nvlink.ErroredNVLink(sourceLevelGPU, err, nvlink.MeasurementSignals()...)
+	// The legacy NVLink sensor names a whole-domain failure after its domain.
+	m := nvlink.ErroredNVLink(health.NVLink.String(), err, nvlink.MeasurementSignals()...)
 	m.SetEntityKey(health.SourceEntity(adapterSource(health.NVLink)))
 	return []health.Measurement{m}
 }
@@ -136,7 +137,11 @@ func adaptCategory(category health.Category, feeds map[string][]string, nodeScop
 	// logs, and run-to-run diffs.
 	slices.SortFunc(keys, func(a, b adapterKey) int { return strings.Compare(a.label(), b.label()) })
 	for _, key := range keys {
-		for _, m := range observations.ToMeasurements(groups[key]) {
+		group := groups[key]
+		if key.kind == "source" {
+			group = asOneSource(category, group)
+		}
+		for _, m := range observations.ToMeasurements(group) {
 			if m.Category() != category {
 				continue
 			}
@@ -157,26 +162,52 @@ func adaptCategory(category health.Category, feeds map[string][]string, nodeScop
 	return out
 }
 
-// adapterKey identifies one GPU group: by UUID, by source-local slot, or by
-// source for source-scoped observations.
+// asOneSource re-keys source-scoped observations from several sources to the
+// adapter's source. ToMeasurements keys each source apart, so a timeout across
+// DCGM and NVML would otherwise become two measurements, each failing the
+// fields only the other feeds as never collected.
+func asOneSource(category health.Category, obs []*observation.Observation) []*observation.Observation {
+	if !slices.ContainsFunc(obs, func(o *observation.Observation) bool { return o.GetSource() != obs[0].GetSource() }) {
+		return obs
+	}
+	out := make([]*observation.Observation, len(obs))
+	for i, o := range obs {
+		out[i] = proto.CloneOf(o)
+		out[i].Source = adapterSource(category)
+	}
+	return out
+}
+
+// adapterKey identifies one GPU group: by UUID, by source-local slot, or one
+// shared group for every source's source-scoped observations.
 type adapterKey struct {
 	namespace string
 	gpuID     string
 	kind      string
 }
 
-// label renders k as a sortable, source-qualified GPU ID.
+// label renders k as a sortable GPU ID, qualified by source for a slot.
 func (k adapterKey) label() string { return fmt.Sprintf("%s:%q/%q", k.kind, k.namespace, k.gpuID) }
 
-// adapterGroup assigns o to its GPU group. Slots are namespaced by source so
-// two producers' slot 0 are never merged without a UUID.
+// adapterGroup assigns o to its GPU group: an NVLink endpoint's GPU or a
+// pair's source GPU, as observations.targetID does. Slots are namespaced by
+// source so two producers' slot 0 are never merged without a UUID.
+// Source-scoped observations name no GPU, so every source's share one group:
+// split per source, each would fail the fields only the others feed.
 func adapterGroup(o *observation.Observation) adapterKey {
-	ref := o.GetTarget().GetGpu()
+	target := o.GetTarget()
+	ref := target.GetGpu()
+	switch {
+	case target.GetNvLinkEndpoint() != nil:
+		ref = target.GetNvLinkEndpoint().GetGpu()
+	case target.GetGpuPair() != nil:
+		ref = target.GetGpuPair().GetSourceGpu()
+	}
 	if ref.GetUuid() != "" {
 		return adapterKey{kind: "uuid", gpuID: ref.GetUuid()}
 	}
 	if slot := ref.GetSourceLocalId(); slot != "" {
 		return adapterKey{kind: "slot", namespace: o.GetSource(), gpuID: slot}
 	}
-	return adapterKey{kind: "source", namespace: o.GetSource()}
+	return adapterKey{kind: "source"}
 }

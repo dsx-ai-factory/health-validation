@@ -31,8 +31,11 @@ go_test(
     srcs = ["main_test.go"],
     embed = [":scan-one-off-evaluate_lib"],
     deps = [
+        "//catalog/health",
         "//collect/sensors/dcgm",
+        "//collect/signals/gpu",
         "//collect/source/dcgm",
+        "//toolkit/observations",
         "@com_github_stretchr_testify//require",
     ],
 )
