@@ -997,6 +997,17 @@ func TestXidTimeFlags(t *testing.T) {
 					t.Fatal(err)
 				}
 				want := []string{"--dmesg", "--boot", "--no-pager", "--quiet", "--output=json", "--output-fields=MESSAGE", "--all"}
+				perGPU := slices.ContainsFunc(tt.flags, func(value string) bool { return strings.Contains(value, "=") })
+				if !perGPU {
+					for i, value := range tt.flags {
+						switch value {
+						case "--xid-from":
+							want = append(want, "--since=@"+tt.flags[i+1])
+						case "--xid-to":
+							want = append(want, "--until=@"+tt.flags[i+1])
+						}
+					}
+				}
 				if got := strings.Split(strings.TrimSpace(string(data)), "\n"); !slices.Equal(got, want) {
 					t.Fatalf("journalctl args = %v, want %v", got, want)
 				}

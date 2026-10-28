@@ -75,8 +75,16 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	for _, definition := range selected {
 		scan.want[definition.ID()] = true
 	}
-	if err := s.reader.ReadKernelBoot(ctx, scan.entry); err != nil {
-		batch.Observations = scanFailure(selected, now, err)
+	var readErr error
+	if len(s.ranges.gpuFrom) == 0 {
+		// The reader's inclusive bounds reduce output; scan keeps the exclusive
+		// bounds. GPU overrides require boot history for unconfigured GPUs.
+		readErr = s.reader.ReadKernelBootRange(ctx, s.ranges.from, s.ranges.to, scan.entry)
+	} else {
+		readErr = s.reader.ReadKernelBoot(ctx, scan.entry)
+	}
+	if readErr != nil {
+		batch.Observations = scanFailure(selected, now, readErr)
 		return batch, nil
 	}
 	batch.Observations = scan.observations

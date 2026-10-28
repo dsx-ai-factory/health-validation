@@ -71,30 +71,75 @@ func New(run Runner) *Reader {
 // ReadKernelBoot calls each for every kernel entry of the current boot, in
 // journal order. An error from each stops the read and is returned.
 func (r *Reader) ReadKernelBoot(ctx context.Context, each func(Entry) error) error {
+	entries, err := r.readKernelBoot(ctx, kernelBootArgs, each, false)
+	if err == nil && entries == 0 {
+		return ErrNoEntries
+	}
+	return err
+}
+
+// ReadKernelBootRange limits the current boot's kernel entries to inclusive
+// Unix-second bounds. Nil bounds are unbounded. An empty bounded read succeeds
+// only when an unbounded kernel-journal probe confirms the journal is readable.
+func (r *Reader) ReadKernelBootRange(ctx context.Context, from, to *int64, each func(Entry) error) error {
+	if from == nil && to == nil {
+		return r.ReadKernelBoot(ctx, each)
+	}
+	if from != nil && *from < 0 {
+		return fmt.Errorf("start time must be non-negative")
+	}
+	if to != nil && *to <= 0 {
+		return fmt.Errorf("end time must be positive")
+	}
+	if from != nil && to != nil && *from >= *to {
+		return fmt.Errorf("start time must be less than end time")
+	}
+	args := append([]string(nil), kernelBootArgs...)
+	if from != nil {
+		args = append(args, fmt.Sprintf("--since=@%d", *from))
+	}
+	if to != nil {
+		args = append(args, fmt.Sprintf("--until=@%d", *to))
+	}
+	entries, err := r.readKernelBoot(ctx, args, each, true)
+	if err != nil || entries > 0 {
+		return err
+	}
+	probeArgs := append(append([]string(nil), kernelBootArgs...), "-n", "1")
+	entries, err = r.readKernelBoot(ctx, probeArgs, func(Entry) error { return nil }, false)
+	if err == nil && entries == 0 {
+		return ErrNoEntries
+	}
+	return err
+}
+
+func (r *Reader) readKernelBoot(ctx context.Context, args []string, each func(Entry) error, allowNoEntriesExit bool) (int, error) {
 	lines := &lineWriter{each: each}
 	stderr := &prefixWriter{max: maxStderr}
-	runErr := r.run(ctx, kernelBootArgs, lines, stderr)
+	runErr := r.run(ctx, args, lines, stderr)
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("journalctl: %w", err)
+		return 0, fmt.Errorf("journalctl: %w", err)
 	}
 	if lines.err != nil {
-		return lines.err
+		return 0, lines.err
+	}
+	// Some journalctl versions return exit 1 for an empty time window.
+	var exitErr *exec.ExitError
+	if allowNoEntriesExit && errors.As(runErr, &exitErr) && exitErr.ExitCode() == 1 &&
+		lines.entries == 0 && len(bytes.TrimSpace(lines.pending)) == 0 &&
+		strings.TrimSpace(stderr.buf.String()) == "" {
+		runErr = nil
 	}
 	if runErr != nil {
 		if detail := boundedUTF8(strings.TrimSpace(stderr.buf.String()), maxErrorMsg); detail != "" {
-			return fmt.Errorf("journalctl: %w: %s", runErr, detail)
+			return 0, fmt.Errorf("journalctl: %w: %s", runErr, detail)
 		}
-		return fmt.Errorf("journalctl: %w", runErr)
+		return 0, fmt.Errorf("journalctl: %w", runErr)
 	}
 	if err := lines.flush(); err != nil {
-		return err
+		return 0, err
 	}
-	// Without a grep every kernel entry of the boot is read, so none means the
-	// journal is unreadable or does not capture kernel messages.
-	if lines.entries == 0 {
-		return ErrNoEntries
-	}
-	return nil
+	return lines.entries, nil
 }
 
 func runJournalctl(ctx context.Context, args []string, stdout, stderr io.Writer) error {

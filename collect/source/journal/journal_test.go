@@ -172,3 +172,103 @@ func TestDefaultRunnerStopsOnDeadline(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Less(t, time.Since(start), 10*time.Second)
 }
+
+func TestReadKernelBootRangeArgs(t *testing.T) {
+	from, to := int64(100), int64(200)
+	for _, tt := range []struct {
+		from *int64
+		to   *int64
+		name string
+		want []string
+	}{
+		{name: "unbounded"},
+		{name: "start", from: &from, want: []string{"--since=@100"}},
+		{name: "end", to: &to, want: []string{"--until=@200"}},
+		{name: "both", from: &from, to: &to, want: []string{"--since=@100", "--until=@200"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var args []string
+			calls := 0
+			r := New(fakeRunner(entryJSON("c1", "150000000", "kernel event"), "", nil, &args))
+			err := r.ReadKernelBootRange(context.Background(), tt.from, tt.to, func(e Entry) error {
+				calls++
+				require.Equal(t, "kernel event", e.Message)
+				return nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, 1, calls)
+			require.Equal(t, append(append([]string(nil), kernelBootArgs...), tt.want...), args)
+		})
+	}
+}
+
+func TestReadKernelBootRangeEmptyWindow(t *testing.T) {
+	from := int64(100)
+	for _, mode := range []string{"empty", "empty exit 1", "read error", "stderr exit 1", "malformed", "probe empty", "probe error", "probe malformed", "probe timeout"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			exitErr := exitError(t)
+			calls := 0
+			r := New(func(gotCtx context.Context, args []string, out, errOut io.Writer) error {
+				require.Equal(t, ctx, gotCtx)
+				calls++
+				if calls == 1 {
+					require.Equal(t, append(append([]string(nil), kernelBootArgs...), "--since=@100"), args)
+					switch mode {
+					case "empty exit 1":
+						return exitErr
+					case "read error":
+						return fs.ErrPermission
+					case "stderr exit 1":
+						_, _ = io.WriteString(errOut, "unrecognized option")
+						return exitErr
+					case "malformed":
+						_, _ = io.WriteString(out, "{broken json\n")
+					}
+					return nil
+				}
+				require.Equal(t, 2, calls)
+				require.Equal(t, append(append([]string(nil), kernelBootArgs...), "-n", "1"), args)
+				switch mode {
+				case "probe empty":
+					return nil
+				case "probe error":
+					return fs.ErrPermission
+				case "probe malformed":
+					_, _ = io.WriteString(out, "{broken json\n")
+				case "probe timeout":
+					cancel()
+					return exitErr
+				default:
+					_, _ = io.WriteString(out, entryJSON("probe", "1", "boot event"))
+				}
+				return nil
+			})
+			err := r.ReadKernelBootRange(ctx, &from, nil, func(Entry) error {
+				t.Fatal("probe entry must not reach caller")
+				return nil
+			})
+			switch mode {
+			case "empty", "empty exit 1":
+				require.NoError(t, err)
+			case "read error", "probe error":
+				require.ErrorIs(t, err, fs.ErrPermission)
+			case "stderr exit 1":
+				require.ErrorIs(t, err, exitErr)
+				require.ErrorContains(t, err, "unrecognized option")
+			case "malformed", "probe malformed":
+				require.ErrorIs(t, err, ErrMalformedEntry)
+			case "probe empty":
+				require.ErrorIs(t, err, ErrNoEntries)
+			case "probe timeout":
+				require.ErrorIs(t, err, context.Canceled)
+			}
+			if mode == "read error" || mode == "stderr exit 1" || mode == "malformed" {
+				require.Equal(t, 1, calls)
+			} else {
+				require.Equal(t, 2, calls)
+			}
+		})
+	}
+}

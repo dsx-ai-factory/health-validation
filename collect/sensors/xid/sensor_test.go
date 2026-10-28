@@ -477,3 +477,64 @@ func TestTimeRangeValidationErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestNodeWideJournalReadBounds(t *testing.T) {
+	from, to := int64(100), int64(200)
+	for _, mode := range []string{"unbounded", "start", "end", "both", "per-GPU", "mixed"} {
+		t.Run(mode, func(t *testing.T) {
+			var lower, upper *int64
+			var gpuFrom map[string]int64
+			switch mode {
+			case "start":
+				lower = &from
+			case "end":
+				upper = &to
+			case "both":
+				lower, upper = &from, &to
+			case "per-GPU":
+				gpuFrom = map[string]int64{"0008:06:00": 100}
+			case "mixed":
+				lower, upper = &from, &to
+				gpuFrom = map[string]int64{"0008:06:00": 100}
+			}
+			boundedRead := mode == "start" || mode == "end" || mode == "both"
+			calls := 0
+			run := func(_ context.Context, args []string, out, _ io.Writer) error {
+				calls++
+				want := []string{"--dmesg", "--boot", "--no-pager", "--quiet", "--output=json", "--output-fields=MESSAGE", "--all"}
+				if calls == 1 && boundedRead {
+					if lower != nil {
+						want = append(want, "--since=@100")
+					}
+					if upper != nil {
+						want = append(want, "--until=@200")
+					}
+					require.Equal(t, want, args)
+					return nil
+				}
+				if calls == 2 {
+					want = append(want, "-n", "1")
+				}
+				require.Equal(t, want, args)
+				_, _ = io.WriteString(out, entryLine("c1", time.Unix(150, 0), "NVRM: Xid (PCI:0008:06:00): 79"))
+				return nil
+			}
+			s, err := NewWithTimeRanges(journal.New(run), lower, upper, gpuFrom)
+			require.NoError(t, err)
+			cycle, err := collect.NewCycle("cycle-1", scanTime)
+			require.NoError(t, err)
+			batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
+			require.NoError(t, err)
+			require.NoError(t, observation.ValidateBatch(batch))
+			got := keyed(t, batch)
+			require.Contains(t, got, xidsignals.ScanWindow.ID()+"|")
+			if boundedRead {
+				require.Equal(t, 2, calls)
+				require.Len(t, batch.GetObservations(), 1)
+			} else {
+				require.Equal(t, 1, calls)
+				require.Equal(t, int64(79), got[xidsignals.Code.ID()+"|c1"].GetValue().GetIntValue())
+			}
+		})
+	}
+}
