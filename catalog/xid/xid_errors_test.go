@@ -276,7 +276,7 @@ func TestXidErrors_NewArchitectureSpecificChecks(t *testing.T) {
 		wantSeverity health.Severity
 	}{
 		{name: "Xid 54 on A100", architecture: "A100", checkID: "gpu_xid_54", code: 54, wantSeverity: health.Critical, wantAction: health.Drain(health.RemediationActionServiceRequired)},
-		{name: "Xid 80 on H200", architecture: "H200", checkID: "gpu_xid_80", code: 80, wantSeverity: health.Warning, wantAction: health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired)},
+		{name: "Xid 80 on H200", architecture: "H200", checkID: "gpu_xid_80", code: 80, wantSeverity: health.Warning, wantAction: health.Drain(health.RemediationActionRestartApp)},
 		{name: "Xid 136 on H100", architecture: "H100", checkID: "gpu_xid_136", code: 136, wantSeverity: health.Critical, wantAction: resetAndServiceForTest()},
 	}
 	for _, tt := range tests {
@@ -333,8 +333,8 @@ func TestXidErrors_WarningActionByBucket(t *testing.T) {
 		want health.RecommendedAction
 		code int64
 	}{
-		{"app fault (13)", health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired), 13},
-		{"memory page fault (31)", health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired), 31},
+		{"app fault (13)", health.Drain(health.RemediationActionRestartApp), 13},
+		{"memory page fault (31)", health.Drain(health.RemediationActionRestartApp), 31},
 		{"vgpu start (78)", health.Drain(health.RemediationActionUpdateSWFW), 78},
 	}
 	for _, tc := range tests {
@@ -419,9 +419,13 @@ func TestXidErrors_Xid151IsCritical(t *testing.T) {
 	if v.Severity != health.Critical {
 		t.Errorf("Severity = %v, want %v", v.Severity, health.Critical)
 	}
-	want := health.Drain(health.RemediationActionRestartOS)
+	want := health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired)
 	if !v.RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
+	}
+	wantMessage := "GPU Xid 151 (key rotation error) detected. Restart the affected VM; contact the operator if the error persists."
+	if len(v.Messages) != 1 || v.Messages[0] != wantMessage {
+		t.Errorf("Messages = %q, want [%q]", v.Messages, wantMessage)
 	}
 }
 
@@ -832,7 +836,7 @@ func TestXidErrors_WorstSeverityWins(t *testing.T) {
 }
 
 func TestXidErrors_PerCodeCriticalCheck(t *testing.T) {
-	// Xid 79 fires its own gpu_xid_79 check (CRITICAL, reset+escalate); every
+	// Xid 79 fires its own gpu_xid_79 check (CRITICAL, restart+escalate); every
 	// other Xid check runs against the same measurement but passes.
 	nv := evalXid(t, 79)
 
@@ -848,8 +852,29 @@ func TestXidErrors_PerCodeCriticalCheck(t *testing.T) {
 	if critical[0].CheckID != "gpu_xid_79" {
 		t.Errorf("CheckID = %q, want gpu_xid_79", critical[0].CheckID)
 	}
-	if want := health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired); !critical[0].RecommendedAction.Equal(want) {
+	if want := health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired); !critical[0].RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", critical[0].RecommendedAction, want)
+	}
+	want := "GPU Xid 79 detected: GPU has fallen off the bus and is inaccessible over PCIe. Restart the host. Review system and kernel PCI event logs; contact support for further investigation."
+	if len(critical[0].Messages) != 1 || critical[0].Messages[0] != want {
+		t.Errorf("Messages = %q, want [%q]", critical[0].Messages, want)
+	}
+}
+
+func TestXidErrors_Xid78VGPUStartError(t *testing.T) {
+	v, ok := checkResult(evalXid(t, 78), "gpu_xid_78")
+	if !ok {
+		t.Fatalf("gpu_xid_78 verdict not found")
+	}
+	if v.Severity != health.Warning {
+		t.Errorf("Severity = %v, want WARNING", v.Severity)
+	}
+	if want := health.Drain(health.RemediationActionUpdateSWFW); !v.RecommendedAction.Equal(want) {
+		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
+	}
+	want := "GPU Xid 78 (vGPU start error) detected: the guest driver is incompatible with the host vGPU Manager, or the vGPU type is not supported for the guest OS or GPU. Install a compatible guest driver, update the host vGPU Manager, or assign a supported vGPU type."
+	if len(v.Messages) != 1 || v.Messages[0] != want {
+		t.Errorf("Messages = %q, want [%q]", v.Messages, want)
 	}
 }
 

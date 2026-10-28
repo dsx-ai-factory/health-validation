@@ -54,7 +54,13 @@ var criticalXids = []criticalXid{
 	{code: 54, action: health.Drain(health.RemediationActionServiceRequired), architectures: hgxArchitectures, description: "auxiliary power is not connected to the GPU board"},
 	{code: 62, action: resetAndService(), architectures: allArchitectures, description: "internal micro-controller halt"},
 	{code: 64, action: resetAndService(), architectures: allArchitectures, description: "GPU memory remapping failure"},
-	{code: 79, action: resetAndService(), architectures: allArchitectures, description: "GPU has fallen off the bus"},
+	{
+		code:          79,
+		action:        health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired),
+		architectures: allArchitectures,
+		description:   "GPU has fallen off the bus",
+		message:       "GPU Xid 79 detected: GPU has fallen off the bus and is inaccessible over PCIe. Restart the host. Review system and kernel PCI event logs; contact support for further investigation.",
+	},
 	{code: 95, action: resetAndService(), architectures: allArchitectures, description: "uncontained memory error"},
 	{code: 109, action: resetAndService(), architectures: allArchitectures, description: "context switch timeout error"},
 	{code: 110, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "security fault error"},
@@ -66,7 +72,13 @@ var criticalXids = []criticalXid{
 	{code: 143, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "GPU initialization error"},
 	// 144-150 (NVLink5/NETIR family) are not listed here: they get their
 	// own severity-differentiated checks below, built by nvlink5Check.
-	{code: 151, action: health.Drain(health.RemediationActionRestartOS), architectures: hopperBlackwellArchitectures, description: "key rotation error"},
+	{
+		code:          151,
+		action:        health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired),
+		architectures: hopperBlackwellArchitectures,
+		description:   "key rotation error",
+		message:       "GPU Xid 151 (key rotation error) detected. Restart the affected VM; contact the operator if the error persists.",
+	},
 	{code: 155, action: resetAndService(), architectures: blackwellArchitectures, description: "NVLink SW-defined error"},
 	{code: 156, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "resource retirement event"},
 	{code: 158, action: resetAndService(), architectures: allArchitectures, description: "GPU fatal timeout"},
@@ -245,9 +257,9 @@ type warningClass struct {
 
 var warningClasses = []warningClass{
 	{
-		action:        health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+		action:        health.Drain(health.RemediationActionRestartApp),
 		architectures: allArchitectures,
-		message:       "GPU Xid %d detected: application-level error. Restart the faulting application; send the node for service if the error persists.",
+		message:       "GPU Xid %d detected: application-level error. Restart the faulting application.",
 		codes: []int64{
 			8, 11, 13, 25, 31, 32, 39, 40, 41, 60, 68, 69, 70, 71, 72, 75, 76, 77,
 			82, 83, 84, 85, 86, 88, 89, 94,
@@ -256,25 +268,25 @@ var warningClasses = []warningClass{
 	{
 		action:        health.Drain(health.RemediationActionUpdateSWFW),
 		architectures: allArchitectures,
-		message:       "GPU Xid %d (vGPU start error) detected. Update GPU software/firmware.",
+		message:       "GPU Xid %d (vGPU start error) detected: the guest driver is incompatible with the host vGPU Manager, or the vGPU type is not supported for the guest OS or GPU. Install a compatible guest driver, update the host vGPU Manager, or assign a supported vGPU type.",
 		codes:         []int64{78},
 	},
 	{
-		action:        health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+		action:        health.Drain(health.RemediationActionRestartApp),
 		architectures: ampereHopperArchitectures,
-		message:       "GPU Xid %d detected: corrupted data sent to the GPU. Restart the faulting application; send the node for service if the error persists.",
+		message:       "GPU Xid %d detected: corrupted data sent to the GPU. Restart the faulting application.",
 		codes:         []int64{80},
 	},
 	{
-		action:        health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+		action:        health.Drain(health.RemediationActionRestartApp),
 		architectures: hopperBlackwellArchitectures,
-		message:       "GPU Xid %d detected: application-level error. Restart the faulting application; send the node for service if the error persists.",
+		message:       "GPU Xid %d detected: application-level error. Restart the faulting application.",
 		codes:         []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105},
 	},
 	{
-		action:        health.Drain(health.RemediationActionRestartApp, health.RemediationActionServiceRequired),
+		action:        health.Drain(health.RemediationActionRestartApp),
 		architectures: blackwellArchitectures,
-		message:       "GPU Xid %d detected: application-level error. Restart the faulting application; send the node for service if the error persists.",
+		message:       "GPU Xid %d detected: application-level error. Restart the faulting application.",
 		codes:         []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139},
 	},
 }
