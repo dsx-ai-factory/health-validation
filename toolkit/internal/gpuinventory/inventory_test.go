@@ -224,6 +224,7 @@ func TestArchitecture(t *testing.T) {
 		err      string
 	}{
 		{name: "recognized", snapshot: inventory(gpuEntry(0, "NVIDIA GB200")), want: "GB200"},
+		{name: "B200 after GB200", snapshot: inventory(gpuEntry(0, "NVIDIA B200")), want: "B200"},
 		{name: "first recognized wins", snapshot: inventory(gpuEntry(0, "NVIDIA A10"), gpuEntry(1, "NVIDIA GB300")), want: "GB300"},
 		{name: "failed slot skipped", snapshot: inventory(failedEntry(0, handleOperation), gpuEntry(1, "NVIDIA H100 80GB HBM3")), want: "H100"},
 		{name: "unrecognized", snapshot: inventory(gpuEntry(0, "NVIDIA A10")), want: ArchitectureUnknown},

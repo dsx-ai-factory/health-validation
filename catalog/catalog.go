@@ -312,6 +312,11 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 // the check as unassessed in SkippedChecks. Supply the measurements for
 // every category in [Catalog.Categories], or register only the checks you
 // intend to feed.
+//
+// Each check that will run must receive at most one measurement per
+// [health.EntityKey], whatever the measurements' Go types. Otherwise
+// EvaluateAll returns a [health.AmbiguousMeasurementError] naming the check
+// and entity, and no verdict: it does not choose between providers.
 func (c *Catalog) EvaluateAll(measurements ...health.Measurement) (health.NodeVerdict, error) {
 	return c.EvaluateAllWithOptions(EvaluationOptions{}, measurements...)
 }

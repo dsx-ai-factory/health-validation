@@ -18,7 +18,7 @@ Verifies each GPU has no inactive NVLinks.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`inactive_count`</nobr> |
 
 **Thresholds**
@@ -48,15 +48,15 @@ Verifies each GPU's NVLink link count and per-link speed match expected values.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`link_count`</nobr>, <nobr>`speed_mbytes_per_sec`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`expected_link_count`</nobr> | 18 | count | <nobr>`DEFAULT`</nobr> | Expected NVLinks per GPU. GB200 exposes 18 NVLink 5 links. |
-| <nobr>`expected_speed_mbytes_per_sec`</nobr> | GB200: 53125, GB300: 53125, H100: 26562, other: 53125 | MB/s | <nobr>`DEFAULT`</nobr> | Expected per-link NVLink speed in MegaBytes per second. GB200 NVLink 5 at 53125, GB300 at 53125, H100 NVLink 4 at 26562. |
+| <nobr>`expected_link_count`</nobr> | 18 | count | <nobr>`DEFAULT`</nobr> | Expected NVLinks per GPU. GB200, GB300 and B200 expose 18 NVLink 5 links; H100 exposes 18 NVLink 4 links. |
+| <nobr>`expected_speed_mbytes_per_sec`</nobr> | B200: 53125, GB200: 53125, GB300: 53125, H100: 26562, other: 53125 | MB/s | <nobr>`DEFAULT`</nobr> | Expected per-link NVLink speed in MegaBytes per second. GB200, GB300 and B200 NVLink 5 at 53125, H100 NVLink 4 at 26562. |
 
 **Rules**
 
@@ -81,7 +81,7 @@ Verifies every NVLink on each GPU reports the capabilities required for multi-GP
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`all_links_support_p2p`</nobr>, <nobr>`all_links_support_sysmem_access`</nobr>, <nobr>`all_links_support_p2p_atomics`</nobr>, <nobr>`all_links_support_sysmem_atomics`</nobr>, <nobr>`all_links_support_sli`</nobr>, <nobr>`all_links_support_link`</nobr> |
 
 **Rules**
@@ -171,7 +171,7 @@ Verifies each GPU has healthy peer-to-peer NVLink connectivity to every other GP
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`unhealthy_p2p_peer_count`</nobr> |
 
 **Thresholds**

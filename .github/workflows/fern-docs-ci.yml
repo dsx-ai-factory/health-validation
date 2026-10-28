@@ -28,6 +28,7 @@ on:
       - 'fern/**'
       - 'tools/check-docs-mdx'
       - 'tools/check-docs-paths'
+      - 'tools/fern_docs_versions.py'
       - '.github/workflows/fern-docs-ci.yml'
   workflow_dispatch: {}
 
@@ -88,3 +89,15 @@ jobs:
 
       - name: Check broken links
         run: fern docs broken-links
+
+      - name: Check versioned configuration
+        # Publishing replaces the docs.yml version list with ref-backed release
+        # versions. Write that list under a local placeholder tag so a docs.yml
+        # change that breaks the rewrite, or a list Fern rejects, fails here
+        # rather than at release time.
+        run: |
+          set -eo pipefail
+          git tag v999.0.0
+          python3 tools/fern_docs_versions.py --fern-dir fern
+          grep -q '^    ref: v999.0.0$' fern/docs.yml
+          fern check

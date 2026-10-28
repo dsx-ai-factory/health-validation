@@ -50,7 +50,7 @@ func firstXidFailure(obs []*observation.Observation) error {
 		var err error
 		switch {
 		case o.GetCollectionError() != nil:
-			err = collectionFailure(o.GetSource(), o.GetCollectionError())
+			err = collectionFailure(o.GetCollectionError())
 		case o.GetNoValue() != nil:
 			err = noValueFailure(o.GetSource(), o.GetNoValue())
 		default:

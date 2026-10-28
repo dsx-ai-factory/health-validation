@@ -13,20 +13,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Publishes the current docs from main as a single, unversioned Fern site.
+# Publishes the Fern docs site, one version per release line.
 #
-# Manual only. This stands in for the versioned publish workflow until the
-# project chooses which release tag defines the docs version: every tag in this
-# repo is module-prefixed (catalog/vX.Y.Z, toolkit/vX.Y.Z), and the versioned
-# workflow accepts only a plain vMAJOR.MINOR.PATCH tag. Replace this workflow
-# with that one once the tag is chosen.
+# Each MAJOR.MINOR line is a ref-backed Fern version built from its highest
+# final vX.Y.Z tag, so Fern reads that tag's own docs, navigation, and API
+# reference. tools/fern_docs_versions.py writes the version list on every run,
+# so the site never depends on state left by an earlier publish. Until a release
+# tag contains the Fern site, the checked-out docs are published unversioned.
+#
+# A manual run rebuilds the released versions from their tags; it does not
+# publish page changes merged to main since the last release. Those ship with
+# the next release, or a patch release on the affected line.
+#
+# The Fern configuration and tooling always come from main, so a patch tag on an
+# older release branch cannot publish with that branch's older configuration.
 #
 # Required configuration:
 # - Organization secret: FERN_TOKEN (from `fern token` for the nvidia Fern org)
 
-name: Publish Fern Docs (manual)
+name: Publish Fern Docs
 
 on:
+  push:
+    tags:
+      # Final releases only; release candidates do not change the docs.
+      - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch: {}
 
 permissions:
@@ -39,16 +50,35 @@ concurrency:
 jobs:
   publish:
     name: Publish
-    # Secrets are exposed to this job, so publish only from main of the
-    # upstream repository.
-    if: github.repository == 'dsx-ai-factory/health-validation' && github.ref == 'refs/heads/main'
+    # Secrets are exposed to this job, so publish only from the upstream
+    # repository, on a release tag or a manual run from main.
+    if: >-
+      github.repository == 'dsx-ai-factory/health-validation' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: linux-amd64-cpu4
     timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
+          # Fern checks out each version's tag, so it needs the tags and history.
+          fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
+
+      - name: Write docs versions
+        run: python3 tools/fern_docs_versions.py --fern-dir fern
+
+      - name: Check docs paths stay inside docs
+        # Covers the checked-out tree only. Fern reads each ref-backed version
+        # from its tag, whose docs passed this check when they merged.
+        run: >-
+          python3 tools/check-docs-paths
+          --allow '../docs/index.yml'
+          --allow '../collect/proto'
+          --allow '../collect/proto/health/v1/check.proto'
+          docs fern
 
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

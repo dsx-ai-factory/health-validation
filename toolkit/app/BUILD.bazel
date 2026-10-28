@@ -45,6 +45,7 @@ go_test(
         "collect_test.go",
         "config_test.go",
         "discovery_linux_test.go",
+        "entity_test.go",
         "node_parity_linux_test.go",
         "version_test.go",
         "xid_collect_test.go",

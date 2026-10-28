@@ -80,17 +80,17 @@ func TestXidErrors_ArchitectureCoverage(t *testing.T) {
 		checkID       string
 		architectures []string
 	}{
-		{name: "all generations", checkID: "gpu_xid_46", architectures: []string{"GB200", "GB300", "H100", "H200", "A100"}},
-		{name: "Ampere and Hopper", checkID: "gpu_xid_54", architectures: []string{"H100", "H200", "A100"}},
+		{name: "all generations", checkID: "gpu_xid_46", architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "A100"}},
+		{name: "HGX and PCIe baseboards, not Grace", checkID: "gpu_xid_54", architectures: []string{"B200", "H100", "H200", "A100"}},
 		{name: "Hopper only", checkID: "gpu_xid_136", architectures: []string{"H100", "H200"}},
-		{name: "Hopper and Blackwell", checkID: "gpu_xid_110", architectures: []string{"GB200", "GB300", "H100", "H200"}},
-		{name: "Blackwell only", checkID: "gpu_xid_142", architectures: []string{"GB200", "GB300"}},
-		{name: "NVLink5 remains Blackwell only", checkID: "gpu_xid_144", architectures: []string{"GB200", "GB300"}},
-		{name: "common warning", checkID: "gpu_xid_8", architectures: []string{"GB200", "GB300", "H100", "H200", "A100"}},
+		{name: "Hopper and Blackwell", checkID: "gpu_xid_110", architectures: []string{"GB200", "GB300", "B200", "H100", "H200"}},
+		{name: "Grace Blackwell only", checkID: "gpu_xid_142", architectures: []string{"GB200", "GB300"}},
+		{name: "NVLink5 remains Blackwell only", checkID: "gpu_xid_144", architectures: []string{"GB200", "GB300", "B200"}},
+		{name: "common warning", checkID: "gpu_xid_8", architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "A100"}},
 		{name: "Ampere and Hopper warning", checkID: "gpu_xid_80", architectures: []string{"H100", "H200", "A100"}},
-		{name: "Hopper and Blackwell warning", checkID: "gpu_xid_96", architectures: []string{"GB200", "GB300", "H100", "H200"}},
-		{name: "Blackwell warning", checkID: "gpu_xid_126", architectures: []string{"GB200", "GB300"}},
-		{name: "informational all generations", checkID: "gpu_xid_154", architectures: []string{"GB200", "GB300", "H100", "H200", "A100"}},
+		{name: "Hopper and Blackwell warning", checkID: "gpu_xid_96", architectures: []string{"GB200", "GB300", "B200", "H100", "H200"}},
+		{name: "Blackwell warning", checkID: "gpu_xid_126", architectures: []string{"GB200", "GB300", "B200"}},
+		{name: "informational all generations", checkID: "gpu_xid_154", architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "A100"}},
 	}
 
 	definitions := make(map[string]health.CheckDefinition)
@@ -225,12 +225,12 @@ func TestXidErrors_WarningArchitectureMatrix(t *testing.T) {
 		codes         []int64
 	}{
 		{
-			architectures: []string{"GB200", "GB300", "H100", "H200", "A100"},
+			architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "A100"},
 			codes:         []int64{8, 11, 13, 25, 31, 32, 39, 40, 41, 45, 60, 68, 69, 70, 71, 72, 75, 76, 77, 78, 82, 83, 84, 85, 86, 88, 89, 94},
 		},
 		{architectures: []string{"H100", "H200", "A100"}, codes: []int64{80}},
-		{architectures: []string{"GB200", "GB300", "H100", "H200"}, codes: []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105}},
-		{architectures: []string{"GB200", "GB300"}, codes: []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139}},
+		{architectures: []string{"GB200", "GB300", "B200", "H100", "H200"}, codes: []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105}},
+		{architectures: []string{"GB200", "GB300", "B200"}, codes: []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139}},
 	}
 
 	definitions := make(map[string]health.CheckDefinition)

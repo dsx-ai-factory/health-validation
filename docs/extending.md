@@ -151,6 +151,53 @@ if err := cat.CheckCoverage(mygpu.Measurement{}, /* … */); err != nil {
 }
 ```
 
+### One measurement per check and entity
+
+A check may receive at most one measurement per entity. If two measurements
+that feed the same check describe the same entity, evaluation returns a
+`health.AmbiguousMeasurementError` (matching `health.ErrAmbiguousMeasurement`)
+naming the check and entity, and produces no verdict. The CLI exits `2`. The
+engine never picks one provider over another, so two providers for one GPU, or
+one provider emitting a GPU twice, is a wiring fault to fix. This applies even
+when the two measurements are different Go types.
+
+A measurement's entity is its `health.EntityKey`:
+
+| Your measurement | Key |
+|---|---|
+| Implements `health.EntityKeyed` | Whatever `EntityKey()` returns |
+| Implements only `health.EntityIdentifier` | `health.VerifiedEntity(EntityID())`, or unidentified when the ID is empty (see below) |
+| Implements neither (host-wide) | `health.NodeEntity()`: one per run, whatever node ID the producer recorded |
+
+Implement `EntityIdentifier` on any type that describes one of several like
+entities. If you don't, every instance is keyed as the node, and two of them
+are rejected as duplicates. Implement `EntityKeyed` when your ID is not a
+stable hardware identity:
+
+- `health.ProvisionalEntity(source, slot)` is for an entity whose identity
+  lookup failed, named by the slot its source enumerated. Both values are
+  required, and NVML's slot 0 and DCGM's slot 0 are different keys. A
+  provisional measurement must report a collection failure on every check it
+  feeds, because nothing ties its values to a verified GPU.
+- `health.SourceEntity(source)` is for a whole-source failure that names no
+  entity. The same rule applies.
+
+An unidentified key (an empty `EntityID()`, or a zero `health.EntityKey`) is
+allowed only for a collection failure:
+
+- **Allowed:** an unidentified measurement whose errors fail a signal the check
+  reads, such as a GPU whose UUID lookup failed. The check fails CRITICAL as a
+  collection failure. Two of them feeding one check are still rejected, since
+  nothing tells them apart.
+- **Rejected:** an unidentified measurement carrying values the check reads,
+  even from the only provider. Nothing shows it isn't a GPU another provider
+  also reports, as when an ID-less `nvidia-smi` path is left running beside
+  NVML. Set an ID or implement `EntityKeyed`.
+
+The built-in `gpu.GPUMeasurement` and `nvlink.NVLinkMeasurement` take a key
+through `SetEntityKey`. Without one, a non-empty `GPUID` is treated as verified
+and an empty one as unidentified.
+
 ## Thresholds: types and bounds
 
 Each threshold declares the Go type of its values. CEL is type-sensitive, and a

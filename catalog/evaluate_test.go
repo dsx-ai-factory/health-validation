@@ -95,6 +95,10 @@ type deviceMeasurement struct {
 func (deviceMeasurement) Category() health.Category           { return health.Node }
 func (deviceMeasurement) Errors() []health.ErroredMeasurement { return nil }
 
+// EntityID keys each device separately; without it the two devices would
+// both be keyed as the node and rejected as duplicates.
+func (m deviceMeasurement) EntityID() string { return m.Device }
+
 // Two measurement types that share a Category but carry disjoint signal
 // schemas must each route only to the check whose required signals they
 // carry. Neither check is skipped as collateral of the other's

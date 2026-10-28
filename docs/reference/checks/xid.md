@@ -16,7 +16,7 @@ These 39 checks share the properties below and each has one rule.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr> |
 
 **Thresholds**
@@ -79,7 +79,7 @@ These 14 checks share the properties below and each has one rule.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr> |
 
 **Thresholds**
@@ -107,7 +107,7 @@ These 14 checks share the properties below and each has one rule.
 
 ## Single-rule checks reading `xid_counts`
 
-These 14 checks share the properties below and each has one rule.
+These 13 checks share the properties below and each has one rule.
 
 | Property | Value |
 |---|---|
@@ -117,7 +117,7 @@ These 14 checks share the properties below and each has one rule.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr> |
 
 **Thresholds**
@@ -139,7 +139,6 @@ These 14 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_134`</nobr> | GPU Xid 134 Warning | <nobr>`134 in xid_counts && xid_counts[134] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_135`</nobr> | GPU Xid 135 Warning | <nobr>`135 in xid_counts && xid_counts[135] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_139`</nobr> | GPU Xid 139 Warning | <nobr>`139 in xid_counts && xid_counts[139] >= occurrences`</nobr> | WARNING | <nobr>`drain`</nobr>: <nobr>`restart_app`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_142`</nobr> | GPU Xid 142 (NVENC3 error) | <nobr>`142 in xid_counts && xid_counts[142] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_155`</nobr> | GPU Xid 155 (NVLink SW-defined error) | <nobr>`155 in xid_counts && xid_counts[155] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_159`</nobr> | GPU Xid 159 (CHI non-data error) | <nobr>`159 in xid_counts && xid_counts[159] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 
@@ -155,7 +154,7 @@ These 20 checks share the properties below and each has one rule.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`sub_xid_code_counts`</nobr> |
 
 **Thresholds**
@@ -201,7 +200,7 @@ Detects NVRM Xid 45 in the system journal since boot; informational when another
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr> |
 
 **Thresholds**
@@ -232,7 +231,7 @@ Detects NVRM Xid 54 in the system journal since boot.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Architectures | <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr> |
 
 **Thresholds**
@@ -308,6 +307,36 @@ Detects NVRM Xid 136 in the system journal since boot.
 
 **Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
 
+## GPU Xid 142 (NVENC3 error)
+
+`gpu_xid_142`
+
+Detects NVRM Xid 142 in the system journal since boot.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
+**Rules**
+
+- **CRITICAL** when `142 in xid_counts && xid_counts[142] >= occurrences`
+  - Message: GPU Xid 142 detected: NVENC3 error.
+
+**Recommended action:** operational state `drain`, then `service_required`
+
 ## GPU Xid 144 (NVLink SAW error)
 
 `gpu_xid_144`
@@ -322,7 +351,7 @@ Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fat
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
 **Thresholds**
@@ -354,7 +383,7 @@ Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fat
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
 **Thresholds**
@@ -386,7 +415,7 @@ Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fat
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
 **Thresholds**
@@ -418,7 +447,7 @@ Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fat
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
 **Thresholds**
@@ -450,7 +479,7 @@ Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fat
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
 **Thresholds**
@@ -482,7 +511,7 @@ Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fat
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
 **Thresholds**
@@ -514,7 +543,7 @@ Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fat
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
 | Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
 
 **Thresholds**

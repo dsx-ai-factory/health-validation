@@ -32,7 +32,7 @@ func GPUComputeApps() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.TenantGuest},
 		SchedulingCadence: health.Prolog,
-		Architectures:     []string{"GB200", "GB300", "H100", "A100"},
+		Architectures:     []string{"GB200", "GB300", "B200", "H100", "A100"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,

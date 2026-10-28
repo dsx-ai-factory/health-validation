@@ -17,6 +17,17 @@ AffectedComponent summarizes a category with non-Pass results.
 | <nobr>`Category`</nobr> | <nobr>`category`</nobr> | [<nobr>`Category`</nobr>](#category) |  |
 | <nobr>`MaxSeverity`</nobr> | <nobr>`max_severity`</nobr> | [<nobr>`Severity`</nobr>](#severity) |  |
 
+### AmbiguousMeasurementError
+
+AmbiguousMeasurementError reports the check and entity whose measurements could not be evaluated. No verdict is produced for the run: choosing one provider's measurement, or reporting each, would present a guess as a finding.
+
+| Field | JSON name | Type | Description |
+|---|---|---|---|
+| <nobr>`CheckID`</nobr> |  | <nobr>`string`</nobr> |  |
+| <nobr>`Reason`</nobr> |  | <nobr>`string`</nobr> | Reason says what made the input ambiguous. |
+| <nobr>`Types`</nobr> |  | <nobr>`[]string`</nobr> | Types lists the Go types of the offending measurements. |
+| <nobr>`Entity`</nobr> |  | [<nobr>`EntityKey`</nobr>](#entitykey) |  |
+
 ### CheckDefinition
 
 CheckDefinition is the canonical shape of a health check in the catalog. Each definition encodes NVIDIA's operational judgment about a specific hardware or driver condition: which signals to examine, what thresholds apply, what action to recommend, and how far the condition reaches. Check definitions are data. They carry no sensor or hardware dependencies. Evaluation happens when a caller provides signal values to [Catalog.Evaluate].
@@ -65,6 +76,10 @@ CheckVerdict is the outcome of evaluating a single check against signal values. 
 | <nobr>`MaturityLevel`</nobr> | <nobr>`maturity_level`</nobr> | [<nobr>`MaturityLevel`</nobr>](#maturitylevel) |  |
 | <nobr>`Skipped`</nobr> | <nobr>`skipped`</nobr> | <nobr>`bool`</nobr> |  |
 | <nobr>`NVIDIAEndorsed`</nobr> | <nobr>`nvidia_endorsed`</nobr> | <nobr>`bool`</nobr> |  |
+
+### EntityKey
+
+EntityKey is the stable identity of the entity a measurement describes. Evaluation rejects two measurements with one key that feed the same check: it cannot tell which provider to believe, so it reports neither. Construct a key with [NodeEntity], [VerifiedEntity], [ProvisionalEntity], or [SourceEntity]. The zero value is an unidentified entity: a per-entity measurement whose producer could not name it. Like a provisional key, it may only report the collection failure that left it unnamed; collected values under it are rejected, since nothing shows they describe a GPU no other provider reports. Two unidentified measurements for one check are rejected too, since nothing tells them apart.
 
 ### ErroredMeasurement
 
