@@ -427,13 +427,13 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
 		return exitError
 	}
-  
+
 	sensors, err := a.sensors(cycle, requiredFor(runnable), xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError
 	}
-  
+
 	verdict, produced, code := evaluate(cat, toolkit.CollectionOptions{
 		Cadence: cadence,
 		Timeout: timeout,
@@ -491,7 +491,7 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 			}
 		}
 	}
-	collectSensors, err := a.collectSensors(cycle, builtinSources, builtinAdapters, required)
+	collectSensors, err := a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
 	if err != nil {
 		return nil, err
 	}

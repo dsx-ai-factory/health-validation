@@ -23,7 +23,7 @@ These 39 checks share the properties below and each has one rule.
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
 
 | Check | Name | Condition | Severity | Recommended action |
 |---|---|---|---|---|
@@ -86,7 +86,7 @@ These 14 checks share the properties below and each has one rule.
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
 
 | Check | Name | Condition | Severity | Recommended action |
 |---|---|---|---|---|
@@ -124,7 +124,7 @@ These 13 checks share the properties below and each has one rule.
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
 
 | Check | Name | Condition | Severity | Recommended action |
 |---|---|---|---|---|
@@ -161,7 +161,7 @@ These 20 checks share the properties below and each has one rule.
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
 
 | Check | Name | Condition | Severity | Recommended action |
 |---|---|---|---|---|
@@ -190,7 +190,7 @@ These 20 checks share the properties below and each has one rule.
 
 `gpu_xid_45`
 
-Detects NVRM Xid 45 in the system journal since boot; informational when another Xid is present.
+Detects NVRM Xid 45 in the system journal within the collection window; informational when another Xid is present.
 
 | Property | Value |
 |---|---|
@@ -207,7 +207,7 @@ Detects NVRM Xid 45 in the system journal since boot; informational when another
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -221,7 +221,7 @@ Detects NVRM Xid 45 in the system journal since boot; informational when another
 
 `gpu_xid_54`
 
-Detects NVRM Xid 54 in the system journal since boot.
+Detects NVRM Xid 54 in the system journal within the collection window.
 
 | Property | Value |
 |---|---|
@@ -238,7 +238,7 @@ Detects NVRM Xid 54 in the system journal since boot.
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -251,7 +251,7 @@ Detects NVRM Xid 54 in the system journal since boot.
 
 `gpu_xid_80`
 
-Detects warning-class NVRM Xid 80 in the system journal since boot.
+Detects warning-class NVRM Xid 80 in the system journal within the collection window.
 
 | Property | Value |
 |---|---|
@@ -268,7 +268,7 @@ Detects warning-class NVRM Xid 80 in the system journal since boot.
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -281,7 +281,7 @@ Detects warning-class NVRM Xid 80 in the system journal since boot.
 
 `gpu_xid_136`
 
-Detects NVRM Xid 136 in the system journal since boot.
+Detects NVRM Xid 136 in the system journal within the collection window.
 
 | Property | Value |
 |---|---|
@@ -298,7 +298,7 @@ Detects NVRM Xid 136 in the system journal since boot.
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -311,7 +311,7 @@ Detects NVRM Xid 136 in the system journal since boot.
 
 `gpu_xid_142`
 
-Detects NVRM Xid 142 in the system journal since boot.
+Detects NVRM Xid 142 in the system journal within the collection window.
 
 | Property | Value |
 |---|---|
@@ -328,7 +328,7 @@ Detects NVRM Xid 142 in the system journal since boot.
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -341,7 +341,7 @@ Detects NVRM Xid 142 in the system journal since boot.
 
 `gpu_xid_144`
 
-Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 144 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -358,8 +358,8 @@ Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fat
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -373,7 +373,7 @@ Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_145`
 
-Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 145 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -390,8 +390,8 @@ Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fat
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -405,7 +405,7 @@ Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_146`
 
-Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 146 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -422,8 +422,8 @@ Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fat
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -437,7 +437,7 @@ Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_147`
 
-Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 147 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -454,8 +454,8 @@ Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fat
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -469,7 +469,7 @@ Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_148`
 
-Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 148 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -486,8 +486,8 @@ Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fat
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -501,7 +501,7 @@ Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_149`
 
-Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 149 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -518,8 +518,8 @@ Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fat
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -533,7 +533,7 @@ Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_150`
 
-Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 150 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -550,8 +550,8 @@ Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fat
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences within the collection window that trigger the WARNING rule. |
 
 **Rules**
 

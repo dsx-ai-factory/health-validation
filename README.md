@@ -277,28 +277,38 @@ The execution context defaults to `TENANT_GUEST`. Use
 `--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND` to select checks
 for a different execution context.
 
-Both `run` and `collect` accept optional `--xid-from <unix-seconds>` and
-`--xid-to <unix-seconds>` flags to restrict Xid journal collection to
-`xid-from < entry timestamp < xid-to`. Both bounds are exclusive, including
-for entries with subsecond timestamps. Either bound may be omitted; when
-neither flag is supplied, collection covers the entire current boot. The lower bound
-must be non-negative and the upper bound positive; when both are supplied,
-`xid-from` must be less than `xid-to`. Reads remain scoped to the current boot.
-Repeat `--xid-from PCI_ADDRESS=unix-seconds` to set a start time for individual
-GPUs after resetting them. Addresses use `dddd:bb:dd` (optionally `.0`), with
-case-insensitive hex digits and domains of four or more digits. Each GPU-specific
-bound overrides the node-wide start time for that GPU; other GPUs keep the node-wide bound, or the entire
-boot when none is given. `--xid-to` applies to every GPU. Duplicate GPU bounds
-or multiple node-wide start times are rejected.
+Both `run` and `collect` can limit which Xid events are considered. By default,
+collection covers the entire current boot.
 
-These flags affect the default Xid journal backend, not other journal sensors
-or a backend supplied through `WithXidBackend`.
+After resetting an individual GPU, use `--xid-from PCI_ADDRESS=unix-seconds`
+to exclude its earlier Xids while retaining the other GPUs' history. Repeat
+this form to give each reset GPU its own start time:
+
+```shell
+./health-validation run --xid-from 0008:06:00=1792600000 --xid-from 0009:06:00=1792603600
+```
+
+To set a start time for all GPUs on the node, use `--xid-from <unix-seconds>`.
+Optional `--xid-to <unix-seconds>` sets a shared end time for every GPU. For
+example, to evaluate Xids within the same interval on all GPUs:
 
 ```shell
 ./health-validation run --xid-from 1792600000 --xid-to 1792603600
-# Ignore pre-reset events only on these GPUs; retain other GPUs' boot history.
-./health-validation run --xid-from 0008:06:00=1792600000 --xid-from 0009:06:00=1792603600
 ```
+
+The two forms of `--xid-from` can be combined: a GPU-specific start time
+overrides the node-wide start time for that GPU. GPUs without an override use
+the node-wide start time, or the entire current boot if none is supplied.
+Addresses use `dddd:bb:dd` (optionally `.0`), with case-insensitive hex digits
+and domains of four or more digits.
+
+Both time bounds are exclusive, including for entries with subsecond
+timestamps. Start times must be non-negative, and the end time must be
+positive and later than every supplied start time. Either bound may be omitted.
+Duplicate GPU bounds or multiple node-wide start times are rejected. Reads
+remain scoped to the current boot. These flags affect the default Xid journal
+sensor; other journal sensors and backends supplied through `WithXidBackend`
+keep their own collection behavior.
 
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 
