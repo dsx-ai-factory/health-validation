@@ -52,6 +52,7 @@ To add a sensor for a new hardware domain: define a measurement struct in `catal
 | Option | Effect |
 |---|---|
 | <nobr>`catalog.WithArchitecture("GB200")`</nobr> | Checks that don't list this architecture are skipped with `SIGNAL_UNAVAILABLE_ARCHITECTURE`. |
+| <nobr>`catalog.WithDriverVersion(v)`</nobr> | Records the host's NVIDIA driver version (a `health.DriverVersion`) for derived signals that depend on it. Leave it unset when the version is unknown. |
 | <nobr>`catalog.WithExecutionContext(health.OperatorInfra)`</nobr> | Checks that don't list this context are skipped with `SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL`. |
 | <nobr>`catalog.WithDisabledChecks("check_id", ...)`</nobr> | Named checks are skipped with `CHECK_DISABLED`. Built from a config file's `disabled_checks:` via `Config.DisabledCheckIDs()`. |
 | <nobr>`catalog.WithOverrides(overrides)`</nobr> | Applies operator threshold overrides. Built from a config file via `Config.Overrides()`. |

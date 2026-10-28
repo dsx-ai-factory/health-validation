@@ -225,6 +225,34 @@ func TestBuildCatalogAppliesArchitecture(t *testing.T) {
 	}
 }
 
+// echoedDriverVersion is the version the driver-echo tests discover.
+const echoedDriverVersion = "575.51.03"
+
+func mustDriverVersion(t *testing.T) health.DriverVersion {
+	t.Helper()
+	v, ok := health.ParseDriverVersion(echoedDriverVersion)
+	if !ok {
+		t.Fatalf("ParseDriverVersion(%q) failed", echoedDriverVersion)
+	}
+	return v
+}
+
+// driverEchoCheck goes CRITICAL when a [driverEchoMeasurement] derives
+// [echoedDriverVersion].
+func driverEchoCheck() health.CheckDefinition {
+	return health.CheckDefinition{
+		ID:              "test_driver_echo",
+		Name:            "Test Driver Echo",
+		Category:        health.Node,
+		RequiredSignals: []string{"seen_driver"},
+		Rules: []health.Rule{{
+			Expression: fmt.Sprintf("seen_driver == %q", echoedDriverVersion),
+			Severity:   health.Critical,
+			Message:    "derivation saw the discovered driver version",
+		}},
+	}
+}
+
 // driverEchoMeasurement derives the driver version its catalog was built
 // with, so a rule can observe what buildCatalog handed the catalog.
 type driverEchoMeasurement struct {
@@ -241,22 +269,7 @@ func (driverEchoMeasurement) DerivedSignals(host health.Host) map[string]any {
 // version reaches the catalog, where derived signals read it, rather than
 // being dropped between discovery and evaluation.
 func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
-	v, ok := health.ParseDriverVersion("575.51.03")
-	if !ok {
-		t.Fatal("ParseDriverVersion failed on a well-formed version")
-	}
-	echo := health.CheckDefinition{
-		ID:              "test_driver_echo",
-		Name:            "Test Driver Echo",
-		Category:        health.Node,
-		RequiredSignals: []string{"seen_driver"},
-		Rules: []health.Rule{{
-			Expression: `seen_driver == "575.51.03"`,
-			Severity:   health.Critical,
-			Message:    "derivation saw the discovered driver version",
-		}},
-	}
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{echo}, health.Host{Architecture: "GB200", DriverVersion: v}, health.OperatorInfra)
+	cat, _, err := buildCatalog(&Config{}, []health.CheckDefinition{driverEchoCheck()}, health.Host{Architecture: "GB200", DriverVersion: mustDriverVersion(t)}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -267,6 +280,45 @@ func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
 	if got.Severity != health.Critical {
 		t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", got.Severity)
 	}
+}
+
+// echoIBBackend yields a [driverEchoMeasurement] through the opt-in
+// InfiniBand sensor.
+type echoIBBackend struct{}
+
+func (echoIBBackend) MeasureIB(context.Context) ([]health.Measurement, error) {
+	return []health.Measurement{driverEchoMeasurement{}}, nil
+}
+func (echoIBBackend) Errored(error) []health.Measurement { return nil }
+
+// TestRunCommandPassesDriverVersion confirms runCommand hands the version
+// the GPU inventory recorded to the catalog it evaluates with.
+func TestRunCommandPassesDriverVersion(t *testing.T) {
+	a := New().WithProgramName("test").WithChecks(driverEchoCheck())
+	a.host = fakeHost{b: spyBackend{called: new(bool)}, driver: echoedDriverVersion}
+	a.WithXidBackend(xidSpyBackend{called: new(bool)})
+	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
+	// The opt-in InfiniBand sensor accepts any measurement, so it carries
+	// the echo into an otherwise stock run.
+	a.WithIBBackend(echoIBBackend{})
+
+	var stdout, stderr bytes.Buffer
+	a.runCommand([]string{"--node-id", "n1"}, &stdout, &stderr)
+
+	var verdict health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+		t.Fatalf("unmarshal verdict: %v; stdout = %s; stderr = %s", err, stdout.String(), stderr.String())
+	}
+	for _, v := range verdict.CheckResults {
+		if v.CheckID == "test_driver_echo" {
+			if v.Severity != health.Critical {
+				t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", v.Severity)
+			}
+			return
+		}
+	}
+	t.Fatal("test_driver_echo verdict not found")
 }
 
 // --- Per-domain backend override locks ------------------------------------
@@ -325,20 +377,25 @@ func (x xidSpyBackend) Measure(context.Context) ([]health.Measurement, error) {
 // catalogtest.DummyArchitecture would skip scoped checks (see
 // TestNUMANodeCountReachesVerdict).
 type fakeHost struct {
-	b spyBackend
+	b      spyBackend
+	driver string
 }
 
 func (h fakeHost) gpuBackend() toolkit.GPUBackend       { return h.b }
 func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
-func (fakeHost) gpuInventory() *gpuinventory.Inventory {
-	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: 4, model: "NVIDIA GB200"}, nil })
+func (h fakeHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) {
+		return inventoryReader{gpus: 4, model: "NVIDIA GB200", driver: h.driver}, nil
+	})
 }
 func (fakeHost) close() error { return nil }
 
 // inventoryReader reports a basic inventory of identical GPUs without NVML.
+// An empty driver leaves the driver version unrecorded.
 type inventoryReader struct {
-	model string
-	gpus  int
+	model  string
+	driver string
+	gpus   int
 }
 
 func (inventoryReader) ID() string { return "fake" }
@@ -347,7 +404,12 @@ func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapsho
 	inventory := &observation.GPUInventory{}
 	for i := range r.gpus {
 		uuid, model := fmt.Sprintf("GPU-%d", i), r.model
-		inventory.Entries = append(inventory.Entries, &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}})
+		entry := &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}}
+		if r.driver != "" {
+			driver := r.driver
+			entry.Gpu.DriverVersion = &driver
+		}
+		inventory.Entries = append(inventory.Entries, entry)
 	}
 	return &observation.GPUInventorySnapshot{Source: "fake", Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: inventory}}, nil
 }

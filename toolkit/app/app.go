@@ -409,12 +409,12 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 
-	// The driver version comes from the same inventory. Unlike architecture
-	// an unknown version is not a node fault: version-gated decoding
-	// narrows, so log it and continue.
+	// The driver version comes from the same snapshot. Unlike architecture
+	// an unknown version is not a node fault: whatever depends on it treats
+	// it as unknown, so log it and continue.
 	driverVersion, ok := gpuinventory.DriverVersion(snapshot)
 	if !ok {
-		slog.Warn("driver version unreadable; version-gated decoding will be skipped")
+		slog.Warn("driver version unreadable; continuing without it")
 	}
 
 	cat, timeout, err := buildCatalog(cfg, a.customChecks, health.Host{Architecture: arch, DriverVersion: driverVersion}, executionContext)
