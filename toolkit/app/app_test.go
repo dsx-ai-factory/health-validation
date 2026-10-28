@@ -159,7 +159,7 @@ func customCheck() health.CheckDefinition {
 // TestWithChecksRegistersCustomCheck confirms a check supplied via the
 // WithChecks SPI is registered into the catalog alongside the built-ins.
 func TestWithChecksRegistersCustomCheck(t *testing.T) {
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, "", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, health.Host{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	canonical := customCheck()
 	canonical.Provenance = health.NVIDIA
 
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, "", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, health.Host{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 	collide := customCheck()
 	collide.ID = "gpu_count" // collides with a built-in
 
-	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, "", health.OperatorInfra)
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, health.Host{}, health.OperatorInfra)
 	if err == nil {
 		t.Fatal("expected duplicate-ID error, got nil")
 	}
@@ -209,7 +209,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 // wired into the catalog: a check skips on an architecture it does not cover
 // (A100 here) instead of running with the wrong thresholds.
 func TestBuildCatalogAppliesArchitecture(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "A100", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, nil, health.Host{Architecture: "A100"}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -222,6 +222,50 @@ func TestBuildCatalogAppliesArchitecture(t *testing.T) {
 	if !v.Skipped || v.SkipReason != health.ArchitectureUnsupported {
 		t.Errorf("skipped=%v reason=%v, want skipped with SIGNAL_UNAVAILABLE_ARCHITECTURE on A100",
 			v.Skipped, v.SkipReason)
+	}
+}
+
+// driverEchoMeasurement derives the driver version its catalog was built
+// with, so a rule can observe what buildCatalog handed the catalog.
+type driverEchoMeasurement struct {
+	Count int64 `json:"echo_count"`
+}
+
+func (driverEchoMeasurement) Category() health.Category           { return health.Node }
+func (driverEchoMeasurement) Errors() []health.ErroredMeasurement { return nil }
+func (driverEchoMeasurement) DerivedSignals(host health.Host) map[string]any {
+	return map[string]any{"seen_driver": host.DriverVersion.Raw}
+}
+
+// TestBuildCatalogAppliesDriverVersion confirms the discovered driver
+// version reaches the catalog, where derived signals read it, rather than
+// being dropped between discovery and evaluation.
+func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
+	v, ok := health.ParseDriverVersion("575.51.03")
+	if !ok {
+		t.Fatal("ParseDriverVersion failed on a well-formed version")
+	}
+	echo := health.CheckDefinition{
+		ID:              "test_driver_echo",
+		Name:            "Test Driver Echo",
+		Category:        health.Node,
+		RequiredSignals: []string{"seen_driver"},
+		Rules: []health.Rule{{
+			Expression: `seen_driver == "575.51.03"`,
+			Severity:   health.Critical,
+			Message:    "derivation saw the discovered driver version",
+		}},
+	}
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{echo}, health.Host{Architecture: "GB200", DriverVersion: v}, health.OperatorInfra)
+	if err != nil {
+		t.Fatalf("buildCatalog: %v", err)
+	}
+	got, err := cat.Evaluate("test_driver_echo", driverEchoMeasurement{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Severity != health.Critical {
+		t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", got.Severity)
 	}
 }
 

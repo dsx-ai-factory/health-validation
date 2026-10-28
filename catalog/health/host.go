@@ -8,4 +8,8 @@ type Host struct {
 	// scoped to other architectures are skipped, and per-architecture
 	// thresholds resolve against it.
 	Architecture string
+	// DriverVersion is the node's NVIDIA driver version, for derivations
+	// whose meaning changed between driver releases. The zero value means
+	// it could not be determined.
+	DriverVersion DriverVersion
 }
