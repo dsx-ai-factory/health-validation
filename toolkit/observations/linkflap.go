@@ -36,7 +36,7 @@ const linkFlapSinceUnknown = "boot"
 // linkFlapTimeLayout renders journal times as the legacy reader's
 // journalctl --output=short-full timestamps and --since argument: local
 // time, second precision.
-const linkFlapTimeLayout = "2006-01-02 15:04:05"
+const linkFlapTimeLayout = time.DateTime
 
 // canonicalLinkFlap builds one LinkFlapMeasurement from canonical link-flap
 // observations. Any failure, a missing or repeated marker, or an incomplete

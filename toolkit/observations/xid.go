@@ -42,30 +42,6 @@ func canonicalXid(obs []*observation.Observation) health.Measurement {
 	return m
 }
 
-// firstFailure returns the first non-timeout failure, else the first
-// timeout, else nil.
-func firstFailure(obs []*observation.Observation) error {
-	var timeout error
-	for _, o := range obs {
-		var err error
-		switch {
-		case o.GetCollectionError() != nil:
-			err = collectionFailure(o.GetCollectionError())
-		case o.GetNoValue() != nil:
-			err = noValueFailure(o.GetSource(), o.GetNoValue())
-		default:
-			continue
-		}
-		if !errors.Is(err, health.ErrCollectionTimeout) {
-			return err
-		}
-		if timeout == nil {
-			timeout = err
-		}
-	}
-	return timeout
-}
-
 func buildXid(obs []*observation.Observation) (xid.XidMeasurement, error) {
 	var since string
 	var marked bool
