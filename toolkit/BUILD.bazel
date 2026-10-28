@@ -59,6 +59,7 @@ go_test(
         "rdma_linkflap_sensor_test.go",
         "sysfs_cpu_backend_internal_test.go",
         "sysfs_list_test.go",
+        "xid_accumulation_test.go",
         "xid_backend_internal_test.go",
         "xid_parity_internal_test.go",
         "xid_sensor_test.go",
