@@ -72,6 +72,14 @@ func WithArchitecture(arch string) Option {
 	return func(c *Catalog) { c.host.Architecture = arch }
 }
 
+// WithDriverVersion sets the node's NVIDIA driver version, which reaches
+// derived signals through [health.Host]. Omitting it, or passing the zero
+// value, leaves the version unknown; unlike the architecture, evaluation
+// does not require it.
+func WithDriverVersion(v health.DriverVersion) Option {
+	return func(c *Catalog) { c.host.DriverVersion = v }
+}
+
 // WithExecutionContext sets the deployment position. Checks that
 // don't list this context are skipped.
 func WithExecutionContext(ctx health.ExecutionContext) Option {
