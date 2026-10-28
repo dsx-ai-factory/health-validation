@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "xid",
     srcs = [
-        "derived.go",
+        "accumulator.go",
         "measurement.go",
         "nvlink5_decode.go",
         "sub_xid_code.go",
@@ -11,13 +11,16 @@ go_library(
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/catalog/xid",
     visibility = ["//visibility:public"],
-    deps = ["//catalog/health"],
+    deps = [
+        "//catalog/health",
+        "//catalog/node",
+    ],
 )
 
 go_test(
     name = "xid_test",
     srcs = [
-        "derived_test.go",
+        "accumulator_test.go",
         "nvlink5_decode_test.go",
         "sub_xid_code_test.go",
         "xid_errors_test.go",
@@ -26,6 +29,6 @@ go_test(
     deps = [
         "//catalog",
         "//catalog/health",
-        "//catalog/internal/evaluation",
+        "//catalog/node",
     ],
 )

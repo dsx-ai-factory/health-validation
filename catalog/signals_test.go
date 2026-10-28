@@ -30,6 +30,7 @@ func TestBuiltinMeasurementsSignalUniqueness(t *testing.T) {
 		node.NodeMeasurement{},
 		nvlink.NVLinkMeasurement{},
 		xid.XidMeasurement{},
+		xid.XidDerivedMeasurement{},
 	); err != nil {
 		t.Errorf("built-in measurements violate signal-name uniqueness: %v", err)
 	}
@@ -145,143 +146,12 @@ type collidingCPUMeasurement struct {
 func (collidingCPUMeasurement) Category() health.Category           { return health.CPU }
 func (collidingCPUMeasurement) Errors() []health.ErroredMeasurement { return nil }
 
-// The built-in measurement types must also satisfy the contract
-// [health.DerivedSignaler] documents. It is enforced here, over the same
-// list as signal uniqueness, rather than in whichever package happens to
-// implement the interface today — a second implementer would otherwise
-// arrive with no enforcement at all.
-func TestBuiltinMeasurementsDerivedSignals(t *testing.T) {
-	if err := catalog.CheckDerivedSignals(
-		cpu.CPUMeasurement{},
-		gpu.GPUMeasurement{},
-		infiniband.LinkFlapMeasurement{},
-		node.NodeMeasurement{},
-		nvlink.NVLinkMeasurement{},
-		xid.XidMeasurement{},
-	); err != nil {
-		t.Errorf("built-in measurements violate the DerivedSignaler contract: %v", err)
-	}
-}
-
-// shadowingMeasurement derives a signal named after one of its own json
-// fields. ToSignals lets the derived value win, so the field's real value
-// never reaches a rule — CheckDerivedSignals must reject it.
-type shadowingMeasurement struct {
-	Count int64 `json:"widget_count"`
-}
-
-func (shadowingMeasurement) Category() health.Category           { return health.Node }
-func (shadowingMeasurement) Errors() []health.ErroredMeasurement { return nil }
-func (shadowingMeasurement) DerivedSignals() map[string]any {
-	return map[string]any{"widget_count": int64(0)}
-}
-
-func TestCheckDerivedSignals_DetectsShadowedField(t *testing.T) {
-	err := catalog.CheckDerivedSignals(shadowingMeasurement{})
-	if err == nil {
-		t.Fatal("expected an error for a derived signal shadowing a field, got nil")
-	}
-	if !strings.Contains(err.Error(), "widget_count") {
-		t.Errorf("error = %q, want it to name the shadowed signal widget_count", err.Error())
-	}
-}
-
-// unstableMeasurement advertises its derived signal only once it holds
-// data. Routing reads a zero value, so a check requiring widget_states
-// would never be handed one of these.
-type unstableMeasurement struct {
-	Count int64 `json:"widget_count"`
-}
-
-func (unstableMeasurement) Category() health.Category           { return health.Node }
-func (unstableMeasurement) Errors() []health.ErroredMeasurement { return nil }
-func (m unstableMeasurement) DerivedSignals() map[string]any {
-	if m.Count == 0 {
-		return map[string]any{}
-	}
-	return map[string]any{"widget_states": map[string]int64{"up": m.Count}}
-}
-
-func TestCheckDerivedSignalKeysStable_DetectsDataDependentKey(t *testing.T) {
-	err := catalog.CheckDerivedSignalKeysStable(unstableMeasurement{Count: 3})
-	if err == nil {
-		t.Fatal("expected an error for a key that appears only when populated, got nil")
-	}
-	if !strings.Contains(err.Error(), "widget_states") {
-		t.Errorf("error = %q, want it to name widget_states", err.Error())
-	}
-}
-
-// The mirror case: a key present on a zero value but dropped once data
-// arrives is equally broken, since routing promised a signal the
-// evaluated measurement then does not carry.
-func TestCheckDerivedSignalKeysStable_DetectsDisappearingKey(t *testing.T) {
-	err := catalog.CheckDerivedSignalKeysStable(unstableMeasurement{})
-	if err != nil {
-		t.Fatalf("a zero value alone cannot show the instability: %v", err)
-	}
-	if err := catalog.CheckDerivedSignalKeysStable(vanishingMeasurement{Count: 3}); err == nil {
-		t.Error("expected an error for a key that disappears once populated, got nil")
-	}
-}
-
-type vanishingMeasurement struct {
-	Count int64 `json:"widget_count"`
-}
-
-func (vanishingMeasurement) Category() health.Category           { return health.Node }
-func (vanishingMeasurement) Errors() []health.ErroredMeasurement { return nil }
-func (m vanishingMeasurement) DerivedSignals() map[string]any {
-	if m.Count == 0 {
-		return map[string]any{"widget_states": map[string]int64{}}
-	}
-	return map[string]any{}
-}
-
-// A measurement that derives nothing must pass both checks rather than
-// being rejected for not implementing an optional interface.
-func TestDerivedSignalChecks_IgnoreNonDerivers(t *testing.T) {
-	if err := catalog.CheckDerivedSignals(node.NodeMeasurement{}); err != nil {
-		t.Errorf("CheckDerivedSignals rejected a non-deriving measurement: %v", err)
-	}
-	if err := catalog.CheckDerivedSignalKeysStable(node.NodeMeasurement{}); err != nil {
-		t.Errorf("CheckDerivedSignalKeysStable rejected a non-deriving measurement: %v", err)
-	}
-}
-
-// optionOnlyMeasurement tags its field with options but no name, so its
-// signal takes the Go field name, as encoding/json does — and a derived
-// signal of that name shadows it.
-type optionOnlyMeasurement struct {
-	Count int64 `json:",omitempty"`
-}
-
-func (optionOnlyMeasurement) Category() health.Category           { return health.Node }
-func (optionOnlyMeasurement) Errors() []health.ErroredMeasurement { return nil }
-func (optionOnlyMeasurement) DerivedSignals() map[string]any {
-	return map[string]any{"Count": int64(0)}
-}
-
-func TestCheckDerivedSignals_OptionOnlyTagKeepsFieldName(t *testing.T) {
-	err := catalog.CheckDerivedSignals(optionOnlyMeasurement{})
-	if err == nil {
-		t.Fatal("expected a collision on Count, got nil: an option-only tag was keyed as an empty name")
-	}
-	if !strings.Contains(err.Error(), `"Count"`) {
-		t.Errorf("error = %q, want it to name the shadowed signal Count", err.Error())
-	}
-}
-
 // A pointer to a measurement with value-receiver methods satisfies
-// health.Measurement too. The schema checks must treat it as the value
+// health.Measurement too. The schema check must treat it as the value
 // it points to rather than panic in reflection.
 func TestSignalChecks_AcceptPointerMeasurements(t *testing.T) {
 	if err := catalog.CheckSignalUniqueness(&node.NodeMeasurement{}); err != nil {
 		t.Errorf("CheckSignalUniqueness(pointer) = %v, want nil", err)
-	}
-	err := catalog.CheckDerivedSignals(&shadowingMeasurement{})
-	if err == nil || !strings.Contains(err.Error(), "widget_count") {
-		t.Errorf("CheckDerivedSignals(pointer) = %v, want the widget_count collision it reports for the value", err)
 	}
 }
 

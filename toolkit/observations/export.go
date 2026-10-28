@@ -48,8 +48,8 @@ const toolkitSourcePrefix = "toolkit."
 // fields keep their type; maps, slices, and structs are encoded as a JSON
 // string. A field named by a measurement error becomes a CollectionError,
 // and one the source reported unsupported becomes a NoValue, so a zero
-// value is never published as an observation. Values the catalog derives
-// at evaluation ([health.DerivedSignaler]) are not exported.
+// value is never published as an observation. Measurements the catalog's
+// accumulators derive at evaluation are not exported.
 func FromMeasurements(sensor, nodeID string, observedAt time.Time, measurements ...health.Measurement) ([]*observation.Observation, error) {
 	source := toolkitSourcePrefix + sensor
 	at := timestamppb.New(observedAt)

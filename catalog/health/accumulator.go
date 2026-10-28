@@ -25,6 +25,11 @@ type Accumulator interface {
 	// measurement without running Accumulate.
 	Outputs() []Measurement
 
+	// Inputs returns a zero value of every measurement type Accumulate
+	// reads. Collection planning reads it to collect what a check needs
+	// when the check requires a signal only an accumulator produces.
+	Inputs() []Measurement
+
 	// Accumulate receives every measurement the run collected and returns
 	// what it derives from them, or nothing when its inputs are absent.
 	//

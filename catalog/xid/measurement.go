@@ -17,19 +17,17 @@ import (
 // expressions and must match the RequiredSignals declared in checks
 // that consume Xid measurements.
 const (
-	SignalEvents           = "events"
-	SignalXidCounts        = "xid_counts"
-	SignalFatalXidCounts   = "fatal_xid_counts"
-	SignalSubXidCodeCounts = "sub_xid_code_counts"
-	SignalSince            = "since"
-	SignalEventCount       = "event_count"
+	SignalEvents         = "events"
+	SignalXidCounts      = "xid_counts"
+	SignalFatalXidCounts = "fatal_xid_counts"
+	SignalSince          = "since"
+	SignalEventCount     = "event_count"
 )
 
 var measurementSignals = []string{
 	SignalEvents,
 	SignalXidCounts,
 	SignalFatalXidCounts,
-	SignalSubXidCodeCounts,
 	SignalSince,
 	SignalEventCount,
 }
@@ -110,11 +108,9 @@ type NVLink5Detail struct {
 // FatalXidCounts is the same shape, but counts only occurrences NVRM
 // itself marked Fatal; today that is populated exclusively by the
 // NVLink5 family (Xid 144-150) since no other Xid code's log line
-// carries a fatal/nonfatal distinction. The sub_xid_code_counts signal
-// is derived from Events rather than stored (see [XidMeasurement.DerivedSignals]):
-// it is keyed by [XidEvent.SubXidCode] (e.g. "149.4") instead of the
-// bare Xid code, so a check can act on one documented fault subtype
-// rather than the whole code. Events preserves the full per-occurrence
+// carries a fatal/nonfatal distinction. What the events mean, such as
+// which fault subtype each is, is derived by the catalog's [Accumulator]
+// into an [XidDerivedMeasurement] rather than stored here. Events preserves the full per-occurrence
 // detail — process name, PCI address, pid, and (for 144-150) NVLink5 —
 // for message interpolation and richer rules.
 type XidMeasurement struct {

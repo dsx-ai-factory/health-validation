@@ -148,6 +148,9 @@ func xidParityCatalog(t *testing.T) *catalog.Catalog {
 			t.Fatal(err)
 		}
 	}
+	if err := cat.RegisterAccumulator(xid.Accumulator{}); err != nil {
+		t.Fatal(err)
+	}
 	return cat
 }
 

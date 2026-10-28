@@ -17,8 +17,7 @@ import (
 )
 
 // xidSignals are the canonical Xid signals. They do not fit the field table:
-// one measurement aggregates repeated journal-entry events, and any failure
-// must also fail the derived sub_xid_code_counts.
+// one measurement aggregates repeated journal-entry events.
 var xidSignals = func() map[string]bool {
 	out := make(map[string]bool)
 	for _, id := range xidsignals.All().IDs() {

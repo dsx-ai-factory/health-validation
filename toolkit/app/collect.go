@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -123,25 +124,29 @@ func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 // category present with a nil set requests every signal declared for it.
 type requiredSignals map[health.Category]map[string]bool
 
-// requiredFor returns the catalog signals the runnable checks require. A check
-// with no required signals can read any signal of its category.
-func requiredFor(runnable []*health.CheckDefinition) requiredSignals {
+// requiredFor returns the catalog signals the runnable checks need collected.
+// A check with no required signals can read any signal of its category; one
+// requiring a signal the catalog derives needs that derivation's inputs (see
+// [catalog.Catalog.CollectedSignals]).
+func requiredFor(cat *catalog.Catalog, runnable []*health.CheckDefinition) requiredSignals {
 	required := make(requiredSignals)
 	for _, check := range runnable {
-		set, seen := required[check.Category]
-		if seen && set == nil {
-			continue
-		}
 		if len(check.RequiredSignals) == 0 {
 			required[check.Category] = nil
 			continue
 		}
-		if set == nil {
-			set = make(map[string]bool)
-			required[check.Category] = set
-		}
-		for _, signal := range check.RequiredSignals {
-			set[signal] = true
+		for category, signals := range cat.CollectedSignals(check) {
+			set, seen := required[category]
+			if seen && set == nil {
+				continue
+			}
+			if set == nil {
+				set = make(map[string]bool)
+				required[category] = set
+			}
+			for _, signal := range signals {
+				set[signal] = true
+			}
 		}
 	}
 	return required

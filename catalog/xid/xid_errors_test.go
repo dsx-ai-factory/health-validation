@@ -29,6 +29,11 @@ func xidCatalogFor(t *testing.T, architecture string, opts ...catalog.Option) *c
 	for _, cd := range xid.Checks() {
 		cat.MustRegister(cd)
 	}
+	// The per-subcode checks read what the accumulator derives; without it
+	// they are never routed a measurement.
+	if err := cat.RegisterAccumulator(xid.Accumulator{}); err != nil {
+		t.Fatal(err)
+	}
 	return cat
 }
 

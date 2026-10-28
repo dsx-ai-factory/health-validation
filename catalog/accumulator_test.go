@@ -2,6 +2,7 @@ package catalog_test
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,6 +27,10 @@ func (doublingAccumulator) Outputs() []health.Measurement {
 	return []health.Measurement{doubledMeasurement{}}
 }
 
+func (doublingAccumulator) Inputs() []health.Measurement {
+	return []health.Measurement{node.NodeMeasurement{}}
+}
+
 func (doublingAccumulator) Accumulate(ms []health.Measurement) ([]health.Measurement, error) {
 	var out []health.Measurement
 	for _, m := range ms {
@@ -40,6 +45,7 @@ type failingAccumulator struct{}
 
 func (failingAccumulator) Name() string                  { return "failing" }
 func (failingAccumulator) Outputs() []health.Measurement { return nil }
+func (failingAccumulator) Inputs() []health.Measurement  { return nil }
 func (failingAccumulator) Accumulate([]health.Measurement) ([]health.Measurement, error) {
 	return nil, errors.New("boom")
 }
@@ -129,5 +135,22 @@ func TestCheckCoverage_CountsAccumulatorOutputs(t *testing.T) {
 	}
 	if err := accumulatingCatalog(t).CheckCoverage(node.NodeMeasurement{}); err == nil {
 		t.Error("check reading a derived signal reported covered with no accumulator to produce it")
+	}
+}
+
+// A collector cannot gather a derived signal, so CollectedSignals names
+// what the accumulator reads in its place, and leaves a collected signal
+// as it is.
+func TestCollectedSignals_ReplacesDerivedWithInputs(t *testing.T) {
+	cat := accumulatingCatalog(t, doublingAccumulator{})
+	derived := doubledCheck()
+	got := cat.CollectedSignals(&derived)
+	if _, ok := got[health.Node]; !ok || slices.Contains(got[health.Node], "doubled_gpu_count") || !slices.Contains(got[health.Node], node.SignalGPUCount) {
+		t.Errorf("CollectedSignals(derived) = %v, want the node measurement's signals in place of doubled_gpu_count", got)
+	}
+
+	collected := health.CheckDefinition{ID: "plain", Category: health.Node, RequiredSignals: []string{node.SignalGPUCount}}
+	if got := cat.CollectedSignals(&collected); !slices.Equal(got[health.Node], []string{node.SignalGPUCount}) || len(got) != 1 {
+		t.Errorf("CollectedSignals(collected) = %v, want only %s", got, node.SignalGPUCount)
 	}
 }
