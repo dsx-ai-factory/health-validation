@@ -2339,40 +2339,43 @@ func file_health_v1_observation_proto_rawDescGZIP() []byte {
 	return file_health_v1_observation_proto_rawDescData
 }
 
-var file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_health_v1_observation_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
-var file_health_v1_observation_proto_goTypes = []any{
-	(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
-	(NoValueReason)(0),            // 1: health.v1.NoValueReason
-	(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
-	(*HardwareInventory)(nil),     // 3: health.v1.HardwareInventory
-	(*GpuInventorySnapshot)(nil),  // 4: health.v1.GpuInventorySnapshot
-	(*GpuInventory)(nil),          // 5: health.v1.GpuInventory
-	(*GpuInventoryEntry)(nil),     // 6: health.v1.GpuInventoryEntry
-	(*GpuDevice)(nil),             // 7: health.v1.GpuDevice
-	(*Observation)(nil),           // 8: health.v1.Observation
-	(*ObservationTarget)(nil),     // 9: health.v1.ObservationTarget
-	(*NodeRef)(nil),               // 10: health.v1.NodeRef
-	(*GpuRef)(nil),                // 11: health.v1.GpuRef
-	(*NvLinkEndpointRef)(nil),     // 12: health.v1.NvLinkEndpointRef
-	(*GpuPairRef)(nil),            // 13: health.v1.GpuPairRef
-	(*InfiniBandDeviceRef)(nil),   // 14: health.v1.InfiniBandDeviceRef
-	(*InfiniBandPortRef)(nil),     // 15: health.v1.InfiniBandPortRef
-	(*KernelRecordRef)(nil),       // 16: health.v1.KernelRecordRef
-	(*ProcessRef)(nil),            // 17: health.v1.ProcessRef
-	(*GpuProcessRef)(nil),         // 18: health.v1.GpuProcessRef
-	(*BlockDeviceRef)(nil),        // 19: health.v1.BlockDeviceRef
-	(*MountRef)(nil),              // 20: health.v1.MountRef
-	(*PCIRef)(nil),                // 21: health.v1.PCIRef
-	(*FuseConnectionRef)(nil),     // 22: health.v1.FuseConnectionRef
-	(*PstoreRecordRef)(nil),       // 23: health.v1.PstoreRecordRef
-	(*JournalEntryRef)(nil),       // 24: health.v1.JournalEntryRef
-	(*Value)(nil),                 // 25: health.v1.Value
-	(*CollectionError)(nil),       // 26: health.v1.CollectionError
-	(*NoValue)(nil),               // 27: health.v1.NoValue
-	nil,                           // 28: health.v1.GpuInventoryEntry.FieldErrorsEntry
-	(*timestamppb.Timestamp)(nil), // 29: google.protobuf.Timestamp
-}
+var (
+	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 27)
+	file_health_v1_observation_proto_goTypes   = []any{
+		(CollectionErrorCategory)(0),  // 0: health.v1.CollectionErrorCategory
+		(NoValueReason)(0),            // 1: health.v1.NoValueReason
+		(*ObservationBatch)(nil),      // 2: health.v1.ObservationBatch
+		(*HardwareInventory)(nil),     // 3: health.v1.HardwareInventory
+		(*GpuInventorySnapshot)(nil),  // 4: health.v1.GpuInventorySnapshot
+		(*GpuInventory)(nil),          // 5: health.v1.GpuInventory
+		(*GpuInventoryEntry)(nil),     // 6: health.v1.GpuInventoryEntry
+		(*GpuDevice)(nil),             // 7: health.v1.GpuDevice
+		(*Observation)(nil),           // 8: health.v1.Observation
+		(*ObservationTarget)(nil),     // 9: health.v1.ObservationTarget
+		(*NodeRef)(nil),               // 10: health.v1.NodeRef
+		(*GpuRef)(nil),                // 11: health.v1.GpuRef
+		(*NvLinkEndpointRef)(nil),     // 12: health.v1.NvLinkEndpointRef
+		(*GpuPairRef)(nil),            // 13: health.v1.GpuPairRef
+		(*InfiniBandDeviceRef)(nil),   // 14: health.v1.InfiniBandDeviceRef
+		(*InfiniBandPortRef)(nil),     // 15: health.v1.InfiniBandPortRef
+		(*KernelRecordRef)(nil),       // 16: health.v1.KernelRecordRef
+		(*ProcessRef)(nil),            // 17: health.v1.ProcessRef
+		(*GpuProcessRef)(nil),         // 18: health.v1.GpuProcessRef
+		(*BlockDeviceRef)(nil),        // 19: health.v1.BlockDeviceRef
+		(*MountRef)(nil),              // 20: health.v1.MountRef
+		(*PCIRef)(nil),                // 21: health.v1.PCIRef
+		(*FuseConnectionRef)(nil),     // 22: health.v1.FuseConnectionRef
+		(*PstoreRecordRef)(nil),       // 23: health.v1.PstoreRecordRef
+		(*JournalEntryRef)(nil),       // 24: health.v1.JournalEntryRef
+		(*Value)(nil),                 // 25: health.v1.Value
+		(*CollectionError)(nil),       // 26: health.v1.CollectionError
+		(*NoValue)(nil),               // 27: health.v1.NoValue
+		nil,                           // 28: health.v1.GpuInventoryEntry.FieldErrorsEntry
+		(*timestamppb.Timestamp)(nil), // 29: google.protobuf.Timestamp
+	}
+)
+
 var file_health_v1_observation_proto_depIdxs = []int32{
 	8,  // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
 	3,  // 1: health.v1.ObservationBatch.inventory:type_name -> health.v1.HardwareInventory
