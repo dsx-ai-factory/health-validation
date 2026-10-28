@@ -48,14 +48,23 @@ func TestParse(t *testing.T) {
 			want:  Event{PCIAddress: "0000:01:00", Code: 79, PID: 42, HasPID: true},
 		},
 		{
-			name:  "unknown pid stops attribution",
+			name:  "unknown pid still reads the name",
 			input: "NVRM: Xid (PCI:0000:01:00): 79, pid='<unknown>', name=python3, x",
-			want:  Event{PCIAddress: "0000:01:00", Code: 79},
+			want:  Event{PCIAddress: "0000:01:00", Code: 79, ProcessName: "python3"},
 		},
 		{
-			name:  "NVLink5 with unknown pid stays ordinary",
+			name:  "NVLink5 with unknown pid keeps its detail",
 			input: "NVRM: Xid (PCI:0018:01:00): 149, pid='<unknown>', name=<unknown>, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)",
-			want:  Event{PCIAddress: "0018:01:00", Code: 149},
+			want: Event{PCIAddress: "0018:01:00", Code: 149, NVLink5: &NVLink5{
+				SubComponent: "NETIR_LINK_EVT", Fatal: true, Link: 8, IntrInfo: "0x004505c6", ErrorStatus: "0x00000000",
+			}},
+		},
+		{
+			name:  "multi-word NVLink5 sub-component",
+			input: "NVRM: Xid (PCI:0009:01:00): 150, MSE  Degraded Fatal XC0 i0 Link -1 (0x00000000 0x00000000 0x00000000)",
+			want: Event{PCIAddress: "0009:01:00", Code: 150, NVLink5: &NVLink5{
+				SubComponent: "MSE Degraded", Fatal: true, Link: -1, IntrInfo: "0x00000000", ErrorStatus: "0x00000000", DebugData: "0x00000000",
+			}},
 		},
 		{
 			name:  "pid overflow",
@@ -126,7 +135,9 @@ func TestParse(t *testing.T) {
 		{
 			name:  "MSE Degraded",
 			input: "NVRM: Xid (PCI:0000:01:00): 150, MSE Degraded Fatal XC0 i0 Link 01 (0x1 0x2)",
-			want:  Event{PCIAddress: "0000:01:00", Code: 150},
+			want: Event{PCIAddress: "0000:01:00", Code: 150, NVLink5: &NVLink5{
+				SubComponent: "MSE Degraded", Fatal: true, Link: 1, IntrInfo: "0x1", ErrorStatus: "0x2",
+			}},
 		},
 		{
 			name:  "154 R580",

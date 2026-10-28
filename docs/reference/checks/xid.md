@@ -6,7 +6,7 @@ Xid covers NVRM Xid fault events logged by the NVIDIA driver to the kernel ring 
 
 ## Single-rule checks reading `xid_counts`
 
-These 39 checks share the properties below and each has one rule.
+These 38 checks share the properties below and each has one rule.
 
 | Property | Value |
 |---|---|
@@ -64,7 +64,6 @@ These 39 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_119`</nobr> | GPU Xid 119 (GSP RPC timeout) | <nobr>`119 in xid_counts && xid_counts[119] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_120`</nobr> | GPU Xid 120 (GSP error) | <nobr>`120 in xid_counts && xid_counts[120] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_140`</nobr> | GPU Xid 140 (ECC unrecovered error) | <nobr>`140 in xid_counts && xid_counts[140] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_154`</nobr> | GPU Xid 154 (GPU recovery action changed) | <nobr>`154 in xid_counts && xid_counts[154] >= occurrences`</nobr> | INFO | <nobr>`drain`</nobr>: <nobr>`xid_154`</nobr> |
 | <nobr>`gpu_xid_158`</nobr> | GPU Xid 158 (GPU fatal timeout) | <nobr>`158 in xid_counts && xid_counts[158] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 
 ## Single-rule checks reading `xid_counts`
@@ -181,8 +180,8 @@ These 20 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_149_23`</nobr> | GPU Xid 149.23 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.23" in sub_xid_code_counts && sub_xid_code_counts["149.23"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_149_24`</nobr> | GPU Xid 149.24 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.24" in sub_xid_code_counts && sub_xid_code_counts["149.24"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_149_25`</nobr> | GPU Xid 149.25 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.25" in sub_xid_code_counts && sub_xid_code_counts["149.25"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_149_26`</nobr> | GPU Xid 149.26 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.26" in sub_xid_code_counts && sub_xid_code_counts["149.26"] >= occurrences`</nobr> | WARNING | none |
-| <nobr>`gpu_xid_149_28`</nobr> | GPU Xid 149.28 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.28" in sub_xid_code_counts && sub_xid_code_counts["149.28"] >= occurrences`</nobr> | WARNING | none |
+| <nobr>`gpu_xid_149_26`</nobr> | GPU Xid 149.26 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.26" in sub_xid_code_counts && sub_xid_code_counts["149.26"] >= occurrences`</nobr> | INFO | none |
+| <nobr>`gpu_xid_149_28`</nobr> | GPU Xid 149.28 (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.28" in sub_xid_code_counts && sub_xid_code_counts["149.28"] >= occurrences`</nobr> | INFO | none |
 | <nobr>`gpu_xid_149_a`</nobr> | GPU Xid 149.A (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.A" in sub_xid_code_counts && sub_xid_code_counts["149.A"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_149_f`</nobr> | GPU Xid 149.F (NETIR_LINK_EVT/NETIR_LINK_DOWN) | <nobr>`"149.F" in sub_xid_code_counts && sub_xid_code_counts["149.F"] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 
@@ -341,7 +340,7 @@ Detects NVRM Xid 142 in the system journal since boot.
 
 `gpu_xid_144`
 
-Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 144 and reports it by the immediate action NVIDIA's Xid 144-150 decode table calls for, resolving rows that defer to Xid 154 through the recovery action the driver reported for the same GPU.
 
 | Property | Value |
 |---|---|
@@ -352,28 +351,44 @@ Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`nvlink5_resolution_counts`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
 
 **Rules**
 
-- **CRITICAL** when `144 in fatal_xid_counts && fatal_xid_counts[144] >= fatal_occurrences`
-  - Message: GPU Xid 144 detected: NVLink SAW error (Fatal).
+- **CRITICAL** when `"144.RESTART_OS" in nvlink5_resolution_counts && nvlink5_resolution_counts["144.RESTART_OS"] >= occurrences`
+  - Message: GPU Xid 144 detected: NVLink SAW error. Its resolution defers to Xid 154, which requested an OS reboot for the affected GPU.
+  - Action: operational state `drain`, then `restart_os` → `service_required`
+- **CRITICAL** when `"144.DRAIN_P2P" in nvlink5_resolution_counts && nvlink5_resolution_counts["144.DRAIN_P2P"] >= occurrences`
+  - Message: GPU Xid 144 detected: NVLink SAW error. Its resolution defers to Xid 154, which requested that peer-to-peer traffic be stopped for the affected GPU. Stop the processes using peer-to-peer and disable persistence mode, then re-run; reset the GPU if this is still requested.
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `144 in xid_counts && xid_counts[144] > (144 in fatal_xid_counts ? fatal_xid_counts[144] : 0) && xid_counts[144] - (144 in fatal_xid_counts ? fatal_xid_counts[144] : 0) >= nonfatal_occurrences`
-  - Message: GPU Xid 144 detected: NVLink SAW error (Nonfatal).
+- **CRITICAL** when `"144.RESET_GPU" in nvlink5_resolution_counts && nvlink5_resolution_counts["144.RESET_GPU"] >= occurrences`
+  - Message: GPU Xid 144 detected: NVLink SAW error. NVIDIA's decode table resolves this occurrence to a GPU reset.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **CRITICAL** when `"144.RESET_GPU_UNCONFIRMED" in nvlink5_resolution_counts && nvlink5_resolution_counts["144.RESET_GPU_UNCONFIRMED"] >= occurrences`
+  - Message: GPU Xid 144 detected: NVLink SAW error. NVIDIA's decode table does not confirm a reset for this occurrence, either because it has no entry for this subcomponent and error status (NVRM marked it Fatal) or because the driver version needed to read its registers is unknown, so it is escalated conservatively.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **WARNING** when `"144.XID_154_UNRECOGNIZED" in nvlink5_resolution_counts && nvlink5_resolution_counts["144.XID_154_UNRECOGNIZED"] >= occurrences`
+  - Message: GPU Xid 144 detected: NVLink SAW error. Its resolution defers to an Xid 154 for the affected GPU whose recovery action this catalog could not read or does not recognize; treat the fault as unresolved and report the Xid 154 line.
+  - Action: operational state `drain`, then `service_required`
+- **WARNING** when `"144.XID_154_MISSING" in nvlink5_resolution_counts && nvlink5_resolution_counts["144.XID_154_MISSING"] >= occurrences`
+  - Message: GPU Xid 144 detected: NVLink SAW error. Its resolution defers to Xid 154, and no Xid 154 was found for the affected GPU, which normally means the driver requested no recovery action. Restart the faulting application.
+  - Action: operational state `drain`, then `restart_app`
+- **WARNING** when `"144.UNDECODED" in nvlink5_resolution_counts && nvlink5_resolution_counts["144.UNDECODED"] >= occurrences`
+  - Message: GPU Xid 144 detected: NVLink SAW error. Its log line could not be decoded, so its severity and required action are unknown; inspect the line in the system journal.
+- **INFO** when `"144.IGNORE" in nvlink5_resolution_counts && nvlink5_resolution_counts["144.IGNORE"] >= occurrences`
+  - Message: GPU Xid 144 detected: NVLink SAW error. This occurrence resolves to no action.
 
 ## GPU Xid 145 (NVLink RLW error)
 
 `gpu_xid_145`
 
-Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 145 and reports it by the immediate action NVIDIA's Xid 144-150 decode table calls for, resolving rows that defer to Xid 154 through the recovery action the driver reported for the same GPU.
 
 | Property | Value |
 |---|---|
@@ -384,28 +399,44 @@ Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`nvlink5_resolution_counts`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
 
 **Rules**
 
-- **CRITICAL** when `145 in fatal_xid_counts && fatal_xid_counts[145] >= fatal_occurrences`
-  - Message: GPU Xid 145 detected: NVLink RLW error (Fatal).
+- **CRITICAL** when `"145.RESTART_OS" in nvlink5_resolution_counts && nvlink5_resolution_counts["145.RESTART_OS"] >= occurrences`
+  - Message: GPU Xid 145 detected: NVLink RLW error. Its resolution defers to Xid 154, which requested an OS reboot for the affected GPU.
+  - Action: operational state `drain`, then `restart_os` → `service_required`
+- **CRITICAL** when `"145.DRAIN_P2P" in nvlink5_resolution_counts && nvlink5_resolution_counts["145.DRAIN_P2P"] >= occurrences`
+  - Message: GPU Xid 145 detected: NVLink RLW error. Its resolution defers to Xid 154, which requested that peer-to-peer traffic be stopped for the affected GPU. Stop the processes using peer-to-peer and disable persistence mode, then re-run; reset the GPU if this is still requested.
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `145 in xid_counts && xid_counts[145] > (145 in fatal_xid_counts ? fatal_xid_counts[145] : 0) && xid_counts[145] - (145 in fatal_xid_counts ? fatal_xid_counts[145] : 0) >= nonfatal_occurrences`
-  - Message: GPU Xid 145 detected: NVLink RLW error (Nonfatal).
+- **CRITICAL** when `"145.RESET_GPU" in nvlink5_resolution_counts && nvlink5_resolution_counts["145.RESET_GPU"] >= occurrences`
+  - Message: GPU Xid 145 detected: NVLink RLW error. NVIDIA's decode table resolves this occurrence to a GPU reset.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **CRITICAL** when `"145.RESET_GPU_UNCONFIRMED" in nvlink5_resolution_counts && nvlink5_resolution_counts["145.RESET_GPU_UNCONFIRMED"] >= occurrences`
+  - Message: GPU Xid 145 detected: NVLink RLW error. NVIDIA's decode table does not confirm a reset for this occurrence, either because it has no entry for this subcomponent and error status (NVRM marked it Fatal) or because the driver version needed to read its registers is unknown, so it is escalated conservatively.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **WARNING** when `"145.XID_154_UNRECOGNIZED" in nvlink5_resolution_counts && nvlink5_resolution_counts["145.XID_154_UNRECOGNIZED"] >= occurrences`
+  - Message: GPU Xid 145 detected: NVLink RLW error. Its resolution defers to an Xid 154 for the affected GPU whose recovery action this catalog could not read or does not recognize; treat the fault as unresolved and report the Xid 154 line.
+  - Action: operational state `drain`, then `service_required`
+- **WARNING** when `"145.XID_154_MISSING" in nvlink5_resolution_counts && nvlink5_resolution_counts["145.XID_154_MISSING"] >= occurrences`
+  - Message: GPU Xid 145 detected: NVLink RLW error. Its resolution defers to Xid 154, and no Xid 154 was found for the affected GPU, which normally means the driver requested no recovery action. Restart the faulting application.
+  - Action: operational state `drain`, then `restart_app`
+- **WARNING** when `"145.UNDECODED" in nvlink5_resolution_counts && nvlink5_resolution_counts["145.UNDECODED"] >= occurrences`
+  - Message: GPU Xid 145 detected: NVLink RLW error. Its log line could not be decoded, so its severity and required action are unknown; inspect the line in the system journal.
+- **INFO** when `"145.IGNORE" in nvlink5_resolution_counts && nvlink5_resolution_counts["145.IGNORE"] >= occurrences`
+  - Message: GPU Xid 145 detected: NVLink RLW error. This occurrence resolves to no action.
 
 ## GPU Xid 146 (NVLink TLW error)
 
 `gpu_xid_146`
 
-Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 146 and reports it by the immediate action NVIDIA's Xid 144-150 decode table calls for, resolving rows that defer to Xid 154 through the recovery action the driver reported for the same GPU.
 
 | Property | Value |
 |---|---|
@@ -416,28 +447,44 @@ Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`nvlink5_resolution_counts`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
 
 **Rules**
 
-- **CRITICAL** when `146 in fatal_xid_counts && fatal_xid_counts[146] >= fatal_occurrences`
-  - Message: GPU Xid 146 detected: NVLink TLW error (Fatal).
+- **CRITICAL** when `"146.RESTART_OS" in nvlink5_resolution_counts && nvlink5_resolution_counts["146.RESTART_OS"] >= occurrences`
+  - Message: GPU Xid 146 detected: NVLink TLW error. Its resolution defers to Xid 154, which requested an OS reboot for the affected GPU.
+  - Action: operational state `drain`, then `restart_os` → `service_required`
+- **CRITICAL** when `"146.DRAIN_P2P" in nvlink5_resolution_counts && nvlink5_resolution_counts["146.DRAIN_P2P"] >= occurrences`
+  - Message: GPU Xid 146 detected: NVLink TLW error. Its resolution defers to Xid 154, which requested that peer-to-peer traffic be stopped for the affected GPU. Stop the processes using peer-to-peer and disable persistence mode, then re-run; reset the GPU if this is still requested.
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `146 in xid_counts && xid_counts[146] > (146 in fatal_xid_counts ? fatal_xid_counts[146] : 0) && xid_counts[146] - (146 in fatal_xid_counts ? fatal_xid_counts[146] : 0) >= nonfatal_occurrences`
-  - Message: GPU Xid 146 detected: NVLink TLW error (Nonfatal).
+- **CRITICAL** when `"146.RESET_GPU" in nvlink5_resolution_counts && nvlink5_resolution_counts["146.RESET_GPU"] >= occurrences`
+  - Message: GPU Xid 146 detected: NVLink TLW error. NVIDIA's decode table resolves this occurrence to a GPU reset.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **CRITICAL** when `"146.RESET_GPU_UNCONFIRMED" in nvlink5_resolution_counts && nvlink5_resolution_counts["146.RESET_GPU_UNCONFIRMED"] >= occurrences`
+  - Message: GPU Xid 146 detected: NVLink TLW error. NVIDIA's decode table does not confirm a reset for this occurrence, either because it has no entry for this subcomponent and error status (NVRM marked it Fatal) or because the driver version needed to read its registers is unknown, so it is escalated conservatively.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **WARNING** when `"146.XID_154_UNRECOGNIZED" in nvlink5_resolution_counts && nvlink5_resolution_counts["146.XID_154_UNRECOGNIZED"] >= occurrences`
+  - Message: GPU Xid 146 detected: NVLink TLW error. Its resolution defers to an Xid 154 for the affected GPU whose recovery action this catalog could not read or does not recognize; treat the fault as unresolved and report the Xid 154 line.
+  - Action: operational state `drain`, then `service_required`
+- **WARNING** when `"146.XID_154_MISSING" in nvlink5_resolution_counts && nvlink5_resolution_counts["146.XID_154_MISSING"] >= occurrences`
+  - Message: GPU Xid 146 detected: NVLink TLW error. Its resolution defers to Xid 154, and no Xid 154 was found for the affected GPU, which normally means the driver requested no recovery action. Restart the faulting application.
+  - Action: operational state `drain`, then `restart_app`
+- **WARNING** when `"146.UNDECODED" in nvlink5_resolution_counts && nvlink5_resolution_counts["146.UNDECODED"] >= occurrences`
+  - Message: GPU Xid 146 detected: NVLink TLW error. Its log line could not be decoded, so its severity and required action are unknown; inspect the line in the system journal.
+- **INFO** when `"146.IGNORE" in nvlink5_resolution_counts && nvlink5_resolution_counts["146.IGNORE"] >= occurrences`
+  - Message: GPU Xid 146 detected: NVLink TLW error. This occurrence resolves to no action.
 
 ## GPU Xid 147 (NVLink TREX error)
 
 `gpu_xid_147`
 
-Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 147 and reports it by the immediate action NVIDIA's Xid 144-150 decode table calls for, resolving rows that defer to Xid 154 through the recovery action the driver reported for the same GPU.
 
 | Property | Value |
 |---|---|
@@ -448,28 +495,44 @@ Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`nvlink5_resolution_counts`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
 
 **Rules**
 
-- **CRITICAL** when `147 in fatal_xid_counts && fatal_xid_counts[147] >= fatal_occurrences`
-  - Message: GPU Xid 147 detected: NVLink TREX error (Fatal).
+- **CRITICAL** when `"147.RESTART_OS" in nvlink5_resolution_counts && nvlink5_resolution_counts["147.RESTART_OS"] >= occurrences`
+  - Message: GPU Xid 147 detected: NVLink TREX error. Its resolution defers to Xid 154, which requested an OS reboot for the affected GPU.
+  - Action: operational state `drain`, then `restart_os` → `service_required`
+- **CRITICAL** when `"147.DRAIN_P2P" in nvlink5_resolution_counts && nvlink5_resolution_counts["147.DRAIN_P2P"] >= occurrences`
+  - Message: GPU Xid 147 detected: NVLink TREX error. Its resolution defers to Xid 154, which requested that peer-to-peer traffic be stopped for the affected GPU. Stop the processes using peer-to-peer and disable persistence mode, then re-run; reset the GPU if this is still requested.
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `147 in xid_counts && xid_counts[147] > (147 in fatal_xid_counts ? fatal_xid_counts[147] : 0) && xid_counts[147] - (147 in fatal_xid_counts ? fatal_xid_counts[147] : 0) >= nonfatal_occurrences`
-  - Message: GPU Xid 147 detected: NVLink TREX error (Nonfatal).
+- **CRITICAL** when `"147.RESET_GPU" in nvlink5_resolution_counts && nvlink5_resolution_counts["147.RESET_GPU"] >= occurrences`
+  - Message: GPU Xid 147 detected: NVLink TREX error. NVIDIA's decode table resolves this occurrence to a GPU reset.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **CRITICAL** when `"147.RESET_GPU_UNCONFIRMED" in nvlink5_resolution_counts && nvlink5_resolution_counts["147.RESET_GPU_UNCONFIRMED"] >= occurrences`
+  - Message: GPU Xid 147 detected: NVLink TREX error. NVIDIA's decode table does not confirm a reset for this occurrence, either because it has no entry for this subcomponent and error status (NVRM marked it Fatal) or because the driver version needed to read its registers is unknown, so it is escalated conservatively.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **WARNING** when `"147.XID_154_UNRECOGNIZED" in nvlink5_resolution_counts && nvlink5_resolution_counts["147.XID_154_UNRECOGNIZED"] >= occurrences`
+  - Message: GPU Xid 147 detected: NVLink TREX error. Its resolution defers to an Xid 154 for the affected GPU whose recovery action this catalog could not read or does not recognize; treat the fault as unresolved and report the Xid 154 line.
+  - Action: operational state `drain`, then `service_required`
+- **WARNING** when `"147.XID_154_MISSING" in nvlink5_resolution_counts && nvlink5_resolution_counts["147.XID_154_MISSING"] >= occurrences`
+  - Message: GPU Xid 147 detected: NVLink TREX error. Its resolution defers to Xid 154, and no Xid 154 was found for the affected GPU, which normally means the driver requested no recovery action. Restart the faulting application.
+  - Action: operational state `drain`, then `restart_app`
+- **WARNING** when `"147.UNDECODED" in nvlink5_resolution_counts && nvlink5_resolution_counts["147.UNDECODED"] >= occurrences`
+  - Message: GPU Xid 147 detected: NVLink TREX error. Its log line could not be decoded, so its severity and required action are unknown; inspect the line in the system journal.
+- **INFO** when `"147.IGNORE" in nvlink5_resolution_counts && nvlink5_resolution_counts["147.IGNORE"] >= occurrences`
+  - Message: GPU Xid 147 detected: NVLink TREX error. This occurrence resolves to no action.
 
 ## GPU Xid 148 (NVLink NVLPW_CTRL error)
 
 `gpu_xid_148`
 
-Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 148 and reports it by the immediate action NVIDIA's Xid 144-150 decode table calls for, resolving rows that defer to Xid 154 through the recovery action the driver reported for the same GPU.
 
 | Property | Value |
 |---|---|
@@ -480,28 +543,44 @@ Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`nvlink5_resolution_counts`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
 
 **Rules**
 
-- **CRITICAL** when `148 in fatal_xid_counts && fatal_xid_counts[148] >= fatal_occurrences`
-  - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error (Fatal).
+- **CRITICAL** when `"148.RESTART_OS" in nvlink5_resolution_counts && nvlink5_resolution_counts["148.RESTART_OS"] >= occurrences`
+  - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error. Its resolution defers to Xid 154, which requested an OS reboot for the affected GPU.
+  - Action: operational state `drain`, then `restart_os` → `service_required`
+- **CRITICAL** when `"148.DRAIN_P2P" in nvlink5_resolution_counts && nvlink5_resolution_counts["148.DRAIN_P2P"] >= occurrences`
+  - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error. Its resolution defers to Xid 154, which requested that peer-to-peer traffic be stopped for the affected GPU. Stop the processes using peer-to-peer and disable persistence mode, then re-run; reset the GPU if this is still requested.
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `148 in xid_counts && xid_counts[148] > (148 in fatal_xid_counts ? fatal_xid_counts[148] : 0) && xid_counts[148] - (148 in fatal_xid_counts ? fatal_xid_counts[148] : 0) >= nonfatal_occurrences`
-  - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error (Nonfatal).
+- **CRITICAL** when `"148.RESET_GPU" in nvlink5_resolution_counts && nvlink5_resolution_counts["148.RESET_GPU"] >= occurrences`
+  - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error. NVIDIA's decode table resolves this occurrence to a GPU reset.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **CRITICAL** when `"148.RESET_GPU_UNCONFIRMED" in nvlink5_resolution_counts && nvlink5_resolution_counts["148.RESET_GPU_UNCONFIRMED"] >= occurrences`
+  - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error. NVIDIA's decode table does not confirm a reset for this occurrence, either because it has no entry for this subcomponent and error status (NVRM marked it Fatal) or because the driver version needed to read its registers is unknown, so it is escalated conservatively.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **WARNING** when `"148.XID_154_UNRECOGNIZED" in nvlink5_resolution_counts && nvlink5_resolution_counts["148.XID_154_UNRECOGNIZED"] >= occurrences`
+  - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error. Its resolution defers to an Xid 154 for the affected GPU whose recovery action this catalog could not read or does not recognize; treat the fault as unresolved and report the Xid 154 line.
+  - Action: operational state `drain`, then `service_required`
+- **WARNING** when `"148.XID_154_MISSING" in nvlink5_resolution_counts && nvlink5_resolution_counts["148.XID_154_MISSING"] >= occurrences`
+  - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error. Its resolution defers to Xid 154, and no Xid 154 was found for the affected GPU, which normally means the driver requested no recovery action. Restart the faulting application.
+  - Action: operational state `drain`, then `restart_app`
+- **WARNING** when `"148.UNDECODED" in nvlink5_resolution_counts && nvlink5_resolution_counts["148.UNDECODED"] >= occurrences`
+  - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error. Its log line could not be decoded, so its severity and required action are unknown; inspect the line in the system journal.
+- **INFO** when `"148.IGNORE" in nvlink5_resolution_counts && nvlink5_resolution_counts["148.IGNORE"] >= occurrences`
+  - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error. This occurrence resolves to no action.
 
 ## GPU Xid 149 (NVLink NETIR error)
 
 `gpu_xid_149`
 
-Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 149 and reports it by the immediate action NVIDIA's Xid 144-150 decode table calls for, resolving rows that defer to Xid 154 through the recovery action the driver reported for the same GPU.
 
 | Property | Value |
 |---|---|
@@ -512,28 +591,44 @@ Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`nvlink5_resolution_counts`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
 
 **Rules**
 
-- **CRITICAL** when `149 in fatal_xid_counts && fatal_xid_counts[149] >= fatal_occurrences`
-  - Message: GPU Xid 149 detected: NVLink NETIR error (Fatal).
+- **CRITICAL** when `"149.RESTART_OS" in nvlink5_resolution_counts && nvlink5_resolution_counts["149.RESTART_OS"] >= occurrences`
+  - Message: GPU Xid 149 detected: NVLink NETIR error. Its resolution defers to Xid 154, which requested an OS reboot for the affected GPU.
+  - Action: operational state `drain`, then `restart_os` → `service_required`
+- **CRITICAL** when `"149.DRAIN_P2P" in nvlink5_resolution_counts && nvlink5_resolution_counts["149.DRAIN_P2P"] >= occurrences`
+  - Message: GPU Xid 149 detected: NVLink NETIR error. Its resolution defers to Xid 154, which requested that peer-to-peer traffic be stopped for the affected GPU. Stop the processes using peer-to-peer and disable persistence mode, then re-run; reset the GPU if this is still requested.
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `149 in xid_counts && xid_counts[149] > (149 in fatal_xid_counts ? fatal_xid_counts[149] : 0) && xid_counts[149] - (149 in fatal_xid_counts ? fatal_xid_counts[149] : 0) >= nonfatal_occurrences`
-  - Message: GPU Xid 149 detected: NVLink NETIR error (Nonfatal).
+- **CRITICAL** when `"149.RESET_GPU" in nvlink5_resolution_counts && nvlink5_resolution_counts["149.RESET_GPU"] >= occurrences`
+  - Message: GPU Xid 149 detected: NVLink NETIR error. NVIDIA's decode table resolves this occurrence to a GPU reset.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **CRITICAL** when `"149.RESET_GPU_UNCONFIRMED" in nvlink5_resolution_counts && nvlink5_resolution_counts["149.RESET_GPU_UNCONFIRMED"] >= occurrences`
+  - Message: GPU Xid 149 detected: NVLink NETIR error. NVIDIA's decode table does not confirm a reset for this occurrence, either because it has no entry for this subcomponent and error status (NVRM marked it Fatal) or because the driver version needed to read its registers is unknown, so it is escalated conservatively.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **WARNING** when `"149.XID_154_UNRECOGNIZED" in nvlink5_resolution_counts && nvlink5_resolution_counts["149.XID_154_UNRECOGNIZED"] >= occurrences`
+  - Message: GPU Xid 149 detected: NVLink NETIR error. Its resolution defers to an Xid 154 for the affected GPU whose recovery action this catalog could not read or does not recognize; treat the fault as unresolved and report the Xid 154 line.
+  - Action: operational state `drain`, then `service_required`
+- **WARNING** when `"149.XID_154_MISSING" in nvlink5_resolution_counts && nvlink5_resolution_counts["149.XID_154_MISSING"] >= occurrences`
+  - Message: GPU Xid 149 detected: NVLink NETIR error. Its resolution defers to Xid 154, and no Xid 154 was found for the affected GPU, which normally means the driver requested no recovery action. Restart the faulting application.
+  - Action: operational state `drain`, then `restart_app`
+- **WARNING** when `"149.UNDECODED" in nvlink5_resolution_counts && nvlink5_resolution_counts["149.UNDECODED"] >= occurrences`
+  - Message: GPU Xid 149 detected: NVLink NETIR error. Its log line could not be decoded, so its severity and required action are unknown; inspect the line in the system journal.
+- **INFO** when `"149.IGNORE" in nvlink5_resolution_counts && nvlink5_resolution_counts["149.IGNORE"] >= occurrences`
+  - Message: GPU Xid 149 detected: NVLink NETIR error. This occurrence resolves to no action.
 
 ## GPU Xid 150 (NVLink MSE error)
 
 `gpu_xid_150`
 
-Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 150 and reports it by the immediate action NVIDIA's Xid 144-150 decode table calls for, resolving rows that defer to Xid 154 through the recovery action the driver reported for the same GPU.
 
 | Property | Value |
 |---|---|
@@ -544,20 +639,76 @@ Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`nvlink5_resolution_counts`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
 
 **Rules**
 
-- **CRITICAL** when `150 in fatal_xid_counts && fatal_xid_counts[150] >= fatal_occurrences`
-  - Message: GPU Xid 150 detected: NVLink MSE error (Fatal).
+- **CRITICAL** when `"150.RESTART_OS" in nvlink5_resolution_counts && nvlink5_resolution_counts["150.RESTART_OS"] >= occurrences`
+  - Message: GPU Xid 150 detected: NVLink MSE error. Its resolution defers to Xid 154, which requested an OS reboot for the affected GPU.
+  - Action: operational state `drain`, then `restart_os` → `service_required`
+- **CRITICAL** when `"150.DRAIN_P2P" in nvlink5_resolution_counts && nvlink5_resolution_counts["150.DRAIN_P2P"] >= occurrences`
+  - Message: GPU Xid 150 detected: NVLink MSE error. Its resolution defers to Xid 154, which requested that peer-to-peer traffic be stopped for the affected GPU. Stop the processes using peer-to-peer and disable persistence mode, then re-run; reset the GPU if this is still requested.
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
-- **WARNING** when `150 in xid_counts && xid_counts[150] > (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) && xid_counts[150] - (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) >= nonfatal_occurrences`
-  - Message: GPU Xid 150 detected: NVLink MSE error (Nonfatal).
+- **CRITICAL** when `"150.RESET_GPU" in nvlink5_resolution_counts && nvlink5_resolution_counts["150.RESET_GPU"] >= occurrences`
+  - Message: GPU Xid 150 detected: NVLink MSE error. NVIDIA's decode table resolves this occurrence to a GPU reset.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **CRITICAL** when `"150.RESET_GPU_UNCONFIRMED" in nvlink5_resolution_counts && nvlink5_resolution_counts["150.RESET_GPU_UNCONFIRMED"] >= occurrences`
+  - Message: GPU Xid 150 detected: NVLink MSE error. NVIDIA's decode table does not confirm a reset for this occurrence, either because it has no entry for this subcomponent and error status (NVRM marked it Fatal) or because the driver version needed to read its registers is unknown, so it is escalated conservatively.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **WARNING** when `"150.XID_154_UNRECOGNIZED" in nvlink5_resolution_counts && nvlink5_resolution_counts["150.XID_154_UNRECOGNIZED"] >= occurrences`
+  - Message: GPU Xid 150 detected: NVLink MSE error. Its resolution defers to an Xid 154 for the affected GPU whose recovery action this catalog could not read or does not recognize; treat the fault as unresolved and report the Xid 154 line.
+  - Action: operational state `drain`, then `service_required`
+- **WARNING** when `"150.XID_154_MISSING" in nvlink5_resolution_counts && nvlink5_resolution_counts["150.XID_154_MISSING"] >= occurrences`
+  - Message: GPU Xid 150 detected: NVLink MSE error. Its resolution defers to Xid 154, and no Xid 154 was found for the affected GPU, which normally means the driver requested no recovery action. Restart the faulting application.
+  - Action: operational state `drain`, then `restart_app`
+- **WARNING** when `"150.UNDECODED" in nvlink5_resolution_counts && nvlink5_resolution_counts["150.UNDECODED"] >= occurrences`
+  - Message: GPU Xid 150 detected: NVLink MSE error. Its log line could not be decoded, so its severity and required action are unknown; inspect the line in the system journal.
+- **INFO** when `"150.IGNORE" in nvlink5_resolution_counts && nvlink5_resolution_counts["150.IGNORE"] >= occurrences`
+  - Message: GPU Xid 150 detected: NVLink MSE error. This occurrence resolves to no action.
+
+## GPU Xid 154 (GPU recovery action changed)
+
+`gpu_xid_154`
+
+Detects NVRM Xid 154 in the system journal since boot and reports the recovery action the driver last requested for each GPU.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`recovery_action_counts`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+
+**Rules**
+
+- **CRITICAL** when `("0x2" in recovery_action_counts \|\| "0x6" in recovery_action_counts \|\| "0x7" in recovery_action_counts) && 154 in xid_counts && xid_counts[154] >= occurrences`
+  - Message: GPU Xid 154: the driver requested an OS reboot for at least one GPU.
+  - Action: operational state `drain`, then `restart_os` → `service_required`
+- **CRITICAL** when `("0x1" in recovery_action_counts \|\| "0x4" in recovery_action_counts) && 154 in xid_counts && xid_counts[154] >= occurrences`
+  - Message: GPU Xid 154: the driver requested a GPU reset for at least one GPU.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **CRITICAL** when `("0x3" in recovery_action_counts) && 154 in xid_counts && xid_counts[154] >= occurrences`
+  - Message: GPU Xid 154: the driver requested that peer-to-peer traffic be stopped for at least one GPU. Stop the processes using peer-to-peer and disable persistence mode, then re-run; reset the GPU if this is still requested.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **WARNING** when `recovery_action_counts.exists(k, !(k in ["0x0", "0x1", "0x2", "0x3", "0x4", "0x6", "0x7"])) && 154 in xid_counts && xid_counts[154] >= occurrences`
+  - Message: GPU Xid 154: the driver requested a recovery action this catalog does not recognize for at least one GPU; report the action code.
+  - Action: operational state `drain`, then `service_required`
+- **INFO** when `154 in xid_counts && xid_counts[154] >= occurrences`
+  - Message: GPU Xid 154 (GPU recovery action changed) observed. Informational; correlate with the accompanying Xid.
 

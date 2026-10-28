@@ -4,6 +4,7 @@
 package xid_test
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -259,6 +260,25 @@ func TestParseXid_NVLink5_RealWorldVariations(t *testing.T) {
 			wantFatal:        true,
 		},
 		{
+			name:             "non-numeric pid",
+			line:             "NVRM: Xid (PCI:0009:01:00): 145, pid='<unknown>', name=<unknown>, RLW_SRC_TRACK Fatal XC1 i0 Link 17 (0x040a28e2 0x00000020 0x00000000)",
+			wantSubComponent: "RLW_SRC_TRACK",
+			wantIntrInfo:     "0x040a28e2",
+			wantErrorStatus:  "0x00000020",
+			wantProcessName:  "<unknown>",
+			wantLink:         17,
+			wantFatal:        true,
+		},
+		{
+			name:             "multi-word sub-component",
+			line:             "NVRM: Xid (PCI:0009:01:00): 150, MSE  Degraded Fatal XC0 i0 Link -1 (0x00000000 0x00000000 0x00000000)",
+			wantSubComponent: "MSE Degraded",
+			wantIntrInfo:     "0x00000000",
+			wantErrorStatus:  "0x00000000",
+			wantLink:         -1,
+			wantFatal:        true,
+		},
+		{
 			name:             "link -1 when not attributable to one link",
 			line:             "NVRM: Xid (PCI:0009:01:00): 149, NETIR  Fatal   XC0 i0 Link -1 (0x000fe406 0x00000000 0x00000000)",
 			wantSubComponent: "NETIR",
@@ -433,5 +453,45 @@ func TestParseXid_NonRecoveryCodesHaveNoAction(t *testing.T) {
 		if ev.RecoveryAction != nil {
 			t.Errorf("Xid %d: RecoveryAction = %+v, want nil", ev.XidCode, ev.RecoveryAction)
 		}
+	}
+}
+
+// TestParseXid_DeferralResolvesThroughProcess154 joins a deferring NVLink5
+// fault with a 154 that names a process. Had the 154 lost its transition,
+// the fault would report XID_154_MISSING instead of the reset the driver
+// asked for.
+func TestParseXid_DeferralResolvesThroughProcess154(t *testing.T) {
+	m := xid.ParseXid("boot", []string{
+		"NVRM: Xid (PCI:0019:01:00): 145, RLW_SRC_TRACK Fatal XC1 i0 Link 17 (0x040988e2 0x00000008 0x00000000)",
+		"NVRM: Xid (PCI:0019:01:00): 154, pid=31982, name=nv_queue, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
+	})
+	driver, ok := health.ParseDriverVersion("575.51.03")
+	if !ok {
+		t.Fatal("ParseDriverVersion failed")
+	}
+
+	got := m.DerivedSignals(health.Host{DriverVersion: driver})[catalogxid.SignalNVLink5ResolutionCounts]
+	want := map[string]int64{catalogxid.NVLink5ResolutionKey(145, catalogxid.ResolutionResetGPU): 1}
+	if !maps.Equal(got.(map[string]int64), want) {
+		t.Errorf("%s = %v, want %v", catalogxid.SignalNVLink5ResolutionCounts, got, want)
+	}
+}
+
+// TestParseXid_MultiWordSubComponentResolves follows a multi-word
+// sub-component through to resolution. Dropped to the generic pattern,
+// the line would lose the Fatal flag and registers the decode needs.
+func TestParseXid_MultiWordSubComponentResolves(t *testing.T) {
+	m := xid.ParseXid("boot", []string{
+		"NVRM: Xid (PCI:0009:01:00): 150, MSE Degraded Fatal XC0 i0 Link -1 (0x00000000 0x00000000 0x00000000)",
+	})
+	driver, ok := health.ParseDriverVersion("575.51.03")
+	if !ok {
+		t.Fatal("ParseDriverVersion failed")
+	}
+
+	got := m.DerivedSignals(health.Host{DriverVersion: driver})[catalogxid.SignalNVLink5ResolutionCounts]
+	want := map[string]int64{catalogxid.NVLink5ResolutionKey(150, catalogxid.ResolutionResetGPU): 1}
+	if !maps.Equal(got.(map[string]int64), want) {
+		t.Errorf("%s = %v, want %v", catalogxid.SignalNVLink5ResolutionCounts, got, want)
 	}
 }

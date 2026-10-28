@@ -45,6 +45,55 @@ func resetAndService() health.RecommendedAction {
 	return health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
 }
 
+// recoveryStep is what one recovery action an Xid 154 can request calls
+// for. The Xid 154 check and the NVLink5 checks that defer to it share
+// these, so one driver request gets the same advice from both.
+type recoveryStep struct {
+	bucket    string
+	requested string
+	// guidance follows the request in a message when the action alone
+	// does not say what to do first.
+	guidance string
+	action   health.RecommendedAction
+	severity health.Severity
+}
+
+func (s recoveryStep) message(finding string) string {
+	if s.guidance == "" {
+		return finding
+	}
+	return finding + " " + s.guidance
+}
+
+// recoverySteps is ordered most disruptive first: rules that tie on
+// severity take the first match's action, so a GPU needing a reboot is
+// not reported as needing only a reset.
+var recoverySteps = []recoveryStep{
+	{
+		bucket:    ResolutionRestartOS,
+		requested: "an OS reboot",
+		severity:  health.Critical,
+		action:    health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired),
+	},
+	{
+		bucket:    ResolutionResetGPU,
+		requested: "a GPU reset",
+		severity:  health.Critical,
+		action:    resetAndService(),
+	},
+	// Drain P2P is not a final verdict: the driver names the real
+	// action once P2P traffic stops, logging another Xid 154. NVIDIA's
+	// guidance is to reset the GPU if Drain P2P is still requested after
+	// the drain, so it shares the reset's steps.
+	{
+		bucket:    ResolutionDrainP2P,
+		requested: "that peer-to-peer traffic be stopped",
+		guidance:  "Stop the processes using peer-to-peer and disable persistence mode, then re-run; reset the GPU if this is still requested.",
+		severity:  health.Critical,
+		action:    resetAndService(),
+	},
+}
+
 // criticalXids lists every critical Xid code, ordered by code. action
 // is the immediate-action bucket; codes whose action is IGNORE/empty or
 // that are marked Unused are excluded entirely.
@@ -71,7 +120,7 @@ var criticalXids = []criticalXid{
 	{code: 142, action: health.Drain(health.RemediationActionServiceRequired), architectures: graceBlackwellArchitectures, description: "NVENC3 error"},
 	{code: 143, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "GPU initialization error"},
 	// 144-150 (NVLink5/NETIR family) are not listed here: they get their
-	// own severity-differentiated checks below, built by nvlink5Check.
+	// own decode-table-driven checks below, built by nvlink5Check.
 	{
 		code:          151,
 		action:        health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired),
@@ -92,10 +141,10 @@ var criticalXids = []criticalXid{
 }
 
 // nvlink5Xid is one Xid code in the NVLink5/NVSwitch fault family
-// (144-150, Blackwell-only). Unlike other Xid codes, NVRM itself marks
-// each occurrence Fatal or Nonfatal in the log line, so the check
-// differentiates severity and action on that basis instead of firing
-// CRITICAL uniformly — see [nvlink5Check].
+// (144-150, Blackwell-only). Unlike other Xid codes, NVIDIA publishes a
+// decode table naming the required action per subcomponent and error
+// status, so the check reports the resolved action rather than firing
+// CRITICAL on every occurrence — see [nvlink5Check].
 type nvlink5Xid struct {
 	description string
 	code        int64
@@ -122,7 +171,7 @@ var nvlink5Xids = []nvlink5Xid{
 //
 // Each one gets its own check (gpu_xid_<subXidCode>, e.g.
 // gpu_xid_149_4), additive to (not a replacement for) [nvlink5Check]'s
-// code-level Fatal/Nonfatal check, so every event on that code still
+// code-level resolution check, so every event on that code still
 // produces at least that baseline verdict. Splitting lets an operator
 // independently disable/override the guidance for one specific fault
 // subtype without touching the rest.
@@ -143,8 +192,7 @@ type nvlink5SubXidCode struct {
 // keeping only digits every row under that code resolves alike (see
 // [nvlink5SubXidCodeResolvesAlike]). A group with only one row, whose
 // rows vary by ErrorStatus instead, or whose digit other rows resolve
-// differently, is left to [nvlink5Check]'s code-level Fatal/Nonfatal
-// check.
+// differently, is left to [nvlink5Check]'s code-level resolution check.
 var nvlink5SubXidCodes = deriveNVLink5SubXidCodes()
 
 // deriveNVLink5SubXidCodes builds [nvlink5SubXidCodes]' value; split
@@ -292,16 +340,15 @@ var warningClasses = []warningClass{
 }
 
 // Checks returns every Xid check shipped with the catalog: one CRITICAL
-// check per critical Xid code, one Fatal/Nonfatal check per NVLink5
-// (144-150) code, one additional per-SubXidCode check for each fault
-// subtype NVIDIA's decode table differentiates that way (see
-// [nvlink5SubXidCodeCheck]), one architecture-scoped check per warning Xid,
-// and an INFO check for Xid 154 (a recovery-action notice that only annotates
-// another Xid).
+// check per critical Xid code, one check per NVLink5 (144-150) code
+// reporting what its occurrences resolve to (see [nvlink5Check]), one
+// additional per-SubXidCode check for each fault subtype NVIDIA's decode
+// table differentiates that way (see [nvlink5SubXidCodeCheck]), one
+// architecture-scoped check per warning Xid, and a check for the recovery
+// action Xid 154 reports (see [xid154Check]).
 //
-// Every check consumes an [XidMeasurement] produced by the journal Xid
-// sensor and tests its xid_counts map. Codes whose immediate action is
-// IGNORE/empty, and Unused codes, are not represented and never fire.
+// Every check consumes an [XidMeasurement]. Codes whose immediate action
+// is IGNORE/empty, and Unused codes, are not represented and never fire.
 func Checks() []health.CheckDefinition {
 	warningCount := 0
 	for _, class := range warningClasses {
@@ -322,8 +369,7 @@ func Checks() []health.CheckDefinition {
 			checks = append(checks, warningCheck(code, class))
 		}
 	}
-	checks = append(checks, xid45Check())
-	checks = append(checks, xid154Check())
+	checks = append(checks, xid45Check(), xid154Check())
 	return checks
 }
 
@@ -349,69 +395,91 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 }
 
 // nvlink5Check builds the per-code check for one NVLink5-family Xid
-// (144-150). NVRM marks each occurrence Fatal or Nonfatal in the log
-// line itself (see [toolkit/xid.ParseXid] / [NVLink5Detail]); the check
-// mirrors that split: Fatal is CRITICAL, Nonfatal is WARNING with no
-// recommended action (matching NVIDIA's own guidance that most
-// non-fatal NVLink5 subcodes need no remediation — confirmed by
-// [nvlink5DecodeTable]: Non-fatal-severity rows resolve to IGNORE in
-// the overwhelming majority of cases).
+// (144-150). It reports what each occurrence resolves to through
+// NVIDIA's decode table (see [NVLink5ResolutionCounts]), not the
+// Fatal/Nonfatal flag NVRM prints, which the table is more specific
+// than: CRITICAL for a reset or reboot, WARNING where the action is
+// unknown, INFO where the table calls for none.
 //
-// The Fatal rule uses [resetAndService]: filtering
-// [nvlink5DecodeTable] to Fatal-severity rows only, ~95% (37 of 39)
-// resolve to a GPU reset, then service if the reset doesn't clear it:
-// exactly this sequence. The rare exceptions that resolve to IGNORE
-// despite Fatal severity aren't distinguishable from a static per-check
-// action (they depend on the specific IntrInfo subcode, only available
-// per-event), so this errs toward the safer over-remediation rather
-// than silently doing nothing.
+// Rules that tie on severity take the first match's action, so within
+// each severity the rules carrying an action come before those without,
+// and service_required before restart_app.
 //
 // Unlike [criticalCheck], the check-level default here is
-// [health.NoAction] and the Fatal rule sets its own RecommendedAction:
-// a Rule can only override a non-zero check default (see
+// [health.NoAction] and each rule sets its own RecommendedAction: a
+// Rule can only override a non-zero check default (see
 // [health.Rule.HasRecommendedAction]), so the zero-value "no action"
 // outcome has to be the fallback, not an override.
 func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 	def := baseCheck(
 		fmt.Sprintf("gpu_xid_%d", c.code),
 		fmt.Sprintf("GPU Xid %d (%s)", c.code, c.description),
-		fmt.Sprintf("Detects NVRM Xid %d in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.", c.code),
+		fmt.Sprintf("Detects NVRM Xid %d and reports it by the immediate action NVIDIA's Xid 144-150 decode table calls for, resolving rows that defer to Xid 154 through the recovery action the driver reported for the same GPU.", c.code),
 		health.NoAction,
 	)
-	def.RequiredSignals = []string{SignalXidCounts, SignalFatalXidCounts}
-	def.Thresholds = map[string]health.ThresholdSpec{
-		"fatal_occurrences": {
-			Value:       int64(1),
-			ValueType:   health.ThresholdInt64,
-			Category:    health.DefaultThreshold,
-			Description: "Fatal occurrences since boot that trigger the CRITICAL rule.",
-			Unit:        "count",
-		},
-		"nonfatal_occurrences": {
-			Value:       int64(1),
-			ValueType:   health.ThresholdInt64,
-			Category:    health.DefaultThreshold,
-			Description: "Nonfatal occurrences since boot that trigger the WARNING rule.",
-			Unit:        "count",
-		},
-	}
+	def.RequiredSignals = []string{SignalNVLink5ResolutionCounts}
 	// NVLink5 (144-150) is Blackwell-only per NVIDIA's Xid catalog.
 	def.Architectures = slices.Clone(blackwellArchitectures)
-	def.Rules = []health.Rule{
+
+	// Each rule fires once this code has resolved to its bucket at least
+	// occurrences times (baseCheck's threshold).
+	key := func(bucket string) string {
+		return fmt.Sprintf("%[1]q in nvlink5_resolution_counts && nvlink5_resolution_counts[%[1]q] >= occurrences", NVLink5ResolutionKey(c.code, bucket))
+	}
+	// IGNORE reports INFO, not WARNING: roughly half the table's rows
+	// resolve to it and NVIDIA's guidance is to take no action, so the
+	// occurrence stays visible without affecting the node's disposition
+	// (INFO exits 0). Escalating on the bare occurrence instead makes
+	// reading the table pointless, because a node's severity is the worst
+	// across its checks and the escalation would stand regardless.
+	var rules []health.Rule
+	for _, step := range recoverySteps {
+		if step.bucket == ResolutionResetGPU {
+			continue // also a decode-table action, with its own message below
+		}
+		rules = append(rules, health.Rule{
+			Expression:        key(step.bucket),
+			Severity:          step.severity,
+			Message:           step.message(fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to Xid 154, which requested %s for the affected GPU.", c.code, c.description, step.requested)),
+			RecommendedAction: step.action,
+		})
+	}
+	def.Rules = append(rules, []health.Rule{
 		{
-			Expression:        fmt.Sprintf("%[1]d in fatal_xid_counts && fatal_xid_counts[%[1]d] >= fatal_occurrences", c.code),
+			Expression:        key(ResolutionResetGPU),
 			Severity:          health.Critical,
-			Message:           fmt.Sprintf("GPU Xid %d detected: %s (Fatal).", c.code, c.description),
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. NVIDIA's decode table resolves this occurrence to a GPU reset.", c.code, c.description),
 			RecommendedAction: resetAndService(),
 		},
 		{
-			// xid_counts includes Fatal occurrences, so a bare membership
-			// test would report a lone Fatal occurrence as Nonfatal too.
-			Expression: fmt.Sprintf("%[1]d in xid_counts && xid_counts[%[1]d] > (%[1]d in fatal_xid_counts ? fatal_xid_counts[%[1]d] : 0) && xid_counts[%[1]d] - (%[1]d in fatal_xid_counts ? fatal_xid_counts[%[1]d] : 0) >= nonfatal_occurrences", c.code),
-			Severity:   health.Warning,
-			Message:    fmt.Sprintf("GPU Xid %d detected: %s (Nonfatal).", c.code, c.description),
+			Expression:        key(ResolutionResetGPUUnconfirmed),
+			Severity:          health.Critical,
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. NVIDIA's decode table does not confirm a reset for this occurrence, either because it has no entry for this subcomponent and error status (NVRM marked it Fatal) or because the driver version needed to read its registers is unknown, so it is escalated conservatively.", c.code, c.description),
+			RecommendedAction: resetAndService(),
 		},
-	}
+		{
+			Expression:        key(ResolutionXid154Unrecognized),
+			Severity:          health.Warning,
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to an Xid 154 for the affected GPU whose recovery action this catalog could not read or does not recognize; treat the fault as unresolved and report the Xid 154 line.", c.code, c.description),
+			RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
+		},
+		{
+			Expression:        key(ResolutionXid154Missing),
+			Severity:          health.Warning,
+			Message:           fmt.Sprintf("GPU Xid %d detected: %s. Its resolution defers to Xid 154, and no Xid 154 was found for the affected GPU, which normally means the driver requested no recovery action. Restart the faulting application.", c.code, c.description),
+			RecommendedAction: health.Drain(health.RemediationActionRestartApp),
+		},
+		{
+			Expression: key(ResolutionUndecoded),
+			Severity:   health.Warning,
+			Message:    fmt.Sprintf("GPU Xid %d detected: %s. Its log line could not be decoded, so its severity and required action are unknown; inspect the line in the system journal.", c.code, c.description),
+		},
+		{
+			Expression: key(ResolutionIgnore),
+			Severity:   health.Info,
+			Message:    fmt.Sprintf("GPU Xid %d detected: %s. This occurrence resolves to no action.", c.code, c.description),
+		},
+	}...)
 	return def
 }
 
@@ -419,8 +487,10 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 // for whichever Xid code and subcode it names.
 func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 	id := "gpu_xid_" + strings.ToLower(strings.Replace(c.subXidCode, ".", "_", 1))
+	// A subtype the table resolves to IGNORE reports INFO, as the
+	// code-level check does for IGNORE: visible, but not a node fault.
 	action := health.NoAction
-	severity := health.Warning
+	severity := health.Info
 	if c.critical {
 		action = resetAndService()
 		severity = health.Critical
@@ -492,20 +562,60 @@ func xid45Check() health.CheckDefinition {
 	return def
 }
 
-// xid154Check builds the INFO check for Xid 154.
+// xid154Check builds the check for Xid 154. It reads the recovery action
+// each GPU was left in, so a request the driver made alongside any Xid,
+// not only an NVLink5 fault that defers to it, reaches the operator.
 func xid154Check() health.CheckDefinition {
 	def := baseCheck(
 		"gpu_xid_154",
 		"GPU Xid 154 (GPU recovery action changed)",
-		"Detects NVRM Xid 154 in the system journal since boot. Informational; correlates with an accompanying Xid.",
-		health.Drain(health.RemediationActionXid154),
+		"Detects NVRM Xid 154 in the system journal since boot and reports the recovery action the driver last requested for each GPU.",
+		health.NoAction,
 	)
 	def.Architectures = slices.Clone(allArchitectures)
-	def.Rules = []health.Rule{{
-		Expression: "154 in xid_counts && xid_counts[154] >= occurrences",
-		Severity:   health.Info,
-		Message:    "GPU Xid 154 (GPU recovery action changed) observed. Informational; correlate with the accompanying Xid.",
-	}}
+	def.RequiredSignals = []string{SignalXidCounts, SignalRecoveryActionCounts}
+
+	codesByBucket := make(map[string][]string)
+	var mapped []string
+	for code, bucket := range recoveryActionBuckets {
+		key := strconv.Quote(fmt.Sprintf("0x%x", code))
+		codesByBucket[bucket] = append(codesByBucket[bucket], key)
+		mapped = append(mapped, key)
+	}
+	slices.Sort(mapped)
+
+	// Every rule also needs occurrences Xid 154 lines, so raising the
+	// threshold quiets the check as a whole.
+	const seen = " && 154 in xid_counts && xid_counts[154] >= occurrences"
+
+	var rules []health.Rule
+	for _, step := range recoverySteps {
+		codes := codesByBucket[step.bucket]
+		slices.Sort(codes)
+		terms := make([]string, len(codes))
+		for i, code := range codes {
+			terms[i] = code + " in recovery_action_counts"
+		}
+		rules = append(rules, health.Rule{
+			Expression:        "(" + strings.Join(terms, " || ") + ")" + seen,
+			Severity:          step.severity,
+			Message:           step.message(fmt.Sprintf("GPU Xid 154: the driver requested %s for at least one GPU.", step.requested)),
+			RecommendedAction: step.action,
+		})
+	}
+	def.Rules = append(rules,
+		health.Rule{
+			Expression:        fmt.Sprintf("recovery_action_counts.exists(k, !(k in [%s]))", strings.Join(mapped, ", ")) + seen,
+			Severity:          health.Warning,
+			Message:           "GPU Xid 154: the driver requested a recovery action this catalog does not recognize for at least one GPU; report the action code.",
+			RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
+		},
+		health.Rule{
+			Expression: "154 in xid_counts && xid_counts[154] >= occurrences",
+			Severity:   health.Info,
+			Message:    "GPU Xid 154 (GPU recovery action changed) observed. Informational; correlate with the accompanying Xid.",
+		},
+	)
 	return def
 }
 
