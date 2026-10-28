@@ -414,3 +414,38 @@ func TestTimeRangesFilterMalformedEntries(t *testing.T) {
 		})
 	}
 }
+
+func TestTimeRangesRecognizeNonzeroPCIFunctions(t *testing.T) {
+	from := int64(100)
+	for function := 1; function <= 7; function++ {
+		for _, code := range []string{"79", "invalid"} {
+			for _, seconds := range []int64{75, 100, 101} {
+				t.Run(fmt.Sprintf("function%d/code%s/time%d", function, code, seconds), func(t *testing.T) {
+					message := fmt.Sprintf("NVRM: Xid (PCI:0008:0a:00.%d): %s", function, code)
+					s, err := NewWithTimeRanges(journal.New(lines(entryLine("c1", time.Unix(seconds, 0), message))),
+						&from, nil, map[string]int64{"0008:0a:00.0": 50})
+					require.NoError(t, err)
+					cycle, err := collect.NewCycle("cycle-1", scanTime)
+					require.NoError(t, err)
+					batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
+					require.NoError(t, err)
+					require.NoError(t, observation.ValidateBatch(batch))
+					got := keyed(t, batch)
+					require.Contains(t, got, xidsignals.ScanWindow.ID()+"|")
+					if seconds <= from {
+						require.Len(t, batch.GetObservations(), 1)
+						return
+					}
+					event := got[xidsignals.Code.ID()+"|c1"]
+					require.NotNil(t, event)
+					if code == "invalid" {
+						require.Equal(t, observation.CollectionErrorCategoryParseError, event.GetCollectionError().GetCategory())
+					} else {
+						require.Nil(t, event.GetCollectionError())
+						require.Equal(t, int64(79), event.GetValue().GetIntValue())
+					}
+				})
+			}
+		}
+	}
+}

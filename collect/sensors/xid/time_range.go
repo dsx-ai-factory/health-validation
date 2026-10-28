@@ -16,7 +16,7 @@ import (
 
 var (
 	pciAddressRE = regexp.MustCompile(`(?i)^[0-9a-f]{4,}:[0-9a-f]{2}:[01][0-9a-f](?:\.0)?$`)
-	xidAddressRE = regexp.MustCompile(`NVRM: Xid \((?:PCI:)?([0-9a-fA-F]{4,}:[0-9a-fA-F]{2}:[01][0-9a-fA-F](?:\.0)?)(?:[ )\s]|$)`)
+	xidAddressRE = regexp.MustCompile(`NVRM: Xid \((?:PCI:)?([0-9a-fA-F]{4,}:[0-9a-fA-F]{2}:[01][0-9a-fA-F](?:\.[0-7])?)(?:[ )\s]|$)`)
 )
 
 type timeRanges struct {
