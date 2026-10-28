@@ -31,13 +31,13 @@ type timeRanges struct {
 // whose domains contain at least four hexadecimal digits.
 func NewWithTimeRanges(reader *journal.Reader, from, to *int64, gpuFrom map[string]int64) (collect.Sensor, error) {
 	if from != nil && *from < 0 {
-		return nil, fmt.Errorf("--xid-from must be a non-negative Unix timestamp in seconds")
+		return nil, fmt.Errorf("start time must be a non-negative Unix timestamp in seconds")
 	}
 	if to != nil && *to <= 0 {
-		return nil, fmt.Errorf("--xid-to must be a positive Unix timestamp in seconds")
+		return nil, fmt.Errorf("end time must be a positive Unix timestamp in seconds")
 	}
 	if from != nil && to != nil && *from >= *to {
-		return nil, fmt.Errorf("--xid-from must be less than --xid-to")
+		return nil, fmt.Errorf("start time must be less than end time")
 	}
 	ranges := timeRanges{gpuFrom: make(map[string]int64, len(gpuFrom))}
 	if from != nil {
@@ -50,17 +50,17 @@ func NewWithTimeRanges(reader *journal.Reader, from, to *int64, gpuFrom map[stri
 	}
 	for address, timestamp := range gpuFrom {
 		if !pciAddressRE.MatchString(address) {
-			return nil, fmt.Errorf("--xid-from: invalid GPU PCI address %q (expected dddd:bb:dd or dddd:bb:dd.0)", address)
+			return nil, fmt.Errorf("invalid GPU PCI address %q (expected dddd:bb:dd or dddd:bb:dd.0)", address)
 		}
 		address = normalizePCIAddress(address)
 		if _, exists := ranges.gpuFrom[address]; exists {
-			return nil, fmt.Errorf("--xid-from: duplicate GPU PCI address %q", address)
+			return nil, fmt.Errorf("duplicate GPU PCI address %q", address)
 		}
 		if timestamp < 0 {
-			return nil, fmt.Errorf("--xid-from for GPU %s must be a non-negative Unix timestamp in seconds", address)
+			return nil, fmt.Errorf("start time for GPU %s must be a non-negative Unix timestamp in seconds", address)
 		}
 		if to != nil && timestamp >= *to {
-			return nil, fmt.Errorf("--xid-from for GPU %s must be less than --xid-to", address)
+			return nil, fmt.Errorf("start time for GPU %s must be less than end time", address)
 		}
 		ranges.gpuFrom[address] = timestamp
 	}

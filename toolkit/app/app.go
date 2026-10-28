@@ -629,7 +629,11 @@ func xidJournalFromFlags(fs *flag.FlagSet) (collect.Sensor, error) {
 			to = &value
 		}
 	})
-	return xidsensor.NewWithTimeRanges(nil, from.from, to, from.gpuFrom)
+	sensor, err := xidsensor.NewWithTimeRanges(nil, from.from, to, from.gpuFrom)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --xid-from/--xid-to bounds: %w", err)
+	}
+	return sensor, nil
 }
 
 var categoryBySensor = map[string]health.Category{

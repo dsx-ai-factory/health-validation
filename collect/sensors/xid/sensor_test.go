@@ -449,3 +449,31 @@ func TestTimeRangesRecognizeNonzeroPCIFunctions(t *testing.T) {
 		}
 	}
 }
+
+func TestTimeRangeValidationErrors(t *testing.T) {
+	negative, zero, from, to := int64(-1), int64(0), int64(100), int64(200)
+	for _, tt := range []struct {
+		gpuFrom map[string]int64
+		from    *int64
+		to      *int64
+		name    string
+		want    string
+	}{
+		{name: "negative start", from: &negative, want: "start time must be a non-negative"},
+		{name: "negative end", to: &negative, want: "end time must be a positive"},
+		{name: "zero end", to: &zero, want: "end time must be a positive"},
+		{name: "equal bounds", from: &from, to: &from, want: "start time must be less than end time"},
+		{name: "reversed bounds", from: &to, to: &from, want: "start time must be less than end time"},
+		{name: "invalid address", gpuFrom: map[string]int64{"GPU-1": 100}, want: "invalid GPU PCI address"},
+		{name: "duplicate address", gpuFrom: map[string]int64{"0008:0A:00": 100, "0008:0a:00.0": 100}, want: "duplicate GPU PCI address"},
+		{name: "negative GPU start", gpuFrom: map[string]int64{"0008:0a:00": -1}, want: "start time for GPU 0008:0a:00 must be a non-negative"},
+		{name: "GPU start at end", to: &to, gpuFrom: map[string]int64{"0008:0a:00": 200}, want: "start time for GPU 0008:0a:00 must be less than end time"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			sensor, err := NewWithTimeRanges(nil, tt.from, tt.to, tt.gpuFrom)
+			require.Nil(t, sensor)
+			require.ErrorContains(t, err, tt.want)
+			require.NotContains(t, err.Error(), "--")
+		})
+	}
+}
