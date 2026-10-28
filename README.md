@@ -281,8 +281,8 @@ Both `run` and `collect` can limit which Xid events are considered. By default,
 collection covers the entire current boot.
 
 After resetting an individual GPU, use `--xid-from PCI_ADDRESS=unix-seconds`
-to exclude its earlier Xids while retaining the other GPUs' history. Repeat
-this form to give each reset GPU its own start time:
+to exclude its earlier Xids while retaining the other GPUs' history. This option
+may be repeated per GPU:
 
 ```shell
 ./health-validation run --xid-from 0008:06:00=1792600000 --xid-from 0009:06:00=1792603600
@@ -302,13 +302,9 @@ the node-wide start time, or the entire current boot if none is supplied.
 Addresses use `dddd:bb:dd` (optionally `.0`), with case-insensitive hex digits
 and domains of four or more digits.
 
-Both time bounds are exclusive, including for entries with subsecond
-timestamps. Start times must be non-negative, and the end time must be
+Both time bounds are exclusive. Start times must be non-negative, and the end time must be
 positive and later than every supplied start time. Either bound may be omitted.
-Duplicate GPU bounds or multiple node-wide start times are rejected. Reads
-remain scoped to the current boot. These flags affect the default Xid journal
-sensor; other journal sensors and backends supplied through `WithXidBackend`
-keep their own collection behavior.
+Duplicate GPU bounds or multiple node-wide start times will result in an error.
 
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 

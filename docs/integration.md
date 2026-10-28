@@ -118,6 +118,41 @@ shared mount) alongside any override config (below).
 
 `run` is one-shot; a scheduler decides *when*. Common integrations:
 
+### Selecting Xid history after GPU resets
+
+Both `run` and `collect` can limit which Xid events are considered. By default,
+collection covers the entire current boot.
+
+After resetting an individual GPU, use `--xid-from PCI_ADDRESS=unix-seconds`
+to exclude its earlier Xids while retaining the other GPUs' history. This option
+may be repeated per GPU:
+
+```shell
+./health-validation run --xid-from 0008:06:00=1792600000 --xid-from 0009:06:00=1792603600
+```
+
+To set a start time for all GPUs on the node, use `--xid-from <unix-seconds>`.
+Optional `--xid-to <unix-seconds>` sets a shared end time for every GPU. For
+example, to evaluate Xids within the same interval on all GPUs:
+
+```shell
+./health-validation run --xid-from 1792600000 --xid-to 1792603600
+```
+
+The two forms of `--xid-from` can be combined: a GPU-specific start time
+overrides the node-wide start time for that GPU. GPUs without an override use
+the node-wide start time, or the entire current boot if none is supplied.
+Addresses use `dddd:bb:dd` (optionally `.0`), with case-insensitive hex digits
+and domains of four or more digits.
+
+Both time bounds are exclusive. Start times must be non-negative, and the end time must be
+positive and later than every supplied start time. Either bound may be omitted.
+Duplicate GPU bounds or multiple node-wide start times will result in an error.
+
+These flags filter the default Xid journal sensor within the current boot.
+Other journal sensors, including RDMA link-flap detection, and backends supplied
+through `WithXidBackend` keep their own collection behavior.
+
 ### Slurm — drain on a bad verdict
 
 Gate dispatch in a **prolog** and re-check in an **epilog**. Exit `2` means the
