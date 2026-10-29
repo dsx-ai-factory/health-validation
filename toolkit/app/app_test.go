@@ -305,7 +305,7 @@ func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
 // TestRunCommandPassesDriverVersion confirms runCommand hands the version
 // the GPU inventory recorded to the catalog it evaluates with.
 func TestRunCommandPassesDriverVersion(t *testing.T) {
-	a := New().WithProgramName("test").WithChecks(driverEchoCheck())
+	a := baseTestApp().WithChecks(driverEchoCheck())
 	a.host = fakeHost{b: spyBackend{called: new(bool)}, driver: echoedDriverVersion}
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
@@ -520,12 +520,11 @@ func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
 func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 	const hostname = "nvl72d014-T02"
 	hostnameCalls := 0
-	a := New().WithProgramName("test")
+	a := baseTestApp()
 	a.hostname = func() (string, error) {
 		hostnameCalls++
 		return "  " + hostname + "  ", nil
 	}
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 
@@ -621,11 +620,10 @@ func TestRunCommandRejectsUnexpectedArguments(t *testing.T) {
 }
 
 func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
-	a := New().WithProgramName("test").WithNodeID("builder-node")
+	a := baseTestApp().WithNodeID("builder-node")
 	a.hostname = func() (string, error) {
 		panic("unexpected hostname lookup")
 	}
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 
@@ -644,11 +642,10 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 }
 
 func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
-	a := New().WithProgramName("test")
+	a := baseTestApp()
 	a.hostname = func() (string, error) {
 		panic("unexpected hostname lookup")
 	}
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 
@@ -700,8 +697,7 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 
 func TestWithCollectReplacesSysfsCPU(t *testing.T) {
 	cpuCalls := 0
-	a := New()
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	a := baseTestApp()
 	withCleanXid(withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 8, online: 8, numa: 34}))
 	withCleanLinkFlap(a)
 
@@ -746,8 +742,7 @@ func TestWithCollectReplacesSysfsCPU(t *testing.T) {
 // topology mismatch reaches the emitted verdict through the real run path,
 // which a direct catalog evaluation cannot establish.
 func TestNUMANodeCountReachesVerdict(t *testing.T) {
-	a := New()
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	a := baseTestApp()
 	withCleanXid(withCPU(a, cpuAppSensor{possible: 8, online: 8, numa: 33}))
 	withCleanLinkFlap(a)
 

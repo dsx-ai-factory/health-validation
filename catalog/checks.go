@@ -10,6 +10,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
@@ -25,6 +26,7 @@ func builtinChecks() []health.CheckDefinition {
 		gpu.GPUSensorThrottle(),
 		gpu.GPUComputeApps(),
 		node.GPUCount(),
+		pcie.RDMATopo(),
 		infiniband.RDMALinkFlapFatal(),
 		nvlink.NVLinkActive(),
 		nvlink.NVLinkFabricHealth(),

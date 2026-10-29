@@ -17,9 +17,11 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
+	rdmatoposensor "github.com/dsx-ai-factory/health-validation/collect/sensors/rdmatopo"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
+	rdmatoposignals "github.com/dsx-ai-factory/health-validation/collect/signals/rdmatopo"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
@@ -59,8 +61,8 @@ type CollectAdapter interface {
 // the built-in collect source for them. Claims are explicit so that a later
 // release adding built-in sources never changes which sensor supplies a
 // signal. Each claimed signal must be declared by the sensor, requested by an
-// adapter, and claimed by only one sensor. The Xid signals, and the RDMA
-// link-flap signals, are each claimed all together or not at all. A built-in
+// adapter, and claimed by only one sensor. The Xid, RDMA link-flap, and
+// rdma_topo signals are each claimed all together or not at all. A built-in
 // source left with no requested signals never runs, and built-in adapters read
 // claimed signals from this sensor.
 // Each registered collect source has its own timeout budget.
@@ -179,6 +181,7 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 	sources := slices.Concat(a.host.gpuSensors(), []collect.Sensor{
 		cpusensor.New(nil), inventory.Sensor(), xidsensor.New(nil),
 		linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)),
+		rdmatoposensor.New(nil),
 	})
 	adapters := []CollectAdapter{
 		powerDrawGate{
@@ -198,6 +201,7 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 		}),
 		collectadapters.InfiniBand(),
 		collectadapters.NVLink(),
+		collectadapters.RDMATopo(),
 	}
 	return sources, adapters
 }
@@ -493,15 +497,15 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 	return bindings, nil
 }
 
-// wholeClaimFamilies are signal families whose events must each come from
-// one journal read; a split claim lets reads at different times drop fields
-// such as an Xid's Fatal or a link transition's state.
+// wholeClaimFamilies are signal families whose observations must come from
+// one invocation so fields from different reads cannot be combined.
 var wholeClaimFamilies = []struct {
 	name    string
 	signals []string
 }{
 	{name: "Xid", signals: xidsignals.All().IDs()},
 	{name: "RDMA link-flap", signals: ibsignals.LinkFlapSignals().IDs()},
+	{name: "rdma_topo", signals: rdmatoposignals.All().IDs()},
 }
 
 // checkWholeClaims rejects a claim covering part of a whole-claim family.

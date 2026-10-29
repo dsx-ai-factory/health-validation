@@ -5,15 +5,18 @@ package app
 
 import (
 	"context"
+	"io"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	rdmatoposensor "github.com/dsx-ai-factory/health-validation/collect/sensors/rdmatopo"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
+	rdmatoposource "github.com/dsx-ai-factory/health-validation/collect/source/rdmatopo"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 )
 
@@ -78,9 +81,17 @@ func withCleanLinkFlap(a *App) *App {
 	return a.WithCollect(linkFlapAppSensor{calls: &calls, obs: []*observation.Observation{linkFlapAppMarker()}}, ibsignals.LinkFlapSignals().IDs()...)
 }
 
+func healthyRDMATopoSensor() collect.Sensor {
+	return rdmatoposensor.New(rdmatoposource.New(func(_ context.Context, out, _ io.Writer) (int, error) {
+		_, err := io.WriteString(out, healthyRDMATopoOutput)
+		return 0, err
+	}))
+}
+
 // baseTestApp runs off the host on fake GPUs and inventory.
 func baseTestApp() *App {
-	a := New().WithProgramName("test")
+	sensor := healthyRDMATopoSensor()
+	a := New().WithProgramName("test").WithCollect(sensor, sensor.Signals().IDs()...)
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	return a
 }
