@@ -189,7 +189,7 @@ These 20 checks share the properties below and each has one rule.
 
 `gpu_xid_13`
 
-Detects warning-class NVRM Xid 13 in the system journal since boot.
+Detects warning-class NVRM Xid 13 in the system journal within the collection window.
 
 | Property | Value |
 |---|---|
@@ -206,7 +206,7 @@ Detects warning-class NVRM Xid 13 in the system journal since boot.
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
 
 **Rules**
 
