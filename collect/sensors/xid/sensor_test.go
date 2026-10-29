@@ -94,7 +94,8 @@ func TestMeasureEmitsEventsAndMarker(t *testing.T) {
 		entryLine("c2", entryTime, "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3, GPU has fallen off the bus.") +
 		entryLine("c3", entryTime.Add(time.Second), "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3, GPU has fallen off the bus.") +
 		entryLine("c4", entryTime, "NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000 0x00000001 0x00000002)") +
-		entryLine("c5", entryTime, "NVRM: Xid (PCI:0000:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)")
+		entryLine("c5", entryTime, "NVRM: Xid (PCI:0000:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)") +
+		entryLine("c6", entryTime, "NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Global Exception on (GPC 10, TPC 5, SM 0): Multiple Warp Errors")
 	got := keyed(t, measure(t, context.Background(), lines(stdout)))
 
 	for _, cursor := range []string{"c2", "c3"} {
@@ -123,6 +124,12 @@ func TestMeasureEmitsEventsAndMarker(t *testing.T) {
 	require.Equal(t, "0x1", got[xidsignals.RecoveryActionToCode.ID()+"|c5"].GetValue().GetStringValue())
 	require.Equal(t, "GPU Reset Required", got[xidsignals.RecoveryActionToName.ID()+"|c5"].GetValue().GetStringValue())
 
+	require.Equal(t, int64(10), got[xidsignals.GPC.ID()+"|c6"].GetValue().GetIntValue())
+	require.Equal(t, int64(5), got[xidsignals.TPC.ID()+"|c6"].GetValue().GetIntValue())
+	require.Equal(t, int64(0), got[xidsignals.SM.ID()+"|c6"].GetValue().GetIntValue())
+	require.NotContains(t, got, xidsignals.PID.ID()+"|c6")
+	require.NotContains(t, got, xidsignals.GPC.ID()+"|c2")
+
 	marker := got[xidsignals.ScanWindow.ID()+"|"]
 	require.NotNil(t, marker)
 	require.Equal(t, xidsignals.WindowBoot, marker.GetValue().GetStringValue())
@@ -135,7 +142,7 @@ func TestMeasureEmitsEventsAndMarker(t *testing.T) {
 	for key, o := range got {
 		require.Equal(t, units[o.GetSignalId()], o.Unit, key)
 	}
-	require.Len(t, got, 2*4+6+2+4+2+1)
+	require.Len(t, got, 2*4+6+2+4+5+2+1)
 }
 
 func TestMeasureCleanScan(t *testing.T) {
