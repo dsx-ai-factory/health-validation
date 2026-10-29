@@ -23,11 +23,13 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	rdmatoposignals "github.com/dsx-ai-factory/health-validation/collect/signals/rdmatopo"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -105,7 +107,8 @@ func MappedSignals() []string {
 	for _, mapped := range mappings {
 		ids = append(ids, mapped.signal.ID())
 	}
-	return append(ids, xidsignals.All().IDs()...)
+	ids = append(ids, xidsignals.All().IDs()...)
+	return append(ids, rdmatoposignals.All().IDs()...)
 }
 
 // MappedSignalsFor returns the mapped collect signal IDs that feed
@@ -113,6 +116,9 @@ func MappedSignals() []string {
 // collect adapter requests what this table maps rather than its own copy.
 // It is empty for a category no mapped signal feeds yet.
 func MappedSignalsFor(category health.Category) []string {
+	if category == health.PCIe {
+		return rdmatoposignals.All().IDs()
+	}
 	if category == health.Xid {
 		return xidsignals.All().IDs()
 	}
@@ -127,6 +133,13 @@ func MappedSignalsFor(category health.Category) []string {
 // catalog's measurement for category to the catalog signals it fills.
 func MappedFeeds(category health.Category) map[string][]string {
 	feeds := make(map[string][]string)
+	if category == health.PCIe {
+		// Findings and evidence are validated together as one invocation.
+		for _, id := range rdmatoposignals.All().IDs() {
+			feeds[id] = pcie.MeasurementSignals()
+		}
+		return feeds
+	}
 	if category == health.Xid {
 		// The Xid measurement is built from all its event fields together,
 		// so each one feeds every Xid catalog signal.

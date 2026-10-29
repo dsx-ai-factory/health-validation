@@ -238,7 +238,7 @@ func TestDisabledCheckIDsTrims(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DisabledCheckIDs: %v", err)
 	}
-	if want := []string{"gpu_count"}; !slices.Equal(got, want) {
+	if want := []string{"gpu_count", "rdma_topo"}; !slices.Equal(got, want) {
 		t.Fatalf("DisabledCheckIDs = %#v, want %#v", got, want)
 	}
 }
