@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -27,6 +28,12 @@ const (
 	ID     = "kernel.kmsg"
 	source = "kmsg"
 )
+
+// SourceErrorOverrun identifies EPIPE in CollectionError.SourceError when no
+// other read failure accompanies it. Records were lost, but subsequent reads
+// can succeed. Stream sources retain this indication for every consumer;
+// consumers may continue measuring while recording the loss.
+const SourceErrorOverrun = "EPIPE"
 
 var errInUse = errors.New("kmsg read already in progress")
 
@@ -117,9 +124,32 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		}
 		failures := &observation.ObservationBatch{}
 		appendErrors(failures, selected, now, category, err.Error())
+		if overrunOnly(err) {
+			for _, reading := range failures.Observations {
+				reading.GetCollectionError().SourceError = SourceErrorOverrun
+			}
+		}
 		batch.Observations = append(failures.Observations, batch.Observations...)
 	}
 	return batch, nil
+}
+
+// Stream.Read joins a sticky EPIPE with a later terminal failure. errors.Is
+// alone would incorrectly label that combined failure as recoverable.
+func overrunOnly(err error) bool {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := joined.Unwrap()
+		for _, cause := range causes {
+			if !overrunOnly(cause) {
+				return false
+			}
+		}
+		return len(causes) > 0
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		return overrunOnly(cause)
+	}
+	return err == syscall.EPIPE
 }
 
 func (s *sensor) measure(ctx context.Context, selected collect.Signals, now *timestamppb.Timestamp) (*observation.ObservationBatch, error) {
