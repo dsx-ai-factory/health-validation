@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
 go_library(
     name = "app",
     srcs = [
@@ -11,7 +13,6 @@ go_library(
         "version.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/app",
-    visibility = ["//visibility:public"],
     deps = [
         "//catalog",
         "//catalog/health",

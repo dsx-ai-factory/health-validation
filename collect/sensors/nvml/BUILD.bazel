@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
 go_library(
     name = "nvml",
     srcs = [
@@ -16,7 +18,6 @@ go_library(
         "temperature.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml",
-    visibility = ["//visibility:public"],
     deps = [
         "//collect",
         "//collect/observation",

@@ -1,10 +1,11 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
 go_library(
     name = "pci",
     srcs = ["sensor.go"],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/sensors/pci",
-    visibility = ["//visibility:public"],
     deps = [
         "//collect",
         "//collect/observation",

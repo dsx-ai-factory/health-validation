@@ -1,10 +1,11 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
 go_library(
     name = "otelmetrics",
     srcs = ["publisher.go"],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/otelmetrics",
-    visibility = ["//visibility:public"],
     deps = [
         "//catalog/health",
         "@io_opentelemetry_go_otel//attribute",

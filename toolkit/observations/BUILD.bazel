@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
 go_library(
     name = "observations",
     srcs = [
@@ -9,7 +11,6 @@ go_library(
         "xid.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/observations",
-    visibility = ["//visibility:public"],
     deps = [
         "//catalog/cpu",
         "//catalog/gpu",

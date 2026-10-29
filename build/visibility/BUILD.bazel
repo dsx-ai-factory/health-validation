@@ -1,0 +1,20 @@
+# Enforces the module layout's dependency direction (catalog → nothing,
+# collect → nothing, toolkit → catalog + collect). catalog is in neither group,
+# so a catalog target that depends on toolkit or collect fails to build.
+
+package_group(
+    name = "toolkit_consumers",
+    packages = [
+        "//agentkit/...",
+        "//toolkit/...",
+    ],
+)
+
+package_group(
+    name = "collect_consumers",
+    packages = [
+        "//agentkit/...",
+        "//collect/...",
+        "//toolkit/...",
+    ],
+)

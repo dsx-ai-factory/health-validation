@@ -4,6 +4,8 @@ load("@rules_go//go:def.bzl", "go_library")
 load("//build/rules/go:defs.bzl", "go_binary")
 load("//build/rules/go:shipped_modules.bzl", "go_linked_modules", "go_shipped_modules")
 
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
 go_library(
     name = "health-validation_lib",
     srcs = ["main.go"],
@@ -26,7 +28,6 @@ go_binary(
     # journalctl (Xid/RDMA link-flap checks) is bind-mounted from the host at
     # runtime instead of bundled here, to avoid tracking systemd's apt churn.
     # See scripts/health-validation-run.sh and docs/integration.md.
-    visibility = ["//visibility:public"],
     # Stamped only under --config=release (see .bazel/release.bazelrc); plain
     # builds leave the version defaults ("dev"). The {STABLE_*} keys are
     # produced by the --workspace_status_command set in .bazel/release.bazelrc.

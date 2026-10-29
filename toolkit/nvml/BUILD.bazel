@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
 go_library(
     name = "nvml",
     srcs = [
@@ -8,7 +10,6 @@ go_library(
         "nvml_backend.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/nvml",
-    visibility = ["//visibility:public"],
     deps = select({
         "@rules_go//go/platform:linux": [
             "//catalog/gpu",

@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
 go_library(
     name = "nvml",
     srcs = [
@@ -9,7 +11,6 @@ go_library(
         "version.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/source/nvml",
-    visibility = ["//visibility:public"],
     deps = [
         "//collect/source/nvml/device",
         "//collect/source/nvml/lib",

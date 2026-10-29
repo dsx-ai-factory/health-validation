@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library")
 
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
 go_library(
     name = "cpu",
     srcs = [
@@ -7,6 +9,5 @@ go_library(
         "signals.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/cpu",
-    visibility = ["//visibility:public"],
     deps = ["//collect"],
 )
