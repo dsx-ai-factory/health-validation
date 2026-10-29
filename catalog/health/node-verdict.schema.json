@@ -48,7 +48,7 @@
       "additionalProperties": { "$ref": "#/$defs/severity" }
     },
     "recommended_action": {
-      "description": "Node-level remediation sequence, chosen from the failing checks at the highest severity by comparing each step's rank in order, with check ID as the final tie-breaker. Omitted when no action is recommended.",
+      "description": "Node-level drain sequence, chosen from the failing checks that recommend drain with at least one step: the highest severity among them wins, then each step's rank in order, then check ID, then action names as a stability fallback. Omitted when no node-level drain sequence is available.",
       "$ref": "#/$defs/recommendedAction"
     },
     "affected_components": {

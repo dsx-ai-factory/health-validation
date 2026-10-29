@@ -166,8 +166,8 @@ func nodeRecommendedAction(verdicts []CheckVerdict) RecommendedAction {
 
 // nodeRemediationOutranks reports whether candidate should replace selected.
 // The higher severity wins; at equal severity, the sequences are compared step
-// by step and the first higher-ranked step wins. Check ID breaks any remaining
-// tie between different checks.
+// by step and the first higher-ranked step wins. Check ID breaks ties between
+// different checks; action names stabilize repeated check IDs.
 func nodeRemediationOutranks(candidate, selected CheckVerdict) bool {
 	if candidate.Severity != selected.Severity {
 		return candidate.Severity > selected.Severity
@@ -175,7 +175,12 @@ func nodeRemediationOutranks(candidate, selected CheckVerdict) bool {
 	if cmp := compareSequenceRank(candidate.RecommendedAction.RemediationActions, selected.RecommendedAction.RemediationActions); cmp != 0 {
 		return cmp < 0
 	}
-	return candidate.CheckID < selected.CheckID
+	if candidate.CheckID != selected.CheckID {
+		return candidate.CheckID < selected.CheckID
+	}
+	// Stability fallback for custom checks that emit different equally ranked
+	// sequences under the same check ID.
+	return slices.Compare(candidate.RecommendedAction.RemediationActions, selected.RecommendedAction.RemediationActions) < 0
 }
 
 // compareSequenceRank compares two sequences step by step by [nodeActionRank],

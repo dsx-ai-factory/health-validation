@@ -347,24 +347,27 @@ validate against the published
 - **`overall_severity`** — the authoritative level (`PASS`/`INFO`/`WARNING`/
   `CRITICAL`/`UNKNOWN`). Gate on this, not only the exit code.
 - **`recommended_action`** — what to do. `NodeVerdict.recommended_action`
-  contains the node-level remediation sequence selected from the failing
-  checks, and each check result retains its own sequence. The field is present
-  **only when there is an action** and **omitted entirely** otherwise, which is the common
-  healthy case. Treat its absence as "no action" and guard for it before
-  reading it. When present it has the form
+  contains the node-level drain sequence selected from eligible failing
+  checks, and each check result retains its own recommendation. The field
+  is present **only when a node-level drain sequence is available** and
+  **omitted entirely** otherwise, including for healthy verdicts and findings
+  that require monitoring but no remediation. Treat its absence as "no
+  node-level drain sequence" and inspect `check_results` for per-check monitor
+  states before deciding what to do. When present it has the form
   `{operational_state, remediation_actions}`, for example
   `{"operational_state":"drain","remediation_actions":["reset_gpu","restart_os","service_required"]}`.
-  - `operational_state` is `monitor` or `drain`. It is never `ready`; that case
-    is the omitted field.
+  - At the node level, `operational_state` is `drain`. Per-check recommendations
+    may instead use `monitor`. `ready` is omitted in both cases.
   - `remediation_actions` is an **ordered sequence** of remediation steps,
     present only when `operational_state` is `drain`. Feed it to your
     remediation engine in order. Its entries are an open string set, not a
     closed enum: this repo's checks use `reset_gpu`, `restart_os`,
     `service_required`, and others, and a custom catalog may add its own. Treat
     an unrecognized value as an opaque step, not an error.
-  - The node-level sequence is selected by higher severity, then by comparing
-    each sequence step's documented action rank in order. Remaining ties use
-    check ID, solely for stable output.
+  - Among eligible drain recommendations, the node-level sequence is selected
+    by higher severity, then by comparing each sequence step's documented
+    action rank in order. Remaining ties use check ID, then action names as a
+    stability fallback for repeated check IDs.
     Actions absent from the ranking, including `hold`, `xid_154`, and custom
     actions, share the lowest rank. Walk `check_results` for the full
     remediation picture, and re-run the whole suite after every attempted

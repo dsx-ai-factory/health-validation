@@ -303,6 +303,14 @@ func TestAggregateNodeVerdict_RecommendedAction(t *testing.T) {
 			want: Drain("custom_b"),
 		},
 		{
+			name: "action name when check ID and ranks tie",
+			verdicts: []CheckVerdict{
+				{CheckID: "custom", Severity: Critical, RecommendedAction: Drain("custom_b")},
+				{CheckID: "custom", Severity: Critical, RecommendedAction: Drain("custom_a")},
+			},
+			want: Drain("custom_a"),
+		},
+		{
 			name: "non-candidates ignored",
 			verdicts: []CheckVerdict{
 				{CheckID: "skipped", Severity: Critical, Skipped: true, RecommendedAction: Drain(RemediationActionServiceRequired)},

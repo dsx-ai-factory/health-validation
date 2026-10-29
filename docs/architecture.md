@@ -85,16 +85,17 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | TraceID | string | `trace_id` | UUID identifying this run; echoed on every `CheckVerdict` it produced. |
 | OverallSeverity | Severity | `overall_severity` | Worst severity across all non-skipped checks. |
 | SeverityByDomain | map[Category]Severity | `severity_by_domain` | Worst severity per hardware category. |
-| RecommendedAction | RecommendedAction | `recommended_action` | Node-level remediation sequence selected from the failing checks at `overall_severity`; elided (`omitzero`) when no action applies. |
+| RecommendedAction | RecommendedAction | `recommended_action` | Node-level drain sequence selected from the highest-severity eligible failing check; elided (`omitzero`) when no node-level drain sequence is available. |
 | CheckResults | []CheckVerdict | `check_results` | Per-check results for checks that ran. |
 | SkippedChecks | []CheckVerdict | `skipped_checks` | Per-check results for checks that were skipped. |
 | AffectedComponents | []AffectedComponent | `affected_components` | Non-PASS domains with their affected entities and check IDs. |
 
-Each `CheckVerdict` retains its own remediation sequence. `NodeVerdict` also
-surfaces one complete sequence, selected by severity, then each remediation
-step's documented rank in sequence order, with check ID as the final
-tie-breaker. Consumers track which steps they have attempted and
-re-run the suite after each step.
+Each `CheckVerdict` retains its own recommendation; drain recommendations carry
+an ordered remediation sequence. `NodeVerdict` also surfaces one complete drain
+sequence, selected from eligible failing checks by severity, then each step's
+documented rank in sequence order, then check ID. Action names provide a final
+stability fallback for repeated check IDs. Consumers track which steps they
+have attempted and re-run the suite after each step.
 
 ### CheckVerdict
 

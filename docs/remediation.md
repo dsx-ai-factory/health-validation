@@ -15,22 +15,28 @@ for the JSON contract. For the field's place in the wider verdict shape, see
 ## How to consume a remediation sequence
 
 `remediation_actions` is ordered from the most preferred (least disruptive) step to the least.
-Each failing check carries its own sequence. `NodeVerdict.recommended_action`
-also surfaces one of those complete sequences as the node-level
-recommendation. Re-run the **whole suite** after every remediation step so the
-recommendation is recalculated from the checks that still fail:
+Each failing check retains its own recommendation; drain recommendations carry
+an ordered sequence. `NodeVerdict.recommended_action` also surfaces one complete
+drain sequence as the node-level recommendation. Re-run the **whole suite**
+after every remediation step so the recommendation is recalculated from the
+checks that still fail:
 
 1. Run `health-validation` (the full suite).
 2. If everything passes, **stop** — the node is healthy.
-3. Otherwise, use the node-level `recommended_action`. It is selected from
-   checks with `operational_state: drain` by, in order:
+3. Otherwise, inspect the node-level `recommended_action`. If it is absent, no
+   automated drain remediation is available; inspect `check_results` for
+   per-check monitor or no-action findings and stop this remediation flow. Do
+   not treat the node as healthy. When present, it is selected from checks with
+   `operational_state: drain` and a nonempty sequence by, in order:
    1. higher severity;
    2. each remediation step's rank, compared in sequence order, using this
       priority from highest to lowest: `service_required`, `update_swfw`,
       `restart_os`, `reset_gpu`, `restart_app`, `check_collection`, and
       `retry_collection` (actions not in this list, including `hold`,
-      `xid_154`, and custom actions, share the lowest rank); and
-   3. the check ID, as the final tie-breaker.
+      `xid_154`, and custom actions, share the lowest rank);
+   3. the check ID; and
+   4. action names in sequence order, as a stability fallback when repeated
+      check IDs remain tied.
 4. Take the next **untried** action from that `remediation_actions` sequence
    based on the steps the consumer has already attempted.
 5. Perform that remediation step against the node.
