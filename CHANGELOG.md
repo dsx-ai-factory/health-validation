@@ -5,6 +5,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Features
+
+- Add the `rdma_topo` check for GB200, GB300, B200, B300, and VR, and the
+  `pcie.rdma_topo` collect sensor for `pcie.rdma_topo.acs_failures`,
+  `pcie.rdma_topo.iommu_group_failures`, and `pcie.rdma_topo.evidence`.
+  Requires `rdma_topo` and Python in the execution environment.
+  ([#242](https://github.com/dsx-ai-factory/health-validation/pull/242))
+
 ## [v0.4.0] - 2026-11-25
 
 Covers everything since `catalog/v0.3.2` and `toolkit/v0.3.2`. Build, CI,

@@ -124,6 +124,15 @@ using it. Its sequence is `restart_os`, then `service_required`.
 | <nobr>`restart_os`</nobr> | Restart the affected node's operating system — a VM reboot on a virtualized GPU, a host-level reboot on bare metal. |
 | <nobr>`service_required`</nobr> | A person needs to investigate the node, for a hardware or a software cause, through your cluster's own service path (your CSP if CSP-managed, or your organization's service process if on-prem). No automated step remains after this one. |
 
+### rdma_topo configuration failures
+
+The `rdma_topo` health check recommends `drain` with `service_required` for
+confirmed ACS or IOMMU-group failures. If running inside a VM, provide the
+reported findings to your infrastructure operator. On bare metal, follow the
+platform guidance to verify NIC ATS settings and correct the reported ACS/IOMMU
+configuration (administrative access is required). Reboot if required by the
+platform procedure, then rerun the full health-validation suite.
+
 ### Domain-hold action
 
 `nvlink_fabric_health` is the one exception to the generic sequence's final

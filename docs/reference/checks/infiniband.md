@@ -36,7 +36,7 @@ Verifies every port (InfiniBand and RoCE alike, unless its link layer is exclude
 - **CRITICAL** when `!(ib_link_layer in excluded_link_layers) && ib_physical_state != expected_ib_physical_state`
   - Message: Port $\{ib_device\}:$\{ib_port\} ($\{ib_link_layer\}): physical state $\{ib_physical_state\}, expected $\{expected_ib_physical_state\}.
 
-**Recommended action:** operational state `drain`, then `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `restart_os` → `service_required`
 
 ## RDMA Link Flap (Fatal)
 
@@ -67,5 +67,5 @@ Detects mlx5 RDMA interface link outages that lasted at least min_outage_seconds
 - **CRITICAL** when `size(outage_durations.filter(d, d >= min_outage_seconds)) >= fatal_flap_threshold`
   - Message: RDMA link outage(s) lasting at least $\{min_outage_seconds\}s reached the fatal-flap threshold of $\{fatal_flap_threshold\}. See flap_events for the affected interfaces.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 

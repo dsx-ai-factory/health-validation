@@ -14,6 +14,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
@@ -30,6 +31,7 @@ func TestBuiltinMeasurementsSignalUniqueness(t *testing.T) {
 		infiniband.PortMeasurement{},
 		node.NodeMeasurement{},
 		nvlink.NVLinkMeasurement{},
+		pcie.RDMATopoMeasurement{},
 		xid.XidMeasurement{},
 	); err != nil {
 		t.Errorf("built-in measurements violate signal-name uniqueness: %v", err)
@@ -50,6 +52,7 @@ func TestBuiltinChecksAreCovered(t *testing.T) {
 		infiniband.PortMeasurement{},
 		node.NodeMeasurement{},
 		nvlink.NVLinkMeasurement{},
+		pcie.RDMATopoMeasurement{},
 		xid.XidMeasurement{},
 	); err != nil {
 		t.Errorf("built-in check has no measurement provider: %v", err)
@@ -160,6 +163,7 @@ func TestBuiltinMeasurementsDerivedSignals(t *testing.T) {
 		infiniband.PortMeasurement{},
 		node.NodeMeasurement{},
 		nvlink.NVLinkMeasurement{},
+		pcie.RDMATopoMeasurement{},
 		xid.XidMeasurement{},
 	); err != nil {
 		t.Errorf("built-in measurements violate the DerivedSignaler contract: %v", err)

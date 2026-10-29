@@ -264,7 +264,8 @@ func (f nodeFixture) journal(lines []string) journal.Runner {
 
 // fixtureApp renders f into an App whose domains come from collect sources.
 func fixtureApp(f nodeFixture) *App {
-	a := New().WithProgramName("test")
+	sensor := healthyRDMATopoSensor()
+	a := New().WithProgramName("test").WithCollect(sensor, sensor.Signals().IDs()...)
 	// A config with overrides is audited to journald first; without a
 	// journal the run would fail closed.
 	var rec datagramRecorder

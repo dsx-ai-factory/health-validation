@@ -35,7 +35,7 @@ Verifies each GPU's one-second average power draw is within the expected range.
 - **CRITICAL** when `average_power_draw_w > max_power_w`
   - Message: GPU $\{gpu_id\}: average power draw $\{average_power_draw_w\} W is above maximum $\{max_power_w\} W.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 
 ## GPU Compute Apps
 
@@ -59,7 +59,7 @@ Fails when any compute process still holds a GPU.
 - **CRITICAL** when `compute_process_count > 0`
   - Message: GPU $\{gpu_id\}: $\{compute_process_count\} compute process(es) still holding the GPU: $\{compute_process_cmdlines\}
 
-**Recommended action:** operational state `drain`, then `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `restart_os` → `service_required`
 
 ## GPU Performance State
 
@@ -90,7 +90,7 @@ Verifies each GPU is operating within the accepted performance state range.
 - **CRITICAL** when `gpu_pstate != max_performance_pstate && !(gpu_pstate >= max_performance_pstate && gpu_pstate <= min_performance_pstate)`
   - Message: GPU $\{gpu_id\}: performance state P$\{gpu_pstate\}, expected P$\{max_performance_pstate\} to P$\{min_performance_pstate\}.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 
 ## GPU Power Limit
 
@@ -122,7 +122,7 @@ Verifies each GPU's current and enforced power limits.
 - **CRITICAL** when `enforced_power_limit_w != expected_power_limit_w`
   - Message: GPU $\{gpu_id\}: enforced power limit $\{enforced_power_limit_w\} W, expected $\{expected_power_limit_w\} W.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 
 ## GPU Sensor Throttle
 
@@ -150,5 +150,5 @@ Monitors GPU hardware throttling via NVML clocks-event-reasons. Active hardware 
 - **CRITICAL** when `hw_slowdown == true`
   - Message: GPU $\{gpu_id\}: hardware slowdown is active. GPU is being clamped by hardware protection logic.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 
