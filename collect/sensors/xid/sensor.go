@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package xid is the journal-backed Xid sensor for one-shot collection. It
-// reads the current boot's systemd journal, optionally filtering Xids by global
-// and per-GPU time bounds. Without bounds, it evaluates the entire current boot.
-// The kernel ring buffer (/dev/kmsg) can evict records needed for that history.
+// Package xid collects parsed Xid facts from the journal or kernel records.
+// The journal sensor supports boot history and time bounds. The kmsg sensor
+// supports a caller-owned stream, whose retained window can evict old records.
 package xid
 
 import (
@@ -129,6 +128,12 @@ func (s *scan) entry(e journal.Entry) error {
 			s.observations = append(s.observations, value(definition, target(), s.at, v))
 		}
 	}
+	addEvent(event, add)
+	return nil
+}
+
+// addEvent emits the same parsed facts for journal and kernel sources.
+func addEvent(event xidsignals.Event, add func(collect.Signal, *observation.Value)) {
 	add(xidsignals.Code, intValue(event.Code))
 	add(xidsignals.PCIAddress, stringValue(event.PCIAddress))
 	if event.HasPID {
@@ -166,7 +171,6 @@ func (s *scan) entry(e journal.Entry) error {
 		add(xidsignals.RecoveryActionToCode, stringValue(r.ToCode))
 		add(xidsignals.RecoveryActionToName, stringValue(r.ToName))
 	}
-	return nil
 }
 
 // parseFailure records a parse error on the entry's code. When the code is
