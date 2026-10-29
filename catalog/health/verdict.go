@@ -167,7 +167,7 @@ func nodeRecommendedAction(verdicts []CheckVerdict) RecommendedAction {
 // nodeRemediationOutranks reports whether candidate should replace selected.
 // The higher severity wins; at equal severity, the sequences are compared step
 // by step and the first higher-ranked step wins. Check ID breaks any remaining
-// tie so the result does not depend on input order.
+// tie between different checks.
 func nodeRemediationOutranks(candidate, selected CheckVerdict) bool {
 	if candidate.Severity != selected.Severity {
 		return candidate.Severity > selected.Severity
@@ -199,7 +199,7 @@ func compareSequenceRank(a, b []RemediationAction) int {
 }
 
 // nodeActionPriority lists built-in actions from highest to lowest node-level
-// priority. Actions absent from this list are deliberately unranked.
+// priority. Actions absent from this list are unranked.
 var nodeActionPriority = []RemediationAction{
 	RemediationActionServiceRequired,
 	RemediationActionUpdateSWFW,
