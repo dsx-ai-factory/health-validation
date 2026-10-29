@@ -126,6 +126,48 @@ func TestNVLinkBandwidthCountSpeed(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
+			// VR200 GPUs expose 36 links at 41000 MB/s each.
+			name: "VR200 passes with 36 links at its own speed",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("VR200"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.NVLinkMeasurement{GPUID: "GPU-0", LinkCount: 36, SpeedMBytesPerSec: 41000}
+			},
+			wantSeverity: health.Pass,
+		},
+		{
+			name: "VR200 link shortfall",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("VR200"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.NVLinkMeasurement{GPUID: "GPU-0", LinkCount: 35, SpeedMBytesPerSec: 41000}
+			},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "36", "35"},
+		},
+		{
+			name: "VR200 speed mismatch",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("VR200"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.NVLinkMeasurement{GPUID: "GPU-0", LinkCount: 36, SpeedMBytesPerSec: 20500}
+			},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "41000", "20500"},
+		},
+		{
 			// A GPU whose link count could not be collected propagates to
 			// Critical regardless of the rule, since the data the check
 			// needs is unavailable.
