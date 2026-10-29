@@ -346,11 +346,12 @@ validate against the published
   and disabled checks do not change this value.
 - **`overall_severity`** — the authoritative level (`PASS`/`INFO`/`WARNING`/
   `CRITICAL`/`UNKNOWN`). Gate on this, not only the exit code.
-- **`recommended_action`** (on each check result; `NodeVerdict` carries no
-  node-level `recommended_action`) — what to do. It is present **only when
-  there is an action** and **omitted entirely** otherwise, which is the common
+- **`recommended_action`** — what to do. `NodeVerdict.recommended_action`
+  contains the node-level remediation sequence selected from the failing
+  checks, and each check result retains its own sequence. The field is present
+  **only when there is an action** and **omitted entirely** otherwise, which is the common
   healthy case. Treat its absence as "no action" and guard for it before
-  reading into it. When present it has the form
+  reading it. When present it has the form
   `{operational_state, remediation_actions}`, for example
   `{"operational_state":"drain","remediation_actions":["reset_gpu","restart_os","service_required"]}`.
   - `operational_state` is `monitor` or `drain`. It is never `ready`; that case
@@ -361,12 +362,14 @@ validate against the published
     closed enum: this repo's checks use `reset_gpu`, `restart_os`,
     `service_required`, and others, and a custom catalog may add its own. Treat
     an unrecognized value as an opaque step, not an error.
-  - Each check carries its own remediation sequence, and nothing ranks them at
-    the node level, so walk `check_results` for the full remediation picture.
-    See [Remediation Actions](/health-validation/operating/remediation) for the
-    action catalog and how to work through several failing checks. In short,
-    re-run the whole suite after each step; a `service_required` step, then
-    severity, decides which failing check to act on next.
+  - The node-level sequence is selected by higher severity, then by comparing
+    each sequence step's documented action rank in order. Remaining ties use
+    check ID, solely for stable output.
+    Actions absent from the ranking, including `hold`, `xid_154`, and custom
+    actions, share the lowest rank. Walk `check_results` for the full
+    remediation picture, and re-run the whole suite after every attempted
+    step. See [Remediation Actions](/health-validation/operating/remediation)
+    for the complete ordering and action catalog.
 - **`affected_components`** / **`severity_by_domain`** — which domain and which
   `check_ids`/entities failed, so you route (GPU vs NVLink vs Xid) without
   re-parsing every result.

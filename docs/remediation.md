@@ -15,29 +15,24 @@ for the JSON contract. For the field's place in the wider verdict shape, see
 ## How to consume a remediation sequence
 
 `remediation_actions` is ordered from the most preferred (least disruptive) step to the least.
-`NodeVerdict` does not carry a single node-level remediation sequence (see
-[Architecture](/health-validation/getting-started/architecture#nodeverdict)) — each failing check
-carries its own — so when more than one check is failing, don't work through
-them in isolation. Instead, re-run the **whole suite** after
-every remediation step, and each time pick the single next action to perform
-by weighing the current set of failing checks against each other:
+Each failing check carries its own sequence. `NodeVerdict.recommended_action`
+also surfaces one of those complete sequences as the node-level
+recommendation. Re-run the **whole suite** after every remediation step so the
+recommendation is recalculated from the checks that still fail:
 
 1. Run `health-validation` (the full suite).
 2. If everything passes, **stop** — the node is healthy.
-3. Otherwise, look at every currently-failing check with `operational_state:
-   drain` and choose which one to act on next:
-   - **A check whose next remediation step is `service_required` takes
-     precedence over everything else**, regardless of the other failing
-     checks' severity. No automated step is left to try for it, so get a
-     human involved before spending time on other checks' actions.
-   - Otherwise, **the highest-severity failing check takes precedence**
-     (`CRITICAL` before `WARNING`). Among checks tied at the same severity,
-     use judgment — e.g. prefer the action that's also recommended by the
-     most checks, or the least disruptive one, since clearing it may clear
-     others too.
-4. Take the next **untried** action from that check's `remediation_actions`
-   (the first one, the first time you act on that check; the next one after
-   that, if you already tried its earlier steps and it's still failing).
+3. Otherwise, use the node-level `recommended_action`. It is selected from
+   checks with `operational_state: drain` by, in order:
+   1. higher severity;
+   2. each remediation step's rank, compared in sequence order, using this
+      priority from highest to lowest: `service_required`, `update_swfw`,
+      `restart_os`, `reset_gpu`, `restart_app`, `check_collection`, and
+      `retry_collection` (actions not in this list, including `hold`,
+      `xid_154`, and custom actions, share the lowest rank); and
+   3. the check ID, as the final tie-breaker.
+4. Take the next **untried** action from that `remediation_actions` sequence
+   based on the steps the consumer has already attempted.
 5. Perform that remediation step against the node.
 6. Go back to step 1 and re-run the **whole suite**, not just the check you
    acted on. One action can clear several checks (for example, several checks

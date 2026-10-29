@@ -4,6 +4,7 @@
 package health
 
 import (
+	"slices"
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/internal/version"
@@ -52,7 +53,7 @@ type CheckVerdict struct {
 // change to the NodeVerdict JSON shape (removed fields, renamed fields,
 // changed semantics); increment MINOR for additive fields, enum values, or
 // outcomes. When this changes, update catalog/health/node-verdict.schema.json to match.
-const NodeVerdictSchemaVersion = "0.3"
+const NodeVerdictSchemaVersion = "0.4"
 
 // NodeVerdict aggregates per-check verdicts into a node-level
 // health assessment.
@@ -66,6 +67,7 @@ type NodeVerdict struct {
 	AffectedComponents []AffectedComponent   `json:"affected_components,omitempty"`
 	CheckResults       []CheckVerdict        `json:"check_results"`
 	SkippedChecks      []CheckVerdict        `json:"skipped_checks,omitempty"`
+	RecommendedAction  RecommendedAction     `json:"recommended_action,omitzero"`
 	OverallSeverity    Severity              `json:"overall_severity"`
 }
 
@@ -122,6 +124,7 @@ func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 			domainEntities[v.Category] = append(domainEntities[v.Category], v.AffectedEntities...)
 		}
 	}
+	nv.RecommendedAction = nodeRecommendedAction(nv.CheckResults)
 
 	for domain, sev := range nv.SeverityByDomain {
 		if sev > Pass {
@@ -135,4 +138,86 @@ func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 	}
 
 	return nv
+}
+
+// nodeRecommendedAction selects one check's complete remediation sequence for
+// the node. Severity wins first, then remediation steps are compared by their
+// documented ranks in sequence order.
+func nodeRecommendedAction(verdicts []CheckVerdict) RecommendedAction {
+	var selected *CheckVerdict
+	for i := range verdicts {
+		candidate := &verdicts[i]
+		if candidate.RecommendedAction.OperationalState != OperationalDrain ||
+			len(candidate.RecommendedAction.RemediationActions) == 0 {
+			continue
+		}
+		if selected == nil || nodeRemediationOutranks(*candidate, *selected) {
+			selected = candidate
+		}
+	}
+	if selected == nil {
+		return NoAction
+	}
+
+	action := selected.RecommendedAction
+	action.RemediationActions = slices.Clone(action.RemediationActions)
+	return action
+}
+
+// nodeRemediationOutranks reports whether candidate should replace selected.
+// The higher severity wins; at equal severity, the sequences are compared step
+// by step and the first higher-ranked step wins. Check ID breaks any remaining
+// tie so the result does not depend on input order.
+func nodeRemediationOutranks(candidate, selected CheckVerdict) bool {
+	if candidate.Severity != selected.Severity {
+		return candidate.Severity > selected.Severity
+	}
+	if cmp := compareSequenceRank(candidate.RecommendedAction.RemediationActions, selected.RecommendedAction.RemediationActions); cmp != 0 {
+		return cmp < 0
+	}
+	return candidate.CheckID < selected.CheckID
+}
+
+// compareSequenceRank compares two sequences step by step by [nodeActionRank],
+// returning a negative value when a outranks b at the first differing step. A
+// sequence that has ended ranks below any remaining step, since a further step
+// says the earlier ones may not clear the fault.
+func compareSequenceRank(a, b []RemediationAction) int {
+	for i := range max(len(a), len(b)) {
+		aRank, bRank := len(nodeActionPriority)+1, len(nodeActionPriority)+1
+		if i < len(a) {
+			aRank = nodeActionRank(a[i])
+		}
+		if i < len(b) {
+			bRank = nodeActionRank(b[i])
+		}
+		if aRank != bRank {
+			return aRank - bRank
+		}
+	}
+	return 0
+}
+
+// nodeActionPriority lists built-in actions from highest to lowest node-level
+// priority. Actions absent from this list are deliberately unranked.
+var nodeActionPriority = []RemediationAction{
+	RemediationActionServiceRequired,
+	RemediationActionUpdateSWFW,
+	RemediationActionRestartOS,
+	RemediationActionResetGPU,
+	RemediationActionRestartApp,
+	RemediationActionCheckCollection,
+	RemediationActionRetryCollection,
+}
+
+// nodeActionRank returns an action's rank for step-by-step sequence comparison.
+// Unranked actions share the value len(nodeActionPriority) and fall through to
+// the stable verdict tie-breakers when every sequence step has the same rank.
+func nodeActionRank(action RemediationAction) int {
+	for rank, rankedAction := range nodeActionPriority {
+		if action == rankedAction {
+			return rank
+		}
+	}
+	return len(nodeActionPriority)
 }

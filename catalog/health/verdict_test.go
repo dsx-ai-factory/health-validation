@@ -5,6 +5,7 @@ package health
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 )
@@ -247,6 +248,136 @@ func TestAggregateNodeVerdict_Basic(t *testing.T) {
 	}
 	if nv.SeverityByDomain[NVLink] != Critical {
 		t.Errorf("nvlink domain severity = %v, want CRITICAL", nv.SeverityByDomain[NVLink])
+	}
+}
+
+func TestAggregateNodeVerdict_RecommendedAction(t *testing.T) {
+	tests := []struct {
+		name     string
+		verdicts []CheckVerdict
+		want     RecommendedAction
+	}{
+		{
+			name: "severity before action",
+			verdicts: []CheckVerdict{
+				{CheckID: "warning-service", Severity: Warning, RecommendedAction: Drain(RemediationActionServiceRequired)},
+				{CheckID: "critical-reset", Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU, RemediationActionServiceRequired)},
+			},
+			want: Drain(RemediationActionResetGPU, RemediationActionServiceRequired),
+		},
+		{
+			name: "first action priority",
+			verdicts: []CheckVerdict{
+				{CheckID: "retry", Severity: Critical, RecommendedAction: Drain(RemediationActionRetryCollection)},
+				{CheckID: "collection", Severity: Critical, RecommendedAction: Drain(RemediationActionCheckCollection)},
+				{CheckID: "app", Severity: Critical, RecommendedAction: Drain(RemediationActionRestartApp)},
+				{CheckID: "reset", Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU)},
+				{CheckID: "update", Severity: Critical, RecommendedAction: Drain(RemediationActionUpdateSWFW)},
+				{CheckID: "restart", Severity: Critical, RecommendedAction: Drain(RemediationActionRestartOS)},
+				{CheckID: "service", Severity: Critical, RecommendedAction: Drain(RemediationActionServiceRequired)},
+			},
+			want: Drain(RemediationActionServiceRequired),
+		},
+		{
+			name: "later step rank before check ID",
+			verdicts: []CheckVerdict{
+				{CheckID: "alpha", Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU, RemediationActionRestartOS, RemediationActionServiceRequired)},
+				{CheckID: "zeta", Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU, RemediationActionServiceRequired)},
+			},
+			want: Drain(RemediationActionResetGPU, RemediationActionServiceRequired),
+		},
+		{
+			name: "longer sequence outranks its prefix",
+			verdicts: []CheckVerdict{
+				{CheckID: "alpha", Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU)},
+				{CheckID: "zeta", Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU, RemediationActionServiceRequired)},
+			},
+			want: Drain(RemediationActionResetGPU, RemediationActionServiceRequired),
+		},
+		{
+			name: "check ID when ranks tie",
+			verdicts: []CheckVerdict{
+				{CheckID: "zeta", Severity: Critical, RecommendedAction: Drain("custom_a")},
+				{CheckID: "alpha", Severity: Critical, RecommendedAction: Drain("custom_b")},
+			},
+			want: Drain("custom_b"),
+		},
+		{
+			name: "non-candidates ignored",
+			verdicts: []CheckVerdict{
+				{CheckID: "skipped", Severity: Critical, Skipped: true, RecommendedAction: Drain(RemediationActionServiceRequired)},
+				{CheckID: "monitor", Severity: Critical, RecommendedAction: Monitor},
+				{CheckID: "empty", Severity: Critical, RecommendedAction: Drain()},
+				{CheckID: "warning", Severity: Warning, RecommendedAction: Drain(RemediationActionRestartApp)},
+			},
+			want: Drain(RemediationActionRestartApp),
+		},
+		{
+			name: "no recommendation",
+			verdicts: []CheckVerdict{
+				{CheckID: "pass", Severity: Pass},
+				{CheckID: "monitor", Severity: Info, RecommendedAction: Monitor},
+			},
+			want: NoAction,
+		},
+		{
+			name: "unranked action remains eligible",
+			verdicts: []CheckVerdict{
+				{CheckID: "xid-154", Severity: Info, RecommendedAction: Drain(RemediationActionXid154)},
+			},
+			want: Drain(RemediationActionXid154),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := AggregateNodeVerdict(tt.verdicts).RecommendedAction
+			if !got.Equal(tt.want) {
+				t.Errorf("RecommendedAction = %v, want %v", got, tt.want)
+			}
+
+			reversed := slices.Clone(tt.verdicts)
+			slices.Reverse(reversed)
+			gotReversed := AggregateNodeVerdict(reversed).RecommendedAction
+			if !gotReversed.Equal(tt.want) {
+				t.Errorf("RecommendedAction with reversed input = %v, want %v", gotReversed, tt.want)
+			}
+		})
+	}
+}
+
+func TestAggregateNodeVerdict_RecommendedActionDoesNotAliasCheck(t *testing.T) {
+	action := Drain(RemediationActionResetGPU, RemediationActionServiceRequired)
+	nv := AggregateNodeVerdict([]CheckVerdict{{
+		CheckID:           "check",
+		Severity:          Critical,
+		RecommendedAction: action,
+	}})
+	nv.RecommendedAction.RemediationActions[0] = RemediationActionRestartOS
+	if got := action.RemediationActions[0]; got != RemediationActionResetGPU {
+		t.Errorf("check action mutated to %q", got)
+	}
+}
+
+func TestNodeActionRank(t *testing.T) {
+	actions := []RemediationAction{
+		RemediationActionServiceRequired,
+		RemediationActionUpdateSWFW,
+		RemediationActionRestartOS,
+		RemediationActionResetGPU,
+		RemediationActionRestartApp,
+		RemediationActionCheckCollection,
+		RemediationActionRetryCollection,
+	}
+	for i := 1; i < len(actions); i++ {
+		if higher, lower := nodeActionRank(actions[i-1]), nodeActionRank(actions[i]); higher >= lower {
+			t.Errorf("rank(%q) = %d, want less than rank(%q) = %d", actions[i-1], higher, actions[i], lower)
+		}
+	}
+	for _, action := range []RemediationAction{RemediationActionHold, RemediationActionXid154, "custom"} {
+		if got := nodeActionRank(action); got != len(nodeActionPriority) {
+			t.Errorf("rank(%q) = %d, want unranked value %d", action, got, len(nodeActionPriority))
+		}
 	}
 }
 
