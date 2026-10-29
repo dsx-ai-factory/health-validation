@@ -66,7 +66,8 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 	if err := checkEntities(cd, []observed{o}); err != nil {
 		return health.CheckVerdict{}, err
 	}
-	return e.evaluateAgainst(cd, o.signals, o.errs, o.entity, p, now)
+	scoper, _ := o.m.(health.ObservedValuesScoper)
+	return e.evaluateAgainst(cd, o.signals, scoper, o.errs, o.entity, p, now)
 }
 
 // observed is one measurement with everything evaluation reads from it
@@ -198,7 +199,8 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 			}
 			matched = true
 
-			v, err := e.evaluateAgainst(cd, o.signals, o.errs, o.entity, p, now)
+			scoper, _ := o.m.(health.ObservedValuesScoper)
+			v, err := e.evaluateAgainst(cd, o.signals, scoper, o.errs, o.entity, p, now)
 			if err != nil {
 				return nil, fmt.Errorf("evaluating %q: %w", id, err)
 			}
@@ -393,7 +395,7 @@ func checkLevelSkip(cd *health.CheckDefinition, p Params, now time.Time) (health
 // confirmed the measurement [routes] to the check, so this is the pure
 // data path. entity names the measurement's subject (see
 // [health.EntityIdentifier]) and is empty for host-wide measurements.
-func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals map[string]any, errs []health.ErroredMeasurement, entity string, p Params, now time.Time) (health.CheckVerdict, error) {
+func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals map[string]any, scoper health.ObservedValuesScoper, errs []health.ErroredMeasurement, entity string, p Params, now time.Time) (health.CheckVerdict, error) {
 	// If any of the sensor's per-field failures cover a signal the
 	// check requires, report the check as Unknown rather
 	// than running CEL against a zero value where a real measurement
@@ -465,7 +467,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		action = topRuleAction
 	}
 
-	observed := observedValues(cd, signals)
+	observed := observedValues(cd, signals, scoper)
 	if !anyMatched {
 		// No rule matched; check passes.
 		v := verdictFor(cd, now)
@@ -489,13 +491,18 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 
 // observedValues limits signals to the ones cd requires. A sibling field the
 // check never read may be unfed (narrowed collection, unmapped or failed
-// signal), and its zero value would read as a real measurement.
-func observedValues(cd *health.CheckDefinition, signals map[string]any) map[string]any {
+// signal), and its zero value would read as a real measurement. A
+// measurement that implements [health.ObservedValuesScoper] then narrows the
+// result to the check's own part.
+func observedValues(cd *health.CheckDefinition, signals map[string]any, scoper health.ObservedValuesScoper) map[string]any {
 	out := make(map[string]any, len(cd.RequiredSignals))
 	for _, name := range cd.RequiredSignals {
 		if v, ok := signals[name]; ok {
 			out[name] = v
 		}
+	}
+	if scoper != nil {
+		return scoper.ScopeObservedValues(cd.ID, out)
 	}
 	return out
 }

@@ -836,45 +836,118 @@ func TestXidErrors_WorstSeverityWins(t *testing.T) {
 	}
 }
 
-func TestXidErrors_Xid13ReportsGraphicsUnit(t *testing.T) {
-	// The Xid 13 verdict carries the events, so a consumer sees which
-	// GPC/TPC/SM faulted. An ESR line names no unit and its event has none.
+func TestXidErrors_EveryCheckReportsItsOwnEvents(t *testing.T) {
+	// No check is on code 9999, so every built-in check scopes away each
+	// signal it reports; a check the measurement did not recognise would
+	// get them back unchanged. Like evaluation, each check is given only
+	// its required signals.
+	foreign := map[string]any{
+		xid.SignalEvents:           []xid.XidEvent{{PCIAddress: "0000:01:00", XidCode: 9999}},
+		xid.SignalXidCounts:        map[int64]int64{9999: 1},
+		xid.SignalFatalXidCounts:   map[int64]int64{9999: 1},
+		xid.SignalSubXidCodeCounts: map[string]int64{"9999.1": 1},
+	}
+	for _, cd := range xid.Checks() {
+		if !slices.Contains(cd.RequiredSignals, xid.SignalEvents) {
+			t.Errorf("%s RequiredSignals = %v, want %s included", cd.ID, cd.RequiredSignals, xid.SignalEvents)
+		}
+		observed := map[string]any{}
+		for _, name := range cd.RequiredSignals {
+			observed[name] = foreign[name]
+		}
+		scoped := xid.XidMeasurement{}.ScopeObservedValues(cd.ID, observed)
+		for name, value := range scoped {
+			if got, err := json.Marshal(value); err != nil || string(got) != "null" {
+				t.Errorf("%s %s = %s, want null", cd.ID, name, got)
+			}
+		}
+	}
+}
+
+func TestXidErrors_VerdictScopesAndGroupsEvents(t *testing.T) {
+	// One line for each kind of check, with the Xid 13 SM exception logged
+	// twice. Each verdict reports only its own events and counts, with the
+	// repeated line grouped; a check with nothing of its own reports null.
+	unit := xid.XidEvent{
+		PCIAddress: "0000:89:00", XidCode: 13, GPC: new(int64(1)), TPC: new(int64(3)), SM: new(int64(0)),
+		Message: "NVRM: Xid (PCI:0000:89:00): 13, Graphics SM Warp Exception on (GPC 1, TPC 3, SM 0): Out Of Range Address",
+	}
+	esr := xid.XidEvent{
+		PCIAddress: "0000:89:00", XidCode: 13,
+		Message: "NVRM: Xid (PCI:0000:89:00): 13, Graphics Exception: ESR 0x54e730=0xc12000e 0x54e734=0x24",
+	}
+	ecc := xid.XidEvent{
+		PCIAddress: "0000:8a:00", XidCode: 48, Pid: 1234, ProcessName: "python3",
+		Message: "NVRM: Xid (PCI:0000:8a:00): 48, pid=1234, name=python3, An uncorrectable double bit error (DBE) has been detected on GPU in the framebuffer at partition 0, subpartition 0.",
+	}
+	link := xid.XidEvent{
+		PCIAddress: "0018:01:00", XidCode: 149,
+		NVLink5: &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: intrInfoForSubXidCode("149.4"), Fatal: true, Link: 8},
+		Message: "NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (" + intrInfoForSubXidCode("149.4") + ")",
+	}
+	recovery := xid.XidEvent{
+		PCIAddress: "0000:89:00", XidCode: 154,
+		Message: "NVRM: Xid (PCI:0000:89:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
+	}
 	m := xid.XidMeasurement{
-		Since:      "boot",
-		XidCounts:  map[int64]int64{13: 2},
-		EventCount: 2,
-		Events: []xid.XidEvent{
-			{PCIAddress: "0000:89:00", XidCode: 13, GPC: new(int64(1)), TPC: new(int64(3)), SM: new(int64(0))},
-			{PCIAddress: "0000:89:00", XidCode: 13},
-		},
+		Since:          "boot",
+		XidCounts:      map[int64]int64{13: 3, 48: 1, 149: 1, 154: 1},
+		FatalXidCounts: map[int64]int64{149: 1},
+		Events:         []xid.XidEvent{unit, esr, unit, ecc, link, recovery},
+		EventCount:     6,
 	}
 	nv, err := xidCatalog(t).EvaluateAll(m)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	var observed, otherObserved map[string]any
-	for _, v := range nv.CheckResults {
-		switch v.CheckID {
-		case "gpu_xid_13":
-			if v.Severity != health.Warning {
-				t.Errorf("gpu_xid_13 Severity = %v, want WARNING", v.Severity)
-			}
-			observed = v.ObservedValues
-		case "gpu_xid_11":
-			otherObserved = v.ObservedValues
+	grouped := func(e xid.XidEvent, count int64) xid.XidEvent {
+		e.Count = count
+		return e
+	}
+	tests := []struct {
+		want    map[string]any
+		checkID string
+	}{
+		{checkID: "gpu_xid_13", want: map[string]any{
+			"events":     []xid.XidEvent{grouped(unit, 2), grouped(esr, 1)},
+			"xid_counts": map[int64]int64{13: 3},
+		}},
+		{checkID: "gpu_xid_48", want: map[string]any{
+			"events":     []xid.XidEvent{grouped(ecc, 1)},
+			"xid_counts": map[int64]int64{48: 1},
+		}},
+		{checkID: "gpu_xid_149", want: map[string]any{
+			"events":           []xid.XidEvent{grouped(link, 1)},
+			"xid_counts":       map[int64]int64{149: 1},
+			"fatal_xid_counts": map[int64]int64{149: 1},
+		}},
+		{checkID: "gpu_xid_149_4", want: map[string]any{
+			"events":              []xid.XidEvent{grouped(link, 1)},
+			"sub_xid_code_counts": map[string]int64{"149.4": 1},
+		}},
+		{checkID: "gpu_xid_154", want: map[string]any{
+			"events":     []xid.XidEvent{grouped(recovery, 1)},
+			"xid_counts": map[int64]int64{154: 1},
+		}},
+		{checkID: "gpu_xid_79", want: map[string]any{"events": nil, "xid_counts": nil}},
+	}
+	for _, test := range tests {
+		v, ok := checkResult(nv, test.checkID)
+		if !ok {
+			t.Errorf("%s verdict not found", test.checkID)
+			continue
 		}
-	}
-	got, err := json.Marshal(observed[xid.SignalEvents])
-	if err != nil {
-		t.Fatalf("marshal events: %v", err)
-	}
-	want := `[{"gpc":1,"tpc":3,"sm":0,"process_name":"","pci_address":"0000:89:00","xid_code":13,"pid":0},` +
-		`{"process_name":"","pci_address":"0000:89:00","xid_code":13,"pid":0}]`
-	if string(got) != want {
-		t.Errorf("gpu_xid_13 observed events = %s, want %s", got, want)
-	}
-	if _, ok := otherObserved[xid.SignalEvents]; ok {
-		t.Errorf("gpu_xid_11 observed values include events: %v", otherObserved)
+		got, err := json.Marshal(v.ObservedValues)
+		if err != nil {
+			t.Fatalf("marshal %s observed values: %v", test.checkID, err)
+		}
+		want, err := json.Marshal(test.want)
+		if err != nil {
+			t.Fatalf("marshal %s want: %v", test.checkID, err)
+		}
+		if string(got) != string(want) {
+			t.Errorf("%s observed values =\n%s\nwant\n%s", test.checkID, got, want)
+		}
 	}
 }
 
