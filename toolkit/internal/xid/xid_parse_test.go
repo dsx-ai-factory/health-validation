@@ -99,12 +99,18 @@ func TestParseXid_WithJournalPrefix(t *testing.T) {
 // marker onward, whatever the format and prefix, as the collect parser does.
 func TestParseXid_Message(t *testing.T) {
 	tests := []struct{ line, want string }{
-		{"Jun 09 12:00:00 node1 kernel: NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
-			"NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app"},
-		{"[30.000000] NVRM: Xid (PCI:0000:01:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus. ",
-			"NVRM: Xid (PCI:0000:01:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus."},
-		{"NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)",
-			"NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)"},
+		{
+			"Jun 09 12:00:00 node1 kernel: NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
+			"NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
+		},
+		{
+			"[30.000000] NVRM: Xid (PCI:0000:01:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus. ",
+			"NVRM: Xid (PCI:0000:01:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus.",
+		},
+		{
+			"NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)",
+			"NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)",
+		},
 	}
 	for _, test := range tests {
 		m := xid.ParseXid("boot", []string{test.line})
