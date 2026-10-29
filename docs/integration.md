@@ -75,7 +75,7 @@ docker run --rm \
   -v /run/log/journal:/run/log/journal:ro \
   -v /var/log/journal:/var/log/journal:ro \
   -v /etc/machine-id:/etc/machine-id:ro \
-  -v /run/systemd/journal/socket:/run/systemd/journal/socket:ro \
+  --mount type=bind,source=/run/systemd/journal/socket,target=/run/systemd/journal/socket,readonly \
   -v /usr/bin/journalctl:/usr/bin/journalctl:ro \
   -v <journalctl ldd dependencies, one -v per .so, excluding libc/libpthread/libm> \
   ghcr.io/dsx-ai-factory/health-validation:<tag> \
@@ -92,7 +92,7 @@ docker run --rm \
 - The journald socket mount is needed when `run --config` overrides
   thresholds: each override is recorded in the host journal, and the run exits
   `2` if it cannot be. A read-only bind still lets the tool send entries.
-  `collect` does not need it.
+  Leave it out when you pass no overrides; `collect` does not need it.
 
 The wrapper includes the complete mount set for journal-backed checks;
 `gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host. The
@@ -525,13 +525,15 @@ Read them with:
 journalctl MESSAGE_ID=e5a478e586994730854b18982d557053 -o json
 ```
 
-Entries carry no verdict trace ID; match them to a verdict by host
-(`_HOSTNAME`) and time.
+Entries carry no run or verdict ID, so matching them to a verdict by host
+(`_HOSTNAME`) and time is approximate when runs overlap or a failed run left
+entries.
 
 health-validation only sends entries to journald's socket and never opens the
 journal files for writing, so it cannot alter or remove an entry once written.
-This does not protect entries from host root; enable Forward Secure Sealing
-(`journalctl --setup-keys`, then `journalctl --verify`) to detect tampering.
+This does not protect entries from host root. To detect tampering, enable
+Forward Secure Sealing with `journalctl --setup-keys`, keep the verification key
+it prints off the host, and check with `journalctl --verify --verify-key=KEY`.
 journald can also drop an entry after accepting it, for example under rate
 limiting or when its storage is full.
 
