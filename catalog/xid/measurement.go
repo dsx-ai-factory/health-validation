@@ -41,14 +41,20 @@ var measurementSignals = []string{
 // The returned slice is a copy.
 func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 
-// XidEvent is a single parsed "NVRM: Xid …" log line. Pid and
-// ProcessName are populated only when the driver attributed the fault
-// to a process; some Xid lines carry neither. NVLink5 is populated only
-// for the NVLink5/NVSwitch fault family (Xid 144-150), which carries a
-// sub-component and severity instead of pid/name. GPC, TPC, and SM are
-// the graphics unit an Xid 13 exception names, all nil when the line
-// does not name one.
+// XidEvent is a single parsed "NVRM: Xid …" log line. Message is the
+// line from its "NVRM: Xid" marker onward, as the driver logged it. Pid
+// and ProcessName are populated only when the driver attributed the
+// fault to a process; some Xid lines carry neither. NVLink5 is populated
+// only for the NVLink5/NVSwitch fault family (Xid 144-150), which
+// carries a sub-component and severity instead of pid/name. GPC, TPC,
+// and SM are the graphics unit an Xid 13 exception names, all nil when
+// the line does not name one.
+//
+// Count is set only in verdict output, where identical events are
+// grouped (see [XidMeasurement.ScopeObservedValues]); a measurement
+// holds one event per line and leaves it zero.
 type XidEvent struct {
+<<<<<<< HEAD
 	NVLink5        *NVLink5Detail  `json:"nvlink5,omitempty"`
 	RecoveryAction *RecoveryAction `json:"recovery_action,omitempty"`
 	GPC            *int64          `json:"gpc,omitempty"`
@@ -81,6 +87,18 @@ type RecoveryAction struct {
 	FromName string `json:"from_name"`
 	ToCode   string `json:"to_code"`
 	ToName   string `json:"to_name"`
+=======
+	NVLink5     *NVLink5Detail `json:"nvlink5,omitempty"`
+	GPC         *int64         `json:"gpc,omitempty"`
+	TPC         *int64         `json:"tpc,omitempty"`
+	SM          *int64         `json:"sm,omitempty"`
+	ProcessName string         `json:"process_name"`
+	PCIAddress  string         `json:"pci_address"`
+	Message     string         `json:"message"`
+	XidCode     int64          `json:"xid_code"`
+	Pid         int64          `json:"pid"`
+	Count       int64          `json:"count,omitempty"`
+>>>>>>> 96abcfb (feat(xid): populate xid lines to the verdict.json output)
 }
 
 // NVLink5Detail carries the extended fields NVRM logs for the
