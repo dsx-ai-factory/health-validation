@@ -88,7 +88,7 @@ func TestDomainAdaptersNamespaceFailedSourceLocalSlots(t *testing.T) {
 // A whole-domain failure names no GPU, so it is keyed by its source rather
 // than taking its "gpu" label as a GPU identity.
 func TestDomainAdaptersKeyDomainFailureBySource(t *testing.T) {
-	for _, a := range []*domainAdapter{GPU(), NVLink()} {
+	for _, a := range []*domainAdapter{GPU(), NVLink(), InfiniBand()} {
 		got := a.Errored(errors.New("unavailable"))
 		if len(got) != 1 || health.KeyOf(got[0]) != health.SourceEntity(adapterSource(a.Category())) {
 			t.Fatalf("%s: Errored = %v keyed %v, want one source-level measurement", a.Name(), got, health.KeyOf(got[0]))
@@ -272,7 +272,7 @@ func TestCPUAdapterMergesSources(t *testing.T) {
 
 func TestAdapterRequestsMatchConverterMappings(t *testing.T) {
 	var got []string
-	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU(), Node(), XID()} {
+	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU(), Node(), XID(), InfiniBand()} {
 		got = slices.AppendSeq(got, maps.Keys(adapter.Signals()))
 	}
 	want := observations.MappedSignals()

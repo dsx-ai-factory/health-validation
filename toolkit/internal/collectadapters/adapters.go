@@ -12,6 +12,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -59,6 +60,16 @@ func GPU() *domainAdapter {
 // Per-link catalog signals remain unmapped until cutover coverage is complete.
 func NVLink() *domainAdapter {
 	return newDomainAdapter(health.NVLink, erroredNVLink, false)
+}
+
+// InfiniBand feeds infiniband.PortMeasurement from the collect sysfs port
+// sensor; the journal link-flap sensor still supplies the category's other
+// type. Finding no ports is a collection failure like any other domain's:
+// a missing driver or the device-name filter can leave sysfs empty, so
+// absence cannot be read as "nothing to check". Deployments without
+// InfiniBand disable the port check instead.
+func InfiniBand() *domainAdapter {
+	return newDomainAdapter(health.InfiniBand, erroredInfiniBand, false)
 }
 
 // newDomainAdapter requests every signal the converter maps onto category,
@@ -112,9 +123,15 @@ func erroredNVLink(err error) []health.Measurement {
 	return []health.Measurement{m}
 }
 
-// adaptCategory groups observations per GPU, or into one group when
-// nodeScoped, converts each group with observations.ToMeasurements, and
-// keeps measurements of category.
+func erroredInfiniBand(err error) []health.Measurement {
+	m := infiniband.ErroredPort("", 0, err, infiniband.PortMeasurementSignals...)
+	m.SetEntityKey(health.SourceEntity(adapterSource(health.InfiniBand)))
+	return []health.Measurement{m}
+}
+
+// adaptCategory groups observations per entity (GPU or InfiniBand port), or
+// into one group when nodeScoped, converts each group with
+// observations.ToMeasurements, and keeps measurements of category.
 func adaptCategory(category health.Category, feeds map[string][]string, nodeScoped bool, obs []*observation.Observation) []health.Measurement {
 	groups := make(map[adapterKey][]*observation.Observation)
 	for _, o := range obs {
@@ -157,26 +174,32 @@ func adaptCategory(category health.Category, feeds map[string][]string, nodeScop
 	return out
 }
 
-// adapterKey identifies one GPU group: by UUID, by source-local slot, or by
-// source for source-scoped observations.
+// adapterKey identifies one entity group: a GPU by UUID or source-local
+// slot, an InfiniBand port or device by name, or the source for
+// source-scoped observations.
 type adapterKey struct {
 	namespace string
-	gpuID     string
+	id        string
 	kind      string
 }
 
-// label renders k as a sortable, source-qualified GPU ID.
-func (k adapterKey) label() string { return fmt.Sprintf("%s:%q/%q", k.kind, k.namespace, k.gpuID) }
+// label renders k as a sortable, source-qualified entity ID.
+func (k adapterKey) label() string { return fmt.Sprintf("%s:%q/%q", k.kind, k.namespace, k.id) }
 
-// adapterGroup assigns o to its GPU group. Slots are namespaced by source so
-// two producers' slot 0 are never merged without a UUID.
+// adapterGroup assigns o to its entity group. Slots are namespaced by source
+// so two producers' slot 0 are never merged without a UUID.
 func adapterGroup(o *observation.Observation) adapterKey {
-	ref := o.GetTarget().GetGpu()
-	if ref.GetUuid() != "" {
-		return adapterKey{kind: "uuid", gpuID: ref.GetUuid()}
+	target := o.GetTarget()
+	if ref := target.GetGpu(); ref.GetUuid() != "" {
+		return adapterKey{kind: "uuid", id: ref.GetUuid()}
+	} else if slot := ref.GetSourceLocalId(); slot != "" {
+		return adapterKey{kind: "slot", namespace: o.GetSource(), id: slot}
 	}
-	if slot := ref.GetSourceLocalId(); slot != "" {
-		return adapterKey{kind: "slot", namespace: o.GetSource(), gpuID: slot}
+	if ref := target.GetInfiniBandPort(); ref != nil {
+		return adapterKey{kind: "ibport", id: fmt.Sprintf("%s/%d", ref.GetDevice().GetName(), ref.GetPort())}
+	}
+	if ref := target.GetInfiniBandDevice(); ref != nil {
+		return adapterKey{kind: "ibdev", id: ref.GetName()}
 	}
 	return adapterKey{kind: "source", namespace: o.GetSource()}
 }

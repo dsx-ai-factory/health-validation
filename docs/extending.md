@@ -194,9 +194,10 @@ allowed only for a collection failure:
   also reports, as when an ID-less `nvidia-smi` path is left running beside
   NVML. Set an ID or implement `EntityKeyed`.
 
-The built-in `gpu.GPUMeasurement` and `nvlink.NVLinkMeasurement` take a key
-through `SetEntityKey`. Without one, a non-empty `GPUID` is treated as verified
-and an empty one as unidentified.
+The built-in `gpu.GPUMeasurement`, `nvlink.NVLinkMeasurement`, and
+`infiniband.PortMeasurement` take a key through `SetEntityKey`. Without one, a
+non-empty `GPUID` (or, for a port, a non-empty `EntityID()`) is treated as
+verified and an empty one as unidentified.
 
 ## Thresholds: types and bounds
 

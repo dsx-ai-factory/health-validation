@@ -18,6 +18,40 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   verdict's `catalog_version`. In unstamped builds, `health-validation version`
   now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`.
 
+### Features
+
+- `ib_port_state`, an InfiniBand port check evaluating the new
+  `infiniband.PortMeasurement` (one per sysfs port, RoCE included): every port
+  must be ACTIVE with its physical link up. Verdicts name the port (`mlx5_0/1`)
+  in `affected_components[].entities`. `excluded_link_layers` (empty by
+  default) lets a fleet with uncabled RoCE ports leave Ethernet out; an
+  exclusion list means a misspelled entry checks more ports, never fewer.
+  It runs on GB200, GB300, and B200, like `rdma_linkflap_fatal`.
+- The stock CLI feeds that check from the `collect/sensors/infiniband` sysfs
+  sensor through the collect bridge, requesting port signals only when a port
+  check will run. It selects devices under `/sys/class/infiniband` by PCI
+  vendor (`collect/source/infiniband.WithVendors(VendorNVIDIA)`), so a DOWN
+  port on a renamed NVIDIA HCA such as `rdma0` is reported rather than hidden
+  behind a healthy `mlx5_0`, while other vendors' and software RDMA devices
+  are not checked. Finding no ports at all is a collection failure, not a
+  skip.
+- `collect/sensors/infiniband.New` takes options; `WithLinkLayers` admits
+  non-InfiniBand (RoCE) ports. The default stays InfiniBand-only.
+- `collect/source/infiniband.New` takes options: `WithExcludedDevices`
+  replaces the variadic exclusion list, and `WithVendors` selects devices by
+  the PCI vendor ID in `<device>/device/vendor` (`VendorNVIDIA` is `0x15b3`)
+  instead of by name. The default stays mlx-only, matching GPUd.
+
+### Changed
+
+- `toolkit/observations` converts several measurement types per category when
+  their signals are disjoint, and carries InfiniBand port and device targets
+  in both directions. The collect bridge validates those targets.
+- `infiniband.PortMeasurement` implements `health.EntityKeyed`: a named port
+  is verified under `<device>/<port>`, and a failure before any port was
+  enumerated is keyed by its source (`collect.infiniband` for the bridge
+  adapter) via `SetEntityKey`.
+
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
 Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,

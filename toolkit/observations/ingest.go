@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -34,8 +35,11 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // label; a GPU-domain observation with no target is a
 // [health.SourceEntity] of its source. A GPU reference missing its slot, or a
 // slot or source-level failure missing its source, yields an invalid key that
-// evaluation rejects. Host-wide types are one [health.NodeEntity] measurement
-// each: a run evaluates one node, so a node target's ID does not split them.
+// evaluation rejects. An InfiniBand port is a [health.VerifiedEntity] named
+// "<device>/<port>" (or "<device>" for a device-scoped observation), and a
+// port observation with no target is likewise a [health.SourceEntity] of its
+// source. Host-wide types are one [health.NodeEntity] measurement each: a run
+// evaluates one node, so a node target's ID does not split them.
 //
 // An observation is read as one of two shapes:
 //   - <domain>.<field>, as written by [FromMeasurements], sets that field
@@ -76,8 +80,9 @@ func ToMeasurements(observations []*observation.Observation) []health.Measuremen
 	return append(out, m)
 }
 
-// measurementTypes are the measurement types ToMeasurements rebuilds. Each
-// domain has one type, so a <domain>.<field> signal identifies its type.
+// measurementTypes are the measurement types ToMeasurements rebuilds. Types
+// sharing a domain carry disjoint signals, as the catalog requires, so a
+// <domain>.<field> signal still identifies its type.
 var measurementTypes = []health.Measurement{
 	gpu.GPUMeasurement{},
 	nvlink.NVLinkMeasurement{},
@@ -85,7 +90,18 @@ var measurementTypes = []health.Measurement{
 	node.NodeMeasurement{},
 	xid.XidMeasurement{},
 	infiniband.LinkFlapMeasurement{},
+	infiniband.PortMeasurement{},
 }
+
+// identity is how a measurement type names the entity it describes: the
+// target an observation must carry and the fields seeded from it.
+type identity int
+
+const (
+	identityNode   identity = iota // host-wide; the node is implicit
+	identityGPU                    // gpu_id, from a GPU-bearing target
+	identityIBPort                 // ib_device and ib_port, from an InfiniBand target
+)
 
 // schema describes one measurement type for ingestion.
 type schema struct {
@@ -93,33 +109,54 @@ type schema struct {
 	fields   map[string]int
 	category string
 	order    []string
-	gpuID    int // index of the gpu_id field, or -1 for host-wide types
+	identity identity
 }
 
 var schemas = sync.OnceValue(func() []*schema {
 	out := make([]*schema, 0, len(measurementTypes))
-	seen := make(map[string]bool, len(measurementTypes))
+	owner := make(map[string]reflect.Type)
 	for _, m := range measurementTypes {
-		s := &schema{typ: reflect.TypeOf(m), category: m.Category().String(), fields: make(map[string]int), gpuID: -1}
-		if seen[s.category] {
-			panic(fmt.Sprintf("observations: two measurement types for domain %q", s.category))
-		}
-		seen[s.category] = true
+		s := &schema{typ: reflect.TypeOf(m), category: m.Category().String(), fields: make(map[string]int)}
 		for i := range s.typ.NumField() {
 			name, ok := signalName(s.typ.Field(i))
 			if !ok {
 				continue
 			}
+			key := s.category + "." + name
+			if other, dup := owner[key]; dup {
+				panic(fmt.Sprintf("observations: signal %q is carried by both %s and %s", key, other, s.typ))
+			}
+			owner[key] = s.typ
 			s.fields[name] = i
 			s.order = append(s.order, name)
-			if name == gpuIDField {
-				s.gpuID = i
-			}
+		}
+		switch {
+		case s.has(gpuIDField):
+			s.identity = identityGPU
+		case s.has(infiniband.SignalIBDevice) && s.has(infiniband.SignalIBPort):
+			s.identity = identityIBPort
 		}
 		out = append(out, s)
 	}
 	return out
 })
+
+func (s *schema) has(field string) bool {
+	_, ok := s.fields[field]
+	return ok
+}
+
+// identityFields are the fields seeded from the target; a target that
+// cannot be identified fails them along with the observed signal.
+func (s *schema) identityFields() []string {
+	switch s.identity {
+	case identityGPU:
+		return []string{gpuIDField}
+	case identityIBPort:
+		return []string{infiniband.SignalIBDevice, infiniband.SignalIBPort}
+	}
+	return nil
+}
 
 func schemaFor(m health.Measurement) *schema {
 	for _, s := range schemas() {
@@ -130,9 +167,10 @@ func schemaFor(m health.Measurement) *schema {
 	panic(fmt.Sprintf("observations: %T is not a registered measurement type", m))
 }
 
-func schemaForDomain(domain string) *schema {
+// schemaForField returns domain's measurement type carrying field, or nil.
+func schemaForField(domain, field string) *schema {
 	for _, s := range schemas() {
-		if s.category == domain {
+		if s.category == domain && s.has(field) {
 			return s
 		}
 	}
@@ -170,10 +208,8 @@ type feed struct {
 // measurement type reads.
 func resolve(current *observation.Observation) (feed, bool) {
 	if domain, field, ok := strings.Cut(current.GetSignalId(), "."); ok {
-		if s := schemaForDomain(domain); s != nil {
-			if _, known := s.fields[field]; known {
-				return feed{schema: s, catalog: []string{field}, neutral: neutralFields()[current.GetSignalId()]}, true
-			}
+		if s := schemaForField(domain, field); s != nil {
+			return feed{schema: s, catalog: []string{field}, neutral: neutralFields()[current.GetSignalId()]}, true
 		}
 	}
 	for _, mapped := range mappings {
@@ -197,14 +233,14 @@ type entityKey struct {
 
 // entity accumulates one measurement.
 type entity struct {
-	value       reflect.Value // addressable measurement struct
-	fed         map[string]bool
-	errIndex    map[string]int
-	unsupported []string
-	errs        []entityError
-	// idFromTarget reports that gpu_id so far comes only from the target,
-	// so an explicit gpu_id observation is not a second feed.
-	idFromTarget bool
+	fed      map[string]bool
+	errIndex map[string]int
+	// idFromTarget holds the identity fields fed so far only by the target,
+	// so an explicit observation of one is not a second feed.
+	idFromTarget map[string]bool
+	value        reflect.Value // addressable measurement struct
+	unsupported  []string
+	errs         []entityError
 }
 
 type entityError struct {
@@ -226,21 +262,19 @@ func (b *builder) add(current *observation.Observation) {
 	e := b.entity(f.schema, key, label)
 
 	for _, field := range f.catalog {
-		if e.fed[field] && (field != gpuIDField || !e.idFromTarget) {
+		if e.fed[field] && !e.idFromTarget[field] {
 			e.addError(fmt.Errorf("signal %q was observed more than once", current.GetSignalId()), f.catalog...)
 			return
 		}
 	}
 	for _, field := range f.catalog {
 		e.fed[field] = true
-		if field == gpuIDField {
-			e.idFromTarget = false
-		}
+		delete(e.idFromTarget, field)
 	}
 
 	switch {
 	case targetErr != nil:
-		e.addError(targetErr, append([]string{gpuIDField}, f.catalog...)...)
+		e.addError(targetErr, append(f.schema.identityFields(), f.catalog...)...)
 	case current.GetCollectionError() != nil:
 		e.addError(collectionFailure(current.GetCollectionError()), f.catalog...)
 	case current.GetNoValue() != nil:
@@ -256,14 +290,22 @@ func (b *builder) add(current *observation.Observation) {
 	}
 }
 
-// targetID returns the entity an observation describes and, for a GPU, the
-// gpu_id label its measurement carries. The label is empty for a source-level
-// observation, which names no GPU.
+// targetID returns the entity an observation describes under s's identity
+// and the label its measurement carries for it: gpu_id for a GPU,
+// "<device>/<port>" or "<device>" for an InfiniBand port. The label is
+// empty for a source-level observation, which names no entity.
 func targetID(s *schema, current *observation.Observation) (health.EntityKey, string, error) {
-	target := current.GetTarget()
-	if s.gpuID < 0 {
-		return health.NodeEntity(), "", nil
+	switch s.identity {
+	case identityGPU:
+		return gpuTargetID(current)
+	case identityIBPort:
+		return ibTargetID(current)
 	}
+	return health.NodeEntity(), "", nil
+}
+
+func gpuTargetID(current *observation.Observation) (health.EntityKey, string, error) {
+	target := current.GetTarget()
 	source := current.GetSource()
 	var ref *observation.GPURef
 	switch {
@@ -298,26 +340,73 @@ func targetID(s *schema, current *observation.Observation) (health.EntityKey, st
 	return key, fmt.Sprintf("slot:%q/%q", source, slot), nil
 }
 
+// ibTargetID keys a port by "<device>/<port>", or "<device>" for a
+// device-scoped observation such as a failure listing a device's ports. An
+// observation with no target is a failure of its whole source, so it is
+// keyed by that source rather than merged with every other unnamed port.
+func ibTargetID(current *observation.Observation) (health.EntityKey, string, error) {
+	target := current.GetTarget()
+	sourceKey := health.SourceEntity(current.GetSource())
+	var name string
+	switch {
+	case target == nil:
+		if current.GetValue() != nil {
+			return sourceKey, "", fmt.Errorf("signal %q has no InfiniBand target", current.GetSignalId())
+		}
+		return sourceKey, "", nil
+	case target.GetInfiniBandPort() != nil:
+		name = target.GetInfiniBandPort().GetDevice().GetName()
+		if name != "" {
+			name = fmt.Sprintf("%s/%d", name, target.GetInfiniBandPort().GetPort())
+		}
+	case target.GetInfiniBandDevice() != nil:
+		name = target.GetInfiniBandDevice().GetName()
+	default:
+		return sourceKey, "", fmt.Errorf("signal %q does not identify an InfiniBand port", current.GetSignalId())
+	}
+	if name == "" {
+		return sourceKey, "", fmt.Errorf("signal %q has no InfiniBand device name", current.GetSignalId())
+	}
+	return health.VerifiedEntity(name), name, nil
+}
+
 func (b *builder) entity(s *schema, id health.EntityKey, label string) *entity {
 	key := entityKey{schema: s, id: id}
 	if e := b.entities[key]; e != nil {
 		return e
 	}
-	e := &entity{value: reflect.New(s.typ).Elem(), fed: make(map[string]bool), errIndex: make(map[string]int)}
-	if s.gpuID >= 0 {
+	e := &entity{value: reflect.New(s.typ).Elem(), fed: make(map[string]bool), errIndex: make(map[string]int), idFromTarget: make(map[string]bool)}
+	switch s.identity {
+	case identityGPU:
 		if label != "" {
-			e.value.Field(s.gpuID).SetString(label)
-			e.fed[gpuIDField] = true
-			e.idFromTarget = true
+			e.value.Field(s.fields[gpuIDField]).SetString(label)
+			e.seed(gpuIDField)
 		} else {
 			// Matches the toolkit sensors, which name a GPU they could not
 			// identify after their domain.
-			e.value.Field(s.gpuID).SetString(s.category)
+			e.value.Field(s.fields[gpuIDField]).SetString(s.category)
+		}
+	case identityIBPort:
+		// An unidentified port keeps an empty device, which EntityID omits.
+		if label != "" {
+			device, port, _ := strings.Cut(label, "/")
+			e.value.Field(s.fields[infiniband.SignalIBDevice]).SetString(device)
+			e.seed(infiniband.SignalIBDevice)
+			if n, err := strconv.ParseInt(port, 10, 64); err == nil {
+				e.value.Field(s.fields[infiniband.SignalIBPort]).SetInt(n)
+			}
+			e.seed(infiniband.SignalIBPort)
 		}
 	}
 	b.entities[key] = e
 	b.order = append(b.order, key)
 	return e
+}
+
+// seed records an identity field filled from the target.
+func (e *entity) seed(field string) {
+	e.fed[field] = true
+	e.idFromTarget[field] = true
 }
 
 // apply writes a value observation into the measurement.

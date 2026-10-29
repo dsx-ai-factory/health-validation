@@ -89,8 +89,9 @@ func TestFromMeasurementsExportsEveryField(t *testing.T) {
 		node.NodeMeasurement{},
 		xid.XidMeasurement{},
 		infiniband.LinkFlapMeasurement{},
+		infiniband.PortMeasurement{Device: "mlx5_0", Port: 1},
 	} {
-		t.Run(m.Category().String(), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			var want []string
 			typ := reflect.TypeOf(m)
 			for i := range typ.NumField() {

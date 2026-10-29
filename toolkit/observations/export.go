@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
@@ -42,9 +43,10 @@ const toolkitSourcePrefix = "toolkit."
 // definitions. [ToMeasurements] reverses it.
 //
 // A measurement with a gpu_id targets that GPU, or its source-local slot
-// when provisional; a source-level failure has no target; any other
-// measurement
-// targets the node, or carries no target when nodeID is empty. Scalar
+// when provisional; one with ib_device and ib_port targets that InfiniBand
+// port (or the device, for port 0); a source-level failure has no target;
+// any other measurement targets the node, or carries no target when nodeID
+// is empty. Scalar
 // fields keep their type; maps, slices, and structs are encoded as a JSON
 // string. A field named by a measurement error becomes a CollectionError,
 // and one the source reported unsupported becomes a NoValue, so a zero
@@ -132,26 +134,46 @@ func export(source, nodeID string, at *timestamppb.Timestamp, m health.Measureme
 	return out, nil
 }
 
-// measurementTarget returns the GPU a measurement describes, or the node for
-// a host-wide measurement. A provisional key targets its source-local slot,
-// not gpu_id, which is only a label. A source-level failure names no GPU, and
-// any other failed GPU identity lookup leaves gpu_id as a placeholder, so
-// those carry no target.
+// measurementTarget returns the GPU or InfiniBand port a measurement
+// describes, or the node for a host-wide measurement. A provisional key
+// targets its source-local slot, not gpu_id, which is only a label. A
+// source-level failure names no entity, any other failed GPU identity lookup
+// leaves gpu_id as a placeholder, and an unidentified port leaves ib_device
+// empty or its port number invalid, so those carry no target.
 func measurementTarget(m health.Measurement, v reflect.Value, nodeID string, failures map[string][]error) *observation.ObservationTarget {
+	var gpuID, device, port reflect.Value
 	for i := range v.NumField() {
-		if name, ok := signalName(v.Type().Field(i)); !ok || name != gpuIDField || v.Field(i).Kind() != reflect.String {
-			continue
+		switch name, _ := signalName(v.Type().Field(i)); name {
+		case gpuIDField:
+			gpuID = v.Field(i)
+		case infiniband.SignalIBDevice:
+			device = v.Field(i)
+		case infiniband.SignalIBPort:
+			port = v.Field(i)
 		}
-		gpuID, key := v.Field(i).String(), health.KeyOf(m)
-		switch {
-		case gpuID == "" || key.SourceLevel():
+	}
+	key := health.KeyOf(m)
+	if gpuID.IsValid() && gpuID.Kind() == reflect.String {
+		switch id := gpuID.String(); {
+		case id == "" || key.SourceLevel():
 			return nil
 		case key.Provisional():
 			return observation.GPUSourceLocalTarget(key.Slot())
 		case len(failures[gpuIDField]) == 0:
-			return observation.GPUTarget(gpuID)
+			return observation.GPUTarget(id)
 		}
 		return nil
+	}
+	if device.IsValid() && port.IsValid() && device.Kind() == reflect.String && port.CanInt() {
+		name := device.String()
+		switch n := port.Int(); {
+		case name == "", key.SourceLevel(), n < 0, n > math.MaxUint32:
+			return nil
+		case n > 0:
+			return observation.InfiniBandPortTarget(name, uint32(n))
+		}
+		// Port 0 describes the device, as when its ports could not be listed.
+		return observation.InfiniBandDeviceTarget(name)
 	}
 	if nodeID == "" {
 		return nil
