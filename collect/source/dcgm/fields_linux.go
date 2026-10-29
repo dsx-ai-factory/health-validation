@@ -20,10 +20,12 @@ type fieldMapping struct {
 	transform fieldTransform
 	signalID  string
 	fieldID   godcgm.Short
-	// unsupportedAsNoValue reports a NOT_SUPPORTED sentinel as NoValue. Only the
-	// fabric fields set it: there it means the GPU has no fabric to report, which
-	// the toolkit reads as unregistered fabric and neutral health, matching the
-	// NVML source. Other fields keep the collection error their checks expect.
+	// unsupportedAsNoValue reports a NOT_SUPPORTED sentinel as NoValue. The
+	// fabric fields set it because the GPU has no fabric to report, which the
+	// toolkit reads as unregistered fabric and neutral health; the clock-event
+	// fields because a GPU that cannot report clock-event reasons is not known
+	// to be throttling. Both match the NVML source. Other fields keep the
+	// collection error their checks expect.
 	unsupportedAsNoValue bool
 }
 
@@ -61,13 +63,13 @@ var fieldsBySignal = indexFieldMappings([]fieldMapping{
 	dcgmField(gpusignals.TemperatureSlowdownMarginCelsius, godcgm.DCGM_FI_DEV_GPU_TEMP_MARGIN_CELSIUS),
 	dcgmField(gpusignals.SMClock, godcgm.DCGM_FI_DEV_SM_CLOCK),
 	dcgmField(gpusignals.MemoryClock, godcgm.DCGM_FI_DEV_MEM_CLOCK),
-	dcgmField(gpusignals.ClockEventReasons, godcgm.DCGM_FI_DEV_CLOCKS_EVENT_REASONS),
-	dcgmDerivedField(gpusignals.HardwareSlowdownActive, godcgm.DCGM_FI_DEV_CLOCKS_EVENT_REASONS,
-		bitSet(clockEventReasonHardwareSlowdown)),
-	dcgmDerivedField(gpusignals.HardwareThermalSlowdownActive, godcgm.DCGM_FI_DEV_CLOCKS_EVENT_REASONS,
-		bitSet(clockEventReasonHardwareThermalSlowdown)),
-	dcgmDerivedField(gpusignals.HardwarePowerBrakeSlowdownActive, godcgm.DCGM_FI_DEV_CLOCKS_EVENT_REASONS,
-		bitSet(clockEventReasonHardwarePowerBrakeSlowdown)),
+	notSupportedAsNoValue(dcgmField(gpusignals.ClockEventReasons, godcgm.DCGM_FI_DEV_CLOCKS_EVENT_REASONS)),
+	notSupportedAsNoValue(dcgmDerivedField(gpusignals.HardwareSlowdownActive, godcgm.DCGM_FI_DEV_CLOCKS_EVENT_REASONS,
+		bitSet(clockEventReasonHardwareSlowdown))),
+	notSupportedAsNoValue(dcgmDerivedField(gpusignals.HardwareThermalSlowdownActive, godcgm.DCGM_FI_DEV_CLOCKS_EVENT_REASONS,
+		bitSet(clockEventReasonHardwareThermalSlowdown))),
+	notSupportedAsNoValue(dcgmDerivedField(gpusignals.HardwarePowerBrakeSlowdownActive, godcgm.DCGM_FI_DEV_CLOCKS_EVENT_REASONS,
+		bitSet(clockEventReasonHardwarePowerBrakeSlowdown))),
 	dcgmField(gpusignals.ComputeUtilization, godcgm.DCGM_FI_DEV_GPU_UTIL_RATIO),
 	dcgmField(gpusignals.MemoryCopyUtilization, godcgm.DCGM_FI_DEV_MEM_COPY_UTIL),
 	dcgmField(gpusignals.FramebufferFree, godcgm.DCGM_FI_DEV_FB_FREE),
@@ -98,14 +100,14 @@ var fieldsBySignal = indexFieldMappings([]fieldMapping{
 	dcgmField(gpusignals.NVLinkDLReplayErrorCount, godcgm.DCGM_FI_DEV_NVLINK_REPLAY_TOTAL),
 	dcgmField(gpusignals.NVLinkRecoverySuccessfulCount, godcgm.DCGM_FI_DEV_NVLINK_RECOVERY_SUCCESSFUL_TOTAL),
 	dcgmField(gpusignals.NVLinkRecoveryFailedCount, godcgm.DCGM_FI_DEV_NVLINK_RECOVERY_FAILED_TOTAL),
-	fabricField(dcgmField(gpusignals.FabricManagerStatus, godcgm.DCGM_FI_DEV_FABRIC_MANAGER_STATUS)),
-	fabricField(dcgmDerivedField(gpusignals.NVLinkFabricBandwidthDegraded, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
+	notSupportedAsNoValue(dcgmField(gpusignals.FabricManagerStatus, godcgm.DCGM_FI_DEV_FABRIC_MANAGER_STATUS)),
+	notSupportedAsNoValue(dcgmDerivedField(gpusignals.NVLinkFabricBandwidthDegraded, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
 		fabricHealthFlag(0))),
-	fabricField(dcgmDerivedField(gpusignals.NVLinkFabricRouteRecoveryActive, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
+	notSupportedAsNoValue(dcgmDerivedField(gpusignals.NVLinkFabricRouteRecoveryActive, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
 		fabricHealthFlag(2))),
-	fabricField(dcgmDerivedField(gpusignals.NVLinkFabricRouteUnhealthy, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
+	notSupportedAsNoValue(dcgmDerivedField(gpusignals.NVLinkFabricRouteUnhealthy, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
 		fabricHealthFlag(4))),
-	fabricField(dcgmDerivedField(gpusignals.NVLinkFabricAccessTimeoutRecovery, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
+	notSupportedAsNoValue(dcgmDerivedField(gpusignals.NVLinkFabricAccessTimeoutRecovery, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
 		fabricHealthFlag(6))),
 	dcgmField(gpusignals.C2CLinkReplayErrorCount, godcgm.DCGM_FI_DEV_C2C_LINK_REPLAY_ERROR_TOTAL),
 	dcgmField(gpusignals.NVLinkRXGeneralErrorCount, godcgm.DCGM_FI_DEV_NVLINK_RX_GENERAL_ERROR_TOTAL),
@@ -130,7 +132,7 @@ func dcgmDerivedField(definition collect.Signal, fieldID godcgm.Short, transform
 	return fieldMapping{signalID: definition.ID(), fieldID: fieldID, transform: transform}
 }
 
-func fabricField(mapping fieldMapping) fieldMapping {
+func notSupportedAsNoValue(mapping fieldMapping) fieldMapping {
 	mapping.unsupportedAsNoValue = true
 	return mapping
 }

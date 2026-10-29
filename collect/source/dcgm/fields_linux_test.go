@@ -131,6 +131,37 @@ func TestDecodeMetricValueFabricNotSupported(t *testing.T) {
 	}
 }
 
+// A GPU that cannot report clock-event reasons is not known to be throttling,
+// so NOT_SUPPORTED is NoValue there, as NVML's ERROR_NOT_SUPPORTED is. Other
+// sentinels still fail the read.
+func TestDecodeMetricValueClockEventsNotSupported(t *testing.T) {
+	clockEvents := []string{
+		gpusignals.ClockEventReasons.ID(),
+		gpusignals.HardwareSlowdownActive.ID(),
+		gpusignals.HardwareThermalSlowdownActive.ID(),
+		gpusignals.HardwarePowerBrakeSlowdownActive.ID(),
+	}
+	for _, signalID := range clockEvents {
+		mapping := fieldsBySignal[signalID]
+		got := decodeMetricValue(mapping, int64FieldValue(godcgm.DCGM_FT_INT64_NOT_SUPPORTED))
+		if got.CollectionError != nil || got.Value != nil || got.NoValue.GetReason() != observation.NoValueReasonNotSupported {
+			t.Errorf("%s: NOT_SUPPORTED = %+v, want no value, not supported", signalID, got)
+		}
+		for sentinel, want := range map[int64]observation.CollectionErrorCategory{
+			godcgm.DCGM_FT_INT64_BLANK:            observation.CollectionErrorCategoryUnavailable,
+			godcgm.DCGM_FT_INT64_NOT_PERMISSIONED: observation.CollectionErrorCategoryPermissionDenied,
+		} {
+			if got := decodeMetricValue(mapping, int64FieldValue(sentinel)); got.NoValue != nil || got.CollectionError.GetCategory() != want {
+				t.Errorf("%s: sentinel %d = %+v, want a %v collection error", signalID, sentinel, got, want)
+			}
+		}
+	}
+	thermal := decodeMetricValue(fieldsBySignal[gpusignals.HardwareThermalSlowdownActive.ID()], int64FieldValue(clockEventReasonHardwareThermalSlowdown))
+	if !thermal.Value.GetBoolValue() {
+		t.Errorf("thermal bit = %+v, want true", thermal)
+	}
+}
+
 // int64FieldValue is a successful INT64 sample carrying value.
 func int64FieldValue(value int64) godcgm.FieldValue_v1 {
 	field := godcgm.FieldValue_v1{FieldType: godcgm.DCGM_FT_INT64, Status: godcgm.DCGM_ST_OK, TS: 1}
