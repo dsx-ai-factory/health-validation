@@ -585,7 +585,7 @@ Detects NVRM Xid 154 in the system journal within the collection window and repo
 
 **Rules**
 
-- **CRITICAL** when `("0x2" in recovery_action_counts && recovery_action_counts["0x2"] >= occurrences) \|\| ("0x6" in recovery_action_counts && recovery_action_counts["0x6"] >= occurrences) \|\| ("0x7" in recovery_action_counts && recovery_action_counts["0x7"] >= occurrences)`
+- **CRITICAL** when `("0x2" in recovery_action_counts && recovery_action_counts["0x2"] >= occurrences) || ("0x6" in recovery_action_counts && recovery_action_counts["0x6"] >= occurrences) || ("0x7" in recovery_action_counts && recovery_action_counts["0x7"] >= occurrences)`
   - Message: GPU Xid 154: the driver requested an OS reboot for at least one GPU.
   - Action: operational state `drain`, then `restart_os` → `service_required`
 - **CRITICAL** when `("0x1" in recovery_action_counts && recovery_action_counts["0x1"] >= occurrences)`

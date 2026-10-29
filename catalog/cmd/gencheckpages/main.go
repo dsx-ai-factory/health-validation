@@ -409,7 +409,7 @@ func cell(s string) string {
 	return strings.ReplaceAll(text(s), "|", "\\|")
 }
 
-// code wraps s in an inline code span that is safe inside a table cell.
+// code wraps s in an inline code span.
 func code(s string) string {
 	if s == "" {
 		return ""
@@ -418,13 +418,13 @@ func code(s string) string {
 	if strings.Contains(s, "`") {
 		fence = "``"
 	}
-	return fence + strings.ReplaceAll(strings.Join(strings.Fields(s), " "), "|", "\\|") + fence
+	return fence + strings.Join(strings.Fields(s), " ") + fence
 }
 
 // tcode is code for a table cell. The Fern theme lets code in table cells wrap
 // at any character, which splits paths and IDs; <nobr> keeps each span whole.
 func tcode(s string) string {
-	c := code(s)
+	c := strings.ReplaceAll(code(s), "|", "\\|")
 	if c == "" {
 		return ""
 	}

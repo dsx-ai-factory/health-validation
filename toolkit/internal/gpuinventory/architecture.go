@@ -81,6 +81,8 @@ func ArchitectureFromName(name string) string {
 		return "GB300"
 	case strings.Contains(name, "GB200"):
 		return "GB200"
+	case strings.Contains(name, "B300"):
+		return "B300"
 	case strings.Contains(name, "B200"):
 		return "B200"
 	case strings.Contains(name, "H200"):

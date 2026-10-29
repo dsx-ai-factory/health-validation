@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -27,7 +28,9 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	rdmatoposensor "github.com/dsx-ai-factory/health-validation/collect/sensors/rdmatopo"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	rdmatoposource "github.com/dsx-ai-factory/health-validation/collect/source/rdmatopo"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
@@ -93,11 +96,8 @@ func TestCollectionOutputEmitsObservationBatch(t *testing.T) {
 }
 
 func TestCollectCommandWritesObservationBatch(t *testing.T) {
-	a := New().WithProgramName("test")
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	a := cadenceRunApp()
 	a.WithGPUBackend(toolkit.MockGPU(gpu.GPUMeasurement{GPUID: "GPU-0", PowerLimitW: 700, EnforcedPowerLimitW: 700}))
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 1}))
 
 	var stdout, stderr bytes.Buffer
@@ -317,11 +317,8 @@ func (echoIBBackend) Errored(error) []health.Measurement { return nil }
 // TestRunCommandPassesDriverVersion confirms runCommand hands the version
 // the GPU inventory recorded to the catalog it evaluates with.
 func TestRunCommandPassesDriverVersion(t *testing.T) {
-	a := New().WithProgramName("test").WithChecks(driverEchoCheck())
+	a := cadenceRunApp().WithChecks(driverEchoCheck())
 	a.host = fakeHost{b: spyBackend{called: new(bool)}, driver: echoedDriverVersion}
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	// The opt-in InfiniBand sensor accepts any measurement, so it carries
 	// the echo into an otherwise stock run.
 	a.WithIBBackend(echoIBBackend{})
@@ -576,15 +573,11 @@ func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
 func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 	const hostname = "nvl72d014-T02"
 	hostnameCalls := 0
-	a := New().WithProgramName("test")
+	a := cadenceRunApp()
 	a.hostname = func() (string, error) {
 		hostnameCalls++
 		return "  " + hostname + "  ", nil
 	}
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
 	var stdout, stderr bytes.Buffer
@@ -679,14 +672,10 @@ func TestRunCommandRejectsUnexpectedArguments(t *testing.T) {
 }
 
 func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
-	a := New().WithProgramName("test").WithNodeID("builder-node")
+	a := cadenceRunApp().WithNodeID("builder-node")
 	a.hostname = func() (string, error) {
 		panic("unexpected hostname lookup")
 	}
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
 	var stdout, stderr bytes.Buffer
@@ -704,14 +693,10 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 }
 
 func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
-	a := New().WithProgramName("test")
+	a := cadenceRunApp()
 	a.hostname = func() (string, error) {
 		panic("unexpected hostname lookup")
 	}
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
 	var stdout, stderr bytes.Buffer
@@ -734,13 +719,12 @@ func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 func TestWithGPUBackendOverridesHost(t *testing.T) {
 	var hostGPUCalled, overrideCalled bool
 
-	a := New()
+	a := cadenceRunApp()
 	a.host = fakeHost{b: spyBackend{called: &hostGPUCalled}}
 	a.WithGPUBackend(spyBackend{called: &overrideCalled})
 	// The host GPU sensors also feed NVLink, so keep NVLink off them too.
 	a.WithNVLinkBackend(spyBackend{called: new(bool)})
 	a.WithNodeID(testNodeID)
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 
 	var stdout, stderr bytes.Buffer
 	// This asserts which backend was read; the verdict severity is irrelevant, so
@@ -763,12 +747,11 @@ func TestWithGPUBackendOverridesHost(t *testing.T) {
 func TestDefaultUsesHostBackend(t *testing.T) {
 	var hostGPUCalled bool
 
-	a := New().WithNodeID("  builder-node  ")
+	a := cadenceRunApp().WithNodeID("  builder-node  ")
 	a.hostname = func() (string, error) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: &hostGPUCalled}}
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 
 	var stdout, stderr bytes.Buffer
 	// This asserts which backend was read; the verdict severity is irrelevant, so
@@ -792,14 +775,11 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 
 func TestWithCPUBackendOverridesSysfs(t *testing.T) {
 	var cpuCalled bool
-	a := New()
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	a := cadenceRunApp()
 	a.WithCPUBackend(cpuBackendFunc(func(context.Context) (cpu.CPUMeasurement, error) {
 		cpuCalled = true
 		return cpu.CPUMeasurement{PossibleCPUCount: 8, OnlineCPUCount: 8, NUMANodeCount: 34}, nil
 	}))
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
 	var stdout, stderr bytes.Buffer
@@ -843,15 +823,12 @@ func TestWithCPUBackendOverridesSysfs(t *testing.T) {
 // topology mismatch reaches the emitted verdict through the real run path,
 // which a direct catalog evaluation cannot establish.
 func TestNUMANodeCountReachesVerdict(t *testing.T) {
-	a := New()
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	a := cadenceRunApp()
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{
 		PossibleCPUCount: 8,
 		OnlineCPUCount:   8,
 		NUMANodeCount:    33,
 	}))
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitUnhealthy {
@@ -1015,11 +992,8 @@ func TestWriteVerdictNodeID(t *testing.T) {
 func TestWithXidBackendOverridesJournalctl(t *testing.T) {
 	var xidCalled bool
 
-	a := New()
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
+	a := cadenceRunApp()
 	a.WithXidBackend(xidSpyBackend{called: &xidCalled})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	a.WithNodeID(testNodeID)
 
 	var stdout, stderr bytes.Buffer
@@ -1038,10 +1012,7 @@ func TestWithXidBackendOverridesJournalctl(t *testing.T) {
 // with no config needed. (Without a backend it does not run at all.)
 func TestIBSensorCollectsWithBackend(t *testing.T) {
 	var ibCalled bool
-	a := New().WithNodeID(testNodeID)
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	a := cadenceRunApp().WithNodeID(testNodeID)
 	a.WithIBBackend(ibSpyBackend{called: &ibCalled})
 
 	var stdout, stderr bytes.Buffer
@@ -1190,8 +1161,16 @@ func verdictHasCheck(nv health.NodeVerdict, id string) bool {
 	return false
 }
 
+func healthyRDMATopoSensor() collect.Sensor {
+	return rdmatoposensor.New(rdmatoposource.New(func(_ context.Context, out, _ io.Writer) (int, error) {
+		_, err := io.WriteString(out, healthyRDMATopoOutput)
+		return 0, err
+	}))
+}
+
 func cadenceRunApp() *App {
-	a := New().WithProgramName("test")
+	source := healthyRDMATopoSensor()
+	a := New().WithProgramName("test").WithCollect(source, source.Signals().IDs()...)
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())

@@ -47,7 +47,9 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // from journal-entry events: Xid one per GPU, or one naming no GPU for a scan
 // with no events, and link flaps one per node. A batch that also carries
 // those measurements in <domain>.<field> form yields one errored measurement,
-// since the two cannot be merged.
+// since the two cannot be merged. Canonical rdma_topo signals retain
+// confirmed findings and source-scoped collection failures as separate
+// measurements sharing invocation evidence.
 //
 // Both shapes may appear in one batch and feed one measurement. Other
 // signals are ignored. Collection failures attach to the affected catalog
@@ -57,10 +59,14 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // observations yields no measurement, so its checks are skipped as missing.
 func ToMeasurements(observations []*observation.Observation) []health.Measurement {
 	b := &builder{entities: make(map[entityKey]*entity), schemas: schemas()}
-	var xidObservations, linkFlapObservations []*observation.Observation
+	var xidObservations, linkFlapObservations, rdmaTopoObservations []*observation.Observation
 	links := make(nvlinkLinks)
 	processes := make(gpuProcesses)
 	for _, current := range observations {
+		if _, ok := rdmaTopoFields[current.GetSignalId()]; ok {
+			rdmaTopoObservations = append(rdmaTopoObservations, current)
+			continue
+		}
 		switch {
 		case xidSignals[current.GetSignalId()]:
 			xidObservations = append(xidObservations, current)
@@ -75,6 +81,9 @@ func ToMeasurements(observations []*observation.Observation) []health.Measuremen
 	links.feed(b)
 	processes.feed(b)
 	out := b.measurements()
+	if len(rdmaTopoObservations) > 0 {
+		out = append(out, canonicalRDMATopo(rdmaTopoObservations)...)
+	}
 	if len(xidObservations) > 0 {
 		out = withCanonical(out, canonicalXid(xidObservations), func(err error) health.Measurement {
 			return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)

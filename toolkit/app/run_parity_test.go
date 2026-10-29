@@ -49,7 +49,7 @@ func parityCases() []parityCase {
 		{name: "Xid 79 and 48", node: xid(xid79Line, xid48Line), exit: exitUnhealthy},
 		{name: "Xid 149 fatal", node: xid(xid149Line), exit: exitUnhealthy},
 		{name: "Xid 145 nonfatal", node: xid(xid145Line), exit: exitOK},
-		{name: "Xid 154", node: xid(xid154Line), exit: exitOK},
+		{name: "Xid 154", node: xid(xid154Line), exit: exitUnhealthy},
 		{name: "unhealthy GPUs and CPUs", node: unhealthyGB200(), exit: exitUnhealthy},
 		{name: "missing GPU", node: healthyNode("NVIDIA GB200", 3, 1200, 34, 53125), exit: exitUnhealthy},
 		{name: "one GPU's pstate unreadable", node: with(healthyGB200(), func(f *nodeFixture) { f.gpus[2].pstateFails = true }), exit: exitUnhealthy},

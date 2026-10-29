@@ -25,12 +25,14 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
+	rdmatoposignals "github.com/dsx-ai-factory/health-validation/collect/signals/rdmatopo"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -124,10 +126,9 @@ var mappings = []mapping{
 	{signal: gpusignals.NVLinkP2PStatus, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalUnhealthyP2PPeerCount}, aggregated: true},
 }
 
-// canonicalFamilies are collect signal families that build one measurement
-// together rather than field by field: one measurement aggregates repeated
-// journal-entry events, so every signal of a family feeds every catalog
-// signal of its measurement.
+// canonicalFamilies are collect signal families that build measurements
+// together rather than field by field, so every signal of a family feeds
+// every catalog signal of its measurement.
 var canonicalFamilies = []struct {
 	signals  func() collect.Signals
 	catalog  func() []string
@@ -135,6 +136,7 @@ var canonicalFamilies = []struct {
 }{
 	{signals: xidsignals.All, catalog: xid.MeasurementSignals, category: health.Xid},
 	{signals: ibsignals.LinkFlapSignals, catalog: infiniband.MeasurementSignals, category: health.InfiniBand},
+	{signals: rdmatoposignals.All, catalog: pcie.MeasurementSignals, category: health.PCIe},
 }
 
 // MappedSignals returns the mapped collect signal IDs [ToMeasurements]
