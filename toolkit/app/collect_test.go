@@ -301,7 +301,7 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 			if err := json.Unmarshal(stdout.Bytes(), &actual); err != nil {
 				t.Fatal(err)
 			}
-			cat, _, err := buildCatalog(nil, mixedChecks(), "GB200", health.OperatorInfra)
+			cat, _, err := buildCatalog(nil, mixedChecks(), health.Host{Architecture: "GB200"}, health.OperatorInfra)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1235,7 +1235,7 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 // collected and the CPU measurement carries a failure for it. cpu_count must
 // still pass: a measurement error fails only checks requiring that signal.
 func TestCollectSensorsUncollectedSiblingSignalLeavesCheckPassing(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "H100", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, nil, health.Host{Architecture: "H100"}, health.OperatorInfra)
 	if err != nil {
 		t.Fatal(err)
 	}

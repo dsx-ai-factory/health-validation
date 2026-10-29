@@ -39,7 +39,7 @@ func NewEvaluationEngine() *EvaluationEngine {
 type Params struct {
 	Overrides        map[string]any
 	Cadence          *health.SchedulingCadence
-	Architecture     string
+	Host             health.Host
 	ExecutionContext health.ExecutionContext
 	Disabled         bool
 }
@@ -59,7 +59,7 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 	if v, isSkip := checkLevelSkip(cd, p, now); isSkip {
 		return v, nil
 	}
-	o := observe(m)
+	o := observe(m, p.Host)
 	if !routes(cd, o.category, o.signals) {
 		return skippedVerdict(cd, now, health.NoApplicableMeasurement, noApplicableDetail(cd)), nil
 	}
@@ -80,9 +80,9 @@ type observed struct {
 	category health.Category
 }
 
-func observe(m health.Measurement) observed {
+func observe(m health.Measurement, host health.Host) observed {
 	return observed{
-		m: m, signals: ToSignals(m), entity: entityID(m),
+		m: m, signals: ToSignals(m, host), entity: entityID(m),
 		key: health.KeyOf(m), errs: m.Errors(), category: m.Category(),
 	}
 }
@@ -126,15 +126,17 @@ func observe(m health.Measurement) observed {
 //
 // paramsFor supplies the per-check evaluation context; the engine asks
 // for fresh Params per check so overrides and disabled state stay
-// per-check, matching the single-check EvaluateCheck path.
-func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefinition, measurements []health.Measurement, paramsFor func(checkID string) Params) ([]health.CheckVerdict, error) {
+// per-check, matching the single-check EvaluateCheck path. host is taken
+// separately because signals are extracted once per measurement, before
+// any check's Params exist; it must be the Host paramsFor reports.
+func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefinition, measurements []health.Measurement, host health.Host, paramsFor func(checkID string) Params) ([]health.CheckVerdict, error) {
 	now := time.Now()
 
 	// Extract each measurement's signals once; every check reuses them.
 	obs := make([]observed, len(measurements))
 	presentCategories := make(map[health.Category]bool)
 	for i, m := range measurements {
-		obs[i] = observe(m)
+		obs[i] = observe(m, host)
 		presentCategories[obs[i].category] = true
 	}
 
@@ -369,9 +371,9 @@ func checkLevelSkip(cd *health.CheckDefinition, p Params, now time.Time) (health
 			fmt.Sprintf("check cadence %s does not cover requested cadence %s", cd.SchedulingCadence, *p.Cadence)), true
 	}
 
-	if p.Architecture != "" && len(cd.Architectures) > 0 && !slices.Contains(cd.Architectures, p.Architecture) {
+	if p.Host.Architecture != "" && len(cd.Architectures) > 0 && !slices.Contains(cd.Architectures, p.Host.Architecture) {
 		return skippedVerdict(cd, now, health.ArchitectureUnsupported,
-			fmt.Sprintf("check requires %v, running on %s", cd.Architectures, p.Architecture)), true
+			fmt.Sprintf("check requires %v, running on %s", cd.Architectures, p.Host.Architecture)), true
 	}
 
 	if len(cd.ExecutionContexts) > 0 && !slices.Contains(cd.ExecutionContexts, p.ExecutionContext) {
@@ -417,7 +419,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		return withEntity(ErroredVerdict(cd, now, detail, action), entity), nil
 	}
 
-	resolved, err := resolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
+	resolved, err := resolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Host.Architecture)
 	if err != nil {
 		return health.CheckVerdict{}, err
 	}

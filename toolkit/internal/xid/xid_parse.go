@@ -67,6 +67,9 @@ func ParseXid(since string, lines []string) xid.XidMeasurement {
 	for _, line := range lines {
 		ev, ok := parseNVLink5Line(line)
 		if !ok {
+			ev, ok = parseRecoveryActionLine(line)
+		}
+		if !ok {
 			ev, ok = parseXidLine(line)
 		}
 		if !ok {
@@ -151,4 +154,47 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 		ProcessName: groups[4],
 		NVLink5:     detail,
 	}, true
+}
+
+// xidRecoveryActionRE matches the Xid 154 line NVRM logs when the
+// recovery action it wants for a GPU changes, e.g.
+//
+//	NVRM: Xid (PCI:0019:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x4 (Drain and Reset)
+//	NVRM: Xid (PCI:0019:01:00): 154, pid=31982, name=nv_queue, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)
+//
+// The driver adds pid and name, as on any Xid line, when the change
+// happens while servicing a process. Their values are matched loosely
+// because a miss here would lose the transition, not just the process.
+//
+// Group 1 PCI address, 2 and 3 the optional pid and process name, 4 and 5
+// the code and name being left, 6 and 7 the code and name being entered.
+// Codes and names are captured verbatim; see [xid.RecoveryAction].
+var xidRecoveryActionRE = regexp.MustCompile(
+	`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): 154, (?:pid=([^,]*),\s*)?(?:name=([^,]*),\s*)?` +
+		`GPU recovery action changed ` +
+		`from (0x[0-9a-fA-F]+) \(([^)]*)\) to (0x[0-9a-fA-F]+) \(([^)]*)\)`)
+
+// parseRecoveryActionLine parses an Xid 154 line. It is tried before
+// [xidLineRE], which would otherwise match the line and discard the
+// transition entirely, leaving a bare 154 event that says only that
+// *some* action changed.
+func parseRecoveryActionLine(line string) (xid.XidEvent, bool) {
+	groups := xidRecoveryActionRE.FindStringSubmatch(line)
+	if groups == nil {
+		return xid.XidEvent{}, false
+	}
+	ev := xid.XidEvent{
+		PCIAddress: groups[1],
+		XidCode:    154,
+		RecoveryAction: &xid.RecoveryAction{
+			FromCode: groups[4],
+			FromName: groups[5],
+			ToCode:   groups[6],
+			ToName:   groups[7],
+		},
+	}
+	// A missing or non-numeric pid records as 0.
+	ev.Pid, _ = strconv.ParseInt(groups[2], 10, 64)
+	ev.ProcessName = strings.TrimSpace(groups[3])
+	return ev, true
 }

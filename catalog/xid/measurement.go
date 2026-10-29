@@ -47,11 +47,35 @@ func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 // for the NVLink5/NVSwitch fault family (Xid 144-150), which carries a
 // sub-component and severity instead of pid/name.
 type XidEvent struct {
-	NVLink5     *NVLink5Detail `json:"nvlink5,omitempty"`
-	ProcessName string         `json:"process_name"`
-	PCIAddress  string         `json:"pci_address"`
-	XidCode     int64          `json:"xid_code"`
-	Pid         int64          `json:"pid"`
+	NVLink5        *NVLink5Detail  `json:"nvlink5,omitempty"`
+	RecoveryAction *RecoveryAction `json:"recovery_action,omitempty"`
+	ProcessName    string          `json:"process_name"`
+	PCIAddress     string          `json:"pci_address"`
+	XidCode        int64           `json:"xid_code"`
+	Pid            int64           `json:"pid"`
+}
+
+// RecoveryAction is the transition an Xid 154 line reports: the driver
+// announcing that the recovery action it wants for a GPU has changed.
+//
+// Like [NVLink5Detail], every field is taken verbatim from the log
+// line rather than interpreted. NVRM prints both a raw code and the
+// name it expands to, e.g.
+//
+//	NVRM: Xid (PCI:0019:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x4 (Drain and Reset)
+//
+// An Xid 154 does not describe a fault of its own; it reports the
+// recovery action the driver now wants for the GPU after some *other*
+// Xid. The codes are the driver's recovery-action enum (0x0 None, 0x1
+// GPU reset, 0x4 Drain and Reset, and so on), and the name is the
+// driver's display text for it, which differs between driver releases
+// for the same code. Both are kept so a code this catalog does not map
+// still surfaces something readable.
+type RecoveryAction struct {
+	FromCode string `json:"from_code"`
+	FromName string `json:"from_name"`
+	ToCode   string `json:"to_code"`
+	ToName   string `json:"to_name"`
 }
 
 // NVLink5Detail carries the extended fields NVRM logs for the

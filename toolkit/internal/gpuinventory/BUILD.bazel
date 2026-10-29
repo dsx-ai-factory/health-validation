@@ -4,12 +4,14 @@ go_library(
     name = "gpuinventory",
     srcs = [
         "architecture.go",
+        "driver_version.go",
         "inventory.go",
         "nvml_linux.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory",
     visibility = ["//toolkit:__subpackages__"],
     deps = [
+        "//catalog/health",
         "//collect",
         "//collect/observation",
         "@org_golang_google_protobuf//proto",
@@ -27,6 +29,7 @@ go_library(
 go_test(
     name = "gpuinventory_test",
     srcs = [
+        "driver_version_test.go",
         "inventory_test.go",
         "nvml_linux_test.go",
     ],
