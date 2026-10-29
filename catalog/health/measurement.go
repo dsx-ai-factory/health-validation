@@ -130,3 +130,12 @@ type DerivedSignaler interface {
 type EntityIdentifier interface {
 	EntityID() string
 }
+
+// ObservedValuesScoper is an optional interface a measurement may
+// implement when its signals cover more than one check judges, such as
+// Xid signals for every code on the node, so each verdict reports only
+// its check's part. It runs after the rules and must not modify observed,
+// which the rules share; it returns observed for an unknown checkID.
+type ObservedValuesScoper interface {
+	ScopeObservedValues(checkID string, observed map[string]any) map[string]any
+}

@@ -324,13 +324,19 @@ func Checks() []health.CheckDefinition {
 	}
 	checks = append(checks, xid45Check())
 	checks = append(checks, xid154Check())
+	// Every check reports its own events, whatever signals its builder set.
+	for i := range checks {
+		if !slices.Contains(checks[i].RequiredSignals, SignalEvents) {
+			checks[i].RequiredSignals = append(checks[i].RequiredSignals, SignalEvents)
+		}
+	}
 	return checks
 }
 
 // criticalCheck builds the per-code CRITICAL check for one Xid.
 func criticalCheck(c criticalXid) health.CheckDefinition {
 	def := baseCheck(
-		fmt.Sprintf("gpu_xid_%d", c.code),
+		codeCheckID(c.code),
 		fmt.Sprintf("GPU Xid %d (%s)", c.code, c.description),
 		fmt.Sprintf("Detects NVRM Xid %d in the system journal within the collection window.", c.code),
 		c.action,
@@ -373,7 +379,7 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 // outcome has to be the fallback, not an override.
 func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 	def := baseCheck(
-		fmt.Sprintf("gpu_xid_%d", c.code),
+		codeCheckID(c.code),
 		fmt.Sprintf("GPU Xid %d (%s)", c.code, c.description),
 		fmt.Sprintf("Detects NVRM Xid %d in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.", c.code),
 		health.NoAction,
@@ -418,7 +424,6 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 // nvlink5SubXidCodeCheck builds the check for one [nvlink5SubXidCode],
 // for whichever Xid code and subcode it names.
 func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
-	id := "gpu_xid_" + strings.ToLower(strings.Replace(c.subXidCode, ".", "_", 1))
 	action := health.NoAction
 	severity := health.Warning
 	if c.critical {
@@ -426,7 +431,7 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 		severity = health.Critical
 	}
 	def := baseCheck(
-		id,
+		subXidCodeCheckID(c.subXidCode),
 		fmt.Sprintf("GPU Xid %s (%s)", c.subXidCode, c.subcode),
 		fmt.Sprintf("Detects NVRM Xid %s (%s) occurrences in the system journal within the collection window.", c.subXidCode, c.subcode),
 		action,
@@ -444,7 +449,7 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 // warningCheck builds one stable, architecture-scoped check for a warning Xid.
 func warningCheck(code int64, class warningClass) health.CheckDefinition {
 	def := baseCheck(
-		fmt.Sprintf("gpu_xid_%d", code),
+		codeCheckID(code),
 		fmt.Sprintf("GPU Xid %d Warning", code),
 		fmt.Sprintf("Detects warning-class NVRM Xid %d in the system journal within the collection window.", code),
 		class.action,
@@ -455,10 +460,6 @@ func warningCheck(code int64, class warningClass) health.CheckDefinition {
 		Severity:   health.Warning,
 		Message:    fmt.Sprintf(class.message, code),
 	}}
-
-	if code == 13 {
-		def.RequiredSignals = append(def.RequiredSignals, SignalEvents)
-	}
 	return def
 }
 
@@ -499,7 +500,7 @@ func xid45Check() health.CheckDefinition {
 // xid154Check builds the INFO check for Xid 154.
 func xid154Check() health.CheckDefinition {
 	def := baseCheck(
-		"gpu_xid_154",
+		codeCheckID(154),
 		"GPU Xid 154 (GPU recovery action changed)",
 		"Detects NVRM Xid 154 in the system journal within the collection window. Informational; correlates with an accompanying Xid.",
 		health.Drain(health.RemediationActionXid154),
@@ -544,4 +545,13 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		MaturityLevel:     health.Stable,
 		RecommendedAction: recommendedAction,
 	}
+}
+
+// codeCheckID is the ID of the check on one Xid code.
+func codeCheckID(code int64) string { return fmt.Sprintf("gpu_xid_%d", code) }
+
+// subXidCodeCheckID is the ID of the check on one NVLink5 fault subtype,
+// such as gpu_xid_149_4 for "149.4".
+func subXidCodeCheckID(subXidCode string) string {
+	return "gpu_xid_" + strings.ToLower(strings.Replace(subXidCode, ".", "_", 1))
 }

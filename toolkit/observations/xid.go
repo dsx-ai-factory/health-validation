@@ -121,6 +121,7 @@ func buildXidEvent(f xidFields) (xid.XidEvent, error) {
 	event := xid.XidEvent{
 		XidCode:     f.int(xidsignals.Code),
 		PCIAddress:  f.string(xidsignals.PCIAddress),
+		Message:     f.string(xidsignals.Message),
 		Pid:         f.int(xidsignals.PID),
 		ProcessName: f.string(xidsignals.ProcessName),
 		GPC:         f.optionalInt(xidsignals.GPC),

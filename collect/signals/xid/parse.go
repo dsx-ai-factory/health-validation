@@ -31,15 +31,18 @@ type ParseError struct {
 
 func (e *ParseError) Error() string { return "xid parse: " + e.Reason + ": " + e.Detail }
 
-// Event is the raw facts of one Xid line. An empty ProcessName means the
-// driver attributed no process. GPC, TPC, and SM are the graphics unit an
-// Xid 13 exception names; all three are nil when the line does not name one.
+// Event is the raw facts of one Xid line. Message is the line from its
+// "NVRM: Xid" marker onward, without any kmsg or syslog prefix. An empty
+// ProcessName means the driver attributed no process. GPC, TPC, and SM are
+// the graphics unit an Xid 13 exception names; all three are nil when the
+// line does not name one.
 type Event struct {
 	NVLink5        *NVLink5
 	RecoveryAction *RecoveryAction
 	GPC            *int64
 	TPC            *int64
 	SM             *int64
+	Message        string
 	PCIAddress     string
 	ProcessName    string
 	Code           int64
@@ -113,7 +116,8 @@ func Parse(message string) (Event, error) {
 	if err != nil {
 		return Event{}, parseError(ReasonInvalidCode)
 	}
-	event := Event{PCIAddress: address[1], Code: code}
+	// Set before any early return, so every parsed event keeps its line.
+	event := Event{Message: strings.TrimSpace(message[at[0]:]), PCIAddress: address[1], Code: code}
 	rest = rest[len(codeMatch[0]):]
 
 	if code == 154 {
