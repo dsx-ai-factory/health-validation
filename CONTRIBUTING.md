@@ -238,5 +238,6 @@ Full text of the DCO (<https://developercertificate.org/>):
 
 ## Questions
 
-Open a [task issue](../../issues/new?template=task.yml) for anything that doesn't
-fit a bug or feature request.
+Ask usage questions in [GitHub Discussions Q&A](../../discussions/categories/q-a).
+Report missing, unclear, or incorrect documentation with the
+[documentation form](../../issues/new?template=documentation.yml).
