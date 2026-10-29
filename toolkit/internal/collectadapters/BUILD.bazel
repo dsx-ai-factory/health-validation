@@ -4,6 +4,7 @@ go_library(
     name = "collectadapters",
     srcs = [
         "adapters.go",
+        "rdma_topo.go",
         "xid.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters",
@@ -14,6 +15,7 @@ go_library(
         "//catalog/health",
         "//catalog/node",
         "//catalog/nvlink",
+        "//catalog/pcie",
         "//catalog/xid",
         "//collect/observation",
         "//collect/signals/xid",

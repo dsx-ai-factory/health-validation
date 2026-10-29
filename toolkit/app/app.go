@@ -19,11 +19,11 @@
 //		os.Exit(a.Run(os.Args[1:], os.Stdout, os.Stderr))
 //	}
 //
-// Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
-// its own per-domain backend, defaulting to the shared host NVML backend for
-// GPU/NVLink, the host's collect NVML GPU inventory for node, sysfs for CPU
-// and InfiniBand, and the journal (through the collect sensor) for Xid. A
-// With*Backend setter overrides exactly one domain; the
+// Built-in collection uses the shared host NVML backend for GPU/NVLink,
+// the host collect GPU inventory for node,
+// sysfs for CPU, the kernel journal for Xid and RDMA link-flap events, and
+// rdma_topo check for ACS and IOMMU group findings. A With*Backend setter
+// overrides one domain; WithCollect replaces individual collect signals. The
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
@@ -97,9 +97,8 @@ type hostBackend interface {
 }
 
 // App is the health-validation CLI, assembled with the builder methods and
-// run with [App.Run]. It wires six sensors (GPU, node, NVLink, CPU, Xid,
-// InfiniBand), each from its own per-domain backend — the shared host NVML
-// backend, sysfs, or the journal by default, or a caller-supplied override.
+// run with [App.Run]. It wires domain sensors to NVML, sysfs, the kernel
+// journal, and rdma_topo, or to caller-supplied overrides.
 type App struct {
 	host     hostBackend
 	hostname func() (string, error)
@@ -318,20 +317,20 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 }
 
 // runCommand parses `run` flags, builds the catalog (applying any config
-// overrides and custom checks), and evaluates it against the six domain
+// overrides and custom checks), and evaluates it against the domain
 // sensors. Each sensor's backend is the caller's override if set, else the
 // default: the shared host NVML backend for gpu/nvlink, the host GPU inventory
-// for node, sysfs for cpu and infiniband, and the system journal, through the
-// collect sensor, for xid.
+// for node, sysfs for cpu,
+// the system journal for xid and RDMA link flaps, and rdma_topo for pcie.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "",
-		"path to a YAML config file that parameterizes and disables checks (optional)")
+		"path to a YAML config file for check selection and parameters (optional)")
 	nodeID := fs.String("node-id", a.nodeID,
 		"identifier of the node under test (overrides the configured default or system hostname)")
 	cadenceFlag := fs.String("cadence", "",
-		"evaluate checks whose scheduling cadence covers this window (CONTINUOUS, PROLOG, MAINTENANCE); omit to run every registered check")
+		"evaluate checks whose scheduling cadence covers this window (CONTINUOUS, PROLOG, MAINTENANCE); omit to run every enabled check")
 	executionContextFlag := fs.String("execution-context", health.TenantGuest.String(),
 		"execution context used to select checks (OPERATOR_INFRA, TENANT_GUEST, OUT_OF_BAND)")
 	registerXidTimeFlags(fs)
@@ -732,9 +731,13 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 }
 
 func collectionCategories(cat *catalog.Catalog, cfg *Config) (map[health.Category]bool, error) {
-	disabled := make(map[string]bool, len(cfg.DisabledChecks))
-	for _, id := range cfg.DisabledChecks {
-		disabled[strings.TrimSpace(id)] = true
+	disabledIDs, err := cfg.DisabledCheckIDs(cat)
+	if err != nil {
+		return nil, err
+	}
+	disabled := make(map[string]bool, len(disabledIDs))
+	for _, id := range disabledIDs {
+		disabled[id] = true
 	}
 	wanted := make(map[health.Category]bool)
 	if len(cfg.Checks) == 0 {
@@ -815,8 +818,7 @@ func loadOptionalConfig(path string) (*Config, error) {
 // set (built-ins + custom) and applied as threshold overrides and disables —
 // so a config may target a custom check too — and its
 // collection_timeout_seconds (if set) is the timeout; otherwise the toolkit
-// default is used. A nil cfg means no config file: built-ins only, default
-// timeout.
+// default is used. A nil cfg uses the default check selection and timeout.
 func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string, executionContext health.ExecutionContext) (*catalog.Catalog, time.Duration, error) {
 	// register adds the caller-supplied checks to a freshly built catalog.
 	// Classification is passed through untouched; the only failure is the
@@ -840,11 +842,7 @@ func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch strin
 	}
 
 	if cfg == nil {
-		c := catalog.New(opts...)
-		if err := register(c); err != nil {
-			return nil, 0, err
-		}
-		return c, collectionTimeout(cfg), nil
+		cfg = &Config{}
 	}
 
 	// Validate the config against a catalog that already includes the custom

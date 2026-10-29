@@ -25,9 +25,10 @@ import (
 // Config is the operator-supplied configuration for health-validation.
 //
 // For `run`, each entry under Checks maps a check ID to threshold overrides;
-// unlisted checks remain enabled. For `collect`, the listed check IDs select
-// which sensors run; an empty list selects every registered check. Threshold
-// values are validated but not evaluated during collection.
+// unlisted checks remain enabled except rdma_topo, which requires an explicit
+// entry (rdma_topo: {}). For `collect`, the listed check IDs select which sensors
+// run; an empty list selects every default-enabled check. Threshold values are
+// validated but not evaluated during collection.
 // DisabledChecks lists check IDs to exclude. During `run`, they are reported
 // as skipped with [health.CheckDisabled] and excluded from the node-level
 // severity. CollectionTimeoutSeconds optionally bounds each sensor's
@@ -249,7 +250,8 @@ func trimListItems(val any) any {
 }
 
 // DisabledCheckIDs validates the config's disabled_checks against the
-// catalog's check definitions and returns the trimmed IDs to disable.
+// catalog's check definitions and returns the trimmed IDs to disable, including
+// rdma_topo unless explicitly listed in Checks. Explicit disables take precedence.
 //
 // It rejects a check ID with no matching registered check, and an empty
 // entry. Validating here is what keeps a typo'd ID from reading as a
@@ -267,6 +269,9 @@ func (cfg *Config) DisabledCheckIDs(cat *catalog.Catalog) ([]string, error) {
 			return nil, fmt.Errorf("config: unknown check %q", checkID)
 		}
 		disabledChecks = append(disabledChecks, checkID)
+	}
+	if _, enabled := cfg.Checks["rdma_topo"]; !enabled {
+		disabledChecks = append(disabledChecks, "rdma_topo")
 	}
 	return disabledChecks, nil
 }

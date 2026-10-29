@@ -15,6 +15,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	rdmatoposensor "github.com/dsx-ai-factory/health-validation/collect/sensors/rdmatopo"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
@@ -56,9 +57,9 @@ type CollectAdapter interface {
 // With signalIDs it supplies exactly those, replacing the built-in collect
 // source for them; this succeeds the With*Backend overrides for collect-backed
 // domains. Each claimed signal must be declared by the sensor and requested by
-// an adapter. The Xid signals are claimed all together or not at all. A
-// built-in source left with no requested signals never runs, and
-// built-in adapters read claimed signals from this sensor.
+// an adapter. Xid and rdma_topo each require their signals to be claimed
+// all together or not at all. A built-in source left with no requested signals
+// never runs, and built-in adapters read claimed signals from this sensor.
 // Each registered collect source has its own timeout budget.
 // Timeout blocking is keyed by sensor ID, not the underlying source. Shared
 // NVML/DCGM sources must prevent new calls while a timed-out call is running.
@@ -115,6 +116,8 @@ func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 		sources = append(sources, xidsensor.New(nil))
 		adapters = append(adapters, collectadapters.XID())
 	}
+	sources = append(sources, rdmatoposensor.New(nil))
+	adapters = append(adapters, collectadapters.RDMATopo())
 	return sources, adapters
 }
 
@@ -297,14 +300,25 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 		}
 		signals := requested
 		if len(source.claims) > 0 {
-			// One Xid event's fields must come from one journal read; a split
-			// claim lets reads at different times drop fields such as Fatal.
-			// Dedupe first so a repeated ID cannot stand in for a missing one.
-			xidSignals := observations.MappedSignalsFor(health.Xid)
-			xidClaims := slices.Compact(slices.Sorted(slices.Values(source.claims)))
-			xidClaims = slices.DeleteFunc(xidClaims, func(id string) bool { return !slices.Contains(xidSignals, id) })
-			if len(xidClaims) > 0 && len(xidClaims) < len(xidSignals) {
-				return nil, fmt.Errorf("collect sensor %q claims only part of the Xid signals; claim all of them or none", source.sensor.ID())
+			// Each Xid event or rdma_topo invocation must come from one source.
+			// Count group signals so repeated claims cannot stand in for missing ones.
+			for _, group := range []struct {
+				name     string
+				category health.Category
+			}{
+				{name: "Xid", category: health.Xid},
+				{name: "rdma_topo", category: health.PCIe},
+			} {
+				groupSignals := observations.MappedSignalsFor(group.category)
+				count := 0
+				for _, id := range groupSignals {
+					if slices.Contains(source.claims, id) {
+						count++
+					}
+				}
+				if count > 0 && count < len(groupSignals) {
+					return nil, fmt.Errorf("collect sensor %q claims only part of the %s signals; claim all of them or none", source.sensor.ID(), group.name)
+				}
 			}
 			signals = nil
 			sensorSignals := source.sensor.Signals()

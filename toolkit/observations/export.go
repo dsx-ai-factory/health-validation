@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
@@ -49,13 +50,27 @@ const toolkitSourcePrefix = "toolkit."
 // string. A field named by a measurement error becomes a CollectionError,
 // and one the source reported unsupported becomes a NoValue, so a zero
 // value is never published as an observation. Values the catalog derives
-// at evaluation ([health.DerivedSignaler]) are not exported.
+// at evaluation ([health.DerivedSignaler]) are not exported. rdma_topo
+// measurements instead use canonical signal IDs, keeping findings and
+// collection failures separate and writing shared invocation evidence once.
 func FromMeasurements(sensor, nodeID string, observedAt time.Time, measurements ...health.Measurement) ([]*observation.Observation, error) {
 	source := toolkitSourcePrefix + sensor
 	at := timestamppb.New(observedAt)
 	var out []*observation.Observation
+	var rdmaTopoMeasurements []pcie.RDMATopoMeasurement
 	for _, m := range measurements {
+		if value, ok := rdmaTopoMeasurement(m); ok {
+			rdmaTopoMeasurements = append(rdmaTopoMeasurements, value)
+			continue
+		}
 		exported, err := export(source, nodeID, at, m)
+		if err != nil {
+			return nil, fmt.Errorf("export %s measurement: %w", sensor, err)
+		}
+		out = append(out, exported...)
+	}
+	if len(rdmaTopoMeasurements) > 0 {
+		exported, err := exportRDMATopo(source, nodeID, at, rdmaTopoMeasurements)
 		if err != nil {
 			return nil, fmt.Errorf("export %s measurement: %w", sensor, err)
 		}

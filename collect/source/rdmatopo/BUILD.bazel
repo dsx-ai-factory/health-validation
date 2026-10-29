@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "rdmatopo",
+    srcs = [
+        "parse.go",
+        "source.go",
+    ],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/source/rdmatopo",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "rdmatopo_test",
+    srcs = ["source_test.go"],
+    embed = [":rdmatopo"],
+    deps = ["@com_github_stretchr_testify//require"],
+)

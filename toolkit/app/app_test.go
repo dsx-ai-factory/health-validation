@@ -32,14 +32,14 @@ import (
 
 const testNodeID = "node-123"
 
-func TestCollectionCategoriesWithoutConfigIncludesEveryBuiltinDomain(t *testing.T) {
+func TestCollectionCategoriesWithoutConfigIncludesDefaultDomains(t *testing.T) {
 	cat := catalog.New()
 	categories, err := collectionCategories(cat, &Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(categories) != len(cat.Categories()) {
-		t.Fatalf("categories = %v, want every built-in domain %v", categories, cat.Categories())
+	if categories[health.PCIe] || len(categories) != len(cat.Categories())-1 {
+		t.Fatalf("categories = %v, want every built-in domain except opt-in PCIe", categories)
 	}
 }
 
@@ -1196,8 +1196,12 @@ func TestRunCommandCadenceContinuousSkipsPrologChecks(t *testing.T) {
 				break
 			}
 		}
-		if reason != health.CadenceMismatch {
-			t.Errorf("%s skip reason = %v, want CADENCE_MISMATCH", id, reason)
+		want := health.CadenceMismatch
+		if id == "rdma_topo" {
+			want = health.CheckDisabled
+		}
+		if reason != want {
+			t.Errorf("%s skip reason = %v, want %v", id, reason, want)
 		}
 	}
 	if !verdictHasCheck(v, "gpu_count") {

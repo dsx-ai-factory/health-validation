@@ -95,6 +95,25 @@ Xid read runs `journalctl --output=json --output-fields=MESSAGE`, which needs
 systemd 236 or later; without a readable kernel journal for the current boot,
 `gpu_xid_*` returns collection-failure verdicts.
 
+The `rdma_topo` sensor runs `rdma_topo check` with automatic mode detection.
+It requires the tool on `PATH`, its Python runtime, and read access to host PCI
+sysfs. Confirmed findings are retained when collection fails; errors are
+reported separately. See the [upstream help](https://github.com/linux-rdma/rdma-core/blob/master/kernel-boot/rdma_topo)
+and [usage guide](https://docs.nvidia.com/multi-node-nvlink-systems/grace-blackwell-cx8-gpudirect-rdma-guide/gpudirect_rdma_testing.html#configuring-acs-using-rdma-topo-tool).
+
+The CLI check is opt-in for both `run` and `collect`. Enable it in the YAML
+file passed via `--config` (`disabled_checks` takes precedence):
+
+```yaml
+checks:
+  rdma_topo: {}
+```
+
+Without this entry, `run` reports `CHECK_DISABLED` and neither command runs the
+tool. The published image and wrapper do not provide `rdma_topo` or its Python
+runtime; supply both in the container. Once enabled, missing dependencies
+produce a CRITICAL collection-error verdict during `run`.
+
 ### Static binary (bare metal, Slurm)
 
 Build the binary from source. The NVML backend needs cgo and NVML, so build on
@@ -200,9 +219,9 @@ does **not** mean the pod needs `privileged: true`. The intended profiles are:
 
 | Profile | Host access and security context | Checks with complete coverage |
 | --- | --- | --- |
-| Docker wrapper | Read-only journal, machine-id, `journalctl`, and its `ldd` dependencies; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; no `--privileged`, host PID namespace, or extra capabilities. | All stock CLI checks, provided the container sees all node GPUs. |
-| Kubernetes explicit mounts | The same read-only paths as the wrapper. `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities, `privileged`, host PID namespace, or host networking. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
-| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, host PID namespace, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
+| Docker wrapper | Read-only journal, machine-id, `journalctl`, and its `ldd` dependencies; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; no `--privileged`, host PID namespace, or extra capabilities. | All default CLI checks, provided the container sees all node GPUs. |
+| Kubernetes explicit mounts | The same read-only paths as the wrapper. `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities, `privileged`, host PID namespace, or host networking. | All default CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
+| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, host PID namespace, `SYS_ADMIN`, or `nsenter`. | All default CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
 | GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | GPU/NVLink and CPU/NUMA checks can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
 
 The image runs as root by default. An explicitly non-root Docker user or pod
@@ -314,7 +333,7 @@ spec:
 A `cron` entry or `systemd` timer running `health-validation run` and piping
 stdout to your log shipper is a complete integration for non-scheduler fleets.
 
-> **Cadence note.** Omit `--cadence` and all registered
+> **Cadence note.** Omit `--cadence` and all enabled
 > checks run on every invocation. Pass `--cadence=CONTINUOUS|PROLOG|MAINTENANCE`
 > to run checks whose declared cadence covers that window (Continuous
 > ⊂ Prolog ⊂ Maintenance); checks outside it are reported as
@@ -538,6 +557,7 @@ Several families share the NVML sensor and its caller-owned instance.
 | Block devices and filesystems | Block identity, metadata, size and parents; mount metadata and eligible filesystem capacity | `sensors/disk.New(fsys, ...source/disk.Option)` |
 | FUSE | Connection waiting/background/congestion counts and mount correlation | `sensors/fuse.New(fsys, ...source/fuse.Option)` |
 | PCI | PCI address, vendor/device/class identity, driver, bound module, and raw ACS control | `sensors/pci.New(fsys)` |
+| `rdma_topo` | ACS and IOMMU group findings and invocation evidence | `sensors/rdmatopo.New(nil)` |
 | Persistent crash records | Live and archived pstore paths, text or base64 content, hashes, and root provenance | `sensors/pstore.New(fsys)` or `NewWithRoots(fsys, roots...)` |
 
 GPM profiling is a separate, opt-in NVML sensor:

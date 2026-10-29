@@ -1,0 +1,9 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "rdmatopo",
+    srcs = ["signals.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/rdmatopo",
+    visibility = ["//visibility:public"],
+    deps = ["//collect"],
+)
