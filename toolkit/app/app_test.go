@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -917,6 +919,139 @@ func cadenceRunApp() *App {
 	return a
 }
 
+func TestXidTimeFlags(t *testing.T) {
+	for _, command := range []string{"run", "collect"} {
+		t.Run(command, func(t *testing.T) {
+			dir := t.TempDir()
+			argsPath := filepath.Join(dir, "args")
+			t.Setenv("XID_TEST_ARGS", argsPath)
+			t.Setenv("XID_TEST_ENTRIES", filepath.Join(dir, "entries"))
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$XID_TEST_ARGS\"\ncat \"$XID_TEST_ENTRIES\"\n"
+			if err := os.WriteFile(filepath.Join(dir, "journalctl"), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			entries := `{"__CURSOR":"gpu1","__REALTIME_TIMESTAMP":"1792600000000000","_BOOT_ID":"0123456789abcdef0123456789abcdef","MESSAGE":"NVRM: Xid (PCI:0008:06:00): 79"}` + "\n" +
+				`{"__CURSOR":"gpu2","__REALTIME_TIMESTAMP":"1792599999000000","_BOOT_ID":"0123456789abcdef0123456789abcdef","MESSAGE":"NVRM: Xid (PCI:0009:06:00): 48"}` + "\n"
+			if err := os.WriteFile(filepath.Join(dir, "entries"), []byte(entries), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for _, tt := range []struct {
+				flags  []string
+				want79 bool
+				want48 bool
+			}{
+				{nil, true, true},
+				{[]string{"--xid-from", "0"}, true, true},
+				{[]string{"--xid-to", "1792600000"}, false, true},
+				{[]string{"--xid-from", "1792600000", "--xid-to", "1792603600"}, false, false},
+				{[]string{"--xid-from", "0008:06:00=1792600000"}, false, true},
+				{[]string{"--xid-from", "0008:06:00=1792600000", "--xid-from", "0009:06:00=1792599999"}, false, false},
+				{[]string{"--xid-from", "1792600000", "--xid-from", "0009:06:00=0"}, false, true},
+			} {
+				a := cadenceRunApp()
+				a.xid = nil
+				var stdout, stderr bytes.Buffer
+				args := append([]string{command, "--node-id", testNodeID}, tt.flags...)
+				if code := a.Run(args, &stdout, &stderr); code == exitError {
+					t.Fatalf("%v: stderr = %s", args, stderr.String())
+				}
+				found := map[int64]bool{}
+				if command == "run" {
+					var verdict health.NodeVerdict
+					if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+						t.Fatal(err)
+					}
+					for _, result := range verdict.CheckResults {
+						if result.Severity == health.Critical {
+							switch result.CheckID {
+							case "gpu_xid_79":
+								found[79] = true
+							case "gpu_xid_48":
+								found[48] = true
+							}
+						}
+					}
+				} else {
+					var batch observation.ObservationBatch
+					if err := protojson.Unmarshal(stdout.Bytes(), &batch); err != nil {
+						t.Fatal(err)
+					}
+					for _, o := range batch.GetObservations() {
+						if o.GetSignalId() == "xid.xid_counts" {
+							var counts map[int64]int64
+							if err := json.Unmarshal([]byte(o.GetValue().GetStringValue()), &counts); err != nil {
+								t.Fatal(err)
+							}
+							for code, count := range counts {
+								found[code] = count > 0
+							}
+						}
+					}
+				}
+				if found[79] != tt.want79 || found[48] != tt.want48 {
+					t.Fatalf("%v: observed Xids = %v, want 79=%v, 48=%v; output=%s", args, found, tt.want79, tt.want48, stdout.String())
+				}
+				data, err := os.ReadFile(argsPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := []string{"--dmesg", "--boot", "--no-pager", "--quiet", "--output=json", "--output-fields=MESSAGE", "--all"}
+				perGPU := slices.ContainsFunc(tt.flags, func(value string) bool { return strings.Contains(value, "=") })
+				if !perGPU {
+					for i, value := range tt.flags {
+						switch value {
+						case "--xid-from":
+							want = append(want, "--since=@"+tt.flags[i+1])
+						case "--xid-to":
+							want = append(want, "--until=@"+tt.flags[i+1])
+						}
+					}
+				}
+				if got := strings.Split(strings.TrimSpace(string(data)), "\n"); !slices.Equal(got, want) {
+					t.Fatalf("journalctl args = %v, want %v", got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestInvalidXidTimeFlags(t *testing.T) {
+	for _, command := range []string{"run", "collect"} {
+		for _, flags := range [][]string{
+			{"--xid-from", "invalid"},
+			{"--xid-to", "1.5"},
+			{"--xid-from", "9223372036854775808"},
+			{"--xid-from", "-1"},
+			{"--xid-to", "0"},
+			{"--xid-to", "-1"},
+			{"--xid-from", "100", "--xid-to", "100"},
+			{"--xid-from", "101", "--xid-to", "100"},
+			{"--xid-from", "0008:06:00=-1"},
+			{"--xid-from", "0008:06:00=100", "--xid-to", "100"},
+			{"--xid-from", "0008:06:00=101", "--xid-to", "100"},
+			{"--xid-from", "0008:06:00=invalid"},
+			{"--xid-from", "0008:06:00=9223372036854775808"},
+			{"--xid-from", "0008:06:00=100", "--xid-from", "0008:06:00=101"},
+			{"--xid-from", "0008:0A:00=100", "--xid-from", "0008:0a:00.0=101"},
+			{"--xid-from", "100", "--xid-from", "101"},
+			{"--xid-from", "=100"},
+			{"--xid-from", "GPU-1=100"},
+			{"--xid-from", "06:00=100"},
+			{"--xid-from", "0008:06:20=100"},
+			{"--xid-from", "0008:06:00.1=100"},
+		} {
+			a := New().WithProgramName("test")
+			a.host = panicHost{}
+			var stdout, stderr bytes.Buffer
+			args := append([]string{command}, flags...)
+			if code := a.Run(args, &stdout, &stderr); code != exitError || stdout.Len() != 0 || !strings.Contains(stderr.String(), "xid-") {
+				t.Errorf("%v: code = %d, stdout = %q, stderr = %q", args, code, stdout.String(), stderr.String())
+			}
+		}
+	}
+}
+
 func TestRunCommandRejectsInvalidCadence(t *testing.T) {
 	a := New().WithProgramName("test")
 	a.host = panicHost{}
@@ -1067,5 +1202,18 @@ func TestRunCommandCadenceContinuousSkipsPrologChecks(t *testing.T) {
 	}
 	if !verdictHasCheck(v, "gpu_count") {
 		t.Error("CONTINUOUS run missing Continuous check gpu_count")
+	}
+}
+
+func TestXidTimeFlagsPreserveBackendOverride(t *testing.T) {
+	for _, command := range []string{"run", "collect"} {
+		a := cadenceRunApp()
+		called := false
+		a.WithXidBackend(xidSpyBackend{called: &called})
+		var stdout, stderr bytes.Buffer
+		code := a.Run([]string{command, "--node-id", testNodeID, "--xid-from", "0008:06:00=1792600000"}, &stdout, &stderr)
+		if code == exitError || !called {
+			t.Fatalf("%s: code=%d, override called=%v, stderr=%s", command, code, called, stderr.String())
+		}
 	}
 }
