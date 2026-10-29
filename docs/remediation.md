@@ -55,6 +55,20 @@ skip the whole-suite re-run between steps — later actions are more disruptive
 GPU), and are only warranted once the cheaper attempt has been confirmed not
 to work.
 
+### Why actions are ranked this way
+
+A check's first step is the least disruptive step it expects might clear the
+fault. If a check starts with a more disruptive step, lighter actions are not
+expected to resolve that check, so its sequence ranks higher. Re-running the
+suite after each step recalculates the recommendation as findings clear.
+
+- `service_required` ranks highest because no automated step remains.
+- `update_swfw` ranks above restarts because a restart alone does not correct a
+  software or configuration incompatibility.
+- `restart_os`, `reset_gpu`, and `restart_app` follow in order of disruption.
+- At equal severity, `check_collection` and `retry_collection` rank last because
+  they represent collection failures rather than observed faults.
+
 ## Action catalog
 
 `RemediationAction` is an **open string type, not a closed enum** — the
