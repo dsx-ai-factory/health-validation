@@ -109,6 +109,7 @@ NodeVerdict aggregates per-check verdicts into a node-level health assessment.
 | <nobr>`AffectedComponents`</nobr> | <nobr>`affected_components`</nobr> | [<nobr>`[]AffectedComponent`</nobr>](#affectedcomponent) |  |
 | <nobr>`CheckResults`</nobr> | <nobr>`check_results`</nobr> | [<nobr>`[]CheckVerdict`</nobr>](#checkverdict) |  |
 | <nobr>`SkippedChecks`</nobr> | <nobr>`skipped_checks`</nobr> | [<nobr>`[]CheckVerdict`</nobr>](#checkverdict) |  |
+| <nobr>`RecommendedAction`</nobr> | <nobr>`recommended_action`</nobr> | [<nobr>`RecommendedAction`</nobr>](#recommendedaction) |  |
 | <nobr>`OverallSeverity`</nobr> | <nobr>`overall_severity`</nobr> | [<nobr>`Severity`</nobr>](#severity) |  |
 
 ### Prerequisite

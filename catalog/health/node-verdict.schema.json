@@ -17,7 +17,7 @@
   "properties": {
     "schema_version": {
       "description": "MAJOR.MINOR contract version. Consumers must check this before acting on a verdict; an unrecognised or missing value is untrusted output.",
-      "const": "0.3"
+      "const": "0.4"
     },
     "catalog_version": {
       "description": "Catalog module version that produced this verdict: a release or pseudo-version on stamped builds, or on unstamped local builds the module version Go embeds, dev+<commit>, or dev. Overrides and custom checks do not change it.",
@@ -46,6 +46,10 @@
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/category" },
       "additionalProperties": { "$ref": "#/$defs/severity" }
+    },
+    "recommended_action": {
+      "description": "Node-level drain sequence, chosen from the failing checks that recommend drain with at least one step: the highest severity among them wins, then each step's rank in order, then check ID, then action names as a stability fallback. Omitted when no node-level drain sequence is available.",
+      "$ref": "#/$defs/recommendedAction"
     },
     "affected_components": {
       "description": "One entry per domain with a non-PASS result. Omitted when all domains pass.",
