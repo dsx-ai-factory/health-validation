@@ -96,6 +96,7 @@ func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
 	obs := []*observation.Observation{
 		xidInt(xidsignals.Code, "a", 79), xidString(xidsignals.PCIAddress, "a", "0000:01:00"),
 		xidInt(xidsignals.PID, "a", 1234), xidString(xidsignals.ProcessName, "a", "python3"),
+		xidString(xidsignals.Message, "a", "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3, GPU has fallen off the bus."),
 	}
 	obs = append(obs, xidEvent("b", 79)...)
 	obs = append(obs, xidEvent("c", 149)...)
@@ -120,7 +121,7 @@ func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
 		FatalXidCounts: map[int64]int64{149: 1},
 		EventCount:     6,
 		Events: []xid.XidEvent{
-			{PCIAddress: "0000:01:00", XidCode: 79, Pid: 1234, ProcessName: "python3"},
+			{PCIAddress: "0000:01:00", XidCode: 79, Pid: 1234, ProcessName: "python3", Message: "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3, GPU has fallen off the bus."},
 			{PCIAddress: "0000:01:00", XidCode: 79},
 			{PCIAddress: "0000:01:00", XidCode: 149, NVLink5: &xid.NVLink5Detail{
 				SubComponent: "NETIR_LINK_EVT", Fatal: true, Link: 8, IntrInfo: "0x004505c6", ErrorStatus: "0x00000000",
