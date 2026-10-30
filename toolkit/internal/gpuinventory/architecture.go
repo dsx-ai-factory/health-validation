@@ -88,6 +88,8 @@ var pciDeviceArchitectures = map[uint32]string{
 // broader family match.
 func ArchitectureFromName(name string) string {
 	switch {
+	case strings.Contains(name, "VR200"):
+		return "VR200"
 	case strings.Contains(name, "GB300"):
 		return "GB300"
 	case strings.Contains(name, "GB200"):

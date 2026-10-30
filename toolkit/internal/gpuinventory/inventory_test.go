@@ -239,6 +239,7 @@ func TestArchitecture(t *testing.T) {
 		{name: "B200 after GB200", snapshot: inventory(gpuEntry(0, "NVIDIA B200")), want: "B200"},
 		{name: "first recognized wins", snapshot: inventory(gpuEntry(0, "NVIDIA A10"), gpuEntry(1, "NVIDIA GB300")), want: "GB300"},
 		{name: "failed slot skipped", snapshot: inventory(failedEntry(0, handleOperation), gpuEntry(1, "NVIDIA H100 80GB HBM3")), want: "H100"},
+		{name: "VR200 by name", snapshot: inventory(gpuEntry(0, "NVIDIA VR200")), want: "VR200"},
 		{name: "unrecognized", snapshot: inventory(gpuEntry(0, "NVIDIA A10")), want: ArchitectureUnknown},
 		{name: "generic name falls back to PCI ID", snapshot: inventory(pciEntry(0, "NVIDIA Graphics Device", 0x304110DE)), want: "VR200"},
 		{name: "name wins over PCI ID", snapshot: inventory(pciEntry(0, "NVIDIA GB300", 0x304110DE)), want: "GB300"},
