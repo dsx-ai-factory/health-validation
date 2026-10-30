@@ -50,14 +50,15 @@ pull a specific tag or architecture.
 For a local Linux/amd64 build that produces a loadable tarball, see
 [Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md#build-a-linux-image-from-macos).
 
-The image carries the CLI on an Ubuntu base — **not** the NVIDIA driver or
-`journalctl`. Different check domains need different host resources mounted in;
+The image carries the CLI on an Ubuntu base — **not** the NVIDIA driver,
+`journalctl`, or DCGM. Different check domains need different host resources mounted in;
 running with the wrong flags makes the affected checks report an **error
 verdict** (CRITICAL/UNKNOWN), so a misconfigured run is loud, never silently
 wrong.
 
 Use the provided wrapper, which bind-mounts the host's `journalctl` binary and
-its shared-library dependencies as well as the journal resources:
+DCGM client library (`libdcgm.so.4`), with their shared-library dependencies,
+as well as the journal resources, and runs on the host network:
 
 ```shell
 scripts/health-validation-run.sh ghcr.io/dsx-ai-factory/health-validation:<tag> \
@@ -71,12 +72,16 @@ command is:
 ```shell
 docker run --rm \
   --gpus all \
+  --network host \
   -e NVIDIA_DRIVER_CAPABILITIES=utility \
+  -e LD_LIBRARY_PATH=<directory of the host's libdcgm.so.4> \
   -v /run/log/journal:/run/log/journal:ro \
   -v /var/log/journal:/var/log/journal:ro \
   -v /etc/machine-id:/etc/machine-id:ro \
   -v /usr/bin/journalctl:/usr/bin/journalctl:ro \
   -v <journalctl ldd dependencies, one -v per .so, excluding libc/libpthread/libm> \
+  -v <host libdcgm.so.4 path>:<same path>:ro \
+  -v <libdcgm.so.4 ldd dependencies, as for journalctl> \
   ghcr.io/dsx-ai-factory/health-validation:<tag> \
   run --node-id "$NODE_NAME"
 ```
@@ -85,6 +90,11 @@ docker run --rm \
   `libnvidia-ml.so.1` it needs — required for `gpu_count` and `nvlink_*`. Keep
   it `all` (a scoped subset makes `gpu_count` fire CRITICAL on visibility, not
   health).
+- `--network host`, the `libdcgm.so.4` mounts, and `LD_LIBRARY_PATH` let the
+  CLI load the DCGM client and reach the host's DCGM hostengine on
+  `localhost` — required for `gpu_average_power_draw`, `gpu_power_limit`,
+  `gpu_power_state`, and `gpu_sensor_throttle`. Without them those checks
+  report a collection failure. The node must run `nv-hostengine`.
 - The journal, machine-id, `journalctl`, and its shared-library mounts are
   required for both `gpu_xid_*` and `rdma_linkflap_fatal`; without them the
   journal-backed checks report a collection failure rather than a false PASS.
