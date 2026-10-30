@@ -73,6 +73,32 @@ func TestGPUSensorThrottle(t *testing.T) {
 			wantSeverity: health.Critical,
 		},
 		{
+			name:         "VR200 healthy",
+			cat:          throttleCatalog(catalog.WithArchitecture("VR200")),
+			measurement:  healthyThrottleGB200,
+			wantSeverity: health.Pass,
+		},
+		{
+			name: "VR200 thermal slowdown",
+			cat:  throttleCatalog(catalog.WithArchitecture("VR200")),
+			measurement: func() gpu.GPUMeasurement {
+				m := healthyThrottleGB200()
+				m.HWThermalSlowdown = true
+				return m
+			},
+			wantSeverity: health.Critical,
+		},
+		{
+			name: "VR200 power-brake slowdown",
+			cat:  throttleCatalog(catalog.WithArchitecture("VR200")),
+			measurement: func() gpu.GPUMeasurement {
+				m := healthyThrottleGB200()
+				m.HWPowerBrakeSlowdown = true
+				return m
+			},
+			wantSeverity: health.Critical,
+		},
+		{
 			name:           "skipped on wrong architecture",
 			cat:            throttleCatalog(catalog.WithArchitecture("T4")),
 			measurement:    healthyThrottleGB200,

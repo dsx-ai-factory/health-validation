@@ -137,7 +137,7 @@ Monitors GPU hardware throttling via NVML clocks-event-reasons. Active hardware 
 | Scheduling cadence | <nobr>`PROLOG`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr>, <nobr>`VR200`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`hw_slowdown`</nobr>, <nobr>`hw_thermal_slowdown`</nobr>, <nobr>`hw_power_brake_slowdown`</nobr> |
 
 **Rules**
