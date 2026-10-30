@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -141,29 +140,6 @@ func (r *Reader) readKernelBoot(ctx context.Context, args []string, each func(En
 		return 0, err
 	}
 	return lines.entries, nil
-}
-
-// ReadKernelSince calls each for every kernel entry of the current boot
-// logged at or after since, truncated to the second, in journal order. A
-// quiet window is not a failure, so when it holds no entry a second read
-// confirms the boot has at least one kernel entry, else it returns
-// [ErrNoEntries]. An error from each stops the read and is returned.
-func (r *Reader) ReadKernelSince(ctx context.Context, since time.Time, each func(Entry) error) error {
-	// @<seconds> is an epoch timestamp, so the host's time zone cannot shift
-	// the window.
-	args := append(slices.Clone(kernelBootArgs), "--since=@"+strconv.FormatInt(since.Unix(), 10))
-	entries, err := r.readKernelBoot(ctx, args, each, true)
-	if err != nil || entries > 0 {
-		return err
-	}
-	latest, err := r.readKernelBoot(ctx, append(slices.Clone(kernelBootArgs), "--lines=1"), func(Entry) error { return nil }, false)
-	if err != nil {
-		return err
-	}
-	if latest == 0 {
-		return ErrNoEntries
-	}
-	return nil
 }
 
 func runJournalctl(ctx context.Context, args []string, stdout, stderr io.Writer) error {

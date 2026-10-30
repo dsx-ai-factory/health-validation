@@ -137,7 +137,8 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	for _, definition := range selected {
 		scan.want[definition.ID()] = true
 	}
-	if err := s.reader.ReadKernelSince(ctx, start, scan.entry); err != nil {
+	from := start.Unix()
+	if err := s.reader.ReadKernelBootRange(ctx, &from, nil, scan.entry); err != nil {
 		batch.Observations = scanFailure(selected, at, "ReadKernelBoot", err)
 		return batch, nil
 	}
