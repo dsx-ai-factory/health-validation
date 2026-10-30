@@ -1,20 +1,21 @@
 # Enforces the module layout's dependency direction (catalog → nothing,
-# collect → nothing, toolkit → catalog + collect). catalog is in neither group,
-# so a catalog target that depends on toolkit or collect fails to build.
+# collect → nothing, toolkit → catalog + collect). Both groups are public except
+# for the packages that must not reach in, so repositories that depend on this
+# one through Bazel keep access.
 
 package_group(
     name = "toolkit_consumers",
     packages = [
-        "//agentkit/...",
-        "//toolkit/...",
+        "-//catalog/...",
+        "-//collect/...",
+        "public",
     ],
 )
 
 package_group(
     name = "collect_consumers",
     packages = [
-        "//agentkit/...",
-        "//collect/...",
-        "//toolkit/...",
+        "-//catalog/...",
+        "public",
     ],
 )

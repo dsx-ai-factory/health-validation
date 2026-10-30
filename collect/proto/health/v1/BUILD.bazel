@@ -8,4 +8,5 @@ exports_files(
         "check.proto",
         "observation.proto",
     ],
+    visibility = ["//build/visibility:collect_consumers"],
 )
