@@ -9,7 +9,7 @@ import "github.com/dsx-ai-factory/health-validation/collect/observation"
 
 type unsupportedNative struct{}
 
-func newNative(StandaloneOptions) nativeAPI { return unsupportedNative{} }
+func newNative(nativeOptions) nativeAPI { return unsupportedNative{} }
 
 func (unsupportedNative) Init() (func(), error)          { return nil, unsupportedError() }
 func (unsupportedNative) AllGPUIndices() ([]uint, error) { return nil, unsupportedError() }

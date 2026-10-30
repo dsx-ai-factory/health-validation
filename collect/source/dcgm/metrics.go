@@ -58,7 +58,7 @@ func (source *Source) ReadGPUMetrics(
 		}
 		defer source.finishNativeCall()
 
-		if err := source.ensureInitialized(); err != nil {
+		if err := source.ensureInitialized(callContext); err != nil {
 			return nil, err
 		}
 		if err := source.ensureMetricWatch(); err != nil {
