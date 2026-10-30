@@ -173,6 +173,7 @@ func (r *Runner) measure(e *collectEntry) *observation.ObservationBatch {
 	if err := validateCollectBatch(batch, r.cycle.CollectionID(), e.signals); err != nil {
 		return r.failed(e, fmt.Errorf("collect sensor %q: %w", e.id, err))
 	}
+	failSourceLocalOutcomes(batch)
 	if sourceErr != nil {
 		for _, failure := range r.failed(e, sourceErr).GetObservations() {
 			found := false

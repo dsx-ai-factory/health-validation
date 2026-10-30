@@ -44,11 +44,12 @@ import (
 //   - Failure messages name different libraries and operations, so only
 //     failed signals and verdicts are compared, not error text.
 //   - gpu_compute_apps is excluded until compute-process signals are mapped.
-//   - DCGM's NOT_SUPPORTED sentinel arrives as a CollectionError, which fails
-//     throttle where legacy is neutral. The unsupported case uses the
-//     NoValue(NOT_SUPPORTED) the observation contract specifies.
-//   - A GPU whose UUID cannot be read fails every signal on the legacy path;
-//     DCGM evaluates it under a source-local slot ID. Not covered here.
+//   - The unsupported throttle case feeds NoValue(NOT_SUPPORTED), which is
+//     what collect's DCGM source decodes the clock-event NOT_SUPPORTED
+//     sentinel to.
+//   - A GPU whose UUID cannot be read is named differently on each path
+//     (legacy by its domain, collect by its source-local slot), so only
+//     verdicts are compared for that case.
 func TestGPUCollectParity(t *testing.T) {
 	tests := []struct {
 		name string
@@ -68,6 +69,7 @@ func TestGPUCollectParity(t *testing.T) {
 		{name: "pstate read fails", gpus: []gpuState{{pstateFails: true}}},
 		{name: "power read fails", gpus: []gpuState{{powerFails: true}}},
 		{name: "two GPUs, one throttling", gpus: []gpuState{{}, {thermal: true}}},
+		{name: "UUID unreadable", gpus: []gpuState{{}, {uuidFails: true}}},
 		{name: "enumeration fails", enumerationFails: true},
 	}
 	for _, tt := range tests {
@@ -75,7 +77,7 @@ func TestGPUCollectParity(t *testing.T) {
 			legacy := measure(t, toolkit.NewGPUSensor(nvml.NewWithLibrary(nvmlLibrary(tt.gpus, tt.enumerationFails, nil))))
 			bridged := measure(t, bridgedGPUSensor(t, collectCycle(t, time.Minute), dcgmFake{obs: dcgmObservations(tt.gpus, tt.enumerationFails)}))
 
-			if !tt.enumerationFails {
+			if !tt.enumerationFails && !slices.ContainsFunc(tt.gpus, func(s gpuState) bool { return s.uuidFails }) {
 				if l, c := gpuFacts(t, legacy), gpuFacts(t, bridged); !reflect.DeepEqual(l, c) {
 					t.Errorf("measurements differ:\n legacy=%+v\n collect=%+v", l, c)
 				}
@@ -127,6 +129,7 @@ type gpuState struct {
 	throttleUnsupported bool
 	pstateFails         bool
 	powerFails          bool
+	uuidFails           bool
 }
 
 func (s gpuState) power() uint32 { return cmp.Or(s.powerMW, 1_100_000) }
@@ -158,7 +161,12 @@ func nvmlLibrary(gpus []gpuState, enumerationFails bool, block <-chan struct{}) 
 
 func nvmlDevice(uuid string, s gpuState) *mock.Device {
 	return &mock.Device{
-		GetUUIDFunc: func() (string, gonvml.Return) { return uuid, gonvml.SUCCESS },
+		GetUUIDFunc: func() (string, gonvml.Return) {
+			if s.uuidFails {
+				return "", gonvml.ERROR_UNKNOWN
+			}
+			return uuid, gonvml.SUCCESS
+		},
 		GetPerformanceStateFunc: func() (gonvml.Pstates, gonvml.Return) {
 			if s.pstateFails {
 				return 0, gonvml.ERROR_UNKNOWN
@@ -219,6 +227,9 @@ func dcgmObservations(gpus []gpuState, enumerationFails bool) []*observation.Obs
 	}
 	for i, s := range gpus {
 		target := observation.GPUTarget(gpuUUID(i))
+		if s.uuidFails {
+			target = observation.GPUSourceLocalTarget(fmt.Sprintf("dcgm-index-%d", i))
+		}
 		value := func(signal collect.Signal, v *observation.Value) *observation.Observation {
 			return &observation.Observation{
 				SignalId: signal.ID(), Source: "dcgm", Target: target, ObservedAt: now, Unit: signal.Unit(),

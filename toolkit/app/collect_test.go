@@ -1019,6 +1019,57 @@ func TestWithCollectWrongScalarFailsOnlyDependentChecks(t *testing.T) {
 	}
 }
 
+// slotSensor reports one of collectHardwareSensor's GPUs only by a
+// source-local ID, as DCGM does when that GPU's UUID read fails.
+type slotSensor struct {
+	*collectHardwareSensor
+	uuid string
+}
+
+func (s slotSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	batch, err := s.collectHardwareSensor.Measure(ctx, opts...)
+	for _, o := range batch.GetObservations() {
+		target := o.GetTarget()
+		for _, ref := range []*observation.GPURef{target.GetGpu(), target.GetNvLinkEndpoint().GetGpu(), target.GetGpuPair().GetSourceGpu()} {
+			if ref.GetUuid() == s.uuid {
+				ref.Uuid, ref.SourceLocalId = "", "slot-2"
+			}
+		}
+	}
+	return batch, err
+}
+
+// A GPU without a UUID fails its own GPU and NVLink checks; the GPU with one
+// still evaluates, rather than the whole batch failing.
+func TestWithCollectFailsOnlyTheGPUWithoutAUUID(t *testing.T) {
+	source := slotSensor{collectHardwareSensor: &collectHardwareSensor{gpuIDs: []string{"GPU-1", "GPU-2"}}, uuid: "GPU-2"}
+	sensors, err := New().WithCollect(source).WithCollectAdapters(collectadapters.GPU(), collectadapters.NVLink()).collectSensors(time.Second, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
+	for _, check := range []health.CheckDefinition{gpu.GPUPowerState(), nvlink.NVLinkFabric()} {
+		if err = cat.Register(check); err != nil {
+			t.Fatal(err)
+		}
+	}
+	verdict, err := toolkit.Collect(cat, sensors...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	severities := map[string][]health.Severity{}
+	for _, result := range verdict.CheckResults {
+		severities[result.CheckID] = append(severities[result.CheckID], result.Severity)
+	}
+	for _, check := range []string{"gpu_power_state", "nvlink_fabric"} {
+		got := severities[check]
+		slices.Sort(got)
+		if !slices.Equal(got, []health.Severity{health.Pass, health.Critical}) {
+			t.Errorf("%s severities = %v, want one PASS and one CRITICAL", check, got)
+		}
+	}
+}
+
 func TestWithCollectRegistersReusableDomainAdapters(t *testing.T) {
 	for _, separateCalls := range []bool{false, true} {
 		t.Run(fmt.Sprintf("separate adapter calls=%v", separateCalls), func(t *testing.T) {

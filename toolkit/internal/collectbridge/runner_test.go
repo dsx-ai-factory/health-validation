@@ -402,6 +402,26 @@ func TestCollectRunnerCanonicalTargetRules(t *testing.T) {
 	}
 }
 
+// A reading for a GPU known only by a source-local ID fails that observation,
+// keeping its source and slot, without rejecting the rest of the batch.
+func TestCollectRunnerFailsOnlySourceLocalOutcomes(t *testing.T) {
+	verified := runnerObservation(gpusignals.PerformanceState, observation.GPUTarget("GPU-0"), 0)
+	slot := runnerObservation(gpusignals.PerformanceState, observation.GPUSourceLocalTarget("dcgm-index-1"), 0)
+	r := newCollectRunner(t, time.Second)
+	registerRunner(t, r, runnerSource{id: "gpu", signals: collect.Signals{gpusignals.PerformanceState}, measure: runnerBatch(verified, slot)})
+	r.Collect()
+
+	got := r.Observe(gpusignals.PerformanceState.ID())
+	if len(got) != 2 || !proto.Equal(got[0], verified) {
+		t.Fatalf("verified GPU reading changed: %v", got)
+	}
+	failure := got[1].GetCollectionError()
+	if failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || failure.GetOperation() != "identity" ||
+		got[1].GetSource() != "fake" || got[1].GetTarget().GetGpu().GetSourceLocalId() != "dcgm-index-1" {
+		t.Fatalf("source-local reading = %v, want an identity failure on its slot", got[1])
+	}
+}
+
 // privateUnitSignal declares a non-canonical signal with an explicit unit pointer.
 type privateUnitSignal struct {
 	unit *string
