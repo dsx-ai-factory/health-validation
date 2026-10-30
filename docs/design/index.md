@@ -75,8 +75,10 @@ Record the accepting PR or review when moving to Accepted. Keep the document
 and index status consistent. Do not use Accepted to indicate implementation
 progress: use implementation links and a short progress note instead.
 
-Revise a proposal in its design PR. After acceptance, correct factual errors and
-broken links, and add implementation references or clarifications through PRs.
+Revise a proposal in its open design PR. If a Proposed record has already
+merged, open a follow-up design-only PR updating the same record. After
+acceptance, correct factual errors and broken links, and add implementation
+references or clarifications through PRs.
 For a materially different decision, open a new numbered proposal. Once the
 replacement is accepted, mark the old record Superseded and link both ways.
 Do not silently rewrite the original rationale to match later code.
