@@ -64,6 +64,7 @@ func (h *nvmlHost) openInventory() (gpuinventory.Reader, error) {
 func (h *nvmlHost) gpuBackend() toolkit.GPUBackend        { return h.lazy }
 func (h *nvmlHost) nvlinkBackend() toolkit.NVLinkBackend  { return h.lazy }
 func (h *nvmlHost) gpuInventory() *gpuinventory.Inventory { return h.inventory }
+func (h *nvmlHost) gpuUUIDsByPCI() map[string]string      { return h.b.GPUUUIDsByPCI() }
 
 // close leaves the collect NVML instance open while a timed-out native call
 // still holds it; the process exits shortly after.

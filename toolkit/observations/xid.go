@@ -17,8 +17,8 @@ import (
 )
 
 // xidSignals are the canonical Xid signals. They do not fit the field table:
-// one measurement aggregates repeated journal-entry events, and any failure
-// must also fail the derived sub_xid_code_counts.
+// each GPU's measurement gathers repeated journal-entry events, and any
+// failure must also fail the derived sub_xid_code_counts.
 var xidSignals = func() map[string]bool {
 	out := make(map[string]bool)
 	for _, id := range xidsignals.All().IDs() {
@@ -27,19 +27,21 @@ var xidSignals = func() map[string]bool {
 	return out
 }()
 
-// canonicalXid builds one XidMeasurement from canonical Xid observations.
-// Any failure yields a single error naming every MeasurementSignals entry; a
-// single error, because evaluation recommends retry_collection only when
-// every failure is a timeout.
-func canonicalXid(obs []*observation.Observation) health.Measurement {
+// canonicalXid builds one XidMeasurement per GPU from canonical Xid
+// observations, naming a GPU by its UUID in gpuUUIDs when its address is a
+// key. A scan with no events yields one measurement naming no GPU. Any
+// failure yields a single measurement with a single error naming every
+// MeasurementSignals entry; a single error, because evaluation recommends
+// retry_collection only when every failure is a timeout.
+func canonicalXid(obs []*observation.Observation, gpuUUIDs map[string]string) []health.Measurement {
 	if err := firstXidFailure(obs); err != nil {
-		return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)
+		return []health.Measurement{xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)}
 	}
-	m, err := buildXid(obs)
+	measurements, err := buildXid(obs, gpuUUIDs)
 	if err != nil {
-		return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)
+		return []health.Measurement{xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)}
 	}
-	return m
+	return measurements
 }
 
 // firstXidFailure returns the first non-timeout failure, else the first
@@ -66,7 +68,7 @@ func firstXidFailure(obs []*observation.Observation) error {
 	return timeout
 }
 
-func buildXid(obs []*observation.Observation) (xid.XidMeasurement, error) {
+func buildXid(obs []*observation.Observation, gpuUUIDs map[string]string) ([]health.Measurement, error) {
 	var since string
 	var marked bool
 	var order []string
@@ -86,14 +88,25 @@ func buildXid(obs []*observation.Observation) (xid.XidMeasurement, error) {
 		entries[key][o.GetSignalId()] = o.GetValue()
 	}
 	if !marked {
-		return xid.XidMeasurement{}, errors.New("xid scan marker missing")
+		return nil, errors.New("xid scan marker missing")
 	}
-	m := xid.XidMeasurement{Since: since}
+	var gpus []xid.XidMeasurement
+	gpuIndex := map[string]int{}
 	for i, key := range order {
 		event, err := buildXidEvent(xidFields{values: entries[key], index: i + 1})
 		if err != nil {
-			return xid.XidMeasurement{}, err
+			return nil, err
 		}
+		// Normalized as the journal sensor's normalizePCIAddress does, so
+		// every spelling of one GPU groups together and matches gpuUUIDs.
+		gpu := strings.TrimSuffix(strings.ToLower(event.PCIAddress), ".0")
+		j, ok := gpuIndex[gpu]
+		if !ok {
+			j = len(gpus)
+			gpuIndex[gpu] = j
+			gpus = append(gpus, xid.XidMeasurement{Since: since, PCIAddress: gpu, GPUID: gpuUUIDs[gpu]})
+		}
+		m := &gpus[j]
 		if m.XidCounts == nil {
 			m.XidCounts = map[int64]int64{}
 		}
@@ -107,7 +120,14 @@ func buildXid(obs []*observation.Observation) (xid.XidMeasurement, error) {
 		m.Events = append(m.Events, event)
 		m.EventCount++
 	}
-	return m, nil
+	if len(gpus) == 0 {
+		return []health.Measurement{xid.XidMeasurement{Since: since}}, nil
+	}
+	out := make([]health.Measurement, len(gpus))
+	for i, m := range gpus {
+		out[i] = m
+	}
+	return out, nil
 }
 
 // buildXidEvent builds one event. Recovery-action signals are read by no

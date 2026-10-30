@@ -164,6 +164,7 @@ func (parityHost) nvlinkBackend() toolkit.NVLinkBackend {
 	panic("legacy NVLink backend is not under test")
 }
 func (h parityHost) gpuInventory() *gpuinventory.Inventory { return h.inventory }
+func (parityHost) gpuUUIDsByPCI() map[string]string        { return nil }
 func (parityHost) close() error                            { return nil }
 
 func parityCatalog(t *testing.T) *catalog.Catalog {

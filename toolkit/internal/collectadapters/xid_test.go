@@ -75,21 +75,21 @@ func requireXid(t *testing.T, got, want xid.XidMeasurement) {
 	if len(got.Errors()) != 0 {
 		t.Fatalf("unexpected errors: %v", got.Errors())
 	}
-	gotFields := []any{got.Since, got.XidCounts, got.FatalXidCounts, got.Events, got.EventCount}
-	wantFields := []any{want.Since, want.XidCounts, want.FatalXidCounts, want.Events, want.EventCount}
+	gotFields := []any{got.GPUID, got.PCIAddress, got.Since, got.XidCounts, got.FatalXidCounts, got.Events, got.EventCount}
+	wantFields := []any{want.GPUID, want.PCIAddress, want.Since, want.XidCounts, want.FatalXidCounts, want.Events, want.EventCount}
 	if !reflect.DeepEqual(gotFields, wantFields) {
 		t.Fatalf("measurement:\n got=%+v\nwant=%+v", got, want)
 	}
 }
 
 func TestXIDAdapterIdentity(t *testing.T) {
-	if XID().Name() != "xid" || !slices.Equal(slices.Sorted(maps.Keys(XID().Signals())), slices.Sorted(slices.Values(xidsignals.All().IDs()))) {
-		t.Fatalf("XID() = %q %v", XID().Name(), XID().Signals())
+	if XID(nil).Name() != "xid" || !slices.Equal(slices.Sorted(maps.Keys(XID(nil).Signals())), slices.Sorted(slices.Values(xidsignals.All().IDs()))) {
+		t.Fatalf("XID(nil) = %q %v", XID(nil).Name(), XID(nil).Signals())
 	}
 }
 
 func TestXIDAdapterCleanScan(t *testing.T) {
-	requireXid(t, only[xid.XidMeasurement](t, XID().Build([]*observation.Observation{xidMarker()})), xid.XidMeasurement{Since: "boot"})
+	requireXid(t, only[xid.XidMeasurement](t, XID(nil).Build([]*observation.Observation{xidMarker()})), xid.XidMeasurement{Since: "boot"})
 }
 
 func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
@@ -113,8 +113,9 @@ func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
 	)
 	obs = append(obs, xidEvent("f", 13)...)
 	obs = append(obs, xidInt(xidsignals.GPC, "f", 1), xidInt(xidsignals.TPC, "f", 3), xidInt(xidsignals.SM, "f", 0), xidMarker())
-	got := only[xid.XidMeasurement](t, XID().Build(obs))
+	got := only[xid.XidMeasurement](t, XID(nil).Build(obs))
 	want := xid.XidMeasurement{
+		PCIAddress:     "0000:01:00",
 		Since:          "boot",
 		XidCounts:      map[int64]int64{79: 2, 149: 1, 145: 1, 154: 1, 13: 1},
 		FatalXidCounts: map[int64]int64{149: 1},
@@ -176,7 +177,7 @@ func TestXIDAdapterFailsClosed(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := onlyXidError(t, XID().Build(test.obs))
+			err := onlyXidError(t, XID(nil).Build(test.obs))
 			if !strings.Contains(err.Error(), test.wantText) {
 				t.Fatalf("error %q, want %q", err.Error(), test.wantText)
 			}
@@ -200,7 +201,7 @@ func TestXIDAdapterTimeoutKeepsRetry(t *testing.T) {
 	for _, s := range xidsignals.All() {
 		obs = append(obs, xidFailure(s, observation.CollectionErrorCategoryTimeout, nil))
 	}
-	measurements := XID().Build(obs)
+	measurements := XID(nil).Build(obs)
 	if err := onlyXidError(t, measurements); !errors.Is(err, health.ErrCollectionTimeout) {
 		t.Fatalf("timeout lost: %v", err)
 	}
@@ -223,14 +224,14 @@ func TestXIDAdapterMixedTimeoutAndParseError(t *testing.T) {
 		xidFailure(xidsignals.PID, observation.CollectionErrorCategoryTimeout, nil),
 		xidFailure(xidsignals.Code, observation.CollectionErrorCategoryParseError, observation.JournalEntryTarget("boot", "a")),
 	}
-	err := onlyXidError(t, XID().Build(obs))
+	err := onlyXidError(t, XID(nil).Build(obs))
 	if errors.Is(err, health.ErrCollectionTimeout) || !strings.Contains(err.Error(), "PARSE_ERROR") {
 		t.Fatalf("error = %v, want the parse error", err)
 	}
 }
 
 func TestXIDAdapterFailureCoversDerivedSignals(t *testing.T) {
-	m := only[xid.XidMeasurement](t, XID().Build(nil))
+	m := only[xid.XidMeasurement](t, XID(nil).Build(nil))
 	failed := m.Errors()[0].FailedSignals()
 	for key := range (xid.XidMeasurement{}).DerivedSignals() {
 		if !slices.Contains(failed, key) {
@@ -240,7 +241,7 @@ func TestXIDAdapterFailureCoversDerivedSignals(t *testing.T) {
 }
 
 func TestXIDAdapterMeasurementContracts(t *testing.T) {
-	m := XID().Build([]*observation.Observation{xidMarker()})
+	m := XID(nil).Build([]*observation.Observation{xidMarker()})
 	if err := catalog.CheckSignalUniqueness(m...); err != nil {
 		t.Fatal(err)
 	}
@@ -252,11 +253,28 @@ func TestXIDAdapterMeasurementContracts(t *testing.T) {
 // TestXIDAdapterAgreesWithToMeasurements guards the single owner: the adapter
 // and observations.ToMeasurements convert one xid.journal batch alike.
 func TestXIDAdapterAgreesWithToMeasurements(t *testing.T) {
-	batch := append(xidEvent("a", 79), xidMarker())
-	direct := only[xid.XidMeasurement](t, observations.ToMeasurements(batch))
-	requireXid(t, only[xid.XidMeasurement](t, XID().Build(batch)), direct)
-	if direct.XidCounts[79] != 1 {
-		t.Fatalf("ToMeasurements counts = %v, want Xid 79", direct.XidCounts)
+	batch := append(append(xidEvent("a", 79), xidInt(xidsignals.Code, "b", 48), xidString(xidsignals.PCIAddress, "b", "0000:02:00")), xidMarker())
+	direct := observations.ToMeasurements(batch)
+	built := XID(nil).Build(batch)
+	if len(direct) != 2 || len(built) != len(direct) {
+		t.Fatalf("ToMeasurements gave %d measurements, adapter %d; want 2 each", len(direct), len(built))
+	}
+	for i := range direct {
+		requireXid(t, built[i].(xid.XidMeasurement), direct[i].(xid.XidMeasurement))
+	}
+}
+
+// The lookup is read when the adapter builds, so a map filled by the run's
+// GPU sensor beforehand is seen.
+func TestXIDAdapterPassesGPUUUIDs(t *testing.T) {
+	calls := 0
+	adapter := XID(func() map[string]string {
+		calls++
+		return map[string]string{"0000:01:00": "GPU-a"}
+	})
+	m := only[xid.XidMeasurement](t, adapter.Build(append(xidEvent("a", 79), xidMarker())))
+	if m.GPUID != "GPU-a" || calls != 1 {
+		t.Fatalf("GPUID = %q after %d lookups, want GPU-a after 1", m.GPUID, calls)
 	}
 }
 

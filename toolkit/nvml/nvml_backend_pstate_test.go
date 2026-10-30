@@ -33,6 +33,7 @@ func pstateLib(devs ...*mock.Device) gonvml.Interface {
 func pstateDevice(uuid string, state gonvml.Pstates, ret gonvml.Return) *mock.Device {
 	return &mock.Device{
 		GetUUIDFunc:                 func() (string, gonvml.Return) { return uuid, gonvml.SUCCESS },
+		GetPciInfoFunc:              pciAt(0),
 		GetPerformanceStateFunc:     func() (gonvml.Pstates, gonvml.Return) { return state, ret },
 		GetFieldValuesFunc:          averagePowerFieldValues(220_000),
 		GetPowerManagementLimitFunc: func() (uint32, gonvml.Return) { return 0, gonvml.SUCCESS },

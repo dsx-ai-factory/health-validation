@@ -122,8 +122,8 @@ func (p *peersCaptureProbe) Errored(id string, err error) health.Measurement {
 // A slot whose handle never loaded is excluded from every peer list, so a
 // pairwise read can never query it; the slot itself still fails via Errored.
 func TestProbe_PeersExcludeSelfAndErroredSlots(t *testing.T) {
-	devA := &mock.Device{GetUUIDFunc: func() (string, gonvml.Return) { return "GPU-A", gonvml.SUCCESS }}
-	devB := &mock.Device{GetUUIDFunc: func() (string, gonvml.Return) { return "GPU-B", gonvml.SUCCESS }}
+	devA := &mock.Device{GetUUIDFunc: func() (string, gonvml.Return) { return "GPU-A", gonvml.SUCCESS }, GetPciInfoFunc: pciAt(0)}
+	devB := &mock.Device{GetUUIDFunc: func() (string, gonvml.Return) { return "GPU-B", gonvml.SUCCESS }, GetPciInfoFunc: pciAt(1)}
 	lib := &mock.Interface{
 		InitFunc:           func() gonvml.Return { return gonvml.SUCCESS },
 		ShutdownFunc:       func() gonvml.Return { return gonvml.SUCCESS },

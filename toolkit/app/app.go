@@ -93,6 +93,9 @@ type hostBackend interface {
 	gpuBackend() toolkit.GPUBackend
 	nvlinkBackend() toolkit.NVLinkBackend
 	gpuInventory() *gpuinventory.Inventory
+	// gpuUUIDsByPCI returns the UUID of each GPU the host backend has
+	// probed, keyed by PCI address in the kernel's Xid form.
+	gpuUUIDsByPCI() map[string]string
 	close() error
 }
 

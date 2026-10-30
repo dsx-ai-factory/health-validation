@@ -113,7 +113,12 @@ func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 	}
 	if a.xid == nil {
 		sources = append(sources, xidsensor.New(nil))
-		adapters = append(adapters, collectadapters.XID())
+		// The lookup is read when the adapter builds, after the GPU and
+		// NVLink sensors (first in App.sensors) probed NVML. A GPU those
+		// probes did not identify, as with every GPU when both sensors use
+		// backends not derived from App.NVMLBackend, is named by its PCI
+		// address.
+		adapters = append(adapters, collectadapters.XID(a.host.gpuUUIDsByPCI))
 	}
 	return sources, adapters
 }

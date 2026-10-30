@@ -74,6 +74,9 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "check_ids": [
         "gpu_xid_79"
       ],
+      "entities": [
+        "0008:01:00"
+      ],
       "category": "xid",
       "max_severity": "CRITICAL"
     }
@@ -136,6 +139,8 @@ The check engine collects typed measurements from sensors, evaluates them agains
     {
       "timestamp": "2026-06-10T14:31:12.332512987-05:00",
       "observed_values": {
+        "gpu_id": "",
+        "pci_address": "0008:01:00",
         "xid_counts": {
           "79": 1
         }
@@ -150,6 +155,9 @@ The check engine collects typed measurements from sensors, evaluates them agains
       },
       "messages": [
         "GPU Xid 79 detected: GPU has fallen off the bus and is inaccessible over PCIe. Restart the host. Review system and kernel PCI event logs; contact support for further investigation."
+      ],
+      "affected_entities": [
+        "0008:01:00"
       ],
       "severity": "CRITICAL",
       "category": "xid",
@@ -166,6 +174,8 @@ The check engine collects typed measurements from sensors, evaluates them agains
   "overall_severity": "CRITICAL"
 }
 ```
+
+A failing Xid result names its GPU in `affected_entities`: the GPU UUID when NVML reports the GPU, and the PCI address otherwise, as for a GPU that fell off the bus. A result from a failed journal read names no GPU.
 
 The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
 
@@ -328,7 +338,7 @@ Collect sensor measurements without evaluating checks:
 ./health-validation collect > observations.json
 ```
 
-For `collect`, an optional config's check IDs select the sensor domains to run. Without one, every built-in sensor domain runs. The output is one `ObservationBatch` (`collect/proto/health/v1/observation.proto`) in protojson form, with one observation per measurement field. Each signal ID is the domain plus the field name the checks read (e.g. `nvlink.inactive_count`); these are toolkit names, not canonical collect signal IDs. GPU measurements target the GPU and host-wide ones target the node (`--node-id`, defaulting to the hostname). Each observation carries a `value`, a `collectionError`, or a `noValue`; map and list fields are JSON-encoded strings. A signal the source reports as unsupported is a `noValue` with reason `NO_VALUE_REASON_NOT_SUPPORTED`, never a zero value. Sensor failures remain structured data and do not change the successful exit code.
+For `collect`, an optional config's check IDs select the sensor domains to run. Without one, every built-in sensor domain runs. The output is one `ObservationBatch` (`collect/proto/health/v1/observation.proto`) in protojson form, with one observation per measurement field. Each signal ID is the domain plus the field name the checks read (e.g. `nvlink.inactive_count`); these are toolkit names, not canonical collect signal IDs. GPU measurements target the GPU and host-wide ones target the node (`--node-id`, defaulting to the hostname). Xid measurements target their GPU by UUID when known, by PCI address (a `pci` target) when only the address is known, and the node otherwise; two GPUs whose printed addresses do not parse both land on the node target. Each observation carries a `value`, a `collectionError`, or a `noValue`; map and list fields are JSON-encoded strings. A signal the source reports as unsupported is a `noValue` with reason `NO_VALUE_REASON_NOT_SUPPORTED`, never a zero value. Sensor failures remain structured data and do not change the successful exit code.
 
 Slurm prolog integration:
 
@@ -437,6 +447,9 @@ disabled_checks:
   - gpu_power_state
 ```
 
+Xid occurrence thresholds count per GPU: `occurrences: 2` fires on a GPU that
+logged two matching Xids, not on two GPUs that logged one each.
+
 Every ID under `disabled_checks` is validated against the registered checks, so
 a typo fails the run rather than leaving the check quietly enabled. Because
 skipped checks are excluded from `overall_severity`, a disable narrows the
@@ -494,11 +507,11 @@ Emitting the zeros matters: if only the severity in effect were reported, the
 previous run's `severity="CRITICAL"` point would sit at `1` with nothing to
 contradict it, and a node that had recovered would keep reading as critical.
 
-A check that runs per entity — most GPU and NVLink checks — produces one result
-per GPU, so `check.severity` reports the **worst** severity across them and
-`check.affected_entities` counts the distinct entities named. One failing GPU
-therefore shows as a failing check; which GPU it was is in the JSON verdict's
-`affected_entities`, not in the metrics.
+A check that runs per entity — most GPU and NVLink checks, and the Xid checks —
+produces one result per GPU, so `check.severity` reports the **worst** severity
+across them and `check.affected_entities` counts the distinct entities named.
+One failing GPU therefore shows as a failing check; which GPU it was is in the
+JSON verdict's `affected_entities`, not in the metrics.
 
 `check.skipped` reports every check against every skip reason: `1` if it was
 skipped for that reason, `0` if it was not.

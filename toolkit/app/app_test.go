@@ -291,7 +291,8 @@ func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (fakeHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: 4, model: "NVIDIA GB200"}, nil })
 }
-func (fakeHost) close() error { return nil }
+func (fakeHost) gpuUUIDsByPCI() map[string]string { return nil }
+func (fakeHost) close() error                     { return nil }
 
 // inventoryReader reports a basic inventory of identical GPUs without NVML.
 type inventoryReader struct {
@@ -316,6 +317,7 @@ type panicHost struct{}
 func (panicHost) gpuBackend() toolkit.GPUBackend        { panic("unexpected GPU backend access") }
 func (panicHost) nvlinkBackend() toolkit.NVLinkBackend  { panic("unexpected NVLink backend access") }
 func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
+func (panicHost) gpuUUIDsByPCI() map[string]string      { return nil }
 func (panicHost) close() error                          { panic("unexpected host backend close") }
 
 func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
@@ -847,7 +849,8 @@ func (h erroringHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (erroringHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })
 }
-func (erroringHost) close() error { return nil }
+func (erroringHost) gpuUUIDsByPCI() map[string]string { return nil }
+func (erroringHost) close() error                     { return nil }
 
 // TestRunCommandArchDiscoveryFailureDrains confirms an architecture-discovery
 // error yields a Critical verdict and does NOT collect: a healthy node is not

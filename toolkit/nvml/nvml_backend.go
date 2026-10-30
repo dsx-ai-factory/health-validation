@@ -10,9 +10,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	gonvml "github.com/NVIDIA/go-nvml/pkg/nvml"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/pciaddr"
 )
 
 // NVMLBackend is the NVML-backed data source. It owns the library handle
@@ -55,7 +58,17 @@ type NVMLBackend struct {
 	gpuProber    DeviceProber                     // per-GPU read for MeasureGPUs
 	nvlinkProber DeviceProber                     // per-GPU read for MeasureNVLink
 	open         func() (gonvml.Interface, error) // opens+inits the library on first use
-	devs         []gonvml.Device
+	// A pointer so WithGPUProbe and WithNVLinkProbe copies record into the
+	// same map.
+	ids  *gpuIdentities
+	devs []gonvml.Device
+}
+
+// gpuIdentities has a lock of its own so a reader never waits on a probe
+// parked in an NVML call.
+type gpuIdentities struct {
+	byPCI map[string]string
+	mu    sync.Mutex
 }
 
 // New returns a backend that opens NVML via libnvidia-ml.so on first use.
@@ -66,6 +79,7 @@ func New() *NVMLBackend {
 		open:         func() (gonvml.Interface, error) { return initLib(gonvml.New()) },
 		gpuProber:    gpuProbe{},
 		nvlinkProber: nvlinkProbe{},
+		ids:          &gpuIdentities{byPCI: map[string]string{}},
 	}
 }
 
@@ -77,7 +91,18 @@ func NewWithLibrary(lib gonvml.Interface) *NVMLBackend {
 		open:         func() (gonvml.Interface, error) { return initLib(lib) },
 		gpuProber:    gpuProbe{},
 		nvlinkProber: nvlinkProbe{},
+		ids:          &gpuIdentities{byPCI: map[string]string{}},
 	}
+}
+
+// GPUUUIDsByPCI returns the UUID of each GPU the most recent measurements
+// probed, keyed by PCI address in the kernel's Xid form ("0000:89:00"). It
+// never calls NVML and is empty before the first MeasureGPUs or
+// MeasureNVLink.
+func (b *NVMLBackend) GPUUUIDsByPCI() map[string]string {
+	b.ids.mu.Lock()
+	defer b.ids.mu.Unlock()
+	return maps.Clone(b.ids.byPCI)
 }
 
 // initLib initializes the NVML library, returning it ready for use.
@@ -112,7 +137,9 @@ func (b *NVMLBackend) ensure() error {
 // b.lib == nil); if called after a measurement, the copy inherits the open
 // connection and shares the receiver's NVML session. Drive every domain you
 // want from a single backend instance (e.g. install one backend under both the
-// GPU and NVLink setters) to keep them on a single enumeration.
+// GPU and NVLink setters) to keep them on a single enumeration. The copy does
+// share the receiver's PCI-to-UUID record, so [NVMLBackend.GPUUUIDsByPCI] on
+// either sees the devices both probed.
 //
 //	b := nvml.New().WithGPUProbe(eccProbe{})
 func (b *NVMLBackend) WithGPUProbe(p DeviceProber) *NVMLBackend {
@@ -122,9 +149,10 @@ func (b *NVMLBackend) WithGPUProbe(p DeviceProber) *NVMLBackend {
 }
 
 // WithNVLinkProbe returns a copy of the backend whose MeasureNVLink uses p
-// instead of the built-in NVLink prober. Like [NVMLBackend.WithGPUProbe] it is
-// domain-scoped — the GPU prober and the node read are preserved — so the two
-// can be chained to customize both per-GPU domains over one connection:
+// instead of the built-in NVLink prober. The copy shares the receiver's
+// PCI-to-UUID record. Like [NVMLBackend.WithGPUProbe] it is domain-scoped —
+// the GPU prober and the node read are preserved — so the two can be chained
+// to customize both per-GPU domains over one connection:
 //
 //	b := nvml.New().WithGPUProbe(eccProbe{}).WithNVLinkProbe(myNVLinkProbe{})
 func (b *NVMLBackend) WithNVLinkProbe(p DeviceProber) *NVMLBackend {
@@ -268,6 +296,7 @@ func (b *NVMLBackend) probe(p DeviceProber) ([]health.Measurement, error) {
 			measurements[i] = slotErrored(p, i, &Error{Op: "DeviceGetUUID", Return: ret})
 			continue
 		}
+		b.recordPCI(dev, uuid)
 		usable = append(usable, ProbeDevice{Device: dev, UUID: uuid, Index: i})
 	}
 
@@ -297,6 +326,19 @@ func slotErrored(p DeviceProber, index int, err error) health.Measurement {
 		return v
 	}
 	return m
+}
+
+// recordPCI records which GPU sits at dev's PCI address. No check reads the
+// address, so a failed read adds no error to a measurement.
+func (b *NVMLBackend) recordPCI(dev gonvml.Device, uuid string) {
+	pci, ret := dev.GetPciInfo()
+	if ret != gonvml.SUCCESS {
+		return
+	}
+	addr := pciaddr.Address{Domain: pci.Domain, Bus: uint8(pci.Bus), Device: uint8(pci.Device)}.String()
+	b.ids.mu.Lock()
+	defer b.ids.mu.Unlock()
+	b.ids.byPCI[addr] = uuid
 }
 
 // getPeers returns the usable devices except the one whose enumeration

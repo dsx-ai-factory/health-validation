@@ -148,6 +148,7 @@ func TestMeasureNVLink_CollectsInactivePerGPU(t *testing.T) {
 		// GPU-0: one inactive link.
 		&mock.Device{
 			GetUUIDFunc:        func() (string, gonvml.Return) { return "GPU-0", gonvml.SUCCESS },
+			GetPciInfoFunc:     pciAt(0),
 			GetFieldValuesFunc: linkFieldValues(50000, 18, gonvml.SUCCESS, gonvml.SUCCESS),
 			GetNvLinkStateFunc: func(link int) (gonvml.EnableState, gonvml.Return) {
 				if link >= disabledFrom0 {
@@ -165,6 +166,7 @@ func TestMeasureNVLink_CollectsInactivePerGPU(t *testing.T) {
 		// GPU-1: three inactive links.
 		&mock.Device{
 			GetUUIDFunc:        func() (string, gonvml.Return) { return "GPU-1", gonvml.SUCCESS },
+			GetPciInfoFunc:     pciAt(0),
 			GetFieldValuesFunc: linkFieldValues(50000, 18, gonvml.SUCCESS, gonvml.SUCCESS),
 			GetNvLinkStateFunc: func(link int) (gonvml.EnableState, gonvml.Return) {
 				if link >= disabledFrom1 {

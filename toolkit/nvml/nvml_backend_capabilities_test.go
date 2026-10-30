@@ -268,6 +268,7 @@ func linkCapLib(getCap func(gonvml.NvLinkCapability) uint32) gonvml.Interface {
 		DeviceGetHandleByIndexFunc: func(int) (gonvml.Device, gonvml.Return) {
 			return &mock.Device{
 				GetUUIDFunc:        func() (string, gonvml.Return) { return "GPU-0", gonvml.SUCCESS },
+				GetPciInfoFunc:     pciAt(0),
 				GetFieldValuesFunc: linkFieldValues(50000, 18, gonvml.SUCCESS, gonvml.SUCCESS),
 				GetNvLinkStateFunc: allLinksPresent(18),
 				GetNvLinkCapabilityFunc: func(_ int, c gonvml.NvLinkCapability) (uint32, gonvml.Return) {

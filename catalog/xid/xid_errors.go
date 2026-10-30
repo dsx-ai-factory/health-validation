@@ -378,20 +378,20 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 		fmt.Sprintf("Detects NVRM Xid %d in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.", c.code),
 		health.NoAction,
 	)
-	def.RequiredSignals = []string{SignalXidCounts, SignalFatalXidCounts}
+	def.RequiredSignals = []string{SignalGPUID, SignalPCIAddress, SignalXidCounts, SignalFatalXidCounts}
 	def.Thresholds = map[string]health.ThresholdSpec{
 		"fatal_occurrences": {
 			Value:       int64(1),
 			ValueType:   health.ThresholdInt64,
 			Category:    health.DefaultThreshold,
-			Description: "Fatal occurrences within the collection window that trigger the CRITICAL rule.",
+			Description: "Fatal occurrences on one GPU within the collection window that trigger the CRITICAL rule.",
 			Unit:        "count",
 		},
 		"nonfatal_occurrences": {
 			Value:       int64(1),
 			ValueType:   health.ThresholdInt64,
 			Category:    health.DefaultThreshold,
-			Description: "Nonfatal occurrences within the collection window that trigger the WARNING rule.",
+			Description: "Nonfatal occurrences on one GPU within the collection window that trigger the WARNING rule.",
 			Unit:        "count",
 		},
 	}
@@ -431,7 +431,7 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 		fmt.Sprintf("Detects NVRM Xid %s (%s) occurrences in the system journal within the collection window.", c.subXidCode, c.subcode),
 		action,
 	)
-	def.RequiredSignals = []string{SignalSubXidCodeCounts}
+	def.RequiredSignals = []string{SignalGPUID, SignalPCIAddress, SignalSubXidCodeCounts}
 	def.Architectures = slices.Clone(blackwellArchitectures)
 	def.Rules = []health.Rule{{
 		Expression: fmt.Sprintf("%[1]q in sub_xid_code_counts && sub_xid_code_counts[%[1]q] >= occurrences", c.subXidCode),
@@ -523,13 +523,13 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		Description: description,
 		Category:    health.Xid,
 
-		RequiredSignals: []string{SignalXidCounts},
+		RequiredSignals: []string{SignalGPUID, SignalPCIAddress, SignalXidCounts},
 		Thresholds: map[string]health.ThresholdSpec{
 			"occurrences": {
 				Value:       int64(1),
 				ValueType:   health.ThresholdInt64,
 				Category:    health.DefaultThreshold,
-				Description: "Number of matching Xid occurrences within the collection window that causes the check to fire.",
+				Description: "Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire.",
 				Unit:        "count",
 			},
 		},

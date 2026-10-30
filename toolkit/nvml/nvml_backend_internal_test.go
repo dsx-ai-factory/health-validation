@@ -12,6 +12,15 @@ import (
 	"github.com/NVIDIA/go-nvml/pkg/nvml/mock"
 )
 
+// pciAt returns a GetPciInfo stub for bus 01, device 00 in domain. Every
+// mock device that reaches the probe needs one: the probe reads each usable
+// GPU's PCI address.
+func pciAt(domain uint32) func() (gonvml.PciInfo, gonvml.Return) {
+	return func() (gonvml.PciInfo, gonvml.Return) {
+		return gonvml.PciInfo{Domain: domain, Bus: 1}, gonvml.SUCCESS
+	}
+}
+
 // These tests exercise devices directly because it is the unit of
 // behavior they cover (lazy load, count failure, errored-slot
 // preservation, caching). Public API behavior is covered separately

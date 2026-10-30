@@ -24,6 +24,8 @@ const sourceLevelGPU = "gpu"
 // domainAdapter assembles one catalog category from mapped signals.
 type domainAdapter struct {
 	errored func(error) []health.Measurement
+	// gpuUUIDs, set only for Xid, names GPUs by UUID when the adapter builds.
+	gpuUUIDs func() map[string]string
 	// feeds maps each collect signal ID to the catalog signals it fills;
 	// several when one raw value is split into multiple catalog fields.
 	feeds    map[string][]string
@@ -79,7 +81,11 @@ func (a *domainAdapter) Signals() map[string][]string { return maps.Clone(a.feed
 
 // Build consumes observations already validated by the bridge.
 func (a *domainAdapter) Build(obs []*observation.Observation) []health.Measurement {
-	measurements := adaptCategory(a.category, a.feeds, a.nodeScoped, obs)
+	var opts []observations.Option
+	if a.gpuUUIDs != nil {
+		opts = append(opts, observations.WithGPUUUIDs(a.gpuUUIDs()))
+	}
+	measurements := adaptCategory(a.category, a.feeds, a.nodeScoped, obs, opts...)
 	if len(measurements) == 0 {
 		return a.Errored(fmt.Errorf("no %s observations were collected", a.Name()))
 	}
@@ -115,7 +121,7 @@ func erroredNVLink(err error) []health.Measurement {
 // adaptCategory groups observations per GPU, or into one group when
 // nodeScoped, converts each group with observations.ToMeasurements, and
 // keeps measurements of category.
-func adaptCategory(category health.Category, feeds map[string][]string, nodeScoped bool, obs []*observation.Observation) []health.Measurement {
+func adaptCategory(category health.Category, feeds map[string][]string, nodeScoped bool, obs []*observation.Observation, opts ...observations.Option) []health.Measurement {
 	groups := make(map[adapterKey][]*observation.Observation)
 	for _, o := range obs {
 		if _, ok := feeds[o.GetSignalId()]; !ok {
@@ -136,7 +142,7 @@ func adaptCategory(category health.Category, feeds map[string][]string, nodeScop
 	// logs, and run-to-run diffs.
 	slices.SortFunc(keys, func(a, b adapterKey) int { return strings.Compare(a.label(), b.label()) })
 	for _, key := range keys {
-		for _, m := range observations.ToMeasurements(groups[key]) {
+		for _, m := range observations.ToMeasurements(groups[key], opts...) {
 			if m.Category() != category {
 				continue
 			}

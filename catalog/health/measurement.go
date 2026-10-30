@@ -117,9 +117,10 @@ type DerivedSignaler interface {
 // EntityIdentifier is an optional interface a measurement may implement
 // to name the entity it describes — a GPU UUID, a device path.
 //
-// Measurements that describe one of several like entities implement it;
-// host-wide ones (CPU, node, journal-derived) do not, because there is no
-// entity to name beyond the node itself. The evaluation engine copies the
+// Measurements that describe one of several like entities implement it,
+// such as a GPU's measurement or the Xid events one GPU logged; host-wide
+// ones (CPU, node, RDMA link flap) do not, because there is no entity to
+// name beyond the node itself. The evaluation engine copies the
 // returned value into a non-PASS verdict's AffectedEntities, which is how a
 // consumer learns which GPU a failing per-GPU check was looking at: the
 // check's own ID and signals are identical across every entity it ran

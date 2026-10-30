@@ -21,7 +21,8 @@ import (
 // other measure calls).
 func throttleDevice(mask uint64, ret gonvml.Return) *mock.Device {
 	return &mock.Device{
-		GetUUIDFunc: func() (string, gonvml.Return) { return "GPU-0", gonvml.SUCCESS },
+		GetUUIDFunc:    func() (string, gonvml.Return) { return "GPU-0", gonvml.SUCCESS },
+		GetPciInfoFunc: pciAt(0),
 		GetPerformanceStateFunc: func() (gonvml.Pstates, gonvml.Return) {
 			return gonvml.PSTATE_0, gonvml.SUCCESS
 		},
