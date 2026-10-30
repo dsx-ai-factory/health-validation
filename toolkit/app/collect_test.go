@@ -24,6 +24,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
@@ -64,10 +65,11 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"cpu", "node", "xid"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"node", "xid"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{cpusensor.ID, xidsensor.ID}, adapters: []string{"cpu", "xid"}},
-		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID}, adapters: []string{"cpu", "node"}},
+		{name: "default", app: New(), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"node", "xid", "infiniband"}},
+		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{cpusensor.ID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "xid", "infiniband"}},
+		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "infiniband"}},
+		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"cpu", "node", "xid"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)

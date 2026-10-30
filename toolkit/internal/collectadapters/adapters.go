@@ -24,10 +24,17 @@ const sourceLevelGPU = "gpu"
 // domainAdapter assembles one catalog category from mapped signals.
 type domainAdapter struct {
 	errored func(error) []health.Measurement
+	// complete, when set, adds a failed measurement for each type Build
+	// must always produce but the observations did not build.
+	complete func([]health.Measurement) []health.Measurement
 	// feeds maps each collect signal ID to the catalog signals it fills;
 	// several when one raw value is split into multiple catalog fields.
-	feeds    map[string][]string
-	category health.Category
+	feeds map[string][]string
+	// nodeSignals group into the node group even when nodeScoped is false:
+	// they feed a whole-node aggregate in a domain whose other measurement
+	// types are per entity.
+	nodeSignals map[string]bool
+	category    health.Category
 	// nodeScoped domains build one measurement from every source's
 	// observations. Health Validation is node-local, so a node target's ID
 	// (empty by convention) and a source-scoped failure both describe this
@@ -79,7 +86,10 @@ func (a *domainAdapter) Signals() map[string][]string { return maps.Clone(a.feed
 
 // Build consumes observations already validated by the bridge.
 func (a *domainAdapter) Build(obs []*observation.Observation) []health.Measurement {
-	measurements := adaptCategory(a.category, a.feeds, a.nodeScoped, obs)
+	measurements := adaptCategory(a.category, a.feeds, a.nodeScoped, a.nodeSignals, obs)
+	if a.complete != nil {
+		measurements = a.complete(measurements)
+	}
 	if len(measurements) == 0 {
 		return a.Errored(fmt.Errorf("no %s observations were collected", a.Name()))
 	}
@@ -113,16 +123,16 @@ func erroredNVLink(err error) []health.Measurement {
 }
 
 // adaptCategory groups observations per GPU, or into one group when
-// nodeScoped, converts each group with observations.ToMeasurements, and
-// keeps measurements of category.
-func adaptCategory(category health.Category, feeds map[string][]string, nodeScoped bool, obs []*observation.Observation) []health.Measurement {
+// nodeScoped or for nodeSignals, converts each group with
+// observations.ToMeasurements, and keeps measurements of category.
+func adaptCategory(category health.Category, feeds map[string][]string, nodeScoped bool, nodeSignals map[string]bool, obs []*observation.Observation) []health.Measurement {
 	groups := make(map[adapterKey][]*observation.Observation)
 	for _, o := range obs {
 		if _, ok := feeds[o.GetSignalId()]; !ok {
 			continue
 		}
 		var key adapterKey
-		if !nodeScoped {
+		if !nodeScoped && !nodeSignals[o.GetSignalId()] {
 			key = adapterGroup(o)
 		}
 		groups[key] = append(groups[key], o)

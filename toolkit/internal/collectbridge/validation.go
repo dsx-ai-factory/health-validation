@@ -14,6 +14,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"google.golang.org/protobuf/proto"
@@ -49,6 +50,8 @@ var canonicalTargets = []canonicalTarget{
 	{kind: targetGPUProcess, signals: gpusignals.ProcessEntitySignals()},
 	{kind: targetJournalEntry, signals: xidsignals.EventSignals()},
 	{kind: targetNode, signals: collect.Signals{xidsignals.ScanWindow}},
+	{kind: targetJournalEntry, signals: ibsignals.LinkTransitionSignals()},
+	{kind: targetNode, signals: collect.Signals{ibsignals.LinkFlapScanSince}},
 }
 
 type canonicalTarget struct {

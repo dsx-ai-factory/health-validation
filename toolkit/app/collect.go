@@ -15,11 +15,13 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
+	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
-	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/google/uuid"
 )
 
@@ -56,7 +58,8 @@ type CollectAdapter interface {
 // With signalIDs it supplies exactly those, replacing the built-in collect
 // source for them; this succeeds the With*Backend overrides for collect-backed
 // domains. Each claimed signal must be declared by the sensor and requested by
-// an adapter. The Xid signals are claimed all together or not at all. A
+// an adapter. The Xid signals, and the RDMA link-flap signals, are each
+// claimed all together or not at all. A
 // built-in source left with no requested signals never runs, and
 // built-in adapters read claimed signals from this sensor.
 // Each registered collect source has its own timeout budget.
@@ -114,6 +117,10 @@ func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 	if a.xid == nil {
 		sources = append(sources, xidsensor.New(nil))
 		adapters = append(adapters, collectadapters.XID())
+	}
+	if a.rdmaLinkFlap == nil {
+		sources = append(sources, linkflapsensor.New(nil))
+		adapters = append(adapters, collectadapters.InfiniBand())
 	}
 	return sources, adapters
 }
@@ -297,14 +304,8 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 		}
 		signals := requested
 		if len(source.claims) > 0 {
-			// One Xid event's fields must come from one journal read; a split
-			// claim lets reads at different times drop fields such as Fatal.
-			// Dedupe first so a repeated ID cannot stand in for a missing one.
-			xidSignals := observations.MappedSignalsFor(health.Xid)
-			xidClaims := slices.Compact(slices.Sorted(slices.Values(source.claims)))
-			xidClaims = slices.DeleteFunc(xidClaims, func(id string) bool { return !slices.Contains(xidSignals, id) })
-			if len(xidClaims) > 0 && len(xidClaims) < len(xidSignals) {
-				return nil, fmt.Errorf("collect sensor %q claims only part of the Xid signals; claim all of them or none", source.sensor.ID())
+			if err := checkWholeClaims(source); err != nil {
+				return nil, err
 			}
 			signals = nil
 			sensorSignals := source.sensor.Signals()
@@ -352,6 +353,35 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 		}
 	}
 	return bindings, nil
+}
+
+// wholeClaimFamilies are signal families whose events must each come from
+// one journal read; a split claim lets reads at different times drop fields
+// such as an Xid's Fatal or a link transition's state.
+var wholeClaimFamilies = []struct {
+	name    string
+	signals []string
+}{
+	{name: "Xid", signals: xidsignals.All().IDs()},
+	{name: "RDMA link-flap", signals: ibsignals.LinkFlapSignals().IDs()},
+}
+
+// checkWholeClaims rejects a claim covering part of a whole-claim family.
+// Claims are deduped first so a repeated ID cannot stand in for a missing one.
+func checkWholeClaims(source collectSource) error {
+	claims := slices.Compact(slices.Sorted(slices.Values(source.claims)))
+	for _, family := range wholeClaimFamilies {
+		n := 0
+		for _, id := range claims {
+			if slices.Contains(family.signals, id) {
+				n++
+			}
+		}
+		if n > 0 && n < len(family.signals) {
+			return fmt.Errorf("collect sensor %q claims only part of the %s signals; claim all of them or none", source.sensor.ID(), family.name)
+		}
+	}
+	return nil
 }
 
 // suppliesAny reports whether sensor declares any of ids.

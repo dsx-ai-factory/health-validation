@@ -13,11 +13,13 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -400,8 +402,18 @@ func TestMappedSignalsFor(t *testing.T) {
 			t.Fatalf("Xid feed %s = %v, want %v", id, catalog, xid.MeasurementSignals())
 		}
 	}
+	if got := MappedSignalsFor(health.InfiniBand); !slices.Equal(got, ibsignals.LinkFlapSignals().IDs()) {
+		t.Fatalf("InfiniBand signals = %v, want %v", got, ibsignals.LinkFlapSignals().IDs())
+	}
+	// Link-flap fields likewise build one measurement together.
+	for id, catalog := range MappedFeeds(health.InfiniBand) {
+		if !slices.Equal(catalog, infiniband.MeasurementSignals()) {
+			t.Fatalf("InfiniBand feed %s = %v, want %v", id, catalog, infiniband.MeasurementSignals())
+		}
+	}
 	// Every mapped signal belongs to exactly one domain.
-	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.Node), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid))
+	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.Node), MappedSignalsFor(health.GPU),
+		MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid), MappedSignalsFor(health.InfiniBand))
 	if !slices.Equal(perDomain, MappedSignals()) {
 		t.Fatalf("per-domain signals %v do not partition %v", perDomain, MappedSignals())
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
@@ -28,6 +29,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -97,6 +99,19 @@ var mappings = []mapping{
 	},
 }
 
+// canonicalFamilies are collect signal families that build one measurement
+// together rather than field by field: one measurement aggregates repeated
+// journal-entry events, so every signal of a family feeds every catalog
+// signal of its measurement.
+var canonicalFamilies = []struct {
+	signals  func() collect.Signals
+	catalog  func() []string
+	category health.Category
+}{
+	{signals: xidsignals.All, catalog: xid.MeasurementSignals, category: health.Xid},
+	{signals: ibsignals.LinkFlapSignals, catalog: infiniband.MeasurementSignals, category: health.InfiniBand},
+}
+
 // MappedSignals returns the mapped collect signal IDs [ToMeasurements]
 // reads, across every domain. A single-source sensor rejects signals it does
 // not collect, so restrict one with [MappedSignalsFor] instead.
@@ -105,38 +120,43 @@ func MappedSignals() []string {
 	for _, mapped := range mappings {
 		ids = append(ids, mapped.signal.ID())
 	}
-	return append(ids, xidsignals.All().IDs()...)
+	for _, family := range canonicalFamilies {
+		ids = append(ids, family.signals().IDs()...)
+	}
+	return ids
 }
 
 // MappedSignalsFor returns the mapped collect signal IDs that feed
-// the catalog's measurement for category, in mapping order, so a domain's
-// collect adapter requests what this table maps rather than its own copy.
-// It is empty for a category no mapped signal feeds yet.
+// the catalog's measurements for category, mapping-table rows first, so a
+// domain's collect adapter requests what this package maps rather than its
+// own copy. It is empty for a category no mapped signal feeds yet.
 func MappedSignalsFor(category health.Category) []string {
-	if category == health.Xid {
-		return xidsignals.All().IDs()
-	}
 	var ids []string
 	for _, mapped := range mappingsFor(category) {
 		ids = append(ids, mapped.signal.ID())
+	}
+	for _, family := range canonicalFamilies {
+		if family.category == category {
+			ids = append(ids, family.signals().IDs()...)
+		}
 	}
 	return ids
 }
 
 // MappedFeeds maps each mapped collect signal ID that feeds the
-// catalog's measurement for category to the catalog signals it fills.
+// catalog's measurements for category to the catalog signals it fills.
 func MappedFeeds(category health.Category) map[string][]string {
 	feeds := make(map[string][]string)
-	if category == health.Xid {
-		// The Xid measurement is built from all its event fields together,
-		// so each one feeds every Xid catalog signal.
-		for _, id := range xidsignals.All().IDs() {
-			feeds[id] = xid.MeasurementSignals()
-		}
-		return feeds
-	}
 	for _, mapped := range mappingsFor(category) {
 		feeds[mapped.signal.ID()] = slices.Clone(mapped.catalog)
+	}
+	for _, family := range canonicalFamilies {
+		if family.category != category {
+			continue
+		}
+		for _, id := range family.signals().IDs() {
+			feeds[id] = family.catalog()
+		}
 	}
 	return feeds
 }

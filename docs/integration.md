@@ -91,9 +91,11 @@ docker run --rm \
 
 The wrapper includes the complete mount set for journal-backed checks;
 `gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host. The
-Xid read runs `journalctl --output=json --output-fields=MESSAGE`, which needs
-systemd 236 or later; without a readable kernel journal for the current boot,
-`gpu_xid_*` returns collection-failure verdicts.
+Xid and link-flap reads run `journalctl --output=json --output-fields=MESSAGE`,
+which needs systemd 236 or later; without a readable kernel journal for the
+current boot, `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure
+verdicts. Neither falls back to `/dev/kmsg`, whose ring buffer cannot show
+that nothing was logged in the window.
 
 ### Static binary (bare metal, Slurm)
 

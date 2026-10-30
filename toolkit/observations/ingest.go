@@ -43,10 +43,10 @@ var errNoObservation = errors.New("no observation was collected for these signal
 //   - A mapped collect signal ID sets the catalog fields the mapping
 //     table assigns it, as during migration to collect sensors.
 //
-// Canonical Xid signals instead build one Xid measurement from their
-// journal-entry events; a batch that also carries <domain>.<field> Xid
-// observations yields one errored Xid measurement, since the two cannot be
-// merged.
+// Canonical Xid and RDMA link-flap signals instead each build one
+// measurement from their journal-entry events; a batch that also carries
+// that measurement in <domain>.<field> form yields one errored measurement,
+// since the two cannot be merged.
 //
 // Both shapes may appear in one batch and feed one measurement. Other
 // signals are ignored. Collection failures attach to the affected catalog
@@ -56,22 +56,40 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // observations yields no measurement, so its checks are skipped as missing.
 func ToMeasurements(observations []*observation.Observation) []health.Measurement {
 	b := &builder{entities: make(map[entityKey]*entity)}
-	var xidObservations []*observation.Observation
+	var xidObservations, linkFlapObservations []*observation.Observation
 	for _, current := range observations {
-		if xidSignals[current.GetSignalId()] {
+		switch {
+		case xidSignals[current.GetSignalId()]:
 			xidObservations = append(xidObservations, current)
-			continue
+		case linkFlapSignals[current.GetSignalId()]:
+			linkFlapObservations = append(linkFlapObservations, current)
+		default:
+			b.add(current)
 		}
-		b.add(current)
 	}
 	out := b.measurements()
-	if len(xidObservations) == 0 {
-		return out
+	if len(xidObservations) > 0 {
+		out = withCanonical(out, canonicalXid(xidObservations), func(err error) health.Measurement {
+			return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)
+		})
 	}
-	m := canonicalXid(xidObservations)
-	if slices.ContainsFunc(out, func(other health.Measurement) bool { return other.Category() == health.Xid }) {
-		out = slices.DeleteFunc(out, func(other health.Measurement) bool { return other.Category() == health.Xid })
-		m = xid.ErroredXid(xidsignals.WindowBoot, errors.New("xid observed in both canonical and field form"), xid.MeasurementSignals()...)
+	if len(linkFlapObservations) > 0 {
+		out = withCanonical(out, canonicalLinkFlap(linkFlapObservations), func(err error) health.Measurement {
+			return infiniband.ErroredLinkFlap(linkFlapSinceUnknown, err, infiniband.MeasurementSignals()...)
+		})
+	}
+	return out
+}
+
+// withCanonical appends m, built from canonical observations. When out also
+// holds m's type, built from <domain>.<field> observations, the two cannot be
+// merged, so both are replaced by one measurement from failed.
+func withCanonical(out []health.Measurement, m health.Measurement, failed func(error) health.Measurement) []health.Measurement {
+	typ := reflect.TypeOf(m)
+	same := func(other health.Measurement) bool { return reflect.TypeOf(other) == typ }
+	if slices.ContainsFunc(out, same) {
+		out = slices.DeleteFunc(out, same)
+		m = failed(fmt.Errorf("%s observed in both canonical and field form", m.Category()))
 	}
 	return append(out, m)
 }
@@ -475,6 +493,30 @@ func collectionFailure(failure *observation.CollectionError) error {
 		msg += ": " + failure.GetDetail()
 	}
 	return restoredError{msg: msg, timeout: timeout}
+}
+
+// firstFailure returns the first non-timeout failure, else the first
+// timeout, else nil.
+func firstFailure(obs []*observation.Observation) error {
+	var timeout error
+	for _, o := range obs {
+		var err error
+		switch {
+		case o.GetCollectionError() != nil:
+			err = collectionFailure(o.GetCollectionError())
+		case o.GetNoValue() != nil:
+			err = noValueFailure(o.GetSource(), o.GetNoValue())
+		default:
+			continue
+		}
+		if !errors.Is(err, health.ErrCollectionTimeout) {
+			return err
+		}
+		if timeout == nil {
+			timeout = err
+		}
+	}
+	return timeout
 }
 
 func noValueFailure(source string, noValue *observation.NoValue) error {
