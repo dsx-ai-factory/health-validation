@@ -543,6 +543,7 @@ this config has no field for it.
 7. [catalog/health/node-verdict.schema.json](catalog/health/node-verdict.schema.json): JSON Schema for the node verdict output
 8. [CONTRIBUTING.md](CONTRIBUTING.md)
 9. [ROADMAP.md](ROADMAP.md): development focus areas and related work
+10. [Design proposals](docs/design/index.md): propose and review substantial changes before implementation
 
 ## Maintainers
 
