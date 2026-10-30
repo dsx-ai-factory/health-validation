@@ -43,7 +43,8 @@ import (
 //   - NVML reports milliwatts and DCGM watts; fixture values are exact in both.
 //   - Failure messages name different libraries and operations, so only
 //     failed signals and verdicts are compared, not error text.
-//   - gpu_compute_apps is excluded until compute-process signals are mapped.
+//   - gpu_compute_apps is compared in TestGPUComputeProcessParity, which
+//     drives collect's NVML process sensor alongside the DCGM fake.
 //   - The unsupported throttle case feeds NoValue(NOT_SUPPORTED), which is
 //     what collect's DCGM source decodes the clock-event NOT_SUPPORTED
 //     sentinel to.
@@ -75,7 +76,7 @@ func TestGPUCollectParity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			legacy := measure(t, toolkit.NewGPUSensor(nvml.NewWithLibrary(nvmlLibrary(tt.gpus, tt.enumerationFails, nil))))
-			bridged := measure(t, bridgedGPUSensor(t, collectCycle(t, time.Minute), dcgmFake{obs: dcgmObservations(tt.gpus, tt.enumerationFails)}))
+			bridged := measure(t, bridgedGPUSensor(t, collectCycle(t, time.Minute), dcgmFake{obs: dcgmObservations(tt.gpus, tt.enumerationFails)}, nil))
 
 			if !tt.enumerationFails && !slices.ContainsFunc(tt.gpus, func(s gpuState) bool { return s.uuidFails }) {
 				if l, c := gpuFacts(t, legacy), gpuFacts(t, bridged); !reflect.DeepEqual(l, c) {
@@ -102,7 +103,7 @@ func TestGPUCollectTimeoutParity(t *testing.T) {
 		t.Fatal(err)
 	}
 	bridged, err := toolkit.CollectWithOptions(gpuCatalog(t), toolkit.CollectionOptions{Timeout: time.Minute},
-		bridgedGPUSensor(t, collectCycle(t, timeout), dcgmFake{obs: dcgmObservations([]gpuState{{}}, false), block: release}))
+		bridgedGPUSensor(t, collectCycle(t, timeout), dcgmFake{obs: dcgmObservations([]gpuState{{}}, false), block: release}, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,6 +121,7 @@ func TestGPUCollectTimeoutParity(t *testing.T) {
 
 // gpuState describes one GPU; the zero value is healthy on GB200.
 type gpuState struct {
+	pids                []uint32 // compute processes NVML reports
 	pstate              int64
 	powerMW             uint32 // zero means 1100 W
 	limitMW             uint32 // requested limit; zero means 1200 W
@@ -130,6 +132,7 @@ type gpuState struct {
 	pstateFails         bool
 	powerFails          bool
 	uuidFails           bool
+	processesFail       bool
 }
 
 func (s gpuState) power() uint32 { return cmp.Or(s.powerMW, 1_100_000) }
@@ -200,7 +203,7 @@ func nvmlDevice(uuid string, s gpuState) *mock.Device {
 			}
 			return mask, gonvml.SUCCESS
 		},
-		GetComputeRunningProcessesFunc: func() ([]gonvml.ProcessInfo, gonvml.Return) { return nil, gonvml.SUCCESS },
+		GetComputeRunningProcessesFunc: func() ([]gonvml.ProcessInfo, gonvml.Return) { return processInfos(s) },
 	}
 }
 
@@ -306,14 +309,21 @@ func collectCycle(t *testing.T, timeout time.Duration) *collect.Cycle {
 	return cycle
 }
 
-// bridgedGPUSensor runs sensor through the bridge and the built-in GPU adapter.
-func bridgedGPUSensor(t *testing.T, cycle *collect.Cycle, sensor collect.Sensor) toolkit.Sensor {
+// bridgedGPUSensor runs dcgm, and processes when given, through the bridge and
+// the built-in GPU adapter, as the stock CLI registers them. Without processes
+// the compute-process signals are not requested.
+func bridgedGPUSensor(t *testing.T, cycle *collect.Cycle, dcgm, processes collect.Sensor) toolkit.Sensor {
 	t.Helper()
 	adapter := collectadapters.GPU()
-	// Only the DCGM-backed signals: compute processes come from NVML.
-	signals := slices.DeleteFunc(slices.Sorted(maps.Keys(adapter.Signals())), func(id string) bool { return !slices.Contains(dcgmSignals.IDs(), id) })
+	isDCGM := func(id string) bool { return slices.Contains(dcgmSignals.IDs(), id) }
+	signals := slices.Sorted(maps.Keys(adapter.Signals()))
 	runner := collectbridge.NewRunner(cycle)
-	if err := runner.Register(sensor, signals...); err != nil {
+	if err := runner.Register(dcgm, slices.DeleteFunc(slices.Clone(signals), func(id string) bool { return !isDCGM(id) })...); err != nil {
+		t.Fatal(err)
+	}
+	if processes == nil {
+		signals = slices.DeleteFunc(signals, func(id string) bool { return !isDCGM(id) })
+	} else if err := runner.Register(processes, slices.DeleteFunc(slices.Clone(signals), isDCGM)...); err != nil {
 		t.Fatal(err)
 	}
 	runner.Collect()
@@ -340,7 +350,7 @@ type gpuFact struct {
 	slowdown, thermal, powerBrake bool
 }
 
-// computeSignals are not yet mapped on the collect path.
+// computeSignals are compared separately, by TestGPUComputeProcessParity.
 var computeSignals = []string{gpu.SignalComputeProcessCount, gpu.SignalComputeProcessCmdlines}
 
 func gpuFacts(t *testing.T, measurements []health.Measurement) []gpuFact {
