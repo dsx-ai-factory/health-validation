@@ -86,6 +86,9 @@ var mappings = []mapping{
 		signal: gpusignals.HardwarePowerBrakeSlowdownActive, measurement: gpu.GPUMeasurement{},
 		catalog: []string{gpu.SignalHWPowerBrakeSlowdown}, unsupportedIsNeutral: true,
 	},
+	{signal: gpusignals.ProcessCount, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalComputeProcessCount}, unit: "1"},
+	// Folded per GPU by gpuProcesses.
+	{signal: gpusignals.ProcessCmdline, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalComputeProcessCmdlines}},
 	{
 		signal: gpusignals.NVLinkFabricBandwidthDegraded, measurement: nvlink.NVLinkMeasurement{},
 		catalog: []string{nvlink.SignalFabricBandwidthDegraded}, unsupportedIsNeutral: true,

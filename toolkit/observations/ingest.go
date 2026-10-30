@@ -58,18 +58,20 @@ func ToMeasurements(observations []*observation.Observation) []health.Measuremen
 	b := &builder{entities: make(map[entityKey]*entity)}
 	var xidObservations []*observation.Observation
 	links := make(nvlinkLinks)
+	processes := make(gpuProcesses)
 	for _, current := range observations {
 		if xidSignals[current.GetSignalId()] {
 			xidObservations = append(xidObservations, current)
 			continue
 		}
 		f, ok := resolve(current)
-		if !ok || links.add(current, f) {
+		if !ok || processes.add(current) || links.add(current, f) {
 			continue
 		}
 		b.add(current, f)
 	}
 	links.feed(b)
+	processes.feed(b)
 	out := b.measurements()
 	if len(xidObservations) == 0 {
 		return out
@@ -329,8 +331,8 @@ func targetID(s *schema, current *observation.Observation) (health.EntityKey, st
 	return key, fmt.Sprintf("slot:%q/%q", source, slot), nil
 }
 
-// gpuRef returns the GPU target describes: an NVLink endpoint's GPU or a
-// pair's source GPU. It is nil for any other target.
+// gpuRef returns the GPU target describes: an NVLink endpoint's or a
+// process's GPU, or a pair's source GPU. It is nil for any other target.
 func gpuRef(target *observation.ObservationTarget) *observation.GPURef {
 	switch {
 	case target.GetGpu() != nil:
@@ -339,6 +341,8 @@ func gpuRef(target *observation.ObservationTarget) *observation.GPURef {
 		return target.GetNvLinkEndpoint().GetGpu()
 	case target.GetGpuPair() != nil:
 		return target.GetGpuPair().GetSourceGpu()
+	case target.GetGpuProcess() != nil:
+		return target.GetGpuProcess().GetGpu()
 	default:
 		return nil
 	}

@@ -310,7 +310,8 @@ func collectCycle(t *testing.T, timeout time.Duration) *collect.Cycle {
 func bridgedGPUSensor(t *testing.T, cycle *collect.Cycle, sensor collect.Sensor) toolkit.Sensor {
 	t.Helper()
 	adapter := collectadapters.GPU()
-	signals := slices.Sorted(maps.Keys(adapter.Signals()))
+	// Only the DCGM-backed signals: compute processes come from NVML.
+	signals := slices.DeleteFunc(slices.Sorted(maps.Keys(adapter.Signals())), func(id string) bool { return !slices.Contains(dcgmSignals.IDs(), id) })
 	runner := collectbridge.NewRunner(cycle)
 	if err := runner.Register(sensor, signals...); err != nil {
 		t.Fatal(err)

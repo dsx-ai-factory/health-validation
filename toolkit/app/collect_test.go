@@ -814,6 +814,7 @@ func TestWithCollectCombinesGPUObservationsFromTwoSensors(t *testing.T) {
 	state := &collectHardwareSensor{id: "test.state", gpuIDs: ids, signals: collect.Signals{
 		gpusignals.PerformanceState, gpusignals.HardwareSlowdownActive,
 		gpusignals.HardwareThermalSlowdownActive, gpusignals.HardwarePowerBrakeSlowdownActive,
+		gpusignals.ProcessCount, gpusignals.ProcessCmdline,
 	}}
 	a := New().WithCollect(power).WithCollectAdapters(collectadapters.GPU()).WithCollect(state)
 	sensors, err := a.collectSensors(time.Second, nil, nil, nil)
@@ -923,8 +924,13 @@ func (s *collectHardwareSensor) Measure(_ context.Context, opts ...collect.OpOpt
 				value.Kind = &observation.Value_UintValue{UintValue: 18}
 			case gpusignals.NVLinkSpeedCommon.ID(), gpusignals.NVLinkEndpointSpeed.ID():
 				value.Kind = &observation.Value_UintValue{UintValue: 53125}
-			case gpusignals.NVLinkP2PStatus.ID():
+			case gpusignals.NVLinkP2PStatus.ID(), gpusignals.ProcessCount.ID():
 				value.Kind = &observation.Value_UintValue{UintValue: 0}
+			case gpusignals.ProcessCmdline.ID():
+				// An idle GPU, as collect's NVML sensor reports one.
+				batch.Observations = append(batch.Observations, observation.NewNoValueObservation(signal.ID(), signal.Unit(), s.ID(),
+					observation.GPUTarget(gpuID), timestamppb.Now(), &observation.NoValue{Reason: observation.NoValueReasonNoTargets}))
+				continue
 			}
 			if slices.Contains(gpusignals.EndpointCapabilitySignals().IDs(), signal.ID()) {
 				value.Kind = &observation.Value_UintValue{UintValue: 1}

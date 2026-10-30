@@ -189,8 +189,8 @@ type adapterKey struct {
 // label renders k as a sortable GPU ID, qualified by source for a slot.
 func (k adapterKey) label() string { return fmt.Sprintf("%s:%q/%q", k.kind, k.namespace, k.gpuID) }
 
-// adapterGroup assigns o to its GPU group: an NVLink endpoint's GPU or a
-// pair's source GPU, as observations.targetID does. Slots are namespaced by
+// adapterGroup assigns o to its GPU group: an NVLink endpoint's or a
+// process's GPU, or a pair's source GPU, as observations.targetID does. Slots are namespaced by
 // source so two producers' slot 0 are never merged without a UUID.
 // Source-scoped observations name no GPU, so every source's share one group:
 // split per source, each would fail the fields only the others feed.
@@ -202,6 +202,8 @@ func adapterGroup(o *observation.Observation) adapterKey {
 		ref = target.GetNvLinkEndpoint().GetGpu()
 	case target.GetGpuPair() != nil:
 		ref = target.GetGpuPair().GetSourceGpu()
+	case target.GetGpuProcess() != nil:
+		ref = target.GetGpuProcess().GetGpu()
 	}
 	if ref.GetUuid() != "" {
 		return adapterKey{kind: "uuid", gpuID: ref.GetUuid()}

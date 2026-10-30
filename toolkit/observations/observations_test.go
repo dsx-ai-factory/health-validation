@@ -514,6 +514,8 @@ func TestMappedSignalsFor(t *testing.T) {
 		gpusignals.HardwareSlowdownActive.ID(),
 		gpusignals.HardwareThermalSlowdownActive.ID(),
 		gpusignals.HardwarePowerBrakeSlowdownActive.ID(),
+		gpusignals.ProcessCount.ID(),
+		gpusignals.ProcessCmdline.ID(),
 	}
 	nvlinkIDs := []string{
 		gpusignals.NVLinkFabricBandwidthDegraded.ID(),

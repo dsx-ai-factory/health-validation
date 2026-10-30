@@ -52,7 +52,7 @@ func TestDomainAdaptersPreserveExistingMappings(t *testing.T) {
 // Endpoint and pair observations group with the GPU they belong to; a
 // per-source group would merge every GPU's links and stamp the source label
 // as their GPU ID.
-func TestAdapterGroupKeysEndpointsAndPairsByGPU(t *testing.T) {
+func TestAdapterGroupKeysEntitiesByGPU(t *testing.T) {
 	at := func(target *observation.ObservationTarget) *observation.Observation {
 		return &observation.Observation{Source: "nvml", Target: target}
 	}
@@ -68,6 +68,7 @@ func TestAdapterGroupKeysEndpointsAndPairsByGPU(t *testing.T) {
 		{observation.NVLinkEndpointTarget("GPU-1", 0), first},
 		{observation.NVLinkEndpointTarget("GPU-2", 17), second},
 		{observation.GPUPairTarget("GPU-2", "GPU-1"), second},
+		{observation.GPUProcessTarget("GPU-1", "01234567-89ab-cdef-0123-456789abcdef", 42, 100), first},
 	} {
 		if got := adapterGroup(at(test.target)); got != test.want {
 			t.Errorf("adapterGroup(%v) = %v, want %v", test.target, got, test.want)
