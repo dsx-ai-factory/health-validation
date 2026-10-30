@@ -2,7 +2,10 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "pci",
-    srcs = ["source.go"],
+    srcs = [
+        "properties.go",
+        "source.go",
+    ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/source/pci",
     visibility = ["//visibility:public"],
     deps = [
@@ -14,7 +17,10 @@ go_library(
 
 go_test(
     name = "pci_test",
-    srcs = ["source_test.go"],
+    srcs = [
+        "properties_test.go",
+        "source_test.go",
+    ],
     embed = [":pci"],
     deps = [
         "//collect",

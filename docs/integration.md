@@ -543,7 +543,7 @@ Several families share the NVML sensor and its caller-owned instance.
 | Host memory, CPU, and resources | Memory and BPF JIT bytes; CPU topology, cumulative mode times and load; kernel file handles, visible descriptors, and task counters | `sensors/memory.New(fsys)`, `sensors/cpu.New(fsys)`, `sensors/host.New(fsys)` |
 | Block devices and filesystems | Block identity, metadata, size and parents; mount metadata and eligible filesystem capacity | `sensors/disk.New(fsys, ...source/disk.Option)` |
 | FUSE | Connection waiting/background/congestion counts and mount correlation | `sensors/fuse.New(fsys, ...source/fuse.Option)` |
-| PCI | PCI address, vendor/device/class identity, driver, bound module, and raw ACS control | `sensors/pci.New(fsys)` |
+| PCI | PCI address, vendor/device/class identity, driver, bound module, raw ACS, and current/maximum link speed, width, and generation | `sensors/pci.New(fsys)` |
 | Persistent crash records | Live and archived pstore paths, text or base64 content, hashes, and root provenance | `sensors/pstore.New(fsys)` or `NewWithRoots(fsys, roots...)` |
 
 GPM profiling is a separate, opt-in NVML sensor:
