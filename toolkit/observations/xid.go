@@ -97,7 +97,9 @@ func buildXid(obs []*observation.Observation, gpuUUIDs map[string]string) ([]hea
 		if err != nil {
 			return nil, err
 		}
-		gpu := event.PCIAddress
+		// Normalized as the journal sensor's normalizePCIAddress does, so
+		// every spelling of one GPU groups together and matches gpuUUIDs.
+		gpu := strings.TrimSuffix(strings.ToLower(event.PCIAddress), ".0")
 		j, ok := gpuIndex[gpu]
 		if !ok {
 			j = len(gpus)

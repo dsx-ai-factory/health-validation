@@ -99,6 +99,14 @@ func TestToMeasurementsXidNamesGPUFromUUIDs(t *testing.T) {
 	}
 }
 
+func TestToMeasurementsXidNormalizesAddressSpelling(t *testing.T) {
+	batch := journalBatch(journalXid("a", 48, "0000:C1:00"), journalXid("b", 48, "0000:c1:00.0"))
+	got := summarize(t, ToMeasurements(batch, WithGPUUUIDs(map[string]string{"0000:c1:00": "GPU-a"})))
+	if len(got) != 1 || got[0].GPUID != "GPU-a" || got[0].PCIAddress != "0000:c1:00" || got[0].XidCounts[48] != 2 {
+		t.Fatalf("got %+v, want one GPU-a measurement at 0000:c1:00 with two Xid 48s", got)
+	}
+}
+
 func TestToMeasurementsXidCleanScanHasNoIdentity(t *testing.T) {
 	got := xidMeasurements(t, ToMeasurements(journalBatch()))
 	if len(got) != 1 || got[0].EntityID() != "" || got[0].Since != "boot" || len(got[0].Errors()) != 0 {
