@@ -16,6 +16,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
+	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
@@ -95,6 +96,18 @@ func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 	return a
 }
 
+// dcgmGPUSignals are the GPU domain's signals the stock CLI reads from DCGM.
+// processGPUSignals come from NVML instead: DCGM has no list of the compute
+// processes running on a GPU.
+var (
+	dcgmGPUSignals = collect.Signals{
+		gpusignals.PowerDraw, gpusignals.PowerLimitRequested, gpusignals.PowerLimitEnforced,
+		gpusignals.PerformanceState, gpusignals.HardwareSlowdownActive,
+		gpusignals.HardwareThermalSlowdownActive, gpusignals.HardwarePowerBrakeSlowdownActive,
+	}
+	processGPUSignals = collect.Signals{gpusignals.ProcessCount, gpusignals.ProcessCmdline}
+)
+
 // builtinCollect returns the stock CLI's collect-backed domains. A domain
 // moves here from the legacy sensor list in runCommand when it migrates; its
 // With*Backend override keeps the legacy sensor instead. The node domain
@@ -103,6 +116,10 @@ func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 	var sources []collect.Sensor
 	var adapters []CollectAdapter
+	if a.gpu == nil {
+		sources = append(sources, a.host.gpuSensors()...)
+		adapters = append(adapters, collectadapters.GPU())
+	}
 	if a.cpu == nil {
 		sources = append(sources, cpusensor.New(nil))
 		adapters = append(adapters, collectadapters.CPU())

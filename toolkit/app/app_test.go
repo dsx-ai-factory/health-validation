@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
@@ -24,7 +25,9 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
@@ -245,6 +248,54 @@ func (s spyBackend) MeasureGPUs() ([]health.Measurement, error) {
 func (spyBackend) MeasureNode() ([]health.Measurement, error)   { return nil, nil }
 func (spyBackend) MeasureNVLink() ([]health.Measurement, error) { return nil, nil }
 
+// gpuSpySensor stands in for the host's built-in GPU collect sensors. It
+// records whether it was measured and reports fakeHost's four GPUs as healthy
+// idle GB200s.
+type gpuSpySensor struct {
+	called *bool
+}
+
+func (gpuSpySensor) ID() string { return "test.gpu" }
+func (gpuSpySensor) Signals() collect.Signals {
+	return slices.Concat(dcgmGPUSignals, processGPUSignals)
+}
+
+func (s gpuSpySensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	*s.called = true
+	op := collect.NewOp(opts...)
+	selected, err := op.Signals(s.Signals())
+	if err != nil {
+		return nil, err
+	}
+	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
+	now := timestamppb.Now()
+	for i := range 4 {
+		target := observation.GPUTarget(fmt.Sprintf("GPU-%d", i))
+		for _, signal := range selected {
+			value := &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: false}}
+			switch signal {
+			case gpusignals.PowerDraw:
+				value.Kind = &observation.Value_DoubleValue{DoubleValue: 700}
+			case gpusignals.PowerLimitRequested, gpusignals.PowerLimitEnforced:
+				value.Kind = &observation.Value_DoubleValue{DoubleValue: 1200}
+			case gpusignals.PerformanceState:
+				value.Kind = &observation.Value_IntValue{IntValue: 0}
+			case gpusignals.ProcessCount:
+				value.Kind = &observation.Value_UintValue{UintValue: 0}
+			case gpusignals.ProcessCmdline:
+				batch.Observations = append(batch.Observations, observation.NewNoValueObservation(signal.ID(), signal.Unit(), s.ID(), target, now,
+					&observation.NoValue{Reason: observation.NoValueReasonNoTargets}))
+				continue
+			}
+			batch.Observations = append(batch.Observations, &observation.Observation{
+				SignalId: signal.ID(), Source: s.ID(), Target: target, ObservedAt: now, Unit: signal.Unit(),
+				Outcome: &observation.Observation_Value{Value: value},
+			})
+		}
+	}
+	return batch, nil
+}
+
 type cpuBackendFunc func(context.Context) (cpu.CPUMeasurement, error)
 
 func (f cpuBackendFunc) MeasureCPU(ctx context.Context) (cpu.CPUMeasurement, error) {
@@ -286,7 +337,9 @@ type fakeHost struct {
 	b spyBackend
 }
 
-func (h fakeHost) gpuBackend() toolkit.GPUBackend       { return h.b }
+func (h fakeHost) gpuSensors() []collect.Sensor {
+	return []collect.Sensor{gpuSpySensor{called: h.b.called}}
+}
 func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (fakeHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: 4, model: "NVIDIA GB200"}, nil })
@@ -313,7 +366,7 @@ func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapsho
 // panicHost ensures invalid input returns before touching the host backend.
 type panicHost struct{}
 
-func (panicHost) gpuBackend() toolkit.GPUBackend        { panic("unexpected GPU backend access") }
+func (panicHost) gpuSensors() []collect.Sensor          { panic("unexpected GPU sensor access") }
 func (panicHost) nvlinkBackend() toolkit.NVLinkBackend  { panic("unexpected NVLink backend access") }
 func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
 func (panicHost) close() error                          { panic("unexpected host backend close") }
@@ -842,7 +895,9 @@ type erroringHost struct {
 	b spyBackend
 }
 
-func (h erroringHost) gpuBackend() toolkit.GPUBackend       { return h.b }
+func (h erroringHost) gpuSensors() []collect.Sensor {
+	return []collect.Sensor{gpuSpySensor{called: h.b.called}}
+}
 func (h erroringHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (erroringHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })

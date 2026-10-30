@@ -20,6 +20,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
 	"github.com/dsx-ai-factory/health-validation/collect/source/nvml/device"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
@@ -159,7 +160,7 @@ type parityHost struct {
 	inventory *gpuinventory.Inventory
 }
 
-func (parityHost) gpuBackend() toolkit.GPUBackend { panic("legacy GPU backend is not under test") }
+func (parityHost) gpuSensors() []collect.Sensor { panic("built-in GPU sensors are not under test") }
 func (parityHost) nvlinkBackend() toolkit.NVLinkBackend {
 	panic("legacy NVLink backend is not under test")
 }
@@ -203,7 +204,7 @@ type discovery struct {
 func runCollect(t *testing.T, n parityNode) (discovery, health.NodeVerdict, int32) {
 	t.Helper()
 	inst := n.collectInstance()
-	a := New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{}))
+	a := New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})).WithGPUBackend(toolkit.MockGPU())
 	a.host = parityHost{inventory: gpuinventory.New(func() (gpuinventory.Reader, error) { return gpuinventory.NVML(inst), nil })}
 	cycle, err := newCycle(n.timeout())
 	if err != nil {

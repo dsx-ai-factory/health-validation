@@ -20,6 +20,7 @@ go_library(
         "//collect/observation",
         "//collect/sensors/cpu",
         "//collect/sensors/xid",
+        "//collect/signals/gpu",
         "//internal/version",
         "//toolkit",
         "//toolkit/internal/collectadapters",
@@ -32,6 +33,9 @@ go_library(
         "@org_golang_google_protobuf//encoding/protojson",
     ] + select({
         "@rules_go//go/platform:linux": [
+            "//collect/sensors/dcgm",
+            "//collect/sensors/nvml",
+            "//collect/source/dcgm",
             "//collect/source/nvml",
             "//toolkit/nvml",
         ],
