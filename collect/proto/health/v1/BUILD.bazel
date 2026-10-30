@@ -1,10 +1,12 @@
 # Generated Go files are checked in under //collect/proto/go/health/v1.
 # gazelle:proto disable
 
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
 exports_files(
     [
         "check.proto",
         "observation.proto",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//build/visibility:collect_consumers"],
 )

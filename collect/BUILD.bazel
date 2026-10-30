@@ -1,4 +1,8 @@
+# gazelle:default_visibility //build/visibility:collect_consumers
+
 load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//build/visibility:collect_consumers"])
 
 go_library(
     name = "collect",
@@ -9,7 +13,6 @@ go_library(
         "signals.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect",
-    visibility = ["//visibility:public"],
     deps = [
         "//collect/observation",
     ],

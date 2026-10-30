@@ -1,0 +1,21 @@
+# Enforces the module layout's dependency direction (catalog → nothing,
+# collect → nothing, toolkit → catalog + collect). Both groups are public except
+# for the packages that must not reach in, so repositories that depend on this
+# one through Bazel keep access.
+
+package_group(
+    name = "toolkit_consumers",
+    packages = [
+        "-//catalog/...",
+        "-//collect/...",
+        "public",
+    ],
+)
+
+package_group(
+    name = "collect_consumers",
+    packages = [
+        "-//catalog/...",
+        "public",
+    ],
+)
