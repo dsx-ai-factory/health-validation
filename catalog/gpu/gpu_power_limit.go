@@ -31,7 +31,7 @@ func GPUPowerLimit() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Prolog,
-		Architectures:     []string{"GB200", "GB300", "H100"},
+		Architectures:     []string{"GB200", "GB300", "H100", "VR200"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
@@ -44,6 +44,7 @@ func GPUPowerLimit() health.CheckDefinition {
 					"GB200": float64(1200),
 					"GB300": float64(1400),
 					"H100":  float64(700),
+					"VR200": float64(2300),
 				},
 				ValueType:   health.ThresholdFloat64,
 				ValueMin:    float64(0),
