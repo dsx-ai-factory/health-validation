@@ -1,0 +1,102 @@
+name: Dependabot regenerate
+
+# Dependabot only edits go.mod/go.sum. A Go bump also needs BUILD files, tidy
+# results, SHIPPED_MODULES.txt and NOTICE regenerated, so this job runs those
+# and pushes the result onto the Dependabot branch.
+#
+# Runs on pull_request, not pull_request_target: the checkout is the PR's own
+# code, and the actor gate below keeps it to Dependabot-authored branches. It
+# uses a GitHub-hosted runner because the self-hosted runners are deliberately
+# not triggered by pull_request events (see ci.yml).
+#
+# The GITHUB_TOKEN is read-only on Dependabot PRs unless the job asks for write
+# explicitly, which it does below. A push made with it does not trigger other
+# workflows, so this one cannot re-run on its own commit.
+on:
+  pull_request:
+    paths:
+      - "**/go.mod"
+      - "**/go.sum"
+      - "go.work"
+      - "go.work.sum"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    if: >-
+      github.repository == 'dsx-ai-factory/health-validation' &&
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Regenerate BUILD files
+        run: bazel run //tools/gazelle
+
+      - name: Go mod tidy
+        run: |
+          for module in agentkit catalog collect toolkit; do
+            (cd "$module" && bazel run //tools/go -- mod tidy)
+          done
+
+      - name: Regenerate shipped modules and NOTICE
+        run: |
+          bazel run //toolkit/cmd/health-validation:shipped_modules_update
+          bazel run //tools:check_notice -- --write
+
+      # createCommitOnBranch, unlike `git push`, yields a commit GitHub signs, which
+      # branch protection's signed-commit rule requires. It does not preserve file
+      # modes; the regenerated files are all non-executable.
+      - name: Commit via the API
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          changed="$(git ls-files --modified --others --exclude-standard)"
+          deleted="$(git ls-files --deleted)"
+          if [[ -z "$changed" && -z "$deleted" ]]; then
+            echo "nothing to regenerate"
+            exit 0
+          fi
+
+          # Files with changes that still exist; deleted ones are listed separately.
+          while IFS= read -r f; do
+            if [[ -f "$f" ]]; then
+              jq -Rs --arg p "$f" '{path: $p, contents: @base64}' "$f"
+            fi
+          done <<< "$changed" | jq -s . > "$RUNNER_TEMP/additions.json"
+          jq -R '{path: .}' <<< "$deleted" | jq -s 'map(select(.path != ""))' > "$RUNNER_TEMP/deletions.json"
+
+          jq -n \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg branch "$HEAD_REF" \
+            --arg oid "$(git rev-parse HEAD)" \
+            --slurpfile additions "$RUNNER_TEMP/additions.json" \
+            --slurpfile deletions "$RUNNER_TEMP/deletions.json" \
+            '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+                expectedHeadOid: $oid,
+                message: {headline: "chore(deps): regenerate BUILD files, SHIPPED_MODULES and NOTICE"},
+                fileChanges: {additions: $additions[0], deletions: $deletions[0]}
+              }}
+            }' > "$RUNNER_TEMP/request.json"
+
+          gh api graphql --input "$RUNNER_TEMP/request.json"
