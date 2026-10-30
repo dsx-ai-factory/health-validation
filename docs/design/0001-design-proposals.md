@@ -5,8 +5,8 @@
 | Status | Proposed |
 | Authors | Kushal Shankar |
 | Created | 2026-10-29 |
-| Issue | This documentation PR proposes the framework itself. |
-| Design review | The PR introducing this record; acceptance is pending maintainer review. |
+| Issue | Bootstrap exception: [proposal discussion in PR 252](https://github.com/dsx-ai-factory/health-validation/pull/252); see the [design guide](index.md#propose-and-review). |
+| Design review | [PR 252](https://github.com/dsx-ai-factory/health-validation/pull/252); acceptance is pending maintainer review. |
 | Supersedes | None |
 
 ## Summary

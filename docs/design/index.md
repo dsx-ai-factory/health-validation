@@ -19,7 +19,15 @@ document is not required for every PR.
 
 ## Propose and review
 
-1. Open or reuse a feature issue describing the problem and scope. Follow
+1. Start with the applicable
+   [Governance](https://github.com/dsx-ai-factory/health-validation/blob/main/GOVERNANCE.md)
+   path. Major architectural changes need an issue with the `rfc` label and
+   `[RFC]` title prefix, open for at least 10 business days. Significant changes
+   need a community issue or Discussion open for at least 5 business days and
+   agreement from at least two maintainers before merging. Apply all relevant
+   requirements; design discussion can proceed while these periods are open.
+   For other feature proposals, open or reuse a feature issue describing the
+   problem and scope. Follow
    [Contributing](https://github.com/dsx-ai-factory/health-validation/blob/main/CONTRIBUTING.md#proposing-features-or-checks)
    and obtain maintainer acknowledgment before implementing a feature.
 2. Copy [the template](template.md) into this directory as
@@ -45,6 +53,12 @@ remains authoritative for approval counts and discussion periods, including
 significant changes and major architectural RFCs. A design PR supplements that
 process; it does not replace an RFC issue, shorten a discussion period, or grant
 a release approval. Follow the existing signing and PR requirements.
+
+The initial framework record [0001](0001-design-proposals.md) is the bootstrap
+exception to the separate proposal-issue requirement:
+[PR 252](https://github.com/dsx-ai-factory/health-validation/pull/252) contains
+both its proposal discussion and design review. This exception applies only to
+0001 and does not waive any applicable governance review requirements.
 
 ## Status and history
 
