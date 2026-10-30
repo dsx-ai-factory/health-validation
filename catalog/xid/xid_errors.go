@@ -25,15 +25,17 @@ type criticalXid struct {
 	code          int64
 }
 
+// VR200 is listed wherever GB300 is: NVIDIA's Xid catalog marks the same
+// Xids as applying to Vera Rubin and GB300.
 var (
-	allArchitectures             = []string{"GB200", "GB300", "B200", "H100", "H200", "A100"}
-	blackwellArchitectures       = []string{"GB200", "GB300", "B200"}
-	hopperBlackwellArchitectures = []string{"GB200", "GB300", "B200", "H100", "H200"}
+	allArchitectures             = []string{"GB200", "GB300", "B200", "H100", "H200", "A100", "VR200"}
+	blackwellArchitectures       = []string{"GB200", "GB300", "B200", "VR200"}
+	hopperBlackwellArchitectures = []string{"GB200", "GB300", "B200", "H100", "H200", "VR200"}
 	ampereHopperArchitectures    = []string{"H100", "H200", "A100"}
 	hopperArchitectures          = []string{"H100", "H200"}
 	// graceBlackwellArchitectures covers Xids NVIDIA's catalog marks
-	// GraceBlackwell and do not occur on an HGX B200 baseboard.
-	graceBlackwellArchitectures = []string{"GB200", "GB300"}
+	// GraceBlackwell and Vera Rubin and do not occur on an HGX B200 baseboard.
+	graceBlackwellArchitectures = []string{"GB200", "GB300", "VR200"}
 	hgxArchitectures            = []string{"B200", "H100", "H200", "A100"}
 )
 
