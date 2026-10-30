@@ -213,22 +213,10 @@ func TestSensorContract(t *testing.T) {
 	}
 }
 
-// pciEntry is a GPU whose model reads as name and whose PCI device ID reads
-// as id.
-func pciEntry(index uint32, name string, id uint32) *observation.GPUInventoryEntry {
-	entry := gpuEntry(index, name)
-	entry.Gpu.PciDeviceId = &id
-	return entry
-}
-
 func TestArchitecture(t *testing.T) {
 	unreadModel := &observation.GPUInventoryEntry{SourceIndex: 0, Gpu: &observation.GPUDevice{}, FieldErrors: map[string]*observation.CollectionError{
 		"model": {Source: "nvml", Operation: "GetName", Category: observation.CollectionErrorCategoryUnavailable},
 	}}
-	unreadPCI := gpuEntry(0, "NVIDIA Graphics Device")
-	unreadPCI.FieldErrors = map[string]*observation.CollectionError{
-		"pci_device_id": {Source: "nvml", Operation: "GetPciInfo", Category: observation.CollectionErrorCategoryUnavailable},
-	}
 	for _, tc := range []struct {
 		snapshot *observation.GPUInventorySnapshot
 		name     string
@@ -241,10 +229,7 @@ func TestArchitecture(t *testing.T) {
 		{name: "failed slot skipped", snapshot: inventory(failedEntry(0, handleOperation), gpuEntry(1, "NVIDIA H100 80GB HBM3")), want: "H100"},
 		{name: "VR200 by name", snapshot: inventory(gpuEntry(0, "NVIDIA VR200")), want: "VR200"},
 		{name: "unrecognized", snapshot: inventory(gpuEntry(0, "NVIDIA A10")), want: ArchitectureUnknown},
-		{name: "generic name falls back to PCI ID", snapshot: inventory(pciEntry(0, "NVIDIA Graphics Device", 0x304110DE)), want: "VR200"},
-		{name: "name wins over PCI ID", snapshot: inventory(pciEntry(0, "NVIDIA GB300", 0x304110DE)), want: "GB300"},
-		{name: "unknown PCI ID", snapshot: inventory(pciEntry(0, "NVIDIA Graphics Device", 0x233010DE)), want: ArchitectureUnknown},
-		{name: "unread PCI ID", snapshot: inventory(unreadPCI), want: ArchitectureUnknown},
+		{name: "generic name", snapshot: inventory(gpuEntry(0, "NVIDIA Graphics Device")), want: ArchitectureUnknown},
 		{name: "enumeration failure", snapshot: enumerationFailure(), err: "Driver Not Loaded"},
 		{name: "no GPUs", snapshot: inventory(), err: "no GPUs enumerated"},
 		{name: "no model read", snapshot: inventory(unreadModel, failedEntry(1, handleOperation)), err: "GetName"},

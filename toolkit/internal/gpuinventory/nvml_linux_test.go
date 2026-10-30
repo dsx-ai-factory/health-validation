@@ -23,13 +23,9 @@ import (
 // enrichment.
 type basicDevice struct {
 	device.Device
-	// pci answers GetPciInfo; nil fails the test, since only a GPU whose
-	// model is not recognized has its PCI device ID read.
-	pci     *nvml.PciInfo
 	name    string
 	uuid    string
 	nameRet nvml.Return
-	pciRet  nvml.Return
 	// nameRead fails the test when GetName is called.
 	nameRead bool
 }
@@ -41,13 +37,6 @@ func (d *basicDevice) GetName() (string, nvml.Return) {
 		panic("GetName called after the architecture was recognized")
 	}
 	return d.name, d.nameRet
-}
-
-func (d *basicDevice) GetPciInfo() (nvml.PciInfo, nvml.Return) {
-	if d.pci == nil {
-		panic("GetPciInfo called for a GPU recognized by name")
-	}
-	return *d.pci, d.pciRet
 }
 
 // fakeInstance is an nvmlsource.Instance over fixed enumeration records.
@@ -87,13 +76,6 @@ func withRecords(records ...nvmlsource.InventoryDevice) *fakeInstance {
 
 func gpu(index uint32, name string) nvmlsource.InventoryDevice {
 	return nvmlsource.InventoryDevice{SourceIndex: index, Device: &basicDevice{name: name, uuid: fmt.Sprintf("GPU-%d", index)}}
-}
-
-// withPCI lets record's PCI device ID be read as id with ret.
-func withPCI(record nvmlsource.InventoryDevice, id uint32, ret nvml.Return) nvmlsource.InventoryDevice {
-	record.Device.(*basicDevice).pci = &nvml.PciInfo{PciDeviceId: id}
-	record.Device.(*basicDevice).pciRet = ret
-	return record
 }
 
 func readSnapshot(t *testing.T, inst nvmlsource.Instance) *observation.GPUInventorySnapshot {
@@ -149,18 +131,6 @@ func TestNVMLReaderStopsAtRecognizedModel(t *testing.T) {
 	if arch, err := Architecture(snapshot); err != nil || arch != "GB300" {
 		t.Errorf("Architecture = %q, %v; want GB300", arch, err)
 	}
-
-	// A GPU recognized by its PCI device ID also ends the model reads.
-	vr := withPCI(gpu(0, "NVIDIA Graphics Device"), 0x304110DE, nvml.SUCCESS)
-	later = gpu(1, "NVIDIA Graphics Device")
-	later.Device.(*basicDevice).nameRead = true
-	snapshot = readSnapshot(t, withRecords(vr, later))
-	if got := snapshot.GetInventory().GetEntries()[0].GetGpu().GetPciDeviceId(); got != 0x304110DE {
-		t.Errorf("PCI device ID = %#x, want 0x304110DE", got)
-	}
-	if arch, err := Architecture(snapshot); err != nil || arch != "VR200" {
-		t.Errorf("Architecture = %q, %v; want VR200", arch, err)
-	}
 }
 
 func TestNVMLReaderModelFallbacks(t *testing.T) {
@@ -173,9 +143,7 @@ func TestNVMLReaderModelFallbacks(t *testing.T) {
 		failed  bool
 	}{
 		{name: "unreadable then recognized", records: []nvmlsource.InventoryDevice{unreadable, gpu(1, "NVIDIA H100 80GB HBM3")}, want: "H100"},
-		{name: "unrecognized", records: []nvmlsource.InventoryDevice{withPCI(gpu(0, "NVIDIA A10"), 0x223610DE, nvml.SUCCESS), withPCI(gpu(1, "NVIDIA A10"), 0x223610DE, nvml.SUCCESS)}, want: ArchitectureUnknown},
-		{name: "generic name recognized by PCI device ID", records: []nvmlsource.InventoryDevice{withPCI(gpu(0, "NVIDIA Graphics Device"), 0x304110DE, nvml.SUCCESS)}, want: "VR200"},
-		{name: "generic name with unreadable PCI device ID", records: []nvmlsource.InventoryDevice{withPCI(gpu(0, "NVIDIA Graphics Device"), 0, nvml.ERROR_UNKNOWN)}, want: ArchitectureUnknown},
+		{name: "unrecognized", records: []nvmlsource.InventoryDevice{gpu(0, "NVIDIA A10"), gpu(1, "NVIDIA A10")}, want: ArchitectureUnknown},
 		{name: "no model readable", records: []nvmlsource.InventoryDevice{unreadable}, failed: true},
 		{name: "zero GPUs", failed: true},
 	} {

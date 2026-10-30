@@ -26,9 +26,8 @@ const nvmlSource = "nvml"
 // NVML reads the basic inventory from inst's existing enumeration: every
 // slot with its handle and UUID outcome, which needs no further NVML call,
 // and GPU models in index order until one maps to an architecture, as legacy
-// discovery read them. A GPU whose model is generic also has its PCI device
-// ID read. Serial, VBIOS, other PCI, platform, and fabric attributes are not
-// read; collect's NVML sensor can enrich the same devices on request.
+// discovery read them. Serial, VBIOS, PCI, platform, and fabric attributes are
+// not read; collect's NVML sensor can enrich the same devices on request.
 func NVML(inst nvmlsource.Instance) Reader { return nvmlReader{inst: inst} }
 
 type nvmlReader struct {
@@ -104,7 +103,7 @@ func readModel(entry *observation.GPUInventoryEntry, dev device.Device) bool {
 	name, ret := dev.GetName()
 	if ret == nvml.SUCCESS && name != "" && utf8.ValidString(name) {
 		entry.Gpu.Model = &name
-		return ArchitectureFromName(name) != "" || readPciDeviceID(entry, dev)
+		return ArchitectureFromName(name) != ""
 	}
 	failure := nvmlFailure("GetName", ret, "")
 	if ret == nvml.SUCCESS {
@@ -115,27 +114,6 @@ func readModel(entry *observation.GPUInventoryEntry, dev device.Device) bool {
 		entry.FieldErrors = make(map[string]*observation.CollectionError)
 	}
 	entry.FieldErrors["model"] = failure
-	return false
-}
-
-// readPciDeviceID reads the PCI device ID of a GPU whose model is generic
-// into entry and reports whether it maps to a known architecture.
-func readPciDeviceID(entry *observation.GPUInventoryEntry, dev device.Device) bool {
-	pci, ret := dev.GetPciInfo()
-	if ret == nvml.SUCCESS && pci.PciDeviceId != 0 {
-		id := pci.PciDeviceId
-		entry.Gpu.PciDeviceId = &id
-		return pciDeviceArchitectures[id] != ""
-	}
-	failure := nvmlFailure("GetPciInfo", ret, "")
-	if ret == nvml.SUCCESS {
-		failure.Category = observation.CollectionErrorCategoryParseError
-		failure.Detail = "zero PCI device ID"
-	}
-	if entry.FieldErrors == nil {
-		entry.FieldErrors = make(map[string]*observation.CollectionError)
-	}
-	entry.FieldErrors["pci_device_id"] = failure
 	return false
 }
 

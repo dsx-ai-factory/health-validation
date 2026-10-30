@@ -19,11 +19,9 @@ import (
 const ArchitectureUnknown = "unknown"
 
 // Architecture reports the catalog architecture of the first GPU in snapshot
-// whose model maps to one, falling back to its PCI device ID when the model
-// is generic (e.g. "NVIDIA Graphics Device"). An enumeration failure, an
-// empty inventory, or an inventory where no model could be read is an error:
-// callers treat it as a node fault rather than evaluate against the wrong
-// thresholds.
+// whose model maps to one. An enumeration failure, an empty inventory, or an
+// inventory where no model could be read is an error: callers treat it as a
+// node fault rather than evaluate against the wrong thresholds.
 func Architecture(snapshot *observation.GPUInventorySnapshot) (string, error) {
 	if failure := snapshot.GetCollectionError(); failure != nil {
 		return "", fmt.Errorf("GPU architecture discovery: %s", describe(failure))
@@ -49,9 +47,6 @@ func Architecture(snapshot *observation.GPUInventorySnapshot) (string, error) {
 		if arch := ArchitectureFromName(entry.GetGpu().GetModel()); arch != "" {
 			return arch, nil
 		}
-		if arch := pciDeviceArchitectures[entry.GetGpu().GetPciDeviceId()]; arch != "" {
-			return arch, nil
-		}
 	}
 	if !modelRead {
 		return "", fmt.Errorf("GPU architecture discovery: no GPU model could be read from %d device(s): %s", len(entries), firstFailure)
@@ -71,14 +66,6 @@ func describe(failure *observation.CollectionError) string {
 		msg += ": " + failure.GetDetail()
 	}
 	return msg
-}
-
-// pciDeviceArchitectures maps an NVML PCI device ID (device ID in the high
-// 16 bits, vendor ID in the low 16 bits) to a catalog architecture, for GPUs
-// whose product name is generic. It is consulted only after the name fails
-// to match, so GPUs already recognized by name are unaffected.
-var pciDeviceArchitectures = map[uint32]string{
-	0x304110DE: "VR200", // reported as "NVIDIA Graphics Device"
 }
 
 // ArchitectureFromName maps an NVML product name (e.g. "NVIDIA H100 80GB
