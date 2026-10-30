@@ -41,6 +41,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	"github.com/dsx-ai-factory/health-validation/internal/version"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
@@ -333,11 +335,17 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		"evaluate checks whose scheduling cadence covers this window (CONTINUOUS, PROLOG, MAINTENANCE); omit to run every registered check")
 	executionContextFlag := fs.String("execution-context", health.TenantGuest.String(),
 		"execution context used to select checks (OPERATOR_INFRA, TENANT_GUEST, OUT_OF_BAND)")
+	registerXidTimeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitError
 	}
 	if fs.NArg() != 0 {
 		fmt.Fprintf(stderr, "%s: unexpected argument %q\n", a.prog, fs.Arg(0))
+		return exitError
+	}
+	xidJournal, err := xidJournalFromFlags(fs)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
 
@@ -420,11 +428,13 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
 		return exitError
 	}
-	sensors, err := a.sensors(cycle, requiredFor(runnable))
+
+	sensors, err := a.sensors(cycle, requiredFor(runnable), xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError
 	}
+
 	verdict, produced, code := evaluate(cat, toolkit.CollectionOptions{
 		Cadence: cadence,
 		Timeout: timeout,
@@ -437,7 +447,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 
 // sensors returns the legacy sensors and the collect-backed sensors, whose
 // sources are measured once now under cycle.
-func (a *App) sensors(cycle *collect.Cycle, required requiredSignals) ([]toolkit.Sensor, error) {
+func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
 	gpu := a.gpu
 	if gpu == nil {
 		gpu = a.host.gpuBackend()
@@ -473,6 +483,13 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals) ([]toolkit
 		sensors = append(sensors, toolkit.NewNodeSensor(a.node))
 	}
 	builtinSources, builtinAdapters := a.builtinCollect()
+	if xidJournal != nil {
+		for i, source := range builtinSources {
+			if source.ID() == xidsensor.ID {
+				builtinSources[i] = xidJournal
+			}
+		}
+	}
 	collectSensors, err := a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
 	if err != nil {
 		return nil, err
@@ -561,6 +578,63 @@ func usage(prog string) string {
 	return "usage: " + prog + " <collect|run|version> [flags]"
 }
 
+func registerXidTimeFlags(fs *flag.FlagSet) {
+	fs.Var(new(xidFromFlag), "xid-from", "read Xid entries strictly after Unix seconds; repeat PCI_ADDRESS=SECONDS for per-GPU bounds")
+	fs.Int64("xid-to", 0, "read Xid journal entries strictly before this Unix timestamp in seconds (positive; optional)")
+}
+
+type xidFromFlag struct {
+	from    *int64
+	gpuFrom map[string]int64
+}
+
+func (f *xidFromFlag) String() string { return "" }
+
+func (f *xidFromFlag) Set(value string) error {
+	address, raw, perGPU := strings.Cut(value, "=")
+	if !perGPU {
+		raw = value
+	}
+	timestamp, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return fmt.Errorf("--xid-from requires Unix seconds or PCI_ADDRESS=SECONDS: %w", err)
+	}
+	if !perGPU {
+		if f.from != nil {
+			return fmt.Errorf("--xid-from: node-wide bound supplied more than once")
+		}
+		f.from = &timestamp
+		return nil
+	}
+	if address == "" {
+		return fmt.Errorf("--xid-from requires a GPU PCI address before '='")
+	}
+	if f.gpuFrom == nil {
+		f.gpuFrom = make(map[string]int64)
+	}
+	if _, exists := f.gpuFrom[address]; exists {
+		return fmt.Errorf("--xid-from: duplicate GPU PCI address %q", address)
+	}
+	f.gpuFrom[address] = timestamp
+	return nil
+}
+
+func xidJournalFromFlags(fs *flag.FlagSet) (collect.Sensor, error) {
+	from := fs.Lookup("xid-from").Value.(*xidFromFlag)
+	var to *int64
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "xid-to" {
+			value := f.Value.(flag.Getter).Get().(int64)
+			to = &value
+		}
+	})
+	sensor, err := xidsensor.NewWithTimeRanges(nil, from.from, to, from.gpuFrom)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --xid-from/--xid-to bounds: %w", err)
+	}
+	return sensor, nil
+}
+
 var categoryBySensor = map[string]health.Category{
 	"cpu":           health.CPU,
 	"gpu":           health.GPU,
@@ -578,11 +652,17 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 	configPath := fs.String("config", "", "path to a YAML config listing checks to collect")
 	nodeID := fs.String("node-id", a.nodeID,
 		"identifier of the node under test, the target of host-wide observations (overrides the configured default or system hostname)")
+	registerXidTimeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitError
 	}
 	if fs.NArg() != 0 {
 		fmt.Fprintf(stderr, "%s: unexpected argument %q\n", a.prog, fs.Arg(0))
+		return exitError
+	}
+	xidJournal, err := xidJournalFromFlags(fs)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
 	nodeIDSet := a.nodeIDSet
@@ -623,7 +703,7 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
-	allSensors, err := a.sensors(cycle, required)
+	allSensors, err := a.sensors(cycle, required, xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError

@@ -4,6 +4,7 @@
 package xid_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
@@ -832,6 +833,48 @@ func TestXidErrors_WorstSeverityWins(t *testing.T) {
 	nv := evalXid(t, 11, 79)
 	if nv.OverallSeverity != health.Critical {
 		t.Errorf("OverallSeverity = %v, want CRITICAL", nv.OverallSeverity)
+	}
+}
+
+func TestXidErrors_Xid13ReportsGraphicsUnit(t *testing.T) {
+	// The Xid 13 verdict carries the events, so a consumer sees which
+	// GPC/TPC/SM faulted. An ESR line names no unit and its event has none.
+	m := xid.XidMeasurement{
+		Since:      "boot",
+		XidCounts:  map[int64]int64{13: 2},
+		EventCount: 2,
+		Events: []xid.XidEvent{
+			{PCIAddress: "0000:89:00", XidCode: 13, GPC: new(int64(1)), TPC: new(int64(3)), SM: new(int64(0))},
+			{PCIAddress: "0000:89:00", XidCode: 13},
+		},
+	}
+	nv, err := xidCatalog(t).EvaluateAll(m)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	var observed, otherObserved map[string]any
+	for _, v := range nv.CheckResults {
+		switch v.CheckID {
+		case "gpu_xid_13":
+			if v.Severity != health.Warning {
+				t.Errorf("gpu_xid_13 Severity = %v, want WARNING", v.Severity)
+			}
+			observed = v.ObservedValues
+		case "gpu_xid_11":
+			otherObserved = v.ObservedValues
+		}
+	}
+	got, err := json.Marshal(observed[xid.SignalEvents])
+	if err != nil {
+		t.Fatalf("marshal events: %v", err)
+	}
+	want := `[{"gpc":1,"tpc":3,"sm":0,"process_name":"","pci_address":"0000:89:00","xid_code":13,"pid":0},` +
+		`{"process_name":"","pci_address":"0000:89:00","xid_code":13,"pid":0}]`
+	if string(got) != want {
+		t.Errorf("gpu_xid_13 observed events = %s, want %s", got, want)
+	}
+	if _, ok := otherObserved[xid.SignalEvents]; ok {
+		t.Errorf("gpu_xid_11 observed values include events: %v", otherObserved)
 	}
 }
 

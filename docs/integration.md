@@ -348,27 +348,33 @@ validate against the published
   and disabled checks do not change this value.
 - **`overall_severity`** — the authoritative level (`PASS`/`INFO`/`WARNING`/
   `CRITICAL`/`UNKNOWN`). Gate on this, not only the exit code.
-- **`recommended_action`** (on each check result; `NodeVerdict` carries no
-  node-level `recommended_action`) — what to do. It is present **only when
-  there is an action** and **omitted entirely** otherwise, which is the common
-  healthy case. Treat its absence as "no action" and guard for it before
-  reading into it. When present it has the form
+- **`recommended_action`** — what to do. `NodeVerdict.recommended_action`
+  contains the node-level drain sequence selected from eligible failing
+  checks, and each check result retains its own recommendation. The field
+  is present **only when a node-level drain sequence is available** and
+  **omitted entirely** otherwise, including for healthy verdicts and findings
+  that require monitoring but no remediation. Treat its absence as "no
+  node-level drain sequence" and inspect `check_results` for per-check monitor
+  states before deciding what to do. When present it has the form
   `{operational_state, remediation_actions}`, for example
   `{"operational_state":"drain","remediation_actions":["reset_gpu","restart_os","service_required"]}`.
-  - `operational_state` is `monitor` or `drain`. It is never `ready`; that case
-    is the omitted field.
+  - At the node level, `operational_state` is `drain`. Per-check recommendations
+    may instead use `monitor`. `ready` is omitted in both cases.
   - `remediation_actions` is an **ordered sequence** of remediation steps,
     present only when `operational_state` is `drain`. Feed it to your
     remediation engine in order. Its entries are an open string set, not a
     closed enum: this repo's checks use `reset_gpu`, `restart_os`,
     `service_required`, and others, and a custom catalog may add its own. Treat
     an unrecognized value as an opaque step, not an error.
-  - Each check carries its own remediation sequence, and nothing ranks them at
-    the node level, so walk `check_results` for the full remediation picture.
-    See [Remediation Actions](/health-validation/operating/remediation) for the
-    action catalog and how to work through several failing checks. In short,
-    re-run the whole suite after each step; a `service_required` step, then
-    severity, decides which failing check to act on next.
+  - Among eligible drain recommendations, the node-level sequence is selected
+    by higher severity, then by comparing each sequence step's documented
+    action rank in order. Remaining ties use check ID, then action names as a
+    stability fallback for repeated check IDs.
+    Actions absent from the ranking, including `hold`, `xid_154`, and custom
+    actions, share the lowest rank. Walk `check_results` for the full
+    remediation picture, and re-run the whole suite after every attempted
+    step. See [Remediation Actions](/health-validation/operating/remediation)
+    for the complete ordering and action catalog.
 - **`affected_components`** / **`severity_by_domain`** — which domain and which
   `check_ids`/entities failed, so you route (GPU vs NVLink vs Xid) without
   re-parsing every result.
@@ -539,7 +545,7 @@ Several families share the NVML sensor and its caller-owned instance.
 | Host memory, CPU, and resources | Memory and BPF JIT bytes; CPU topology, cumulative mode times and load; kernel file handles, visible descriptors, and task counters | `sensors/memory.New(fsys)`, `sensors/cpu.New(fsys)`, `sensors/host.New(fsys)` |
 | Block devices and filesystems | Block identity, metadata, size and parents; mount metadata and eligible filesystem capacity | `sensors/disk.New(fsys, ...source/disk.Option)` |
 | FUSE | Connection waiting/background/congestion counts and mount correlation | `sensors/fuse.New(fsys, ...source/fuse.Option)` |
-| PCI | PCI address, vendor/device/class identity, driver, bound module, and raw ACS control | `sensors/pci.New(fsys)` |
+| PCI | PCI address, vendor/device/class identity, driver, bound module, raw ACS, and current/maximum link speed, width, and generation | `sensors/pci.New(fsys)` |
 | Persistent crash records | Live and archived pstore paths, text or base64 content, hashes, and root provenance | `sensors/pstore.New(fsys)` or `NewWithRoots(fsys, roots...)` |
 
 GPM profiling is a separate, opt-in NVML sensor:

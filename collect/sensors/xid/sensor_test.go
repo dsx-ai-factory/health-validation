@@ -94,7 +94,8 @@ func TestMeasureEmitsEventsAndMarker(t *testing.T) {
 		entryLine("c2", entryTime, "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3, GPU has fallen off the bus.") +
 		entryLine("c3", entryTime.Add(time.Second), "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3, GPU has fallen off the bus.") +
 		entryLine("c4", entryTime, "NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000 0x00000001 0x00000002)") +
-		entryLine("c5", entryTime, "NVRM: Xid (PCI:0000:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)")
+		entryLine("c5", entryTime, "NVRM: Xid (PCI:0000:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)") +
+		entryLine("c6", entryTime, "NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Global Exception on (GPC 10, TPC 5, SM 0): Multiple Warp Errors")
 	got := keyed(t, measure(t, context.Background(), lines(stdout)))
 
 	for _, cursor := range []string{"c2", "c3"} {
@@ -123,6 +124,12 @@ func TestMeasureEmitsEventsAndMarker(t *testing.T) {
 	require.Equal(t, "0x1", got[xidsignals.RecoveryActionToCode.ID()+"|c5"].GetValue().GetStringValue())
 	require.Equal(t, "GPU Reset Required", got[xidsignals.RecoveryActionToName.ID()+"|c5"].GetValue().GetStringValue())
 
+	require.Equal(t, int64(10), got[xidsignals.GPC.ID()+"|c6"].GetValue().GetIntValue())
+	require.Equal(t, int64(5), got[xidsignals.TPC.ID()+"|c6"].GetValue().GetIntValue())
+	require.Equal(t, int64(0), got[xidsignals.SM.ID()+"|c6"].GetValue().GetIntValue())
+	require.NotContains(t, got, xidsignals.PID.ID()+"|c6")
+	require.NotContains(t, got, xidsignals.GPC.ID()+"|c2")
+
 	marker := got[xidsignals.ScanWindow.ID()+"|"]
 	require.NotNil(t, marker)
 	require.Equal(t, xidsignals.WindowBoot, marker.GetValue().GetStringValue())
@@ -135,7 +142,7 @@ func TestMeasureEmitsEventsAndMarker(t *testing.T) {
 	for key, o := range got {
 		require.Equal(t, units[o.GetSignalId()], o.Unit, key)
 	}
-	require.Len(t, got, 2*4+6+2+4+2+1)
+	require.Len(t, got, 2*4+6+2+4+5+2+1)
 }
 
 func TestMeasureCleanScan(t *testing.T) {
@@ -289,4 +296,252 @@ func TestMeasureSelectionErrors(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, batch.GetObservations())
 	require.False(t, called)
+}
+
+func TestPerGPUTimeRanges(t *testing.T) {
+	from, to := entryTime.Unix(), entryTime.Unix()+10
+	for _, globalFrom := range []*int64{nil, &from} {
+		var stdout strings.Builder
+		for _, address := range []string{"0008:0a:00", "0009:06:00", "000a:06:00", "10000:e0:17.0"} {
+			for i, offset := range []time.Duration{-time.Second, 0, time.Microsecond, 5 * time.Second, 5*time.Second + time.Microsecond, 10*time.Second - time.Microsecond, 10 * time.Second} {
+				stdout.WriteString(entryLine(fmt.Sprintf("%s-%d", address, i), time.Unix(from, 0).Add(offset), "NVRM: Xid (PCI:"+address+"): 79"))
+			}
+		}
+		s, err := NewWithTimeRanges(journal.New(lines(stdout.String())), globalFrom, &to, map[string]int64{"0008:0A:00.0": from + 5, "0009:06:00": from - 2, "10000:E0:17": from + 5})
+		require.NoError(t, err)
+		cycle, err := collect.NewCycle("cycle-1", scanTime)
+		require.NoError(t, err)
+		batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
+		require.NoError(t, err)
+		require.NoError(t, observation.ValidateBatch(batch))
+		counts := map[string]int{}
+		for _, o := range batch.GetObservations() {
+			require.Nil(t, o.GetCollectionError())
+			if o.GetSignalId() == xidsignals.PCIAddress.ID() {
+				counts[o.GetValue().GetStringValue()]++
+			}
+			if o.GetSignalId() == xidsignals.ScanWindow.ID() {
+				require.Contains(t, o.GetValue().GetStringValue(), "0008:0a:00:from=")
+			}
+		}
+		other := 6
+		if globalFrom != nil {
+			other = 4
+		}
+		require.Equal(t, map[string]int{"0008:0a:00": 2, "0009:06:00": 6, "000a:06:00": other, "10000:e0:17.0": 2}, counts)
+	}
+}
+
+func TestTimeRangeEmptyAndUnreadableJournal(t *testing.T) {
+	from := entryTime.Unix() + 1
+	for _, tt := range []struct {
+		name        string
+		stdout      string
+		wantFailure bool
+	}{
+		{"filtered Xid", entryLine("c1", entryTime, "NVRM: Xid (PCI:0008:06:00): 79"), false},
+		{"no Xid", entryLine("c1", entryTime, "kernel boot"), false},
+		{"empty journal", "", true},
+		{"missing timestamp", `{"__CURSOR":"c1","_BOOT_ID":"` + bootID + `","MESSAGE":"NVRM: Xid (PCI:0008:06:00): 79"}` + "\n", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s, err := NewWithTimeRanges(journal.New(lines(tt.stdout)), nil, nil, map[string]int64{"0008:06:00": from})
+			require.NoError(t, err)
+			cycle, err := collect.NewCycle("cycle-1", scanTime)
+			require.NoError(t, err)
+			batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
+			require.NoError(t, err)
+			if tt.wantFailure {
+				for _, o := range batch.GetObservations() {
+					require.NotNil(t, o.GetCollectionError())
+				}
+			} else {
+				require.Len(t, batch.GetObservations(), 1)
+				require.Equal(t, xidsignals.ScanWindow.ID(), batch.Observations[0].GetSignalId())
+				require.Nil(t, batch.Observations[0].GetCollectionError())
+			}
+		})
+	}
+}
+
+func TestTimeRangesFilterMalformedEntries(t *testing.T) {
+	from, to, earlier := int64(100), int64(200), int64(50)
+	malformed := "NVRM: Xid (PCI:0008:0a:00): invalid"
+	unknownAddress := "NVRM: Xid (PCI:0008:0a:00garbled): invalid"
+	for _, tt := range []struct {
+		gpuFrom     map[string]int64
+		from        *int64
+		to          *int64
+		name        string
+		message     string
+		seconds     int64
+		nanos       int64
+		wantFailure bool
+	}{
+		{name: "before node start", message: malformed, from: &from, seconds: 99},
+		{name: "at node start", message: malformed, from: &from, seconds: 100},
+		{name: "after node start", message: malformed, from: &from, seconds: 100, nanos: 1000, wantFailure: true},
+		{name: "before end", message: malformed, to: &to, seconds: 199, nanos: 999999000, wantFailure: true},
+		{name: "at end", message: malformed, to: &to, seconds: 200},
+		{name: "after end", message: unknownAddress, to: &to, seconds: 201},
+		{name: "wide domain before GPU start", message: "NVRM: Xid (PCI:10000:e0:17.0): invalid", gpuFrom: map[string]int64{"10000:E0:17": 150}, seconds: 149},
+		{name: "wide domain after GPU start", message: "NVRM: Xid (PCI:10000:e0:17): invalid", gpuFrom: map[string]int64{"10000:e0:17.0": 150}, seconds: 151, wantFailure: true},
+		{name: "before GPU start", message: malformed, gpuFrom: map[string]int64{"0008:0A:00.0": 150}, seconds: 149},
+		{name: "at GPU start", message: malformed, gpuFrom: map[string]int64{"0008:0A:00.0": 150}, seconds: 150},
+		{name: "after GPU start", message: malformed, gpuFrom: map[string]int64{"0008:0A:00.0": 150}, seconds: 150, nanos: 1000, wantFailure: true},
+		{name: "MIG address", message: "NVRM: Xid (0008:0A:00.0 GPU-I:1 GPU-CI:2): invalid", gpuFrom: map[string]int64{"0008:0a:00": 150}, seconds: 149},
+		{name: "other GPU keeps history", message: malformed, gpuFrom: map[string]int64{"0009:06:00": 150}, seconds: 149, wantFailure: true},
+		{name: "later GPU override", message: malformed, from: &from, gpuFrom: map[string]int64{"0008:0a:00": 150}, seconds: 125},
+		{name: "earlier GPU override", message: malformed, from: &from, gpuFrom: map[string]int64{"0008:0a:00": earlier}, seconds: 75, wantFailure: true},
+		{name: "unknown address before all starts", message: unknownAddress, from: &from, gpuFrom: map[string]int64{"0008:0a:00": earlier}, seconds: 49},
+		{name: "unknown address may be in override window", message: unknownAddress, from: &from, gpuFrom: map[string]int64{"0008:0a:00": earlier}, seconds: 75, wantFailure: true},
+		{name: "unknown address may be unbounded", message: unknownAddress, gpuFrom: map[string]int64{"0008:0a:00": 150}, seconds: 49, wantFailure: true},
+		{name: "unknown address before node start", message: unknownAddress, from: &from, seconds: 99},
+		{name: "unbounded", message: malformed, seconds: 99, wantFailure: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout := entryLine("c1", time.Unix(tt.seconds, tt.nanos), tt.message)
+			s, err := NewWithTimeRanges(journal.New(lines(stdout)), tt.from, tt.to, tt.gpuFrom)
+			require.NoError(t, err)
+			cycle, err := collect.NewCycle("cycle-1", scanTime)
+			require.NoError(t, err)
+			batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
+			require.NoError(t, err)
+			require.NoError(t, observation.ValidateBatch(batch))
+			got := keyed(t, batch)
+			require.Contains(t, got, xidsignals.ScanWindow.ID()+"|")
+			failure := got[xidsignals.Code.ID()+"|c1"]
+			if tt.wantFailure {
+				require.NotNil(t, failure)
+				require.Equal(t, observation.CollectionErrorCategoryParseError, failure.GetCollectionError().GetCategory())
+			} else {
+				require.Len(t, batch.GetObservations(), 1)
+				require.Nil(t, failure)
+			}
+		})
+	}
+}
+
+func TestTimeRangesRecognizeNonzeroPCIFunctions(t *testing.T) {
+	from := int64(100)
+	for function := 1; function <= 7; function++ {
+		for _, code := range []string{"79", "invalid"} {
+			for _, seconds := range []int64{75, 100, 101} {
+				t.Run(fmt.Sprintf("function%d/code%s/time%d", function, code, seconds), func(t *testing.T) {
+					message := fmt.Sprintf("NVRM: Xid (PCI:0008:0a:00.%d): %s", function, code)
+					s, err := NewWithTimeRanges(journal.New(lines(entryLine("c1", time.Unix(seconds, 0), message))),
+						&from, nil, map[string]int64{"0008:0a:00.0": 50})
+					require.NoError(t, err)
+					cycle, err := collect.NewCycle("cycle-1", scanTime)
+					require.NoError(t, err)
+					batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
+					require.NoError(t, err)
+					require.NoError(t, observation.ValidateBatch(batch))
+					got := keyed(t, batch)
+					require.Contains(t, got, xidsignals.ScanWindow.ID()+"|")
+					if seconds <= from {
+						require.Len(t, batch.GetObservations(), 1)
+						return
+					}
+					event := got[xidsignals.Code.ID()+"|c1"]
+					require.NotNil(t, event)
+					if code == "invalid" {
+						require.Equal(t, observation.CollectionErrorCategoryParseError, event.GetCollectionError().GetCategory())
+					} else {
+						require.Nil(t, event.GetCollectionError())
+						require.Equal(t, int64(79), event.GetValue().GetIntValue())
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestTimeRangeValidationErrors(t *testing.T) {
+	negative, zero, from, to := int64(-1), int64(0), int64(100), int64(200)
+	for _, tt := range []struct {
+		gpuFrom map[string]int64
+		from    *int64
+		to      *int64
+		name    string
+		want    string
+	}{
+		{name: "negative start", from: &negative, want: "start time must be a non-negative"},
+		{name: "negative end", to: &negative, want: "end time must be a positive"},
+		{name: "zero end", to: &zero, want: "end time must be a positive"},
+		{name: "equal bounds", from: &from, to: &from, want: "start time must be less than end time"},
+		{name: "reversed bounds", from: &to, to: &from, want: "start time must be less than end time"},
+		{name: "invalid address", gpuFrom: map[string]int64{"GPU-1": 100}, want: "invalid GPU PCI address"},
+		{name: "duplicate address", gpuFrom: map[string]int64{"0008:0A:00": 100, "0008:0a:00.0": 100}, want: "duplicate GPU PCI address"},
+		{name: "negative GPU start", gpuFrom: map[string]int64{"0008:0a:00": -1}, want: "start time for GPU 0008:0a:00 must be a non-negative"},
+		{name: "GPU start at end", to: &to, gpuFrom: map[string]int64{"0008:0a:00": 200}, want: "start time for GPU 0008:0a:00 must be less than end time"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			sensor, err := NewWithTimeRanges(nil, tt.from, tt.to, tt.gpuFrom)
+			require.Nil(t, sensor)
+			require.ErrorContains(t, err, tt.want)
+			require.NotContains(t, err.Error(), "--")
+		})
+	}
+}
+
+func TestNodeWideJournalReadBounds(t *testing.T) {
+	from, to := int64(100), int64(200)
+	for _, mode := range []string{"unbounded", "start", "end", "both", "per-GPU", "mixed"} {
+		t.Run(mode, func(t *testing.T) {
+			var lower, upper *int64
+			var gpuFrom map[string]int64
+			switch mode {
+			case "start":
+				lower = &from
+			case "end":
+				upper = &to
+			case "both":
+				lower, upper = &from, &to
+			case "per-GPU":
+				gpuFrom = map[string]int64{"0008:06:00": 100}
+			case "mixed":
+				lower, upper = &from, &to
+				gpuFrom = map[string]int64{"0008:06:00": 100}
+			}
+			boundedRead := mode == "start" || mode == "end" || mode == "both"
+			calls := 0
+			run := func(_ context.Context, args []string, out, _ io.Writer) error {
+				calls++
+				want := []string{"--dmesg", "--boot", "--no-pager", "--quiet", "--output=json", "--output-fields=MESSAGE", "--all"}
+				if calls == 1 && boundedRead {
+					if lower != nil {
+						want = append(want, "--since=@100")
+					}
+					if upper != nil {
+						want = append(want, "--until=@200")
+					}
+					require.Equal(t, want, args)
+					return nil
+				}
+				if calls == 2 {
+					want = append(want, "-n", "1")
+				}
+				require.Equal(t, want, args)
+				_, _ = io.WriteString(out, entryLine("c1", time.Unix(150, 0), "NVRM: Xid (PCI:0008:06:00): 79"))
+				return nil
+			}
+			s, err := NewWithTimeRanges(journal.New(run), lower, upper, gpuFrom)
+			require.NoError(t, err)
+			cycle, err := collect.NewCycle("cycle-1", scanTime)
+			require.NoError(t, err)
+			batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
+			require.NoError(t, err)
+			require.NoError(t, observation.ValidateBatch(batch))
+			got := keyed(t, batch)
+			require.Contains(t, got, xidsignals.ScanWindow.ID()+"|")
+			if boundedRead {
+				require.Equal(t, 2, calls)
+				require.Len(t, batch.GetObservations(), 1)
+			} else {
+				require.Equal(t, 1, calls)
+				require.Equal(t, int64(79), got[xidsignals.Code.ID()+"|c1"].GetValue().GetIntValue())
+			}
+		})
+	}
 }

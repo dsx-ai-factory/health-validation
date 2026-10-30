@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package xid is the journal-backed Xid sensor for one-shot collection. It
-// reads the systemd journal for the current boot rather than /dev/kmsg: the
-// kernel ring buffer evicts old records, so a kmsg snapshot cannot show that
-// no Xid was logged since boot.
+// reads the current boot's systemd journal, optionally filtering Xids by global
+// and per-GPU time bounds. Without bounds, it evaluates the entire current boot.
+// The kernel ring buffer (/dev/kmsg) can evict records needed for that history.
 package xid
 
 import (
@@ -29,6 +29,7 @@ var errInUse = errors.New("xid journal read already in progress")
 
 type sensor struct {
 	reader *journal.Reader
+	ranges timeRanges
 	mu     sync.Mutex
 }
 
@@ -70,23 +71,32 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	}
 	defer s.mu.Unlock()
 
-	scan := &scan{want: map[string]bool{}, at: now}
+	scan := &scan{want: map[string]bool{}, at: now, ranges: s.ranges}
 	for _, definition := range selected {
 		scan.want[definition.ID()] = true
 	}
-	if err := s.reader.ReadKernelBoot(ctx, scan.entry); err != nil {
-		batch.Observations = scanFailure(selected, now, err)
+	var readErr error
+	if len(s.ranges.gpuFrom) == 0 {
+		// The reader's inclusive bounds reduce output; scan keeps the exclusive
+		// bounds. GPU overrides require boot history for unconfigured GPUs.
+		readErr = s.reader.ReadKernelBootRange(ctx, s.ranges.from, s.ranges.to, scan.entry)
+	} else {
+		readErr = s.reader.ReadKernelBoot(ctx, scan.entry)
+	}
+	if readErr != nil {
+		batch.Observations = scanFailure(selected, now, readErr)
 		return batch, nil
 	}
 	batch.Observations = scan.observations
 	if scan.want[xidsignals.ScanWindow.ID()] {
 		batch.Observations = append(batch.Observations,
-			value(xidsignals.ScanWindow, observation.NodeTarget(""), now, stringValue(xidsignals.WindowBoot)))
+			value(xidsignals.ScanWindow, observation.NodeTarget(""), now, stringValue(s.ranges.description())))
 	}
 	return batch, nil
 }
 
 type scan struct {
+	ranges       timeRanges
 	want         map[string]bool
 	at           *timestamppb.Timestamp
 	observations []*observation.Observation
@@ -97,6 +107,14 @@ func (s *scan) entry(e journal.Entry) error {
 	s.entries++
 	if !xidsignals.Match(e.Message) {
 		return nil
+	}
+	if s.ranges.bounded() {
+		if e.Realtime.IsZero() {
+			return fmt.Errorf("Xid entry %d has no realtime timestamp: %w", s.entries, journal.ErrMalformedEntry)
+		}
+		if s.ranges.excludes(e.Realtime, e.Message) {
+			return nil
+		}
 	}
 	if e.BootID == "" || e.Cursor == "" {
 		return fmt.Errorf("journal entry %d has no boot ID or cursor: %w", s.entries, journal.ErrMalformedEntry)
@@ -118,6 +136,15 @@ func (s *scan) entry(e journal.Entry) error {
 	}
 	if event.ProcessName != "" {
 		add(xidsignals.ProcessName, stringValue(event.ProcessName))
+	}
+	if event.GPC != nil {
+		add(xidsignals.GPC, intValue(*event.GPC))
+	}
+	if event.TPC != nil {
+		add(xidsignals.TPC, intValue(*event.TPC))
+	}
+	if event.SM != nil {
+		add(xidsignals.SM, intValue(*event.SM))
 	}
 	if n := event.NVLink5; n != nil {
 		add(xidsignals.NVLink5SubComponent, stringValue(n.SubComponent))

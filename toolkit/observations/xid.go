@@ -99,6 +99,9 @@ func buildXidEvent(f xidFields) (xid.XidEvent, error) {
 		PCIAddress:  f.string(xidsignals.PCIAddress),
 		Pid:         f.int(xidsignals.PID),
 		ProcessName: f.string(xidsignals.ProcessName),
+		GPC:         f.optionalInt(xidsignals.GPC),
+		TPC:         f.optionalInt(xidsignals.TPC),
+		SM:          f.optionalInt(xidsignals.SM),
 	}
 	nvlink5 := []collect.Signal{xidsignals.NVLink5SubComponent, xidsignals.NVLink5Fatal, xidsignals.NVLink5Link}
 	present := slices.IndexFunc(nvlink5, func(s collect.Signal) bool { return f.values[s.ID()] == nil }) < 0
@@ -144,6 +147,15 @@ func (f *xidFields) int(s collect.Signal) int64 {
 		f.wrongKind(s)
 	}
 	return v.GetIntValue()
+}
+
+// optionalInt keeps an absent value nil, since zero is a valid unit index.
+func (f *xidFields) optionalInt(s collect.Signal) *int64 {
+	if f.values[s.ID()] == nil {
+		return nil
+	}
+	v := f.int(s)
+	return &v
 }
 
 func (f *xidFields) string(s collect.Signal) string {

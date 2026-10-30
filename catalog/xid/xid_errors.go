@@ -332,7 +332,7 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 	def := baseCheck(
 		fmt.Sprintf("gpu_xid_%d", c.code),
 		fmt.Sprintf("GPU Xid %d (%s)", c.code, c.description),
-		fmt.Sprintf("Detects NVRM Xid %d in the system journal since boot.", c.code),
+		fmt.Sprintf("Detects NVRM Xid %d in the system journal within the collection window.", c.code),
 		c.action,
 	)
 	def.Architectures = slices.Clone(c.architectures)
@@ -375,7 +375,7 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 	def := baseCheck(
 		fmt.Sprintf("gpu_xid_%d", c.code),
 		fmt.Sprintf("GPU Xid %d (%s)", c.code, c.description),
-		fmt.Sprintf("Detects NVRM Xid %d in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.", c.code),
+		fmt.Sprintf("Detects NVRM Xid %d in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.", c.code),
 		health.NoAction,
 	)
 	def.RequiredSignals = []string{SignalXidCounts, SignalFatalXidCounts}
@@ -384,14 +384,14 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 			Value:       int64(1),
 			ValueType:   health.ThresholdInt64,
 			Category:    health.DefaultThreshold,
-			Description: "Fatal occurrences since boot that trigger the CRITICAL rule.",
+			Description: "Fatal occurrences within the collection window that trigger the CRITICAL rule.",
 			Unit:        "count",
 		},
 		"nonfatal_occurrences": {
 			Value:       int64(1),
 			ValueType:   health.ThresholdInt64,
 			Category:    health.DefaultThreshold,
-			Description: "Nonfatal occurrences since boot that trigger the WARNING rule.",
+			Description: "Nonfatal occurrences within the collection window that trigger the WARNING rule.",
 			Unit:        "count",
 		},
 	}
@@ -428,7 +428,7 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 	def := baseCheck(
 		id,
 		fmt.Sprintf("GPU Xid %s (%s)", c.subXidCode, c.subcode),
-		fmt.Sprintf("Detects NVRM Xid %s (%s) occurrences in the system journal since boot.", c.subXidCode, c.subcode),
+		fmt.Sprintf("Detects NVRM Xid %s (%s) occurrences in the system journal within the collection window.", c.subXidCode, c.subcode),
 		action,
 	)
 	def.RequiredSignals = []string{SignalSubXidCodeCounts}
@@ -446,7 +446,7 @@ func warningCheck(code int64, class warningClass) health.CheckDefinition {
 	def := baseCheck(
 		fmt.Sprintf("gpu_xid_%d", code),
 		fmt.Sprintf("GPU Xid %d Warning", code),
-		fmt.Sprintf("Detects warning-class NVRM Xid %d in the system journal since boot.", code),
+		fmt.Sprintf("Detects warning-class NVRM Xid %d in the system journal within the collection window.", code),
 		class.action,
 	)
 	def.Architectures = slices.Clone(class.architectures)
@@ -455,13 +455,17 @@ func warningCheck(code int64, class warningClass) health.CheckDefinition {
 		Severity:   health.Warning,
 		Message:    fmt.Sprintf(class.message, code),
 	}}
+
+	if code == 13 {
+		def.RequiredSignals = append(def.RequiredSignals, SignalEvents)
+	}
 	return def
 }
 
 // xid45Check builds the check for Xid 45 (preemptive removal), following
 // NVIDIA's WORKFLOW_XID_45 resolution bucket:
 //
-//   - Xid 45 is the only Xid since boot: WARNING, recommending restart_app.
+//   - Xid 45 is the only Xid within the collection window: WARNING, recommending restart_app.
 //   - Another Xid is present: INFO with no action; that Xid's own check
 //     carries the remediation.
 //
@@ -470,7 +474,7 @@ func xid45Check() health.CheckDefinition {
 	def := baseCheck(
 		"gpu_xid_45",
 		"GPU Xid 45 (preemptive removal)",
-		"Detects NVRM Xid 45 in the system journal since boot; informational when another Xid is present.",
+		"Detects NVRM Xid 45 in the system journal within the collection window; informational when another Xid is present.",
 		health.NoAction,
 	)
 	def.Architectures = slices.Clone(allArchitectures)
@@ -497,7 +501,7 @@ func xid154Check() health.CheckDefinition {
 	def := baseCheck(
 		"gpu_xid_154",
 		"GPU Xid 154 (GPU recovery action changed)",
-		"Detects NVRM Xid 154 in the system journal since boot. Informational; correlates with an accompanying Xid.",
+		"Detects NVRM Xid 154 in the system journal within the collection window. Informational; correlates with an accompanying Xid.",
 		health.Drain(health.RemediationActionXid154),
 	)
 	def.Architectures = slices.Clone(allArchitectures)
@@ -525,7 +529,7 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 				Value:       int64(1),
 				ValueType:   health.ThresholdInt64,
 				Category:    health.DefaultThreshold,
-				Description: "Number of matching Xid occurrences since boot that causes the check to fire.",
+				Description: "Number of matching Xid occurrences within the collection window that causes the check to fire.",
 				Unit:        "count",
 			},
 		},

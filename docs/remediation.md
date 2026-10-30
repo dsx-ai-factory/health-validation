@@ -15,29 +15,30 @@ for the JSON contract. For the field's place in the wider verdict shape, see
 ## How to consume a remediation sequence
 
 `remediation_actions` is ordered from the most preferred (least disruptive) step to the least.
-`NodeVerdict` does not carry a single node-level remediation sequence (see
-[Architecture](/health-validation/getting-started/architecture#nodeverdict)) — each failing check
-carries its own — so when more than one check is failing, don't work through
-them in isolation. Instead, re-run the **whole suite** after
-every remediation step, and each time pick the single next action to perform
-by weighing the current set of failing checks against each other:
+Each failing check retains its own recommendation; drain recommendations carry
+an ordered sequence. `NodeVerdict.recommended_action` also surfaces one complete
+drain sequence as the node-level recommendation. Re-run the **whole suite**
+after every remediation step so the recommendation is recalculated from the
+checks that still fail:
 
 1. Run `health-validation` (the full suite).
 2. If everything passes, **stop** — the node is healthy.
-3. Otherwise, look at every currently-failing check with `operational_state:
-   drain` and choose which one to act on next:
-   - **A check whose next remediation step is `service_required` takes
-     precedence over everything else**, regardless of the other failing
-     checks' severity. No automated step is left to try for it, so get a
-     human involved before spending time on other checks' actions.
-   - Otherwise, **the highest-severity failing check takes precedence**
-     (`CRITICAL` before `WARNING`). Among checks tied at the same severity,
-     use judgment — e.g. prefer the action that's also recommended by the
-     most checks, or the least disruptive one, since clearing it may clear
-     others too.
-4. Take the next **untried** action from that check's `remediation_actions`
-   (the first one, the first time you act on that check; the next one after
-   that, if you already tried its earlier steps and it's still failing).
+3. Otherwise, inspect the node-level `recommended_action`. If it is absent, no
+   automated drain remediation is available; inspect `check_results` for
+   per-check monitor or no-action findings and stop this remediation flow. Do
+   not treat the node as healthy. When present, it is selected from checks with
+   `operational_state: drain` and a nonempty sequence by, in order:
+   1. higher severity;
+   2. each remediation step's rank, compared in sequence order, using this
+      priority from highest to lowest: `service_required`, `update_swfw`,
+      `restart_os`, `reset_gpu`, `restart_app`, `check_collection`, and
+      `retry_collection` (actions not in this list, including `hold`,
+      `xid_154`, and custom actions, share the lowest rank);
+   3. the check ID; and
+   4. action names in sequence order, as a stability fallback when repeated
+      check IDs remain tied.
+4. Take the next **untried** action from that `remediation_actions` sequence
+   based on the steps the consumer has already attempted.
 5. Perform that remediation step against the node.
 6. Go back to step 1 and re-run the **whole suite**, not just the check you
    acted on. One action can clear several checks (for example, several checks
@@ -53,6 +54,20 @@ skip the whole-suite re-run between steps — later actions are more disruptive
 (e.g. restarting a VM/bare-metal host) than earlier ones (e.g. resetting a
 GPU), and are only warranted once the cheaper attempt has been confirmed not
 to work.
+
+### Why actions are ranked this way
+
+A check's first step is the least disruptive step it expects might clear the
+fault. If a check starts with a more disruptive step, lighter actions are not
+expected to resolve that check, so its sequence ranks higher. Re-running the
+suite after each step recalculates the recommendation as findings clear.
+
+- `service_required` ranks highest because no automated step remains.
+- `update_swfw` ranks above restarts because a restart alone does not correct a
+  software or configuration incompatibility.
+- `restart_os`, `reset_gpu`, and `restart_app` follow in order of disruption.
+- At equal severity, `check_collection` and `retry_collection` rank last because
+  they represent collection failures rather than observed faults.
 
 ## Action catalog
 
@@ -149,8 +164,9 @@ it, and most Nonfatal rows need no remediation at all.
 | <nobr>`xid_154`</nobr> | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
 
 `gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at
-WARNING when Xid 45 is the only Xid seen since boot. When another Xid is
-present, it is INFO with no action; follow the accompanying Xid's guidance.
+WARNING when Xid 45 is the only Xid seen within the collection window. When
+another Xid is present in that window, it is INFO with no action; follow the
+accompanying Xid's guidance.
 Xid 154 is not counted as another Xid, since it only annotates one.
 
 ### Collection-failure actions

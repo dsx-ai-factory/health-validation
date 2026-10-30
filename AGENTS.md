@@ -73,7 +73,7 @@ This file provides guidance to AI coding agents when working with code in this r
 | `nvlink_capabilities` | nvlink | A required NVLink capability (P2P, sysmem access/atomics, SLI, link) is unsupported | None |
 | `nvlink_p2p` | nvlink | Unhealthy P2P peer count exceeds `max_unhealthy_p2p_peers` | None |
 | `rdma_linkflap_fatal` | infiniband | Count of mlx5 RDMA link outages (down→up ≥ `min_outage_seconds`) reaches `fatal_flap_threshold` | None |
-| `gpu_xid_<code>` | xid | A critical-class Xid code is seen in the system journal (since boot) | A warning-class Xid code is seen in the system journal (since boot) |
+| `gpu_xid_<code>` | xid | A critical-class Xid code is seen in the system journal within the collection window | A warning-class Xid code is seen in the system journal within the collection window |
 | `gpu_xid_149_<hex>` | xid | An Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype whose decode-table resolution is a GPU reset | The same, for a subtype the table resolves to IGNORE |
 | `gpu_xid_154` | xid | None | None (INFO only) |
 

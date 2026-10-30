@@ -25,7 +25,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
   "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
@@ -54,7 +54,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
@@ -145,11 +145,11 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "span_id": "e57c190b-46d2-4c8a-a3f1-9b04d7e2635c",
       "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
       "recommended_action": {
-        "remediation_actions": ["reset_gpu", "service_required"],
+        "remediation_actions": ["restart_os", "service_required"],
         "operational_state": "drain"
       },
       "messages": [
-        "GPU Xid 79 detected: GPU has fallen off the bus."
+        "GPU Xid 79 detected: GPU has fallen off the bus and is inaccessible over PCIe. Restart the host. Review system and kernel PCI event logs; contact support for further investigation."
       ],
       "severity": "CRITICAL",
       "category": "xid",
@@ -159,6 +159,10 @@ The check engine collects typed measurements from sensors, evaluates them agains
     }
   ],
   "skipped_checks": [],
+  "recommended_action": {
+    "remediation_actions": ["restart_os", "service_required"],
+    "operational_state": "drain"
+  },
   "overall_severity": "CRITICAL"
 }
 ```
@@ -181,7 +185,7 @@ The `numa_node_count` check compares the online NUMA node count against `expecte
 
 Catalog receives measurements, routes each to matching checks by category (GPU measurements run GPU checks, node measurements run node checks), evaluates each check's CEL rules against the measurement values and resolved thresholds, and produces a flat list of check verdicts.
 
-Aggregation takes the flat list and computes the node-level verdict: the worst severity across all non-skipped checks, a `severity_by_domain` map, and a list of affected components for non-PASS results.
+Aggregation takes the flat list and computes the node-level verdict: the worst severity across all non-skipped checks, a `severity_by_domain` map, a list of affected components for non-PASS results, and one node-level remediation sequence when an actionable check fails.
 
 Per-check results use five severity levels:
 
@@ -276,6 +280,39 @@ runs checks scheduled for that window and reports the others as
 The execution context defaults to `TENANT_GUEST`. Use
 `--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND` to select checks
 for a different execution context.
+
+Both `run` and `collect` can limit which Xid events are considered. By default,
+collection covers the entire current boot.
+
+After resetting an individual GPU, use `--xid-from PCI_ADDRESS=unix-seconds`
+to exclude its earlier Xids while retaining the other GPUs' history. This option
+may be repeated per GPU:
+
+```shell
+./health-validation run --xid-from 0008:06:00=1792600000 --xid-from 0009:06:00=1792603600
+```
+
+To set a start time for all GPUs on the node, use `--xid-from <unix-seconds>`.
+Optional `--xid-to <unix-seconds>` sets a shared end time for every GPU. For
+example, to evaluate Xids within the same interval on all GPUs:
+
+```shell
+./health-validation run --xid-from 1792600000 --xid-to 1792603600
+```
+
+The two forms of `--xid-from` can be combined: a GPU-specific start time
+overrides the node-wide start time for that GPU. GPUs without an override use
+the node-wide start time, or the entire current boot if none is supplied.
+Addresses use `dddd:bb:dd` (optionally `.0`), with case-insensitive hex digits
+and domains of four or more digits.
+
+Both time bounds are exclusive. Start times must be non-negative, and the end time must be
+positive and later than every supplied start time. Either bound may be omitted.
+Duplicate GPU bounds or multiple node-wide start times will result in an error.
+
+These flags filter the default Xid journal sensor within the current boot.
+Other journal sensors, including RDMA link-flap detection, and backends supplied
+through `WithXidBackend` keep their own collection behavior.
 
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 

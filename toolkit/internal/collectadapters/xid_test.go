@@ -110,14 +110,15 @@ func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
 	obs = append(obs,
 		xidString(xidsignals.RecoveryActionFromCode, "e", "0x0"), xidString(xidsignals.RecoveryActionFromName, "e", "None"),
 		xidString(xidsignals.RecoveryActionToCode, "e", "0x1"), xidString(xidsignals.RecoveryActionToName, "e", "GPU Reset Required"),
-		xidMarker(),
 	)
+	obs = append(obs, xidEvent("f", 13)...)
+	obs = append(obs, xidInt(xidsignals.GPC, "f", 1), xidInt(xidsignals.TPC, "f", 3), xidInt(xidsignals.SM, "f", 0), xidMarker())
 	got := only[xid.XidMeasurement](t, XID().Build(obs))
 	want := xid.XidMeasurement{
 		Since:          "boot",
-		XidCounts:      map[int64]int64{79: 2, 149: 1, 145: 1, 154: 1},
+		XidCounts:      map[int64]int64{79: 2, 149: 1, 145: 1, 154: 1, 13: 1},
 		FatalXidCounts: map[int64]int64{149: 1},
-		EventCount:     5,
+		EventCount:     6,
 		Events: []xid.XidEvent{
 			{PCIAddress: "0000:01:00", XidCode: 79, Pid: 1234, ProcessName: "python3"},
 			{PCIAddress: "0000:01:00", XidCode: 79},
@@ -127,6 +128,7 @@ func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
 			}},
 			{PCIAddress: "0000:01:00", XidCode: 145, NVLink5: &xid.NVLink5Detail{SubComponent: "RLW_REMAP", Link: 2}},
 			{PCIAddress: "0000:01:00", XidCode: 154},
+			{PCIAddress: "0000:01:00", XidCode: 13, GPC: new(int64(1)), TPC: new(int64(3)), SM: new(int64(0))},
 		},
 	}
 	requireXid(t, got, want)

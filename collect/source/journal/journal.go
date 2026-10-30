@@ -72,43 +72,49 @@ func New(run Runner) *Reader {
 // ReadKernelBoot calls each for every kernel entry of the current boot, in
 // journal order. An error from each stops the read and is returned.
 func (r *Reader) ReadKernelBoot(ctx context.Context, each func(Entry) error) error {
-	entries, err := r.read(ctx, kernelBootArgs, each)
-	if err != nil {
-		return err
-	}
-	// Without a grep every kernel entry of the boot is read, so none means the
-	// journal is unreadable or does not capture kernel messages.
-	if entries == 0 {
+	entries, err := r.readKernelBoot(ctx, kernelBootArgs, each, false)
+	if err == nil && entries == 0 {
 		return ErrNoEntries
 	}
-	return nil
+	return err
 }
 
-// ReadKernelSince calls each for every kernel entry of the current boot
-// logged at or after since, truncated to the second, in journal order. A
-// quiet window is not a failure, so when it holds no entry a second read
-// confirms the boot has at least one kernel entry, else it returns
-// [ErrNoEntries]. An error from each stops the read and is returned.
-func (r *Reader) ReadKernelSince(ctx context.Context, since time.Time, each func(Entry) error) error {
-	// @<seconds> is an epoch timestamp, so the host's time zone cannot shift
-	// the window.
-	args := append(slices.Clone(kernelBootArgs), "--since=@"+strconv.FormatInt(since.Unix(), 10))
-	entries, err := r.read(ctx, args, each)
+// ReadKernelBootRange limits the current boot's kernel entries to inclusive
+// Unix-second bounds. Nil bounds are unbounded. An empty bounded read succeeds
+// only when an unbounded kernel-journal probe confirms the journal is readable.
+func (r *Reader) ReadKernelBootRange(ctx context.Context, from, to *int64, each func(Entry) error) error {
+	if from == nil && to == nil {
+		return r.ReadKernelBoot(ctx, each)
+	}
+	if from != nil && *from < 0 {
+		return fmt.Errorf("start time must be non-negative")
+	}
+	if to != nil && *to <= 0 {
+		return fmt.Errorf("end time must be positive")
+	}
+	if from != nil && to != nil && *from >= *to {
+		return fmt.Errorf("start time must be less than end time")
+	}
+	args := append([]string(nil), kernelBootArgs...)
+	if from != nil {
+		args = append(args, fmt.Sprintf("--since=@%d", *from))
+	}
+	if to != nil {
+		args = append(args, fmt.Sprintf("--until=@%d", *to))
+	}
+	entries, err := r.readKernelBoot(ctx, args, each, true)
 	if err != nil || entries > 0 {
 		return err
 	}
-	latest, err := r.read(ctx, append(slices.Clone(kernelBootArgs), "--lines=1"), func(Entry) error { return nil })
-	if err != nil {
-		return err
-	}
-	if latest == 0 {
+	probeArgs := append(append([]string(nil), kernelBootArgs...), "-n", "1")
+	entries, err = r.readKernelBoot(ctx, probeArgs, func(Entry) error { return nil }, false)
+	if err == nil && entries == 0 {
 		return ErrNoEntries
 	}
-	return nil
+	return err
 }
 
-// read runs journalctl with args and returns how many entries it decoded.
-func (r *Reader) read(ctx context.Context, args []string, each func(Entry) error) (int, error) {
+func (r *Reader) readKernelBoot(ctx context.Context, args []string, each func(Entry) error, allowNoEntriesExit bool) (int, error) {
 	lines := &lineWriter{each: each}
 	stderr := &prefixWriter{max: maxStderr}
 	runErr := r.run(ctx, args, lines, stderr)
@@ -117,6 +123,13 @@ func (r *Reader) read(ctx context.Context, args []string, each func(Entry) error
 	}
 	if lines.err != nil {
 		return 0, lines.err
+	}
+	// Some journalctl versions return exit 1 for an empty time window.
+	var exitErr *exec.ExitError
+	if allowNoEntriesExit && errors.As(runErr, &exitErr) && exitErr.ExitCode() == 1 &&
+		lines.entries == 0 && len(bytes.TrimSpace(lines.pending)) == 0 &&
+		strings.TrimSpace(stderr.buf.String()) == "" {
+		runErr = nil
 	}
 	if runErr != nil {
 		if detail := boundedUTF8(strings.TrimSpace(stderr.buf.String()), maxErrorMsg); detail != "" {
@@ -128,6 +141,29 @@ func (r *Reader) read(ctx context.Context, args []string, each func(Entry) error
 		return 0, err
 	}
 	return lines.entries, nil
+}
+
+// ReadKernelSince calls each for every kernel entry of the current boot
+// logged at or after since, truncated to the second, in journal order. A
+// quiet window is not a failure, so when it holds no entry a second read
+// confirms the boot has at least one kernel entry, else it returns
+// [ErrNoEntries]. An error from each stops the read and is returned.
+func (r *Reader) ReadKernelSince(ctx context.Context, since time.Time, each func(Entry) error) error {
+	// @<seconds> is an epoch timestamp, so the host's time zone cannot shift
+	// the window.
+	args := append(slices.Clone(kernelBootArgs), "--since=@"+strconv.FormatInt(since.Unix(), 10))
+	entries, err := r.readKernelBoot(ctx, args, each, true)
+	if err != nil || entries > 0 {
+		return err
+	}
+	latest, err := r.readKernelBoot(ctx, append(slices.Clone(kernelBootArgs), "--lines=1"), func(Entry) error { return nil }, false)
+	if err != nil {
+		return err
+	}
+	if latest == 0 {
+		return ErrNoEntries
+	}
+	return nil
 }
 
 func runJournalctl(ctx context.Context, args []string, stdout, stderr io.Writer) error {

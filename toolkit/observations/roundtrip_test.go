@@ -152,12 +152,13 @@ func roundTripFixture() []health.Measurement {
 		node.NodeMeasurement{GPUCount: 8},
 		xid.XidMeasurement{
 			Since:          "boot",
-			EventCount:     2,
-			XidCounts:      map[int64]int64{79: 1, 149: 1},
+			EventCount:     3,
+			XidCounts:      map[int64]int64{79: 1, 149: 1, 13: 1},
 			FatalXidCounts: map[int64]int64{79: 1},
 			Events: []xid.XidEvent{
 				{XidCode: 79, PCIAddress: "0000:01:00", ProcessName: "python", Pid: 7},
 				{XidCode: 149, PCIAddress: "0000:02:00", NVLink5: &xid.NVLink5Detail{SubComponent: "NETIR", Link: 3, Fatal: true, DebugData: []string{"0x1"}}},
+				{XidCode: 13, PCIAddress: "0000:03:00", GPC: new(int64(1)), TPC: new(int64(3)), SM: new(int64(0))},
 			},
 		},
 		infiniband.LinkFlapMeasurement{
