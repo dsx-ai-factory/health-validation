@@ -111,7 +111,12 @@ link flags).
 
 The binary links NVML via cgo, so it is a Linux artifact and needs the NVIDIA
 driver and `libnvidia-ml` on the host at runtime (and `journalctl` on
-PATH for Xid checks). Place it on each node (config-management, image bake, or a
+PATH for Xid checks). The GPU power, power-limit, pstate, and throttle checks
+read DCGM: the node must run the DCGM hostengine (`nv-hostengine`, listening on
+`localhost`) and provide the DCGM 4 client library (`libdcgm.so.4`, from the
+DCGM package). If the hostengine is unreachable or the library is missing,
+those checks report a collection failure, never a PASS; the binary does not
+fall back to NVML for them. Place it on each node (config-management, image bake, or a
 shared mount) alongside any override config (below).
 
 ## 2. Wire it into the workload lifecycle

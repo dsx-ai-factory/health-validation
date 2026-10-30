@@ -17,6 +17,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The public `catalog/version` package is removed. Read the version from a
   verdict's `catalog_version`. In unstamped builds, `health-validation version`
   now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`.
+- The CLI reads the GPU domain from DCGM, through a hostengine running on the
+  node, and from NVML only for compute processes. Nodes need `nv-hostengine`
+  and the DCGM 4 client library (`libdcgm.so.4`); without them the GPU power,
+  power-limit, pstate, and throttle checks report a collection failure. There
+  is no fallback to NVML. `WithGPUBackend` still selects the legacy NVML GPU
+  sensor.
+- The collect adapter name `gpu` is reserved for the built-in GPU adapter.
+  Drop a caller-registered adapter of that name: the built-in one reads the
+  canonical GPU signals from whichever registered sensor produces them.
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
