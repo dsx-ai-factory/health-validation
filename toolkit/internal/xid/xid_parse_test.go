@@ -95,6 +95,34 @@ func TestParseXid_WithJournalPrefix(t *testing.T) {
 	}
 }
 
+// TestParseXid_Message checks that each event keeps its line from the
+// marker onward, whatever the format and prefix, as the collect parser does.
+func TestParseXid_Message(t *testing.T) {
+	tests := []struct{ line, want string }{
+		{
+			"Jun 09 12:00:00 node1 kernel: NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
+			"NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
+		},
+		{
+			"[30.000000] NVRM: Xid (PCI:0000:01:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus. ",
+			"NVRM: Xid (PCI:0000:01:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus.",
+		},
+		{
+			"NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)",
+			"NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)",
+		},
+	}
+	for _, test := range tests {
+		m := xid.ParseXid("boot", []string{test.line})
+		if m.EventCount != 1 {
+			t.Fatalf("%q: EventCount = %d, want 1", test.line, m.EventCount)
+		}
+		if got := m.Events[0].Message; got != test.want {
+			t.Errorf("%q: Message = %q, want %q", test.line, got, test.want)
+		}
+	}
+}
+
 func TestParseXid_NonMatchingLinesSkipped(t *testing.T) {
 	m := xid.ParseXid("boot", []string{
 		"",

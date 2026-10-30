@@ -103,7 +103,7 @@ func parseXidLine(line string) (xid.XidEvent, bool) {
 		return xid.XidEvent{}, false
 	}
 
-	ev := xid.XidEvent{PCIAddress: groups[1], XidCode: code}
+	ev := xid.XidEvent{PCIAddress: groups[1], XidCode: code, Message: lineMessage(line, xidLineRE)}
 	if groups[3] != "" {
 		ev.Pid, _ = strconv.ParseInt(groups[3], 10, 64)
 	}
@@ -111,6 +111,12 @@ func parseXidLine(line string) (xid.XidEvent, bool) {
 		ev.ProcessName = strings.TrimSpace(groups[4])
 	}
 	return ev, true
+}
+
+// lineMessage returns line from the start of re's match, without any
+// journal or kmsg prefix, as the collect parser keeps it.
+func lineMessage(line string, re *regexp.Regexp) string {
+	return strings.TrimSpace(line[re.FindStringIndex(line)[0]:])
 }
 
 // parseNVLink5Line matches the extended sub-component/severity format
@@ -146,6 +152,7 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 
 	return xid.XidEvent{
 		PCIAddress:  groups[1],
+		Message:     lineMessage(line, xidNVLink5RE),
 		XidCode:     code,
 		Pid:         pid,
 		ProcessName: groups[4],

@@ -130,6 +130,7 @@ func (s *scan) entry(e journal.Entry) error {
 		}
 	}
 	add(xidsignals.Code, intValue(event.Code))
+	add(xidsignals.Message, stringValue(event.Message))
 	add(xidsignals.PCIAddress, stringValue(event.PCIAddress))
 	if event.HasPID {
 		add(xidsignals.PID, intValue(event.PID))

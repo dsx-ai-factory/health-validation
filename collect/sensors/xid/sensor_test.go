@@ -106,6 +106,8 @@ func TestMeasureEmitsEventsAndMarker(t *testing.T) {
 		require.Equal(t, "0000:01:00", got[xidsignals.PCIAddress.ID()+"|"+cursor].GetValue().GetStringValue())
 		require.Equal(t, int64(1234), got[xidsignals.PID.ID()+"|"+cursor].GetValue().GetIntValue())
 		require.Equal(t, "python3", got[xidsignals.ProcessName.ID()+"|"+cursor].GetValue().GetStringValue())
+		require.Equal(t, "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3, GPU has fallen off the bus.",
+			got[xidsignals.Message.ID()+"|"+cursor].GetValue().GetStringValue())
 	}
 	for _, key := range []string{xidsignals.Code.ID() + "|c2", xidsignals.Code.ID() + "|c3", xidsignals.ScanWindow.ID() + "|"} {
 		require.Equal(t, scanTime, got[key].GetObservedAt().AsTime(), key)
@@ -142,7 +144,9 @@ func TestMeasureEmitsEventsAndMarker(t *testing.T) {
 	for key, o := range got {
 		require.Equal(t, units[o.GetSignalId()], o.Unit, key)
 	}
-	require.Len(t, got, 2*4+6+2+4+5+2+1)
+	require.Equal(t, "NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Global Exception on (GPC 10, TPC 5, SM 0): Multiple Warp Errors",
+		got[xidsignals.Message.ID()+"|c6"].GetValue().GetStringValue())
+	require.Len(t, got, 2*5+6+3+4+6+3+1)
 }
 
 func TestMeasureCleanScan(t *testing.T) {
@@ -187,9 +191,9 @@ func TestMeasureStampsScanTime(t *testing.T) {
 		`{"__CURSOR":"c2","_BOOT_ID":"` + bootID + `","MESSAGE":"NVRM: Xid (PCI:0000:01:00): 79"}` + "\n" +
 		entryLine("c3", scanTime.Add(time.Hour), "NVRM: Xid (PCI:0000:01:00): 79")
 	got := keyed(t, measure(t, context.Background(), lines(stdout)))
-	require.Len(t, got, 7)
+	require.Len(t, got, 10)
 	for _, cursor := range []string{"c1", "c2", "c3"} {
-		for _, id := range []string{xidsignals.Code.ID(), xidsignals.PCIAddress.ID()} {
+		for _, id := range []string{xidsignals.Code.ID(), xidsignals.Message.ID(), xidsignals.PCIAddress.ID()} {
 			o := got[id+"|"+cursor]
 			require.NotNil(t, o, id+"|"+cursor)
 			require.NotNil(t, o.GetValue(), id+"|"+cursor)
