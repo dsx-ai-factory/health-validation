@@ -24,6 +24,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
@@ -65,17 +66,29 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid"}},
-		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"cpu", "node", "xid"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "node", "xid"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "xid"}},
-		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID}, adapters: []string{"gpu", "cpu", "node"}},
+		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, ibsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "rdma_ports"}},
+		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, ibsensor.ID}, adapters: []string{"cpu", "node", "xid", "rdma_ports"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID, ibsensor.ID}, adapters: []string{"gpu", "node", "xid", "rdma_ports"}},
+		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID, ibsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "rdma_ports"}},
+		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, ibsensor.ID}, adapters: []string{"gpu", "cpu", "node", "rdma_ports"}},
+		{name: "IB override", app: New().WithIBBackend(ibSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)
 		if !slices.Equal(sources, test.sources) || !slices.Equal(adapters, test.adapters) {
 			t.Errorf("%s: built-ins = %v %v, want %v %v", test.name, sources, adapters, test.sources, test.adapters)
 		}
+	}
+}
+
+func TestCallerInfiniBandAdapterCoexistsWithBuiltinRDMAPorts(t *testing.T) {
+	a := New()
+	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	caller := customCountAdapter()
+	caller.name = "infiniband"
+	_, builtinAdapters := a.builtinCollect()
+	if _, err := a.declareAdapters(append([]CollectAdapter{caller}, builtinAdapters...)); err != nil {
+		t.Fatalf("caller adapter named after the InfiniBand category clashes with a built-in: %v", err)
 	}
 }
 
@@ -1294,6 +1307,13 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 		}
 		for _, cd := range catalog.New().List(catalog.Filter{}) {
 			if cd.Category != adapter.Category() {
+				continue
+			}
+			// A category can be split between a collect adapter and a legacy
+			// sensor (infiniband: fabric ports here, link flaps from the
+			// journal sensor). A check is this adapter's when it feeds any of
+			// its signals, and then it must feed all of them.
+			if !slices.ContainsFunc(cd.RequiredSignals, func(s string) bool { return fed[s] }) {
 				continue
 			}
 			for _, s := range cd.RequiredSignals {
