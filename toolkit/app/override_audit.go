@@ -19,25 +19,17 @@ import (
 // must never change.
 const overrideAuditMessageID = "e5a478e586994730854b18982d557053"
 
-// overrideRecord is one operator threshold override and the catalog value it
-// replaced.
+// overrideRecord is one configured override and its check's provenance.
 type overrideRecord struct {
-	originalValue any
-	value         any
-	checkID       string
-	thresholdName string
-	provenance    health.Provenance
+	catalog.ConfiguredOverride
+	provenance health.Provenance
 }
 
-// auditOverrides records every override cfg applies to cat in the journal,
+// auditOverrides records every override configured on cat in the journal,
 // opening it only when there is something to record.
-func (a *App) auditOverrides(cfg *Config, cat *catalog.Catalog, arch string) error {
-	overrides, err := cfg.overrideList(cat)
-	if err != nil || len(overrides) == 0 {
-		return err
-	}
-	records, err := overrideRecords(cat, overrides, arch)
-	if err != nil {
+func (a *App) auditOverrides(cat *catalog.Catalog) error {
+	records, err := overrideRecords(cat)
+	if err != nil || len(records) == 0 {
 		return err
 	}
 	journal, err := a.openJournal()
@@ -48,28 +40,20 @@ func (a *App) auditOverrides(cfg *Config, cat *catalog.Catalog, arch string) err
 	return writeOverrideAudit(journal, records)
 }
 
-// overrideRecords pairs each override with the catalog value for arch.
-func overrideRecords(cat *catalog.Catalog, overrides []catalog.Override, arch string) ([]overrideRecord, error) {
-	records := make([]overrideRecord, 0, len(overrides))
-	for _, o := range overrides {
+// overrideRecords pairs each override configured on cat with its check's
+// provenance.
+func overrideRecords(cat *catalog.Catalog) ([]overrideRecord, error) {
+	configured, err := cat.ConfiguredOverrides()
+	if err != nil {
+		return nil, err
+	}
+	records := make([]overrideRecord, 0, len(configured))
+	for _, o := range configured {
 		cd, err := cat.Get(o.CheckID)
 		if err != nil {
 			return nil, err
 		}
-		// The base-value rule of catalog/internal/evaluation's resolveThresholds;
-		// TestAuditOriginalValueMatchesVerdict keeps the two in step.
-		spec := cd.Thresholds[o.ThresholdName]
-		original := spec.Value
-		if v, ok := spec.PerArchitecture[arch]; ok {
-			original = v
-		}
-		records = append(records, overrideRecord{
-			originalValue: original,
-			value:         o.Value,
-			checkID:       o.CheckID,
-			thresholdName: o.ThresholdName,
-			provenance:    cd.Provenance,
-		})
+		records = append(records, overrideRecord{ConfiguredOverride: o, provenance: cd.Provenance})
 	}
 	return records, nil
 }
@@ -92,34 +76,35 @@ func dialJournal() (io.WriteCloser, error) {
 // first failure.
 func writeOverrideAudit(w io.Writer, records []overrideRecord) error {
 	for _, r := range records {
-		original, err := json.Marshal(r.originalValue)
+		original, err := json.Marshal(r.OriginalValue)
 		if err != nil {
-			return fmt.Errorf("encode audit entry for %s.%s: %w", r.checkID, r.thresholdName, err)
+			return fmt.Errorf("encode audit entry for %s.%s: %w", r.CheckID, r.ThresholdName, err)
 		}
-		value, err := json.Marshal(r.value)
+		value, err := json.Marshal(r.Value)
 		if err != nil {
-			return fmt.Errorf("encode audit entry for %s.%s: %w", r.checkID, r.thresholdName, err)
+			return fmt.Errorf("encode audit entry for %s.%s: %w", r.CheckID, r.ThresholdName, err)
 		}
 		var entry []byte
 		for _, f := range [][2]string{
 			{"MESSAGE_ID", overrideAuditMessageID},
-			{"MESSAGE", fmt.Sprintf("threshold override active: %s.%s = %s (catalog default %s)",
-				r.checkID, r.thresholdName, value, original)},
+			{"MESSAGE", fmt.Sprintf("threshold override configured: %s.%s = %s (catalog default %s)",
+				r.CheckID, r.ThresholdName, value, original)},
 			{"PRIORITY", "5"},
-			{"CHECK_ID", r.checkID},
-			{"THRESHOLD_NAME", r.thresholdName},
+			{"SYSLOG_IDENTIFIER", "health-validation"},
+			{"CHECK_ID", r.CheckID},
+			{"THRESHOLD_NAME", r.ThresholdName},
 			{"ORIGINAL_VALUE", string(original)},
 			{"OVERRIDE_VALUE", string(value)},
 			{"PROVENANCE", r.provenance.String()},
 		} {
 			// A newline would end the field early and corrupt the entry.
 			if strings.ContainsRune(f[1], '\n') {
-				return fmt.Errorf("audit entry for %q: %s contains a newline", r.checkID, f[0])
+				return fmt.Errorf("audit entry for %q: %s contains a newline", r.CheckID, f[0])
 			}
 			entry = append(entry, f[0]+"="+f[1]+"\n"...)
 		}
 		if _, err = w.Write(entry); err != nil {
-			return fmt.Errorf("write audit entry for %s.%s: %w", r.checkID, r.thresholdName, err)
+			return fmt.Errorf("write audit entry for %s.%s: %w", r.CheckID, r.ThresholdName, err)
 		}
 	}
 	return nil

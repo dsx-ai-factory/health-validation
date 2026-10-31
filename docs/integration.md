@@ -523,6 +523,7 @@ Read them with:
 
 ```shell
 journalctl MESSAGE_ID=e5a478e586994730854b18982d557053 -o json
+journalctl -t health-validation
 ```
 
 Entries carry no run or verdict ID, so matching them to a verdict by host

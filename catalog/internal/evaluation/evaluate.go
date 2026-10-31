@@ -417,7 +417,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		return withEntity(ErroredVerdict(cd, now, detail, action), entity), nil
 	}
 
-	resolved, err := resolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
+	resolved, err := ResolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
 	if err != nil {
 		return health.CheckVerdict{}, err
 	}

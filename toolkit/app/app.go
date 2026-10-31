@@ -425,7 +425,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Fail closed: no verdict may rest on an override the journal did not record.
-	if auditErr := a.auditOverrides(cfg, cat, arch); auditErr != nil {
+	if auditErr := a.auditOverrides(cat); auditErr != nil {
 		fmt.Fprintf(stderr, "%s: audit threshold overrides: %v\n", a.prog, auditErr)
 		return exitError
 	}

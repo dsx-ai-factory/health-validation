@@ -5,7 +5,6 @@ package app
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -52,53 +51,40 @@ func parseDatagram(t *testing.T, b []byte) map[string]string {
 func TestOverrideRecords(t *testing.T) {
 	custom := customCheck()
 	custom.Provenance = health.Private
-	cat := catalog.New()
+	cat := catalog.New(
+		catalog.WithArchitecture("GB200"),
+		catalog.WithOverrides(catalog.NewOverrideSet(
+			catalog.Override{CheckID: "gpu_power_limit", ThresholdName: "expected_power_limit_w", Value: float64(1000)},
+			catalog.Override{CheckID: custom.ID, ThresholdName: "max_count", Value: int64(3)},
+		)),
+	)
 	if err := cat.Register(custom); err != nil {
 		t.Fatal(err)
 	}
 
-	tests := []struct {
-		override catalog.Override
-		arch     string
-		want     overrideRecord
-	}{
-		{
-			arch:     "GB200",
-			override: catalog.Override{CheckID: "gpu_power_limit", ThresholdName: "expected_power_limit_w", Value: float64(1000)},
-			want:     overrideRecord{originalValue: float64(1200), value: float64(1000), checkID: "gpu_power_limit", thresholdName: "expected_power_limit_w", provenance: health.NVIDIA},
-		},
-		{
-			arch:     "A100",
-			override: catalog.Override{CheckID: "gpu_power_limit", ThresholdName: "expected_power_limit_w", Value: float64(1000)},
-			want:     overrideRecord{value: float64(1000), checkID: "gpu_power_limit", thresholdName: "expected_power_limit_w", provenance: health.NVIDIA},
-		},
-		{
-			arch:     "GB200",
-			override: catalog.Override{CheckID: custom.ID, ThresholdName: "max_count", Value: int64(3)},
-			want:     overrideRecord{originalValue: int64(8), value: int64(3), checkID: custom.ID, thresholdName: "max_count", provenance: health.Private},
-		},
+	got, err := overrideRecords(cat)
+	if err != nil {
+		t.Fatalf("overrideRecords() error = %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.arch+"/"+tt.override.CheckID, func(t *testing.T) {
-			got, err := overrideRecords(cat, []catalog.Override{tt.override}, tt.arch)
-			if err != nil {
-				t.Fatalf("overrideRecords() error = %v", err)
-			}
-			if len(got) != 1 || got[0] != tt.want {
-				t.Errorf("overrideRecords() = %+v, want [%+v]", got, tt.want)
-			}
-		})
+	want := []overrideRecord{
+		{ConfiguredOverride: catalog.ConfiguredOverride{CheckID: "gpu_power_limit", ThresholdName: "expected_power_limit_w", Value: float64(1000), OriginalValue: float64(1200)}, provenance: health.NVIDIA},
+		{ConfiguredOverride: catalog.ConfiguredOverride{CheckID: custom.ID, ThresholdName: "max_count", Value: int64(3), OriginalValue: int64(8)}, provenance: health.Private},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("overrideRecords() = %+v, want %+v", got, want)
 	}
 }
 
 func TestWriteOverrideAudit(t *testing.T) {
 	var rec datagramRecorder
 	records := []overrideRecord{{
-		originalValue: float64(1200),
-		value:         float64(1000),
-		checkID:       "gpu_power_limit",
-		thresholdName: "expected_power_limit_w",
-		provenance:    health.Private,
+		ConfiguredOverride: catalog.ConfiguredOverride{
+			CheckID:       "gpu_power_limit",
+			ThresholdName: "expected_power_limit_w",
+			Value:         float64(1000),
+			OriginalValue: float64(1200),
+		},
+		provenance: health.Private,
 	}}
 
 	if err := writeOverrideAudit(&rec, records); err != nil {
@@ -109,14 +95,15 @@ func TestWriteOverrideAudit(t *testing.T) {
 		t.Fatalf("wrote %d entries, want 1", len(rec.datagrams))
 	}
 	want := map[string]string{
-		"MESSAGE_ID":     overrideAuditMessageID,
-		"MESSAGE":        "threshold override active: gpu_power_limit.expected_power_limit_w = 1000 (catalog default 1200)",
-		"PRIORITY":       "5",
-		"CHECK_ID":       "gpu_power_limit",
-		"THRESHOLD_NAME": "expected_power_limit_w",
-		"ORIGINAL_VALUE": "1200",
-		"OVERRIDE_VALUE": "1000",
-		"PROVENANCE":     "private",
+		"MESSAGE_ID":        overrideAuditMessageID,
+		"MESSAGE":           "threshold override configured: gpu_power_limit.expected_power_limit_w = 1000 (catalog default 1200)",
+		"PRIORITY":          "5",
+		"SYSLOG_IDENTIFIER": "health-validation",
+		"CHECK_ID":          "gpu_power_limit",
+		"THRESHOLD_NAME":    "expected_power_limit_w",
+		"ORIGINAL_VALUE":    "1200",
+		"OVERRIDE_VALUE":    "1000",
+		"PROVENANCE":        "private",
 	}
 	if got := parseDatagram(t, rec.datagrams[0]); !reflect.DeepEqual(got, want) {
 		t.Errorf("entry = %v, want %v", got, want)
@@ -125,7 +112,7 @@ func TestWriteOverrideAudit(t *testing.T) {
 
 func TestWriteOverrideAuditRejectsNewline(t *testing.T) {
 	var rec datagramRecorder
-	records := []overrideRecord{{value: int64(1), checkID: "a\nb", thresholdName: "max_count"}}
+	records := []overrideRecord{{ConfiguredOverride: catalog.ConfiguredOverride{CheckID: "a\nb", ThresholdName: "max_count", Value: int64(1)}}}
 
 	if err := writeOverrideAudit(&rec, records); err == nil {
 		t.Fatal("writeOverrideAudit() error = nil, want an error for a newline in CHECK_ID")
@@ -178,43 +165,6 @@ func TestRunCommandAuditsActiveOverrides(t *testing.T) {
 			got["ORIGINAL_VALUE"] != w.original || got["OVERRIDE_VALUE"] != w.value {
 			t.Errorf("entry %d = %v, want %+v", i, got, w)
 		}
-	}
-}
-
-// overrideRecords copies the engine's base-value rule, so the journal must
-// report the same original value as the verdict for a check that runs.
-func TestAuditOriginalValueMatchesVerdict(t *testing.T) {
-	a, _, args := auditApp(t, "checks:\n  gpu_count:\n    expected_gpu_count: 8\n")
-	var rec datagramRecorder
-	a.openJournal = func() (io.WriteCloser, error) { return &rec, nil }
-
-	var stdout, stderr bytes.Buffer
-	if code := a.runCommand(args, &stdout, &stderr); code == exitError {
-		t.Fatalf("runCommand exit = %d; stderr = %q", code, stderr.String())
-	}
-	var verdict health.NodeVerdict
-	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
-		t.Fatalf("unmarshal verdict: %v; stdout = %s", err, stdout.String())
-	}
-	var original any
-	for _, v := range verdict.CheckResults {
-		if rt, ok := v.Thresholds["expected_gpu_count"]; ok && v.CheckID == "gpu_count" {
-			original = rt.OriginalValue
-			break
-		}
-	}
-	if original == nil {
-		t.Fatalf("no evaluated gpu_count result with expected_gpu_count in %s", stdout.String())
-	}
-	want, err := json.Marshal(original)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rec.datagrams) != 1 {
-		t.Fatalf("wrote %d audit entries, want 1", len(rec.datagrams))
-	}
-	if got := parseDatagram(t, rec.datagrams[0])["ORIGINAL_VALUE"]; got != string(want) {
-		t.Errorf("journal ORIGINAL_VALUE = %s, verdict original_value = %s", got, want)
 	}
 }
 

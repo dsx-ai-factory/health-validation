@@ -16,7 +16,7 @@ func TestResolveThresholds_NoOverrides(t *testing.T) {
 		"max_temp": {Value: 85.0, ValueType: health.ThresholdFloat64, Category: health.DefaultThreshold},
 	}
 
-	resolved, err := resolveThresholds("test_check", specs, nil, "")
+	resolved, err := ResolveThresholds("test_check", specs, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestResolveThresholds_DefaultOverride(t *testing.T) {
 		"max_temp": 90.0,
 	}
 
-	resolved, err := resolveThresholds("test_check", specs, overrides, "")
+	resolved, err := ResolveThresholds("test_check", specs, overrides, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestResolveThresholds_FixedRejectsOverride(t *testing.T) {
 		"hard_limit": 200,
 	}
 
-	_, err := resolveThresholds("test_check", specs, overrides, "")
+	_, err := ResolveThresholds("test_check", specs, overrides, "")
 	if err == nil {
 		t.Fatal("expected error for fixed threshold override")
 	}
@@ -103,7 +103,7 @@ func TestResolveThresholds_RejectsInvalidOverride(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := resolveThresholds("test_check", specs,
+			_, err := ResolveThresholds("test_check", specs,
 				map[string]any{"expected_pstate": tt.override}, "")
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("error = %v, want %q", err, tt.wantErr)
@@ -127,7 +127,7 @@ func TestResolveThresholds_NormalizesOverride(t *testing.T) {
 		"min_power_w": {Value: float64(65), ValueType: health.ThresholdFloat64, Category: health.DefaultThreshold},
 	}
 
-	resolved, err := resolveThresholds("test_check", specs,
+	resolved, err := ResolveThresholds("test_check", specs,
 		map[string]any{"min_power_w": 70}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -145,7 +145,7 @@ func TestResolveThresholds_AdjustableOverride(t *testing.T) {
 		"warn_temp": 80.0,
 	}
 
-	resolved, err := resolveThresholds("test_check", specs, overrides, "")
+	resolved, err := ResolveThresholds("test_check", specs, overrides, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestResolveThresholds_PerArchitecture(t *testing.T) {
 	}
 
 	// Matching architecture takes the per-arch value.
-	resolved, err := resolveThresholds("test_check", specs, nil, "H100")
+	resolved, err := ResolveThresholds("test_check", specs, nil, "H100")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestResolveThresholds_PerArchitecture(t *testing.T) {
 	}
 
 	// An architecture absent from the map falls back to Value.
-	resolved, err = resolveThresholds("test_check", specs, nil, "GB200")
+	resolved, err = ResolveThresholds("test_check", specs, nil, "GB200")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestResolveThresholds_PerArchitecture(t *testing.T) {
 	}
 
 	// An operator override wins over the per-arch value.
-	resolved, err = resolveThresholds("test_check", specs,
+	resolved, err = ResolveThresholds("test_check", specs,
 		map[string]any{"expected_speed": int64(99999)}, "H100")
 	if err != nil {
 		t.Fatal(err)
