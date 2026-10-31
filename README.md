@@ -183,6 +183,8 @@ The CPU sensor counts the logical CPUs in `/sys/devices/system/cpu/possible` and
 
 The `numa_node_count` check compares the online NUMA node count against `expected_numa_node_count` and reports CRITICAL when they differ — typically a platform firmware setting, a kernel boot argument, or a node provisioned as the wrong SKU. The expected value resolves from the detected architecture, and operators override it per fleet. The check lists the architectures it applies to and skips on any other, including a node whose architecture cannot be identified.
 
+The RDMA port sensor (`collect/sensors/infiniband`) reads port state, physical state, and rate for every mlx5 port in `/sys/class/infiniband`, RoCE (Ethernet link layer) ports included. The `rdma_fabric_ports_active` check counts the ports at or above `fabric_port_rate_gbps` that are ACTIVE and LinkUp, and reports CRITICAL when fewer than `expected_active_fabric_ports` are. The rate threshold is what separates the per-GPU fabric rails from front-end and storage NICs on the same node, and a rail that trains down below it stops counting. It covers what `rdma_linkflap_fatal` cannot: a port that never came up never flaps. Rail count and rate are per-fleet layouts; the defaults (8 × 400 Gb/s) are HGX B200's.
+
 Catalog receives measurements, routes each to matching checks by category (GPU measurements run GPU checks, node measurements run node checks), evaluates each check's CEL rules against the measurement values and resolved thresholds, and produces a flat list of check verdicts.
 
 Aggregation takes the flat list and computes the node-level verdict: the worst severity across all non-skipped checks, a `severity_by_domain` map, a list of affected components for non-PASS results, and one node-level remediation sequence when an actionable check fails.
@@ -228,7 +230,7 @@ Each check definition carries:
 
 - `execution_contexts`: where the check can run (OPERATOR_INFRA, TENANT_GUEST)
 - `category`: the hardware domain (cpu, gpu, node, nvlink, pcie, infiniband, storage, xid)
-- `provenance`: `nvidia` for all built-in checks
+- `provenance`: `nvidia` for NVIDIA-authored checks, `community` for contributed ones
 - `maturity_level`: stable or experimental
 - `condition_scope`: how far the condition reaches (NODE, DOMAIN, CLUSTER)
 

@@ -916,6 +916,8 @@ func cadenceRunApp() *App {
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
+	// Keeps the built-in RDMA port domain off the test host's sysfs.
+	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 	return a
 }
 

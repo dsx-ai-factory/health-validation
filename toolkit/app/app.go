@@ -216,11 +216,13 @@ func (a *App) WithRDMALinkFlapBackend(b toolkit.RDMALinkFlapBackend) *App {
 }
 
 // WithIBBackend sets the generic InfiniBand sensor's backend. It is opt-in: the
-// catalog's only built-in InfiniBand check (rdma_linkflap_fatal) is fed by the
-// link-flap sensor, not this one. Supply a backend here to contribute
+// built-in InfiniBand checks are fed by the link-flap sensor
+// (rdma_linkflap_fatal) and the built-in RDMA port collect sensor
+// (rdma_fabric_ports_active), not this one. Supply a backend here to contribute
 // additional InfiniBand measurements — the backend owns device enumeration, the
 // measurement types it emits, and (with the checks a consumer adds via
-// WithChecks) those extra checks.
+// WithChecks) those extra checks. A backend replaces the built-in RDMA port
+// sensor, as WithCPUBackend and WithXidBackend replace theirs.
 func (a *App) WithIBBackend(b toolkit.IBBackend) *App {
 	a.ib = b
 	return a
@@ -470,9 +472,9 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 	}
 	sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(rdmaLinkFlap))
 	// The generic InfiniBand sensor is opt-in: the catalog's built-in
-	// InfiniBand check (rdma_linkflap_fatal) is fed by the link-flap sensor
-	// above, so this one runs only when a consumer supplies a backend (and
-	// its own checks) via WithIBBackend.
+	// InfiniBand checks are fed by the link-flap sensor above and by the RDMA
+	// port collect sensor (builtinCollect), so this one runs only when a
+	// consumer supplies a backend (and its own checks) via WithIBBackend.
 	if a.ib != nil {
 		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
 	}

@@ -5,6 +5,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- `rdma_fabric_ports_active` (InfiniBand, B200, experimental): CRITICAL when
+  fewer than `expected_active_fabric_ports` RDMA ports at or above
+  `fabric_port_rate_gbps` are ACTIVE and LinkUp. Counts RoCE ports as well as
+  InfiniBand ones, and catches rails that never came up, which
+  `rdma_linkflap_fatal` cannot see. The CLI collects it through the
+  `infiniband.sysfs` collect sensor, which gains `WithEthernetPorts`.
+
 ### Breaking Changes
 
 - The `catalog`, `toolkit`, `collect`, and `agentkit` modules are merged into
