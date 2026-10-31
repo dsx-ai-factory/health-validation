@@ -8,7 +8,7 @@ The exit code is a coarse health signal:
 |---|---|
 | <nobr>`0`</nobr> | Verdict is PASS, INFO, or WARNING — the node may remain in service. (WARNING maps to 0 today; this may become configurable.) |
 | <nobr>`1`</nobr> | Verdict is CRITICAL or UNKNOWN — the node should be removed from service, or its health could not be assessed. |
-| <nobr>`2`</nobr> | The tool could not run to a verdict at all — a config error, backend/sensor initialization failure, collection failure, or output write error. No verdict was produced. |
+| <nobr>`2`</nobr> | The tool could not run to a verdict at all — a config error, backend/sensor initialization failure, collection failure, threshold-override audit failure (journald socket unavailable or a write failed), or output write error. No verdict was produced. |
 
 The exit code does not distinguish CRITICAL from UNKNOWN or INFO from WARNING. For the precise level, read `overall_severity` from the JSON — Slurm prolog scripts that need more than the coarse signal should do so.
 
@@ -71,7 +71,7 @@ Two further constraints apply to any override the category permits. It must matc
 
 Not every threshold publishes bounds, and an absent `value_max` is deliberate rather than an omission. Where the threshold *is* the tolerance — the maximum inactive NVLinks you accept, say — raising it is how you ask not to be alerted, so capping it would remove a legitimate control.
 
-All active overrides appear in `thresholds[name].overridden: true` in the output, alongside the original NVIDIA value in `thresholds[name].original_value`.
+All active overrides appear in `thresholds[name].overridden: true` in the output, alongside the original NVIDIA value in `thresholds[name].original_value`. Each override is also recorded in the host's systemd journal; see [Audit trail for overrides](/health-validation/operating/integration#audit-trail-for-overrides).
 
 ## What Go version is required?
 

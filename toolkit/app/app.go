@@ -68,7 +68,7 @@ import (
 const (
 	exitOK        = 0 // PASS, INFO, WARNING
 	exitUnhealthy = 1 // CRITICAL, UNKNOWN
-	exitError     = 2 // config/backend/collection/output failure; no verdict
+	exitError     = 2 // config/backend/collection/audit/output failure; no verdict
 )
 
 // exitCodeForVerdict applies the exit policy to a produced verdict; the
@@ -101,8 +101,9 @@ type hostBackend interface {
 // InfiniBand), each from its own per-domain backend — the shared host NVML
 // backend, sysfs, or the journal by default, or a caller-supplied override.
 type App struct {
-	host     hostBackend
-	hostname func() (string, error)
+	host        hostBackend
+	hostname    func() (string, error)
+	openJournal func() (io.WriteCloser, error)
 	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
 	// overrides set by the matching With*Backend setter. A nil override uses the
 	// default: the shared host NVML backend for gpu/nvlink, the host GPU
@@ -135,8 +136,9 @@ type App struct {
 // an App is safe on a host without a GPU/driver, and `version` runs there.
 func New() *App {
 	return &App{
-		host:     newHostBackend(),
-		hostname: os.Hostname,
+		host:        newHostBackend(),
+		hostname:    os.Hostname,
+		openJournal: dialJournal,
 	}
 }
 
@@ -419,6 +421,12 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, executionContext)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+
+	// Fail closed: no verdict may rest on an override the journal did not record.
+	if auditErr := a.auditOverrides(cat); auditErr != nil {
+		fmt.Fprintf(stderr, "%s: audit threshold overrides: %v\n", a.prog, auditErr)
 		return exitError
 	}
 

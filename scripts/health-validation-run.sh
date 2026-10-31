@@ -37,6 +37,12 @@ while read -r lib; do
 	mounts+=(-v "$lib:$lib:ro")
 done < <(awk '$3 ~ /^\// && $1 !~ /^(lib(c|pthread|dl|rt|m)\.so)/ {print $3}' <<<"$ldd_output")
 
+# Needed only to record threshold overrides. Skip it when absent: docker -v
+# would create the missing path on the host as a directory.
+if [[ -S /run/systemd/journal/socket ]]; then
+	mounts+=(-v /run/systemd/journal/socket:/run/systemd/journal/socket:ro)
+fi
+
 exec docker run --rm \
 	--gpus all \
 	-e NVIDIA_DRIVER_CAPABILITIES=utility \
