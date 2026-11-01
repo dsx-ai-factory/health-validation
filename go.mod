@@ -17,14 +17,14 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.47.0
 	go.opentelemetry.io/proto/otlp v1.11.1
 	golang.org/x/sys v0.49.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 	honnef.co/go/tools v0.8.2
 )
 
 require (
-	cel.dev/expr v0.25.2 // indirect
+	cel.dev/expr v0.25.3 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bits-and-blooms/bitset v1.25.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
