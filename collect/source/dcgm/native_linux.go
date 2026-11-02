@@ -89,7 +89,7 @@ func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, er
 	}, nil
 }
 
-func (*nativeLibrary) ReadGPUMetrics(
+func (library *nativeLibrary) ReadGPUMetrics(
 	gpuIndex uint,
 	signalIDs []string,
 ) (map[string]FieldValue, error) {
@@ -105,9 +105,9 @@ func (*nativeLibrary) ReadGPUMetrics(
 	}
 
 	// Read every selected field for this GPU in one DCGM call.
-	values, err := godcgm.GetLatestValuesForFields(gpuIndex, fieldIDs)
+	values, err := library.readMetrics(gpuIndex, fieldIDs)
 	if err != nil {
-		return nil, dcgmErrorFromError(err)
+		return nil, err
 	}
 	results := make(map[string]FieldValue, len(mappings))
 	for _, value := range values {
@@ -210,6 +210,36 @@ func decodeMetricValue(mapping fieldMapping, value godcgm.FieldValue_v1) FieldVa
 		ObservedAt: time.UnixMicro(value.TS).UTC(),
 		Value:      &decoded,
 	}
+}
+
+// readMetrics reads one GPU's fields from the hostengine cache, or from the
+// driver when LiveMetrics is set.
+func (library *nativeLibrary) readMetrics(gpuIndex uint, fieldIDs []godcgm.Short) ([]godcgm.FieldValue_v1, error) {
+	if !library.options.LiveMetrics {
+		values, err := godcgm.GetLatestValuesForFields(gpuIndex, fieldIDs)
+		if err != nil {
+			return nil, dcgmErrorFromError(err)
+		}
+		return values, nil
+	}
+	live, err := library.readFields([]uint{gpuIndex}, fieldIDs)
+	if err != nil {
+		return nil, err
+	}
+	values := make([]godcgm.FieldValue_v1, 0, len(live))
+	for _, value := range live {
+		if value.EntityGroupId != godcgm.FE_GPU || value.EntityID != gpuIndex {
+			continue
+		}
+		values = append(values, godcgm.FieldValue_v1{
+			FieldID:   value.FieldID,
+			FieldType: value.FieldType,
+			Status:    value.Status,
+			TS:        value.TS,
+			Value:     value.Value,
+		})
+	}
+	return values, nil
 }
 
 // decodeObservationValue converts a supported DCGM field type into the common

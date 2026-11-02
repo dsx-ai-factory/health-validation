@@ -7,7 +7,10 @@ package dcgm
 
 import (
 	"encoding/binary"
+	"math"
+	"slices"
 	"testing"
+	"time"
 
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -159,6 +162,42 @@ func TestDecodeMetricValueClockEventsNotSupported(t *testing.T) {
 	thermal := decodeMetricValue(fieldsBySignal[gpusignals.HardwareThermalSlowdownActive.ID()], int64FieldValue(clockEventReasonHardwareThermalSlowdown))
 	if !thermal.Value.GetBoolValue() {
 		t.Errorf("thermal bit = %+v, want true", thermal)
+	}
+}
+
+func TestReadGPUMetricsLive(t *testing.T) {
+	power := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, EntityID: 3, FieldID: godcgm.DCGM_FI_DEV_BOARD_POWER_WATTS, FieldType: godcgm.DCGM_FT_DOUBLE, TS: 2000}
+	binary.LittleEndian.PutUint64(power.Value[:8], math.Float64bits(251.5))
+	pstate := int64FieldValue(0)
+	other := power
+	other.EntityID = 4
+	var reads [][]uint
+	library := &nativeLibrary{
+		options: StandaloneOptions{LiveMetrics: true},
+		readFields: func(gpuIndices []uint, fields []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
+			reads = append(reads, gpuIndices)
+			if !slices.Equal(fields, []godcgm.Short{godcgm.DCGM_FI_DEV_BOARD_POWER_WATTS, godcgm.DCGM_FI_DEV_GPU_PSTATE}) {
+				t.Fatalf("live read fields = %v", fields)
+			}
+			return []godcgm.FieldValue_v2{other, power, {
+				EntityGroupId: godcgm.FE_GPU, EntityID: 3, FieldID: godcgm.DCGM_FI_DEV_GPU_PSTATE,
+				FieldType: pstate.FieldType, TS: pstate.TS, Value: pstate.Value,
+			}}, nil
+		},
+	}
+
+	values, err := library.ReadGPUMetrics(3, []string{gpusignals.PowerDraw.ID(), gpusignals.PerformanceState.ID()})
+	if err != nil {
+		t.Fatalf("ReadGPUMetrics() error = %v", err)
+	}
+	if len(reads) != 1 || !slices.Equal(reads[0], []uint{3}) {
+		t.Fatalf("live reads = %v, want one for GPU 3", reads)
+	}
+	if got := values[gpusignals.PowerDraw.ID()]; got.Value.GetDoubleValue() != 251.5 || !got.ObservedAt.Equal(time.UnixMicro(2000)) {
+		t.Errorf("power draw = %+v, want GPU 3's 251.5 W at its sample time", got)
+	}
+	if got := values[gpusignals.PerformanceState.ID()]; got.Value == nil || got.Value.GetIntValue() != 0 {
+		t.Errorf("performance state = %+v, want 0", got)
 	}
 }
 

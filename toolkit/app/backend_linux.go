@@ -56,7 +56,8 @@ func newHostBackend() hostBackend {
 	h := &nvmlHost{
 		b:    b,
 		lazy: toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) { return b, nil }),
-		dcgm: dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{}),
+		// Legacy NVML read the driver live, so read DCGM live too.
+		dcgm: dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{LiveMetrics: true}),
 	}
 	// The signal set is fixed, so New fails only on a programming error that
 	// the app tests catch; it records the watch without calling DCGM.
