@@ -90,9 +90,14 @@ func GPUClockCapped() health.CheckDefinition {
 Fields worth knowing:
 
 - **`Category`** and **`RequiredSignals`** are the routing key — see below.
+  `RequiredSignals` must name every signal the rules read; registration
+  rejects an empty list or a blank name.
 - **`Rules`** are CEL expressions over the union of the measurement's signal
-  names and the check's threshold names. The worst-severity matching rule sets
-  the verdict; `${name}` placeholders interpolate signal and threshold values.
+  names and the check's threshold names. A rule can read a signal the check
+  does not declare, but a collection error on that signal does not fail the
+  check, so the rule runs on its zero value. The worst-severity matching rule
+  sets the verdict; `${name}` placeholders interpolate signal and threshold
+  values.
 - **`Thresholds`** are operator-tunable by default. `FixedThreshold` values can
   never be overridden; `RequiredOverride` means the check skips until a fleet
   supplies a value. Every threshold must declare a **`ValueType`** — CEL

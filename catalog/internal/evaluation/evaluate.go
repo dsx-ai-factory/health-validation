@@ -280,13 +280,8 @@ func checkEntities(cd *health.CheckDefinition, routed []observed) error {
 	return nil
 }
 
-// reportsFailure reports whether o's errors fail a signal cd reads. A check
-// that requires no signals reads them all, so o must have lost every signal it
-// carries; a partial failure would leave values that check can read.
+// reportsFailure reports whether o's errors fail a signal cd reads.
 func reportsFailure(cd *health.CheckDefinition, o observed) bool {
-	if len(cd.RequiredSignals) == 0 {
-		return lostEntity(o.errs, o.signals)
-	}
 	detail, _ := matchingError(o.errs, cd.RequiredSignals)
 	return detail != ""
 }
@@ -494,12 +489,8 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 
 // observedValues limits signals to the ones cd requires. A sibling field the
 // check never read may be unfed (narrowed collection, unmapped or failed
-// signal), and its zero value would read as a real measurement. A check that
-// declares no required signals can read any field, so it keeps them all.
+// signal), and its zero value would read as a real measurement.
 func observedValues(cd *health.CheckDefinition, signals map[string]any) map[string]any {
-	if len(cd.RequiredSignals) == 0 {
-		return signals
-	}
 	out := make(map[string]any, len(cd.RequiredSignals))
 	for _, name := range cd.RequiredSignals {
 		if v, ok := signals[name]; ok {

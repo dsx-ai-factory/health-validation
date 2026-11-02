@@ -114,7 +114,7 @@ Severity is ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL.
 | SkipReason | SkipReason | `skip_reason` | Machine-readable skip code (see below). |
 | SkipDetail | string | `skip_detail` | Human-readable skip explanation. |
 | AffectedEntities | []string | `affected_entities` | Device identifiers with non-PASS results (e.g. GPU UUIDs). |
-| ObservedValues | map[string]any | `observed_values` | Values of the check's `RequiredSignals` (every measurement signal when it declares none). |
+| ObservedValues | map[string]any | `observed_values` | Values of the check's `RequiredSignals`. |
 | Thresholds | map[string]ResolvedThreshold | `thresholds` | Threshold values used in evaluation, with override provenance. |
 | RecommendedAction | RecommendedAction | `recommended_action` | Structured remediation object `{operational_state, remediation_actions}`. `remediation_actions` is an ordered sequence of remediation steps for a remediation engine to work through, present only when `operational_state` is `drain`; the field is elided (`omitzero`) when no action applies. |
 | Messages | []string | `messages` | Human-readable verdict messages, one per matching rule. |
@@ -145,10 +145,59 @@ Severity is ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL.
 | NO_APPLICABLE_MEASUREMENT | The category was collected, but no measurement in it carries the check's required signals. Routing is by measurement schema, so an applicable check fed by a measurement that carries the required signals but reports a collection error for one produces UNKNOWN rather than skipping. |
 | SENSOR_MISSING | The check's category supplied no measurement at all — sensor absent, unconfigured, or never constructed. Registering a check declares that its sensor is expected, so every registered check reports either a result or a skip. |
 
+See [Empty results and collection failures](#empty-results-and-collection-failures) for how these differ from a collection failure.
+
+## Empty results and collection failures
+
+Every check that runs ends in one of three outcomes:
+
+- **Value.** Its required signals were collected, so its rules ran and `observed_values` is set.
+- **Collection failure.** A required signal could not be read, so the rules did not run. `observed_values` is absent, every message starts with `measurement unavailable: `, and the action is `check_collection`, or `retry_collection` after a timeout.
+- **Skip.** The check did not apply, or its data never arrived.
+
+A collection failure is never a PASS and never exits 0. Identify one by its message prefix and action rather than its severity, which is UNKNOWN today.
+
+Skips never count toward `overall_severity`, so read `skipped_checks`. `SENSOR_MISSING` and `NO_APPLICABLE_MEASUREMENT` mean data the run expected never arrived; the other reasons are deliberate exclusions.
+
+| Case | Evidence of collection | Outcome | Exit |
+|---|---|---|---|
+| A check names no `RequiredSignals`, or a blank one | None | Registration fails; the CLI prints no verdict. `run` registers checks after GPU architecture discovery, so if discovery fails it reports that verdict instead | 2, or 1 if discovery fails |
+| Every required signal was collected | Values | Value | 0 or 1 by severity |
+| A required signal failed, alone or with others | Collection error on that signal | Collection failure | 1 |
+| Only signals the check does not require failed | Values for the required signals | Value | 0 or 1 by severity |
+| A per-GPU measurement carries values but no verified identity | Values under an unidentified, slot, or source identity | No verdict: ambiguous measurement error | 2 |
+| A GPU measurement with no verified identity reports a required-signal failure | Collection error | Collection failure | 1 |
+| GPU inventory succeeds and finds no GPUs | Inventory read with zero devices | The CLI stops at architecture discovery: CRITICAL `architecture_discovery` with a drain | 1 |
+| GPU inventory read fails or times out | Inventory collection error | The same discovery verdict in the CLI; a library caller sees a `gpu_count` collection failure | 1 |
+| Some GPU handles cannot be opened | Inventory with failed slots | Those GPUs are not counted, so `gpu_count` judges the lower count. If no remaining GPU model can be read, the CLI stops at architecture discovery instead | 0 or 1 by severity |
+| The Xid journal scan succeeds with no Xid entries | Scan marker | Value: zero events, so the Xid checks pass | 0 or 1 by the other checks |
+| The kernel journal is unreadable or holds no kernel entries (Xid) | Read error, or an empty kernel-scoped probe | Collection failure for every Xid check | 1 |
+| The RDMA link-flap scan finds no link transitions | Any entry in the current boot's journal | Value: zero flaps, so `rdma_linkflap_fatal` passes | 0 or 1 by the other checks |
+| An Xid line matches but does not parse | Parse error on the event | Collection failure for every Xid check | 1 |
+| A CPU sysfs file cannot be read | Collection error on that signal | Collection failure for the checks that read it | 1 |
+| A built-in domain adapter receives no observations | Empty batch from every sensor that feeds it | Collection failure for every signal of the domain | 1 |
+| A source reports `NOT_SUPPORTED` for a hardware-slowdown bit or an NVLink fabric-health bit | `NoValue` | Read as not asserted; the check evaluates | 0 or 1 by severity |
+| A source reports `NOT_SUPPORTED` for the Fabric Manager status | `NoValue` | Read as fabric registration incomplete, so `nvlink_fabric` fails on its rule | 1 |
+| Any other `NoValue`, including `NO_TARGETS`, or a collection error in the `UNSUPPORTED` category, except the NVLink and compute-process readings listed below | `NoValue` or collection error | Collection failure | 1 |
+| A library caller supplies no measurement for a registered check's category | None | Skip: `SENSOR_MISSING` | Not counted |
+| A category is collected but no measurement carries the check's signals | Other measurement shapes | Skip: `NO_APPLICABLE_MEASUREMENT` | Not counted |
+| Disabled, wrong architecture, execution context or cadence, or an unconfigured required threshold | Not collected by design | Skip with that reason | Not counted |
+
+Differences between domains:
+
+- The Xid reader proves a clean scan with a scan marker and a kernel-scoped probe. An empty result alone is not a clean scan. The RDMA link-flap reader still uses the legacy `journalctl` backend, whose probe accepts any entry in the current boot's journal, not only kernel messages.
+- GPU count proves zero from the inventory read itself. `NO_TARGETS` on a per-GPU signal never proves a node has no GPUs.
+- When a source says `NOT_SUPPORTED`, seven signals read as not asserted: the three hardware-slowdown bits and the four NVLink fabric-health bits (`unsupportedIsNeutral` in `toolkit/observations/mapping.go`). The Fabric Manager status reads as registration incomplete (`unsupportedValue`).
+- The NVLink converter (`toolkit/observations/nvlink.go`) follows the legacy NVML reads. A link state NVML reports as `ERROR_NOT_SUPPORTED` is not counted as inactive, and reported for the whole GPU it means the GPU has no NVLink. An unsupported common speed falls back to the slowest per-link speed. `NO_TARGETS` on the P2P status means a GPU with no peers.
+- `NO_TARGETS` on the compute-process cmdline signal means no compute processes; with a successfully collected process count of zero, `gpu_compute_apps` passes.
+- Every other unsupported value fails the checks that need it.
+- The library converter `observations.ToMeasurements` returns no measurement for an empty input, which evaluation reports as `SENSOR_MISSING`. The CLI's built-in adapters fail the whole domain instead, so treat an empty conversion as missing data.
+- In the stock CLI, GPU telemetry comes from DCGM through the collect GPU adapter, except compute processes, which come from NVML. The rules above apply; DCGM reports an unsupported slowdown bit as `NOT_SUPPORTED`. NVLink still comes from the NVML backend, which treats the four fabric-health bits as not asserted when unsupported. There a GPU with no NVLink reads zero inactive links, so `nvlink_active` passes. When both checks apply, `nvlink_bandwidth_count_speed` fails; on an architecture it does not cover, such as A100, it skips instead.
+
 ## Adding a check
 
 1. Add any new signal fields to the measurement struct in `catalog/<domain>/measurement.go`. Add matching `Signal*` string constants.
-2. Write a `CheckDefinition` factory in `catalog/<domain>/`. Declare `RequiredSignals`, `Thresholds`, and `Rules` (CEL expressions referencing signal names and threshold names). Declare `Dependencies` when another check explains this one's *complete* failure to read an entity, as the GPU and NVLink checks do for `gpu_count`. A partial read, where only some required signals failed, is an independent fault and is not attributed.
+2. Write a `CheckDefinition` factory in `catalog/<domain>/`. Declare `RequiredSignals` (at least one; registration rejects an empty list or a blank name), `Thresholds`, and `Rules` (CEL expressions referencing signal names and threshold names). Declare `Dependencies` when another check explains this one's *complete* failure to read an entity, as the GPU and NVLink checks do for `gpu_count`. A partial read, where only some required signals failed, is an independent fault and is not attributed.
 3. Register it in `catalog/checks.go` via `builtinChecks()` so `catalog.New()` and the stock CLI run it. Declare `SchedulingCadence` on the check. Omit `--cadence` (or use a zero-value evaluation/collection context) to evaluate every registered check; set a cadence to run checks whose cadence covers that window (Continuous ⊂ Prolog ⊂ Maintenance) and report the others as skipped.
 4. Add a test covering the PASS path, at least one non-PASS path, and the skipped path (errored measurement).
 

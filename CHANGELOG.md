@@ -35,6 +35,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   that pass overrides must mount `/run/systemd/journal/socket`; see
   `docs/integration.md`. The new `Catalog.ConfiguredOverrides` returns the
   overrides a catalog is configured with, resolved as evaluation would. ([#93](https://github.com/dsx-ai-factory/health-validation/pull/93))
+- `CheckDefinition.Validate`, and so `Catalog.Register` and `MustRegister`,
+  rejects a check that names no `RequiredSignals`, or a blank one. A check
+  with none was routed every measurement of its category and ran its rules on
+  zero values when collection failed. Name the signals the check's rules
+  read. A custom check
+  passed to the CLI through `App.WithChecks` without them now stops the run
+  with exit 2 once GPU architecture discovery succeeds, before the sensors
+  are collected. If discovery fails, `run` still reports the
+  `architecture_discovery` verdict and exits 1.
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 

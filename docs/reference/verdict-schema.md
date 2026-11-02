@@ -43,7 +43,7 @@ CheckDefinition is the canonical shape of a health check in the catalog. Each de
 | <nobr>`Rules`</nobr> | <nobr>`rules`</nobr> | [<nobr>`[]Rule`</nobr>](#rule) |  |
 | <nobr>`ExecutionContexts`</nobr> | <nobr>`execution_contexts`</nobr> | [<nobr>`[]ExecutionContext`</nobr>](#executioncontext) |  |
 | <nobr>`Prerequisites`</nobr> | <nobr>`prerequisites`</nobr> | [<nobr>`[]Prerequisite`</nobr>](#prerequisite) |  |
-| <nobr>`RequiredSignals`</nobr> | <nobr>`required_signals`</nobr> | <nobr>`[]string`</nobr> |  |
+| <nobr>`RequiredSignals`</nobr> | <nobr>`required_signals`</nobr> | <nobr>`[]string`</nobr> | RequiredSignals must name every signal the check's rules read. A measurement reaches the check only when it shares Category and its schema carries every one, and a collection error on any of them fails the check instead of running its rules. Rules can also read the measurement's other signals, but a collection error on one of those does not fail the check. Validate rejects an empty list or a blank name. |
 | <nobr>`RecommendedAction`</nobr> | <nobr>`recommended_action`</nobr> | [<nobr>`RecommendedAction`</nobr>](#recommendedaction) |  |
 | <nobr>`Timeout`</nobr> | <nobr>`timeout`</nobr> | <nobr>`time.Duration`</nobr> |  |
 | <nobr>`MaturityLevel`</nobr> | <nobr>`maturity_level`</nobr> | [<nobr>`MaturityLevel`</nobr>](#maturitylevel) |  |

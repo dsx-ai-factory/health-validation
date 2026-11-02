@@ -32,9 +32,7 @@ import (
 // signals of Category it fills. A run requests a collect signal only when a
 // runnable check of Category requires one of the catalog signals it fills
 // (catalog signal names are unique only within a category); an adapter left
-// with nothing to request is not built. The exception is a check declaring no
-// RequiredSignals, which no built-in does: it may read anything, so it gets
-// every signal of its Category. Build must return only Category measurements;
+// with nothing to request is not built. Build must return only Category measurements;
 // any other category fails the adapter's whole output.
 type CollectAdapter interface {
 	Name() string
@@ -194,19 +192,11 @@ func (g powerDrawGate) Build(obs []*observation.Observation) []health.Measuremen
 // category present with a nil set requests every signal declared for it.
 type requiredSignals map[health.Category]map[string]bool
 
-// requiredFor returns the catalog signals the runnable checks require. A check
-// with no required signals can read any signal of its category.
+// requiredFor returns the catalog signals the runnable checks require.
 func requiredFor(runnable []*health.CheckDefinition) requiredSignals {
 	required := make(requiredSignals)
 	for _, check := range runnable {
-		set, seen := required[check.Category]
-		if seen && set == nil {
-			continue
-		}
-		if len(check.RequiredSignals) == 0 {
-			required[check.Category] = nil
-			continue
-		}
+		set := required[check.Category]
 		if set == nil {
 			set = make(map[string]bool)
 			required[check.Category] = set

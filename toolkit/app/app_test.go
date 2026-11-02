@@ -194,7 +194,7 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	}
 }
 
-// TestWithChecksDuplicateIDFails confirms the only registration constraint:
+// TestWithChecksDuplicateIDFails confirms the duplicate-ID constraint:
 // a custom check whose ID collides with a built-in (here gpu_count) makes
 // catalog construction fail rather than silently shadowing.
 func TestWithChecksDuplicateIDFails(t *testing.T) {
@@ -207,6 +207,24 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "already registered") {
 		t.Errorf("error = %q, want it to mention the duplicate registration", err.Error())
+	}
+}
+
+// TestWithChecksRejectsCheckWithoutRequiredSignals confirms a custom check that
+// names no signals stops catalog construction instead of reading every
+// measurement of its category.
+func TestWithChecksRejectsCheckWithoutRequiredSignals(t *testing.T) {
+	c := customCheck()
+	c.RequiredSignals = nil
+
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{c}, "", health.DriverVersion{}, health.OperatorInfra)
+	if err == nil {
+		t.Fatal("expected a registration error, got nil")
+	}
+	for _, want := range []string{"registering custom check", "RequiredSignals must name at least one signal"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err.Error(), want)
+		}
 	}
 }
 

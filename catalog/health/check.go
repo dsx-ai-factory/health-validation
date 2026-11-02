@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -36,15 +37,21 @@ type CheckDefinition struct {
 	Rules             []Rule             `json:"rules"`
 	ExecutionContexts []ExecutionContext `json:"execution_contexts"`
 	Prerequisites     []Prerequisite     `json:"prerequisites,omitempty"`
-	RequiredSignals   []string           `json:"required_signals"`
-	RecommendedAction RecommendedAction  `json:"recommended_action,omitzero"`
-	Timeout           time.Duration      `json:"timeout,omitempty"`
-	MaturityLevel     MaturityLevel      `json:"maturity_level"`
-	SchedulingCadence SchedulingCadence  `json:"scheduling_cadence"`
-	Category          Category           `json:"category"`
-	ConditionScope    ConditionScope     `json:"condition_scope"`
-	Provenance        Provenance         `json:"provenance"`
-	ExecutionClass    ExecutionClass     `json:"execution_class"`
+	// RequiredSignals must name every signal the check's rules read. A
+	// measurement reaches the check only when it shares Category and its schema
+	// carries every one, and a collection error on any of them fails the check
+	// instead of running its rules. Rules can also read the measurement's other
+	// signals, but a collection error on one of those does not fail the check.
+	// Validate rejects an empty list or a blank name.
+	RequiredSignals   []string          `json:"required_signals"`
+	RecommendedAction RecommendedAction `json:"recommended_action,omitzero"`
+	Timeout           time.Duration     `json:"timeout,omitempty"`
+	MaturityLevel     MaturityLevel     `json:"maturity_level"`
+	SchedulingCadence SchedulingCadence `json:"scheduling_cadence"`
+	Category          Category          `json:"category"`
+	ConditionScope    ConditionScope    `json:"condition_scope"`
+	Provenance        Provenance        `json:"provenance"`
+	ExecutionClass    ExecutionClass    `json:"execution_class"`
 }
 
 // Validate reports whether the definition is internally consistent. Names are
@@ -52,7 +59,9 @@ type CheckDefinition struct {
 //
 // A check cannot depend on itself; other dependency IDs are not resolved here,
 // since registration order is not significant and an unregistered ID is an
-// inactive edge. A Fixed threshold cannot require an override (the check would
+// inactive edge. A check must name at least one required signal: the list
+// selects the measurements routed to it and the collection errors that fail
+// it. A Fixed threshold cannot require an override (the check would
 // skip without one and reject one). When PerArchitecture is set, every architecture in
 // Architectures must be a key. Value may be omitted only when that coverage
 // is complete; unrestricted checks (empty Architectures) still need a Value.
@@ -70,6 +79,12 @@ func (cd CheckDefinition) Validate() error {
 
 	if slices.Contains(cd.Dependencies, cd.ID) {
 		return fmt.Errorf("check %q lists itself as a dependency", cd.ID)
+	}
+	if len(cd.RequiredSignals) == 0 {
+		return fmt.Errorf("check %q: RequiredSignals must name at least one signal", cd.ID)
+	}
+	if slices.ContainsFunc(cd.RequiredSignals, func(s string) bool { return strings.TrimSpace(s) == "" }) {
+		return fmt.Errorf("check %q: RequiredSignals has a blank signal name", cd.ID)
 	}
 
 	for _, name := range names {

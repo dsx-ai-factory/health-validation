@@ -27,8 +27,8 @@
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
-// honored verbatim. The only registration constraint is the catalog's
-// existing duplicate-ID guard.
+// honored verbatim. Registration fails only on the catalog's own validation
+// or a duplicate ID.
 package app
 
 import (
@@ -837,8 +837,8 @@ func loadOptionalConfig(path string) (*Config, error) {
 // timeout. arch and driverVersion are what discovery found about the node.
 func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string, driverVersion health.DriverVersion, executionContext health.ExecutionContext) (*catalog.Catalog, time.Duration, error) {
 	// register adds the caller-supplied checks to a freshly built catalog.
-	// Classification is passed through untouched; the only failure is the
-	// catalog's duplicate-ID guard.
+	// Classification is passed through untouched; registration fails only on
+	// the catalog's own validation or a duplicate ID.
 	register := func(c *catalog.Catalog) error {
 		for _, cd := range customChecks {
 			if err := c.Register(cd); err != nil {
