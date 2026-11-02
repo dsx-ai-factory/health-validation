@@ -21,6 +21,7 @@ go_library(
 go_test(
     name = "xid_test",
     srcs = [
+        "catch_all_test.go",
         "derived_test.go",
         "nvlink5_decode_test.go",
         "scope_test.go",

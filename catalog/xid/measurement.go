@@ -17,12 +17,14 @@ import (
 // expressions and must match the RequiredSignals declared in checks
 // that consume Xid measurements.
 const (
-	SignalEvents           = "events"
-	SignalXidCounts        = "xid_counts"
-	SignalFatalXidCounts   = "fatal_xid_counts"
-	SignalSubXidCodeCounts = "sub_xid_code_counts"
-	SignalSince            = "since"
-	SignalEventCount       = "event_count"
+	SignalEvents                 = "events"
+	SignalXidCounts              = "xid_counts"
+	SignalFatalXidCounts         = "fatal_xid_counts"
+	SignalSubXidCodeCounts       = "sub_xid_code_counts"
+	SignalUnknownXidCounts       = "unknown_xid_counts"
+	SignalInformationalXidCounts = "informational_xid_counts"
+	SignalSince                  = "since"
+	SignalEventCount             = "event_count"
 )
 
 var measurementSignals = []string{
@@ -30,6 +32,8 @@ var measurementSignals = []string{
 	SignalXidCounts,
 	SignalFatalXidCounts,
 	SignalSubXidCodeCounts,
+	SignalUnknownXidCounts,
+	SignalInformationalXidCounts,
 	SignalSince,
 	SignalEventCount,
 }
@@ -135,7 +139,11 @@ type XidMeasurement struct {
 	Since          string          `json:"since"`
 	Events         []XidEvent      `json:"events"`
 	errors         []health.ErroredMeasurement
-	EventCount     int64 `json:"event_count"`
+	// covered and scopes come from the registered checks (see [XidMeasurement.WithChecks]);
+	// nil means the checks [Checks] builds.
+	covered    codeSet
+	scopes     map[string]checkScope
+	EventCount int64 `json:"event_count"`
 }
 
 // ErroredXid returns an XidMeasurement marked errored for a whole-query

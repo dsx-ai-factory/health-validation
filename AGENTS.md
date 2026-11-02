@@ -76,6 +76,8 @@ This file provides guidance to AI coding agents when working with code in this r
 | `gpu_xid_<code>` | xid | A critical-class Xid code is seen in the system journal within the collection window | A warning-class Xid code is seen in the system journal within the collection window |
 | `gpu_xid_149_<hex>` | xid | An Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype whose decode-table resolution is a GPU reset | The same, for a subtype the table resolves to IGNORE |
 | `gpu_xid_154` | xid | None | None (INFO only) |
+| `gpu_xid_informational` | xid | None | A logged Xid code NVIDIA's catalog marks Unused, IGNORE or gives no resolution, and no registered check covers (INFO, no action) |
+| `gpu_xid_unknown` | xid | None | A logged Xid code no registered check covers and NVIDIA's catalog does not list (monitor, no drain) |
 
 ---
 
