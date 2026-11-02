@@ -812,12 +812,12 @@ func checkResult(nv health.NodeVerdict, checkID string) (health.CheckVerdict, bo
 	return health.CheckVerdict{}, false
 }
 
-func TestXidErrors_IgnoredCode_Pass(t *testing.T) {
+func TestXidErrors_InfoCode_ReportedAsInfo(t *testing.T) {
 	// Xid 63 (memory remapping event) has immediate action IGNORE and is
-	// not in any bucket, so it must not fire.
+	// not in any bucket, so only gpu_xid_informational reports it, at INFO.
 	nv := evalXid(t, 63)
-	if nv.OverallSeverity != health.Pass {
-		t.Errorf("ignored code 63: OverallSeverity = %v, want PASS", nv.OverallSeverity)
+	if nv.OverallSeverity != health.Info {
+		t.Errorf("info code 63: OverallSeverity = %v, want INFO", nv.OverallSeverity)
 	}
 }
 
@@ -851,6 +851,9 @@ func TestXidErrors_EveryCheckReportsItsOwnEvents(t *testing.T) {
 	for _, cd := range xid.Checks() {
 		if !slices.Contains(cd.RequiredSignals, xid.SignalEvents) {
 			t.Errorf("%s RequiredSignals = %v, want %s included", cd.ID, cd.RequiredSignals, xid.SignalEvents)
+		}
+		if cd.ID == "gpu_xid_unknown" || cd.ID == "gpu_xid_informational" {
+			continue // their own events are the codes no check is on; see catch_all_test.go
 		}
 		observed := map[string]any{}
 		for _, name := range cd.RequiredSignals {
