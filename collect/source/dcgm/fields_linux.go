@@ -20,6 +20,11 @@ type fieldMapping struct {
 	transform fieldTransform
 	signalID  string
 	fieldID   godcgm.Short
+	// unsupportedAsNoValue reports a NOT_SUPPORTED sentinel as NoValue. Only the
+	// fabric fields set it: there it means the GPU has no fabric to report, which
+	// the toolkit reads as unregistered fabric and neutral health, matching the
+	// NVML source. Other fields keep the collection error their checks expect.
+	unsupportedAsNoValue bool
 }
 
 // The clock-event masks are defined by DCGM in dcgm_fields.h.
@@ -93,15 +98,15 @@ var fieldsBySignal = indexFieldMappings([]fieldMapping{
 	dcgmField(gpusignals.NVLinkDLReplayErrorCount, godcgm.DCGM_FI_DEV_NVLINK_REPLAY_TOTAL),
 	dcgmField(gpusignals.NVLinkRecoverySuccessfulCount, godcgm.DCGM_FI_DEV_NVLINK_RECOVERY_SUCCESSFUL_TOTAL),
 	dcgmField(gpusignals.NVLinkRecoveryFailedCount, godcgm.DCGM_FI_DEV_NVLINK_RECOVERY_FAILED_TOTAL),
-	dcgmField(gpusignals.FabricManagerStatus, godcgm.DCGM_FI_DEV_FABRIC_MANAGER_STATUS),
-	dcgmDerivedField(gpusignals.NVLinkFabricBandwidthDegraded, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
-		fabricHealthFlag(0)),
-	dcgmDerivedField(gpusignals.NVLinkFabricRouteRecoveryActive, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
-		fabricHealthFlag(2)),
-	dcgmDerivedField(gpusignals.NVLinkFabricRouteUnhealthy, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
-		fabricHealthFlag(4)),
-	dcgmDerivedField(gpusignals.NVLinkFabricAccessTimeoutRecovery, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
-		fabricHealthFlag(6)),
+	fabricField(dcgmField(gpusignals.FabricManagerStatus, godcgm.DCGM_FI_DEV_FABRIC_MANAGER_STATUS)),
+	fabricField(dcgmDerivedField(gpusignals.NVLinkFabricBandwidthDegraded, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
+		fabricHealthFlag(0))),
+	fabricField(dcgmDerivedField(gpusignals.NVLinkFabricRouteRecoveryActive, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
+		fabricHealthFlag(2))),
+	fabricField(dcgmDerivedField(gpusignals.NVLinkFabricRouteUnhealthy, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
+		fabricHealthFlag(4))),
+	fabricField(dcgmDerivedField(gpusignals.NVLinkFabricAccessTimeoutRecovery, godcgm.DCGM_FI_DEV_FABRIC_HEALTH_MASK,
+		fabricHealthFlag(6))),
 	dcgmField(gpusignals.C2CLinkReplayErrorCount, godcgm.DCGM_FI_DEV_C2C_LINK_REPLAY_ERROR_TOTAL),
 	dcgmField(gpusignals.NVLinkRXGeneralErrorCount, godcgm.DCGM_FI_DEV_NVLINK_RX_GENERAL_ERROR_TOTAL),
 	dcgmField(gpusignals.NVLinkRXErrorCount, godcgm.DCGM_FI_DEV_NVLINK_RX_ERROR_TOTAL),
@@ -123,6 +128,11 @@ func dcgmField(definition collect.Signal, fieldID godcgm.Short) fieldMapping {
 
 func dcgmDerivedField(definition collect.Signal, fieldID godcgm.Short, transform fieldTransform) fieldMapping {
 	return fieldMapping{signalID: definition.ID(), fieldID: fieldID, transform: transform}
+}
+
+func fabricField(mapping fieldMapping) fieldMapping {
+	mapping.unsupportedAsNoValue = true
+	return mapping
 }
 
 func indexFieldMappings(mappings []fieldMapping) map[string]fieldMapping {

@@ -8,6 +8,7 @@ go_library(
         "export.go",
         "ingest.go",
         "mapping.go",
+        "nvlink.go",
         "xid.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/observations",
@@ -34,6 +35,7 @@ go_test(
     srcs = [
         "entity_test.go",
         "export_test.go",
+        "nvlink_test.go",
         "observations_test.go",
         "roundtrip_test.go",
         "unsigned_test.go",
@@ -48,6 +50,7 @@ go_test(
         "//catalog/node",
         "//catalog/nvlink",
         "//catalog/xid",
+        "//collect",
         "//collect/observation",
         "//collect/signals/cpu",
         "//collect/signals/gpu",
