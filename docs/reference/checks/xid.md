@@ -614,8 +614,11 @@ Follows the latest reported recovery action per GPU within the collection window
 
 **Rules**
 
-- **CRITICAL** when `'2' in recovery_action_counts && recovery_action_counts['2'] >= occurrences`
-  - Message: GPU Xid 154 requires a node reboot (0x2). Drain the node and restart the OS; a warm reboot is sufficient. The OS is inconsistent: do not restart applications before rebooting. Preserve and investigate the originating Xid faults. See observed_values.events for the reported transitions.
+- **CRITICAL** when `('2' in recovery_action_counts && recovery_action_counts['2'] >= occurrences) \|\| ('7' in recovery_action_counts && recovery_action_counts['7'] >= occurrences)`
+  - Message: GPU Xid 154 requires a node reboot (0x2 Node Reboot, or 0x7 System Reboot). Drain the node and restart the OS; for 0x2, a warm reboot is sufficient. The OS is inconsistent: do not restart applications before rebooting. Preserve and investigate the originating Xid faults. See observed_values.events for the reported transitions.
+  - Action: operational state `drain`, then `restart_os`
+- **CRITICAL** when `'6' in recovery_action_counts && recovery_action_counts['6'] >= occurrences`
+  - Message: GPU Xid 154 requires a PCIe bus reset (0x6), which a GPU reset does not perform. Drain the node and restart the OS to reset the bus. Preserve and investigate the originating Xid faults. See observed_values.events for the reported transitions.
   - Action: operational state `drain`, then `restart_os`
 - **CRITICAL** when `('1' in recovery_action_counts && recovery_action_counts['1'] >= occurrences) \|\| ('4' in recovery_action_counts && recovery_action_counts['4'] >= occurrences)`
   - Message: GPU Xid 154 requires GPU reset (0x1, including PF FLR, or 0x4 Drain and Reset). Disable new scheduling. For 0x4, allow unaffected work to finish or checkpoint; terminate GPU processes before reset. Service the node if reset does not resolve the fault. Preserve originating Xid evidence in observed_values.events.

@@ -37,6 +37,9 @@ func TestXid154Recovery(t *testing.T) {
 		{"0x2", health.Drain(health.RemediationActionRestartOS), health.Critical},
 		{"0x3", health.Drain(health.RemediationActionXid154), health.Warning},
 		{"0x4", health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired), health.Critical},
+		{"0x5", health.Monitor, health.Warning},
+		{"0x6", health.Drain(health.RemediationActionRestartOS), health.Critical},
+		{"0x7", health.Drain(health.RemediationActionRestartOS), health.Critical},
 		{"0xff", health.Monitor, health.Warning},
 		{"garbled", health.Monitor, health.Warning},
 	} {
@@ -70,6 +73,9 @@ func TestXid154Chronology(t *testing.T) {
 		{"unknown device cannot erase", []xid.XidEvent{recoveryEvent("", "0x2", 1), recoveryEvent("", "0x0", 2)}, health.Critical},
 		{"bare report remains visible", []xid.XidEvent{{XidCode: 154, PCIAddress: "a", Sequence: 1}}, health.Warning},
 		{"incomplete transition remains visible", []xid.XidEvent{{XidCode: 154, PCIAddress: "a", RecoveryAction: &xid.RecoveryAction{ToCode: "0x2"}}}, health.Warning},
+		{"later bare report cannot retire request", []xid.XidEvent{recoveryEvent("a", "0x1", 1), {XidCode: 154, PCIAddress: "a", Sequence: 2}}, health.Critical},
+		{"later malformed report cannot retire request", []xid.XidEvent{recoveryEvent("a", "0x2", 1), recoveryEvent("a", "garbled", 2)}, health.Critical},
+		{"bare report after None remains visible", []xid.XidEvent{recoveryEvent("a", "0x2", 1), recoveryEvent("a", "0x0", 2), {XidCode: 154, PCIAddress: "a", Sequence: 3}}, health.Warning},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v, err := xidCatalog(t).Evaluate("gpu_xid_154", recoveryMeasurement(tc.events...))

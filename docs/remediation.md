@@ -173,13 +173,16 @@ The numeric destination code, not a substring of the printed name, determines gu
 | `0x2` Node Reboot Required | CRITICAL | Drain and `restart_os`. A warm reboot is sufficient. Do not restart applications before rebooting an inconsistent OS. |
 | `0x3` Drain P2P | WARNING | Drain and `xid_154`, with the P2P procedure above. |
 | `0x4` Drain and Reset | CRITICAL | Disable new scheduling. Let unaffected work finish or checkpoint, then terminate GPU processes and `reset_gpu`; `service_required` if unresolved. |
-| Missing, malformed, or unknown | WARNING | Monitor and investigate the transition and originating faults. |
+| `0x6` Bus Reset | CRITICAL | Drain and `restart_os`. A GPU reset does not reset the PCIe bus. |
+| `0x7` System Reboot | CRITICAL | Drain and `restart_os`. |
+| Missing, malformed, or unknown (including `0x5` Recover IMEX Domain) | WARNING | Monitor and investigate the transition and originating faults. |
 
 The latest Xid 154 for each PCI device governs only that device's recovery request.
 The sensor records a positive sequence from the journal reader's chronological order.
 This sequence is local to one scan/measurement, not a cross-run identity or timestamp.
 Observation batches can be reordered without changing the recovery state.
 With missing or tied sequence evidence, all reports remain active: None cannot erase an uncertain request.
+A report whose transition cannot be read is always reported as unknown. It never replaces the device's latest readable request.
 None never clears another GPU's recovery request or an independently actionable originating fault.
 Both numeric codes and printed names remain in event evidence and observation roundtrips.
 
@@ -190,6 +193,8 @@ NVIDIA's `XID_154` guidance follows the reported action. `XID_154_EVAL` follows 
 otherwise, restart the application. `IGNORE` means non-paging guidance, not meaningless evidence.
 See the [Xid catalog](https://docs.nvidia.com/deploy/xid-errors/analyzing-xid-catalog.html)
 and [GPU Recovery Action](https://docs.nvidia.com/deploy/nvidia-smi/index.html#gpu-recovery-action).
+Codes `0x5` through `0x7` follow `nvmlDeviceGpuRecoveryAction_t` in the public
+[NVML header](https://github.com/NVIDIA/go-nvml/blob/main/pkg/nvml/nvml.h).
 
 `gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at
 WARNING when Xid 45 is the only Xid seen within the collection window. When

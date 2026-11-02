@@ -21,11 +21,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 - Xid 154 now follows the reported numeric recovery action instead of always
-  returning INFO. Node reboot and GPU reset requests are CRITICAL; Drain P2P
-  and unknown guidance are WARNING; None is INFO with no new repair.
-  Recovery transitions and scan-local chronology survive the sensor bridge
-  and observation roundtrips. A later None clears only that GPU's recovery
-  request, never an originating fault. No recovery action is executed.
+  returning INFO. Node reboot, system reboot, bus reset, and GPU reset
+  requests are CRITICAL; Drain P2P and unknown guidance are WARNING; None is
+  INFO with no new repair. Recovery transitions and scan-local chronology
+  survive the sensor bridge and observation roundtrips. A later None clears
+  only that GPU's recovery request, never an originating fault; an unreadable
+  Xid 154 never clears a readable request. No recovery action is executed.
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 

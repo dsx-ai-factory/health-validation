@@ -41,6 +41,9 @@ func TestXid154SensorToCatalogSmoke(t *testing.T) {
 		{"unknown numeric", []string{transition("0000:01:00", "0xff", "Node Reboot Required")}, health.Monitor, health.Warning},
 		{"malformed", []string{transition("0000:01:00", "garbled", "Node Reboot Required")}, health.Monitor, health.Warning},
 		{"bare", []string{"NVRM: Xid (PCI:0000:01:00): 154"}, health.Monitor, health.Warning},
+		{"bare after reboot keeps reboot", []string{reboot, "NVRM: Xid (PCI:0000:01:00): 154"}, health.Drain(health.RemediationActionRestartOS), health.Critical},
+		{"bus reset", []string{transition("0000:01:00", "0x6", "Bus Reset")}, health.Drain(health.RemediationActionRestartOS), health.Critical},
+		{"system reboot", []string{transition("0000:01:00", "0x7", "System Reboot")}, health.Drain(health.RemediationActionRestartOS), health.Critical},
 		{"None", []string{reboot, none}, health.NoAction, health.Info},
 		{"other GPU survives None", []string{reboot, transition("0000:02:00", "0x2", "Node Reboot Required"), none}, health.Drain(health.RemediationActionRestartOS), health.Critical},
 	} {

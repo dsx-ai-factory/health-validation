@@ -5,56 +5,65 @@ package xid
 
 import "strconv"
 
-// recoveryCode keys on the printed numbers, never the driver-version-dependent names.
-func recoveryCode(event XidEvent) string {
+// recoveryCode keys on the printed numbers, never the driver-version-dependent
+// names. readable reports whether the transition parsed; a readable code
+// outside nvmlDeviceGpuRecoveryAction_t's guided values is "unknown".
+func recoveryCode(event XidEvent) (code string, readable bool) {
 	r := event.RecoveryAction
 	if r == nil || r.FromName == "" || r.ToName == "" {
-		return "unknown"
+		return "unknown", false
 	}
 	if _, err := strconv.ParseUint(r.FromCode, 0, 32); err != nil {
-		return "unknown"
+		return "unknown", false
 	}
-	code, err := strconv.ParseUint(r.ToCode, 0, 32)
-	if err != nil || code > 4 {
-		return "unknown"
+	to, err := strconv.ParseUint(r.ToCode, 0, 32)
+	if err != nil {
+		return "unknown", false
 	}
-	return strconv.FormatUint(code, 10)
+	switch to {
+	case 0, 1, 2, 3, 4, 6, 7:
+		return strconv.FormatUint(to, 10), true
+	}
+	return "unknown", true
 }
 
-// Sequence orders events within one source scan/measurement only. Without
-// positive, unique sequence evidence, retain every report for that device:
-// an unordered None must never retire an actionable recovery request.
+// recoveryActionCounts counts Xid 154 reports per guidance key. Sequence
+// orders events within one source scan/measurement only. Each device
+// keeps only its latest readable report; without positive, unique sequence
+// evidence, every readable report is retained, so an unordered None never
+// retires an actionable request. Unreadable reports are always counted as
+// "unknown" and never replace a readable request: a line that cannot be
+// parsed says nothing about which action the driver now requires.
 func recoveryActionCounts(events []XidEvent) map[string]int64 {
 	type state struct {
 		code    string
-		latest  int
+		latest  int64
 		ordered bool
 	}
 	type position struct {
 		device   string
 		sequence int64
 	}
-	devices := make(map[string]state)
+	devices := make(map[string]*state)
 	seen := make(map[position]bool)
 	for i := range events {
 		event := &events[i]
-		if event.XidCode != 154 {
+		code, readable := recoveryCode(*event)
+		if event.XidCode != 154 || !readable {
 			continue
 		}
-		current, ok := devices[event.PCIAddress]
-		if !ok {
-			current = state{code: recoveryCode(*event), latest: i, ordered: event.PCIAddress != ""}
+		current := devices[event.PCIAddress]
+		if current == nil {
+			current = &state{code: code, latest: event.Sequence, ordered: event.PCIAddress != ""}
+			devices[event.PCIAddress] = current
+		} else if event.Sequence > current.latest {
+			current.code, current.latest = code, event.Sequence
 		}
 		key := position{device: event.PCIAddress, sequence: event.Sequence}
 		if event.Sequence <= 0 || seen[key] {
 			current.ordered = false
 		}
 		seen[key] = true
-		if event.Sequence > events[current.latest].Sequence {
-			current.latest = i
-			current.code = recoveryCode(*event)
-		}
-		devices[event.PCIAddress] = current
 	}
 	counts := make(map[string]int64)
 	for i := range events {
@@ -62,9 +71,9 @@ func recoveryActionCounts(events []XidEvent) map[string]int64 {
 		if event.XidCode != 154 {
 			continue
 		}
+		code, readable := recoveryCode(*event)
 		current := devices[event.PCIAddress]
-		code := recoveryCode(*event)
-		if !current.ordered || code == current.code {
+		if !readable || !current.ordered || code == current.code {
 			counts[code]++
 		}
 	}

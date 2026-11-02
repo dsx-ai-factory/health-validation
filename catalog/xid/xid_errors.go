@@ -508,9 +508,15 @@ func xid154Check() health.CheckDefinition {
 	def.RequiredSignals = []string{SignalXidCounts, SignalRecoveryActionCounts, SignalEvents}
 	def.Rules = []health.Rule{
 		{
-			Expression:        "'2' in recovery_action_counts && recovery_action_counts['2'] >= occurrences",
+			Expression:        "('2' in recovery_action_counts && recovery_action_counts['2'] >= occurrences) || ('7' in recovery_action_counts && recovery_action_counts['7'] >= occurrences)",
 			Severity:          health.Critical,
-			Message:           "GPU Xid 154 requires a node reboot (0x2). Drain the node and restart the OS; a warm reboot is sufficient. The OS is inconsistent: do not restart applications before rebooting. Preserve and investigate the originating Xid faults. See observed_values.events for the reported transitions.",
+			Message:           "GPU Xid 154 requires a node reboot (0x2 Node Reboot, or 0x7 System Reboot). Drain the node and restart the OS; for 0x2, a warm reboot is sufficient. The OS is inconsistent: do not restart applications before rebooting. Preserve and investigate the originating Xid faults. See observed_values.events for the reported transitions.",
+			RecommendedAction: health.Drain(health.RemediationActionRestartOS),
+		},
+		{
+			Expression:        "'6' in recovery_action_counts && recovery_action_counts['6'] >= occurrences",
+			Severity:          health.Critical,
+			Message:           "GPU Xid 154 requires a PCIe bus reset (0x6), which a GPU reset does not perform. Drain the node and restart the OS to reset the bus. Preserve and investigate the originating Xid faults. See observed_values.events for the reported transitions.",
 			RecommendedAction: health.Drain(health.RemediationActionRestartOS),
 		},
 		{
