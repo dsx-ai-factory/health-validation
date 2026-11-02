@@ -73,6 +73,7 @@ command is:
 docker run --rm \
   --gpus all \
   --network host \
+  --pid host \
   -e NVIDIA_DRIVER_CAPABILITIES=utility \
   -e LD_LIBRARY_PATH=<directory of the host's libdcgm.so.4> \
   -v /run/log/journal:/run/log/journal:ro \
@@ -95,6 +96,9 @@ docker run --rm \
   `localhost` — required for `gpu_average_power_draw`, `gpu_power_limit`,
   `gpu_power_state`, and `gpu_sensor_throttle`. Without them those checks
   report a collection failure. The node must run `nv-hostengine`.
+- `--pid host` lets `gpu_compute_apps` see compute processes that other
+  containers or the host run. NVML omits processes outside the caller's PID
+  namespace, so without it a leftover process passes unnoticed.
 - The journal, machine-id, `journalctl`, and its shared-library mounts are
   required for both `gpu_xid_*` and `rdma_linkflap_fatal`; without them the
   journal-backed checks report a collection failure rather than a false PASS.

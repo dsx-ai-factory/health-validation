@@ -6,7 +6,8 @@
 # Runs the health-validation container with the host's journalctl binary and
 # DCGM client library, and their shared-library dependencies, bind-mounted in,
 # on the host network so the CLI reaches the host's DCGM hostengine on
-# localhost. The image bundles neither systemd nor DCGM; see
+# localhost, and in the host PID namespace so gpu_compute_apps sees other
+# workloads' compute processes. The image bundles neither systemd nor DCGM; see
 # docs/integration.md.
 #
 # Usage: scripts/health-validation-run.sh <image>[:tag] [health-validation args...]
@@ -65,6 +66,7 @@ mount_with_libs "$libdcgm"
 exec docker run --rm \
 	--gpus all \
 	--network host \
+	--pid host \
 	-e NVIDIA_DRIVER_CAPABILITIES=utility \
 	-e LD_LIBRARY_PATH="$(dirname "$libdcgm")" \
 	-v /run/log/journal:/run/log/journal:ro \
