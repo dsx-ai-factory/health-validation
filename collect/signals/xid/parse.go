@@ -81,7 +81,7 @@ var (
 	nameRE         = regexp.MustCompile(`^,\s*name=([^,]*)`)
 	digitsRE       = regexp.MustCompile(`^\d+$`)
 	nvlink5RE      = regexp.MustCompile(`^,\s*(\S+)\s+(Fatal|Nonfatal)\s+XC\d+\s+i\d+\s+Link\s+(-?\d+)(?:\s+\(([^)]*)\))?`)
-	recoveryRE     = regexp.MustCompile(`GPU recovery action changed from (0x[0-9a-fA-F]+) \(([^)]*)\) to (0x[0-9a-fA-F]+) \(([^)]*)\)`)
+	recoveryRE     = regexp.MustCompile(`GPU recovery action changed from (\S+) \(([^)]*)\) to (\S+) \(([^)]*)\)`)
 	graphicsUnitRE = regexp.MustCompile(`\(GPC\s+(\d+),\s*TPC\s+(\d+),\s*SM\s+(\d+)\)`)
 )
 

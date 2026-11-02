@@ -6,7 +6,10 @@ go_library(
     name = "xid",
     srcs = ["xid_parse.go"],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/internal/xid",
-    deps = ["//catalog/xid"],
+    deps = [
+        "//catalog/xid",
+        "//collect/signals/xid",
+    ],
 )
 
 go_test(

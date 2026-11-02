@@ -15,9 +15,11 @@ var ScanWindow = collect.NewSignal("xid.scan.window", "")
 
 // Raw facts of one Xid event, one observation per field per event.
 var (
-	Code                = collect.NewSignal("xid.event.code", "1")
-	PCIAddress          = collect.NewSignal("xid.event.pci_address", "")
-	PID                 = collect.NewSignal("xid.event.pid", "1")
+	Code       = collect.NewSignal("xid.event.code", "1")
+	PCIAddress = collect.NewSignal("xid.event.pci_address", "")
+	PID        = collect.NewSignal("xid.event.pid", "1")
+	// Sequence is the entry's positive position in a chronological source scan.
+	Sequence            = collect.NewSignal("xid.event.sequence", "1")
 	ProcessName         = collect.NewSignal("xid.event.process_name", "")
 	GPC                 = collect.NewSignal("xid.event.gpc", "1")
 	TPC                 = collect.NewSignal("xid.event.tpc", "1")
@@ -48,7 +50,7 @@ func All() collect.Signals {
 // EventSignals returns the per-event signals.
 func EventSignals() collect.Signals {
 	return collect.Signals{
-		Code, PCIAddress, PID, ProcessName, GPC, TPC, SM,
+		Code, PCIAddress, Sequence, PID, ProcessName, GPC, TPC, SM,
 		NVLink5SubComponent, NVLink5Fatal, NVLink5Link, NVLink5IntrInfo, NVLink5ErrorStatus, NVLink5DebugData,
 		RecoveryActionFromCode, RecoveryActionFromName, RecoveryActionToCode, RecoveryActionToName,
 	}

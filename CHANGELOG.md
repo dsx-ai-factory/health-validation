@@ -18,6 +18,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   verdict's `catalog_version`. In unstamped builds, `health-validation version`
   now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`.
 
+### Fixed
+
+- Xid 154 now follows the reported numeric recovery action instead of always
+  returning INFO. Node reboot and GPU reset requests are CRITICAL; Drain P2P
+  and unknown guidance are WARNING; None is INFO with no new repair.
+  Recovery transitions and scan-local chronology survive the sensor bridge
+  and observation roundtrips. A later None clears only that GPU's recovery
+  request, never an originating fault. No recovery action is executed.
+
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
 Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,

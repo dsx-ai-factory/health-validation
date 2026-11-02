@@ -127,7 +127,7 @@ func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
 				DebugData: []string{"0x00000001", "0x00000002"},
 			}},
 			{PCIAddress: "0000:01:00", XidCode: 145, NVLink5: &xid.NVLink5Detail{SubComponent: "RLW_REMAP", Link: 2}},
-			{PCIAddress: "0000:01:00", XidCode: 154},
+			{PCIAddress: "0000:01:00", XidCode: 154, RecoveryAction: &xid.RecoveryAction{FromCode: "0x0", FromName: "None", ToCode: "0x1", ToName: "GPU Reset Required"}},
 			{PCIAddress: "0000:01:00", XidCode: 13, GPC: new(int64(1)), TPC: new(int64(3)), SM: new(int64(0))},
 		},
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
+	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 )
 
 // xidLineRE matches an NVRM Xid log line, e.g.
@@ -62,9 +63,10 @@ var xidNVLink5RE = regexp.MustCompile(
 // Every field this parses comes straight from the log line. Reading
 // meaning out of those fields — register bits, the decode table — is
 // the catalog's job, so every source of Xid events shares it.
+// Lines must be in chronological source order; Sequence is local to this scan.
 func ParseXid(since string, lines []string) xid.XidMeasurement {
 	m := xid.XidMeasurement{Since: since}
-	for _, line := range lines {
+	for i, line := range lines {
 		ev, ok := parseNVLink5Line(line)
 		if !ok {
 			ev, ok = parseXidLine(line)
@@ -73,6 +75,13 @@ func ParseXid(since string, lines []string) xid.XidMeasurement {
 			continue
 		}
 
+		ev.Sequence = int64(i + 1)
+		if ev.XidCode == 154 {
+			if parsed, err := xidsignals.Parse(line); err == nil && parsed.RecoveryAction != nil {
+				r := parsed.RecoveryAction
+				ev.RecoveryAction = &xid.RecoveryAction{FromCode: r.FromCode, FromName: r.FromName, ToCode: r.ToCode, ToName: r.ToName}
+			}
+		}
 		m.Events = append(m.Events, ev)
 		if m.XidCounts == nil {
 			m.XidCounts = make(map[int64]int64)

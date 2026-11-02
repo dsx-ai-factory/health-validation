@@ -17,12 +17,13 @@ import (
 // expressions and must match the RequiredSignals declared in checks
 // that consume Xid measurements.
 const (
-	SignalEvents           = "events"
-	SignalXidCounts        = "xid_counts"
-	SignalFatalXidCounts   = "fatal_xid_counts"
-	SignalSubXidCodeCounts = "sub_xid_code_counts"
-	SignalSince            = "since"
-	SignalEventCount       = "event_count"
+	SignalEvents               = "events"
+	SignalXidCounts            = "xid_counts"
+	SignalFatalXidCounts       = "fatal_xid_counts"
+	SignalSubXidCodeCounts     = "sub_xid_code_counts"
+	SignalRecoveryActionCounts = "recovery_action_counts"
+	SignalSince                = "since"
+	SignalEventCount           = "event_count"
 )
 
 var measurementSignals = []string{
@@ -30,6 +31,7 @@ var measurementSignals = []string{
 	SignalXidCounts,
 	SignalFatalXidCounts,
 	SignalSubXidCodeCounts,
+	SignalRecoveryActionCounts,
 	SignalSince,
 	SignalEventCount,
 }
@@ -48,15 +50,27 @@ func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 // sub-component and severity instead of pid/name. GPC, TPC, and SM are
 // the graphics unit an Xid 13 exception names, all nil when the line
 // does not name one.
+// RecoveryAction preserves Xid 154 guidance. Sequence is a positive chronological
+// position within one source scan/measurement; zero means ordering is unknown.
 type XidEvent struct {
-	NVLink5     *NVLink5Detail `json:"nvlink5,omitempty"`
-	GPC         *int64         `json:"gpc,omitempty"`
-	TPC         *int64         `json:"tpc,omitempty"`
-	SM          *int64         `json:"sm,omitempty"`
-	ProcessName string         `json:"process_name"`
-	PCIAddress  string         `json:"pci_address"`
-	XidCode     int64          `json:"xid_code"`
-	Pid         int64          `json:"pid"`
+	NVLink5        *NVLink5Detail  `json:"nvlink5,omitempty"`
+	RecoveryAction *RecoveryAction `json:"recovery_action,omitempty"`
+	GPC            *int64          `json:"gpc,omitempty"`
+	TPC            *int64          `json:"tpc,omitempty"`
+	SM             *int64          `json:"sm,omitempty"`
+	ProcessName    string          `json:"process_name"`
+	PCIAddress     string          `json:"pci_address"`
+	XidCode        int64           `json:"xid_code"`
+	Pid            int64           `json:"pid"`
+	Sequence       int64           `json:"sequence,omitempty"`
+}
+
+// RecoveryAction retains the numeric transition and names printed by Xid 154.
+type RecoveryAction struct {
+	FromCode string `json:"from_code"`
+	FromName string `json:"from_name"`
+	ToCode   string `json:"to_code"`
+	ToName   string `json:"to_name"`
 }
 
 // NVLink5Detail carries the extended fields NVRM logs for the

@@ -161,7 +161,35 @@ it, and most Nonfatal rows need no remediation at all.
 |---|---|
 | <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for warning-class per-Xid checks. |
 | <nobr>`update_swfw`</nobr> | Bring the GPU driver/firmware and related software to compatible versions, or correct the vGPU configuration. Recommended for Xid 78 (vGPU start error), raised when the guest VM's driver is incompatible with the host vGPU Manager or the vGPU type is not supported for the guest OS or GPU. The guest driver is installed inside the VM; the host vGPU Manager and the vGPU type are managed by the infrastructure operator. |
-| <nobr>`xid_154`</nobr> | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
+| <nobr>`xid_154`</nobr> | Follow the reported Drain P2P recovery action: disable new scheduling, quiesce P2P traffic and UVM persistence, then re-query recovery action. Reset only if Drain P2P remains. This action does not request a host reboot. |
+
+`gpu_xid_154` supplements the originating fault; it does not replace that fault's check.
+The numeric destination code, not a substring of the printed name, determines guidance:
+
+| Reported code | Severity | Recommendation |
+|---|---|---|
+| `0x0` None | INFO | No new recovery action. |
+| `0x1` GPU Reset Required (PF FLR in R610) | CRITICAL | Drain, terminate GPU processes, then `reset_gpu`; `service_required` if unresolved. |
+| `0x2` Node Reboot Required | CRITICAL | Drain and `restart_os`. A warm reboot is sufficient. Do not restart applications before rebooting an inconsistent OS. |
+| `0x3` Drain P2P | WARNING | Drain and `xid_154`, with the P2P procedure above. |
+| `0x4` Drain and Reset | CRITICAL | Disable new scheduling. Let unaffected work finish or checkpoint, then terminate GPU processes and `reset_gpu`; `service_required` if unresolved. |
+| Missing, malformed, or unknown | WARNING | Monitor and investigate the transition and originating faults. |
+
+The latest Xid 154 for each PCI device governs only that device's recovery request.
+The sensor records a positive sequence from the journal reader's chronological order.
+This sequence is local to one scan/measurement, not a cross-run identity or timestamp.
+Observation batches can be reordered without changing the recovery state.
+With missing or tied sequence evidence, all reports remain active: None cannot erase an uncertain request.
+None never clears another GPU's recovery request or an independently actionable originating fault.
+Both numeric codes and printed names remain in event evidence and observation roundtrips.
+
+One report is sufficient by default. The overridable `occurrences` threshold counts reports
+of each device's current recovery action within the window, not failed recovery attempts.
+Health Validation performs no recovery and stores no reboot-cycle state.
+NVIDIA's `XID_154` guidance follows the reported action. `XID_154_EVAL` follows Xid 154 when present;
+otherwise, restart the application. `IGNORE` means non-paging guidance, not meaningless evidence.
+See the [Xid catalog](https://docs.nvidia.com/deploy/xid-errors/analyzing-xid-catalog.html)
+and [GPU Recovery Action](https://docs.nvidia.com/deploy/nvidia-smi/index.html#gpu-recovery-action).
 
 `gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at
 WARNING when Xid 45 is the only Xid seen within the collection window. When

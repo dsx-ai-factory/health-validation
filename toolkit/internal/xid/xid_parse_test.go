@@ -10,6 +10,27 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/xid"
 )
 
+func TestParseXid_RecoveryAction(t *testing.T) {
+	m := xid.ParseXid("boot", []string{
+		"NVRM: Xid (PCI:0000:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x2 (Node Reboot Required)",
+		"NVRM: Xid (PCI:0000:01:00): 154, GPU recovery action changed from 0x2 (Node Reboot Required) to 0x0 (None)",
+	})
+	if len(m.Events) != 2 {
+		t.Fatalf("events = %v", m.Events)
+	}
+	r := m.Events[0].RecoveryAction
+	if r == nil || r.FromCode != "0x0" || r.FromName != "None" || r.ToCode != "0x2" || r.ToName != "Node Reboot Required" {
+		t.Fatalf("transition = %+v", r)
+	}
+	if m.Events[0].Sequence != 1 || m.Events[1].Sequence != 2 || m.Events[1].RecoveryAction == nil || m.Events[1].RecoveryAction.ToCode != "0x0" {
+		t.Fatalf("chronology lost: %v", m.Events)
+	}
+	counts := m.DerivedSignals()["recovery_action_counts"].(map[string]int64)
+	if counts["0"] != 1 || counts["2"] != 0 {
+		t.Fatalf("recovery counts = %v", counts)
+	}
+}
+
 func TestParseXid_FullLine(t *testing.T) {
 	m := xid.ParseXid("boot", []string{
 		"NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3",

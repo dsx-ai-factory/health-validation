@@ -143,6 +143,11 @@ func TestParse(t *testing.T) {
 			}},
 		},
 		{
+			name:  "154 malformed numeric token retained",
+			input: "NVRM: Xid (PCI:0000:01:00): 154, GPU recovery action changed from 0x0 (None) to garbled (Node Reboot Required)",
+			want:  Event{PCIAddress: "0000:01:00", Code: 154, RecoveryAction: &RecoveryAction{FromCode: "0x0", FromName: "None", ToCode: "garbled", ToName: "Node Reboot Required"}},
+		},
+		{
 			name:  "13 multiple warp errors",
 			input: "NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Global Exception on (GPC 11, TPC 2, SM 1): Multiple Warp Errors",
 			want:  Event{PCIAddress: "0000:85:00", Code: 13, GPC: new(int64(11)), TPC: new(int64(2)), SM: new(int64(1))},

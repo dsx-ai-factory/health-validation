@@ -110,8 +110,7 @@ func buildXid(obs []*observation.Observation) (xid.XidMeasurement, error) {
 	return m, nil
 }
 
-// buildXidEvent builds one event. Recovery-action signals are read by no
-// field: XidEvent does not carry the Xid 154 transition.
+// buildXidEvent builds one event without interpreting recovery guidance.
 func buildXidEvent(f xidFields) (xid.XidEvent, error) {
 	for _, required := range []collect.Signal{xidsignals.Code, xidsignals.PCIAddress} {
 		if f.values[required.ID()] == nil {
@@ -126,6 +125,16 @@ func buildXidEvent(f xidFields) (xid.XidEvent, error) {
 		GPC:         f.optionalInt(xidsignals.GPC),
 		TPC:         f.optionalInt(xidsignals.TPC),
 		SM:          f.optionalInt(xidsignals.SM),
+		Sequence:    f.int(xidsignals.Sequence),
+	}
+	recovery := []collect.Signal{xidsignals.RecoveryActionFromCode, xidsignals.RecoveryActionFromName, xidsignals.RecoveryActionToCode, xidsignals.RecoveryActionToName}
+	if slices.ContainsFunc(recovery, func(s collect.Signal) bool { return f.values[s.ID()] != nil }) {
+		event.RecoveryAction = &xid.RecoveryAction{
+			FromCode: f.string(xidsignals.RecoveryActionFromCode),
+			FromName: f.string(xidsignals.RecoveryActionFromName),
+			ToCode:   f.string(xidsignals.RecoveryActionToCode),
+			ToName:   f.string(xidsignals.RecoveryActionToName),
+		}
 	}
 	nvlink5 := []collect.Signal{xidsignals.NVLink5SubComponent, xidsignals.NVLink5Fatal, xidsignals.NVLink5Link}
 	present := slices.IndexFunc(nvlink5, func(s collect.Signal) bool { return f.values[s.ID()] == nil }) < 0

@@ -296,8 +296,7 @@ var warningClasses = []warningClass{
 // (144-150) code, one additional per-SubXidCode check for each fault
 // subtype NVIDIA's decode table differentiates that way (see
 // [nvlink5SubXidCodeCheck]), one architecture-scoped check per warning Xid,
-// and an INFO check for Xid 154 (a recovery-action notice that only annotates
-// another Xid).
+// and a recovery-action-aware check for Xid 154, supplemental to fault checks.
 //
 // Every check consumes an [XidMeasurement] produced by the journal Xid
 // sensor and tests its xid_counts map. Codes whose immediate action is
@@ -496,20 +495,48 @@ func xid45Check() health.CheckDefinition {
 	return def
 }
 
-// xid154Check builds the INFO check for Xid 154.
+// xid154Check follows NVIDIA's reported recovery action, without performing it.
+// https://docs.nvidia.com/deploy/nvidia-smi/index.html#gpu-recovery-action
 func xid154Check() health.CheckDefinition {
 	def := baseCheck(
 		"gpu_xid_154",
 		"GPU Xid 154 (GPU recovery action changed)",
-		"Detects NVRM Xid 154 in the system journal within the collection window. Informational; correlates with an accompanying Xid.",
-		health.Drain(health.RemediationActionXid154),
+		"Follows the latest reported recovery action per GPU within the collection window. Supplements, never suppresses, originating Xid faults. Numeric codes determine guidance; printed names remain evidence.",
+		health.NoAction,
 	)
 	def.Architectures = slices.Clone(allArchitectures)
-	def.Rules = []health.Rule{{
-		Expression: "154 in xid_counts && xid_counts[154] >= occurrences",
-		Severity:   health.Info,
-		Message:    "GPU Xid 154 (GPU recovery action changed) observed. Informational; correlate with the accompanying Xid.",
-	}}
+	def.RequiredSignals = []string{SignalXidCounts, SignalRecoveryActionCounts, SignalEvents}
+	def.Rules = []health.Rule{
+		{
+			Expression:        "'2' in recovery_action_counts && recovery_action_counts['2'] >= occurrences",
+			Severity:          health.Critical,
+			Message:           "GPU Xid 154 requires a node reboot (0x2). Drain the node and restart the OS; a warm reboot is sufficient. The OS is inconsistent: do not restart applications before rebooting. Preserve and investigate the originating Xid faults. See observed_values.events for the reported transitions.",
+			RecommendedAction: health.Drain(health.RemediationActionRestartOS),
+		},
+		{
+			Expression:        "('1' in recovery_action_counts && recovery_action_counts['1'] >= occurrences) || ('4' in recovery_action_counts && recovery_action_counts['4'] >= occurrences)",
+			Severity:          health.Critical,
+			Message:           "GPU Xid 154 requires GPU reset (0x1, including PF FLR, or 0x4 Drain and Reset). Disable new scheduling. For 0x4, allow unaffected work to finish or checkpoint; terminate GPU processes before reset. Service the node if reset does not resolve the fault. Preserve originating Xid evidence in observed_values.events.",
+			RecommendedAction: resetAndService(),
+		},
+		{
+			Expression:        "'3' in recovery_action_counts && recovery_action_counts['3'] >= occurrences",
+			Severity:          health.Warning,
+			Message:           "GPU Xid 154 requests Drain P2P (0x3), not a node reboot. Disable new scheduling, quiesce P2P traffic and UVM persistence, then re-query recovery action. Reset only if Drain P2P remains after quiescing. Preserve originating Xid evidence in observed_values.events.",
+			RecommendedAction: health.Drain(health.RemediationActionXid154),
+		},
+		{
+			Expression:        "('unknown' in recovery_action_counts && recovery_action_counts['unknown'] >= occurrences) || (size(recovery_action_counts) == 0 && 154 in xid_counts && xid_counts[154] >= occurrences)",
+			Severity:          health.Warning,
+			Message:           "GPU Xid 154 has missing, malformed, or unknown recovery guidance. Monitor and investigate the printed transition and originating faults in observed_values.events; do not infer a reboot from action names.",
+			RecommendedAction: health.Monitor,
+		},
+		{
+			Expression: "'0' in recovery_action_counts && recovery_action_counts['0'] >= occurrences",
+			Severity:   health.Info,
+			Message:    "GPU Xid 154 reports None (0x0): no new recovery action. This retires only that GPU's prior Xid 154 request when chronology is known, never an originating fault or another GPU's recovery. The reported transitions remain in observed_values.events.",
+		},
+	}
 	return def
 }
 
