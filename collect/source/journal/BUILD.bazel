@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
 go_test(
     name = "journal_test",
     srcs = ["journal_test.go"],
@@ -11,5 +13,4 @@ go_library(
     name = "journal",
     srcs = ["journal.go"],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/source/journal",
-    visibility = ["//visibility:public"],
 )

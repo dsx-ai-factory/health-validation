@@ -65,6 +65,28 @@ func TestNVLinkActive(t *testing.T) {
 			wantSeverity: health.Critical,
 		},
 		{
+			name: "VR200 all active",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("VR200"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement:  func() nvlink.NVLinkMeasurement { return nvlink.NVLinkMeasurement{GPUID: "GPU-0", InactiveCount: 0} },
+			wantSeverity: health.Pass,
+		},
+		{
+			name: "VR200 one inactive",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("VR200"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement:  func() nvlink.NVLinkMeasurement { return nvlink.NVLinkMeasurement{GPUID: "GPU-0", InactiveCount: 1} },
+			wantSeverity: health.Critical,
+		},
+		{
 			name: "skipped on wrong architecture",
 			cat: func() *catalog.Catalog {
 				return catalog.New(

@@ -75,14 +75,14 @@ Verifies each GPU's current and enforced power limits.
 | Scheduling cadence | <nobr>`PROLOG`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`H100`</nobr>, <nobr>`VR200`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`power_limit_w`</nobr>, <nobr>`enforced_power_limit_w`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`expected_power_limit_w`</nobr> | GB200: 1200, GB300: 1400, H100: 700 | W | <nobr>`DEFAULT`</nobr> | Current and enforced power limit expected for every GPU. |
+| <nobr>`expected_power_limit_w`</nobr> | GB200: 1200, GB300: 1400, H100: 700, VR200: 2300 | W | <nobr>`DEFAULT`</nobr> | Current and enforced power limit expected for every GPU. |
 
 **Rules**
 
@@ -137,7 +137,7 @@ Monitors GPU hardware throttling via NVML clocks-event-reasons. Active hardware 
 | Scheduling cadence | <nobr>`PROLOG`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr>, <nobr>`VR200`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`hw_slowdown`</nobr>, <nobr>`hw_thermal_slowdown`</nobr>, <nobr>`hw_power_brake_slowdown`</nobr> |
 
 **Rules**

@@ -1,10 +1,11 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
 go_library(
     name = "xid",
     srcs = ["xid_parse.go"],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/internal/xid",
-    visibility = ["//visibility:public"],
     deps = ["//catalog/xid"],
 )
 

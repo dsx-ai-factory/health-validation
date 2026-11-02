@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library")
 
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
 go_library(
     name = "health",
     srcs = [
@@ -8,7 +10,6 @@ go_library(
         "observation.pb.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/proto/go/health/v1",
-    visibility = ["//visibility:public"],
     deps = [
         "@org_golang_google_grpc//:grpc",
         "@org_golang_google_grpc//codes",
