@@ -705,16 +705,15 @@ func catchAllCheck(id, name, description, signal string, severity health.Severit
 	return def
 }
 
-// unknownCheck reports codes no other check covers. It stays in service
-// (Monitor) because an unknown code is not evidence of a node fault.
+// unknownCheck reports codes no other check covers.
 func unknownCheck() health.CheckDefinition {
 	return catchAllCheck(
 		unknownCheckID,
 		"GPU Xid not described by the catalog",
-		"Detects NVRM Xid codes in the system journal that no Health Validation check covers and the NVIDIA Xid catalog does not list.",
+		"Detects NVRM Xid codes in the system journal that no Health Validation check covers and that are not informational.",
 		SignalUnknownXidCounts,
 		health.Warning,
-		"A GPU Xid code that Health Validation does not describe was logged. The node stays in service. Contact support and include the driver message from events.",
+		"A GPU Xid code that Health Validation has no check for was logged, so it recommends no action.",
 		health.Monitor,
 	)
 }

@@ -234,7 +234,7 @@ The catalog includes these check families:
 | `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | `occurrences` |
 | `gpu_xid_154` | xid | Xid 154 (INFO — recovery action changed) | `occurrences` |
 | `gpu_xid_informational` | xid | A logged Xid code that NVIDIA's Xid catalog marks Unused, IGNORE or gives no resolution, and no registered check covers (INFO, no action) | `occurrences` |
-| `gpu_xid_unknown` | xid | A logged Xid code that no registered check covers and NVIDIA's Xid catalog does not list (WARNING, monitor) | `occurrences` |
+| `gpu_xid_unknown` | xid | A logged Xid code that no registered check covers and that is not informational (WARNING, monitor) | `occurrences` |
 
 Each check definition carries:
 

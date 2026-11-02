@@ -593,7 +593,7 @@ Detects NVRM Xid codes in the system journal that the NVIDIA Xid catalog marks U
 
 `gpu_xid_unknown`
 
-Detects NVRM Xid codes in the system journal that no Health Validation check covers and the NVIDIA Xid catalog does not list.
+Detects NVRM Xid codes in the system journal that no Health Validation check covers and that are not informational.
 
 | Property | Value |
 |---|---|
@@ -615,7 +615,7 @@ Detects NVRM Xid codes in the system journal that no Health Validation check cov
 **Rules**
 
 - **WARNING** when `unknown_xid_counts.exists(c, unknown_xid_counts[c] >= occurrences)`
-  - Message: A GPU Xid code that Health Validation does not describe was logged. The node stays in service. Contact support and include the driver message from events.
+  - Message: A GPU Xid code that Health Validation has no check for was logged, so it recommends no action.
 
 **Recommended action:** operational state `monitor`
 
