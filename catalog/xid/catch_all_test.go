@@ -68,8 +68,8 @@ func TestXidUnknown_FiresOnCodeNoCheckCovers(t *testing.T) {
 		t.Errorf("recommended action = %+v, want monitor with no remediation actions", v.RecommendedAction)
 	}
 	for _, msg := range v.Messages {
-		if !strings.Contains(msg, "Contact support") {
-			t.Errorf("message %q does not tell the operator to contact support", msg)
+		if !strings.Contains(msg, "recommends no action") {
+			t.Errorf("message %q does not say HV recommends no action", msg)
 		}
 	}
 }
