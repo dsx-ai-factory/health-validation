@@ -142,6 +142,72 @@ func TestToMeasurementsSourceLevelFailuresStayPerSource(t *testing.T) {
 	}
 }
 
+// sourceTimeout is a whole-source timeout of signal from source.
+func sourceTimeout(source string, signal string) *observation.Observation {
+	o := failedObservation(signal, &observation.CollectionError{Category: observation.CollectionErrorCategoryTimeout})
+	o.Source = source
+	o.Target = nil
+	return o
+}
+
+// timedOut reports whether every one of m's errors naming field is a timeout.
+func timedOut(m health.Measurement, field string) bool {
+	var found bool
+	for _, entry := range m.Errors() {
+		if slices.Contains(entry.FailedSignals(), field) {
+			if !errors.Is(entry.Err(), health.ErrCollectionTimeout) {
+				return false
+			}
+			found = true
+		}
+	}
+	return found
+}
+
+// When one source of a GPU fails as a whole, the GPUs another source read by
+// UUID carry its failure on the fields it feeds, and no separate source-level
+// measurement fails checks that source does not feed.
+func TestToMeasurementsFoldsSourceFailureIntoGPUs(t *testing.T) {
+	observations := []*observation.Observation{
+		sourceTimeout("dcgm", gpusignals.PowerDraw.ID()),
+		sourceTimeout("dcgm", gpusignals.PerformanceState.ID()),
+		valueObservation(gpusignals.ProcessCount.ID(), &observation.Value{Kind: &observation.Value_UintValue{UintValue: 0}}),
+		noValueObservation(gpusignals.ProcessCmdline.ID(), observation.NoValueReasonNoTargets),
+	}
+	ms := ToMeasurements(observations)
+	if got, want := keysOf(ms), []health.EntityKey{health.VerifiedEntity("GPU-0")}; !slices.Equal(got, want) {
+		t.Fatalf("keys = %v, want %v", got, want)
+	}
+	m := ms[0].(gpu.GPUMeasurement)
+	for _, field := range []string{gpu.SignalAveragePowerDrawW, gpu.SignalGPUPstate} {
+		if !timedOut(m, field) {
+			t.Errorf("%s did not carry the DCGM timeout: %v", field, m.Errors())
+		}
+	}
+	if failed := failedSignals(m); slices.Contains(failed, gpu.SignalComputeProcessCount) || slices.Contains(failed, gpu.SignalComputeProcessCmdlines) || slices.Contains(failed, gpu.SignalGPUID) {
+		t.Errorf("fields the failed source does not feed failed: %v", failed)
+	}
+}
+
+// With no GPU read by UUID, each source's measurement takes the other sources'
+// failures, so every field of a whole-domain timeout reads as a timeout.
+func TestToMeasurementsSourceFailuresCoverEachOther(t *testing.T) {
+	ms := ToMeasurements([]*observation.Observation{
+		sourceTimeout("dcgm", gpusignals.PerformanceState.ID()),
+		sourceTimeout("nvml", gpusignals.ProcessCount.ID()),
+	})
+	if got, want := keysOf(ms), []health.EntityKey{health.SourceEntity("dcgm"), health.SourceEntity("nvml")}; !slices.Equal(got, want) {
+		t.Fatalf("keys = %v, want %v", got, want)
+	}
+	for _, m := range ms {
+		for _, field := range []string{gpu.SignalGPUPstate, gpu.SignalComputeProcessCount} {
+			if !timedOut(m, field) {
+				t.Errorf("%v: %s is not a timeout: %v", health.KeyOf(m), field, m.Errors())
+			}
+		}
+	}
+}
+
 // A run evaluates one node, so host-wide observations form one measurement
 // whatever node ID each target carries.
 func TestToMeasurementsHostWideIgnoresNodeID(t *testing.T) {

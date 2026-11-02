@@ -14,6 +14,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
+	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
@@ -52,36 +53,6 @@ func TestDomainAdaptersPreserveExistingMappings(t *testing.T) {
 // Endpoint and pair observations group with the GPU they belong to; a
 // per-source group would merge every GPU's links and stamp the source label
 // as their GPU ID.
-func TestAdapterGroupKeysEntitiesByGPU(t *testing.T) {
-	at := func(target *observation.ObservationTarget) *observation.Observation {
-		return &observation.Observation{Source: "nvml", Target: target}
-	}
-	first := adapterGroup(at(observation.GPUTarget("GPU-1")))
-	second := adapterGroup(at(observation.GPUTarget("GPU-2")))
-	if first == second {
-		t.Fatal("two GPUs share a group")
-	}
-	for _, test := range []struct {
-		target *observation.ObservationTarget
-		want   adapterKey
-	}{
-		{observation.NVLinkEndpointTarget("GPU-1", 0), first},
-		{observation.NVLinkEndpointTarget("GPU-2", 17), second},
-		{observation.GPUPairTarget("GPU-2", "GPU-1"), second},
-		{observation.GPUProcessTarget("GPU-1", "01234567-89ab-cdef-0123-456789abcdef", 42, 100), first},
-	} {
-		if got := adapterGroup(at(test.target)); got != test.want {
-			t.Errorf("adapterGroup(%v) = %v, want %v", test.target, got, test.want)
-		}
-	}
-	// Source-scoped observations from different sources share one group.
-	other := at(nil)
-	other.Source = "dcgm"
-	if adapterGroup(at(nil)) != adapterGroup(other) {
-		t.Error("source-scoped observations from two sources are split")
-	}
-}
-
 func TestDomainAdaptersNamespaceFailedSourceLocalSlots(t *testing.T) {
 	first := failedObservation(gpusignals.PerformanceState.ID(), &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable})
 	first.Source = "a:b"
@@ -132,16 +103,31 @@ func TestDomainAdaptersKeyDomainFailureBySource(t *testing.T) {
 	}
 }
 
-// A timeout reported by DCGM and NVML stays one source-level measurement, so
-// every field fails as a timeout rather than as never collected.
-func TestNVLinkAdapterMergesSourceLevelFailures(t *testing.T) {
+// A timeout reported by DCGM and NVML keeps one measurement per source, and
+// each fails the other source's fields as a timeout rather than as never
+// collected.
+func TestNVLinkAdapterSourceLevelFailuresCoverEachOther(t *testing.T) {
 	timeout := &observation.CollectionError{Category: observation.CollectionErrorCategoryTimeout}
 	dcgm := failedObservation(gpusignals.NVLinkFabricAccessTimeoutRecovery.ID(), timeout)
 	nvml := failedObservation(gpusignals.NVLinkLinkCount.ID(), timeout)
 	dcgm.Target, nvml.Target, nvml.Source = nil, nil, "nvml"
 	got := NVLink().Build([]*observation.Observation{dcgm, nvml})
-	if len(got) != 1 || health.KeyOf(got[0]) != health.SourceEntity(adapterSource(health.NVLink)) {
-		t.Fatalf("Build = %v, want one measurement keyed by the adapter", got)
+	keys := []health.EntityKey{health.SourceEntity(dcgm.GetSource()), health.SourceEntity("nvml")}
+	if len(got) != 2 || health.KeyOf(got[0]) != keys[0] || health.KeyOf(got[1]) != keys[1] {
+		t.Fatalf("Build = %v, want one measurement per source", got)
+	}
+	for _, m := range got {
+		for _, field := range []string{nvlink.SignalFabricAccessTimeoutRecovery, nvlink.SignalLinkCount} {
+			timedOut := false
+			for _, e := range m.Errors() {
+				if slices.Contains(e.FailedSignals(), field) {
+					timedOut = errors.Is(e.Err(), health.ErrCollectionTimeout)
+				}
+			}
+			if !timedOut {
+				t.Errorf("%v: %s is not a timeout: %v", health.KeyOf(m), field, m.Errors())
+			}
+		}
 	}
 }
 

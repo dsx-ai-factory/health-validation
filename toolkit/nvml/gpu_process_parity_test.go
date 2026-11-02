@@ -73,6 +73,44 @@ func TestGPUComputeProcessParity(t *testing.T) {
 	}
 }
 
+// TestGPUCollectTwoSourceTimeout stalls the collect GPU sources past the
+// cycle timeout. When both stall, as one wedged driver would stall them, every
+// check must recommend retrying collection, as the legacy sensor's timeout
+// does. When only DCGM stalls, only the DCGM-backed checks may fail.
+func TestGPUCollectTwoSourceTimeout(t *testing.T) {
+	const timeout = 10 * time.Millisecond
+	retry := health.Drain(health.RemediationActionRetryCollection)
+	for _, tt := range []struct {
+		name      string
+		nvmlStall bool
+	}{
+		{name: "DCGM and NVML stall", nvmlStall: true},
+		{name: "only DCGM stalls"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			release := make(chan struct{})
+			t.Cleanup(func() { close(release) })
+			var nvmlBlock <-chan struct{}
+			if tt.nvmlStall {
+				nvmlBlock = release
+			}
+			gpus := []gpuState{{}}
+			bridged := measure(t, bridgedGPUSensor(t, collectCycle(t, timeout),
+				dcgmFake{obs: dcgmObservations(gpus, false), block: release}, processSensor(gpus, nvmlBlock)))
+
+			for _, v := range slices.Concat(parityVerdicts(t, evaluateGPU(t, bridged...)), computeAppsVerdicts(t, bridged...)) {
+				wantRetry := tt.nvmlStall || v.check != "gpu_compute_apps"
+				switch {
+				case wantRetry && (v.severity != health.Critical || !v.action.Equal(retry)):
+					t.Errorf("%+v, want CRITICAL with retry collection", v)
+				case !wantRetry && v.severity != health.Pass:
+					t.Errorf("%+v, want PASS: NVML answered", v)
+				}
+			}
+		})
+	}
+}
+
 // processInfos is what NVML reports for s's compute processes.
 func processInfos(s gpuState) ([]gonvml.ProcessInfo, gonvml.Return) {
 	if s.processesFail {

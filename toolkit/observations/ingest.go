@@ -458,7 +458,92 @@ func (e *entity) addError(err error, fields ...string) {
 	e.errs = append(e.errs, entityError{err: err, fields: slices.Clone(fields)})
 }
 
+// foldSourceFailures applies each per-GPU type's source-wide failures to every
+// GPU known by UUID and drops the separate source-level measurement: a source
+// that read no GPU read none of those. Several sources can feed one GPU's
+// measurement, so otherwise the failed fields would read as missing on the
+// GPUs another source did read, failing checks the failed source does not
+// feed and hiding a timeout behind a missing-data error. With no verified GPU
+// to carry them, each source-level measurement takes the other sources'
+// failures instead, so a timeout of every source still recommends a retry.
+// Slots keep their own failures, since their identity is source-local, and a
+// source-level measurement stays when some field it failed reached no GPU,
+// so the failure is never lost.
+func (b *builder) foldSourceFailures() {
+	for _, s := range schemas() {
+		if s.gpuID < 0 {
+			continue
+		}
+		var sources, folded []entityKey
+		var verified []*entity
+		for _, key := range b.order {
+			switch {
+			case key.schema != s:
+			case key.id.SourceLevel():
+				sources = append(sources, key)
+			case !key.id.Provisional() && !key.id.Unidentified():
+				verified = append(verified, b.entities[key])
+			}
+		}
+		for _, key := range sources {
+			source := b.entities[key]
+			if len(verified) == 0 {
+				for _, other := range sources {
+					if other != key {
+						b.entities[other].inherit(source)
+					}
+				}
+				continue
+			}
+			reached := make(map[string]bool)
+			for _, e := range verified {
+				for _, field := range e.inherit(source) {
+					reached[field] = true
+				}
+			}
+			if !slices.ContainsFunc(source.failedFields(), func(field string) bool { return !reached[field] }) {
+				folded = append(folded, key)
+				delete(b.entities, key)
+			}
+		}
+		b.order = slices.DeleteFunc(b.order, func(key entityKey) bool { return slices.Contains(folded, key) })
+	}
+}
+
+// failedFields lists the fields e's failures name, other than gpu_id.
+func (e *entity) failedFields() []string {
+	var fields []string
+	for _, failure := range e.errs {
+		fields = append(fields, slices.DeleteFunc(slices.Clone(failure.fields), func(field string) bool { return field == gpuIDField })...)
+	}
+	return fields
+}
+
+// inherit fails each field source failed that e has no observation for, with
+// source's cause, and returns those fields.
+func (e *entity) inherit(source *entity) []string {
+	var inherited []string
+	for _, failure := range source.errs {
+		var fields []string
+		for _, field := range failure.fields {
+			if field != gpuIDField && !e.fed[field] {
+				fields = append(fields, field)
+			}
+		}
+		if len(fields) == 0 {
+			continue
+		}
+		e.addError(failure.err, fields...)
+		for _, field := range fields {
+			e.fed[field] = true
+		}
+		inherited = append(inherited, fields...)
+	}
+	return inherited
+}
+
 func (b *builder) measurements() []health.Measurement {
+	b.foldSourceFailures()
 	keys := slices.Clone(b.order)
 	slices.SortStableFunc(keys, func(a, b entityKey) int {
 		if a.schema != b.schema {

@@ -20,7 +20,6 @@ go_library(
         "//collect/observation",
         "//collect/signals/xid",
         "//toolkit/observations",
-        "@org_golang_google_protobuf//proto",
     ],
 )
 
@@ -37,6 +36,7 @@ go_test(
         "//catalog/gpu",
         "//catalog/health",
         "//catalog/node",
+        "//catalog/nvlink",
         "//catalog/xid",
         "//collect",
         "//collect/observation",
