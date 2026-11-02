@@ -309,7 +309,8 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 	}
 
 	snap := c.snapshotParams()
-	return c.evaluationEngine.EvaluateCheck(cd, m, snap.host, snap.forCheck(checkID))
+	checks, _ := c.batchSnapshot(EvaluationOptions{})
+	return c.evaluationEngine.EvaluateCheck(cd, evaluation.WithChecks(m, checks), snap.host, snap.forCheck(checkID))
 }
 
 // EvaluateAll runs all checks whose Category matches the provided
