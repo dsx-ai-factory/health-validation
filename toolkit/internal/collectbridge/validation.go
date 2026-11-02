@@ -14,6 +14,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	rdmatoposignals "github.com/dsx-ai-factory/health-validation/collect/signals/rdmatopo"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"google.golang.org/protobuf/proto"
@@ -45,6 +46,7 @@ var canonicalTargets = []canonicalTarget{
 	{kind: targetGPU, signals: gpusignals.All()},
 	{kind: targetNode, signals: cpusignals.All()},
 	{kind: targetNode, signals: collect.Signals{gpuinventory.GPUCount}},
+	{kind: targetNode, signals: rdmatoposignals.All()},
 	{kind: targetNVLinkEndpoint, signals: gpusignals.EndpointSignals()},
 	{kind: targetGPUProcess, signals: gpusignals.ProcessEntitySignals()},
 	{kind: targetJournalEntry, signals: xidsignals.EventSignals()},

@@ -7,7 +7,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -21,15 +27,19 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	rdmatoposensor "github.com/dsx-ai-factory/health-validation/collect/sensors/rdmatopo"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	rdmatoposource "github.com/dsx-ai-factory/health-validation/collect/source/rdmatopo"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -64,10 +74,10 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"cpu", "node", "xid"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"node", "xid"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{cpusensor.ID, xidsensor.ID}, adapters: []string{"cpu", "xid"}},
-		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID}, adapters: []string{"cpu", "node"}},
+		{name: "default", app: New(), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, rdmatoposensor.ID}, adapters: []string{"cpu", "node", "xid", "pcie"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{gpuinventory.SensorID, xidsensor.ID, rdmatoposensor.ID}, adapters: []string{"node", "xid", "pcie"}},
+		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{cpusensor.ID, xidsensor.ID, rdmatoposensor.ID}, adapters: []string{"cpu", "xid", "pcie"}},
+		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, rdmatoposensor.ID}, adapters: []string{"cpu", "node", "pcie"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)
@@ -588,8 +598,8 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 			if name == "nil signal" && !strings.Contains(stderr.String(), "declares a nil signal") {
 				t.Fatalf("nil signal did not cause setup failure: %q", stderr.String())
 			}
-			if name == "no adapter" && !strings.Contains(stderr.String(), "collect sensors registered without adapters; register adapters with WithCollectAdapters") {
-				t.Fatalf("missing adapters were not explained: %q", stderr.String())
+			if name == "no adapter" && !strings.Contains(stderr.String(), `sensor "test.node" supplies no adapter-requested signals`) {
+				t.Fatalf("missing adapter for the custom sensor was not explained: %q", stderr.String())
 			}
 			if name == "unowned signal" && !strings.Contains(stderr.String(), "supplies no adapter-requested signals") {
 				t.Fatalf("sensor without requested signals did not cause setup failure: %q", stderr.String())
@@ -1346,5 +1356,153 @@ func TestCollectSensorsValidatesRegistrationsRegardlessOfNeeds(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRDMATopoCollectionFailures(t *testing.T) {
+	for _, name := range []string{"unavailable", "timeout after findings"} {
+		t.Run(name, func(t *testing.T) {
+			release, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			sensor := rdmatoposensor.New(rdmatoposource.New(func(_ context.Context, out, _ io.Writer) (int, error) {
+				if name == "unavailable" {
+					return -1, fs.ErrPermission
+				}
+				_, _ = io.WriteString(out, "OK\tAll ConnectX DMA functions have correct PCI topology\n"+
+					"FAIL\tACS for DSP 0000:00:00.0 has incorrect values 1111111 != xx000x0, (0x7f != 0x62)\n"+
+					"FAIL\tCould not read ACS control register for DSP 0000:04:00.0\n")
+				<-release.Done()
+				return -1, release.Err()
+			}))
+			a := New().WithCollect(sensor, sensor.Signals().IDs()...)
+			sources, adapters := a.builtinCollect()
+			sensors, err := a.collectSensors(100*time.Millisecond, sources, adapters, requiredSignals{health.PCIe: nil})
+			if err != nil || len(sensors) != 1 {
+				t.Fatalf("collection failed or waited for the blocked command: sensors=%v err=%v", sensors, err)
+			}
+			measurements, err := sensors[0].Measure(context.Background())
+			if err != nil || len(measurements) == 0 {
+				t.Fatalf("missing collection results: %v", err)
+			}
+			failure := measurements[len(measurements)-1]
+			if len(failure.Errors()) == 0 {
+				t.Fatalf("incomplete collection became healthy: %+v", measurements)
+			}
+			if name == "unavailable" {
+				if len(measurements) != 1 {
+					t.Fatalf("unavailable collection emitted findings: %+v", measurements)
+				}
+				return
+			}
+			finding := measurements[0].(pcie.RDMATopoMeasurement)
+			if len(measurements) != 2 || len(finding.Errors()) != 0 || len(finding.ACSFailures) != 1 || finding.ACSFailures[0].Actual != "1111111" {
+				t.Fatalf("timeout lost the confirmed finding: %+v", measurements)
+			}
+			detail := failure.Errors()[0].Err().Error()
+			if !strings.Contains(detail, "Could not read ACS") || !strings.Contains(detail, "timed out") {
+				t.Fatalf("prior read failure or timeout detail lost: %s", detail)
+			}
+		})
+	}
+}
+
+func TestRDMATopoOptIn(t *testing.T) {
+	const enabled = "checks:\n  rdma_topo: {}\n"
+	const healthy = "OK\tAll ConnectX DMA functions have correct PCI topology\n" +
+		"OK\tACS for DSP 0000:00:00.0 has correct values 0000000 = xx000x0\n" +
+		"OK\tKernel iommu_group for DMA 0000:01:00.0 and GPU 0000:02:00.0 are both 1\n"
+	for _, tt := range []struct {
+		err       error
+		name      string
+		config    string
+		output    string
+		severity  health.Severity
+		wantError observation.CollectionErrorCategory
+		enabled   bool
+	}{
+		{name: "default"},
+		{name: "unrelated config", config: "checks:\n  gpu_count: {}\n"},
+		{name: "enabled", config: enabled, output: healthy, enabled: true},
+		{name: "missing executable", config: enabled, err: exec.ErrNotFound, enabled: true, severity: health.Critical, wantError: observation.CollectionErrorCategoryUnavailable},
+		{name: "permission denied", config: enabled, err: fs.ErrPermission, enabled: true, severity: health.Critical, wantError: observation.CollectionErrorCategoryPermissionDenied},
+		{name: "malformed output", config: enabled, output: "unexpected output\n", enabled: true, severity: health.Critical, wantError: observation.CollectionErrorCategoryParseError},
+		{name: "ACS finding", config: enabled, output: strings.Replace(healthy,
+			"OK\tACS for DSP 0000:00:00.0 has correct values 0000000 = xx000x0",
+			"FAIL\tACS for DSP 0000:00:00.0 has incorrect values 1111111 != xx000x0, (0x7f != 0x62)", 1), enabled: true, severity: health.Critical},
+		{name: "disabled overrides enabled", config: enabled + "  gpu_count: {}\ndisabled_checks: [rdma_topo]\n"},
+	} {
+		for _, command := range []string{"run", "collect"} {
+			t.Run(tt.name+"/"+command, func(t *testing.T) {
+				calls := 0
+				sensor := rdmatoposensor.New(rdmatoposource.New(func(_ context.Context, out, _ io.Writer) (int, error) {
+					calls++
+					_, err := io.WriteString(out, tt.output)
+					if strings.Contains(tt.output, "FAIL\t") {
+						return 100, err
+					}
+					return 0, errors.Join(err, tt.err)
+				}))
+				a := cadenceRunApp().WithNodeID(testNodeID).WithCollect(sensor, sensor.Signals().IDs()...)
+				args := []string{command}
+				if tt.config != "" {
+					path := filepath.Join(t.TempDir(), "config.yaml")
+					if err := os.WriteFile(path, []byte(tt.config), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					args = append(args, "--config", path)
+				}
+				var stdout, stderr bytes.Buffer
+				wantExit := exitOK
+				if command == "run" && tt.severity == health.Critical {
+					wantExit = exitUnhealthy
+				}
+				if code := a.Run(args, &stdout, &stderr); code != wantExit {
+					t.Fatalf("exit=%d, want %d; stderr=%s", code, wantExit, stderr.String())
+				}
+				wantCalls := 0
+				if tt.enabled {
+					wantCalls = 1
+				}
+				if calls != wantCalls {
+					t.Fatalf("rdma_topo calls=%d, want %d", calls, wantCalls)
+				}
+				if command == "collect" {
+					var batch observation.ObservationBatch
+					if err := protojson.Unmarshal(stdout.Bytes(), &batch); err != nil {
+						t.Fatal(err)
+					}
+					if got := slices.ContainsFunc(batch.Observations, func(o *observation.Observation) bool {
+						return strings.HasPrefix(o.SignalId, "pcie.rdma_topo.")
+					}); got != tt.enabled {
+						t.Fatalf("rdma_topo observations present=%v, want %v", got, tt.enabled)
+					}
+					if tt.wantError != observation.CollectionErrorCategoryUnspecified {
+						// CLI export retains the original category in the error detail.
+						if !slices.ContainsFunc(batch.Observations, func(o *observation.Observation) bool {
+							err := o.GetCollectionError()
+							return strings.HasPrefix(o.SignalId, "pcie.rdma_topo.") && err != nil &&
+								err.Category == observation.CollectionErrorCategorySourceError && strings.Contains(err.Detail, tt.wantError.String())
+						}) {
+							t.Fatalf("missing rdma_topo collection error with %v detail: %v", tt.wantError, batch.Observations)
+						}
+					}
+					return
+				}
+				var verdict health.NodeVerdict
+				if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+					t.Fatal(err)
+				}
+				for _, result := range append(verdict.CheckResults, verdict.SkippedChecks...) {
+					if result.CheckID == "rdma_topo" {
+						if result.Skipped == tt.enabled || (tt.enabled && result.Severity != tt.severity) ||
+							(!tt.enabled && result.SkipReason != health.CheckDisabled) {
+							t.Fatalf("unexpected rdma_topo result: %+v", result)
+						}
+						return
+					}
+				}
+				t.Fatal("rdma_topo is absent from both results and skips")
+			})
+		}
 	}
 }

@@ -21,6 +21,7 @@ go_library(
         "//catalog/internal/evaluation",
         "//catalog/node",
         "//catalog/nvlink",
+        "//catalog/pcie",
         "//catalog/xid",
     ],
 )
@@ -48,6 +49,7 @@ go_test(
         "//catalog/infiniband",
         "//catalog/node",
         "//catalog/nvlink",
+        "//catalog/pcie",
         "//catalog/xid",
         "@com_github_google_cel_go//cel",
     ],

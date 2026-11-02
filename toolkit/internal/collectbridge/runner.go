@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -32,6 +33,12 @@ type Runner struct {
 	cycle   *collect.Cycle
 	owner   map[string]*collectEntry
 	entries []*collectEntry
+}
+
+// partialSensor publishes independently owned snapshots for one invocation.
+// Callbacks may arrive after Measure returns, so the bridge ignores late ones.
+type partialSensor interface {
+	MeasureWithPartial(context.Context, func(*observation.ObservationBatch), ...collect.OpOption) (*observation.ObservationBatch, error)
 }
 
 // collectEntry is one registered source and its collected batch.
@@ -109,7 +116,8 @@ func (r *Runner) Owner(signalID string) string {
 
 // Collect runs each registered sensor once, in registration order, and caches
 // its batch. collect.Run bounds each sensor by the cycle timeout and recovers
-// its panics, and a late result is discarded, never cached.
+// its panics. Sources implementing partialSensor can preserve earlier
+// observations after failure; late results are discarded, never cached.
 func (r *Runner) Collect() {
 	for _, e := range r.entries {
 		e.batch = r.measure(e)
@@ -163,9 +171,21 @@ func (r *Runner) Observe(signalIDs ...string) []*observation.Observation {
 // a source-scoped NO_TARGETS; per-target observations are kept, so valid
 // partial data survives.
 func (r *Runner) measure(e *collectEntry) *observation.ObservationBatch {
+	var partial atomic.Pointer[observation.ObservationBatch]
 	batch, sourceErr := collect.Run(context.Background(), r.cycle, e.id, func(ctx context.Context) (*observation.ObservationBatch, error) {
-		return e.sensor.Measure(ctx, collect.WithCycle(r.cycle), collect.WithSignalID(e.signals.IDs()...))
+		opts := []collect.OpOption{collect.WithCycle(r.cycle), collect.WithSignalID(e.signals.IDs()...)}
+		if sensor, ok := e.sensor.(partialSensor); ok {
+			return sensor.MeasureWithPartial(ctx, func(batch *observation.ObservationBatch) {
+				if batch != nil && ctx.Err() == nil {
+					partial.Store(batch)
+				}
+			}, opts...)
+		}
+		return e.sensor.Measure(ctx, opts...)
 	})
+	if batch == nil && sourceErr != nil {
+		batch = partial.Load()
+	}
 	if batch == nil {
 		return r.failed(e, errors.Join(sourceErr, errors.New("observation batch is required")))
 	}
@@ -178,8 +198,13 @@ func (r *Runner) measure(e *collectEntry) *observation.ObservationBatch {
 			found := false
 			for i, current := range batch.Observations {
 				if current.GetSignalId() == failure.GetSignalId() && current.GetTarget() == nil {
-					if current.GetCollectionError() == nil {
+					if prior := current.GetCollectionError(); prior == nil {
 						batch.Observations[i] = failure
+					} else if detail := failure.GetCollectionError().GetDetail(); !strings.Contains(prior.Detail, detail) {
+						if prior.Detail != "" {
+							prior.Detail += "; "
+						}
+						prior.Detail += detail
 					}
 					found = true
 					break

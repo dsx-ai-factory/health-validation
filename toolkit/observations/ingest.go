@@ -46,7 +46,9 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // Canonical Xid signals instead build one Xid measurement from their
 // journal-entry events; a batch that also carries <domain>.<field> Xid
 // observations yields one errored Xid measurement, since the two cannot be
-// merged.
+// merged. Canonical rdma_topo signals retain confirmed findings and
+// source-scoped collection failures as separate measurements sharing
+// invocation evidence.
 //
 // Both shapes may appear in one batch and feed one measurement. Other
 // signals are ignored. Collection failures attach to the affected catalog
@@ -56,15 +58,22 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // observations yields no measurement, so its checks are skipped as missing.
 func ToMeasurements(observations []*observation.Observation) []health.Measurement {
 	b := &builder{entities: make(map[entityKey]*entity)}
-	var xidObservations []*observation.Observation
+	var xidObservations, rdmaTopoObservations []*observation.Observation
 	for _, current := range observations {
 		if xidSignals[current.GetSignalId()] {
 			xidObservations = append(xidObservations, current)
 			continue
 		}
+		if _, ok := rdmaTopoFields[current.GetSignalId()]; ok {
+			rdmaTopoObservations = append(rdmaTopoObservations, current)
+			continue
+		}
 		b.add(current)
 	}
 	out := b.measurements()
+	if len(rdmaTopoObservations) > 0 {
+		out = append(out, canonicalRDMATopo(rdmaTopoObservations)...)
+	}
 	if len(xidObservations) == 0 {
 		return out
 	}
