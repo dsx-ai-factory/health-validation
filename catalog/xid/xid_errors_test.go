@@ -84,13 +84,13 @@ func TestXidErrors_ArchitectureCoverage(t *testing.T) {
 		{name: "all generations", checkID: "gpu_xid_46", architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "A100", "VR200"}},
 		{name: "HGX and PCIe baseboards, not Grace", checkID: "gpu_xid_54", architectures: []string{"B200", "H100", "H200", "A100"}},
 		{name: "Hopper only", checkID: "gpu_xid_136", architectures: []string{"H100", "H200"}},
-		{name: "Hopper and Blackwell", checkID: "gpu_xid_110", architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "VR200"}},
+		{name: "Hopper, Blackwell and Vera Rubin", checkID: "gpu_xid_110", architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "VR200"}},
 		{name: "Grace Blackwell and Vera Rubin", checkID: "gpu_xid_142", architectures: []string{"GB200", "GB300", "VR200"}},
 		{name: "NVLink5 Blackwell and Vera Rubin", checkID: "gpu_xid_144", architectures: []string{"GB200", "GB300", "B200", "VR200"}},
 		{name: "common warning", checkID: "gpu_xid_8", architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "A100", "VR200"}},
 		{name: "Ampere and Hopper warning", checkID: "gpu_xid_80", architectures: []string{"H100", "H200", "A100"}},
-		{name: "Hopper and Blackwell warning", checkID: "gpu_xid_96", architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "VR200"}},
-		{name: "Blackwell warning", checkID: "gpu_xid_126", architectures: []string{"GB200", "GB300", "B200", "VR200"}},
+		{name: "Hopper, Blackwell and Vera Rubin warning", checkID: "gpu_xid_96", architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "VR200"}},
+		{name: "Blackwell and Vera Rubin warning", checkID: "gpu_xid_126", architectures: []string{"GB200", "GB300", "B200", "VR200"}},
 		{name: "informational all generations", checkID: "gpu_xid_154", architectures: []string{"GB200", "GB300", "B200", "H100", "H200", "A100", "VR200"}},
 	}
 
