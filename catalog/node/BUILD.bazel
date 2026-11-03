@@ -13,7 +13,10 @@ go_library(
 
 go_test(
     name = "node_test",
-    srcs = ["gpu_count_test.go"],
+    srcs = [
+        "gpu_count_test.go",
+        "measurement_test.go",
+    ],
     deps = [
         ":node",
         "//catalog",

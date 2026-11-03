@@ -45,7 +45,7 @@ const (
 var canonicalTargets = []canonicalTarget{
 	{kind: targetGPU, signals: gpusignals.All()},
 	{kind: targetNode, signals: cpusignals.All()},
-	{kind: targetNode, signals: collect.Signals{gpuinventory.GPUCount}},
+	{kind: targetNode, signals: collect.Signals{gpuinventory.GPUCount, gpuinventory.DriverVersionSignal}},
 	{kind: targetNVLinkEndpoint, signals: gpusignals.EndpointSignals()},
 	{kind: targetGPUPair, signals: gpusignals.PairSignals()},
 	{kind: targetGPUProcess, signals: gpusignals.ProcessEntitySignals()},
