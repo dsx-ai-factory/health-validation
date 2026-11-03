@@ -29,6 +29,7 @@ type Catalog struct {
 	disabledChecks   map[string]bool
 	evaluationEngine *evaluation.EvaluationEngine
 	overrides        OverrideSet
+	architecture     string
 	host             health.Host
 	executionContext health.ExecutionContext
 	mu               sync.RWMutex
@@ -69,7 +70,7 @@ var ErrArchitectureUnset = errors.New("architecture must be set via WithArchitec
 // Evaluate requires a non-empty architecture; omitting this option is valid
 // for List/Overrides but fails closed at evaluation.
 func WithArchitecture(arch string) Option {
-	return func(c *Catalog) { c.host.Architecture = arch }
+	return func(c *Catalog) { c.architecture = arch }
 }
 
 // WithDriverVersion sets the node's NVIDIA driver version, which reaches
@@ -247,6 +248,7 @@ type paramsSnapshot struct {
 	cadence          *health.SchedulingCadence
 	disabledChecks   map[string]bool
 	overrides        OverrideSet
+	architecture     string
 	host             health.Host
 	executionContext health.ExecutionContext
 }
@@ -258,7 +260,7 @@ type paramsSnapshot struct {
 // disabled checks.
 func (s paramsSnapshot) forCheck(checkID string) evaluation.Params {
 	return evaluation.Params{
-		Host:             s.host,
+		Architecture:     s.architecture,
 		ExecutionContext: s.executionContext,
 		Disabled:         s.disabledChecks[checkID],
 		Overrides:        s.overrides.ForCheck(checkID),
@@ -276,6 +278,7 @@ func (c *Catalog) snapshotParams() paramsSnapshot {
 	return paramsSnapshot{
 		overrides:        c.overrides,
 		disabledChecks:   c.disabledChecks,
+		architecture:     c.architecture,
 		host:             c.host,
 		executionContext: c.executionContext,
 	}
@@ -284,7 +287,7 @@ func (c *Catalog) snapshotParams() paramsSnapshot {
 func (c *Catalog) requireArchitecture() error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if c.host.Architecture == "" {
+	if c.architecture == "" {
 		return ErrArchitectureUnset
 	}
 	return nil
@@ -305,7 +308,8 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 		return health.CheckVerdict{}, fmt.Errorf("check %q not found", checkID)
 	}
 
-	return c.evaluationEngine.EvaluateCheck(cd, m, c.snapshotParams().forCheck(checkID))
+	snap := c.snapshotParams()
+	return c.evaluationEngine.EvaluateCheck(cd, m, snap.host, snap.forCheck(checkID))
 }
 
 // EvaluateAll runs all checks whose Category matches the provided
@@ -407,6 +411,7 @@ func (c *Catalog) batchSnapshot(opts EvaluationOptions) (map[string]*health.Chec
 		cadence:          opts.Cadence,
 		overrides:        c.overrides,
 		disabledChecks:   c.disabledChecks,
+		architecture:     c.architecture,
 		host:             c.host,
 		executionContext: c.executionContext,
 	}

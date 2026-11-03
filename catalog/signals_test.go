@@ -248,22 +248,23 @@ type hostDependentMeasurement struct {
 func (hostDependentMeasurement) Category() health.Category           { return health.Node }
 func (hostDependentMeasurement) Errors() []health.ErroredMeasurement { return nil }
 func (hostDependentMeasurement) DerivedSignals(host health.Host) map[string]any {
-	if host.Architecture == "" {
+	if !host.DriverVersion.Known() {
 		return map[string]any{}
 	}
-	return map[string]any{"widget_arch": host.Architecture}
+	return map[string]any{"widget_driver": host.DriverVersion.String()}
 }
 
 func TestCheckDerivedSignalKeysStable_DetectsHostDependentKey(t *testing.T) {
 	if err := catalog.CheckDerivedSignalKeysStable(hostDependentMeasurement{}, health.Host{}); err != nil {
 		t.Fatalf("a zero host alone cannot show the dependence: %v", err)
 	}
-	err := catalog.CheckDerivedSignalKeysStable(hostDependentMeasurement{}, health.Host{Architecture: "GB200"})
+	driver, _ := health.ParseDriverVersion("575.51.03")
+	err := catalog.CheckDerivedSignalKeysStable(hostDependentMeasurement{}, health.Host{DriverVersion: driver})
 	if err == nil {
 		t.Fatal("expected an error for a key that appears only once the host is known, got nil")
 	}
-	if !strings.Contains(err.Error(), "widget_arch") {
-		t.Errorf("error = %q, want it to name widget_arch", err.Error())
+	if !strings.Contains(err.Error(), "widget_driver") {
+		t.Errorf("error = %q, want it to name widget_driver", err.Error())
 	}
 }
 
@@ -284,7 +285,7 @@ func TestDerivedSignalChecks_IgnoreNonDerivers(t *testing.T) {
 	if err := catalog.CheckDerivedSignals(node.NodeMeasurement{}); err != nil {
 		t.Errorf("CheckDerivedSignals rejected a non-deriving measurement: %v", err)
 	}
-	if err := catalog.CheckDerivedSignalKeysStable(node.NodeMeasurement{}, health.Host{Architecture: "GB200"}); err != nil {
+	if err := catalog.CheckDerivedSignalKeysStable(node.NodeMeasurement{}, health.Host{}); err != nil {
 		t.Errorf("CheckDerivedSignalKeysStable rejected a non-deriving measurement: %v", err)
 	}
 }

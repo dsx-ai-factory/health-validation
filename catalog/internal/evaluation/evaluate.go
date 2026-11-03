@@ -39,7 +39,7 @@ func NewEvaluationEngine() *EvaluationEngine {
 type Params struct {
 	Overrides        map[string]any
 	Cadence          *health.SchedulingCadence
-	Host             health.Host
+	Architecture     string
 	ExecutionContext health.ExecutionContext
 	Disabled         bool
 }
@@ -54,12 +54,12 @@ type Params struct {
 // measurement then runs through error attribution and CEL: an error
 // covering a required signal short-circuits to Critical, otherwise the
 // rules evaluate against the populated fields.
-func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Measurement, p Params) (health.CheckVerdict, error) {
+func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Measurement, host health.Host, p Params) (health.CheckVerdict, error) {
 	now := time.Now()
 	if v, isSkip := checkLevelSkip(cd, p, now); isSkip {
 		return v, nil
 	}
-	o := observe(m, p.Host)
+	o := observe(m, host)
 	if !routes(cd, o.category, o.signals) {
 		return skippedVerdict(cd, now, health.NoApplicableMeasurement, noApplicableDetail(cd)), nil
 	}
@@ -126,9 +126,9 @@ func observe(m health.Measurement, host health.Host) observed {
 //
 // paramsFor supplies the per-check evaluation context; the engine asks
 // for fresh Params per check so overrides and disabled state stay
-// per-check, matching the single-check EvaluateCheck path. host is taken
-// separately because signals are extracted once per measurement, before
-// any check's Params exist; it must be the Host paramsFor reports.
+// per-check, matching the single-check EvaluateCheck path. host is what
+// derived signals read; it is taken separately because signals are
+// extracted once per measurement, before any check's Params exist.
 func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefinition, measurements []health.Measurement, host health.Host, paramsFor func(checkID string) Params) ([]health.CheckVerdict, error) {
 	now := time.Now()
 
@@ -371,9 +371,9 @@ func checkLevelSkip(cd *health.CheckDefinition, p Params, now time.Time) (health
 			fmt.Sprintf("check cadence %s does not cover requested cadence %s", cd.SchedulingCadence, *p.Cadence)), true
 	}
 
-	if p.Host.Architecture != "" && len(cd.Architectures) > 0 && !slices.Contains(cd.Architectures, p.Host.Architecture) {
+	if p.Architecture != "" && len(cd.Architectures) > 0 && !slices.Contains(cd.Architectures, p.Architecture) {
 		return skippedVerdict(cd, now, health.ArchitectureUnsupported,
-			fmt.Sprintf("check requires %v, running on %s", cd.Architectures, p.Host.Architecture)), true
+			fmt.Sprintf("check requires %v, running on %s", cd.Architectures, p.Architecture)), true
 	}
 
 	if len(cd.ExecutionContexts) > 0 && !slices.Contains(cd.ExecutionContexts, p.ExecutionContext) {
@@ -419,7 +419,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		return withEntity(ErroredVerdict(cd, now, detail, action), entity), nil
 	}
 
-	resolved, err := resolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Host.Architecture)
+	resolved, err := resolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
 	if err != nil {
 		return health.CheckVerdict{}, err
 	}

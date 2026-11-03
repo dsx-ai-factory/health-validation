@@ -107,11 +107,10 @@ FixedThresholdError is returned when an operator attempts to override a threshol
 
 ### Host
 
-Host is what a run knows about the node it is evaluating, independent of any one measurement. It is supplied once, when the catalog is built, and holds for every check and measurement in that run.
+Host is what derived signals may know about the node beyond their own measurement. It is supplied once, when the catalog is built, and holds for every measurement in that run. The GPU architecture is deliberately not here: it decides which checks apply and which thresholds they use, not what a measurement's signals are.
 
 | Field | JSON name | Type | Description |
 |---|---|---|---|
-| <nobr>`Architecture`</nobr> |  | <nobr>`string`</nobr> | Architecture is the node's GPU architecture (e.g. "GB200"). Checks scoped to other architectures are skipped, and per-architecture thresholds resolve against it. |
 | <nobr>`DriverVersion`</nobr> |  | [<nobr>`DriverVersion`</nobr>](#driverversion) | DriverVersion is the node's NVIDIA driver version, for derivations whose meaning changed between driver releases. The zero value means it could not be determined. |
 
 ### NodeVerdict

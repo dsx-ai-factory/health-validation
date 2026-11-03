@@ -425,7 +425,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		slog.Warn("driver version unreadable; continuing without it")
 	}
 
-	cat, timeout, err := buildCatalog(cfg, a.customChecks, health.Host{Architecture: arch, DriverVersion: driverVersion}, executionContext)
+	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, driverVersion, executionContext)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
@@ -691,7 +691,7 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
-	cat, timeout, err := buildCatalog(cfg, a.customChecks, health.Host{}, health.TenantGuest)
+	cat, timeout, err := buildCatalog(cfg, a.customChecks, "", health.DriverVersion{}, health.TenantGuest)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
@@ -825,8 +825,8 @@ func loadOptionalConfig(path string) (*Config, error) {
 // so a config may target a custom check too — and its
 // collection_timeout_seconds (if set) is the timeout; otherwise the toolkit
 // default is used. A nil cfg means no config file: built-ins only, default
-// timeout. host carries what discovery found about the node.
-func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, host health.Host, executionContext health.ExecutionContext) (*catalog.Catalog, time.Duration, error) {
+// timeout. arch and driverVersion are what discovery found about the node.
+func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string, driverVersion health.DriverVersion, executionContext health.ExecutionContext) (*catalog.Catalog, time.Duration, error) {
 	// register adds the caller-supplied checks to a freshly built catalog.
 	// Classification is passed through untouched; the only failure is the
 	// catalog's duplicate-ID guard.
@@ -843,9 +843,9 @@ func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, host healt
 	// NVML reports "unknown" for unrecognized devices so scoped checks still skip.
 	// Evaluate requires a non-empty architecture; the CLI fails discovery before
 	// it would construct a catalog with none.
-	opts := []catalog.Option{catalog.WithExecutionContext(executionContext), catalog.WithDriverVersion(host.DriverVersion)}
-	if host.Architecture != "" {
-		opts = append(opts, catalog.WithArchitecture(host.Architecture))
+	opts := []catalog.Option{catalog.WithExecutionContext(executionContext), catalog.WithDriverVersion(driverVersion)}
+	if arch != "" {
+		opts = append(opts, catalog.WithArchitecture(arch))
 	}
 
 	if cfg == nil {

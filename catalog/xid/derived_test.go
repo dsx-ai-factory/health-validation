@@ -24,7 +24,7 @@ func TestXidMeasurement_DerivedSignalContract(t *testing.T) {
 	if !ok {
 		t.Fatal("ParseDriverVersion failed")
 	}
-	if err := catalog.CheckDerivedSignalKeysStable(populated, health.Host{Architecture: "GB200", DriverVersion: driver}); err != nil {
+	if err := catalog.CheckDerivedSignalKeysStable(populated, health.Host{DriverVersion: driver}); err != nil {
 		t.Error(err)
 	}
 	if err := catalog.CheckDerivedSignals(xid.XidMeasurement{}); err != nil {
