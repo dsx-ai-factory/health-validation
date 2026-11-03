@@ -1,0 +1,7 @@
+# Generated Go files are checked in under //proto/go/health/v1.
+# gazelle:proto disable
+
+exports_files(
+    ["verdict.proto"],
+    visibility = ["//visibility:public"],
+)

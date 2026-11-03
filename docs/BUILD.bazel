@@ -1,5 +1,11 @@
 load("@aspect_bazel_lib//lib:write_source_files.bzl", "write_source_files")
 
+write_source_files(
+    name = "verdict_api_update",
+    files = {"verdict-api.md": "//proto/cmd/genverdictdocs:reference"},
+    visibility = ["//proto:__pkg__"],
+)
+
 # docs/reference holds the Check Catalog and Verdict Schema pages, generated from
 # catalog/ by //catalog/cmd/gencheckpages. The generated _test target fails when
 # the committed copy is stale; regenerate with

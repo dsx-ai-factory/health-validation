@@ -1,0 +1,31 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
+go_library(
+    name = "verdictproto",
+    srcs = ["verdict.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/toolkit/verdictproto",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//catalog/health",
+        "//proto/go/health/v1:health",
+        "//proto/verdictjson",
+        "@org_golang_google_protobuf//encoding/protojson",
+    ],
+)
+
+go_test(
+    name = "verdictproto_test",
+    srcs = ["verdict_test.go"],
+    data = ["//catalog/health:node-verdict.schema.json"],
+    deps = [
+        ":verdictproto",
+        "//catalog",
+        "//catalog/gpu",
+        "//catalog/health",
+        "//proto/go/health/v1:health",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//reflect/protoreflect",
+    ],
+)

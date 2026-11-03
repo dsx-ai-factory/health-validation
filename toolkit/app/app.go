@@ -309,6 +309,8 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 		return a.collectCommand(args[1:], stdout, stderr)
 	case "run":
 		return a.runCommand(args[1:], stdout, stderr)
+	case "serve":
+		return a.serveCommand(args[1:], stderr)
 	case "version":
 		return versionCommand(args[1:], stdout, stderr, a.prog)
 	default:
@@ -395,58 +397,27 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	// One cycle covers architecture discovery and collection, so discovery
-	// reads the same GPU inventory the node GPU count is derived from.
-	cycle, err := newCycle(collectionTimeout(cfg))
+	verdict, err := a.evaluateOnce(context.Background(), cfg, evaluationRequest{
+		NodeID:           resolvedNodeID,
+		Cadence:          cadence,
+		ExecutionContext: executionContext,
+	}, xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
-
-	// Detect the node architecture so architecture-scoped checks run only
-	// where they apply. A discovery failure is a node fault — the GPUs are
-	// unenumerable or unreadable — so drain for that explicit reason instead
-	// of evaluating with no architecture (Evaluate requires WithArchitecture).
-	arch, err := gpuinventory.Architecture(a.host.gpuInventory().Snapshot(context.Background(), cycle))
-	if err != nil {
-		slog.Warn("architecture discovery failed", "err", err)
-		verdict := discoveryFailureVerdict(err)
-		code := writeVerdict(verdict, a.prog, resolvedNodeID, stdout, stderr)
-		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
-		return code
-	}
-
-	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, executionContext)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
-		return exitError
-	}
-
-	runnable, err := cat.RunnableChecks(catalog.EvaluationOptions{Cadence: cadence})
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
-		return exitError
-	}
-
-	sensors, err := a.sensors(cycle, requiredFor(runnable), xidJournal)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
-		return exitError
-	}
-
-	verdict, produced, code := evaluate(cat, toolkit.CollectionOptions{
-		Cadence: cadence,
-		Timeout: timeout,
-	}, a.prog, resolvedNodeID, stdout, stderr, sensors...)
-	if produced {
-		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
-	}
+	code := writeVerdict(verdict, a.prog, resolvedNodeID, stdout, stderr)
+	publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
 	return code
 }
 
 // sensors returns the legacy sensors and the collect-backed sensors, whose
 // sources are measured once now under cycle.
 func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
+	return a.sensorsContext(context.Background(), cycle, required, xidJournal)
+}
+
+func (a *App) sensorsContext(ctx context.Context, cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
 	gpu := a.gpu
 	if gpu == nil {
 		gpu = a.host.gpuBackend()
@@ -491,7 +462,7 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 			}
 		}
 	}
-	collectSensors, err := a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
+	collectSensors, err := a.collectSensorsContext(ctx, cycle, builtinSources, builtinAdapters, required)
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +547,7 @@ func (a *App) resolveNodeID(value string, supplied bool) (string, error) {
 
 // usage returns the one-line usage banner for the given program name.
 func usage(prog string) string {
-	return "usage: " + prog + " <collect|run|version> [flags]"
+	return "usage: " + prog + " <collect|run|serve|version> [flags]"
 }
 
 func registerXidTimeFlags(fs *flag.FlagSet) {

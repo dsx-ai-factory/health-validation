@@ -27,8 +27,9 @@ type MultiBackend interface {
 // LazyGPUBackend wraps a backend constructor and defers it until the first
 // Measure call, so an expensive or hang-prone initialization (NVML over
 // cgo, for example) runs inside Collect's per-sensor timeout watchdog
-// rather than before it. newFn is invoked at most once; a construction
-// error or a hang then surfaces through the normal collection path — the
+// rather than before it. newFn is invoked once per initialization attempt;
+// BeginCycle permits retrying a failed attempt. A construction error or a hang
+// surfaces through the normal collection path — the
 // dependent sensors degrade to errored measurements, or a hung init is
 // bounded by the watchdog and trips the circuit breaker — instead of
 // hanging or aborting the run before any verdict is produced.
@@ -75,6 +76,23 @@ func (b *lazyGPUBackend) measure(collect func(MultiBackend) ([]health.Measuremen
 		return nil, err
 	}
 	return collect(backend)
+}
+
+// BeginCycle forwards cache invalidation without opening an unused backend.
+// The caller must wait for every measurement from the previous cycle to finish.
+func (b *lazyGPUBackend) BeginCycle() {
+	if !b.ready.Load() || b.inFlight.Load() > 0 {
+		return
+	}
+	if b.initErr != nil {
+		b.once = sync.Once{}
+		b.backend, b.initErr = nil, nil
+		b.ready.Store(false)
+		return
+	}
+	if backend, ok := b.backend.(interface{ BeginCycle() }); ok {
+		backend.BeginCycle()
+	}
 }
 
 func (b *lazyGPUBackend) MeasureGPUs() ([]health.Measurement, error) {

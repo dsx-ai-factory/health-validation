@@ -133,6 +133,10 @@ func (b *NVMLBackend) WithNVLinkProbe(p DeviceProber) *NVMLBackend {
 	return &cp
 }
 
+// BeginCycle invalidates the device enumeration while retaining the library.
+// Call only between collection cycles, after earlier measurements have finished.
+func (b *NVMLBackend) BeginCycle() { b.devs = nil }
+
 // devices returns the handles for all GPUs discovered by NVML.
 // Handles are fetched on first call and cached on the receiver for
 // subsequent calls. A device whose handle cannot be retrieved is

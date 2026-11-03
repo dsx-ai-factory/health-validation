@@ -541,3 +541,24 @@ func TestCollectRunnerRejectsFutureJournalEntry(t *testing.T) {
 		}
 	}
 }
+
+func TestCollectContextAlreadyCanceledDoesNotStartSources(t *testing.T) {
+	runner := newCollectRunner(t, time.Minute)
+	registerRunner(t, runner, runnerSource{
+		id: "canceled", signals: collect.Signals{runnerCount},
+		measure: func(context.Context, *collect.Op) (*observation.ObservationBatch, error) {
+			t.Error("source started after cancellation")
+			return nil, nil
+		},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	runner.CollectContext(ctx)
+	observed := runner.Observe(runnerCount.ID())
+	if len(observed) != 1 || observed[0].GetCollectionError() == nil {
+		t.Fatalf("observations = %v, want collection failure", observed)
+	}
+	if !strings.Contains(observed[0].GetCollectionError().GetDetail(), collect.ErrCollectionCanceled.Error()) {
+		t.Fatalf("failure = %v, want canceled collection", observed[0].GetCollectionError())
+	}
+}

@@ -189,3 +189,63 @@ func TestNVMLReaderFailures(t *testing.T) {
 		}
 	})
 }
+
+type changingInventoryInstance struct {
+	*fakeInstance
+	refresh func() error
+}
+
+func (i changingInventoryInstance) Refresh() error { return i.refresh() }
+
+func TestNVMLReaderRefreshesGPUCountAndArchitectureAcrossCycles(t *testing.T) {
+	inst := withRecords(gpu(0, "NVIDIA GB200"), gpu(1, "NVIDIA GB200"))
+	refreshes := 0
+	changing := changingInventoryInstance{fakeInstance: inst, refresh: func() error {
+		refreshes++
+		next := withRecords(gpu(0, "NVIDIA H100 80GB HBM3"))
+		inst.records, inst.devices = next.records, next.devices
+		return nil
+	}}
+	inv := New(func() (Reader, error) { return NVML(changing), nil })
+	first := testCycle(t, "first")
+	snapshot := inv.Snapshot(context.Background(), first)
+	if count, ok := Count(snapshot); !ok || count != 2 {
+		t.Fatalf("first count = %d, %v", count, ok)
+	}
+	if arch, err := Architecture(snapshot); err != nil || arch != "GB200" {
+		t.Fatalf("first architecture = %q, %v", arch, err)
+	}
+	inv.Snapshot(context.Background(), first)
+	if refreshes != 0 {
+		t.Fatalf("refreshed the freshly opened source %d times", refreshes)
+	}
+	snapshot = inv.Snapshot(context.Background(), testCycle(t, "second"))
+	if count, ok := Count(snapshot); !ok || count != 1 {
+		t.Fatalf("second count = %d, %v", count, ok)
+	}
+	if arch, err := Architecture(snapshot); err != nil || arch != "H100" {
+		t.Fatalf("second architecture = %q, %v", arch, err)
+	}
+	if refreshes != 1 {
+		t.Fatalf("refreshes = %d, want 1", refreshes)
+	}
+}
+
+func TestNVMLInventoryReopensMissingLibraryNextCycle(t *testing.T) {
+	opens := 0
+	inv := New(func() (Reader, error) {
+		opens++
+		if opens == 1 {
+			return NVML(nvmlsource.NewNoOp()), nil
+		}
+		return NVML(withRecords(gpu(0, "NVIDIA GB200"))), nil
+	})
+	first := inv.Snapshot(context.Background(), testCycle(t, "missing"))
+	if first.GetCollectionError() == nil {
+		t.Fatal("missing library did not produce a collection failure")
+	}
+	second := inv.Snapshot(context.Background(), testCycle(t, "available"))
+	if count, ok := Count(second); !ok || count != 1 || opens != 2 {
+		t.Fatalf("retry count=%d available=%v opens=%d, want 1/true/2", count, ok, opens)
+	}
+}

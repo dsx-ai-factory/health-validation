@@ -272,6 +272,22 @@ Run a one-shot check:
 ./health-validation run
 ```
 
+Serve verdicts on demand over local HTTP and gRPC:
+
+```shell
+./health-validation serve --address 127.0.0.1:8080
+# From another terminal on the same node:
+curl --fail http://127.0.0.1:8080/verdict
+```
+
+Each request uses the same evaluation core as `run` and returns a fresh
+`NodeVerdict`. Every severity, including CRITICAL, is a successful API response;
+inspect `overall_severity`. The agent serializes collection and exits `0` on a
+clean shutdown or `2` on startup failure. Its default listener is
+`127.0.0.1:8080`; the plaintext API is intended for local callers. Agentkit remains
+experimental (v0). See [Agent mode](docs/agent-mode.md) for the contract, request
+overrides, timeouts, metrics, and container/systemd examples.
+
 The verdict's `node_id` defaults to the configured system hostname. Use
 `--node-id <id>` to supply a scheduler or inventory identifier instead.
 Optional `--cadence CONTINUOUS|PROLOG|MAINTENANCE`
@@ -281,7 +297,7 @@ The execution context defaults to `TENANT_GUEST`. Use
 `--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND` to select checks
 for a different execution context.
 
-Both `run` and `collect` can limit which Xid events are considered. By default,
+`run`, `serve`, and `collect` can limit which Xid events are considered. By default,
 collection covers the entire current boot.
 
 After resetting an individual GPU, use `--xid-from PCI_ADDRESS=unix-seconds`

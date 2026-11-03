@@ -51,6 +51,16 @@ func newHostBackend() hostBackend {
 }
 
 func (h *nvmlHost) openInventory() (gpuinventory.Reader, error) {
+	h.mu.Lock()
+	inst := h.inst
+	h.mu.Unlock()
+	// An open abandoned by its watchdog can complete before the next request.
+	if inst != nil && inst.NVMLExists() {
+		if err := inst.Refresh(); err != nil {
+			return nil, err
+		}
+		return gpuinventory.NVML(inst), nil
+	}
 	inst, err := nvmlsource.New()
 	if err != nil {
 		return nil, err

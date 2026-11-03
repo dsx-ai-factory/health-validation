@@ -36,6 +36,17 @@ type nvmlReader struct {
 
 func (nvmlReader) ID() string { return nvmlSource }
 
+// NeedsReopen allows a missing-library placeholder to retry loading next cycle.
+func (r nvmlReader) NeedsReopen() bool { return !r.inst.NVMLExists() }
+
+// Refresh re-enumerates a reused instance before the next collection cycle.
+func (r nvmlReader) Refresh(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return r.inst.Refresh()
+}
+
 func (r nvmlReader) Read(ctx context.Context) (*observation.GPUInventorySnapshot, error) {
 	if !r.inst.NVMLExists() {
 		if err := r.inst.InitError(); err != nil {

@@ -248,3 +248,46 @@ func TestArchitecture(t *testing.T) {
 		})
 	}
 }
+
+type refreshingInventoryReader struct {
+	Reader
+	refresh func(context.Context) error
+}
+
+func (r refreshingInventoryReader) Refresh(ctx context.Context) error { return r.refresh(ctx) }
+
+func TestInventoryRefreshesOnlyBetweenCyclesAndRecovers(t *testing.T) {
+	reader := &fakeReader{snapshot: inventory(gpuEntry(0, "NVIDIA GB200"))}
+	refreshes, opens := 0, 0
+	refreshed := refreshingInventoryReader{Reader: reader, refresh: func(context.Context) error {
+		refreshes++
+		if refreshes == 1 {
+			return errors.New("GPU enumeration failed")
+		}
+		reader.snapshot = inventory(gpuEntry(0, "NVIDIA H100 80GB HBM3"), gpuEntry(1, "NVIDIA H100 80GB HBM3"))
+		return nil
+	}}
+	inv := New(func() (Reader, error) { opens++; return refreshed, nil })
+	first := testCycle(t, "first")
+	if count, ok := Count(inv.Snapshot(context.Background(), first)); !ok || count != 1 {
+		t.Fatalf("first count = %d, %v", count, ok)
+	}
+	inv.Snapshot(context.Background(), first)
+	if refreshes != 0 || reader.reads != 1 {
+		t.Fatalf("first cycle refreshed %d times and read %d times", refreshes, reader.reads)
+	}
+	failed := inv.Snapshot(context.Background(), testCycle(t, "failed"))
+	if failed.GetCollectionError().GetOperation() != "Refresh" || reader.reads != 1 {
+		t.Fatalf("failed refresh reused stale inventory: %v, reads=%d", failed, reader.reads)
+	}
+	recovered := inv.Snapshot(context.Background(), testCycle(t, "recovered"))
+	if count, ok := Count(recovered); !ok || count != 2 {
+		t.Fatalf("recovered count = %d, %v", count, ok)
+	}
+	if arch, err := Architecture(recovered); err != nil || arch != "H100" {
+		t.Fatalf("recovered architecture = %q, %v", arch, err)
+	}
+	if opens != 1 || refreshes != 2 || reader.reads != 2 {
+		t.Fatalf("opens=%d refreshes=%d reads=%d, want 1/2/2", opens, refreshes, reader.reads)
+	}
+}

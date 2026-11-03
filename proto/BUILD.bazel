@@ -1,0 +1,4 @@
+alias(
+    name = "reference_update",
+    actual = "//docs:verdict_api_update",
+)

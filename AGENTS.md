@@ -34,9 +34,9 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ### Capability boundaries
 
-- Health Validation emits verdicts. It does not take action. The binary exits after writing JSON. What happens to the node is the downstream system's decision.
+- Health Validation emits verdicts. It does not take action. `run` exits after writing JSON; `serve` returns one verdict per request over local HTTP/gRPC. What happens to the node is the downstream system's decision.
 - Health Validation is node-local. Each run evaluates one node's measurements. There is no cross-node analysis, fleet correlation, or pattern detection.
-- Health Validation is not a monitoring system. It runs on demand and produces one verdict per invocation. It does not maintain state between runs or stream signals continuously.
+- Health Validation is not a monitoring system. It evaluates on demand: once per `run` invocation or once per `serve` request. Agent mode retains backend/source handles but starts a fresh collection cycle for each request; it does not cache verdicts, poll automatically, or stream signals continuously.
 - Health Validation is not a host security boundary. It does not authenticate workload submitters, enforce tenant isolation, or attest to host compliance.
 
 ### Common operator misreads
@@ -149,7 +149,8 @@ The repo is **one Go module** (`github.com/dsx-ai-factory/health-validation`) wi
 - **`catalog/`** — the check catalog and evaluation engine. Self-contained: `health/` (shared vocabulary), `internal/{celeval,evaluation}/`, the `catalog` package at the directory root, the per-domain check packages (`cpu/`, `gpu/`, `node/`, `nvlink/`, `xid/`), and the catalog-only codegen/dump binaries under `cmd/`. No dependency on the toolkit.
 - **`toolkit/`** — sensors, the NVML backend (`nvml/`), and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on `catalog/` and `collect/`.**
 - **`collect/`** — raw collection library (sensors and sources); no dependency on the catalog or toolkit.
-- **`agentkit/`** — in-repo agent scaffolding and examples.
+- **`agentkit/`** — experimental (v0) pluggable gRPC/HTTP transport and examples; the transport imports the verdict proto, not catalog or toolkit.
+- **`proto/health/v1/`** — verdict wire contract (`health.verdict.v1`), with generated Go under `proto/go/health/v1/`. Raw observations retain their separate `collect/proto` contract.
 
 The dependency direction is strict: `catalog → (nothing)`, `collect → (nothing)`, `toolkit → catalog, collect`. Never add a catalog import of toolkit; keep catalog usable without the toolkit's dependencies. Bazel enforces most of this through the package groups in `build/visibility/`: a `catalog` or `collect` target cannot depend on `toolkit`, and a `catalog` target cannot depend on `collect`. `collect → catalog` is not blocked by visibility, and plain `go build` ignores it, so keep to the rule there. Tests are bound by the same rule: a catalog test that needs sensor-style input builds its measurement structs directly rather than importing the toolkit.
 
@@ -220,6 +221,43 @@ Consequence: on darwin `go build ./toolkit/cmd/health-validation` succeeds (stub
 When adding a direct third-party dep here (this is how `gopkg.in/yaml.v3` arrived), run `bazel run //tools/gazelle` and `bazel run //tools/go -- mod tidy`. Both run natively on darwin now that the `-z,lazy` linkopt is scoped to linux builds (see PIE + lazy binding below). The new external repo must also be added to `use_repo(go_deps, …)` in `third_party/go.MODULE.bazel` (gazelle's repo name for `gopkg.in/yaml.v3` is `in_gopkg_yaml_v3`, target `:yaml_v3`).
 
 If the dep ends up linked into the CLI, `toolkit/cmd/health-validation/SHIPPED_MODULES.txt` changes too. Regenerate it with `bazel run //toolkit/cmd/health-validation:shipped_modules_update`, then run `bazel run //tools:check_notice -- --write` so `NOTICE` keeps up (without `--write` it only verifies). `//toolkit/cmd/health-validation:shipped_modules_cross_check` also checks the recorded list against the module set the Bazel graph says is linked, which catches a module that is linked but absent from the embedded list.
+
+### Agent mode (`health-validation serve`)
+
+`serve --address 127.0.0.1:8080` exposes `VerdictService.Evaluate` and
+`GET/POST /verdict` on one plaintext TCP port. The default listener is loopback.
+`toolkit/app/evaluation.go` is the shared `run`/`serve` core: architecture discovery,
+check selection, collection, and aggregation run once per request. Configuration
+and host backends are process-lifetime state. `serve` accepts the same node,
+cadence, execution-context, config, and Xid journal flags as `run`; API request
+fields override node/cadence/context defaults for that request only. Config is
+loaded at startup; restart to reload it.
+
+Agent collection is serialized. The configured collection timeout bounds the
+whole request, including waiting for admission; client cancellation propagates
+through the collection bridge. `collect.WithCallTracking` tracks underlying
+calls that outlive watchdogs; admission stays closed until those calls return,
+so a timed-out native call cannot overlap the next collection. Preserve that
+lifetime boundary when changing cancellation or shutdown handling.
+
+Every produced verdict, including a CRITICAL discovery-failure verdict, is a
+successful response. Invalid requests use gRPC INVALID_ARGUMENT / HTTP 400;
+request deadlines use DEADLINE_EXCEEDED / HTTP 504; inability to produce a
+verdict uses a server error. `serve` returns exit 0 for clean shutdown and 2 for
+startup/server failure, independently of per-request verdict severity. No
+health/readiness endpoint is promised in v1.
+
+The converter lives in `toolkit/verdictproto`; catalog must not import proto.
+The wire contract mirrors the current schema **0.4**, including ordered
+remediation sequences. Use `proto/verdictjson` for canonical HTTP JSON so
+required empty containers and zero-valued enums/bools match one-shot JSON.
+Dynamic `google.protobuf.Value` numbers that change numeric meaning through
+double conversion are rejected rather than silently rounded. Unknown enum
+values fail conversion.
+Metrics publish best-effort only after a successful response is written and
+retain the ManualReader/export-once/no-retry/timeout invariants of `run`.
+See [docs/agent-mode.md](docs/agent-mode.md) for the operating contract and test
+matrix. Keep agentkit experimental (v0); readiness remains a separate follow-up.
 
 ### Conventions
 

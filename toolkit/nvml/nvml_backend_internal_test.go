@@ -119,3 +119,29 @@ func TestDevices_Caches(t *testing.T) {
 		t.Errorf("DeviceGetCount invoked %d times, want 1 (result should be cached)", countCalls)
 	}
 }
+
+func TestBeginCycleReenumeratesWithoutReinitializingNVML(t *testing.T) {
+	initCalls, countCalls, count := 0, 0, 2
+	dev := &mock.Device{}
+	lib := &mock.Interface{
+		InitFunc:                   func() gonvml.Return { initCalls++; return gonvml.SUCCESS },
+		ShutdownFunc:               func() gonvml.Return { return gonvml.SUCCESS },
+		DeviceGetCountFunc:         func() (int, gonvml.Return) { countCalls++; return count, gonvml.SUCCESS },
+		DeviceGetHandleByIndexFunc: func(int) (gonvml.Device, gonvml.Return) { return dev, gonvml.SUCCESS },
+	}
+	backend := NewWithLibrary(lib)
+	defer backend.Close()
+	for _, want := range []int{2, 1, 0} {
+		count = want
+		backend.BeginCycle()
+		for range 2 {
+			devices, err := backend.devices()
+			if err != nil || len(devices) != want {
+				t.Fatalf("devices = %v, %v, want %d GPUs", devices, err, want)
+			}
+		}
+	}
+	if initCalls != 1 || countCalls != 3 {
+		t.Fatalf("init=%d enumeration=%d, want 1/3", initCalls, countCalls)
+	}
+}

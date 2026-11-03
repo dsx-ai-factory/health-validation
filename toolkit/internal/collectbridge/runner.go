@@ -111,8 +111,13 @@ func (r *Runner) Owner(signalID string) string {
 // its batch. collect.Run bounds each sensor by the cycle timeout and recovers
 // its panics, and a late result is discarded, never cached.
 func (r *Runner) Collect() {
+	r.CollectContext(context.Background())
+}
+
+// CollectContext collects each registered source under the caller's context.
+func (r *Runner) CollectContext(ctx context.Context) {
 	for _, e := range r.entries {
-		e.batch = r.measure(e)
+		e.batch = r.measure(ctx, e)
 	}
 }
 
@@ -162,8 +167,8 @@ func (r *Runner) Observe(signalIDs ...string) []*observation.Observation {
 // adds a source-scoped failure for each owned signal that lacks one, replacing
 // a source-scoped NO_TARGETS; per-target observations are kept, so valid
 // partial data survives.
-func (r *Runner) measure(e *collectEntry) *observation.ObservationBatch {
-	batch, sourceErr := collect.Run(context.Background(), r.cycle, e.id, func(ctx context.Context) (*observation.ObservationBatch, error) {
+func (r *Runner) measure(ctx context.Context, e *collectEntry) *observation.ObservationBatch {
+	batch, sourceErr := collect.Run(ctx, r.cycle, e.id, func(ctx context.Context) (*observation.ObservationBatch, error) {
 		return e.sensor.Measure(ctx, collect.WithCycle(r.cycle), collect.WithSignalID(e.signals.IDs()...))
 	})
 	if batch == nil {

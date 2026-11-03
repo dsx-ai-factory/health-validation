@@ -84,6 +84,9 @@ func (i *Inventory) read(ctx context.Context, cycle *collect.Cycle) *observation
 			CollectionError: &observation.CollectionError{Source: SensorID, Operation: operation, Category: category, Detail: err.Error()},
 		}}
 	}
+	if reader, ok := i.reader.(interface{ NeedsReopen() bool }); ok && reader.NeedsReopen() {
+		i.reader = nil
+	}
 	if i.reader == nil {
 		reader, err := run(ctx, cycle, SensorID, func(context.Context) (Reader, error) {
 			reader, err := i.open()
@@ -96,6 +99,13 @@ func (i *Inventory) read(ctx context.Context, cycle *collect.Cycle) *observation
 			return failed("Open", fmt.Errorf("open GPU inventory source: %w", err))
 		}
 		i.reader = reader
+	} else if refreshable, ok := i.reader.(interface{ Refresh(context.Context) error }); ok {
+		_, err := run(ctx, cycle, i.reader.ID(), func(ctx context.Context) (struct{}, error) {
+			return struct{}{}, refreshable.Refresh(ctx)
+		})
+		if err != nil {
+			return failed("Refresh", err)
+		}
 	}
 	snapshot, err := run(ctx, cycle, i.reader.ID(), i.reader.Read)
 	if err == nil && snapshot == nil {

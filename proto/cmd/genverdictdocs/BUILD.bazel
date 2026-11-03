@@ -1,0 +1,28 @@
+load("@aspect_bazel_lib//lib:run_binary.bzl", "run_binary")
+load("@rules_go//go:def.bzl", "go_library")
+load("//build/rules/go:defs.bzl", "go_binary")
+
+run_binary(
+    name = "reference",
+    outs = ["verdict-api.md"],
+    args = ["$(RULEDIR)/verdict-api.md"],
+    tool = ":genverdictdocs",
+    visibility = ["//docs:__pkg__"],
+)
+
+go_library(
+    name = "genverdictdocs_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/proto/cmd/genverdictdocs",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//proto/go/health/v1:health",
+        "@org_golang_google_protobuf//reflect/protoreflect",
+    ],
+)
+
+go_binary(
+    name = "genverdictdocs",
+    embed = [":genverdictdocs_lib"],
+    visibility = ["//visibility:public"],
+)

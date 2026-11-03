@@ -18,8 +18,6 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	healthv1 "github.com/dsx-ai-factory/health-validation/collect/proto/go/health/v1"
-	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
-	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 )
 
@@ -138,7 +136,7 @@ func TestCheckPreservesInventorySnapshotsFromEverySensor(t *testing.T) {
 		{Source: "dcgm", CollectedAt: now, Outcome: &observation.GPUInventorySnapshot_CollectionError{CollectionError: &observation.CollectionError{Source: "dcgm", Operation: "GetDevices", Category: observation.CollectionErrorCategoryUnavailable, Detail: "enumeration failed"}}},
 	}
 	collector := New()
-	sensorIDs := []string{nvmlsensor.ID, dcgmsensor.ID}
+	sensorIDs := []string{"gpu.nvml", "gpu.dcgm"}
 	for i, snapshot := range snapshots {
 		id := sensorIDs[i]
 		collector.Register(testSensor{

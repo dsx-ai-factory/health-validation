@@ -108,7 +108,9 @@ func Run[T any](
 		err   error
 	}
 	completed := make(chan result, 1)
+	finished := TrackCall(ctx)
 	go func() {
+		defer finished()
 		current := result{}
 		defer func() {
 			if recovered := recover(); recovered != nil {

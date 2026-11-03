@@ -1,0 +1,18 @@
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+  except:
+    # Names and zero values intentionally match the existing verdict JSON.
+    - ENUM_VALUE_PREFIX
+    - ENUM_VALUE_UPPER_SNAKE_CASE
+    - ENUM_ZERO_VALUE_SUFFIX
+    # Keep the public source path while avoiding collect's health.v1 namespace.
+    - PACKAGE_DIRECTORY_MATCH
+    # The shared NodeVerdict is the documented response contract.
+    - RPC_RESPONSE_STANDARD_NAME
+breaking:
+  use:
+    - FILE

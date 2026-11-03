@@ -13,6 +13,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/collect"
 )
 
 // DefaultSensorTimeout bounds each sensor's collection when [Collect] is
@@ -54,12 +55,22 @@ func Collect(cat *catalog.Catalog, sensors ...Sensor) (health.NodeVerdict, error
 // CollectWithOptions returns an error only when evaluation itself fails,
 // never for a sensor failure.
 func CollectWithOptions(cat *catalog.Catalog, opts CollectionOptions, sensors ...Sensor) (health.NodeVerdict, error) {
+	return CollectWithContext(context.Background(), cat, opts, sensors...)
+}
+
+// CollectWithContext propagates cancellation through collection and evaluation.
+// Canceled runs return an error rather than a partial verdict. A caller using
+// collect.WithCallTracking can wait for uninterruptible calls after a timeout.
+func CollectWithContext(ctx context.Context, cat *catalog.Catalog, opts CollectionOptions, sensors ...Sensor) (health.NodeVerdict, error) {
 	timeout := opts.Timeout
 	if timeout == 0 {
 		timeout = DefaultSensorTimeout
 	}
 
-	groups := CollectMeasurementsWithTimeout(timeout, sensors...)
+	groups := collectMeasurementsContext(ctx, timeout, sensors...)
+	if err := ctx.Err(); err != nil {
+		return health.NodeVerdict{}, err
+	}
 	var all []health.Measurement
 	for _, group := range groups {
 		all = append(all, group.Measurements...)
@@ -68,6 +79,9 @@ func CollectWithOptions(cat *catalog.Catalog, opts CollectionOptions, sensors ..
 	nv, err := cat.EvaluateAllWithOptions(catalog.EvaluationOptions{Cadence: opts.Cadence}, all...)
 	if err != nil {
 		return nv, err
+	}
+	if err := ctx.Err(); err != nil {
+		return health.NodeVerdict{}, err
 	}
 	warnMissingSensors(nv)
 	return nv, nil
@@ -83,12 +97,19 @@ type SensorMeasurements struct {
 
 // CollectMeasurementsWithTimeout runs sensors without evaluating checks.
 func CollectMeasurementsWithTimeout(timeout time.Duration, sensors ...Sensor) []SensorMeasurements {
+	return collectMeasurementsContext(context.Background(), timeout, sensors...)
+}
+
+func collectMeasurementsContext(ctx context.Context, timeout time.Duration, sensors ...Sensor) []SensorMeasurements {
 	// Backend resource keys whose collection timed out; sensors sharing one
 	// are skipped rather than re-entering a presumed-wedged data source.
 	wedged := make(map[string]bool)
 
 	groups := make([]SensorMeasurements, 0, len(sensors))
 	for _, s := range sensors {
+		if ctx.Err() != nil {
+			break
+		}
 		group := SensorMeasurements{Sensor: s.Name()}
 		key := resourceKey(s)
 		if key != "" && wedged[key] {
@@ -103,7 +124,7 @@ func CollectMeasurementsWithTimeout(timeout time.Duration, sensors ...Sensor) []
 			continue
 		}
 
-		r := collectSensor(s, timeout)
+		r := collectSensorContext(ctx, s, timeout)
 		switch {
 		case r.timedOut:
 			slog.Warn("sensor collection timed out; degrading to errored measurements",
@@ -190,11 +211,20 @@ type sensorResult struct {
 // backend cannot crash the whole run; a cgo segfault is not a Go panic and
 // cannot be caught here.
 func collectSensor(s Sensor, timeout time.Duration) sensorResult {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	return collectSensorContext(context.Background(), s, timeout)
+}
+
+func collectSensorContext(parent context.Context, s Sensor, timeout time.Duration) sensorResult {
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
+	if ctx.Err() != nil {
+		return sensorResult{timedOut: true}
+	}
 
 	ch := make(chan sensorResult, 1)
+	finished := collect.TrackCall(ctx)
 	go func() {
+		defer finished()
 		defer func() {
 			if p := recover(); p != nil {
 				ch <- sensorResult{err: fmt.Errorf("%s sensor panicked: %v", s.Name(), p)}

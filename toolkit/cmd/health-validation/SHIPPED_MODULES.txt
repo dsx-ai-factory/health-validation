@@ -18,6 +18,7 @@ github.com/go-logr/stdr	v1.2.2
 github.com/google/cel-go	v0.28.0
 github.com/google/uuid	v1.6.0
 github.com/grpc-ecosystem/grpc-gateway/v2	v2.31.0
+github.com/soheilhy/cmux	v0.1.5
 go.opentelemetry.io/auto/sdk	v1.2.1
 go.opentelemetry.io/otel	v1.47.0
 go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp	v1.47.0

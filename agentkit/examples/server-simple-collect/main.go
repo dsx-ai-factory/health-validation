@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/agentkit/server"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
 	disksensor "github.com/dsx-ai-factory/health-validation/collect/sensors/disk"
@@ -77,8 +78,7 @@ func run() error {
 		return fmt.Errorf("init kmsg sensor: %w", err)
 	}
 
-	collector := server.New()
-	collector.Register(nvmlsensor.New(nvmlInst), dcgmSensor, ibsensor.New(nil), kmsgSensor)
+	collector := newCollector(nvmlsensor.New(nvmlInst), dcgmSensor, ibsensor.New(nil), kmsgSensor)
 	collector.Register(cpusensor.New(nil), disksensor.New(nil), fusesensor.New(nil), hostsensor.New(nil), memorysensor.New(nil), pcisensor.New(nil), processsensor.New(nil), pstoresensor.New(nil))
 	if *gpmInterval != 0 {
 		if *gpmInterval <= 100*time.Millisecond {
@@ -93,4 +93,10 @@ func run() error {
 
 	log.Printf("serving plaintext gRPC and HTTP on %s", *address)
 	return server.Serve(*address, collector)
+}
+
+func newCollector(sensors ...collect.Sensor) *server.Server {
+	collector := server.New()
+	collector.Register(sensors...)
+	return collector
 }

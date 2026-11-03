@@ -177,3 +177,52 @@ func TestLazyGPUBackend_ClosesWhenIdle(t *testing.T) {
 		t.Error("backend was not shut down when no Measure was in flight")
 	}
 }
+
+type cycleCountingBackend struct {
+	nodeMultiBackend
+	cycles int
+}
+
+func (b *cycleCountingBackend) BeginCycle() { b.cycles++ }
+
+func TestLazyGPUBackendBeginCyclePreservesLazyInitializationAndForwards(t *testing.T) {
+	constructionCalls := 0
+	real := &cycleCountingBackend{}
+	backend := toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) {
+		constructionCalls++
+		return real, nil
+	})
+	cycling := backend.(interface{ BeginCycle() })
+	cycling.BeginCycle()
+	if constructionCalls != 0 {
+		t.Fatal("BeginCycle initialized an unused backend")
+	}
+	if _, err := backend.MeasureNode(); err != nil {
+		t.Fatal(err)
+	}
+	cycling.BeginCycle()
+	if constructionCalls != 1 || real.cycles != 1 {
+		t.Fatalf("construction=%d cycles=%d, want 1/1", constructionCalls, real.cycles)
+	}
+}
+
+func TestLazyGPUBackendBeginCycleRetriesFailedInitialization(t *testing.T) {
+	constructionCalls := 0
+	backend := toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) {
+		constructionCalls++
+		if constructionCalls == 1 {
+			return nil, errors.New("driver temporarily unavailable")
+		}
+		return newNodeMultiBackend(node.NodeMeasurement{GPUCount: 4}), nil
+	})
+	for range 2 {
+		if _, err := backend.MeasureNode(); err == nil {
+			t.Fatal("expected initialization failure throughout first cycle")
+		}
+	}
+	backend.(interface{ BeginCycle() }).BeginCycle()
+	measurements, err := backend.MeasureNode()
+	if err != nil || len(measurements) != 1 || constructionCalls != 2 {
+		t.Fatalf("second cycle measurements=%v error=%v construction=%d", measurements, err, constructionCalls)
+	}
+}

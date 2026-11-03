@@ -1,0 +1,31 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//build/rules/go:defs.bzl", "go_binary")
+
+go_library(
+    name = "server-verdict_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/agentkit/examples/server-verdict",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//agentkit/server",
+        "//proto/go/health/v1:health",
+        "@com_github_google_uuid//:uuid",
+        "@org_golang_google_protobuf//proto",
+    ],
+)
+
+go_binary(
+    name = "server-verdict",
+    embed = [":server-verdict_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "server-verdict_test",
+    srcs = ["main_test.go"],
+    embed = [":server-verdict_lib"],
+    deps = [
+        "//proto/go/health/v1:health",
+        "@org_golang_google_protobuf//proto",
+    ],
+)

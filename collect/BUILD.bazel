@@ -7,6 +7,7 @@ package(default_visibility = ["//build/visibility:collect_consumers"])
 go_library(
     name = "collect",
     srcs = [
+        "call_tracker.go",
         "collect.go",
         "cycle.go",
         "doc.go",
@@ -21,6 +22,7 @@ go_library(
 go_test(
     name = "collect_test",
     srcs = [
+        "call_tracker_test.go",
         "collect_test.go",
         "cycle_test.go",
     ],

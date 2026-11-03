@@ -12,10 +12,31 @@
 | <nobr>`catalog/nvlink`</nobr> | `nvlink.NVLinkMeasurement` struct and its NVLink check definitions (`NVLinkActive`, `NVLinkFabricHealth`, `NVLinkFabric`, `NVLinkBandwidthCountSpeed`, `NVLinkCapabilities`, `NVLinkP2P`). |
 | <nobr>`catalog/infiniband`</nobr> | `infiniband.LinkFlapMeasurement` struct and the `RDMALinkFlapFatal` check definition (category `infiniband`). |
 | <nobr>`catalog/xid`</nobr> | `xid.XidMeasurement` struct and the Xid check factory `xid.Checks()`, which returns one CRITICAL check per critical Xid code, architecture-scoped WARNING checks, and the INFO `gpu_xid_154` check. |
-| <nobr>`toolkit`</nobr> | Sensor and per-domain backend interfaces, `Collect()` / `CollectWithOptions()`, production backends including `SysfsCPU`, and mock helpers. |
+| <nobr>`toolkit`</nobr> | Sensor and per-domain backend interfaces, `Collect()` / `CollectWithOptions()` / `CollectWithContext()`, production backends including `SysfsCPU`, and mock helpers. |
 | <nobr>`catalog/internal/celeval`</nobr> | Evaluates CEL expressions from check `Rule` definitions against signal values and resolved thresholds. Not a public API. |
 | <nobr>`catalog/internal/evaluation`</nobr> | Orchestrates a single check evaluation: filters by architecture/context, resolves threshold overrides, calls CEL, returns `CheckVerdict`. Not a public API. |
-| <nobr>`toolkit/cmd/health-validation`</nobr> | Binary entry point. Subcommands: `run`, `collect`, `version`. |
+| <nobr>`toolkit/cmd/health-validation`</nobr> | Binary entry point. Subcommands: `run`, `serve`, `collect`, `version`. |
+
+## CLI and transport
+
+`toolkit/app` owns one evaluation core shared by one-shot `run` and long-running
+`serve`. Configuration and backend/source handles live for the process; each
+request constructs a fresh collection cycle, discovers architecture, selects
+runnable checks, collects measurements, and aggregates a verdict. `run` writes
+JSON and exits; `serve` returns the verdict over HTTP or gRPC.
+
+`agentkit/server` is an experimental (v0) transport that accepts a host-supplied
+handler. It imports the verdict proto contract and does not import `catalog` or
+`toolkit`. `toolkit/verdictproto` converts between catalog types and that
+contract; the catalog has no protobuf dependency. The independent raw
+observation contract remains under `collect/proto`.
+
+The server serializes evaluation on each node. Cancellation returns promptly,
+while admission remains closed until any native calls abandoned by watchdogs
+finish. This preserves the single-collection guarantee across requests. Agent
+mode evaluates only when called; it adds no polling schedule, cross-node
+correlation, or remediation. See [Agent mode](/health-validation/operating/agent-mode)
+for transport and operating semantics.
 
 ## Data flow
 
@@ -30,7 +51,7 @@ Sensor.Measure()
                             --> NodeVerdict
 ```
 
-Each sensor produces one or more measurements. Device sensors normally emit one per device; the CPU sensor emits one host-wide measurement. Each measurement is routed to the checks whose `Category` matches the measurement's category. The evaluation engine resolves threshold overrides, checks architecture and execution context prerequisites, runs CEL rules, and returns a `CheckVerdict`. Aggregation computes the node-level worst-case severity. The process exit code is a coarse mapping of that severity (0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, 2 when the tool could not run to a verdict); the precise level is conveyed in the JSON.
+Each sensor produces one or more measurements. Device sensors normally emit one per device; the CPU sensor emits one host-wide measurement. Each measurement is routed to the checks whose `Category` matches the measurement's category. The evaluation engine resolves threshold overrides, checks architecture and execution context prerequisites, runs CEL rules, and returns a `CheckVerdict`. Aggregation computes the node-level worst-case severity. The one-shot process exit code is a coarse mapping of that severity (0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, 2 when the tool could not run to a verdict); the precise level is conveyed in the JSON. Agent mode returns every produced verdict as a successful response and uses transport errors when no verdict can be produced.
 
 ## Sensors and backends
 
@@ -58,7 +79,7 @@ To add a sensor for a new hardware domain: define a measurement struct in `catal
 
 Scheduling cadence is not a construction option. Set `Cadence` in per-run `catalog.EvaluationOptions` or `toolkit.CollectionOptions`; either zero value evaluates every registered check, and zero-value collection options also use the default timeout. Checks outside the requested window are reported with `CADENCE_MISMATCH`. One catalog can serve Continuous, Prolog, and Maintenance windows.
 
-`health-validation run` defaults to `TENANT_GUEST`; `--execution-context`
+`health-validation run` and `serve` default to `TENANT_GUEST`; `--execution-context`
 selects another context. The CLI applies the selected context through
 `catalog.WithExecutionContext` when constructing the catalog.
 
