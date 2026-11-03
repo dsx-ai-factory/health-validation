@@ -410,8 +410,8 @@ validate against the published
   this with the version your integration expects when you need to confirm that
   a check-logic or default-threshold fix was present. Custom checks, overrides,
   and disabled checks do not change this value.
-- **`overall_severity`** — the authoritative level (`PASS`/`INFO`/`WARNING`/
-  `CRITICAL`/`UNKNOWN`). Gate on this, not only the exit code.
+- **`overall_severity`** — the authoritative level, ordered `PASS` < `INFO` <
+  `WARNING` < `UNKNOWN` < `CRITICAL`. Gate on this, not only the exit code.
 - **`recommended_action`** — what to do. `NodeVerdict.recommended_action`
   contains the node-level drain sequence selected from eligible failing
   checks, and each check result retains its own recommendation. The field

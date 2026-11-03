@@ -12,6 +12,12 @@ The exit code is a coarse health signal:
 
 The exit code does not distinguish CRITICAL from UNKNOWN or INFO from WARNING. For the precise level, read `overall_severity` from the JSON — Slurm prolog scripts that need more than the coarse signal should do so.
 
+Severity is ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL for both
+aggregation and action selection. A confirmed critical fault takes precedence
+over incomplete assessment; inspect `check_results` for any UNKNOWN results
+alongside a CRITICAL summary. Without a critical fault, UNKNOWN takes precedence
+over WARNING so an incomplete assessment still exits 1.
+
 ## What happens if a sensor cannot read from a GPU?
 
 It depends on how the sensor reports the failure. If the sensor can identify the GPU but cannot read one or more fields, it calls `AddError()` on the measurement for those failing fields. The catalog evaluates each check against the partial measurement: checks that require only the available signals proceed normally; checks that require a failed signal produce a CRITICAL verdict rather than silently passing.

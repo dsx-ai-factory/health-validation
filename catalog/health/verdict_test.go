@@ -266,6 +266,38 @@ func TestAggregateNodeVerdict_RecommendedAction(t *testing.T) {
 			want: Drain(RemediationActionResetGPU, RemediationActionServiceRequired),
 		},
 		{
+			name: "critical remediation before unknown collection failure",
+			verdicts: []CheckVerdict{
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+				{CheckID: "critical-reset", Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU)},
+			},
+			want: Drain(RemediationActionResetGPU),
+		},
+		{
+			name: "critical unranked action before unknown collection guidance",
+			verdicts: []CheckVerdict{
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+				{CheckID: "critical-hold", Severity: Critical, RecommendedAction: Drain(RemediationActionHold)},
+			},
+			want: Drain(RemediationActionHold),
+		},
+		{
+			name: "critical remediation before unknown timeout",
+			verdicts: []CheckVerdict{
+				{CheckID: "retry", Severity: Unknown, RecommendedAction: Drain(RemediationActionRetryCollection)},
+				{CheckID: "critical-service", Severity: Critical, RecommendedAction: Drain(RemediationActionServiceRequired)},
+			},
+			want: Drain(RemediationActionServiceRequired),
+		},
+		{
+			name: "unknown retains priority over warning",
+			verdicts: []CheckVerdict{
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+				{CheckID: "warning-service", Severity: Warning, RecommendedAction: Drain(RemediationActionServiceRequired)},
+			},
+			want: Drain(RemediationActionCheckCollection),
+		},
+		{
 			name: "first action priority",
 			verdicts: []CheckVerdict{
 				{CheckID: "retry", Severity: Critical, RecommendedAction: Drain(RemediationActionRetryCollection)},
@@ -351,6 +383,40 @@ func TestAggregateNodeVerdict_RecommendedAction(t *testing.T) {
 				t.Errorf("RecommendedAction with reversed input = %v, want %v", gotReversed, tt.want)
 			}
 		})
+	}
+}
+
+func TestAggregateNodeVerdict_CriticalOutranksUnknown(t *testing.T) {
+	verdicts := []CheckVerdict{
+		{CheckID: "collection", Category: GPU, Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+		{CheckID: "fault", Category: GPU, Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU)},
+	}
+	nv := AggregateNodeVerdict(verdicts)
+	if nv.OverallSeverity != Critical || nv.SeverityByDomain[GPU] != Critical {
+		t.Fatalf("overall=%v GPU=%v, want CRITICAL for the confirmed fault", nv.OverallSeverity, nv.SeverityByDomain[GPU])
+	}
+	if len(nv.AffectedComponents) != 1 || nv.AffectedComponents[0].MaxSeverity != Critical {
+		t.Fatalf("affected components = %+v, want CRITICAL GPU summary", nv.AffectedComponents)
+	}
+	if !nv.RecommendedAction.Equal(Drain(RemediationActionResetGPU)) {
+		t.Errorf("action = %v, want the critical fault's GPU reset", nv.RecommendedAction)
+	}
+	if len(nv.CheckResults) != 2 || nv.CheckResults[0].Severity != Unknown || nv.CheckResults[1].Severity != Critical {
+		t.Errorf("check results = %+v, want both collection and critical findings preserved", nv.CheckResults)
+	}
+}
+
+func TestAggregateNodeVerdict_UnknownOutranksWarning(t *testing.T) {
+	verdicts := []CheckVerdict{
+		{CheckID: "warning", Category: GPU, Severity: Warning},
+		{CheckID: "unknown", Category: GPU, Severity: Unknown},
+	}
+	for range 2 {
+		nv := AggregateNodeVerdict(verdicts)
+		if nv.OverallSeverity != Unknown || nv.SeverityByDomain[GPU] != Unknown {
+			t.Fatalf("overall=%v GPU=%v, want UNKNOWN for incomplete assessment", nv.OverallSeverity, nv.SeverityByDomain[GPU])
+		}
+		slices.Reverse(verdicts)
 	}
 }
 

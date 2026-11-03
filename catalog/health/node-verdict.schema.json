@@ -193,9 +193,9 @@
       }
     },
     "severity": {
-      "description": "Graduated health severity. Ordered PASS < INFO < WARNING < CRITICAL; UNKNOWN means the check could not complete.",
+      "description": "Graduated health severity. Ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL; UNKNOWN means the check could not complete.",
       "type": "string",
-      "enum": ["PASS", "INFO", "WARNING", "CRITICAL", "UNKNOWN"]
+      "enum": ["PASS", "INFO", "WARNING", "UNKNOWN", "CRITICAL"]
     },
     "category": {
       "description": "Hardware/interconnect domain a check monitors.",

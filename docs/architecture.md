@@ -98,6 +98,8 @@ documented rank in sequence order, then check ID. Action names provide a final
 stability fallback for repeated check IDs. Consumers track which steps they
 have attempted and re-run the suite after each step.
 
+Severity is ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL.
+
 ### CheckVerdict
 
 | Field | Type | JSON name | Description |
@@ -105,7 +107,7 @@ have attempted and re-run the suite after each step.
 | CheckID | string | `check_id` | Stable check identifier. |
 | SpanID | string | `span_id` | UUID unique to this check invocation, run or skipped. |
 | TraceID | string | `trace_id` | The run's `trace_id`, echoed here so a check result is self-correlating when consumed on its own. |
-| Severity | Severity | `severity` | PASS, INFO, WARNING, CRITICAL, or UNKNOWN. |
+| Severity | Severity | `severity` | PASS, INFO, WARNING, UNKNOWN, or CRITICAL. |
 | Category | Category | `category` | Hardware domain: cpu, gpu, node, nvlink, pcie, infiniband, storage, xid. |
 | ConditionScope | ConditionScope | `condition_scope` | Blast radius of the condition: `NODE` (this node's own hardware explains it), `DOMAIN` (explaining it requires the NVLink domain shared with peer nodes), `CLUSTER` (explaining it requires the cluster network fabric beyond the node). A collection-failure verdict reports `NODE`; a skipped verdict keeps the check's declared value. Independent of `recommended_action`'s `remediation_actions`, which are always node-local. |
 | Skipped | bool | `skipped` | True if the check did not run. |

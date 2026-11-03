@@ -284,15 +284,15 @@ SchedulingCadence describes how often a check is meant to run in a node's operat
 
 ### Severity
 
-Severity represents the graduated health severity of a check result. The levels form a total order: Pass &lt; Info &lt; Warning &lt; Critical. Unknown is a special case indicating the check could not complete.
+Severity represents the graduated health severity of a check result. Levels are ordered Pass &lt; Info &lt; Warning &lt; Unknown &lt; Critical. Unknown indicates incomplete assessment, not a confirmed fault.
 
 | Name | JSON value | Description |
 |---|---|---|
 | <nobr>`Pass`</nobr> | <nobr>`PASS`</nobr> | Pass indicates no condition detected. The monitored state is within normal operating bounds. |
 | <nobr>`Info`</nobr> | <nobr>`INFO`</nobr> | Info indicates an anomaly detected within safe operating bounds. The node may remain in service; monitor for trend. |
 | <nobr>`Warning`</nobr> | <nobr>`WARNING`</nobr> | Warning indicates a condition that degrades performance or increases failure risk. The node may continue in service for a bounded window pending operator action. |
-| <nobr>`Critical`</nobr> | <nobr>`CRITICAL`</nobr> | Critical indicates imminent risk of failure, data corruption, or unrecoverable state. The node should be removed from service without delay. |
 | <nobr>`Unknown`</nobr> | <nobr>`UNKNOWN`</nobr> | Unknown indicates the check could not complete. Service eligibility for the affected component cannot be assessed. This typically results from tool failures or insufficient data. |
+| <nobr>`Critical`</nobr> | <nobr>`CRITICAL`</nobr> | Critical indicates imminent risk of failure, data corruption, or unrecoverable state. The node should be removed from service without delay. |
 
 ### SkipReason
 

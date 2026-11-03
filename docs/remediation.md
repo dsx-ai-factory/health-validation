@@ -28,7 +28,7 @@ checks that still fail:
    per-check monitor or no-action findings and stop this remediation flow. Do
    not treat the node as healthy. When present, it is selected from checks with
    `operational_state: drain` and a nonempty sequence by, in order:
-   1. higher severity;
+   1. higher severity: CRITICAL, UNKNOWN, WARNING, INFO, PASS;
    2. each remediation step's rank, compared in sequence order, using this
       priority from highest to lowest: `service_required`, `update_swfw`,
       `restart_os`, `reset_gpu`, `restart_app`, `check_collection`, and
@@ -66,8 +66,12 @@ suite after each step recalculates the recommendation as findings clear.
 - `update_swfw` ranks above restarts because a restart alone does not correct a
   software or configuration incompatibility.
 - `restart_os`, `reset_gpu`, and `restart_app` follow in order of disruption.
-- At equal severity, `check_collection` and `retry_collection` rank last because
-  they represent collection failures rather than observed faults.
+- Severity is considered before action rank, so a CRITICAL recommendation
+  takes precedence over an UNKNOWN recommendation, including when the CRITICAL
+  recommendation uses an unranked action.
+- At equal severity, `check_collection` and `retry_collection` follow the ranked
+  hardware actions because they represent collection failures. Unranked actions,
+  including `hold`, `xid_154`, and custom actions, follow the collection actions.
 
 ## Action catalog
 

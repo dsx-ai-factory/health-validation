@@ -1613,8 +1613,8 @@ func TestEvaluateAll_AnnotatedVerdictShape(t *testing.T) {
 	t.Error("no annotated gpu_power_limit verdict")
 }
 
-// Unknown ranks above Critical and means the check could not complete, so a
-// dependency that reported it explains a dependent just as a Critical does.
+// An observed Unknown rule result can explain a dependent's collection failure
+// even though Unknown ranks below Critical.
 func TestEvaluateAll_UnknownDependencyExplains(t *testing.T) {
 	root := health.CheckDefinition{
 		ID: "unknown_root", Category: health.Node,

@@ -611,7 +611,7 @@ func perGPUVerdict() health.NodeVerdict {
 			Severity: health.Critical, AffectedEntities: []string{"GPU-1"},
 		},
 		{Timestamp: now, CheckID: "gpu_ecc_errors", Category: health.GPU, Severity: health.Pass},
-		{Timestamp: now, CheckID: "gpu_ecc_errors", Category: health.GPU, Severity: health.Pass},
+		{Timestamp: now, CheckID: "gpu_ecc_errors", Category: health.GPU, Severity: health.Unknown},
 	}
 	return health.NodeVerdict{
 		SchemaVersion:    health.NodeVerdictSchemaVersion,
@@ -644,7 +644,7 @@ func TestPerEntityResultsDoNotOverwrite(t *testing.T) {
 	points := cap.metricsByName(t)["health_validation.check.severity"].GetGauge().GetDataPoints()
 	if got := activeSeverity(t, points, "gpu_ecc_errors"); got != "CRITICAL" {
 		t.Errorf("gpu_ecc_errors severity = %q, want CRITICAL: the failing GPU must "+
-			"survive the three passing ones recorded around it", got)
+			"survive the passing and unassessed entities recorded around it", got)
 	}
 
 	// Four per-GPU verdicts fold into one check, so one point — counting the

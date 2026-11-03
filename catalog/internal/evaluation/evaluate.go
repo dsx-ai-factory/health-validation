@@ -204,13 +204,12 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 			}
 			// Two conditions, both required. ObservedValues separates a matched
 			// rule, which always records it, from [ErroredVerdict], which never
-			// does: a dependency that went Critical because its own measurement
-			// could not be collected observed no fault, so it explains nothing
+			// does: a dependency whose own measurement could not be
+			// collected observed no fault, so it explains nothing
 			// about a sibling that also could not be read. The comparison is
-			// >= so [health.Unknown], which ranks above Critical and means the
-			// check could not complete, is not the one severity excluded from
-			// explaining anything.
-			if v.Severity >= health.Critical && v.ObservedValues != nil {
+			// >= Unknown so a rule that matched Unknown explains a dependent
+			// just as a Critical one does.
+			if v.Severity >= health.Unknown && v.ObservedValues != nil {
 				failed[id] = v.Severity
 			}
 
@@ -339,9 +338,8 @@ func lostEntity(errs []health.ErroredMeasurement, signals map[string]any) bool {
 	return true
 }
 
-// failedDependency returns the first dependency of cd that evaluated Critical or
-// worse, with the severity it reported, so the batch path can name it as the
-// cause on a verdict that only restates it.
+// failedDependency returns the first declared dependency with an observed
+// Critical or Unknown rule result.
 func failedDependency(cd *health.CheckDefinition, failed map[string]health.Severity) (string, health.Severity, bool) {
 	for _, dep := range cd.Dependencies {
 		if sev, ok := failed[dep]; ok {

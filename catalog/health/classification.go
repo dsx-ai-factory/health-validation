@@ -10,8 +10,8 @@ import (
 // --- Severity ---
 
 // Severity represents the graduated health severity of a check result.
-// The levels form a total order: Pass < Info < Warning < Critical.
-// Unknown is a special case indicating the check could not complete.
+// Levels are ordered Pass < Info < Warning < Unknown < Critical.
+// Unknown indicates incomplete assessment, not a confirmed fault.
 type Severity int
 
 const (
@@ -28,15 +28,15 @@ const (
 	// a bounded window pending operator action.
 	Warning
 
-	// Critical indicates imminent risk of failure, data corruption,
-	// or unrecoverable state. The node should be removed from service
-	// without delay.
-	Critical
-
 	// Unknown indicates the check could not complete. Service
 	// eligibility for the affected component cannot be assessed.
 	// This typically results from tool failures or insufficient data.
 	Unknown
+
+	// Critical indicates imminent risk of failure, data corruption,
+	// or unrecoverable state. The node should be removed from service
+	// without delay.
+	Critical
 )
 
 var severityNames = map[Severity]string{
