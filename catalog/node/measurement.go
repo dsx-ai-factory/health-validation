@@ -13,11 +13,13 @@ import (
 // expressions and must match the RequiredSignals declared in node
 // check definitions.
 const (
-	SignalGPUCount = "gpu_count"
+	SignalGPUCount      = "gpu_count"
+	SignalDriverVersion = "driver_version"
 )
 
 var measurementSignals = []string{
 	SignalGPUCount,
+	SignalDriverVersion,
 }
 
 // MeasurementSignals lists every signal a NodeMeasurement carries.
@@ -28,7 +30,8 @@ var measurementSignals = []string{
 func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 
 // NodeMeasurement captures host-wide signals that are not bound to any
-// single GPU — for example, the number of GPUs the driver enumerated.
+// single GPU — for example, the number of GPUs the driver enumerated, or
+// the NVIDIA driver version, as the host reported it (e.g. "575.51.03").
 // Sensors emit one NodeMeasurement per collection pass; per-GPU data
 // lives in [gpu.GPUMeasurement].
 //
@@ -40,8 +43,9 @@ func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 // populated. For whole-entity failures (the sensor couldn't observe
 // the node at all), build the measurement with [ErroredNode].
 type NodeMeasurement struct {
-	errors   []health.ErroredMeasurement
-	GPUCount int64 `json:"gpu_count"`
+	DriverVersion string `json:"driver_version"`
+	errors        []health.ErroredMeasurement
+	GPUCount      int64 `json:"gpu_count"`
 }
 
 // ErroredNode returns a NodeMeasurement marked errored for a whole-node
@@ -79,3 +83,16 @@ func (NodeMeasurement) Category() health.Category { return health.Node }
 
 // Errors implements [health.Measurement].
 func (m NodeMeasurement) Errors() []health.ErroredMeasurement { return m.errors }
+
+// ParsedDriverVersion returns the driver version for comparison, or the
+// zero value, meaning unknown, when it failed to collect or the reported
+// text is not a version.
+func (m NodeMeasurement) ParsedDriverVersion() health.DriverVersion {
+	for _, e := range m.errors {
+		if slices.Contains(e.FailedSignals(), SignalDriverVersion) {
+			return health.DriverVersion{}
+		}
+	}
+	v, _ := health.ParseDriverVersion(m.DriverVersion)
+	return v
+}

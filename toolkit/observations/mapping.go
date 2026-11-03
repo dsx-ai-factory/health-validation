@@ -64,6 +64,7 @@ var mappings = []mapping{
 	{signal: cpusignals.OnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalOnlineCPUCount}, unit: "1"},
 	{signal: cpusignals.NUMANodeOnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalNUMANodeCount}, unit: "1"},
 	{signal: gpuinventory.GPUCount, measurement: node.NodeMeasurement{}, catalog: []string{node.SignalGPUCount}, unit: "1"},
+	{signal: gpuinventory.DriverVersionSignal, measurement: node.NodeMeasurement{}, catalog: []string{node.SignalDriverVersion}},
 	// An average only on some architectures (instantaneous on GA100 and
 	// older); the CLI's GPU adapter turns other readings into NOT_SUPPORTED.
 	{signal: gpusignals.PowerDraw, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalAveragePowerDrawW}, unit: "watts"},
