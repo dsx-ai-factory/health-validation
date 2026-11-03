@@ -164,13 +164,15 @@ func parseNVLink5Line(line string) (xid.XidEvent, bool) {
 //
 // The driver adds pid and name, as on any Xid line, when the change
 // happens while servicing a process. Their values are matched loosely
-// because a miss here would lose the transition, not just the process.
+// because a miss here would lose the transition, not just the process:
+// the name runs up to the transition, since a process name can hold a
+// comma.
 //
 // Group 1 PCI address, 2 and 3 the optional pid and process name, 4 and 5
 // the code and name being left, 6 and 7 the code and name being entered.
 // Codes and names are captured verbatim; see [xid.RecoveryAction].
 var xidRecoveryActionRE = regexp.MustCompile(
-	`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): 154, (?:pid=([^,]*),\s*)?(?:name=([^,]*),\s*)?` +
+	`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): 154, (?:pid=([^,]*),\s*)?(?:name=(.*?),\s*)?` +
 		`GPU recovery action changed ` +
 		`from (0x[0-9a-fA-F]+) \(([^)]*)\) to (0x[0-9a-fA-F]+) \(([^)]*)\)`)
 
