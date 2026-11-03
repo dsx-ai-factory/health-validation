@@ -875,7 +875,7 @@ func (failingNodeBackend) MeasureNode() ([]health.Measurement, error) {
 // codes. The custom check is CRITICAL when gpu_count > 8, so the count picks
 // the verdict. A backend that fails to collect no longer aborts the run: the
 // failure is degraded to an errored measurement that fails the dependent
-// check Critical, so it exits exitUnhealthy (a produced CRITICAL verdict) with
+// check Unknown, so it exits exitUnhealthy (a produced UNKNOWN verdict) with
 // the verdict still written — not exitError, which is reserved for the case
 // where no verdict is produced at all.
 func TestEvaluateExitCodes(t *testing.T) {
@@ -886,7 +886,7 @@ func TestEvaluateExitCodes(t *testing.T) {
 	}{
 		{toolkit.NewNodeSensor(toolkit.MockNode(node.NodeMeasurement{GPUCount: 16})), "critical verdict", exitUnhealthy},
 		{toolkit.NewNodeSensor(toolkit.MockNode(node.NodeMeasurement{GPUCount: 8})), "healthy verdict", exitOK},
-		{toolkit.NewNodeSensor(failingNodeBackend{}), "collection failure degrades to critical", exitUnhealthy},
+		{toolkit.NewNodeSensor(failingNodeBackend{}), "collection failure reports unknown", exitUnhealthy},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

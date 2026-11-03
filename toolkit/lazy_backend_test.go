@@ -63,11 +63,11 @@ func TestLazyGPUBackend_HungInitDoesNotHang(t *testing.T) {
 
 	select {
 	case nv := <-done:
-		if got := nv.SeverityByDomain[health.Node]; got != health.Critical {
-			t.Errorf("node domain = %v, want CRITICAL (init timed out)", got)
+		if got := nv.SeverityByDomain[health.Node]; got != health.Unknown {
+			t.Errorf("node domain = %v, want UNKNOWN (init timed out)", got)
 		}
-		if got := nv.SeverityByDomain[health.NVLink]; got != health.Critical {
-			t.Errorf("nvlink domain = %v, want CRITICAL (skipped after shared init wedged)", got)
+		if got := nv.SeverityByDomain[health.NVLink]; got != health.Unknown {
+			t.Errorf("nvlink domain = %v, want UNKNOWN (skipped after shared init wedged)", got)
 		}
 		if got := nv.SeverityByDomain[health.Xid]; got != health.Pass {
 			t.Errorf("xid domain = %v, want PASS (independent of NVML init)", got)
@@ -78,7 +78,7 @@ func TestLazyGPUBackend_HungInitDoesNotHang(t *testing.T) {
 }
 
 // TestLazyGPUBackend_InitErrorDegrades verifies a backend whose
-// initialization fails degrades the NVML-backed sensors to Critical
+// initialization fails degrades the NVML-backed sensors to Unknown
 // without aborting the run, while the Xid sensor still produces a verdict.
 func TestLazyGPUBackend_InitErrorDegrades(t *testing.T) {
 	cat := catalog.New(
@@ -99,11 +99,11 @@ func TestLazyGPUBackend_InitErrorDegrades(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectWithOptions returned error, want graceful degrade: %v", err)
 	}
-	if got := nv.SeverityByDomain[health.Node]; got != health.Critical {
-		t.Errorf("node domain = %v, want CRITICAL (init failed)", got)
+	if got := nv.SeverityByDomain[health.Node]; got != health.Unknown {
+		t.Errorf("node domain = %v, want UNKNOWN (init failed)", got)
 	}
-	if got := nv.SeverityByDomain[health.NVLink]; got != health.Critical {
-		t.Errorf("nvlink domain = %v, want CRITICAL (init failed)", got)
+	if got := nv.SeverityByDomain[health.NVLink]; got != health.Unknown {
+		t.Errorf("nvlink domain = %v, want UNKNOWN (init failed)", got)
 	}
 	if got := nv.SeverityByDomain[health.Xid]; got != health.Pass {
 		t.Errorf("xid domain = %v, want PASS (independent of NVML init)", got)

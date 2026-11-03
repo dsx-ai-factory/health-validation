@@ -346,7 +346,7 @@ const (
 	// was never constructed. It is distinct from
 	// NoApplicableMeasurement, which means the category was collected
 	// but no measurement carried this check's required signals, and from
-	// a Critical errored verdict, which means the sensor ran and failed.
+	// an Unknown errored verdict, which means the sensor ran and failed.
 	SensorMissing
 	CadenceMismatch // Check is not scheduled for the requested cadence.
 )

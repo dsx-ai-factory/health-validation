@@ -782,7 +782,7 @@ func TestWithCollectMissingProducerFailsOnlyDependentChecks(t *testing.T) {
 	for _, check := range verdict.CheckResults {
 		want := health.Pass
 		if check.CheckID == "missing_count" {
-			want = health.Critical
+			want = health.Unknown
 		}
 		if check.Severity != want {
 			t.Fatalf("check %s severity=%v, want %v", check.CheckID, check.Severity, want)
@@ -803,7 +803,7 @@ func TestWithCollectAdaptersWithoutSensorsReportMissingInputs(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
 		t.Fatal(err)
 	}
-	if outcome, ok := mixedOutcomes(verdict)["mixed_prolog"]; !ok || outcome.skipped || outcome.severity != health.Critical {
+	if outcome, ok := mixedOutcomes(verdict)["mixed_prolog"]; !ok || outcome.skipped || outcome.severity != health.Unknown {
 		t.Fatalf("adapter without sources did not report missing inputs: %+v", verdict)
 	}
 }

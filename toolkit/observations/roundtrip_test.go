@@ -256,8 +256,8 @@ func verdictSummary(t *testing.T, arch string, execution health.ExecutionContext
 		}
 	}
 	slices.Sort(out)
-	if len(out) == 0 || !strings.Contains(strings.Join(out, ""), "CRITICAL") {
-		t.Fatalf("fixture should drive at least one CRITICAL verdict: %v", out)
+	if verdict.OverallSeverity != health.Critical && verdict.OverallSeverity != health.Unknown {
+		t.Fatalf("fixture should drive at least one CRITICAL or UNKNOWN verdict:\n%s", strings.Join(out, "\n"))
 	}
 	return out
 }
@@ -284,8 +284,8 @@ func TestToMeasurementsLimitsNeutralUnsupportedToToolkitSignals(t *testing.T) {
 	if got := m.UnsupportedSignals(); !slices.Equal(got, []string{gpu.SignalHWSlowdown}) {
 		t.Fatalf("unsupported signals = %v, want only %s", got, gpu.SignalHWSlowdown)
 	}
-	if got := evaluate(t, "H100", []health.Measurement{m}, gpu.GPUPowerState())["gpu_power_state"]; got != health.Critical {
-		t.Fatalf("gpu_power_state = %v, want CRITICAL", got)
+	if got := evaluate(t, "H100", []health.Measurement{m}, gpu.GPUPowerState())["gpu_power_state"]; got != health.Unknown {
+		t.Fatalf("gpu_power_state = %v, want UNKNOWN", got)
 	}
 
 	want := []string{

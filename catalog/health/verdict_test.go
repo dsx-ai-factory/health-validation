@@ -290,6 +290,29 @@ func TestAggregateNodeVerdict_RecommendedAction(t *testing.T) {
 			want: Drain(RemediationActionServiceRequired),
 		},
 		{
+			name: "unknown collection failures remain eligible",
+			verdicts: []CheckVerdict{
+				{CheckID: "retry", Severity: Unknown, RecommendedAction: Drain(RemediationActionRetryCollection)},
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+			},
+			want: Drain(RemediationActionCheckCollection),
+		},
+		{
+			name: "critical without eligible action does not suppress collection guidance",
+			verdicts: []CheckVerdict{
+				{CheckID: "critical", Severity: Critical},
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+			},
+			want: Drain(RemediationActionCheckCollection),
+		},
+		{
+			name: "unknown timeout remains eligible alone",
+			verdicts: []CheckVerdict{
+				{CheckID: "retry", Severity: Unknown, RecommendedAction: Drain(RemediationActionRetryCollection)},
+			},
+			want: Drain(RemediationActionRetryCollection),
+		},
+		{
 			name: "unknown retains priority over warning",
 			verdicts: []CheckVerdict{
 				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},

@@ -308,7 +308,7 @@ func TestCollectRunnerFailureAndValidPartialResults(t *testing.T) {
 			if result, ok := results["cpu_count"]; !ok || result.Severity != health.Pass || result.ObservedValues[cpu.SignalOnlineCPUCount] != int64(4) {
 				t.Fatalf("healthy sensor did not reach evaluation: %+v", verdict)
 			}
-			if result, ok := results["gpu_count"]; !ok || result.Severity != health.Critical {
+			if result, ok := results["gpu_count"]; !ok || result.Severity != health.Unknown {
 				t.Fatalf("failed sensor did not degrade independently: %+v", verdict)
 			}
 			obs := r.Observe(healthy.ID(), runnerCount.ID())

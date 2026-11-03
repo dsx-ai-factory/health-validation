@@ -217,8 +217,7 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 			// reported Critical, which is the fault this verdict restates. Name
 			// it so the operator reads one cause instead of correlating several
 			// identical reports. The wording claims only that the dependency is
-			// Critical: it may be so because its own measurement errored, which
-			// is a different fact from an observed fault.
+			// Critical or Unknown from an observed rule match.
 			//
 			// The cause extends the existing message instead of adding a second
 			// one. A consumer classifies a collection failure by every message
@@ -403,7 +402,7 @@ func checkLevelSkip(cd *health.CheckDefinition, p Params, now time.Time) (health
 // [health.EntityIdentifier]) and is empty for host-wide measurements.
 func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals map[string]any, errs []health.ErroredMeasurement, entity string, p Params, now time.Time) (health.CheckVerdict, error) {
 	// If any of the sensor's per-field failures cover a signal the
-	// check requires, fail the check with a Critical verdict rather
+	// check requires, report the check as Unknown rather
 	// than running CEL against a zero value where a real measurement
 	// should be. The verdict's detail joins every error entry that
 	// touched one of this check's required signals so the message
@@ -535,7 +534,7 @@ func withEntity(v health.CheckVerdict, entity string) health.CheckVerdict {
 // matchingError inspects the error entries whose FailedSignals overlap the
 // check's required signals. It returns a joined detail string of their
 // causes ("" when none match) and the recommended action for the resulting
-// Critical verdict.
+// Unknown verdict.
 //
 // These are observation failures, not observed faults — the CEL rules
 // never ran — so the action is never the check's hardware-remediation
@@ -608,7 +607,7 @@ func skippedVerdict(cd *health.CheckDefinition, ts time.Time, reason health.Skip
 	return v
 }
 
-// ErroredVerdict builds a Critical CheckVerdict for a check whose input
+// ErroredVerdict builds an Unknown CheckVerdict for a check whose input
 // measurement could not be observed — the engine emits one when a sensor's
 // errored measurement satisfies the check's schema (architecture, context,
 // RequiredSignals) but the data is unavailable. action is the
@@ -617,7 +616,7 @@ func skippedVerdict(cd *health.CheckDefinition, ts time.Time, reason health.Skip
 // matched.
 func ErroredVerdict(cd *health.CheckDefinition, ts time.Time, detail string, action health.RecommendedAction) health.CheckVerdict {
 	v := verdictFor(cd, ts)
-	v.Severity = health.Critical
+	v.Severity = health.Unknown
 	v.Messages = []string{fmt.Sprintf("measurement unavailable: %s", detail)}
 	v.RecommendedAction = action
 	// The rules never ran, so nothing beyond this node was observed. Like the

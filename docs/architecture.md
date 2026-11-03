@@ -142,7 +142,7 @@ Severity is ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL.
 | INSUFFICIENT_HISTORY | Time-window data has not yet accumulated. Applies only to checks that evaluate over a window; no currently registered check uses it. |
 | CADENCE_MISMATCH | The check is not scheduled for the requested `--cadence` window. |
 | THRESHOLD_UNCONFIGURED | A threshold the operator must supply was not configured. |
-| NO_APPLICABLE_MEASUREMENT | The category was collected, but no measurement in it carries the check's required signals. Routing is by measurement schema, so a measurement that carries the signals but whose sensor failed to collect one reports CRITICAL rather than skipping. |
+| NO_APPLICABLE_MEASUREMENT | The category was collected, but no measurement in it carries the check's required signals. Routing is by measurement schema, so an applicable check fed by a measurement that carries the required signals but reports a collection error for one produces UNKNOWN rather than skipping. |
 | SENSOR_MISSING | The check's category supplied no measurement at all — sensor absent, unconfigured, or never constructed. Registering a check declares that its sensor is expected, so every registered check reports either a result or a skip. |
 
 ## Adding a check

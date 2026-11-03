@@ -99,15 +99,13 @@ func TestNVLinkActive(t *testing.T) {
 			wantSkipReason: health.ArchitectureUnsupported,
 		},
 		{
-			// A GPU whose link state could not be collected propagates to
-			// Critical regardless of the rule, since the data the check
-			// needs is unavailable.
-			name: "errored GPU forces critical",
+			// A collection failure produces Unknown instead of evaluating a zero value.
+			name: "errored GPU reports unknown",
 			cat:  func() *catalog.Catalog { return fabricCatalog() },
 			measurement: func() nvlink.NVLinkMeasurement {
 				return nvlink.ErroredNVLink("GPU-0", errors.New("nvml link-state query failed"), nvlink.SignalInactiveCount)
 			},
-			wantSeverity: health.Critical,
+			wantSeverity: health.Unknown,
 		},
 	}
 

@@ -94,7 +94,7 @@ EntityKey is the stable identity of the entity a measurement describes. Evaluati
 
 ### ErroredMeasurement
 
-ErroredMeasurement records one per-signal collection failure on a measurement. Sensors append entries via the typed measurement's AddError method (e.g. [GPUMeasurement.AddError]) as they encounter failures while measuring different fields, so a single measurement may carry several entries — one per failing call. The catalog fails a check Critical when any entry's FailedSignals overlaps with the check's RequiredSignals; the verdict's message joins the matching entries' Err.Error() strings. Checks whose required signals were all collected still run normally on the partial data. The zero value is not valid; construct entries with [NewErroredMeasurement] (or via the typed measurement's AddError), which guarantees Err is non-nil so consumers always have a surfaceable failure cause.
+ErroredMeasurement records one per-signal collection failure on a measurement. Sensors append entries via the typed measurement's AddError method (e.g. [GPUMeasurement.AddError]) as they encounter failures while measuring different fields, so a single measurement may carry several entries — one per failing call. The catalog reports a check Unknown when any entry's FailedSignals overlaps with the check's RequiredSignals; the verdict's message joins the matching entries' Err.Error() strings. Checks whose required signals were all collected still run normally on the partial data. The zero value is not valid; construct entries with [NewErroredMeasurement] (or via the typed measurement's AddError), which guarantees Err is non-nil so consumers always have a surfaceable failure cause.
 
 ### FixedThresholdError
 
@@ -307,7 +307,7 @@ SkipReason provides a machine-readable code for why a check did not run.
 | <nobr>`InsufficientHistory`</nobr> | <nobr>`INSUFFICIENT_HISTORY`</nobr> | Time-window data not yet available. |
 | <nobr>`ThresholdUnconfigured`</nobr> | <nobr>`THRESHOLD_UNCONFIGURED`</nobr> | Required threshold not supplied for this fleet. |
 | <nobr>`NoApplicableMeasurement`</nobr> | <nobr>`NO_APPLICABLE_MEASUREMENT`</nobr> | No supplied measurement carries the check's required signals. |
-| <nobr>`SensorMissing`</nobr> | <nobr>`SENSOR_MISSING`</nobr> | SensorMissing marks a check whose whole category was expected but never arrived: the sensor is absent, unconfigured, or its backend was never constructed. It is distinct from NoApplicableMeasurement, which means the category was collected but no measurement carried this check's required signals, and from a Critical errored verdict, which means the sensor ran and failed. |
+| <nobr>`SensorMissing`</nobr> | <nobr>`SENSOR_MISSING`</nobr> | SensorMissing marks a check whose whole category was expected but never arrived: the sensor is absent, unconfigured, or its backend was never constructed. It is distinct from NoApplicableMeasurement, which means the category was collected but no measurement carried this check's required signals, and from an Unknown errored verdict, which means the sensor ran and failed. |
 | <nobr>`CadenceMismatch`</nobr> | <nobr>`CADENCE_MISMATCH`</nobr> | Check is not scheduled for the requested cadence. |
 
 ### ThresholdCategory

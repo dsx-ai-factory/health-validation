@@ -75,7 +75,7 @@ func TestToMeasurementsKeepsPerSignalFailure(t *testing.T) {
 		}))
 
 	byID := evaluate(t, "H100", ToMeasurements(observations), gpu.GPUPowerLimit(), gpu.GPUPowerState())
-	if byID["gpu_power_limit"] != health.Pass || byID["gpu_power_state"] != health.Critical {
+	if byID["gpu_power_limit"] != health.Pass || byID["gpu_power_state"] != health.Unknown {
 		t.Fatalf("unexpected severities %v", byID)
 	}
 	m := only[gpu.GPUMeasurement](t, ToMeasurements(observations))
@@ -114,7 +114,7 @@ func TestToMeasurementsFailsUnsupportedCollectionError(t *testing.T) {
 		}))
 
 	byID := evaluate(t, "GB200", ToMeasurements(observations), nvlink.NVLinkFabric(), nvlink.NVLinkFabricHealth())
-	if byID["nvlink_fabric"] != health.Pass || byID["nvlink_fabric_health"] != health.Critical {
+	if byID["nvlink_fabric"] != health.Pass || byID["nvlink_fabric_health"] != health.Unknown {
 		t.Fatalf("unexpected severities %v", byID)
 	}
 }
@@ -268,12 +268,12 @@ func TestToMeasurementsUnsupportedFabricStatusIsIncomplete(t *testing.T) {
 func TestToMeasurementsFailsCatalogSignalsWithoutObservation(t *testing.T) {
 	byID := evaluate(t, "GB200", ToMeasurements(healthyNVLinkObservations()),
 		nvlink.NVLinkFabricHealth(), nvlink.NVLinkActive())
-	if byID["nvlink_fabric_health"] != health.Pass || byID["nvlink_active"] != health.Critical {
+	if byID["nvlink_fabric_health"] != health.Pass || byID["nvlink_active"] != health.Unknown {
 		t.Fatalf("unexpected severities %v", byID)
 	}
 
 	byID = evaluateIn(t, "H100", health.TenantGuest, ToMeasurements(healthyGPUObservations()), gpu.GPUComputeApps())
-	if byID["gpu_compute_apps"] != health.Critical {
+	if byID["gpu_compute_apps"] != health.Unknown {
 		t.Fatalf("unexpected severities %v", byID)
 	}
 }
@@ -307,8 +307,8 @@ func TestToMeasurementsUnidentifiedGPUFailureFailsGPUID(t *testing.T) {
 				if v.CheckID != "nvlink_fabric" {
 					continue
 				}
-				if v.Severity != health.Critical || !v.RecommendedAction.Equal(health.Drain(test.action)) {
-					t.Errorf("nvlink_fabric = %s %v, want CRITICAL %s", v.Severity, v.RecommendedAction, test.action)
+				if v.Severity != health.Unknown || !v.RecommendedAction.Equal(health.Drain(test.action)) {
+					t.Errorf("nvlink_fabric = %s %v, want UNKNOWN %s", v.Severity, v.RecommendedAction, test.action)
 				}
 				if !strings.Contains(strings.Join(v.Messages, " "), `explained by dependency "gpu_count"`) {
 					t.Errorf("messages = %v, want the gpu_count dependency", v.Messages)
