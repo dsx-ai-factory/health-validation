@@ -78,7 +78,9 @@ func TestGPUComputeProcessParity(t *testing.T) {
 // check must recommend retrying collection, as the legacy sensor's timeout
 // does. When only DCGM stalls, only the DCGM-backed checks may fail.
 func TestGPUCollectTwoSourceTimeout(t *testing.T) {
-	const timeout = 10 * time.Millisecond
+	// Long enough for the NVML process sensor's host procfs scan; the stalled
+	// sources stay blocked until release, so only wall time grows.
+	const timeout = 500 * time.Millisecond
 	retry := health.Drain(health.RemediationActionRetryCollection)
 	for _, tt := range []struct {
 		name      string
