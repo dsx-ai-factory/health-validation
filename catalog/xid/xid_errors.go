@@ -324,8 +324,13 @@ func Checks() []health.CheckDefinition {
 	}
 	checks = append(checks, xid45Check())
 	checks = append(checks, xid154Check())
-	// Every check reports its own events, whatever signals its builder set.
+	// Every check reports its own events, whatever signals its builder set,
+	// except those reading XidDerivedMeasurement: a check routes to one
+	// measurement type, and events live on XidMeasurement.
 	for i := range checks {
+		if slices.Contains(checks[i].RequiredSignals, SignalSubXidCodeCounts) {
+			continue
+		}
 		if !slices.Contains(checks[i].RequiredSignals, SignalEvents) {
 			checks[i].RequiredSignals = append(checks[i].RequiredSignals, SignalEvents)
 		}
@@ -436,7 +441,7 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 		fmt.Sprintf("Detects NVRM Xid %s (%s) occurrences in the system journal within the collection window.", c.subXidCode, c.subcode),
 		action,
 	)
-	def.RequiredSignals = []string{SignalGPUID, SignalPCIAddress, SignalSubXidCodeCounts}
+	def.RequiredSignals = []string{SignalSubXidCodeCounts}
 	def.Architectures = slices.Clone(blackwellArchitectures)
 	def.Rules = []health.Rule{{
 		Expression: fmt.Sprintf("%[1]q in sub_xid_code_counts && sub_xid_code_counts[%[1]q] >= occurrences", c.subXidCode),

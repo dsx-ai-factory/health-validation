@@ -204,6 +204,9 @@ func xidCatalog(t *testing.T) *catalog.Catalog {
 			t.Fatal(err)
 		}
 	}
+	if err := cat.RegisterAccumulator(xid.Accumulator{}); err != nil {
+		t.Fatal(err)
+	}
 	return cat
 }
 
@@ -276,10 +279,15 @@ func TestXIDAdapterMixedTimeoutAndParseError(t *testing.T) {
 	}
 }
 
+// A failed scan must also fail what the catalog derives from it, or the
+// gpu_xid_149_<x> checks would pass on a read that never happened.
 func TestXIDAdapterFailureCoversDerivedSignals(t *testing.T) {
-	m := only[xid.XidMeasurement](t, XID(nil).Build(nil))
-	failed := m.Errors()[0].FailedSignals()
-	for key := range (xid.XidMeasurement{}).DerivedSignals(health.Host{}) {
+	derived, err := xid.Accumulator{}.Accumulate(XID(nil).Build(nil))
+	if err != nil || len(derived) != 1 || len(derived[0].Errors()) == 0 {
+		t.Fatalf("derived = %v (err %v), want one errored measurement", derived, err)
+	}
+	failed := derived[0].Errors()[0].FailedSignals()
+	for _, key := range xid.DerivedMeasurementSignals() {
 		if !slices.Contains(failed, key) {
 			t.Fatalf("derived signal %q not failed: %v", key, failed)
 		}
@@ -289,9 +297,6 @@ func TestXIDAdapterFailureCoversDerivedSignals(t *testing.T) {
 func TestXIDAdapterMeasurementContracts(t *testing.T) {
 	m := XID(nil).Build([]*observation.Observation{xidMarker()})
 	if err := catalog.CheckSignalUniqueness(m...); err != nil {
-		t.Fatal(err)
-	}
-	if err := catalog.CheckDerivedSignals(m...); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -164,7 +164,7 @@ func customCheck() health.CheckDefinition {
 // TestWithChecksRegistersCustomCheck confirms a check supplied via the
 // WithChecks SPI is registered into the catalog alongside the built-ins.
 func TestWithChecksRegistersCustomCheck(t *testing.T) {
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, "", health.DriverVersion{}, health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, "", health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	canonical := customCheck()
 	canonical.Provenance = health.NVIDIA
 
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, "", health.DriverVersion{}, health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, "", health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 	collide := customCheck()
 	collide.ID = "gpu_count" // collides with a built-in
 
-	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, "", health.DriverVersion{}, health.OperatorInfra)
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, "", health.OperatorInfra)
 	if err == nil {
 		t.Fatal("expected duplicate-ID error, got nil")
 	}
@@ -217,7 +217,7 @@ func TestWithChecksRejectsCheckWithoutRequiredSignals(t *testing.T) {
 	c := customCheck()
 	c.RequiredSignals = nil
 
-	_, _, err := buildCatalog(nil, []health.CheckDefinition{c}, "", health.DriverVersion{}, health.OperatorInfra)
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{c}, "", health.OperatorInfra)
 	if err == nil {
 		t.Fatal("expected a registration error, got nil")
 	}
@@ -232,7 +232,7 @@ func TestWithChecksRejectsCheckWithoutRequiredSignals(t *testing.T) {
 // wired into the catalog: a check skips on an architecture it does not cover
 // (A100 here) instead of running with the wrong thresholds.
 func TestBuildCatalogAppliesArchitecture(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "A100", health.DriverVersion{}, health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, nil, "A100", health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -248,83 +248,34 @@ func TestBuildCatalogAppliesArchitecture(t *testing.T) {
 	}
 }
 
-// echoedDriverVersion is the version the driver-echo tests discover.
+// echoedDriverVersion is the version the driver-version tests discover.
 const echoedDriverVersion = "575.51.03"
 
-func mustDriverVersion(t *testing.T) health.DriverVersion {
-	t.Helper()
-	v, ok := health.ParseDriverVersion(echoedDriverVersion)
-	if !ok {
-		t.Fatalf("ParseDriverVersion(%q) failed", echoedDriverVersion)
-	}
-	return v
-}
-
-// driverEchoCheck goes CRITICAL when a [driverEchoMeasurement] derives
-// [echoedDriverVersion].
-func driverEchoCheck() health.CheckDefinition {
+// driverVersionCheck warns when the node measurement carries
+// [echoedDriverVersion]. It warns rather than goes CRITICAL so a failed
+// read, which is CRITICAL, cannot pass for a match.
+func driverVersionCheck() health.CheckDefinition {
 	return health.CheckDefinition{
-		ID:              "test_driver_echo",
-		Name:            "Test Driver Echo",
+		ID:              "test_driver_version",
 		Category:        health.Node,
-		RequiredSignals: []string{"seen_driver"},
+		RequiredSignals: []string{node.SignalDriverVersion},
 		Rules: []health.Rule{{
-			Expression: fmt.Sprintf("seen_driver == %q", echoedDriverVersion),
-			Severity:   health.Critical,
-			Message:    "derivation saw the discovered driver version",
+			Expression: fmt.Sprintf("driver_version == %q", echoedDriverVersion),
+			Severity:   health.Warning,
+			Message:    "node measurement carried the inventory's driver version",
 		}},
 	}
 }
 
-// driverEchoMeasurement derives the driver version its catalog was built
-// with, so a rule can observe what buildCatalog handed the catalog.
-type driverEchoMeasurement struct {
-	Count int64 `json:"echo_count"`
-}
-
-func (driverEchoMeasurement) Category() health.Category           { return health.Node }
-func (driverEchoMeasurement) Errors() []health.ErroredMeasurement { return nil }
-func (driverEchoMeasurement) DerivedSignals(host health.Host) map[string]any {
-	return map[string]any{"seen_driver": host.DriverVersion.Raw}
-}
-
-// TestBuildCatalogAppliesDriverVersion confirms the discovered driver
-// version reaches the catalog, where derived signals read it, rather than
-// being dropped between discovery and evaluation.
-func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
-	cat, _, err := buildCatalog(&Config{}, []health.CheckDefinition{driverEchoCheck()}, "GB200", mustDriverVersion(t), health.OperatorInfra)
-	if err != nil {
-		t.Fatalf("buildCatalog: %v", err)
-	}
-	got, err := cat.Evaluate("test_driver_echo", driverEchoMeasurement{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Severity != health.Critical {
-		t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", got.Severity)
-	}
-}
-
-// echoIBBackend yields a [driverEchoMeasurement] through the opt-in
-// InfiniBand sensor.
-type echoIBBackend struct{}
-
-func (echoIBBackend) MeasureIB(context.Context) ([]health.Measurement, error) {
-	return []health.Measurement{driverEchoMeasurement{}}, nil
-}
-func (echoIBBackend) Errored(error) []health.Measurement { return nil }
-
-// TestRunCommandPassesDriverVersion confirms runCommand hands the version
-// the GPU inventory recorded to the catalog it evaluates with.
-func TestRunCommandPassesDriverVersion(t *testing.T) {
-	a := New().WithProgramName("test").WithChecks(driverEchoCheck())
+// TestRunCommandCollectsDriverVersion confirms a runnable check that reads
+// driver_version gets the version the GPU inventory recorded, through the
+// node domain's collect sensor.
+func TestRunCommandCollectsDriverVersion(t *testing.T) {
+	a := New().WithProgramName("test").WithChecks(driverVersionCheck())
 	a.host = fakeHost{b: spyBackend{called: new(bool)}, driver: echoedDriverVersion}
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
-	// The opt-in InfiniBand sensor accepts any measurement, so it carries
-	// the echo into an otherwise stock run.
-	a.WithIBBackend(echoIBBackend{})
 
 	var stdout, stderr bytes.Buffer
 	a.runCommand([]string{"--node-id", "n1"}, &stdout, &stderr)
@@ -334,14 +285,14 @@ func TestRunCommandPassesDriverVersion(t *testing.T) {
 		t.Fatalf("unmarshal verdict: %v; stdout = %s; stderr = %s", err, stdout.String(), stderr.String())
 	}
 	for _, v := range verdict.CheckResults {
-		if v.CheckID == "test_driver_echo" {
-			if v.Severity != health.Critical {
-				t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", v.Severity)
+		if v.CheckID == "test_driver_version" {
+			if v.Severity != health.Warning {
+				t.Errorf("Severity = %v, want WARNING: the driver version did not reach the node measurement", v.Severity)
 			}
 			return
 		}
 	}
-	t.Fatal("test_driver_echo verdict not found")
+	t.Fatal("test_driver_version verdict not found")
 }
 
 // --- Per-domain backend override locks ------------------------------------

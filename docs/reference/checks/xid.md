@@ -142,7 +142,7 @@ These 13 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_155`</nobr> | GPU Xid 155 (NVLink SW-defined error) | <nobr>`155 in xid_counts && xid_counts[155] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_159`</nobr> | GPU Xid 159 (CHI non-data error) | <nobr>`159 in xid_counts && xid_counts[159] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 
-## Single-rule checks reading `gpu_id`, `pci_address`, `sub_xid_code_counts`, `events`
+## Single-rule checks reading `sub_xid_code_counts`
 
 These 20 checks share the properties below and each has one rule.
 
@@ -155,7 +155,7 @@ These 20 checks share the properties below and each has one rule.
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`sub_xid_code_counts`</nobr>, <nobr>`events`</nobr> |
+| Required signals | <nobr>`sub_xid_code_counts`</nobr> |
 
 **Thresholds**
 

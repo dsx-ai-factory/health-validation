@@ -105,14 +105,6 @@ FixedThresholdError is returned when an operator attempts to override a threshol
 | <nobr>`ThresholdName`</nobr> |  | <nobr>`string`</nobr> |  |
 | <nobr>`CheckID`</nobr> |  | <nobr>`string`</nobr> |  |
 
-### Host
-
-Host is what derived signals may know about the node beyond their own measurement. It is supplied once, when the catalog is built, and holds for every measurement in that run. The GPU architecture is deliberately not here: it decides which checks apply and which thresholds they use, not what a measurement's signals are.
-
-| Field | JSON name | Type | Description |
-|---|---|---|---|
-| <nobr>`DriverVersion`</nobr> |  | [<nobr>`DriverVersion`</nobr>](#driverversion) | DriverVersion is the node's NVIDIA driver version, for derivations whose meaning changed between driver releases. The zero value means it could not be determined. |
-
 ### NodeVerdict
 
 NodeVerdict aggregates per-check verdicts into a node-level health assessment.

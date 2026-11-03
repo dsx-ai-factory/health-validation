@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -211,17 +212,24 @@ func (g powerDrawGate) Build(obs []*observation.Observation) []health.Measuremen
 // category present with a nil set requests every signal declared for it.
 type requiredSignals map[health.Category]map[string]bool
 
-// requiredFor returns the catalog signals the runnable checks require.
-func requiredFor(runnable []*health.CheckDefinition) requiredSignals {
+// requiredFor returns the catalog signals the runnable checks need collected.
+// A check requiring a signal the catalog derives needs that derivation's
+// inputs (see [catalog.Catalog.CollectedSignals]).
+func requiredFor(cat *catalog.Catalog, runnable []*health.CheckDefinition) requiredSignals {
 	required := make(requiredSignals)
 	for _, check := range runnable {
-		set := required[check.Category]
-		if set == nil {
-			set = make(map[string]bool)
-			required[check.Category] = set
-		}
-		for _, signal := range check.RequiredSignals {
-			set[signal] = true
+		for category, signals := range cat.CollectedSignals(check) {
+			set, seen := required[category]
+			if seen && set == nil {
+				continue
+			}
+			if set == nil {
+				set = make(map[string]bool)
+				required[category] = set
+			}
+			for _, signal := range signals {
+				set[signal] = true
+			}
 		}
 	}
 	return required

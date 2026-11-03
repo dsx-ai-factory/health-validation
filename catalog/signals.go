@@ -6,7 +6,6 @@ package catalog
 import (
 	"cmp"
 	"fmt"
-	"maps"
 	"reflect"
 	"slices"
 
@@ -57,106 +56,6 @@ func measurementTypeName(m health.Measurement) string {
 		t = t.Elem()
 	}
 	return t.String()
-}
-
-// CheckDerivedSignals verifies that no measurement implementing
-// [health.DerivedSignaler] names a derived signal after one of its own
-// json-tagged fields. A derived signal takes precedence when the two
-// collide, so the field would be silently replaced by the derived value
-// rather than the conflict being reported.
-//
-// Pass one instance — the zero value is fine — of every measurement type
-// the catalog consumes; types that do not derive signals are skipped. It
-// returns an error naming the first collision found. Enforces one half of
-// the interface's documented contract; the other half, that the derived
-// key set does not vary with the data, needs a populated instance and so
-// lives in [CheckDerivedSignalKeysStable].
-func CheckDerivedSignals(measurements ...health.Measurement) error {
-	for _, m := range measurements {
-		d, ok := m.(health.DerivedSignaler)
-		if !ok {
-			continue
-		}
-		fields := make(map[string]struct{})
-		for _, key := range evaluation.FieldKeys(m) {
-			fields[key] = struct{}{}
-		}
-		for _, name := range slices.Sorted(maps.Keys(d.DerivedSignals(health.Host{}))) {
-			if _, clash := fields[name]; clash {
-				return fmt.Errorf(
-					"%T derives a signal named %q, which is also one of its json fields; the derived "+
-						"value would silently shadow the field", m, name)
-			}
-		}
-	}
-	return nil
-}
-
-// CheckDerivedSignalKeysStable verifies that a measurement's derived
-// signal names depend on neither its data nor the host: the populated
-// instance passed in, derived against host, must advertise exactly the
-// keys a zero value of the same type does against a zero [health.Host].
-// Routing and [CheckSignalUniqueness] ask a zero value, with a zero
-// Host, which signals a type carries, so a key appearing only once some
-// field is populated or some host fact is known would be invisible to
-// them and any check requiring it would never be routed a measurement.
-//
-// Unlike [CheckDerivedSignals] this needs a *populated* instance and a
-// populated host, exercising whatever the derivation reads — only the
-// caller knows what that looks like for its own type. The zero value to
-// compare against is derived here. Measurements that do not derive
-// signals pass trivially.
-func CheckDerivedSignalKeysStable(populated health.Measurement, host health.Host) error {
-	d, ok := populated.(health.DerivedSignaler)
-	if !ok {
-		return nil
-	}
-	zero, ok := zeroValueOf(populated).(health.DerivedSignaler)
-	if !ok {
-		// Unreachable for a value receiver, and for a pointer receiver
-		// the zero value is a nil pointer we must not call.
-		return fmt.Errorf("%T derives signals but its zero value does not; pass a value type", populated)
-	}
-
-	zeroKeys := derivedKeySet(zero, health.Host{})
-	populatedKeys := derivedKeySet(d, host)
-	for _, name := range slices.Sorted(maps.Keys(populatedKeys)) {
-		if _, ok := zeroKeys[name]; !ok {
-			return fmt.Errorf(
-				"%T derives signal %q only when populated or given a host; a zero value with a zero "+
-					"Host must advertise it too, or no check requiring it is ever routed a measurement",
-				populated, name)
-		}
-	}
-	for _, name := range slices.Sorted(maps.Keys(zeroKeys)) {
-		if _, ok := populatedKeys[name]; !ok {
-			return fmt.Errorf(
-				"%T derives signal %q only when empty; the key set must vary with neither the data "+
-					"nor the host", populated, name)
-		}
-	}
-	return nil
-}
-
-// derivedKeySet is d's derived signal names, derived against host, as a
-// set.
-func derivedKeySet(d health.DerivedSignaler, host health.Host) map[string]struct{} {
-	out := make(map[string]struct{})
-	for name := range d.DerivedSignals(host) {
-		out[name] = struct{}{}
-	}
-	return out
-}
-
-// zeroValueOf returns the zero value of m's dynamic type. A pointer type
-// yields a pointer to a zero struct rather than a nil pointer, since the
-// caller goes on to invoke a method on it.
-func zeroValueOf(m any) any {
-	t := reflect.TypeOf(m)
-	if t.Kind() == reflect.Pointer {
-		return reflect.New(t.Elem()).Interface()
-	}
-	return reflect.New(t).Elem().Interface()
 }
 
 // measurementSchema is a measurement type's routing surface: its category

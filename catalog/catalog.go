@@ -31,7 +31,6 @@ type Catalog struct {
 	overrides        OverrideSet
 	architecture     string
 	accumulators     []health.Accumulator
-	host             health.Host
 	executionContext health.ExecutionContext
 	mu               sync.RWMutex
 }
@@ -72,14 +71,6 @@ var ErrArchitectureUnset = errors.New("architecture must be set via WithArchitec
 // for List/Overrides but fails closed at evaluation.
 func WithArchitecture(arch string) Option {
 	return func(c *Catalog) { c.architecture = arch }
-}
-
-// WithDriverVersion sets the node's NVIDIA driver version, which reaches
-// derived signals through [health.Host]. Omitting it, or passing the zero
-// value, leaves the version unknown; unlike the architecture, evaluation
-// does not require it.
-func WithDriverVersion(v health.DriverVersion) Option {
-	return func(c *Catalog) { c.host.DriverVersion = v }
 }
 
 // WithExecutionContext sets the deployment position. Checks that
@@ -286,7 +277,6 @@ type paramsSnapshot struct {
 	disabledChecks   map[string]bool
 	overrides        OverrideSet
 	architecture     string
-	host             health.Host
 	executionContext health.ExecutionContext
 }
 
@@ -316,7 +306,6 @@ func (c *Catalog) snapshotParams() paramsSnapshot {
 		overrides:        c.overrides,
 		disabledChecks:   c.disabledChecks,
 		architecture:     c.architecture,
-		host:             c.host,
 		executionContext: c.executionContext,
 	}
 }
@@ -345,8 +334,7 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 		return health.CheckVerdict{}, fmt.Errorf("check %q not found", checkID)
 	}
 
-	snap := c.snapshotParams()
-	return c.evaluationEngine.EvaluateCheck(cd, m, snap.host, snap.forCheck(checkID))
+	return c.evaluationEngine.EvaluateCheck(cd, m, c.snapshotParams().forCheck(checkID))
 }
 
 // EvaluateAll runs all checks whose Category matches the provided
@@ -421,7 +409,7 @@ func (c *Catalog) evaluateAllRaw(opts EvaluationOptions, measurements ...health.
 		return nil, err
 	}
 	all := append(slices.Clone(measurements), derived...)
-	return c.evaluationEngine.EvaluateBatch(checks, all, snap.host, snap.forCheck)
+	return c.evaluationEngine.EvaluateBatch(checks, all, snap.forCheck)
 }
 
 // RunnableChecks returns the registered checks that [Catalog.EvaluateAllWithOptions]
@@ -458,7 +446,6 @@ func (c *Catalog) batchSnapshot(opts EvaluationOptions) (map[string]*health.Chec
 		overrides:        c.overrides,
 		disabledChecks:   c.disabledChecks,
 		architecture:     c.architecture,
-		host:             c.host,
 		executionContext: c.executionContext,
 	}
 }

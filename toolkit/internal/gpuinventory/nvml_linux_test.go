@@ -221,8 +221,8 @@ func TestNVMLReaderRecordsDriverVersion(t *testing.T) {
 			t.Errorf("entry %d driver_version = %q", i, entry.GetGpu().GetDriverVersion())
 		}
 	}
-	if v, ok := DriverVersion(snapshot); !ok || !v.AtLeast(575, 0, 0) {
-		t.Errorf("DriverVersion = %+v, %v; want 575.51.03", v, ok)
+	if o := driverVersionObservation(snapshot); o.GetValue().GetStringValue() != "575.51.03" {
+		t.Errorf("driver version observation = %v, want 575.51.03", o)
 	}
 
 	for _, tc := range []struct {
@@ -241,8 +241,8 @@ func TestNVMLReaderRecordsDriverVersion(t *testing.T) {
 			if failure := entry.GetFieldErrors()["driver_version"]; failure.GetOperation() != "SystemGetDriverVersion" {
 				t.Fatalf("driver_version field error = %v", failure)
 			}
-			if _, ok := DriverVersion(snapshot); ok {
-				t.Fatal("reported a driver version the query did not return")
+			if o := driverVersionObservation(snapshot); o.GetCollectionError() == nil {
+				t.Fatalf("reported a driver version the query did not return: %v", o)
 			}
 			if arch, err := Architecture(snapshot); err != nil || arch != "GB200" {
 				t.Fatalf("Architecture = %q, %v; a driver-version failure must not fail discovery", arch, err)

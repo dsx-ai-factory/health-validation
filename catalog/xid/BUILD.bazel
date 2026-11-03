@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "xid",
     srcs = [
-        "derived.go",
+        "accumulator.go",
         "measurement.go",
         "nvlink5_decode.go",
         "scope.go",
@@ -15,13 +15,14 @@ go_library(
     deps = [
         "//catalog/health",
         "//catalog/internal/scope",
+        "//catalog/node",
     ],
 )
 
 go_test(
     name = "xid_test",
     srcs = [
-        "derived_test.go",
+        "accumulator_test.go",
         "nvlink5_decode_test.go",
         "scope_test.go",
         "sub_xid_code_test.go",
@@ -31,7 +32,7 @@ go_test(
     deps = [
         "//catalog",
         "//catalog/health",
-        "//catalog/internal/evaluation",
         "//catalog/internal/scope",
+        "//catalog/node",
     ],
 )

@@ -412,8 +412,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	// where they apply. A discovery failure is a node fault — the GPUs are
 	// unenumerable or unreadable — so drain for that explicit reason instead
 	// of evaluating with no architecture (Evaluate requires WithArchitecture).
-	snapshot := a.host.gpuInventory().Snapshot(context.Background(), cycle)
-	arch, err := gpuinventory.Architecture(snapshot)
+	arch, err := gpuinventory.Architecture(a.host.gpuInventory().Snapshot(context.Background(), cycle))
 	if err != nil {
 		slog.Warn("architecture discovery failed", "err", err)
 		verdict := discoveryFailureVerdict(err)
@@ -422,15 +421,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 
-	// The driver version comes from the same snapshot. Unlike architecture
-	// an unknown version is not a node fault: whatever depends on it treats
-	// it as unknown, so log it and continue.
-	driverVersion, ok := gpuinventory.DriverVersion(snapshot)
-	if !ok {
-		slog.Warn("driver version unreadable; continuing without it")
-	}
-
-	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, driverVersion, executionContext)
+	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, executionContext)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
@@ -448,7 +439,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	sensors, err := a.sensors(cycle, requiredFor(runnable), xidJournal)
+	sensors, err := a.sensors(cycle, requiredFor(cat, runnable), xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError
@@ -698,7 +689,7 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
-	cat, timeout, err := buildCatalog(cfg, a.customChecks, "", health.DriverVersion{}, health.TenantGuest)
+	cat, timeout, err := buildCatalog(cfg, a.customChecks, "", health.TenantGuest)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
@@ -832,8 +823,8 @@ func loadOptionalConfig(path string) (*Config, error) {
 // so a config may target a custom check too — and its
 // collection_timeout_seconds (if set) is the timeout; otherwise the toolkit
 // default is used. A nil cfg means no config file: built-ins only, default
-// timeout. arch and driverVersion are what discovery found about the node.
-func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string, driverVersion health.DriverVersion, executionContext health.ExecutionContext) (*catalog.Catalog, time.Duration, error) {
+// timeout.
+func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string, executionContext health.ExecutionContext) (*catalog.Catalog, time.Duration, error) {
 	// register adds the caller-supplied checks to a freshly built catalog.
 	// Classification is passed through untouched; registration fails only on
 	// the catalog's own validation or a duplicate ID.
@@ -850,7 +841,7 @@ func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch strin
 	// NVML reports "unknown" for unrecognized devices so scoped checks still skip.
 	// Evaluate requires a non-empty architecture; the CLI fails discovery before
 	// it would construct a catalog with none.
-	opts := []catalog.Option{catalog.WithExecutionContext(executionContext), catalog.WithDriverVersion(driverVersion)}
+	opts := []catalog.Option{catalog.WithExecutionContext(executionContext)}
 	if arch != "" {
 		opts = append(opts, catalog.WithArchitecture(arch))
 	}

@@ -31,6 +31,11 @@ func xidCatalogFor(t *testing.T, architecture string, opts ...catalog.Option) *c
 	for _, cd := range xid.Checks() {
 		cat.MustRegister(cd)
 	}
+	// The per-subcode checks read what the accumulator derives; without it
+	// they are never routed a measurement.
+	if err := cat.RegisterAccumulator(xid.Accumulator{}); err != nil {
+		t.Fatal(err)
+	}
 	return cat
 }
 
@@ -849,7 +854,8 @@ func TestXidErrors_EveryCheckReportsItsOwnEvents(t *testing.T) {
 		xid.SignalSubXidCodeCounts: map[string]int64{"9999.1": 1},
 	}
 	for _, cd := range xid.Checks() {
-		if !slices.Contains(cd.RequiredSignals, xid.SignalEvents) {
+		// spike: checks reading XidDerivedMeasurement cannot also require events.
+		if !slices.Contains(cd.RequiredSignals, xid.SignalEvents) && !readsDerived(cd) {
 			t.Errorf("%s RequiredSignals = %v, want %s included", cd.ID, cd.RequiredSignals, xid.SignalEvents)
 		}
 		observed := map[string]any{}
@@ -922,8 +928,9 @@ func TestXidErrors_VerdictScopesAndGroupsEvents(t *testing.T) {
 			"xid_counts":       map[int64]int64{149: 1},
 			"fatal_xid_counts": map[int64]int64{149: 1},
 		}},
+		// spike: a sub-code check reads XidDerivedMeasurement, which carries
+		// neither the events nor the GPU's identity signals.
 		{checkID: "gpu_xid_149_4", want: map[string]any{
-			"events":              []xid.XidEvent{grouped(link, 1)},
 			"sub_xid_code_counts": map[string]int64{"149.4": 1},
 		}},
 		{checkID: "gpu_xid_154", want: map[string]any{
@@ -943,7 +950,9 @@ func TestXidErrors_VerdictScopesAndGroupsEvents(t *testing.T) {
 			t.Fatalf("marshal %s observed values: %v", test.checkID, err)
 		}
 		// Every Xid check reports the GPU's identity; this measurement has none.
-		test.want["gpu_id"], test.want["pci_address"] = "", ""
+		if _, derived := test.want[xid.SignalSubXidCodeCounts]; !derived {
+			test.want["gpu_id"], test.want["pci_address"] = "", ""
+		}
 		want, err := json.Marshal(test.want)
 		if err != nil {
 			t.Fatalf("marshal %s want: %v", test.checkID, err)
@@ -1016,6 +1025,9 @@ func TestXidErrors_CHINonDataError_ResetsGPU(t *testing.T) {
 
 func TestXidErrors_AllChecksRequireGPUIdentity(t *testing.T) {
 	for _, def := range xid.Checks() {
+		if readsDerived(def) {
+			continue // spike: identity is the derived measurement's entity key, not a signal
+		}
 		if len(def.RequiredSignals) < 2 || !slices.Equal(def.RequiredSignals[:2], []string{xid.SignalGPUID, xid.SignalPCIAddress}) {
 			t.Errorf("%s: RequiredSignals = %v, want gpu_id and pci_address first", def.ID, def.RequiredSignals)
 		}
@@ -1096,4 +1108,9 @@ func TestXidErrors_NVLink5PerGPU(t *testing.T) {
 	if subCode["GPU-a"].Severity != health.Critical || subCode["GPU-b"].Severity != health.Pass {
 		t.Errorf("gpu_xid_149_4 = GPU-a %v, GPU-b %v; want CRITICAL, PASS", subCode["GPU-a"].Severity, subCode["GPU-b"].Severity)
 	}
+}
+
+// readsDerived reports whether def reads XidDerivedMeasurement.
+func readsDerived(def health.CheckDefinition) bool {
+	return slices.Contains(def.RequiredSignals, xid.SignalSubXidCodeCounts)
 }
