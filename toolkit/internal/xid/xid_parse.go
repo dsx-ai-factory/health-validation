@@ -194,6 +194,7 @@ func parseRecoveryActionLine(line string) (xid.XidEvent, bool) {
 	}
 	ev := xid.XidEvent{
 		PCIAddress: groups[1],
+		Message:    lineMessage(line, xidRecoveryActionRE),
 		XidCode:    154,
 		RecoveryAction: &xid.RecoveryAction{
 			FromCode: groups[4],

@@ -112,6 +112,10 @@ func TestParseXid_Message(t *testing.T) {
 			"NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)",
 			"NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)",
 		},
+		{
+			"Nov 03 05:17:12 node1 kernel: NVRM: Xid (PCI:0000:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
+			"NVRM: Xid (PCI:0000:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
+		},
 	}
 	for _, test := range tests {
 		m := xid.ParseXid("boot", []string{test.line})
