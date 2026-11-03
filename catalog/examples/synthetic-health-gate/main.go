@@ -146,7 +146,9 @@ func completeCoverage(verdict health.NodeVerdict) bool {
 	seen := make(map[string]bool)
 	for _, result := range verdict.CheckResults {
 		category, expected := required[result.CheckID]
-		if !expected || result.Category != category || result.Skipped || result.SkipReason != health.NotSkipped || seen[result.CheckID] {
+		if !expected || result.Category != category || result.Skipped ||
+			result.SkipReason != health.NotSkipped ||
+			seen[result.CheckID] {
 			return false
 		}
 		seen[result.CheckID] = true
