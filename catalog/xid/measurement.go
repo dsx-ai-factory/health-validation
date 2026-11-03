@@ -154,6 +154,9 @@ type XidMeasurement struct {
 	// nil means the checks [Checks] builds.
 	covered    codeSet
 	scopes     map[string]checkScope
+	Since      string     `json:"since"`
+	Events     []XidEvent `json:"events"`
+	errors     []health.ErroredMeasurement
 	EventCount int64 `json:"event_count"`
 }
 
