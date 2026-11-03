@@ -136,13 +136,13 @@ type NVLink5Detail struct {
 type XidMeasurement struct {
 	XidCounts      map[int64]int64 `json:"xid_counts"`
 	FatalXidCounts map[int64]int64 `json:"fatal_xid_counts"`
-	Since          string          `json:"since"`
-	Events         []XidEvent      `json:"events"`
-	errors         []health.ErroredMeasurement
 	// covered and scopes come from the registered checks (see [XidMeasurement.WithChecks]);
 	// nil means the checks [Checks] builds.
 	covered    codeSet
 	scopes     map[string]checkScope
+	Since      string     `json:"since"`
+	Events     []XidEvent `json:"events"`
+	errors     []health.ErroredMeasurement
 	EventCount int64 `json:"event_count"`
 }
 
