@@ -181,7 +181,24 @@ There is no Helm chart or operator yet; you assemble it from the image:
   acting on the report is your controller's job.
 
 The NVIDIA device-plugin allocation must expose all node GPUs to the pod for
-`gpu_count` and `nvlink_*`. Journal-backed checks (`gpu_xid_*` and
+`gpu_count` and `nvlink_*`. The pod also needs what the Docker wrapper adds for
+the GPU checks:
+
+- `hostNetwork: true`, so the CLI reaches the node's DCGM hostengine on
+  `localhost` (`gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`,
+  `gpu_sensor_throttle`).
+- The host's `libdcgm.so.4`, and every non-glibc dependency reported by
+  `ldd <host libdcgm.so.4 path>`, mounted read-only at the same paths, with
+  `LD_LIBRARY_PATH` set to the library's directory. Pointing
+  `LD_LIBRARY_PATH` into a host-root mount such as `/host` instead is safe
+  only when that directory holds DCGM's libraries alone. DCGM packages
+  install into the system library directory, where the loader would then
+  take every library from the host, glibc included.
+- `hostPID: true`, so `gpu_compute_apps` sees compute processes outside the
+  pod.
+
+Without the first two, the DCGM-backed checks report collection failures.
+Journal-backed checks (`gpu_xid_*` and
 `rdma_linkflap_fatal`) need one of these arrangements:
 
 1. **Explicit read-only hostPaths (least host exposure).** Mount the host's
@@ -204,25 +221,28 @@ The NVIDIA device-plugin allocation must expose all node GPUs to the pod for
    `journalctl` child processes use the host filesystem. The shim must be
    supplied by a small image overlay or another executable volume: the stock
    image deliberately does not include `journalctl`. Run this pod as UID 0
-   with `SYS_CHROOT`; it does not need `hostPID`, `nsenter`, or `privileged`.
+   with `SYS_CHROOT`; the shim needs no `nsenter` or `privileged`. It covers
+   only `journalctl`: the CLI still loads `libdcgm.so.4` through the mounts
+   above.
 
-Both options use `hostPath`, which Kubernetes Pod Security Baseline and
-Restricted policies prohibit. Keep every hostPath read-only, place this
+Both options use `hostPath`, `hostNetwork`, and `hostPID`, which Kubernetes Pod
+Security Baseline and Restricted policies prohibit. Keep every hostPath read-only, place this
 workload only in an operator-approved namespace, and grant no broader host
 access than needed. The chroot option exposes the whole host filesystem
 read-only, so prefer explicit mounts where that policy boundary matters.
 
 #### Security context and check coverage
 
-An operator-approved namespace here means one allowed to use `hostPath`; it
-does **not** mean the pod needs `privileged: true`. The intended profiles are:
+An operator-approved namespace here means one allowed to use `hostPath`,
+`hostNetwork`, and `hostPID`; it does **not** mean the pod needs `privileged: true`. The intended profiles are:
 
 | Profile | Host access and security context | Checks with complete coverage |
 | --- | --- | --- |
-| Docker wrapper | Read-only journal, machine-id, `journalctl`, and its `ldd` dependencies; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; no `--privileged`, host PID namespace, or extra capabilities. | All stock CLI checks, provided the container sees all node GPUs. |
-| Kubernetes explicit mounts | The same read-only paths as the wrapper. `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities, `privileged`, host PID namespace, or host networking. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
-| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, host PID namespace, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
-| GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | GPU/NVLink and CPU/NUMA checks can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
+| Docker wrapper | Read-only journal, machine-id, `journalctl`, `libdcgm.so.4`, and their `ldd` dependencies; `LD_LIBRARY_PATH`; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; host network and PID namespaces; no `--privileged` or extra capabilities. | All stock CLI checks, provided the container sees all node GPUs and the node runs `nv-hostengine`. |
+| Kubernetes explicit mounts | The same read-only paths and `LD_LIBRARY_PATH` as the wrapper. `hostNetwork: true`, `hostPID: true`, `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities or `privileged`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
+| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above, plus the `libdcgm.so.4` mounts and `LD_LIBRARY_PATH` of the explicit profile. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
+| GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | Checks outside the journal can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
+| GPU access but no DCGM | No host network, no `libdcgm.so.4`, or no `nv-hostengine` on the node. | Checks outside DCGM can run; `gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`, and `gpu_sensor_throttle` return collection-failure verdicts rather than PASS. |
 
 The image runs as root by default. An explicitly non-root Docker user or pod
 may be viable only when its host-mapped UID/GID has journal-read permission;
@@ -231,7 +251,7 @@ journal-backed checks. CPU/NUMA checks need no elevated privilege, but observe
 the sysfs view supplied by the container runtime.
 
 The following is a complete chroot-profile example. Replace the image, target
-node, and GPU count with values for your fleet. The GPU limit must equal the
+node, GPU count, and `libdcgm.so.4` path with values for your fleet. The GPU limit must equal the
 node's full GPU count: a smaller allocation intentionally makes `gpu_count`
 report CRITICAL.
 
@@ -255,6 +275,10 @@ spec:
     spec:
       nodeName: <target-node-name>
       restartPolicy: Never
+      hostNetwork: true
+      hostPID: true
+      # Keep cluster DNS (e.g. for a metrics endpoint) on the host network.
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: health-validation
           image: <registry>/health-validation:<tag>
@@ -268,6 +292,8 @@ spec:
               value: /opt/host-journalctl:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: utility
+            - name: LD_LIBRARY_PATH
+              value: <directory of the host's libdcgm.so.4>
           resources:
             limits:
               nvidia.com/gpu: <all-gpus-on-node>
@@ -284,6 +310,10 @@ spec:
             - name: journalctl-shim
               mountPath: /opt/host-journalctl
               readOnly: true
+            # Add one such mount per non-glibc `ldd` dependency of libdcgm.so.4.
+            - name: libdcgm
+              mountPath: <host libdcgm.so.4 path>
+              readOnly: true
       volumes:
         - name: host-root
           hostPath:
@@ -293,10 +323,14 @@ spec:
           configMap:
             name: health-validation-journalctl-shim
             defaultMode: 0555
+        - name: libdcgm
+          hostPath:
+            path: <host libdcgm.so.4 path>
+            type: File
 ```
 
 For periodic operation, use the same container, security context, environment,
-and volumes in a `DaemonSet`, replace `nodeName` with a fleet `nodeSelector` or
+host namespaces, and volumes in a `DaemonSet`, replace `nodeName` with a fleet `nodeSelector` or
 affinity rule, and run the one-shot command in a loop:
 
 ```yaml
@@ -313,6 +347,9 @@ spec:
       labels:
         app: health-validation
     spec:
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: health-validation
           image: <registry>/health-validation:<tag>
