@@ -1613,6 +1613,45 @@ func TestEvaluateAll_AnnotatedVerdictShape(t *testing.T) {
 	t.Error("no annotated gpu_power_limit verdict")
 }
 
+func TestEvaluateAll_DependencyKeepsWorstObservedSeverity(t *testing.T) {
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"))
+	cat.MustRegister(health.CheckDefinition{
+		ID: "root", Category: health.GPU,
+		RequiredSignals: []string{gpu.SignalGPUPstate},
+		Rules: []health.Rule{
+			{Expression: "gpu_pstate == 1", Severity: health.Critical},
+			{Expression: "gpu_pstate == 2", Severity: health.Unknown},
+		},
+	})
+	dependent := gpu.GPUPowerLimit()
+	dependent.Dependencies = []string{"root"}
+	cat.MustRegister(dependent)
+	critical, unknown := healthyGPU("GPU-critical"), healthyGPU("GPU-unknown")
+	critical.GPUPstate, unknown.GPUPstate = 1, 2
+	roots := []health.Measurement{critical, unknown}
+	for range 2 {
+		measurements := append(slices.Clone(roots), gpu.ErroredGPU("GPU-missing", errors.New("handle unavailable")))
+		verdict, err := cat.EvaluateAll(measurements...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, result := range verdict.CheckResults {
+			if result.CheckID != dependent.ID || result.Severity != health.Unknown {
+				continue
+			}
+			found = true
+			if !strings.Contains(strings.Join(result.Messages, " "), `explained by dependency "root", itself CRITICAL`) {
+				t.Errorf("messages = %v, want the dependency's CRITICAL result in either measurement order", result.Messages)
+			}
+		}
+		if !found {
+			t.Fatal("dependent collection failure was not evaluated")
+		}
+		slices.Reverse(roots)
+	}
+}
+
 // An observed Unknown rule result can explain a dependent's collection failure
 // even though Unknown ranks below Critical.
 func TestEvaluateAll_UnknownDependencyExplains(t *testing.T) {

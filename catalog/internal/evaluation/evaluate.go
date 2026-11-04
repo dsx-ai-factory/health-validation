@@ -210,7 +210,7 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 			// >= Unknown so a rule that matched Unknown explains a dependent
 			// just as a Critical one does.
 			if v.Severity >= health.Unknown && v.ObservedValues != nil {
-				failed[id] = v.Severity
+				failed[id] = health.Worse(failed[id], v.Severity)
 			}
 
 			// This entity could not be read at all and a dependency already

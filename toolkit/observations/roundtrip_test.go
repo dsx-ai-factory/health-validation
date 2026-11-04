@@ -65,6 +65,15 @@ func TestRoundTripPreservesMeasurementsAndVerdicts(t *testing.T) {
 		if !slices.Equal(got, want) {
 			t.Fatalf("%s/%s verdicts differ:\n got  %v\n want %v", scope.arch, scope.execution, got, want)
 		}
+		verdict, err := catalog.New(catalog.WithArchitecture(scope.arch), catalog.WithExecutionContext(scope.execution)).EvaluateAll(restored...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.ContainsFunc(verdict.CheckResults, func(r health.CheckVerdict) bool {
+			return r.CheckID == "gpu_xid_79" && r.Severity == health.Critical
+		}) {
+			t.Fatalf("%s/%s: missing CRITICAL gpu_xid_79 verdict:\n%s", scope.arch, scope.execution, strings.Join(got, "\n"))
+		}
 	}
 }
 
