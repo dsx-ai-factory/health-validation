@@ -167,7 +167,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 }
 ```
 
-The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
+The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/audit/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
 
 The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers. `catalog_version` names the module version, and so the catalog, that produced the verdict, so consumers can verify which check logic and default thresholds were available when the run occurred.
 
@@ -328,7 +328,7 @@ Collect sensor measurements without evaluating checks:
 ./health-validation collect > observations.json
 ```
 
-For `collect`, an optional config's check IDs select the sensor domains to run. Without one, every built-in sensor domain runs. The output is one `ObservationBatch` (`collect/proto/health/v1/observation.proto`) in protojson form, with one observation per measurement field. Each signal ID is the domain plus the field name the checks read (e.g. `nvlink.inactive_count`); these are toolkit names, not canonical collect signal IDs. GPU measurements target the GPU and host-wide ones target the node (`--node-id`, defaulting to the hostname). Each observation carries a `value`, a `collectionError`, or a `noValue`; map and list fields are JSON-encoded strings. A signal the source reports as unsupported is a `noValue` with reason `NO_VALUE_REASON_NOT_SUPPORTED`, never a zero value. Sensor failures remain structured data and do not change the successful exit code.
+For `collect`, an optional config's check IDs select the sensor domains to run. Without one, every built-in sensor domain runs. The output is one `ObservationBatch` (`collect/proto/health/v1/observation.proto`) in protojson form, with one observation per measurement field. Each signal ID is the domain plus the field name the checks read (e.g. `nvlink.inactive_count`); these are toolkit names, not canonical collect signal IDs. GPU measurements target the GPU and host-wide ones target the node (`--node-id`, defaulting to the hostname). Each observation carries a `value`, a `collectionError`, or a `noValue`; map and list fields are JSON-encoded strings. A signal the source reports as unsupported is a `noValue` with reason `NO_VALUE_REASON_NOT_SUPPORTED`, never a zero value. Sensor failures remain structured data and do not change the successful exit code. Threshold values in that config are validated but not applied, and `collect` records no override audit entries.
 
 Slurm prolog integration:
 
@@ -339,7 +339,7 @@ nodename="$SLURMD_NODENAME"
 VERDICT=$(./health-validation run --node-id "$nodename")
 EXIT=$?
 
-# Exit 2: the tool could not produce a verdict (config/backend/collection error).
+# Exit 2: the tool could not produce a verdict (config/backend/collection/audit error).
 if [ $EXIT -eq 2 ]; then
   echo "health-validation failed to run" >&2
   exit 1
@@ -442,6 +442,10 @@ a typo fails the run rather than leaving the check quietly enabled. Because
 skipped checks are excluded from `overall_severity`, a disable narrows the
 minimum bar the node is held to — read `skipped_checks`, not just the exit code,
 to know what actually ran.
+
+Each threshold override is also recorded in the host's systemd journal, and the
+run exits `2` if it cannot be. See
+[docs/integration.md](docs/integration.md#audit-trail-for-overrides).
 
 ### Publishing metrics
 

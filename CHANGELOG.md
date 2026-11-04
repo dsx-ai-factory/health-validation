@@ -17,6 +17,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The public `catalog/version` package is removed. Read the version from a
   verdict's `catalog_version`. In unstamped builds, `health-validation version`
   now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`.
+- `run` records every validated threshold override in the host's systemd
+  journal before collecting and exits `2` if it cannot. Container deployments
+  that pass overrides must mount `/run/systemd/journal/socket`; see
+  `docs/integration.md`. The new `Catalog.ConfiguredOverrides` returns the
+  overrides a catalog is configured with, resolved as evaluation would. ([#93](https://github.com/dsx-ai-factory/health-validation/pull/93))
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
