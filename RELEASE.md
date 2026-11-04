@@ -7,8 +7,9 @@ released under one version: one `go.mod`, one `vX.Y.Z` tag. That tag versions
 every package in the repository (`catalog`, `toolkit`, `collect`, and
 `agentkit`) together, and also stamps the multi-architecture
 (`linux/amd64` + `linux/arm64`) container image built from
-`toolkit/cmd/health-validation` and published to
-[GHCR](https://ghcr.io/dsx-ai-factory/health-validation).
+`toolkit/cmd/health-validation`. Users build deployment images from their
+selected source revision; see
+[Building Container Images from Source](docs/developer.md#building-container-images-from-source).
 
 ## Cadence
 
@@ -95,12 +96,9 @@ added.
 Pushing a `vX.Y.Z` (or `-rc.N`) tag, or merging to `main`, runs the full
 `.github/workflows/ci.yml` pipeline: lint, test, build and smoke-test the image
 on both architectures, and a Grype vulnerability scan that blocks on any fixable
-Critical. If all of that passes, `publish-image` builds the multi-architecture
-OCI index and pushes it to `ghcr.io/dsx-ai-factory/health-validation`:
-
-- **`vX.Y.Z` tag** → publishes only the immutable `X.Y.Z` tag.
-- **`main`** → publishes an immutable pseudo-version tag (derived from the last
-  release, commit time, and short SHA) and moves `latest`.
+Critical. After these checks pass, `publish-image` publishes a multi-architecture
+OCI index for internal use. Users build their own deployment images from
+source using the instructions above.
 
 The version and commit metadata baked into each image (and reported by
 `health-validation version`) comes from `tools/workspace_status_release.sh`,
@@ -123,7 +121,6 @@ it does not publish page changes from `main`. It only applies site-wide
 configuration from `main`'s `fern/` directory, such as the theme, navbar, and
 redirects.
 
-No binary/archive artifacts are attached to GitHub releases — the container
-image is the only published release artifact today. There are no user-facing
+No binary/archive artifacts are attached to GitHub releases. There are no user-facing
 release notes generated automatically; summarize notable changes in the tag's
 GitHub release description.

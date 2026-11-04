@@ -32,23 +32,27 @@ events or link degradation, periodically as well).
 
 ## 1. Deploy it to nodes
 
-Two forms ship; pick by how your nodes run workloads.
+Build from source as a container image or a binary, depending on how your
+nodes run workloads.
 
 ### Container image (Kubernetes, containerized runners)
 
-Pull the published multi-arch image; the registry selects the host architecture:
+Build the image from a source revision you have reviewed and selected for your
+deployment. On a Linux build host, run these commands from the repository root:
 
 ```shell
-docker pull ghcr.io/dsx-ai-factory/health-validation:<tag>
+bazel run --config=ci --platforms=//build/platforms:linux_amd64 \
+  //toolkit/cmd/health-validation:health-validation.image.local_load
 ```
 
-The image publishes to GitHub Container Registry (GHCR). Image tags drop the
-release tag's leading `v` (release git tag `v1.2.3` → image `:1.2.3`); `latest` floats to the newest `main`. See
-[Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md#pulling-a-published-image) for auth and how to
-pull a specific tag or architecture.
+This builds and loads `health-validation:latest` into Docker. For ARM64 nodes,
+use `//build/platforms:linux_arm64`. Build for the architecture of the nodes
+where the image will run. The local `latest` tag refers to your own build.
 
-For a local Linux/amd64 build that produces a loadable tarball, see
-[Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md#build-a-linux-image-from-macos).
+For tarball export, version stamping, and builds from macOS, see the
+[Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md#building-container-images-from-source).
+For Kubernetes, tag and push your build to a registry you control, then use that
+image reference in your manifests.
 
 The image carries the CLI on an Ubuntu base — **not** the NVIDIA driver,
 `journalctl`, or DCGM. Different check domains need different host resources mounted in;
@@ -61,7 +65,7 @@ DCGM client library (`libdcgm.so.4`), with their shared-library dependencies,
 as well as the journal resources, and runs on the host network:
 
 ```shell
-scripts/health-validation-run.sh ghcr.io/dsx-ai-factory/health-validation:<tag> \
+scripts/health-validation-run.sh health-validation:latest \
   --node-id "$NODE_NAME"
 ```
 
@@ -84,7 +88,7 @@ docker run --rm \
   -v <journalctl ldd dependencies, one -v per .so, excluding libc/libpthread/libm> \
   -v <host libdcgm.so.4 path>:<same path>:ro \
   -v <libdcgm.so.4 ldd dependencies, as for journalctl> \
-  ghcr.io/dsx-ai-factory/health-validation:<tag> \
+  health-validation:latest \
   run --node-id "$NODE_NAME"
 ```
 
