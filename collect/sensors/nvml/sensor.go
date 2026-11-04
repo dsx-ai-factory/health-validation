@@ -194,6 +194,7 @@ func (s *sensor) measure(ctx context.Context, op *collect.Op, selected collect.S
 			}
 			return ctx.Err()
 		}
+		lost := make(map[string]bool)
 		for uuid, dev := range devices {
 			if contextErr := ctx.Err(); contextErr != nil {
 				return contextErr
@@ -202,22 +203,30 @@ func (s *sensor) measure(ctx context.Context, op *collect.Op, selected collect.S
 			ret := measureTemperature(ctx, batch, now, target, dev, want)
 			measurePower(ctx, batch, now, target, dev, want, ret)
 			if appendFatalFailures(batch, now, target, selected) {
+				lost[uuid] = true
 				continue
 			}
 			measureReliability(ctx, batch, now, target, dev, want)
 			if appendFatalFailures(batch, now, target, selected) {
+				lost[uuid] = true
 				continue
 			}
 			measureInterconnect(ctx, batch, now, target, dev, want)
 			if appendFatalFailures(batch, now, target, selected) {
+				lost[uuid] = true
 				continue
 			}
 			measureTelemetryFS(ctx, batch, now, target, dev, want, s.fsys)
 			if appendFatalFailures(batch, now, target, selected) {
+				lost[uuid] = true
 				continue
 			}
 			measureProcessesWithDiagnostics(ctx, batch, now, target, dev, want, s.fsys, s.processCmdline)
+			if appendFatalFailures(batch, now, target, selected) {
+				lost[uuid] = true
+			}
 		}
+		measurePeers(ctx, batch, now, devices, lost, want)
 		return ctx.Err()
 	})
 	if err != nil {

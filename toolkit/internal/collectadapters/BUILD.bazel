@@ -23,6 +23,7 @@ go_library(
         "//collect/signals/infiniband",
         "//collect/signals/xid",
         "//toolkit/observations",
+        "@org_golang_google_protobuf//proto",
     ],
 )
 

@@ -303,7 +303,7 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 			if err := json.Unmarshal(stdout.Bytes(), &actual); err != nil {
 				t.Fatal(err)
 			}
-			cat, _, err := buildCatalog(nil, mixedChecks(), "GB200", health.OperatorInfra)
+			cat, _, err := buildCatalog(nil, mixedChecks(), "GB200", health.DriverVersion{}, health.OperatorInfra)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -919,12 +919,30 @@ func (s *collectHardwareSensor) Measure(_ context.Context, opts ...collect.OpOpt
 				value.Kind = &observation.Value_IntValue{IntValue: 0}
 			case gpusignals.FabricManagerStatus.ID():
 				value.Kind = &observation.Value_IntValue{IntValue: gpusignals.FabricManagerStatusSuccess}
+			case gpusignals.NVLinkState.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 1}
+			case gpusignals.NVLinkLinkCount.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 18}
+			case gpusignals.NVLinkSpeedCommon.ID(), gpusignals.NVLinkEndpointSpeed.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 53125}
+			case gpusignals.NVLinkP2PStatus.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 0}
+			}
+			if slices.Contains(gpusignals.EndpointCapabilitySignals().IDs(), signal.ID()) {
+				value.Kind = &observation.Value_UintValue{UintValue: 1}
 			}
 			if override, ok := s.values[signal.ID()]; ok {
 				value = override
 			}
+			target := observation.GPUTarget(gpuID)
+			switch {
+			case slices.Contains(gpusignals.EndpointSignals().IDs(), signal.ID()):
+				target = observation.NVLinkEndpointTarget(gpuID, 0)
+			case slices.Contains(gpusignals.PairSignals().IDs(), signal.ID()):
+				target = observation.GPUPairTarget(gpuID, "GPU-peer")
+			}
 			batch.Observations = append(batch.Observations, &observation.Observation{
-				SignalId: signal.ID(), Source: s.ID(), Target: observation.GPUTarget(gpuID),
+				SignalId: signal.ID(), Source: s.ID(), Target: target,
 				ObservedAt: timestamppb.Now(), Unit: signal.Unit(),
 				Outcome: &observation.Observation_Value{Value: value},
 			})
@@ -1237,7 +1255,7 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 // collected and the CPU measurement carries a failure for it. cpu_count must
 // still pass: a measurement error fails only checks requiring that signal.
 func TestCollectSensorsUncollectedSiblingSignalLeavesCheckPassing(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "H100", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, nil, "H100", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatal(err)
 	}
