@@ -4,6 +4,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"reflect"
@@ -16,9 +17,11 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
+	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/google/uuid"
 )
@@ -95,14 +98,36 @@ func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 	return a
 }
 
+// dcgmGPUSignals are the GPU domain's signals the stock CLI reads from DCGM.
+// processGPUSignals come from NVML instead: DCGM has no list of the compute
+// processes running on a GPU.
+var (
+	dcgmGPUSignals = collect.Signals{
+		gpusignals.PowerDraw, gpusignals.PowerLimitRequested, gpusignals.PowerLimitEnforced,
+		gpusignals.PerformanceState, gpusignals.HardwareSlowdownActive,
+		gpusignals.HardwareThermalSlowdownActive, gpusignals.HardwarePowerBrakeSlowdownActive,
+	}
+	processGPUSignals = collect.Signals{gpusignals.ProcessCount, gpusignals.ProcessCmdline}
+)
+
 // builtinCollect returns the stock CLI's collect-backed domains. A domain
 // moves here from the legacy sensor list in runCommand when it migrates; its
-// With*Backend override keeps the legacy sensor instead. The node domain
-// reads the host GPU inventory that architecture discovery already read in
-// this cycle, so counting GPUs does not enumerate them again.
-func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
+// With*Backend override keeps the legacy sensor instead. The node domain and
+// the GPU power-draw gate read the host GPU inventory that architecture
+// discovery already read in cycle, so they do not enumerate GPUs again.
+func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectAdapter) {
 	var sources []collect.Sensor
 	var adapters []CollectAdapter
+	if a.gpu == nil {
+		inventory := a.host.gpuInventory()
+		sources = append(sources, a.host.gpuSensors()...)
+		adapters = append(adapters, powerDrawGate{
+			CollectAdapter: collectadapters.GPU(),
+			architecture: func() (string, error) {
+				return gpuinventory.Architecture(inventory.Snapshot(context.Background(), cycle))
+			},
+		})
+	}
 	if a.cpu == nil {
 		sources = append(sources, cpusensor.New(nil))
 		adapters = append(adapters, collectadapters.CPU())
@@ -116,6 +141,52 @@ func (a *App) builtinCollect() ([]collect.Sensor, []CollectAdapter) {
 		adapters = append(adapters, collectadapters.XID())
 	}
 	return sources, adapters
+}
+
+// averagedPowerDrawArchitectures are where gpu.power.draw (DCGM board power,
+// field 155, and NVML power usage) is the one-second average that
+// average_power_draw_w holds. NVML documents it as averaged on Ampere except
+// GA100 and newer, and instantaneous on GA100 and older.
+var averagedPowerDrawArchitectures = []string{"H100", "H200", "B200", "GB200", "GB300", "VR200"}
+
+// powerDrawGate keeps gpu.power.draw values only where the node architecture
+// averages them. Elsewhere a value becomes NOT_SUPPORTED, and with no
+// architecture a collection error, so neither is read as an average.
+type powerDrawGate struct {
+	CollectAdapter
+	architecture func() (string, error)
+}
+
+func (g powerDrawGate) Build(obs []*observation.Observation) []health.Measurement {
+	isPowerDraw := func(o *observation.Observation) bool {
+		return o.GetSignalId() == gpusignals.PowerDraw.ID() && o.GetValue() != nil
+	}
+	if !slices.ContainsFunc(obs, isPowerDraw) {
+		return g.CollectAdapter.Build(obs)
+	}
+	arch, err := g.architecture()
+	if err == nil && slices.Contains(averagedPowerDrawArchitectures, arch) {
+		return g.CollectAdapter.Build(obs)
+	}
+	gated := slices.Clone(obs)
+	for i, o := range gated {
+		if !isPowerDraw(o) {
+			continue
+		}
+		if err != nil {
+			gated[i] = observation.NewCollectionErrorObservation(o.GetSignalId(), o.Unit, o.GetSource(), "GPUArchitecture",
+				o.GetTarget(), o.GetObservedAt(), &observation.CollectionError{
+					Source: gpuinventory.SensorID, Category: observation.CollectionErrorCategoryUnavailable, Detail: err.Error(),
+				})
+			continue
+		}
+		gated[i] = observation.NewNoValueObservation(o.GetSignalId(), o.Unit, o.GetSource(), o.GetTarget(), o.GetObservedAt(),
+			&observation.NoValue{
+				Reason: observation.NoValueReasonNotSupported,
+				Detail: fmt.Sprintf("power draw is not a one-second average on architecture %q", arch),
+			})
+	}
+	return g.CollectAdapter.Build(gated)
 }
 
 // requiredSignals holds, per category, the catalog signals that checks which

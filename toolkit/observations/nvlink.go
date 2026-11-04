@@ -181,8 +181,11 @@ func linkSpeed(common, perLink []*observation.Observation, links int64, linksErr
 // allLinksSupport ANDs one capability over a GPU's links in index order, as
 // the legacy NVML reads did: the first link without it or failing to report
 // it decides. The NVML sensor reports a failed state read on each capability
-// of that link; INVALID_ARGUMENT there is skipped as legacy skips it, and a
-// GPU with no present link supports the capability vacuously.
+// of that link; INVALID_ARGUMENT there is skipped as legacy skips it, so a GPU
+// whose every link was skipped supports the capability vacuously. A GPU-level
+// failure is not skipped: a GPU without NVLink, reported NOT_SUPPORTED at the
+// GPU rather than per link, fails the field as legacy does, though
+// inactiveCount reads the same outcome as no inactive links.
 func allLinksSupport(obs []*observation.Observation) (bool, error) {
 	slices.SortStableFunc(obs, func(a, b *observation.Observation) int {
 		x, y := a.GetTarget().GetNvLinkEndpoint(), b.GetTarget().GetNvLinkEndpoint()

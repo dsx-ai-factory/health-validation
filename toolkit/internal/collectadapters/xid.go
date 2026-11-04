@@ -11,7 +11,7 @@ import (
 
 // XID replaces toolkit.XidSensor for the stock CLI's Xid domain.
 func XID() *domainAdapter {
-	return newDomainAdapter(health.Xid, erroredXid, true)
+	return newDomainAdapter(health.Xid, erroredXid)
 }
 
 func erroredXid(err error) []health.Measurement {

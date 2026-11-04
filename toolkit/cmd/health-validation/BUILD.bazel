@@ -25,9 +25,11 @@ go_binary(
     # static-distroless). The driver itself is injected by the NVIDIA Container
     # Toolkit at run time, not baked into the image.
     oci = True,
-    # journalctl (Xid/RDMA link-flap checks) is bind-mounted from the host at
-    # runtime instead of bundled here, to avoid tracking systemd's apt churn.
-    # See scripts/health-validation-run.sh and docs/integration.md.
+    # journalctl (Xid/RDMA link-flap checks) and the DCGM client library (GPU
+    # checks) are bind-mounted from the host at runtime instead of bundled here,
+    # to avoid tracking systemd's and DCGM's package churn and to keep the
+    # client matched to the host's hostengine. See
+    # scripts/health-validation-run.sh and docs/integration.md.
     # Stamped only under --config=release (see .bazel/release.bazelrc); plain
     # builds leave the version defaults ("dev"). The {STABLE_*} keys are
     # produced by the --workspace_status_command set in .bazel/release.bazelrc.

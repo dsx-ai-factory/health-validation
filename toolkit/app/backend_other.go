@@ -6,10 +6,14 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"runtime"
+	"slices"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/collect"
+	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -22,8 +26,21 @@ type stubHost struct{}
 
 func newHostBackend() hostBackend { return stubHost{} }
 
-func (stubHost) gpuBackend() toolkit.GPUBackend       { return unavailableBackend{} }
+func (stubHost) gpuSensors() []collect.Sensor         { return []collect.Sensor{unavailableGPUSensor{}} }
 func (stubHost) nvlinkBackend() toolkit.NVLinkBackend { return unavailableBackend{} }
+
+// unavailableGPUSensor declares the GPU domain's collect signals and fails at
+// Measure, so the GPU checks report why rather than going unconfigured.
+type unavailableGPUSensor struct{}
+
+func (unavailableGPUSensor) ID() string { return "gpu.unavailable" }
+func (unavailableGPUSensor) Signals() collect.Signals {
+	return slices.Concat(dcgmGPUSignals, processGPUSignals)
+}
+
+func (unavailableGPUSensor) Measure(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
+	return nil, fmt.Errorf("DCGM and NVML GPU collection are only available on linux (current platform: %s)", runtime.GOOS)
+}
 
 // stubInventory fails to open off-linux, so `run` reports an architecture
 // discovery failure and the node GPU count is unobservable.

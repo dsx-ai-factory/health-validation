@@ -43,6 +43,12 @@ type StandaloneOptions struct {
 	GroupNamePrefix string
 	// IsSocket indicates that Address is a Unix domain socket path.
 	IsSocket bool
+	// LiveMetrics reads metric fields from the driver on each read instead of
+	// the hostengine's cache. A cached sample can be as old as the watch
+	// interval of whichever client already watches the field, since a new
+	// watch does not trigger a sample. DCGM fails the whole read if any
+	// requested field does not support live reads.
+	LiveMetrics bool
 }
 
 func metricWatchName(prefix string, processID int, sequence uint64) string {

@@ -83,14 +83,15 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 	}
 }
 
-// hostBackend is the platform-split source of the built-in NVML data sources.
-// On linux it is one [nvml.NVMLBackend] feeding the legacy GPU and NVLink
-// sensors, plus the collect NVML GPU inventory that architecture discovery
-// and the node GPU count share; off linux it is a stub that errors at
-// Measure, keeping the command buildable (and `version` runnable) while
-// surfacing a clear runtime error if `run` is invoked there.
+// hostBackend is the platform-split source of the built-in GPU data sources.
+// On linux it is one [nvml.NVMLBackend] feeding the legacy NVLink sensor, the
+// collect GPU sensors (DCGM, plus NVML for compute processes), and the collect
+// NVML GPU inventory that architecture discovery and the node GPU count share;
+// off linux it is a stub that errors at Measure, keeping the command buildable
+// (and `version` runnable) while surfacing a clear runtime error if `run` is
+// invoked there.
 type hostBackend interface {
-	gpuBackend() toolkit.GPUBackend
+	gpuSensors() []collect.Sensor
 	nvlinkBackend() toolkit.NVLinkBackend
 	gpuInventory() *gpuinventory.Inventory
 	close() error
@@ -98,15 +99,17 @@ type hostBackend interface {
 
 // App is the health-validation CLI, assembled with the builder methods and
 // run with [App.Run]. It wires six sensors (GPU, node, NVLink, CPU, Xid,
-// InfiniBand), each from its own per-domain backend — the shared host NVML
-// backend, sysfs, or the journal by default, or a caller-supplied override.
+// InfiniBand), each from its own per-domain source — DCGM, the shared host
+// NVML backend, sysfs, or the journal by default, or a caller-supplied
+// override.
 type App struct {
 	host        hostBackend
 	hostname    func() (string, error)
 	openJournal func() (io.WriteCloser, error)
 	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
 	// overrides set by the matching With*Backend setter. A nil override uses the
-	// default: the shared host NVML backend for gpu/nvlink, the host GPU
+	// default: the host's DCGM and NVML collect sensors for gpu, the shared host
+	// NVML backend for nvlink, the host GPU
 	// inventory for node, the sysfs collect sensor for cpu, the journal collect
 	// sensor for xid, and
 	// [toolkit.JournalctlRDMALinkFlap] for rdmaLinkFlap. The generic ib backend
@@ -464,10 +467,6 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 // sensors returns the legacy sensors and the collect-backed sensors, whose
 // sources are measured once now under cycle.
 func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
-	gpu := a.gpu
-	if gpu == nil {
-		gpu = a.host.gpuBackend()
-	}
 	nvlink := a.nvlink
 	if nvlink == nil {
 		nvlink = a.host.nvlinkBackend()
@@ -477,10 +476,12 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 		rdmaLinkFlap = toolkit.JournalctlRDMALinkFlap()
 	}
 
-	sensors := []toolkit.Sensor{
-		toolkit.NewGPUSensor(gpu),
-		toolkit.NewNVLinkSensor(nvlink),
+	var sensors []toolkit.Sensor
+	// Without an override, the GPU domain comes from builtinCollect.
+	if a.gpu != nil {
+		sensors = append(sensors, toolkit.NewGPUSensor(a.gpu))
 	}
+	sensors = append(sensors, toolkit.NewNVLinkSensor(nvlink))
 	// Without an override, the Xid domain comes from builtinCollect.
 	if a.xid != nil {
 		sensors = append(sensors, toolkit.NewXidSensor(a.xid))
@@ -500,7 +501,7 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 	if a.node != nil {
 		sensors = append(sensors, toolkit.NewNodeSensor(a.node))
 	}
-	builtinSources, builtinAdapters := a.builtinCollect()
+	builtinSources, builtinAdapters := a.builtinCollect(cycle)
 	if xidJournal != nil {
 		for i, source := range builtinSources {
 			if source.ID() == xidsensor.ID {

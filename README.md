@@ -243,8 +243,8 @@ Warning-class Xids are individual `gpu_xid_<code>` checks.
 
 - go 1.27.3
 - Linux sysfs exposing `/sys/devices/system/cpu/{possible,online}` and `/sys/devices/system/node/online` (required for CPU collection)
-- NVIDIA driver (required for the GPU sensor; not required if you supply measurements directly)
-- NVML (libnvidia-ml) for the NVML-backed sensor
+- NVIDIA driver with NVML (libnvidia-ml), for GPU inventory, compute processes, and NVLink (not required if you supply measurements directly)
+- For the CLI's GPU power, power-limit, pstate, and throttle checks: a running DCGM hostengine (`nv-hostengine`) on the node and the DCGM 4 client library (`libdcgm.so.4`). Without them those checks fail with a collection error.
 
 OS: Linux (x86_64, aarch64). CPU collection reads sysfs directly without sudo or an external executable. The toolkit GPU sensor is Linux-only; the catalog package compiles and runs on any platform.
 
