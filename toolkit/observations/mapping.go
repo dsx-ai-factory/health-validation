@@ -57,19 +57,13 @@ type mapping struct {
 	aggregated bool
 }
 
-// averagedPowerDrawArchitectures are where gpu.power.draw (DCGM board power,
-// field 155, and NVML power usage) is a one-second average, so it can feed
-// average_power_draw_w. On GA100 and older it is instantaneous. Add an
-// architecture only after confirming the field's averaging on hardware.
-var averagedPowerDrawArchitectures = []string{"B200", "GB200", "GB300"}
-
 var mappings = []mapping{
 	{signal: cpusignals.PossibleCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalPossibleCPUCount}, unit: "1"},
 	{signal: cpusignals.OnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalOnlineCPUCount}, unit: "1"},
 	{signal: cpusignals.NUMANodeOnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalNUMANodeCount}, unit: "1"},
 	{signal: gpuinventory.GPUCount, measurement: node.NodeMeasurement{}, catalog: []string{node.SignalGPUCount}, unit: "1"},
-	// Valid only on averagedPowerDrawArchitectures; the checks reading
-	// average_power_draw_w are limited to them, so it is not collected elsewhere.
+	// An average only on some architectures (instantaneous on GA100 and
+	// older); the CLI's GPU adapter turns other readings into NOT_SUPPORTED.
 	{signal: gpusignals.PowerDraw, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalAveragePowerDrawW}, unit: "watts"},
 	{signal: gpusignals.PowerLimitRequested, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalPowerLimitW}, unit: "watts"},
 	{signal: gpusignals.PowerLimitEnforced, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalEnforcedPowerLimitW}, unit: "watts"},

@@ -30,6 +30,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -48,7 +49,7 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 	builtins := func(a *App) ([]string, []string) {
 		a.host = fakeHost{b: spyBackend{called: new(bool)}}
-		sources, adapters := a.builtinCollect()
+		sources, adapters := a.builtinCollect(nil)
 		var sourceIDs, adapterNames []string
 		for _, s := range sources {
 			sourceIDs = append(sourceIDs, s.ID())
@@ -81,7 +82,7 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 func TestCollectSkipsUnselectedBridgeSources(t *testing.T) {
 	source := &collectAppSensor{}
 	a := New().WithCollect(source).WithCollectAdapters(customCountAdapter())
-	builtinSources, builtinAdapters := a.builtinCollect()
+	builtinSources, builtinAdapters := a.builtinCollect(nil)
 	sensors, err := a.collectSensors(time.Second, builtinSources, builtinAdapters, requiredSignals{health.NVLink: nil})
 	if err != nil {
 		t.Fatal(err)
@@ -1277,7 +1278,7 @@ func TestCollectSensorsRequestsOnlyRunnableCheckSignals(t *testing.T) {
 // collect-backed domain must therefore be fed by that domain's adapter, from
 // signals its built-in source declares.
 func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
-	sources, adapters := New().builtinCollect()
+	sources, adapters := New().builtinCollect(nil)
 	var produced []string
 	for _, source := range sources {
 		for _, signal := range source.Signals() {
@@ -1423,5 +1424,85 @@ func TestCollectSensorsValidatesRegistrationsRegardlessOfNeeds(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// modelHost is fakeHost with GPUs of one model; no GPUs fails discovery.
+type modelHost struct {
+	fakeHost
+	model string
+	gpus  int
+}
+
+func (h modelHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: h.gpus, model: h.model}, nil })
+}
+
+// gpu.power.draw is instantaneous on GA100 and older, so only architectures
+// that average it may export it as average_power_draw_w.
+func TestPowerDrawIsAverageOnlyOnAveragingArchitectures(t *testing.T) {
+	for _, tt := range []struct {
+		name, model string
+		want        string // "" for the 700 W value, else the error text
+		gpus        int
+	}{
+		{name: "H100", model: "NVIDIA H100 80GB HBM3", gpus: 4},
+		{name: "H200", model: "NVIDIA H200", gpus: 4},
+		{name: "GB200", model: "NVIDIA GB200", gpus: 4},
+		{name: "A100", model: "NVIDIA A100-SXM4-80GB", gpus: 4, want: `NOT_SUPPORTED): power draw is not a one-second average on architecture "A100"`},
+		{name: "unknown", model: "Tesla V100-SXM2-32GB", gpus: 4, want: `on architecture "unknown"`},
+		{name: "discovery failure", gpus: 0, want: `"GPUArchitecture" failed with COLLECTION_ERROR_CATEGORY_UNAVAILABLE: GPU architecture discovery: no GPUs enumerated`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			a := cadenceRunApp()
+			a.host = modelHost{fakeHost: fakeHost{b: spyBackend{called: new(bool)}}, model: tt.model, gpus: tt.gpus}
+			var stdout, stderr bytes.Buffer
+			if code := a.Run([]string{"collect", "--node-id", testNodeID}, &stdout, &stderr); code != exitOK {
+				t.Fatalf("collect exit = %d; stderr = %q", code, stderr.String())
+			}
+			var batch observation.ObservationBatch
+			if err := protojson.Unmarshal(stdout.Bytes(), &batch); err != nil {
+				t.Fatal(err)
+			}
+			var exported int
+			for _, o := range batch.GetObservations() {
+				if o.GetSignalId() != "gpu."+gpu.SignalAveragePowerDrawW {
+					continue
+				}
+				exported++
+				if tt.want == "" {
+					if o.GetValue().GetDoubleValue() != 700 {
+						t.Errorf("average power draw = %v, want 700 W", o)
+					}
+				} else if !strings.Contains(o.GetCollectionError().GetDetail(), tt.want) {
+					t.Errorf("average power draw = %v, want an error containing %q", o, tt.want)
+				}
+			}
+			if exported != 4 {
+				t.Fatalf("exported %d average power draws, want 4:\n%s", exported, stdout.String())
+			}
+		})
+	}
+}
+
+func TestAveragePowerDrawChecksStayOnAveragingArchitectures(t *testing.T) {
+	category := health.GPU
+	var found bool
+	for _, check := range catalog.New().List(catalog.Filter{Category: &category}) {
+		if !slices.Contains(check.RequiredSignals, gpu.SignalAveragePowerDrawW) {
+			continue
+		}
+		found = true
+		if len(check.Architectures) == 0 {
+			t.Errorf("%s reads %s on every architecture", check.ID, gpu.SignalAveragePowerDrawW)
+		}
+		for _, arch := range check.Architectures {
+			if !slices.Contains(averagedPowerDrawArchitectures, arch) {
+				t.Errorf("%s reads %s on %s, which does not average it", check.ID, gpu.SignalAveragePowerDrawW, arch)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no built-in check reads average_power_draw_w")
 	}
 }

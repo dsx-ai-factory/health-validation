@@ -481,30 +481,6 @@ func noValueObservation(signalID string, reason observation.NoValueReason) *obse
 	return o
 }
 
-// gpu.power.draw is instantaneous on GA100 and older, so a built-in check
-// reading average_power_draw_w must stay on architectures where it averages.
-func TestAveragePowerDrawChecksStayOnAveragedArchitectures(t *testing.T) {
-	category := health.GPU
-	var found bool
-	for _, check := range catalog.New().List(catalog.Filter{Category: &category}) {
-		if !slices.Contains(check.RequiredSignals, gpu.SignalAveragePowerDrawW) {
-			continue
-		}
-		found = true
-		if len(check.Architectures) == 0 {
-			t.Errorf("%s reads %s on every architecture", check.ID, gpu.SignalAveragePowerDrawW)
-		}
-		for _, arch := range check.Architectures {
-			if !slices.Contains(averagedPowerDrawArchitectures, arch) {
-				t.Errorf("%s reads %s on %s, where averaging is unverified", check.ID, gpu.SignalAveragePowerDrawW, arch)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("no built-in check reads average_power_draw_w")
-	}
-}
-
 func TestMappedSignalsFor(t *testing.T) {
 	gpuIDs := []string{
 		gpusignals.PowerDraw.ID(),

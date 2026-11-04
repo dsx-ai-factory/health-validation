@@ -484,7 +484,7 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 	if a.node != nil {
 		sensors = append(sensors, toolkit.NewNodeSensor(a.node))
 	}
-	builtinSources, builtinAdapters := a.builtinCollect()
+	builtinSources, builtinAdapters := a.builtinCollect(cycle)
 	if xidJournal != nil {
 		for i, source := range builtinSources {
 			if source.ID() == xidsensor.ID {

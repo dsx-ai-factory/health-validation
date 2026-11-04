@@ -211,7 +211,7 @@ func runCollect(t *testing.T, n parityNode) (discovery, health.NodeVerdict, int3
 		t.Fatal(err)
 	}
 	arch, err := gpuinventory.Architecture(a.host.gpuInventory().Snapshot(context.Background(), cycle))
-	sources, adapters := a.builtinCollect()
+	sources, adapters := a.builtinCollect(nil)
 	sensors, err2 := a.collectSensorsIn(cycle, sources, adapters, nil)
 	if err2 != nil {
 		t.Fatal(err2)
