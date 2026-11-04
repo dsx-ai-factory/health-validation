@@ -15,6 +15,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	"github.com/dsx-ai-factory/health-validation/collect/sensorids"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
 	"github.com/dsx-ai-factory/health-validation/collect/source/nvml/device"
 )
@@ -22,7 +23,7 @@ import (
 var _ collect.Sensor = (*sensor)(nil)
 
 // ID identifies the NVML-backed GPU sensor.
-const ID = "gpu.nvml"
+const ID = sensorids.NVML
 
 // sensor reads selected GPU fields through one NVML instance.
 type sensor struct {

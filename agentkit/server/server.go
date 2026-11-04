@@ -16,6 +16,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	"github.com/dsx-ai-factory/health-validation/collect/sensorids"
 )
 
 type Server struct {
@@ -43,8 +44,7 @@ func (s *Server) Check(ctx context.Context) (*observation.ObservationBatch, erro
 	batch := &observation.ObservationBatch{CollectionId: collectionID}
 	for _, sensor := range s.sensors {
 		opts := []collect.OpOption{collect.WithCycle(currentCycle)}
-		// Keep optional GPU collectors out of the transport's dependency graph.
-		if sensor.ID() == "gpu.nvml" || sensor.ID() == "gpu.dcgm" {
+		if sensor.ID() == sensorids.NVML || sensor.ID() == sensorids.DCGM {
 			opts = append(opts, collect.WithGPUInventory())
 		}
 		b, err := sensor.Measure(ctx, opts...)

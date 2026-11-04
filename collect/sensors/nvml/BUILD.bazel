@@ -21,6 +21,7 @@ go_library(
     deps = [
         "//collect",
         "//collect/observation",
+        "//collect/sensorids",
         "//collect/signals/gpu",
         "//collect/source/nvml",
         "//collect/source/nvml/device",

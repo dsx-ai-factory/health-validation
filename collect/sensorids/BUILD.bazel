@@ -1,0 +1,12 @@
+# gazelle:default_visibility //build/visibility:collect_consumers
+
+load("@rules_go//go:def.bzl", "go_library")
+
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
+go_library(
+    name = "sensorids",
+    srcs = ["ids.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/sensorids",
+    visibility = ["//build/visibility:collect_consumers"],
+)
