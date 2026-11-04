@@ -13,8 +13,8 @@ import (
 // ToSignals converts a typed measurement struct, or a pointer to one,
 // into the map[string]any that CEL evaluation expects. Keys are derived
 // from json struct tags, plus anything the measurement computes via
-// [health.DerivedSignaler].
-func ToSignals(m any) map[string]any {
+// [health.DerivedSignaler], which is given host.
+func ToSignals(m any, host health.Host) map[string]any {
 	v := reflect.Indirect(reflect.ValueOf(m))
 	t := v.Type()
 
@@ -27,7 +27,7 @@ func ToSignals(m any) map[string]any {
 		out[key] = v.Field(i).Interface()
 	}
 	if d, ok := m.(health.DerivedSignaler); ok {
-		for key, value := range d.DerivedSignals() {
+		for key, value := range d.DerivedSignals(host) {
 			out[key] = value
 		}
 	}
@@ -73,9 +73,10 @@ func FieldKeys(m any) []string {
 // SchemaKeys returns the signal names a measurement type's schema carries
 // — the json-tagged field names [ToSignals] would emit. Routing and the
 // signal-uniqueness check reason about a measurement type's schema
-// through it, from a zero value rather than a populated instance.
+// through it, from a zero value and a zero Host rather than a populated
+// instance — which is why a derived key set may depend on neither.
 func SchemaKeys(m any) []string {
-	signals := ToSignals(m)
+	signals := ToSignals(m, health.Host{})
 	keys := make([]string, 0, len(signals))
 	for k := range signals {
 		keys = append(keys, k)

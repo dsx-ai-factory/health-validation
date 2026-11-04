@@ -63,6 +63,12 @@ if [[ -z "$libdcgm" ]]; then
 fi
 mount_with_libs "$libdcgm"
 
+# Needed only to record threshold overrides. Skip it when absent: docker -v
+# would create the missing path on the host as a directory.
+if [[ -S /run/systemd/journal/socket ]]; then
+	mounts+=(-v /run/systemd/journal/socket:/run/systemd/journal/socket:ro)
+fi
+
 exec docker run --rm \
 	--gpus all \
 	--network host \

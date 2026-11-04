@@ -54,12 +54,12 @@ type Params struct {
 // measurement then runs through error attribution and CEL: an error
 // covering a required signal short-circuits to Critical, otherwise the
 // rules evaluate against the populated fields.
-func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Measurement, p Params) (health.CheckVerdict, error) {
+func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Measurement, host health.Host, p Params) (health.CheckVerdict, error) {
 	now := time.Now()
 	if v, isSkip := checkLevelSkip(cd, p, now); isSkip {
 		return v, nil
 	}
-	o := observe(m)
+	o := observe(m, host)
 	if !routes(cd, o.category, o.signals) {
 		return skippedVerdict(cd, now, health.NoApplicableMeasurement, noApplicableDetail(cd)), nil
 	}
@@ -80,9 +80,9 @@ type observed struct {
 	category health.Category
 }
 
-func observe(m health.Measurement) observed {
+func observe(m health.Measurement, host health.Host) observed {
 	return observed{
-		m: m, signals: ToSignals(m), entity: entityID(m),
+		m: m, signals: ToSignals(m, host), entity: entityID(m),
 		key: health.KeyOf(m), errs: m.Errors(), category: m.Category(),
 	}
 }
@@ -126,15 +126,17 @@ func observe(m health.Measurement) observed {
 //
 // paramsFor supplies the per-check evaluation context; the engine asks
 // for fresh Params per check so overrides and disabled state stay
-// per-check, matching the single-check EvaluateCheck path.
-func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefinition, measurements []health.Measurement, paramsFor func(checkID string) Params) ([]health.CheckVerdict, error) {
+// per-check, matching the single-check EvaluateCheck path. host is what
+// derived signals read; it is taken separately because signals are
+// extracted once per measurement, before any check's Params exist.
+func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefinition, measurements []health.Measurement, host health.Host, paramsFor func(checkID string) Params) ([]health.CheckVerdict, error) {
 	now := time.Now()
 
 	// Extract each measurement's signals once; every check reuses them.
 	obs := make([]observed, len(measurements))
 	presentCategories := make(map[health.Category]bool)
 	for i, m := range measurements {
-		obs[i] = observe(m)
+		obs[i] = observe(m, host)
 		presentCategories[obs[i].category] = true
 	}
 
@@ -417,7 +419,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		return withEntity(ErroredVerdict(cd, now, detail, action), entity), nil
 	}
 
-	resolved, err := resolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
+	resolved, err := ResolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
 	if err != nil {
 		return health.CheckVerdict{}, err
 	}
