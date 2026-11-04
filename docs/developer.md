@@ -184,17 +184,22 @@ build host, use the Docker recipe in [Build a Linux image from macOS](#build-a-l
 Local builds are unstamped by default and report the package's `dev` version.
 To embed the selected source revision's version and commit metadata, use
 `--config=release-ci` in place of `--config=ci` from a checkout with the complete
-tag history. Inspect the result with:
+tag history. Inspect the result on a host matching the image architecture, or
+with emulation configured for that architecture:
 
 ```shell
 docker run --rm health-validation:latest version
 ```
 
-For deployment through a registry you control, tag and push your own build:
+For deployment through a registry you control, set `image_repository` to your
+repository path and `image_tag` to a tag identifying your source revision, then
+tag and push your build:
 
 ```shell
-docker tag health-validation:latest <registry>/health-validation:<tag>
-docker push <registry>/health-validation:<tag>
+image_repository='registry.example.com/your-team/health-validation'
+image_tag='your-source-revision'
+docker tag health-validation:latest "${image_repository}:${image_tag}"
+docker push "${image_repository}:${image_tag}"
 ```
 
 Choose a tag that identifies your source revision and use the resulting image

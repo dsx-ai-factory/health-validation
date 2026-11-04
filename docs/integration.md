@@ -50,7 +50,7 @@ use `//build/platforms:linux_arm64`. Build for the architecture of the nodes
 where the image will run. The local `latest` tag refers to your own build.
 
 For tarball export, version stamping, and builds from macOS, see the
-[Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md#building-container-images-from-source).
+[Developer Guide](developer.md#building-container-images-from-source).
 For Kubernetes, tag and push your build to a registry you control, then use that
 image reference in your manifests.
 
@@ -128,7 +128,7 @@ go build -o health-validation ./toolkit/cmd/health-validation
 ./health-validation run
 ```
 
-See [Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md) for the canonical Bazel build (the
+See [Developer Guide](developer.md) for the canonical Bazel build (the
 production artifact is built with `bazel build`, which pins the toolchain and
 link flags).
 
@@ -823,5 +823,5 @@ and path/hash identity without inventing a crash timestamp.
 
 For the JSON contract, see
 [`catalog/health/node-verdict.schema.json`](https://github.com/dsx-ai-factory/health-validation/blob/main/catalog/health/node-verdict.schema.json);
-for build/publish mechanics, [Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md); for the design,
+for build/publish mechanics, [Developer Guide](developer.md); for the design,
 [Architecture](/health-validation/getting-started/architecture).
