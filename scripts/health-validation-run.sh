@@ -56,12 +56,18 @@ if [[ -z "$journalctl_bin" ]]; then
 fi
 mount_with_libs "$journalctl_bin"
 
-libdcgm="$(ldconfig -p | awk '$1 == "libdcgm.so.4" {print $NF; exit}')"
-if [[ -z "$libdcgm" ]]; then
-	echo "error: libdcgm.so.4 not found; install DCGM 4, whose hostengine the GPU checks read" >&2
-	exit 1
+# awk reads all of ldconfig's output: exiting early could SIGPIPE ldconfig and
+# fail the pipeline.
+libdcgm="$(ldconfig -p | awk '$1 == "libdcgm.so.4" && !found {print $NF; found = 1}')"
+dcgm_env=()
+if [[ -n "$libdcgm" ]]; then
+	mount_with_libs "$libdcgm"
+	dcgm_env=(-e LD_LIBRARY_PATH="$(dirname "$libdcgm")")
+else
+	# Run anyway: the DCGM-backed GPU checks report a collection failure and
+	# every other check still runs.
+	echo "warning: libdcgm.so.4 not found; the DCGM-backed GPU checks will report a collection failure (install DCGM 4)" >&2
 fi
-mount_with_libs "$libdcgm"
 
 # Needed only to record threshold overrides. Skip it when absent: docker -v
 # would create the missing path on the host as a directory.
@@ -74,7 +80,7 @@ exec docker run --rm \
 	--network host \
 	--pid host \
 	-e NVIDIA_DRIVER_CAPABILITIES=utility \
-	-e LD_LIBRARY_PATH="$(dirname "$libdcgm")" \
+	${dcgm_env[@]+"${dcgm_env[@]}"} \
 	-v /run/log/journal:/run/log/journal:ro \
 	-v /var/log/journal:/var/log/journal:ro \
 	-v /etc/machine-id:/etc/machine-id:ro \

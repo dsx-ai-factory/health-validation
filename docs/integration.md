@@ -512,27 +512,25 @@ pipeline above is unaffected by collector latency.
 
 #### Publishing metrics from a container
 
-The wrapper and the `docker run` invocation above deliberately do **not** use
-host networking, and the Kubernetes guidance below explicitly rules it out. So
-`http://127.0.0.1:44318` inside the container resolves to the *container's* own
-loopback, not the node's — the collector never receives anything, and the only
-symptom is a warning line on stderr.
+The wrapper, the `docker run` invocation, and the Kubernetes profiles above use
+host networking so the CLI can reach the DCGM hostengine, so
+`http://127.0.0.1:44318` reaches a collector listening on the node's loopback.
+A Kubernetes collector reached by a service DNS name also works, provided the
+pod keeps `dnsPolicy: ClusterFirstWithHostNet`.
 
-Pick one, in order of preference:
+Without host networking (for example, a run where the DCGM-backed checks are
+disabled), `127.0.0.1` inside the container is the *container's* own loopback:
+the collector never receives anything, and the only symptom is a warning line
+on stderr. Then either:
 
 1. **Point at a routable address.** If the collector listens on a node IP or a
-   cluster service, use that; nothing about the container changes. In
-   Kubernetes this is usually a collector DaemonSet reached through
-   `status.hostIP` or a service DNS name.
+   cluster service, use that. In Kubernetes this is usually a collector
+   DaemonSet reached through `status.hostIP` or a service DNS name.
 2. **Publish to the host gateway.** Add
    `--add-host=host.docker.internal:host-gateway` to the run invocation and set
    `endpoint: http://host.docker.internal:44318`. The collector must be
    listening on an address reachable from the bridge network, not only on
    `127.0.0.1`.
-3. **Host networking** (`--network host`, or `hostNetwork: true`). This works
-   with a loopback-only collector and needs no collector change, but it gives up
-   the network isolation the security posture below relies on. Weigh it
-   accordingly; it is the reason the stock wrapper does not do it for you.
 
 ## 5. Tune thresholds for your fleet (overrides)
 
