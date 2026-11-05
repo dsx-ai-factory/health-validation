@@ -136,6 +136,10 @@ func TestNewGPUConverterRejectsUnusableTypes(t *testing.T) {
 			_, err := NewGPUConverter[eccMeasurement](map[string]string{"s": gpuIDField})
 			return err
 		}},
+		{want: `signals "a" and "b" both map to field "ecc_double_bit"`, build: func() error {
+			_, err := NewGPUConverter[eccMeasurement](map[string]string{"b": "ecc_double_bit", "a": "ecc_double_bit"})
+			return err
+		}},
 		{want: "no signals map", build: func() error {
 			_, err := NewGPUConverter[eccMeasurement](nil)
 			return err

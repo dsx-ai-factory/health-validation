@@ -70,10 +70,18 @@ func NewGPUConverter[M health.Measurement](fields map[string]string) (*GPUConver
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("no signals map to %v", typ)
 	}
-	for signal, field := range fields {
+	// One field per signal: a second signal into the same field would error
+	// that field on every GPU at collection time.
+	fedBy := make(map[string]string, len(fields))
+	for _, signal := range slices.Sorted(maps.Keys(fields)) {
+		field := fields[signal]
 		if _, ok := s.fields[field]; !ok || field == gpuIDField {
 			return nil, fmt.Errorf("signal %q maps to %q, which is not a catalog signal of %v", signal, field, typ)
 		}
+		if other, ok := fedBy[field]; ok {
+			return nil, fmt.Errorf("signals %q and %q both map to field %q of %v; map each field from one signal", other, signal, field, typ)
+		}
+		fedBy[field] = signal
 	}
 	return &GPUConverter{schema: s, fields: maps.Clone(fields)}, nil
 }
