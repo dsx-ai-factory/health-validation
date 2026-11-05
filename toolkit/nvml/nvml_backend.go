@@ -695,7 +695,7 @@ func measureDeviceFabric(dev gonvml.Device, m *nvlink.NVLinkMeasurement) {
 // ERROR_NOT_SUPPORTED — some drivers (e.g. R580) do not expose it even on
 // fully-trained NVLink — scoped NVLINK_GET_SPEED fields are tried as a
 // fallback; if those are also unavailable the speed is flagged as a
-// measurement failure, which fails the dependent check Critical.
+// measurement failure, which reports the dependent check Unknown.
 func measureDeviceLinks(dev gonvml.Device, m *nvlink.NVLinkMeasurement) {
 	values := []gonvml.FieldValue{
 		{FieldId: gonvml.FI_DEV_NVLINK_SPEED_MBPS_COMMON},
@@ -813,7 +813,7 @@ func deviceMinLinkSpeed(dev gonvml.Device, linkCount int64) (int64, error) {
 // Any other return is an observation failure; the signal is flagged once
 // and probing stops so a single broken library does not stack identical
 // entries. On break the partial count is still recorded, but the errored
-// signal drives the verdict Critical regardless.
+// signal drives the verdict Unknown regardless.
 func measureDeviceActiveLinks(dev gonvml.Device, m *nvlink.NVLinkMeasurement) {
 	var inactive int64
 linkLoop:

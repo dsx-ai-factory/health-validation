@@ -255,8 +255,8 @@ func TestNodeCollectParity(t *testing.T) {
 		// A GPU whose handle loads counts even when its UUID does not read.
 		{name: "partial identity", node: parityNode{slots: []gpuSlot{gb200, noUUIDGPU, gb200, gb200}}, severity: health.Pass},
 		{name: "every slot failed", node: parityNode{slots: []gpuSlot{lostGPU, lostGPU, lostGPU, lostGPU}}, severity: health.Critical},
-		{name: "enumeration failure", node: parityNode{count: gonvml.ERROR_UNKNOWN}, severity: health.Critical},
-		{name: "collection timeout", node: parityNode{slots: []gpuSlot{gb200, gb200, gb200, gb200}, block: make(chan struct{})}, severity: health.Critical},
+		{name: "enumeration failure", node: parityNode{count: gonvml.ERROR_UNKNOWN}, severity: health.Unknown},
+		{name: "collection timeout", node: parityNode{slots: []gpuSlot{gb200, gb200, gb200, gb200}, block: make(chan struct{})}, severity: health.Unknown},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.node.block != nil {
@@ -289,7 +289,7 @@ func TestNodeCollectTimeoutRecommendsRetry(t *testing.T) {
 	defer close(block)
 	discovered, verdict, _ := runCollect(t, parityNode{slots: []gpuSlot{gb200}, block: block})
 	got := gpuCountResult(t, verdict)
-	if !discovered.failed || got.severity != health.Critical || !got.action.Equal(health.Drain(health.RemediationActionRetryCollection)) {
-		t.Fatalf("discovery=%+v gpu_count=%+v, want a failed discovery and CRITICAL with retry collection", discovered, got)
+	if !discovered.failed || got.severity != health.Unknown || !got.action.Equal(health.Drain(health.RemediationActionRetryCollection)) {
+		t.Fatalf("discovery=%+v gpu_count=%+v, want a failed discovery and UNKNOWN with retry collection", discovered, got)
 	}
 }

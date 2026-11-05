@@ -22,8 +22,8 @@ type CheckDefinition struct {
 	Description string                   `json:"description"`
 	Name        string                   `json:"name"`
 	ID          string                   `json:"id"`
-	// Dependencies names check IDs whose Critical verdict explains this check's
-	// inability to collect. Checks never read each other's results, so a
+	// Dependencies names check IDs whose observed Critical or Unknown rule results
+	// explain collection failures. Checks never read each other's results, so a
 	// dependency has no effect on whether this check runs, what it reports, or
 	// its severity. Its only effect is that a verdict for an entity this check
 	// could not read at all gains a message naming the dependency as the cause.

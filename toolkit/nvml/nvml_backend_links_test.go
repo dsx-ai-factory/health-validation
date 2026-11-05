@@ -116,9 +116,8 @@ func TestMeasureDeviceLinks_CountEntryFailure(t *testing.T) {
 	}
 }
 
-// A per-entry NOT_SUPPORTED on the link-count field is a hard failure: the
-// dependent check fails Critical rather than skipping.
-func TestMeasureDeviceLinks_NotSupportedFailsCritical(t *testing.T) {
+// A per-entry NOT_SUPPORTED on link count must be recorded as a collection error.
+func TestMeasureDeviceLinks_NotSupportedFlagsSignal(t *testing.T) {
 	dev := &mock.Device{GetFieldValuesFunc: linkFieldValues(50000, 0, gonvml.SUCCESS, gonvml.ERROR_NOT_SUPPORTED)}
 
 	var m nvlink.NVLinkMeasurement
@@ -189,10 +188,9 @@ func TestMeasureDeviceLinks_SpeedFallsBackToPerLink(t *testing.T) {
 	}
 }
 
-// When both the common speed field and every per-link field are Not
-// Supported, the speed is a measurement failure (Critical), not a skip —
-// the count still collects.
-func TestMeasureDeviceLinks_SpeedFallbackUnavailableFailsCritical(t *testing.T) {
+// Unsupported common and per-link speed fields must flag speed while
+// preserving the collected link count.
+func TestMeasureDeviceLinks_SpeedFallbackUnavailableFlagsSignal(t *testing.T) {
 	dev := &mock.Device{GetFieldValuesFunc: func(values []gonvml.FieldValue) gonvml.Return {
 		for i := range values {
 			switch values[i].FieldId {
@@ -219,10 +217,8 @@ func TestMeasureDeviceLinks_SpeedFallbackUnavailableFailsCritical(t *testing.T) 
 	}
 }
 
-// A call-level failure of the GET_SPEED fallback (e.g. the GPU is lost
-// between the two field-value calls) is a hard fault, not an unsupported
-// signal: it must fail Critical rather than skip.
-func TestMeasureDeviceLinks_SpeedFallbackCallErrorFailsCritical(t *testing.T) {
+// A GET_SPEED call failure must not be treated as an unsupported field.
+func TestMeasureDeviceLinks_SpeedFallbackCallErrorFlagsSignal(t *testing.T) {
 	dev := &mock.Device{GetFieldValuesFunc: func(values []gonvml.FieldValue) gonvml.Return {
 		if len(values) == gonvml.NVLINK_MAX_LINKS {
 			return gonvml.ERROR_TIMEOUT
@@ -253,10 +249,8 @@ func TestMeasureDeviceLinks_SpeedFallbackCallErrorFailsCritical(t *testing.T) {
 	}
 }
 
-// A per-scope hard error during the fallback fails Critical even when
-// another link reports a valid speed: a lost GPU must not be masked by a
-// healthy sibling link.
-func TestMeasureDeviceLinks_SpeedFallbackScopeErrorFailsCritical(t *testing.T) {
+// A per-scope fallback error must not be masked by a readable sibling link.
+func TestMeasureDeviceLinks_SpeedFallbackScopeErrorFlagsSignal(t *testing.T) {
 	dev := &mock.Device{GetFieldValuesFunc: func(values []gonvml.FieldValue) gonvml.Return {
 		for i := range values {
 			switch values[i].FieldId {
@@ -298,10 +292,9 @@ func TestMeasureDeviceLinks_SpeedFallbackScopeErrorFailsCritical(t *testing.T) {
 	}
 }
 
-// A malformed value type on a fallback entry fails Critical rather than
-// being silently ignored, even when another scope decodes cleanly — a
-// byte-level uint32 decode would silently truncate a wider payload.
-func TestMeasureDeviceLinks_SpeedFallbackBadValueTypeFailsCritical(t *testing.T) {
+// A malformed fallback value must flag speed even when another scope decodes
+// cleanly; decoding as uint32 could silently truncate a wider payload.
+func TestMeasureDeviceLinks_SpeedFallbackBadValueTypeFlagsSignal(t *testing.T) {
 	dev := &mock.Device{GetFieldValuesFunc: func(values []gonvml.FieldValue) gonvml.Return {
 		for i := range values {
 			switch values[i].FieldId {
@@ -415,7 +408,7 @@ func TestMeasureDeviceLinks_SpeedFallbackReportsSlowestLink(t *testing.T) {
 // An in-range link that reports NOT_SUPPORTED is a measurement failure even
 // when its siblings read cleanly: partial coverage must not pass as if every
 // link were verified.
-func TestMeasureDeviceLinks_SpeedFallbackPartialNotSupportedFailsCritical(t *testing.T) {
+func TestMeasureDeviceLinks_SpeedFallbackPartialNotSupportedFlagsSignal(t *testing.T) {
 	dev := &mock.Device{GetFieldValuesFunc: func(values []gonvml.FieldValue) gonvml.Return {
 		for i := range values {
 			switch values[i].FieldId {
@@ -456,7 +449,7 @@ func TestMeasureDeviceLinks_SpeedFallbackPartialNotSupportedFailsCritical(t *tes
 
 // An in-range link that reports a zero speed is a measurement failure: a link
 // training at no speed is a fault, not a value to average away.
-func TestMeasureDeviceLinks_SpeedFallbackZeroSpeedFailsCritical(t *testing.T) {
+func TestMeasureDeviceLinks_SpeedFallbackZeroSpeedFlagsSignal(t *testing.T) {
 	dev := &mock.Device{GetFieldValuesFunc: func(values []gonvml.FieldValue) gonvml.Return {
 		for i := range values {
 			switch values[i].FieldId {

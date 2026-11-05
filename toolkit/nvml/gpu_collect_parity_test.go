@@ -113,8 +113,8 @@ func TestGPUCollectTimeoutParity(t *testing.T) {
 		t.Errorf("verdicts differ:\n legacy=%v\n collect=%v", l, c)
 	}
 	for _, v := range c {
-		if v.severity != health.Critical || !v.action.Equal(health.Drain(health.RemediationActionRetryCollection)) {
-			t.Errorf("%+v, want CRITICAL with retry collection", v)
+		if v.severity != health.Unknown || !v.action.Equal(health.Drain(health.RemediationActionRetryCollection)) {
+			t.Errorf("%+v, want UNKNOWN with retry collection", v)
 		}
 	}
 }

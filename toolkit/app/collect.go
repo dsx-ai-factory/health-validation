@@ -348,8 +348,8 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 		// Not building it skips its category's runnable checks (SENSOR_MISSING,
 		// or NO_APPLICABLE_MEASUREMENT when another sensor supplies the
 		// category) rather than failing them for a wiring gap. When a sibling
-		// check keeps the adapter built, an unfed schema field still fails
-		// CRITICAL. Tests guard the built-in mappings.
+		// check keeps the adapter built, an unfed schema field still reports
+		// UNKNOWN. Tests guard the built-in mappings.
 		if len(signals) == 0 {
 			continue
 		}

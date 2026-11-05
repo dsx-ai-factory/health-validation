@@ -185,8 +185,8 @@ func TestEvaluateAll_ProvisionalSlotsAreSourceScoped(t *testing.T) {
 			t.Errorf("AffectedEntities = %v, want %v", got, want)
 		}
 		for _, v := range nv.CheckResults {
-			if v.CheckID == "gpu_pstate_probe" && v.Severity != health.Critical {
-				t.Errorf("%v severity = %v, want CRITICAL", v.AffectedEntities, v.Severity)
+			if v.CheckID == "gpu_pstate_probe" && v.Severity != health.Unknown {
+				t.Errorf("%v severity = %v, want UNKNOWN", v.AffectedEntities, v.Severity)
 			}
 		}
 	})
@@ -264,7 +264,7 @@ func TestEvaluateAll_UnidentifiedCollectionFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	// GPU-A passes; the unidentified failure is the one CRITICAL.
+	// GPU-A passes; the unidentified failure is the one UNKNOWN.
 	var severities []health.Severity
 	for _, v := range nv.CheckResults {
 		if v.CheckID == "gpu_pstate_probe" {
@@ -272,7 +272,7 @@ func TestEvaluateAll_UnidentifiedCollectionFailures(t *testing.T) {
 		}
 	}
 	slices.Sort(severities)
-	if want := []health.Severity{health.Pass, health.Critical}; !slices.Equal(severities, want) {
+	if want := []health.Severity{health.Pass, health.Unknown}; !slices.Equal(severities, want) {
 		t.Errorf("gpu_pstate_probe severities = %v, want %v", severities, want)
 	}
 	wantAmbiguous(t, probeCatalog(), "gpu_pstate_probe", health.EntityKey{}, lost, lost)

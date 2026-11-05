@@ -186,7 +186,7 @@ An unidentified key (an empty `EntityID()`, or a zero `health.EntityKey`) is
 allowed only for a collection failure:
 
 - **Allowed:** an unidentified measurement whose errors fail a signal the check
-  reads, such as a GPU whose UUID lookup failed. The check fails CRITICAL as a
+  reads, such as a GPU whose UUID lookup failed. The check reports UNKNOWN as a
   collection failure. Two of them feeding one check are still rejected, since
   nothing tells them apart.
 - **Rejected:** an unidentified measurement carrying values the check reads,

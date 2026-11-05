@@ -82,8 +82,8 @@ func TestToMeasurementsSlotsFromTwoSourcesEvaluateSeparately(t *testing.T) {
 	}
 	var entities []string
 	for _, v := range nv.CheckResults {
-		if v.Severity != health.Critical {
-			t.Errorf("%v severity = %v, want CRITICAL", v.AffectedEntities, v.Severity)
+		if v.Severity != health.Unknown {
+			t.Errorf("%v severity = %v, want UNKNOWN", v.AffectedEntities, v.Severity)
 		}
 		entities = append(entities, v.AffectedEntities...)
 	}
@@ -275,14 +275,14 @@ func TestRoundTripPreservesProvisionalAndSourceKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	critical := 0
+	unknown := 0
 	for _, v := range nv.CheckResults {
-		if v.Severity == health.Critical {
-			critical++
+		if v.Severity == health.Unknown {
+			unknown++
 		}
 	}
-	if critical != len(want) {
-		t.Fatalf("CRITICAL results = %d, want %d: %+v", critical, len(want), nv.CheckResults)
+	if unknown != len(want) {
+		t.Fatalf("UNKNOWN results = %d, want %d: %+v", unknown, len(want), nv.CheckResults)
 	}
 }
 

@@ -98,6 +98,8 @@ documented rank in sequence order, then check ID. Action names provide a final
 stability fallback for repeated check IDs. Consumers track which steps they
 have attempted and re-run the suite after each step.
 
+Severity is ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL.
+
 ### CheckVerdict
 
 | Field | Type | JSON name | Description |
@@ -105,7 +107,7 @@ have attempted and re-run the suite after each step.
 | CheckID | string | `check_id` | Stable check identifier. |
 | SpanID | string | `span_id` | UUID unique to this check invocation, run or skipped. |
 | TraceID | string | `trace_id` | The run's `trace_id`, echoed here so a check result is self-correlating when consumed on its own. |
-| Severity | Severity | `severity` | PASS, INFO, WARNING, CRITICAL, or UNKNOWN. |
+| Severity | Severity | `severity` | PASS, INFO, WARNING, UNKNOWN, or CRITICAL. |
 | Category | Category | `category` | Hardware domain: cpu, gpu, node, nvlink, pcie, infiniband, storage, xid. |
 | ConditionScope | ConditionScope | `condition_scope` | Blast radius of the condition: `NODE` (this node's own hardware explains it), `DOMAIN` (explaining it requires the NVLink domain shared with peer nodes), `CLUSTER` (explaining it requires the cluster network fabric beyond the node). A collection-failure verdict reports `NODE`; a skipped verdict keeps the check's declared value. Independent of `recommended_action`'s `remediation_actions`, which are always node-local. |
 | Skipped | bool | `skipped` | True if the check did not run. |
@@ -140,7 +142,7 @@ have attempted and re-run the suite after each step.
 | INSUFFICIENT_HISTORY | Time-window data has not yet accumulated. Applies only to checks that evaluate over a window; no currently registered check uses it. |
 | CADENCE_MISMATCH | The check is not scheduled for the requested `--cadence` window. |
 | THRESHOLD_UNCONFIGURED | A threshold the operator must supply was not configured. |
-| NO_APPLICABLE_MEASUREMENT | The category was collected, but no measurement in it carries the check's required signals. Routing is by measurement schema, so a measurement that carries the signals but whose sensor failed to collect one reports CRITICAL rather than skipping. |
+| NO_APPLICABLE_MEASUREMENT | The category was collected, but no measurement in it carries the check's required signals. Routing is by measurement schema, so an applicable check fed by a measurement that carries the required signals but reports a collection error for one produces UNKNOWN rather than skipping. |
 | SENSOR_MISSING | The check's category supplied no measurement at all — sensor absent, unconfigured, or never constructed. Registering a check declares that its sensor is expected, so every registered check reports either a result or a skip. |
 
 ## Adding a check

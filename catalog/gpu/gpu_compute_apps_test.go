@@ -90,8 +90,8 @@ func TestGPUComputeApps_ErroredSignal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if v.Severity != health.Critical {
-		t.Errorf("Severity = %v, want CRITICAL", v.Severity)
+	if v.Severity != health.Unknown {
+		t.Errorf("Severity = %v, want UNKNOWN", v.Severity)
 	}
 	want := health.Drain(health.RemediationActionCheckCollection)
 	if !v.RecommendedAction.Equal(want) {

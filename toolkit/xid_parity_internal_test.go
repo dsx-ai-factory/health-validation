@@ -277,8 +277,8 @@ func TestXidCollectTimeoutParity(t *testing.T) {
 		t.Errorf("verdicts differ: legacy=%v collect=%v", l, c)
 	}
 	for id, v := range c {
-		if v.severity != health.Critical || !v.action.Equal(health.Drain(health.RemediationActionRetryCollection)) {
-			t.Errorf("%s = %+v, want CRITICAL with retry collection", id, v)
+		if v.severity != health.Unknown || !v.action.Equal(health.Drain(health.RemediationActionRetryCollection)) {
+			t.Errorf("%s = %+v, want UNKNOWN with retry collection", id, v)
 		}
 	}
 }
@@ -309,7 +309,7 @@ func TestXidCollectDocumentedDivergences(t *testing.T) {
 	failsClosed := func(t *testing.T, f xidParityFixture) {
 		t.Helper()
 		requireXidAll(t, evaluateXid(t, legacyXidMeasurement(ctx, t, f)), health.Pass, nil)
-		requireXidAll(t, evaluateXid(t, collectXidMeasurement(ctx, t, f)), health.Critical, &checkCollection)
+		requireXidAll(t, evaluateXid(t, collectXidMeasurement(ctx, t, f)), health.Unknown, &checkCollection)
 	}
 	counts := func(t *testing.T, line string, code int64) {
 		t.Helper()

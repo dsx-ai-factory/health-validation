@@ -89,7 +89,7 @@ func TestEvaluateAll_PassingCheckNamesNoEntity(t *testing.T) {
 	}
 }
 
-// An unobservable GPU is an affected entity: the verdict is Critical and the
+// An unobservable GPU is an affected entity: the verdict is Unknown and the
 // operator needs to know which device went dark.
 func TestEvaluateAll_ErroredMeasurementNamesItsEntity(t *testing.T) {
 	cat := catalog.NewEmpty(

@@ -25,7 +25,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
   "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
@@ -54,7 +54,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
@@ -177,7 +177,7 @@ The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.j
 Sensor.Measure() --> []Measurement --> Catalog.EvaluateAll() --> NodeVerdict
 ```
 
-Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor reading Linux sysfs (the CLI collects CPU through `collect/sensors/cpu`), an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface a CRITICAL verdict or skip.
+Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor reading Linux sysfs (the CLI collects CPU through `collect/sensors/cpu`), an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
 
 The CPU sensor counts the logical CPUs in `/sys/devices/system/cpu/possible` and `/sys/devices/system/cpu/online`, and the NUMA nodes in `/sys/devices/system/node/online`. The `cpu_count` check requires no operator configuration and reports CRITICAL when a kernel-possible CPU is not online. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM or machine-SKU count, process affinity, or cgroup CPU limits.
 
@@ -194,8 +194,8 @@ Per-check results use five severity levels:
 | PASS | No condition detected. Node is eligible for the next workload. |
 | INFO | Anomaly within safe operating bounds. Monitor for trend. |
 | WARNING | Condition that degrades performance or increases failure risk. |
-| CRITICAL | Imminent risk of failure, data corruption, or unrecoverable state. Remove from service. |
 | UNKNOWN | Check could not complete. Eligibility for the affected component cannot be assessed. |
+| CRITICAL | Imminent risk of failure, data corruption, or unrecoverable state. Remove from service. |
 
 `skipped` is a separate per-check state, not a severity level. A skipped check contributes nothing to the node-level verdict.
 

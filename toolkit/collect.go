@@ -44,7 +44,7 @@ func Collect(cat *catalog.Catalog, sensors ...Sensor) (health.NodeVerdict, error
 // if a sensor's Measure does not return within timeout, or returns an
 // error, the failure is degraded into errored measurements (via
 // [Sensor.Errored]) so the catalog fails exactly the dependent checks
-// Critical while every other sensor's checks still evaluate. A timed-out
+// Unknown while every other sensor's checks still evaluate. A timed-out
 // collection is tagged with [health.ErrCollectionTimeout] so evaluation
 // can recommend a retry rather than hardware remediation.
 //
@@ -133,7 +133,7 @@ func CollectMeasurementsWithTimeout(timeout time.Duration, sensors ...Sensor) []
 // entities without an error — produces no other console output at all. A
 // sensor that ran and failed is not this case: it is degraded above into
 // errored measurements, so its category is present and its checks fail
-// Critical with the cause attached.
+// Unknown with the cause attached.
 func warnMissingSensors(nv health.NodeVerdict) {
 	counts := make(map[health.Category]int)
 	for _, v := range nv.SkippedChecks {

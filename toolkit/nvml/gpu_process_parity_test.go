@@ -103,8 +103,8 @@ func TestGPUCollectTwoSourceTimeout(t *testing.T) {
 			for _, v := range slices.Concat(parityVerdicts(t, evaluateGPU(t, bridged...)), computeAppsVerdicts(t, bridged...)) {
 				wantRetry := tt.nvmlStall || v.check != "gpu_compute_apps"
 				switch {
-				case wantRetry && (v.severity != health.Critical || !v.action.Equal(retry)):
-					t.Errorf("%+v, want CRITICAL with retry collection", v)
+				case wantRetry && (v.severity != health.Unknown || !v.action.Equal(retry)):
+					t.Errorf("%+v, want UNKNOWN with retry collection", v)
 				case !wantRetry && v.severity != health.Pass:
 					t.Errorf("%+v, want PASS: NVML answered", v)
 				}
