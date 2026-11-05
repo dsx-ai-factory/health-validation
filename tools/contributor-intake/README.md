@@ -121,17 +121,16 @@ A failed write can leave a partial correction; start a new run after it is fixed
 
 ## Supervised activation and rollback
 
-1. Review and merge the disabled workflow and scripts into `main`.
-2. Create the four affiliation labels and configure the approved membership App.
-   Verify active private-member responses in each organization using the actual
-   installation credentials. Name an owner for exceptions and corrections.
-3. Verify the workflow can read items and add/remove affiliation labels on both
-   issues and PRs in this fixed repository. The job needs `issues: write` and
-   `pull-requests: write`. The CLI also requires
+1. Configure the approved membership App and verify active private-member
+   responses in each organization using the actual installation credentials.
+   Confirm owners for credentials, exceptions and corrections.
+2. Review and merge the disabled workflow and scripts into `main` after that
+   access is verified. Create the four affiliation labels before running the pilot.
+3. Confirm Actions policies allow this trusted `pull_request_target` workflow.
+   The job needs `issues: write` and `pull-requests: write`. The CLI also requires
    `HEALTH_VALIDATION_APPLY_LABELS=true` exactly;
    the workflow supplies that opt-in inside its disabled job.
-4. Check applicable Actions event policies permit this trusted `pull_request_target`
-   workflow. Set `HEALTH_VALIDATION_INTAKE_ENABLED` to `true` exactly
+4. Set `HEALTH_VALIDATION_INTAKE_ENABLED` to `true` exactly
    for a supervised pilot. Missing or any other value keeps the job disabled.
 5. Check normal openings for DSX-only and NVIDIA-only members, reviewed external
    authors, unknown authors, Bot accounts and draft PRs. Check conflicts and token
