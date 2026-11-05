@@ -16,5 +16,6 @@ func (m XidMeasurement) DerivedSignals(health.Host) map[string]any {
 		SignalSubXidCodeCounts:       subXidCodeCounts(m.Events),
 		SignalUnknownXidCounts:       m.unknownCounts(),
 		SignalInformationalXidCounts: m.informationalCounts(),
+		SignalRecoveryActionCounts:   recoveryActionCounts(m.Events),
 	}
 }

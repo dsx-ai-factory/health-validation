@@ -62,9 +62,12 @@ var xidNVLink5RE = regexp.MustCompile(
 // Every field this parses comes straight from the log line. Reading
 // meaning out of those fields — register bits, the decode table — is
 // the catalog's job, so every source of Xid events shares it.
+//
+// lines must be in log order: each event's Sequence is its line's
+// position, counting from 1.
 func ParseXid(since string, lines []string) xid.XidMeasurement {
 	m := xid.XidMeasurement{Since: since}
-	for _, line := range lines {
+	for i, line := range lines {
 		ev, ok := parseNVLink5Line(line)
 		if !ok {
 			ev, ok = parseRecoveryActionLine(line)
@@ -76,6 +79,7 @@ func ParseXid(since string, lines []string) xid.XidMeasurement {
 			continue
 		}
 
+		ev.Sequence = int64(i + 1)
 		m.Events = append(m.Events, ev)
 		if m.XidCounts == nil {
 			m.XidCounts = make(map[int64]int64)
