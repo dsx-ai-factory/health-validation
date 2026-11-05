@@ -1130,52 +1130,104 @@ func TestWithCollectFailsOnlyTheGPUWithoutAUUID(t *testing.T) {
 	}
 }
 
-// eccMeasurement is a consumer's per-GPU measurement for GPUAdapter.
+// eccMeasurement is a consumer's per-GPU measurement for GPUAdapter. It also
+// reads the performance state, which built-in checks read as gpu_pstate, under
+// its own field name.
 type eccMeasurement struct {
 	GPUID string `json:"gpu_id"`
 	observations.Entity
 	DoubleBit int64 `json:"ecc_double_bit"`
+	Pstate    int64 `json:"pstate"`
 }
 
 func (eccMeasurement) Category() health.Category { return health.GPU }
 func (m eccMeasurement) EntityID() string        { return m.GPUID }
 
-// A consumer check reads a signal the built-in NVML sensor already declares by
-// registering only a GPUAdapter: no sensor, no claim, and the built-in GPU
-// domain keeps running.
-func TestGPUAdapterReadsBuiltinSignalsWithoutASensor(t *testing.T) {
+// eccHost adds a built-in source of the ECC signal, as the linux NVML sensor
+// declares, to fakeHost's DCGM-shaped GPU source.
+type eccHost struct {
+	ecc collect.Sensor
+	fakeHost
+}
+
+func (h eccHost) gpuSensors() []collect.Sensor { return append(h.fakeHost.gpuSensors(), h.ecc) }
+
+// A consumer check registered with only a GPUAdapter runs next to the stock GPU
+// checks: the built-in sources supply both through runnable-signal selection,
+// and the performance state feeds the built-in and the consumer adapter alike.
+func TestGPUAdapterRunsAlongsideBuiltinGPUChecks(t *testing.T) {
 	ecc := gpusignals.ECCDoubleBitVolatileTotal
-	builtin := &collectHardwareSensor{
-		id: "test.builtin", signals: collect.Signals{ecc},
-		values: map[string]*observation.Value{ecc.ID(): {Kind: &observation.Value_UintValue{UintValue: 2}}},
+	gpus := []string{"GPU-0", "GPU-1", "GPU-2", "GPU-3"}
+	eccSource := &collectHardwareSensor{
+		id: "test.nvml", signals: collect.Signals{ecc}, gpuIDs: gpus,
+		values: map[string]*observation.Value{ecc.ID(): {Kind: &observation.Value_UintValue{UintValue: 0}}},
 	}
-	adapter, err := GPUAdapter[eccMeasurement]("ecc", map[string]string{ecc.ID(): "ecc_double_bit"})
+	adapter, err := GPUAdapter[eccMeasurement]("ecc", map[string]string{
+		ecc.ID():                         "ecc_double_bit",
+		gpusignals.PerformanceState.ID(): "pstate",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sensors, err := New().WithCollectAdapters(adapter).collectSensors(time.Second, []collect.Sensor{builtin}, nil, nil)
-	if err != nil {
+	a := cadenceRunApp().WithNodeID(testNodeID).WithCollectAdapters(adapter).WithChecks(health.CheckDefinition{
+		ID: "ecc_at_full_performance", Name: "ECC at full performance", Category: health.GPU,
+		RequiredSignals: []string{"ecc_double_bit", "pstate"},
+		Rules:           []health.Rule{{Expression: "ecc_double_bit > 0 || pstate != 0", Severity: health.Critical}},
+	})
+	a.host = eccHost{fakeHost: a.host.(fakeHost), ecc: eccSource}
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"run"}, &stdout, &stderr); code == exitError {
+		t.Fatalf("Run: %s", stderr.String())
+	}
+	var verdict health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
 		t.Fatal(err)
 	}
-	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
-	if err = cat.Register(health.CheckDefinition{
-		ID: "gpu_ecc_double_bit", Name: "ECC double-bit", Category: health.GPU,
-		RequiredSignals: []string{"ecc_double_bit"},
-		Rules:           []health.Rule{{Expression: "ecc_double_bit > 0", Severity: health.Critical}},
-	}); err != nil {
-		t.Fatal(err)
+	perGPU := map[string]int{}
+	for _, v := range verdict.CheckResults {
+		if v.CheckID == "ecc_at_full_performance" && v.Severity != health.Pass {
+			t.Errorf("consumer check %+v, want PASS", v)
+		}
+		perGPU[v.CheckID]++
 	}
-	verdict, err := toolkit.Collect(cat, sensors...)
-	if err != nil {
-		t.Fatal(err)
+	skipped := map[string]health.SkipReason{}
+	for _, v := range verdict.SkippedChecks {
+		skipped[v.CheckID] = v.SkipReason
 	}
-	if builtin.calls != 1 || len(verdict.CheckResults) != 1 {
-		t.Fatalf("calls=%d verdict=%+v", builtin.calls, verdict)
+	for _, check := range []string{"ecc_at_full_performance", "gpu_power_state", "gpu_sensor_throttle"} {
+		if perGPU[check] != len(gpus) {
+			t.Errorf("%s verdicts = %d, want one per GPU (skip reason %q)", check, perGPU[check], skipped[check])
+		}
 	}
-	if v := verdict.CheckResults[0]; v.Severity != health.Critical || !slices.Equal(v.AffectedEntities, []string{"GPU-1"}) {
-		t.Fatalf("verdict = %+v, want CRITICAL on GPU-1", v)
+	if eccSource.calls != 1 || !*a.host.(eccHost).b.called {
+		t.Fatalf("ECC source calls=%d, DCGM-shaped source called=%v", eccSource.calls, *a.host.(eccHost).b.called)
 	}
 }
+
+// Reading a built-in signal into a field the built-in adapter reports is
+// rejected, and the error names the rename that works.
+func TestGPUAdapterRejectsBuiltinFieldName(t *testing.T) {
+	adapter, err := GPUAdapter[gpuPstateCopy]("pstate-copy", map[string]string{gpusignals.PerformanceState.ID(): gpu.SignalGPUPstate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := cadenceRunApp().WithNodeID(testNodeID).WithCollectAdapters(adapter).Run([]string{"run"}, &stdout, &stderr); code != exitError {
+		t.Fatalf("exit=%d stderr=%q", code, stderr.String())
+	}
+	if want := `give the field another name in your measurement type to read the same signal`; !strings.Contains(stderr.String(), want) {
+		t.Fatalf("stderr=%q, want %q", stderr.String(), want)
+	}
+}
+
+type gpuPstateCopy struct {
+	GPUID string `json:"gpu_id"`
+	observations.Entity
+	Pstate int64 `json:"gpu_pstate"`
+}
+
+func (gpuPstateCopy) Category() health.Category { return health.GPU }
+func (m gpuPstateCopy) EntityID() string        { return m.GPUID }
 
 func TestGPUAdapterRejectsUnusableType(t *testing.T) {
 	if _, err := GPUAdapter[eccMeasurement]("ecc", map[string]string{"s": "typo"}); err == nil || !strings.Contains(err.Error(), `GPU adapter "ecc"`) {

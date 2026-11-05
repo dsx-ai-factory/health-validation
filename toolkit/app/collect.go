@@ -103,7 +103,10 @@ func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 // the json-tagged field of M it sets; see [observations.NewGPUConverter] for
 // what M needs. Register it with [App.WithCollectAdapters]. A signal the
 // built-in NVML sensor reads, such as ECC or row remapping, needs no sensor;
-// any other needs a sensor registered with [App.WithCollect].
+// any other needs a sensor registered with [App.WithCollect]. A signal the
+// built-in GPU adapter also reads, such as the performance state, may be read
+// too, but into a field of M's own name: a field the built-in GPU measurement
+// reports is rejected at registration.
 func GPUAdapter[M health.Measurement](name string, signals map[string]string) (CollectAdapter, error) {
 	converter, err := observations.NewGPUConverter[M](signals)
 	if err != nil {
@@ -373,7 +376,7 @@ func (a *App) declareAdapters(adapters []CollectAdapter) ([]declaredAdapter, err
 			for _, signal := range caller.signals {
 				for _, field := range caller.feeds[signal] {
 					if fields[field] {
-						return nil, fmt.Errorf("collect adapter %q feeds %s field %q, which the built-in %q adapter also reports; claim the signals with WithCollect instead", caller.name, caller.category, field, builtin.name)
+						return nil, fmt.Errorf("collect adapter %q feeds %s field %q, which the built-in %q adapter also reports; give the field another name in your measurement type to read the same signal, or claim the signals with WithCollect to replace their built-in source", caller.name, caller.category, field, builtin.name)
 					}
 				}
 			}
