@@ -97,8 +97,8 @@ Pushing a `vX.Y.Z` (or `-rc.N`) tag, or merging to `main`, runs the full
 `.github/workflows/ci.yml` pipeline: lint, test, build and smoke-test the image
 on both architectures, and a Grype vulnerability scan that blocks on any fixable
 Critical. After these checks pass, `publish-image` publishes a multi-architecture
-OCI index for internal use. Users build their own deployment images from
-source using the instructions above.
+OCI index for internal use. Build deployment images using
+[Building Container Images from Source](docs/developer.md#building-container-images-from-source).
 
 The version and commit metadata baked into each image (and reported by
 `health-validation version`) comes from `tools/workspace_status_release.sh`,
