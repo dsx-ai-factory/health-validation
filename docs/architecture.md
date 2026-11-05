@@ -112,7 +112,7 @@ have attempted and re-run the suite after each step.
 | SkipReason | SkipReason | `skip_reason` | Machine-readable skip code (see below). |
 | SkipDetail | string | `skip_detail` | Human-readable skip explanation. |
 | AffectedEntities | []string | `affected_entities` | Device identifiers with non-PASS results (e.g. GPU UUIDs). |
-| ObservedValues | map[string]any | `observed_values` | Values of the check's `RequiredSignals` (every measurement signal when it declares none). |
+| ObservedValues | map[string]any | `observed_values` | Values of the check's `RequiredSignals` (every measurement signal when it declares none). A measurement that covers more than one check narrows them to the check's own part: an Xid check reports only its own code's events and counts. |
 | Thresholds | map[string]ResolvedThreshold | `thresholds` | Threshold values used in evaluation, with override provenance. |
 | RecommendedAction | RecommendedAction | `recommended_action` | Structured remediation object `{operational_state, remediation_actions}`. `remediation_actions` is an ordered sequence of remediation steps for a remediation engine to work through, present only when `operational_state` is `drain`; the field is elided (`omitzero`) when no action applies. |
 | Messages | []string | `messages` | Human-readable verdict messages, one per matching rule. |

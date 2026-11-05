@@ -13,6 +13,7 @@ go_library(
     deps = [
         "//catalog/health",
         "//catalog/internal/celeval",
+        "//catalog/internal/scope",
     ],
 )
 
