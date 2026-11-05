@@ -56,7 +56,10 @@ normally revoked after the job and expire after one hour. The repository's
 `GITHUB_TOKEN` is used separately for reading items and updating labels.
 
 If configuration is missing or token creation fails, classification still runs
-with available evidence. Full job cancellation or timeout can prevent labeling.
+with available evidence, then fails the run with `MEMBERSHIP_UNAVAILABLE` if a
+needed lookup could not complete. A later membership match does not hide an
+earlier lookup failure. A match in the first organization does not require the
+second lookup. Full job cancellation or timeout can prevent labeling.
 Private membership visibility must be verified using the actual App installation
 credentials; a successful check with a maintainer's personal account is not enough.
 
@@ -85,10 +88,13 @@ are synthetic values; every field is required and review/expiry dates must be cu
 ]
 ```
 
-Missing or empty exception JSON means no exceptions. Malformed JSON or a non-array
-value produces a generic warning and leaves humans unverified. Expired or
-future-dated exceptions cannot establish affiliation. A valid numeric ID survives
-a login rename; reusing a login cannot transfer another account's exception.
+Leaving the secret unset or empty means no exceptions; membership checks still
+run. Malformed JSON or a non-array value leaves humans unverified. Invalid,
+expired, future-dated or duplicate records fail the run with
+`REVIEWED_DECISIONS_INVALID`, even when the affected record belongs to another
+author. Valid evidence can still determine affiliation and labels before that
+failure. A valid numeric ID survives a login rename; reusing a login cannot
+transfer another account's exception.
 
 Before uploading a registry, check its format and current dates locally:
 
@@ -118,6 +124,11 @@ gh workflow run contributor-intake.yml --repo dsx-ai-factory/health-validation \
 GitHub requests retry transient failures up to three attempts. Label-write
 rate-limit delays over one minute stop the run instead of retrying early.
 A failed write can leave a partial correction; start a new run after it is fixed.
+Failures produce an Actions error annotation with a controlled system code and,
+where available, HTTP status. Raw errors, API responses and private records are
+not logged. A healthy lookup without a match, or conflicting valid evidence,
+leaves the author unverified without failing the run. Source failures can leave
+labels applied; a red run requires investigation and a new run after correction.
 
 ## Supervised activation and rollback
 

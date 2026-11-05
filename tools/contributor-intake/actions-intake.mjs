@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { planIntake } from './intake-plan.mjs';
+import { planIntake, validateReviewedDecisions } from './intake-plan.mjs';
 
 const REPO = { id: 1295779810, full_name: 'dsx-ai-factory/health-validation' };
 const ORGANIZATIONS = [{ login: 'dsx-ai-factory', id: 311157577 }, { login: 'NVIDIA', id: 1728152 }];
@@ -13,13 +13,21 @@ const AFFILIATIONS = new Set(['nvidia', 'external', 'unverified', 'bot'].map(val
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const positiveInteger = value => Number.isSafeInteger(value) && value > 0;
 
+class IntakeError extends Error {
+  constructor(code, status) {
+    const suffix = Number.isInteger(status) && status >= 100 && status <= 599 ? `_HTTP_${status}` : '';
+    super(code + suffix);
+    this.code = code + suffix;
+  }
+}
+
 function assertRepositoryScope(repository) {
-  if (!isRecord(repository) || repository.id !== REPO.id || repository.full_name !== REPO.full_name) throw new Error('repository outside intake scope');
+  if (!isRecord(repository) || repository.id !== REPO.id || repository.full_name !== REPO.full_name) throw new IntakeError('REPOSITORY_OUT_OF_SCOPE');
 }
 
 function normalizeItem(raw, kind) {
-  if (!isRecord(raw)) throw new Error('missing item metadata');
-  if (kind === 'issue' && raw.pull_request) throw new Error('item kind mismatch');
+  if (!isRecord(raw)) throw new IntakeError('ITEM_METADATA_INVALID');
+  if (kind === 'issue' && raw.pull_request) throw new IntakeError('ITEM_KIND_MISMATCH');
   if (kind === 'pr' && raw.base?.repo) assertRepositoryScope(raw.base.repo);
   return { repository: { ...REPO }, node_id: raw.node_id, number: raw.number, kind,
     state: raw.state, draft: kind === 'pr' ? raw.draft : false,
@@ -33,7 +41,7 @@ export function openingFromActions(eventName, payload) {
   const kind = eventName === 'issues' ? 'issue' : 'pr';
   const item = normalizeItem(kind === 'pr' ? payload.pull_request : payload.issue, kind);
   const decision = planIntake({ evaluated_at: item.created_at, item });
-  if (decision.input_error.length) throw new Error('invalid opening metadata');
+  if (decision.input_error.length) throw new IntakeError('OPENING_METADATA_INVALID');
   return item;
 }
 
@@ -43,17 +51,17 @@ export async function classifyFromActions({ eventName, payload, evaluatedAt, rev
     assertRepositoryScope(payload?.repository);
     const { kind, number } = payload?.inputs ?? {};
     if (!['issue', 'pr'].includes(kind) || typeof number !== 'string' || !/^[1-9][0-9]*$/.test(number) ||
-        !positiveInteger(Number(number))) throw new Error('invalid manual target');
+        !positiveInteger(Number(number))) throw new IntakeError('MANUAL_TARGET_INVALID');
     eventItem = { kind, number: Number(number) };
   } else {
     eventItem = openingFromActions(eventName, payload);
   }
   if (!eventItem) return { status: 'ignored' };
   const current = normalizeItem(await github.readItem(eventItem.kind, eventItem.number), eventItem.kind);
-  if ((eventItem.node_id && current.node_id !== eventItem.node_id) || current.number !== eventItem.number) throw new Error('authoritative item identity mismatch');
+  if ((eventItem.node_id && current.node_id !== eventItem.node_id) || current.number !== eventItem.number) throw new IntakeError('ITEM_IDENTITY_MISMATCH');
   const input = { evaluated_at: evaluatedAt, item: current, reviewed_decisions: reviewedDecisions };
   let decision = planIntake(input);
-  if (decision.input_error.length) throw new Error('invalid authoritative item metadata');
+  if (decision.input_error.length) throw new IntakeError('ITEM_METADATA_INVALID');
   if (current.user?.type === 'User' && !decision.diagnostics.includes('author_unavailable') && github.findNvidiaMembership) {
     let result;
     try { result = await github.findNvidiaMembership(current.user); } catch { result = { unavailable: true }; }
@@ -66,11 +74,11 @@ export async function classifyFromActions({ eventName, payload, evaluatedAt, rev
 }
 
 export function createGitHubClient({ token, membershipTokens = {}, fetchFn = globalThis.fetch, sleepFn = sleep }) {
-  if (typeof token !== 'string' || !token.trim()) throw new Error('GitHub credential unavailable');
+  if (typeof token !== 'string' || !token.trim()) throw new IntakeError('GITHUB_CREDENTIAL_UNAVAILABLE');
   const root = `https://api.github.com/repos/${REPO.full_name}`;
   const alreadyAbsent = Symbol('label already absent');
   const labelArray = value => Array.isArray(value) && Array.from(value).every(label => isRecord(label) && typeof label.name === 'string' && label.name.trim());
-  const checkedNumber = value => { if (!positiveInteger(value)) throw new Error('invalid item number'); return value; };
+  const checkedNumber = value => { if (!positiveInteger(value)) throw new IntakeError('ITEM_NUMBER_INVALID'); return value; };
   async function request(path, method = 'GET', body, context = {}) {
     const { credential = token, base = root, allowMissing = false, maxRetryDelayMs = 60000 } = context;
     let response;
@@ -81,7 +89,7 @@ export function createGitHubClient({ token, membershipTokens = {}, fetchFn = glo
             'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
           body: body === undefined ? undefined : JSON.stringify(body) });
       } catch {
-        if (attempt === 2) throw new Error('GitHub request unavailable; reconcile any attempted write');
+        if (attempt === 2) throw new IntakeError('GITHUB_REQUEST_UNAVAILABLE');
         await sleepFn(1000 * 2 ** attempt);
         continue;
       }
@@ -102,8 +110,8 @@ export function createGitHubClient({ token, membershipTokens = {}, fetchFn = glo
     }
     if (method === 'DELETE' && response.status === 404) return alreadyAbsent;
     if (method === 'GET' && allowMissing && response.status === 404) return null;
-    if (!response.ok) throw new Error(`GitHub request failed (${response.status})`);
-    try { return await response.json(); } catch { throw new Error('GitHub response invalid; reconcile any attempted write'); }
+    if (!response.ok) throw new IntakeError('GITHUB_REQUEST_FAILED', response.status);
+    try { return await response.json(); } catch { throw new IntakeError('GITHUB_RESPONSE_INVALID'); }
   }
   return {
     async findNvidiaMembership(user) {
@@ -122,61 +130,69 @@ export function createGitHubClient({ token, membershipTokens = {}, fetchFn = glo
               result.organization?.id !== organization.id || result.organization?.login !== organization.login ||
               !['active', 'pending'].includes(result.state)) throw new Error('invalid membership response');
           if (result.state === 'active') return { membership: { author_id: user.id,
-            organization: organization.login, organization_id: organization.id }, unavailable: false };
+            organization: organization.login, organization_id: organization.id }, unavailable };
         } catch { unavailable = true; }
       }
       return { membership: null, unavailable };
     },
     async readItem(kind, itemNumber) {
-      if (!['issue', 'pr'].includes(kind)) throw new Error('invalid item kind');
+      if (!['issue', 'pr'].includes(kind)) throw new IntakeError('ITEM_KIND_INVALID');
       return request(`/${kind === 'pr' ? 'pulls' : 'issues'}/${checkedNumber(itemNumber)}`);
     },
     async addLabels(itemNumber, labels) {
-      if (!Array.isArray(labels) || !labels.length || !Array.from(labels).every(label => AFFILIATIONS.has(label))) throw new Error('label outside intake scope');
+      if (!Array.isArray(labels) || !labels.length || !Array.from(labels).every(label => typeof label === 'string' && AFFILIATIONS.has(label.toLowerCase()))) throw new IntakeError('LABEL_OUT_OF_SCOPE');
       const response = await request(`/issues/${checkedNumber(itemNumber)}/labels`, 'POST', { labels });
       if (!labelArray(response) ||
-          !labels.every(name => response.some(label => label.name === name))) {
-        throw new Error('GitHub label write unverified; reconcile attempted write');
+          !labels.every(name => response.some(label => label.name.toLowerCase() === name.toLowerCase()))) {
+        throw new IntakeError('LABEL_WRITE_UNVERIFIED');
       }
       return response;
     },
     async removeLabel(itemNumber, label) {
-      if (!AFFILIATIONS.has(label)) throw new Error('label outside intake scope');
+      if (typeof label !== 'string' || !AFFILIATIONS.has(label.toLowerCase())) throw new IntakeError('LABEL_OUT_OF_SCOPE');
       const response = await request(`/issues/${checkedNumber(itemNumber)}/labels/${encodeURIComponent(label)}`, 'DELETE');
       if (response === alreadyAbsent) return null;
-      if (!labelArray(response) || response.some(current => current.name === label)) {
-        throw new Error('GitHub label removal unverified; reconcile attempted write');
+      if (!labelArray(response) || response.some(current => current.name.toLowerCase() === label.toLowerCase())) {
+        throw new IntakeError('LABEL_REMOVAL_UNVERIFIED');
       }
       return response;
     },
   };
 }
 
-const warnEvidence = () => process.stderr.write('Affiliation evidence unavailable or malformed; unresolved authors remain unverified.\n');
+function reportFailure(error) {
+  const code = error instanceof IntakeError ? error.code : 'INTAKE_UNEXPECTED_FAILURE';
+  process.stderr.write(`::error::Intake step failed: ${code}. Reconcile any attempted label changes.\n`);
+  process.exitCode = 1;
+}
 
 async function cli() {
-  if (process.argv.length !== 3 || process.argv[2] !== 'intake') throw new Error('use intake');
-  if (process.env.HEALTH_VALIDATION_APPLY_LABELS !== 'true') throw new Error('label application is disabled');
+  if (process.argv.length !== 3 || process.argv[2] !== 'intake') throw new IntakeError('CLI_ARGUMENTS_INVALID');
+  if (process.env.HEALTH_VALIDATION_APPLY_LABELS !== 'true') throw new IntakeError('LABEL_APPLICATION_DISABLED');
   const github = createGitHubClient({ token: process.env.GITHUB_TOKEN, membershipTokens: {
     'dsx-ai-factory': process.env.HEALTH_VALIDATION_DSX_MEMBERSHIP_TOKEN,
     NVIDIA: process.env.HEALTH_VALIDATION_NVIDIA_MEMBERSHIP_TOKEN,
   } });
   const eventPath = process.env.GITHUB_EVENT_PATH;
-  if (!eventPath) throw new Error('Actions event unavailable');
+  if (!eventPath) throw new IntakeError('ACTIONS_EVENT_UNAVAILABLE');
   let payload;
-  try { payload = JSON.parse(readFileSync(eventPath, 'utf8')); } catch { throw new Error('Actions event invalid'); }
-  let reviewedDecisions = [], evidenceWarning = false;
+  try { payload = JSON.parse(readFileSync(eventPath, 'utf8')); } catch { throw new IntakeError('ACTIONS_EVENT_INVALID'); }
+  const evaluatedAt = new Date().toISOString();
+  let reviewedDecisions = [], registryInvalid = false;
   try {
     const parsed = JSON.parse(process.env.HEALTH_VALIDATION_REVIEWED_DECISIONS_JSON || '[]');
-    if (!Array.isArray(parsed)) throw new Error('reviewed evidence must be an array');
-    reviewedDecisions = parsed;
-  } catch { evidenceWarning = true; reviewedDecisions = null; }
+    reviewedDecisions = Array.isArray(parsed) ? parsed : null;
+    registryInvalid = validateReviewedDecisions(parsed, evaluatedAt).length > 0;
+  } catch { registryInvalid = true; reviewedDecisions = null; }
   const result = await classifyFromActions({ eventName: process.env.GITHUB_EVENT_NAME, payload,
-    evaluatedAt: new Date().toISOString(), reviewedDecisions }, github);
-  if (evidenceWarning || result.decision?.diagnostics.some(code => ['review_malformed', 'membership_unavailable'].includes(code))) warnEvidence();
+    evaluatedAt, reviewedDecisions }, github);
+  if (result.status === 'classified') {
+    if (registryInvalid) reportFailure(new IntakeError('REVIEWED_DECISIONS_INVALID'));
+    if (result.decision.diagnostics.includes('membership_unavailable')) reportFailure(new IntakeError('MEMBERSHIP_UNAVAILABLE'));
+  }
   process.stdout.write(`Intake result: ${result.status}.\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  cli().catch(() => { process.stderr.write('Intake step failed. Check permissions/configuration and any attempted label changes.\n'); process.exitCode = 1; });
+  cli().catch(reportFailure);
 }

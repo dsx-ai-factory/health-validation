@@ -108,7 +108,17 @@ test('an unavailable first organization does not hide a valid second organizatio
   const github = createGitHubClient({ token: 'synthetic-write-token', membershipTokens,
     fetchFn: async url => url.includes('/dsx-ai-factory/') ? { ok: false, status: 403 }
       : { ok: true, status: 200, json: async () => membership('NVIDIA') } });
-  assert.equal((await github.findNvidiaMembership(raw().user)).membership.organization, 'NVIDIA');
+  const result = await github.findNvidiaMembership(raw().user);
+  assert.equal(result.membership.organization, 'NVIDIA');
+  assert.equal(result.unavailable, true);
+});
+
+test('a healthy first membership match does not require an unused second credential', async () => {
+  const github = createGitHubClient({ token: 'synthetic-write-token', membershipTokens: { 'dsx-ai-factory': membershipTokens['dsx-ai-factory'] },
+    fetchFn: async () => ({ ok: true, status: 200, json: async () => membership() }) });
+  const result = await github.findNvidiaMembership(raw().user);
+  assert.equal(result.membership.organization, 'dsx-ai-factory');
+  assert.equal(result.unavailable, false);
 });
 
 test('membership rate-limit waits above ten seconds do not delay the second organization', async () => {
@@ -183,8 +193,8 @@ test('opening validation supports issues and draft PRs in the fixed repository',
   assert.equal(item.kind, 'pr');
   assert.deepEqual(item.repository, REPO);
   assert.equal(openingFromActions('issues', event({ issue: raw({ node_id: 'I_example' }) })).kind, 'issue');
-  assert.throws(() => openingFromActions('issues', event({ repository: { ...REPO, id: 1 }, issue: raw() })), /scope/);
-  assert.throws(() => openingFromActions('pull_request_target', event({ repository: { ...REPO, full_name: 'other/repo' } })), /scope/);
+  assert.throws(() => openingFromActions('issues', event({ repository: { ...REPO, id: 1 }, issue: raw() })), /scope/i);
+  assert.throws(() => openingFromActions('pull_request_target', event({ repository: { ...REPO, full_name: 'other/repo' } })), /scope/i);
 });
 
 test('comments and subsequent PR events do not read or write GitHub', async () => {
@@ -251,7 +261,7 @@ for (const [name, patch] of [
 ]) {
   test(`invalid authoritative metadata (${name}) prevents label writes`, async () => {
     const github = api(raw(patch));
-    await assert.rejects(classifyFromActions(args(), github), /identity|scope|metadata/);
+    await assert.rejects(classifyFromActions(args(), github), /identity|scope|metadata/i);
     assert.deepEqual(github.writes, []);
   });
 }
@@ -280,10 +290,35 @@ test('GitHub adapter fixes scope, uses JSON bodies and preserves unrelated label
   await assert.rejects(github.readItem('pr', '17/../../secrets'));
   await assert.rejects(github.removeLabel(17, 'bug'));
   for (const label of ['bug', 'priority/P1', 'affiliation/unknown']) {
-    await assert.rejects(github.addLabels(17, [label]), /scope/);
-    await assert.rejects(github.removeLabel(17, label), /scope/);
+    await assert.rejects(github.addLabels(17, [label]), /scope/i);
+    await assert.rejects(github.removeLabel(17, label), /scope/i);
   }
   assert.equal(calls.length, 3);
+});
+
+test('label write verification accepts GitHub capitalization', async () => {
+  const github = createGitHubClient({ token: 'synthetic-token', fetchFn: async () => ({
+    ok: true, status: 200, json: async () => [{ name: 'Affiliation/Unverified' }],
+  }) });
+  await github.addLabels(17, ['affiliation/unverified']);
+});
+
+test('label removal verification rejects a retained label in different case', async () => {
+  const github = createGitHubClient({ token: 'synthetic-token', fetchFn: async () => ({
+    ok: true, status: 200, json: async () => [{ name: 'AFFILIATION/NVIDIA' }],
+  }) });
+  await assert.rejects(github.removeLabel(17, 'affiliation/nvidia'), /unverified|reconcile/i);
+});
+
+test('case-variant managed labels remain within the removal allowlist', async () => {
+  const calls = [];
+  const github = createGitHubClient({ token: 'synthetic-token', fetchFn: async (url, options) => {
+    calls.push({ url, method: options.method });
+    return { ok: true, status: 200, json: async () => [{ name: 'Bug' }] };
+  } });
+  await github.removeLabel(17, 'Affiliation/NVIDIA');
+  await assert.rejects(github.removeLabel(17, 'BUG'), /scope/i);
+  assert.deepEqual(calls, [{ url: 'https://api.github.com/repos/dsx-ai-factory/health-validation/issues/17/labels/Affiliation%2FNVIDIA', method: 'DELETE' }]);
 });
 
 test('failed GitHub responses are reported without response-body or credential leakage', async () => {
@@ -387,7 +422,7 @@ test('a sparse acknowledged label array cannot prove an affiliation was removed'
 
 function runIntakeCli({ registry = '[]', current = raw(), mode = 'intake',
     githubToken = 'synthetic-github-token', apply = 'true', eventName = 'pull_request_target',
-    payload = event(), memberships = {}, membershipCredentials = false } = {}) {
+    payload = event(), memberships = {}, membershipCredentials = true, itemStatus = 200, crash = false } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'intake-actions-cli-'));
   try {
     const eventPath = join(directory, 'event.json');
@@ -397,6 +432,9 @@ function runIntakeCli({ registry = '[]', current = raw(), mode = 'intake',
     writeFileSync(outputPath, ''); writeFileSync(callsPath, '');
     const preload = 'data:text/javascript,' + encodeURIComponent(String.raw`
       import {appendFileSync} from 'node:fs';
+      if (process.env.TEST_CRASH === 'true') Date.prototype.toISOString = () => {
+        throw Object.assign(new Error('PRIVATE_UNEXPECTED_ERROR\n::notice::INJECTED'), {code: 'GITHUB_CREDENTIAL_UNAVAILABLE'});
+      };
       globalThis.fetch = async (url, options) => {
         appendFileSync(process.env.TEST_API_CALLS, JSON.stringify({url, method: options.method,
           payload: options.body ? JSON.parse(options.body) : null}) + '\n');
@@ -406,6 +444,9 @@ function runIntakeCli({ registry = '[]', current = raw(), mode = 'intake',
           return {ok: response.status === 200, status: response.status, json: async () => response.body};
         }
         if (!url.startsWith('https://api.github.com/repos/dsx-ai-factory/health-validation/')) throw new Error('unexpected fetch URL');
+        if (options.method === 'GET' && process.env.TEST_ITEM_STATUS !== '200') return {
+          ok: false, status: Number(process.env.TEST_ITEM_STATUS), json: async () => ({message: 'PRIVATE_API_ERROR'}),
+        };
         return {ok: true, status: 200, json: async () => options.method === 'POST'
           ? JSON.parse(options.body).labels.map(name => ({name})) : options.method === 'DELETE'
           ? [] : JSON.parse(process.env.TEST_CURRENT_ITEM)};
@@ -413,7 +454,8 @@ function runIntakeCli({ registry = '[]', current = raw(), mode = 'intake',
     `);
     const env = { ...nodeRuntimeEnvironment(), HEALTH_VALIDATION_APPLY_LABELS: apply, GITHUB_TOKEN: githubToken,
       GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: eventPath, GITHUB_OUTPUT: outputPath,
-      TEST_API_CALLS: callsPath, TEST_CURRENT_ITEM: JSON.stringify(current), TEST_MEMBERSHIPS: JSON.stringify(memberships) };
+      TEST_API_CALLS: callsPath, TEST_CURRENT_ITEM: JSON.stringify(current), TEST_MEMBERSHIPS: JSON.stringify(memberships),
+      TEST_ITEM_STATUS: String(itemStatus), TEST_CRASH: String(crash) };
     if (membershipCredentials) Object.assign(env, { HEALTH_VALIDATION_DSX_MEMBERSHIP_TOKEN: 'synthetic-dsx-token',
       HEALTH_VALIDATION_NVIDIA_MEMBERSHIP_TOKEN: 'synthetic-nvidia-token' });
     if (registry !== null) env.HEALTH_VALIDATION_REVIEWED_DECISIONS_JSON = registry;
@@ -451,16 +493,17 @@ test('CLI keeps membership and an explicit external exception conflict visible',
 test('CLI does not ignore malformed exceptions when membership is positive', () => {
   const run = runIntakeCli({ registry: 'PRIVATE_INVALID_REGISTRY', membershipCredentials: true,
     memberships: { NVIDIA: { status: 200, body: membership('NVIDIA') } } });
-  assert.equal(run.status, 0, run.stderr);
+  assert.equal(run.status, 1, run.stderr);
   assert.deepEqual(run.calls.at(-1).payload.labels, ['affiliation/unverified']);
-  assert.match(run.stderr, /evidence/i);
+  assert.match(run.stderr, /::error::.*REVIEWED_DECISIONS_INVALID/);
   assert.equal((run.stdout + run.stderr).includes('PRIVATE_INVALID_REGISTRY'), false);
 });
 
-test('CLI token/read failures still create an unverified intake label', () => {
+test('CLI token/read failures label unverified and fail with a system code', () => {
   const run = runIntakeCli({ membershipCredentials: true,
     memberships: { 'dsx-ai-factory': { status: 403 }, NVIDIA: { status: 429 } } });
-  assert.equal(run.status, 0, run.stderr);
+  assert.equal(run.status, 1, run.stderr);
+  assert.match(run.stderr, /::error::.*MEMBERSHIP_UNAVAILABLE/);
   assert.deepEqual(run.calls.map(call => call.method), ['GET', 'GET', 'GET', 'POST']);
   assert.deepEqual(run.calls.at(-1).payload.labels, ['affiliation/unverified']);
 });
@@ -470,9 +513,11 @@ test('classification CLI only reads the item and adds its affiliation label', ()
   assert.equal(run.status, 0, run.stderr);
   assert.deepEqual(run.calls.map(call => ({ url: call.url, method: call.method })), [
     { url: 'https://api.github.com/repos/dsx-ai-factory/health-validation/pulls/17', method: 'GET' },
+    { url: 'https://api.github.com/orgs/dsx-ai-factory/memberships/outside-user', method: 'GET' },
+    { url: 'https://api.github.com/orgs/NVIDIA/memberships/outside-user', method: 'GET' },
     { url: 'https://api.github.com/repos/dsx-ai-factory/health-validation/issues/17/labels', method: 'POST' },
   ]);
-  assert.deepEqual(run.calls[1].payload.labels, ['affiliation/unverified']);
+  assert.deepEqual(run.calls.at(-1).payload.labels, ['affiliation/unverified']);
   assert.equal(run.output, '');
   assert.match(run.stdout, /classified/);
 });
@@ -480,7 +525,7 @@ test('classification CLI only reads the item and adds its affiliation label', ()
 test('classification CLI preserves priority when affiliation is already correct', () => {
   const run = runIntakeCli({ current: raw({ labels: [{ name: 'affiliation/unverified' }, { name: 'priority/P1' }] }) });
   assert.equal(run.status, 0, run.stderr);
-  assert.equal(run.calls.length, 1);
+  assert.equal(run.calls.length, 3);
   assert.match(run.stdout, /classified/i);
   assert.equal(run.output, '');
 });
@@ -500,18 +545,19 @@ test('missing GitHub credential fails before network access', () => {
   assert.equal(run.status, 1);
   assert.deepEqual(run.calls, []);
   assert.equal(run.output, '');
+  assert.match(run.stderr, /::error::.*GITHUB_CREDENTIAL_UNAVAILABLE/);
 });
 
 for (const [name, registry] of [
-  ['missing', null], ['invalid JSON', 'PRIVATE_REGISTRY_CONTENT'],
+  ['invalid JSON', 'PRIVATE_REGISTRY_CONTENT'],
   ['wrong collection', '{"PRIVATE_REGISTRY_FIELD":true}'],
   ['malformed relevant record', JSON.stringify([review({ expires_at: null })])],
 ]) {
-  test(`${name} registry warns generically and classifies unknown authors`, () => {
+  test(`${name} registry fails with a system code and keeps unknown authors visible`, () => {
     const run = runIntakeCli({ registry });
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stderr, /evidence/i);
-    assert.deepEqual(run.calls.map(call => call.method), ['GET', 'POST']);
+    assert.equal(run.status, 1, run.stderr);
+    assert.match(run.stderr, /::error::.*REVIEWED_DECISIONS_INVALID/);
+    assert.deepEqual(run.calls.map(call => call.method), ['GET', 'GET', 'GET', 'POST']);
     assert.deepEqual(run.calls.at(-1).payload.labels, ['affiliation/unverified']);
     assert.equal(run.output, '');
     for (const value of ['PRIVATE_REGISTRY', 'synthetic-private-evidence', 'synthetic-reviewer']) {
@@ -530,6 +576,64 @@ test('reviewed classification emits no author, private evidence or credentials i
   for (const value of ['outside-user', 'synthetic-github-token', 'synthetic-private-evidence', 'synthetic-reviewer']) {
     assert.equal((run.stdout + run.stderr).includes(value), false);
   }
+});
+
+for (const registry of [null, '', '[]']) {
+  test(`optional empty registry and healthy no-match lookups succeed: ${registry}`, () => {
+    const run = runIntakeCli({ registry });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.stderr, '');
+    assert.deepEqual(run.calls.at(-1).payload.labels, ['affiliation/unverified']);
+  });
+}
+
+test('missing membership credentials retain reviewed classification and fail source health', () => {
+  const currentReview = review({ reviewed_at: new Date(Date.now() - 60000).toISOString(),
+    expires_at: new Date(Date.now() + 3600000).toISOString() });
+  const run = runIntakeCli({ membershipCredentials: false, registry: JSON.stringify([currentReview]) });
+  assert.equal(run.status, 1, run.stderr);
+  assert.match(run.stderr, /::error::.*MEMBERSHIP_UNAVAILABLE/);
+  assert.deepEqual(run.calls.at(-1).payload.labels, ['affiliation/external']);
+  assert.equal(run.output, '');
+});
+
+test('a failed source remains a red run when the other source identifies the author', () => {
+  const run = runIntakeCli({ memberships: { 'dsx-ai-factory': { status: 403 }, NVIDIA: { status: 200, body: membership('NVIDIA') } } });
+  assert.equal(run.status, 1, run.stderr);
+  assert.match(run.stderr, /::error::.*MEMBERSHIP_UNAVAILABLE/);
+  assert.deepEqual(run.calls.at(-1).payload.labels, ['affiliation/nvidia']);
+});
+
+test('an expired unrelated registry entry fails configuration without hiding a valid membership', () => {
+  const expiredReview = review({ author_id: 1002, login: 'another-user',
+    reviewed_at: new Date(Date.now() - 7200000).toISOString(), expires_at: new Date(Date.now() - 3600000).toISOString() });
+  const run = runIntakeCli({ registry: JSON.stringify([expiredReview]),
+    memberships: { 'dsx-ai-factory': { status: 200, body: membership() } } });
+  assert.equal(run.status, 1, run.stderr);
+  assert.match(run.stderr, /::error::.*REVIEWED_DECISIONS_INVALID/);
+  assert.deepEqual(run.calls.at(-1).payload.labels, ['affiliation/nvidia']);
+  for (const value of ['another-user', '1002', 'synthetic-private-evidence', 'review_expired']) assert.equal(run.stderr.includes(value), false);
+});
+
+test('Bots need no membership credentials', () => {
+  const run = runIntakeCli({ membershipCredentials: false, current: raw({ user: { id: 100, login: 'example[bot]', type: 'Bot' } }) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(run.stderr, '');
+  assert.deepEqual(run.calls.at(-1).payload.labels, ['affiliation/bot']);
+});
+
+test('HTTP failures report only a controlled code and numeric status', () => {
+  const run = runIntakeCli({ itemStatus: 403 });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /::error::.*GITHUB_REQUEST_FAILED.*403/);
+  for (const value of ['PRIVATE_API_ERROR', 'synthetic-github-token', 'outside-user']) assert.equal(run.stderr.includes(value), false);
+});
+
+test('unexpected failures cannot inject messages or spoof a public error code', () => {
+  const run = runIntakeCli({ crash: true });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /::error::.*INTAKE_UNEXPECTED_FAILURE/);
+  for (const value of ['PRIVATE_UNEXPECTED_ERROR', '::notice::', 'GITHUB_CREDENTIAL_UNAVAILABLE']) assert.equal(run.stderr.includes(value), false);
 });
 
 test('unsupported CLI mode is refused without API access', () => {
@@ -563,7 +667,7 @@ for (const inputs of [
     const github = api();
     github.readItem = async () => { throw new Error('unexpected API access'); };
     await assert.rejects(classifyFromActions(args({ eventName: 'workflow_dispatch',
-      payload: { repository: REPO, inputs } }), github), /manual target/);
+      payload: { repository: REPO, inputs } }), github), /MANUAL_TARGET_INVALID/);
     assert.deepEqual(github.writes, []);
   });
 }
@@ -572,14 +676,14 @@ test('manual classification rejects a different repository', async () => {
   const github = api();
   github.readItem = async () => { throw new Error('unexpected API access'); };
   await assert.rejects(classifyFromActions(args({ eventName: 'workflow_dispatch',
-    payload: { repository: { ...REPO, id: 1 }, inputs: { kind: 'pr', number: '17' } } }), github), /scope/);
+    payload: { repository: { ...REPO, id: 1 }, inputs: { kind: 'pr', number: '17' } } }), github), /scope/i);
   assert.deepEqual(github.writes, []);
 });
 
 test('a PR cannot be classified through the manual issue route', async () => {
   const github = api(raw({ pull_request: { url: 'https://api.github.com/example' } }));
   await assert.rejects(classifyFromActions(args({ eventName: 'workflow_dispatch',
-    payload: { repository: REPO, inputs: { kind: 'issue', number: '17' } } }), github), /kind/);
+    payload: { repository: REPO, inputs: { kind: 'issue', number: '17' } } }), github), /kind/i);
   assert.deepEqual(github.writes, []);
 });
 

@@ -138,7 +138,7 @@ export function planIntake(input) {
     diagnostics.push('author_unavailable');
   }
   const selectedLabel = `affiliation/${affiliation}`;
-  const remove = item.labels.filter(label => MANAGED_LABELS.includes(label) && label !== selectedLabel);
-  const add = item.labels.includes(selectedLabel) ? [] : [selectedLabel];
+  const remove = item.labels.filter(label => MANAGED_LABELS.includes(label.toLowerCase()) && label.toLowerCase() !== selectedLabel);
+  const add = item.labels.some(label => label.toLowerCase() === selectedLabel) ? [] : [selectedLabel];
   return { ...decision, affiliation, label_changes: { remove, add }, diagnostics: [...new Set(diagnostics)] };
 }

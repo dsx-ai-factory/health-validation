@@ -97,6 +97,15 @@ test('labels do not lock derived affiliation and unrelated metadata survives', (
   assert.deepEqual(data, before);
 });
 
+test('managed labels compare without case while unrelated label spelling survives', () => {
+  const data = input({ membership: membership(), item: item({ labels: ['Bug', 'priority/P1', 'Affiliation/NVIDIA', 'AFFILIATION/EXTERNAL'] }) });
+  const before = structuredClone(data);
+  const result = planIntake(data);
+  assert.equal(result.affiliation, 'nvidia');
+  assert.deepEqual(result.label_changes, { remove: ['AFFILIATION/EXTERNAL'], add: [] });
+  assert.deepEqual(data, before);
+});
+
 test('current external review establishes affiliation', () => {
   const result = planIntake(input({ reviewed_decisions: [review()] }));
   assert.equal(result.affiliation, 'external');
