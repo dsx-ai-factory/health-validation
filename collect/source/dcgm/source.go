@@ -4,10 +4,8 @@
 package dcgm
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,9 +41,8 @@ var defaultNativeCallMu sync.Mutex
 // another address reads the first source's hostengine. Sources open at the same
 // time share one DCGM connection and its field watches, so closing one stops
 // the field updates the others read; keep one source open per process. The mode
-// stays set after every source closes: re-initializing libdcgm in another mode
-// after go-dcgm's final Shutdown is untested, and reusing the mode would let an
-// auto source skip its connect attempt and BeforeEmbedded check. It is read and
+// stays set after every source closes, because re-initializing libdcgm in
+// another mode after go-dcgm's final Shutdown is untested. It is read and
 // written only while holding defaultNativeCallMu.
 var defaultProcessMode sessionMode
 
@@ -76,21 +73,6 @@ type EmbeddedOptions struct {
 	GroupNamePrefix string
 }
 
-// AutoOptions configures a source that picks standalone or embedded DCGM.
-type AutoOptions struct {
-	// BeforeEmbedded runs after the localhost connect fails with
-	// DCGM_ST_CONNECTION_NOT_VALID and before embedded DCGM starts. An error
-	// refuses the embedded start and is reported as NOT_CONFIGURED. Nil
-	// disables the fallback. It runs under the process-wide native-call lock,
-	// so it must honor ctx, must not block, and must not call the Source.
-	BeforeEmbedded func(context.Context) error
-	// GroupNamePrefix identifies this consumer in the hostengine's field-group
-	// listings when the source connects to one. The source appends the process
-	// ID and a process-local sequence before the "-fields" suffix. Empty uses
-	// "shared-signal-collection".
-	GroupNamePrefix string
-}
-
 func metricWatchName(prefix string, processID int, sequence uint64) string {
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
@@ -104,10 +86,6 @@ func metricWatchName(prefix string, processID int, sequence uint64) string {
 // one balanced cleanup function retained here.
 type Source struct {
 	native nativeAPI
-	// fallback is the embedded client an auto source starts when no
-	// hostengine answers and beforeEmbedded allows it.
-	fallback       nativeAPI
-	beforeEmbedded func(context.Context) error
 	// Production sources share this lock and fail fast when it is held. The lock
 	// protects native calls and the source state changed by those calls.
 	nativeCallMu       *sync.Mutex
@@ -141,24 +119,6 @@ func NewStandaloneSource(options StandaloneOptions) *Source {
 func NewEmbeddedSource(options EmbeddedOptions) *Source {
 	source := newSource(newNative(StandaloneOptions{GroupNamePrefix: options.GroupNamePrefix}, embeddedMode), &defaultNativeCallMu)
 	source.mode = embeddedMode
-	source.processMode = &defaultProcessMode
-	return source
-}
-
-// NewAutoSource creates a source for one-shot processes that uses a DCGM
-// hostengine on localhost when one answers and otherwise starts DCGM inside
-// this process. It starts embedded DCGM only when the connect fails with
-// DCGM_ST_CONNECTION_NOT_VALID and options.BeforeEmbedded returns nil. DCGM
-// also reports that status for a hostengine it cannot reach, so BeforeEmbedded
-// is where a caller refuses to start a second engine. Use NewStandaloneSource
-// for a configured address. An auto source must be the first DCGM source a
-// process initializes; otherwise it reports NOT_CONFIGURED.
-func NewAutoSource(options AutoOptions) *Source {
-	source := newSource(newNative(StandaloneOptions{Address: "localhost", GroupNamePrefix: options.GroupNamePrefix}, standaloneMode),
-		&defaultNativeCallMu)
-	source.fallback = newNative(StandaloneOptions{GroupNamePrefix: options.GroupNamePrefix}, embeddedMode)
-	source.beforeEmbedded = options.BeforeEmbedded
-	source.mode = autoMode
 	source.processMode = &defaultProcessMode
 	return source
 }
@@ -224,28 +184,20 @@ func (source *Source) finishNativeCall() {
 }
 
 // ensureInitialized opens the DCGM client on the first native operation.
-func (source *Source) ensureInitialized(ctx context.Context) error {
+func (source *Source) ensureInitialized() error {
 	if source.ready {
 		return nil
 	}
 	if source.processMode != nil && *source.processMode != 0 && *source.processMode != source.mode {
-		detail := fmt.Sprintf("this process set DCGM to %s mode with its first DCGM source and keeps that mode until it exits; this source uses %s mode",
-			*source.processMode, source.mode)
-		if source.mode == autoMode {
-			detail = fmt.Sprintf("this process set DCGM to %s mode with its first DCGM source and keeps that mode until it exits; an auto source must be the first DCGM source in a process",
-				*source.processMode)
+		return &dcgmError{
+			category: observation.CollectionErrorCategoryNotConfigured,
+			detail: fmt.Sprintf("this process set DCGM to %s mode with its first DCGM source and keeps that mode until it exits; this source uses %s mode",
+				*source.processMode, source.mode),
 		}
-		return &dcgmError{category: observation.CollectionErrorCategoryNotConfigured, detail: detail}
 	}
 	cleanup, err := source.native.Init()
-	if err != nil && source.beforeEmbedded != nil && connectionNotValid(err) {
-		cleanup, err = source.startFallback(ctx, err)
-	}
 	if err != nil {
 		return err
-	}
-	if source.mode == autoMode {
-		source.mode = standaloneMode
 	}
 	if source.processMode != nil && *source.processMode == 0 {
 		*source.processMode = source.mode
@@ -253,39 +205,6 @@ func (source *Source) ensureInitialized(ctx context.Context) error {
 	source.cleanup = cleanup
 	source.ready = true
 	return nil
-}
-
-// startFallback starts the embedded client after the hostengine connect failed
-// with connectErr. A start failure is classified by the embedded error, which
-// names the cause an operator must fix.
-func (source *Source) startFallback(ctx context.Context, connectErr error) (func(), error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	refusal := source.beforeEmbedded(ctx)
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if refusal != nil {
-		return nil, &dcgmError{
-			category: observation.CollectionErrorCategoryNotConfigured,
-			detail:   fmt.Sprintf("no DCGM hostengine answered (%v); embedded DCGM refused: %v", connectErr, refusal),
-		}
-	}
-	cleanup, err := source.fallback.Init()
-	if err != nil {
-		failure := &dcgmError{detail: fmt.Sprintf("no DCGM hostengine answered (%v); embedded DCGM failed: %v", connectErr, err)}
-		var embeddedFailure *dcgmError
-		if errors.As(err, &embeddedFailure) {
-			failure.category = embeddedFailure.category
-			failure.sourceError = embeddedFailure.sourceError
-		}
-		return nil, failure
-	}
-	slog.Info("no DCGM hostengine answered on localhost; started embedded DCGM")
-	source.native = source.fallback
-	source.mode = embeddedMode
-	return cleanup, nil
 }
 
 // ensureMetricWatch creates the configured DCGM watch on its first call.

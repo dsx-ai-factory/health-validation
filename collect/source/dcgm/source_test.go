@@ -607,12 +607,6 @@ func TestSourceRejectsSecondDCGMMode(t *testing.T) {
 			first:      embeddedMode,
 			second:     standaloneMode,
 		},
-		{
-			name:       "standalone then auto",
-			wantDetail: "this process set DCGM to standalone mode with its first DCGM source and keeps that mode until it exits; an auto source must be the first DCGM source in a process",
-			first:      standaloneMode,
-			second:     autoMode,
-		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -662,6 +656,12 @@ func TestSourceSharesProcessModeWithSameMode(t *testing.T) {
 			t.Fatalf("source %d Init() calls = %d, want 1", position, got)
 		}
 	}
+}
+
+var errNoHostengine = &dcgmError{
+	sourceError: "DCGM_ST_CONNECTION_NOT_VALID",
+	category:    observation.CollectionErrorCategoryUnavailable,
+	detail:      "error connecting to nv-hostengine: Host engine connection invalid/disconnected",
 }
 
 func TestFailedInitLeavesModeUnset(t *testing.T) {
@@ -725,7 +725,6 @@ func TestNewSourceConstructorsShareProcessState(t *testing.T) {
 	}{
 		{source: NewStandaloneSource(StandaloneOptions{}), mode: standaloneMode},
 		{source: NewEmbeddedSource(EmbeddedOptions{GroupNamePrefix: "hv"}), mode: embeddedMode},
-		{source: NewAutoSource(AutoOptions{GroupNamePrefix: "hv"}), mode: autoMode},
 	} {
 		if test.source.mode != test.mode || test.source.nativeCallMu != &defaultNativeCallMu || test.source.processMode != &defaultProcessMode {
 			t.Fatalf("%v source = mode %v, shared gate %t, shared process mode %t", test.mode, test.source.mode,
@@ -833,179 +832,6 @@ func TestModesShareNativeCallGate(t *testing.T) {
 	}
 	if got := embeddedNative.initCalls.Load(); got != 0 {
 		t.Fatalf("embedded Init() calls = %d, want 0", got)
-	}
-}
-
-func newAutoSourceForTest(standalone, embedded *fakeNative, processMode *sessionMode) *Source {
-	source := newSourceInMode(standalone, &sync.Mutex{}, processMode, autoMode)
-	source.fallback = embedded
-	source.beforeEmbedded = func(context.Context) error { return nil }
-	return source
-}
-
-var errNoHostengine = &dcgmError{
-	sourceError: "DCGM_ST_CONNECTION_NOT_VALID",
-	category:    observation.CollectionErrorCategoryUnavailable,
-	detail:      "error connecting to nv-hostengine: Host engine connection invalid/disconnected",
-}
-
-func TestAutoSourceUsesReachableHostengine(t *testing.T) {
-	var processMode sessionMode
-	standalone, embedded := &fakeNative{}, &fakeNative{}
-	source := newAutoSourceForTest(standalone, embedded, &processMode)
-	source.beforeEmbedded = func(context.Context) error {
-		t.Error("BeforeEmbedded ran although the hostengine answered")
-		return nil
-	}
-
-	if _, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "reachable")); failure != nil {
-		t.Fatalf("GPUIdentities() failure = %v", failure)
-	}
-	if source.mode != standaloneMode || processMode != standaloneMode || embedded.initCalls.Load() != 0 {
-		t.Fatalf("mode = %v, process mode = %v, embedded Init() calls = %d; want standalone, standalone, 0",
-			source.mode, processMode, embedded.initCalls.Load())
-	}
-}
-
-func TestAutoSourceStartsEmbeddedWhenNothingListens(t *testing.T) {
-	var processMode sessionMode
-	standalone, embedded := &fakeNative{initErr: errNoHostengine}, &fakeNative{}
-	source := newAutoSourceForTest(standalone, embedded, &processMode)
-	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
-		t.Fatal(err)
-	}
-
-	cycle := newTestCycle(t, "embedded")
-	if _, failure := source.GPUIdentities(context.Background(), cycle); failure != nil {
-		t.Fatalf("GPUIdentities() failure = %v", failure)
-	}
-	if source.mode != embeddedMode || processMode != embeddedMode {
-		t.Fatalf("mode = %v, process mode = %v; want embedded", source.mode, processMode)
-	}
-	values := source.ReadGPUMetrics(context.Background(), cycle, 0, []string{signalPowerDraw})
-	if failure := values[signalPowerDraw].CollectionError; failure != nil {
-		t.Fatalf("ReadGPUMetrics() failure = %v", failure)
-	}
-	if err := source.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-	if embedded.watchCalls.Load() != 1 || embedded.watchCleanupCalls.Load() != 1 || embedded.cleanupCalls.Load() != 1 ||
-		standalone.watchCalls.Load() != 0 || standalone.cleanupCalls.Load() != 0 {
-		t.Fatalf("embedded watch/cleanups = %d/%d/%d, standalone watch/cleanup = %d/%d; want 1/1/1, 0/0",
-			embedded.watchCalls.Load(), embedded.watchCleanupCalls.Load(), embedded.cleanupCalls.Load(),
-			standalone.watchCalls.Load(), standalone.cleanupCalls.Load())
-	}
-}
-
-func TestAutoSourceFailsWithoutFallback(t *testing.T) {
-	for _, initErr := range []error{
-		&dcgmError{category: observation.CollectionErrorCategoryOther, detail: "error initializing DCGM: DCGM initialization error"},
-		&dcgmError{category: observation.CollectionErrorCategoryOther, detail: "libdcgm.so.4 not found"},
-	} {
-		var processMode sessionMode
-		embedded := &fakeNative{}
-		source := newAutoSourceForTest(&fakeNative{initErr: initErr}, embedded, &processMode)
-
-		_, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "no-fallback"))
-		if failure.GetDetail() != initErr.Error() || embedded.initCalls.Load() != 0 || processMode != 0 || source.mode != autoMode {
-			t.Fatalf("failure = %v, embedded Init() calls = %d, process mode = %v, mode = %v",
-				failure, embedded.initCalls.Load(), processMode, source.mode)
-		}
-	}
-}
-
-func TestAutoSourceReportsEmbeddedFailure(t *testing.T) {
-	var processMode sessionMode
-	standalone := &fakeNative{initErr: errNoHostengine}
-	embedded := &fakeNative{initErr: &dcgmError{
-		sourceError: "DCGM_ST_INIT_ERROR",
-		category:    observation.CollectionErrorCategoryUnavailable,
-		detail:      "error starting nv-hostengine: DCGM initialization error",
-	}}
-	source := newAutoSourceForTest(standalone, embedded, &processMode)
-
-	_, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "embedded-failure"))
-	want := "no DCGM hostengine answered (error connecting to nv-hostengine: Host engine connection invalid/disconnected); " +
-		"embedded DCGM failed: error starting nv-hostengine: DCGM initialization error"
-	if failure.GetCategory() != observation.CollectionErrorCategoryUnavailable ||
-		failure.GetSourceError() != "DCGM_ST_INIT_ERROR" || failure.GetDetail() != want {
-		t.Fatalf("failure = %v", failure)
-	}
-	if processMode != 0 || source.mode != autoMode {
-		t.Fatalf("process mode = %v, mode = %v; want unset, auto", processMode, source.mode)
-	}
-	source.GPUIdentities(context.Background(), newTestCycle(t, "retry"))
-	if got := standalone.initCalls.Load(); got != 2 {
-		t.Fatalf("standalone Init() calls after retry = %d, want 2", got)
-	}
-}
-
-func TestAutoSourceWithoutHookDoesNotEmbed(t *testing.T) {
-	var processMode sessionMode
-	embedded := &fakeNative{}
-	source := newAutoSourceForTest(&fakeNative{initErr: errNoHostengine}, embedded, &processMode)
-	source.beforeEmbedded = nil
-
-	_, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "no-hook"))
-	if failure.GetSourceError() != "DCGM_ST_CONNECTION_NOT_VALID" || embedded.initCalls.Load() != 0 || processMode != 0 {
-		t.Fatalf("failure = %v, embedded Init() calls = %d, process mode = %v; want the connect error, 0, unset",
-			failure, embedded.initCalls.Load(), processMode)
-	}
-}
-
-func TestAutoSourceHookRefusesEmbedded(t *testing.T) {
-	var processMode sessionMode
-	embedded := &fakeNative{}
-	source := newAutoSourceForTest(&fakeNative{initErr: errNoHostengine}, embedded, &processMode)
-	source.beforeEmbedded = func(context.Context) error { return errors.New("nv-hostengine is running (pid 12)") }
-
-	_, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "refused"))
-	want := "no DCGM hostengine answered (error connecting to nv-hostengine: Host engine connection invalid/disconnected); " +
-		"embedded DCGM refused: nv-hostengine is running (pid 12)"
-	if failure.GetCategory() != observation.CollectionErrorCategoryNotConfigured || failure.GetDetail() != want {
-		t.Fatalf("failure = %v", failure)
-	}
-	if embedded.initCalls.Load() != 0 || processMode != 0 || source.mode != autoMode {
-		t.Fatalf("embedded Init() calls = %d, process mode = %v, mode = %v; want 0, unset, auto",
-			embedded.initCalls.Load(), processMode, source.mode)
-	}
-}
-
-func TestAutoSourceDoesNotStartEmbeddedWhenDeadlinePassesInHook(t *testing.T) {
-	var processMode sessionMode
-	embedded := &fakeNative{}
-	source := newAutoSourceForTest(&fakeNative{initErr: errNoHostengine}, embedded, &processMode)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	source.beforeEmbedded = func(context.Context) error {
-		cancel()
-		return nil
-	}
-
-	if err := source.ensureInitialized(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("ensureInitialized() error = %v, want context.Canceled", err)
-	}
-	if embedded.initCalls.Load() != 0 {
-		t.Fatalf("embedded Init() calls = %d, want 0", embedded.initCalls.Load())
-	}
-}
-
-func TestAutoSourceDoesNotStartEmbeddedAfterDeadline(t *testing.T) {
-	var processMode sessionMode
-	embedded := &fakeNative{}
-	source := newAutoSourceForTest(&fakeNative{initErr: errNoHostengine}, embedded, &processMode)
-	source.beforeEmbedded = func(context.Context) error {
-		t.Error("BeforeEmbedded ran after the deadline")
-		return nil
-	}
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now())
-	defer cancel()
-
-	if err := source.ensureInitialized(ctx); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("ensureInitialized() error = %v, want context.DeadlineExceeded", err)
-	}
-	if embedded.initCalls.Load() != 0 || processMode != 0 {
-		t.Fatalf("embedded Init() calls = %d, process mode = %v; want 0, unset", embedded.initCalls.Load(), processMode)
 	}
 }
 

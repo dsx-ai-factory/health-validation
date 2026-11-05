@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -34,17 +33,12 @@ func TestParseConfig(t *testing.T) {
 		dcgmMode:            dcgmModeStandalone,
 		timeout:             60 * time.Second,
 	}
-	auto := defaults
-	auto.dcgmMode = dcgmModeAuto
 	embedded := defaults
 	embedded.dcgmMode = dcgmModeEmbedded
 	socket := defaults
 	socket.dcgmMode = dcgmModeStandalone
 	socket.dcgmAddress = "/run/nvidia-dcgm/socket"
 	socket.dcgmSocket = true
-	tcp := defaults
-	tcp.dcgmMode = dcgmModeStandalone
-	tcp.dcgmAddress = "10.0.0.1"
 	configured := defaults
 	configured.dcgmMode = dcgmModeStandalone
 	configured.dcgmAddress = "10.0.0.1"
@@ -58,16 +52,15 @@ func TestParseConfig(t *testing.T) {
 		wantHelp   bool
 	}{
 		{name: "defaults", want: defaults},
-		{name: "auto", args: []string{"--dcgm-mode=auto"}, want: auto},
+		{name: "auto is not a mode", args: []string{"--dcgm-mode=auto"}, wantErr: true, wantOutput: `unknown mode "auto"`},
 		{name: "embedded", args: []string{"--dcgm-mode=embedded"}, want: embedded},
 		{name: "normalized mode", args: []string{"--dcgm-mode= Embedded "}, want: embedded},
 		{name: "unknown mode", args: []string{"--dcgm-mode=hostengine"}, wantErr: true, wantOutput: `unknown mode "hostengine"`},
 		{name: "embedded with address", args: []string{"--dcgm-mode=embedded", "--dcgm-address=10.0.0.1"}, wantErr: true, wantOutput: "apply only to standalone mode"},
 		{name: "embedded with socket", args: []string{"--dcgm-mode=embedded", "--dcgm-socket"}, wantErr: true, wantOutput: "apply only to standalone mode"},
 		{name: "normalized embedded with socket", args: []string{"--dcgm-mode=Embedded", "--dcgm-socket"}, wantErr: true, wantOutput: "apply only to standalone mode"},
-		{name: "explicit standalone with address", args: []string{"--dcgm-mode=STANDALONE", "--dcgm-address=10.0.0.1"}, want: tcp},
+		{name: "explicit standalone with address", args: []string{"--dcgm-mode=STANDALONE", "--dcgm-address=10.0.0.1"}, want: configured},
 		{name: "address", args: []string{"--dcgm-address=10.0.0.1"}, want: configured},
-		{name: "explicit auto with address", args: []string{"--dcgm-mode=auto", "--dcgm-address=10.0.0.1"}, want: configured},
 		{name: "standalone socket", args: []string{"--dcgm-address=/run/nvidia-dcgm/socket", "--dcgm-socket"}, want: socket},
 		{name: "embedded with socket off", args: []string{"--dcgm-mode=embedded", "--dcgm-socket=false"}, want: embedded},
 		{name: "socket path as argument", args: []string{"--dcgm-socket", "/run/nvidia-dcgm/socket"}, wantErr: true, wantOutput: `unexpected argument "/run/nvidia-dcgm/socket"`},
@@ -96,7 +89,7 @@ func TestParseConfig(t *testing.T) {
 // TestWiring covers the setup run does before its first DCGM read in each
 // mode: the DCGM sensor validates the watched signals without starting DCGM.
 func TestWiring(t *testing.T) {
-	for _, mode := range []string{dcgmModeAuto, dcgmModeStandalone, dcgmModeEmbedded} {
+	for _, mode := range []string{dcgmModeStandalone, dcgmModeEmbedded} {
 		source, err := newDCGMSource(config{dcgmMode: mode}, hostProc(nil))
 		require.NoError(t, err, mode)
 		_, err = dcgmsensor.New(source, watchedSignals()...)
@@ -142,7 +135,6 @@ func TestNewDCGMSourceSelectsConstructor(t *testing.T) {
 	t.Cleanup(func() {
 		newStandaloneSource = dcgmsource.NewStandaloneSource
 		newEmbeddedSource = dcgmsource.NewEmbeddedSource
-		newAutoSource = dcgmsource.NewAutoSource
 	})
 	newStandaloneSource = func(options dcgmsource.StandaloneOptions) *dcgmsource.Source {
 		called = append(called, fmt.Sprintf("standalone %s socket=%t %s", options.Address, options.IsSocket, options.GroupNamePrefix))
@@ -152,13 +144,8 @@ func TestNewDCGMSourceSelectsConstructor(t *testing.T) {
 		called = append(called, "embedded "+options.GroupNamePrefix)
 		return dcgmsource.NewEmbeddedSource(options)
 	}
-	newAutoSource = func(options dcgmsource.AutoOptions) *dcgmsource.Source {
-		called = append(called, fmt.Sprintf("auto %s hook=%t", options.GroupNamePrefix, options.BeforeEmbedded != nil))
-		return dcgmsource.NewAutoSource(options)
-	}
 
 	for mode, want := range map[string]string{
-		dcgmModeAuto:       "auto hv hook=true",
 		dcgmModeEmbedded:   "embedded hv",
 		dcgmModeStandalone: "standalone /run/x socket=true hv",
 	} {
@@ -170,10 +157,7 @@ func TestNewDCGMSourceSelectsConstructor(t *testing.T) {
 }
 
 func TestNewDCGMSourceChecksForAnotherEngine(t *testing.T) {
-	t.Cleanup(func() {
-		newEmbeddedSource = dcgmsource.NewEmbeddedSource
-		newAutoSource = dcgmsource.NewAutoSource
-	})
+	t.Cleanup(func() { newEmbeddedSource = dcgmsource.NewEmbeddedSource })
 	exporter := hostProc(fstest.MapFS{"proc/13/comm": {Data: []byte("dcgm-exporter\n")}})
 
 	newEmbeddedSource = func(dcgmsource.EmbeddedOptions) *dcgmsource.Source {
@@ -182,15 +166,6 @@ func TestNewDCGMSourceChecksForAnotherEngine(t *testing.T) {
 	}
 	_, err := newDCGMSource(config{dcgmMode: dcgmModeEmbedded}, exporter)
 	require.ErrorContains(t, err, "refuse embedded DCGM: dcgm-exporter is running (pid 13)")
-
-	var beforeEmbedded func(context.Context) error
-	newAutoSource = func(options dcgmsource.AutoOptions) *dcgmsource.Source {
-		beforeEmbedded = options.BeforeEmbedded
-		return dcgmsource.NewAutoSource(options)
-	}
-	_, err = newDCGMSource(config{dcgmMode: dcgmModeAuto}, exporter)
-	require.NoError(t, err)
-	require.ErrorContains(t, beforeEmbedded(context.Background()), "dcgm-exporter is running (pid 13)")
 }
 
 type readErrorFS struct {
@@ -223,7 +198,7 @@ func TestRefuseEmbedded(t *testing.T) {
 		wantErr string
 	}{
 		{name: "host view, no other engine", fsys: hostProc(fstest.MapFS{"proc/7/comm": {Data: []byte("sshd\n")}})},
-		{name: "nv-hostengine", fsys: hostProc(fstest.MapFS{"proc/12/comm": {Data: []byte("nv-hostengine\n")}}), wantErr: "nv-hostengine is running (pid 12); pass --dcgm-address with an address that reaches it"},
+		{name: "nv-hostengine", fsys: hostProc(fstest.MapFS{"proc/12/comm": {Data: []byte("nv-hostengine\n")}}), wantErr: "nv-hostengine is running (pid 12); use standalone mode with --dcgm-address set to an address that reaches it"},
 		{name: "dcgm-exporter", fsys: hostProc(fstest.MapFS{"proc/13/comm": {Data: []byte("dcgm-exporter\n")}}), wantErr: "dcgm-exporter is running (pid 13) and may run its own DCGM engine"},
 		{name: "dcgmi", fsys: hostProc(fstest.MapFS{"proc/14/comm": {Data: []byte("dcgmi\n")}}), wantErr: "dcgmi is running (pid 14) and may run its own DCGM engine"},
 		{name: "container PID namespace", fsys: fstest.MapFS{

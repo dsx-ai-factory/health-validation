@@ -675,50 +675,48 @@ than presenting rack GUID bytes as a chassis serial.
 
 ### DCGM modes
 
-`source/dcgm` has three constructors. Each returns the same `*dcgm.Source`, so
-the DCGM sensor emits the same signals in every mode:
+`source/dcgm` has two constructors. Each returns the same `*dcgm.Source`, so
+the DCGM sensor emits the same signals in both modes:
 
 - `NewStandaloneSource(StandaloneOptions{...})` connects to a running
   `nv-hostengine`. `Address` defaults to `localhost`; set `IsSocket` when it is
-  a Unix socket path. It never starts DCGM itself.
+  a Unix socket path. It never starts DCGM itself. When no hostengine answers,
+  DCGM retries the connect for about 5 seconds and then reports
+  `DCGM_ST_CONNECTION_NOT_VALID`. That retry runs inside the first source call,
+  so the collection timeout must cover it.
 - `NewEmbeddedSource(EmbeddedOptions{...})` starts DCGM inside the process on
   its first collection and shuts it down on `Close`. It never checks for
   another DCGM engine on the node; the caller must.
-- `NewAutoSource(AutoOptions{...})` connects to `localhost` and starts embedded
-  DCGM only when the connect fails with `DCGM_ST_CONNECTION_NOT_VALID` and
-  `BeforeEmbedded` returns nil. A nil `BeforeEmbedded` disables the fallback,
-  and an error from it is reported as `NOT_CONFIGURED`. DCGM retries the
-  connect for about 5 seconds before it fails. The connect retry, the
-  `BeforeEmbedded` check, and the embedded start all run inside the first source
-  call, so the collection timeout must cover them.
 
-Use embedded and auto sources only in short-lived, one-shot processes; a
+The source never picks a mode or falls back from standalone to embedded. That
+choice belongs to the caller. Use embedded sources only in short-lived,
+one-shot processes; a
 long-running agent should use a standalone hostengine. NVIDIA recommends one
 hostengine per node, because two hostengines managing the same GPUs keep
 separate state and can issue conflicting watches
 ([nv-hostengine reference](https://docs.nvidia.com/datacenter/dcgm/latest/reference/command-line-reference/nv-hostengine.html#host-engine-state-and-restarts)).
 
 DCGM also reports `DCGM_ST_CONNECTION_NOT_VALID` for a hostengine that is running
-but unreachable, so `BeforeEmbedded` is where a caller refuses to start a
-second engine. The `agentkit/examples/scan-one-off-evaluate` example uses
-standalone mode by default. With `--dcgm-mode=auto`, its `BeforeEmbedded`
-check refuses the embedded start when the process runs outside the host PID
-namespace, when it cannot read `/proc/1/comm`, or when an `nv-hostengine`,
-`dcgm-exporter`, or `dcgmi` process is running. A non-root run cannot read
+but unreachable, so a failed connect does not prove that no engine runs. The
+`agentkit/examples/scan-one-off-evaluate` example uses standalone mode by
+default. With `--dcgm-mode=embedded`, it checks for another engine first and
+exits with an error, without starting DCGM, when the process runs outside the
+host PID namespace, when it cannot read `/proc/1/comm`, or when an
+`nv-hostengine`, `dcgm-exporter`, or `dcgmi` process is running. A non-root run cannot read
 `/proc/1/comm` when `/proc` is mounted with any `hidepid` value, unless it has
 `CAP_SYS_PTRACE` or, for `hidepid=1` or `2`, belongs to the mount's `gid=`
 group. `dcgm-exporter` embeds DCGM unless it is given a remote hostengine
 (`DCGM_REMOTE_HOSTENGINE_INFO` or `-r`), and `dcgmi diag` can start an embedded
-engine. With `--dcgm-mode=embedded`, the example runs the same check before it
-starts DCGM and exits with an error when the check refuses. A configured
-`--dcgm-address` or `--dcgm-socket` selects standalone mode, with no fallback.
+engine. `--dcgm-address` and `--dcgm-socket` apply only to standalone mode;
+combining them with `--dcgm-mode=embedded` is an error.
 
 With `dcgm.enabled` set (the Helm chart default is off), the GPU Operator runs
 `nv-hostengine` in the `nvidia-dcgm` DaemonSet and points `dcgm-exporter` at
 it. That pod has its own network namespace unless `dcgm.hostNetwork` is set, so
-the check finds its `nv-hostengine` but `localhost:5555` on the host does not
-reach it. Pass an address that reaches the pod, such as its pod IP, with
-`--dcgm-address`.
+`localhost:5555` on the host does not reach it. Standalone mode with the default
+address reports `DCGM_ST_CONNECTION_NOT_VALID`, and embedded mode refuses
+because the check finds the pod's `nv-hostengine`. Use standalone mode with
+`--dcgm-address` set to an address that reaches the pod, such as its pod IP.
 
 The check cannot see DCGM embedded in any other process, including another
 one-shot run that started embedded DCGM at the same time, so do not overlap
@@ -727,24 +725,23 @@ mounted with `hidepid=2` or `4` can read PID 1 but not other users' processes,
 so the check can miss an `nv-hostengine` run as another user.
 
 Every mode loads `libdcgm.so.4`, which the `health-validation` container image
-does not include. Embedded mode, and auto mode when it falls back to embedded,
-also loads `libnvidia-ml.so.1` into the process; standalone mode does not. If
-NVML does not load, embedded DCGM still starts but manages no GPUs, so the DCGM
+does not include. In standalone mode, the loaded `libdcgm.so.4` must be the same
+DCGM version as the hostengine; otherwise every call fails with "API version
+mismatch". Embedded mode also loads `libnvidia-ml.so.1` into the process;
+standalone mode does not. If NVML does not load, embedded DCGM still starts but manages no GPUs, so the DCGM
 sensor reports every signal as no value with reason `NO_TARGETS` ("No GPUs
 detected") and the cause appears only in the DCGM log. Keep one DCGM source
-open per process: sources share one
-DCGM connection and its field watches, so closing one stops the field updates
-the others read. A process runs DCGM in one mode, and a source of the other
-mode reports `NOT_CONFIGURED`. An auto source must be the first DCGM source a
-process initializes; otherwise it reports `NOT_CONFIGURED`. A collection timeout
+open per process: sources share one DCGM connection and its field watches, so
+closing one stops the field updates the others read. A process runs DCGM in one
+mode, and a source of the other mode reports `NOT_CONFIGURED`. A collection timeout
 stops the wait, not the native call. Until it returns, later source calls
 return `ErrInUse`, which sensors report as unavailable observations, and
 `Close` returns `ErrInUse` instead of waiting. A DCGM start that fails after
 loading `libdcgm.so.4` keeps the library loaded until the process exits; DCGM
 stays initialized until a later source starts and closes as the last open DCGM
-source. A failed embedded start reports `DCGM_ST_INIT_ERROR`. libdcgm prints the
-cause to stderr, and also writes it to the DCGM log when it can write that
-file.
+source. A failed embedded start reports `DCGM_ST_INIT_ERROR`. libdcgm writes the
+cause to the DCGM log when it can write that file, and prints some causes to
+stderr as well.
 
 Embedded DCGM writes ERROR-level logs to `/var/log/nv-hostengine.log`. Set
 `__DCGM_DBG_FILE` to another path and `__DCGM_DBG_LVL` to change the level. A

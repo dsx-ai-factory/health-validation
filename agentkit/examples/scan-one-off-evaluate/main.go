@@ -51,7 +51,6 @@ type output struct {
 }
 
 const (
-	dcgmModeAuto       = "auto"
 	dcgmModeStandalone = "standalone"
 	dcgmModeEmbedded   = "embedded"
 )
@@ -79,10 +78,10 @@ func parseConfig(args []string, output io.Writer) (config, error) {
 	flags := flag.NewFlagSet("scan-one-off-evaluate", flag.ContinueOnError)
 	flags.SetOutput(output)
 	flags.StringVar(&cfg.architecture, "architecture", "H100", "GPU architecture used to resolve Health Validation checks and thresholds")
-	flags.StringVar(&cfg.dcgmAddress, "dcgm-address", "localhost", "DCGM hostengine address or Unix socket path; setting it selects standalone mode")
+	flags.StringVar(&cfg.dcgmAddress, "dcgm-address", "localhost", "DCGM hostengine address or Unix socket path, for standalone mode only")
 	flags.StringVar(&cfg.dcgmGroupNamePrefix, "dcgm-group-name-prefix", "health-validation-evaluate", "prefix used to identify this process in DCGM group listings")
-	flags.StringVar(&cfg.dcgmMode, "dcgm-mode", dcgmModeStandalone, "DCGM mode: standalone connects to a running hostengine; auto uses a hostengine on localhost and starts DCGM inside this process only when none answers and no other DCGM engine is visible; embedded starts DCGM inside this process unless another DCGM engine is visible")
-	flags.BoolVar(&cfg.dcgmSocket, "dcgm-socket", false, "treat dcgm-address as a Unix socket path; setting it selects standalone mode")
+	flags.StringVar(&cfg.dcgmMode, "dcgm-mode", dcgmModeStandalone, "DCGM mode: standalone connects to a running hostengine; embedded starts DCGM inside this process unless another DCGM engine is visible")
+	flags.BoolVar(&cfg.dcgmSocket, "dcgm-socket", false, "treat dcgm-address as a Unix socket path, for standalone mode only")
 	flags.StringVar(&cfg.nodeID, "node-id", hostname, "node identifier written to the verdict")
 	flags.DurationVar(&cfg.timeout, "source-timeout", collect.DefaultCollectionTimeout, "maximum time for one source operation")
 	if err := flags.Parse(args); err != nil {
@@ -96,18 +95,13 @@ func parseConfig(args []string, output io.Writer) (config, error) {
 	})
 	cfg.dcgmMode = strings.ToLower(strings.TrimSpace(cfg.dcgmMode))
 	switch cfg.dcgmMode {
-	case dcgmModeAuto:
-		// A configured hostengine is used without any embedded fallback.
-		if endpointSet {
-			cfg.dcgmMode = dcgmModeStandalone
-		}
 	case dcgmModeStandalone:
 	case dcgmModeEmbedded:
 		if endpointSet {
 			err = errors.New("--dcgm-address and --dcgm-socket apply only to standalone mode")
 		}
 	default:
-		err = fmt.Errorf("--dcgm-mode: unknown mode %q (want auto, standalone or embedded)", cfg.dcgmMode)
+		err = fmt.Errorf("--dcgm-mode: unknown mode %q (want standalone or embedded)", cfg.dcgmMode)
 	}
 	// Parsing stops at the first non-flag, so every flag after it was ignored.
 	if flags.NArg() != 0 {
@@ -135,11 +129,11 @@ func refuseEmbedded(fsys fs.FS) error {
 		return fmt.Errorf("read the PID namespace: %w", err)
 	}
 	if namespace != hostPIDNamespace {
-		return fmt.Errorf("running outside the host PID namespace (%s), so another DCGM engine would be invisible; pass --dcgm-address", namespace)
+		return fmt.Errorf("running outside the host PID namespace (%s), so another DCGM engine would be invisible; use standalone mode with --dcgm-address", namespace)
 	}
 	reader := process.New(fsys)
 	if _, err = reader.Comm(1); err != nil {
-		return fmt.Errorf("cannot see every process (PID 1: %w), so another DCGM engine could be hidden; run as root or pass --dcgm-address", err)
+		return fmt.Errorf("cannot see every process (PID 1: %w), so another DCGM engine could be hidden; run as root or use standalone mode with --dcgm-address", err)
 	}
 	pids, err := reader.PIDs()
 	if err != nil {
@@ -157,7 +151,7 @@ func refuseEmbedded(fsys fs.FS) error {
 		}
 		switch comm {
 		case "nv-hostengine":
-			return fmt.Errorf("nv-hostengine is running (pid %d); pass --dcgm-address with an address that reaches it", pid)
+			return fmt.Errorf("nv-hostengine is running (pid %d); use standalone mode with --dcgm-address set to an address that reaches it", pid)
 		case "dcgm-exporter", "dcgmi":
 			return fmt.Errorf("%s is running (pid %d) and may run its own DCGM engine", comm, pid)
 		}
@@ -169,17 +163,10 @@ func refuseEmbedded(fsys fs.FS) error {
 var (
 	newStandaloneSource = dcgmsource.NewStandaloneSource
 	newEmbeddedSource   = dcgmsource.NewEmbeddedSource
-	newAutoSource       = dcgmsource.NewAutoSource
 )
 
 func newDCGMSource(cfg config, fsys fs.FS) (*dcgmsource.Source, error) {
-	switch cfg.dcgmMode {
-	case dcgmModeAuto:
-		return newAutoSource(dcgmsource.AutoOptions{
-			BeforeEmbedded:  func(context.Context) error { return refuseEmbedded(fsys) },
-			GroupNamePrefix: cfg.dcgmGroupNamePrefix,
-		}), nil
-	case dcgmModeEmbedded:
+	if cfg.dcgmMode == dcgmModeEmbedded {
 		if err := refuseEmbedded(fsys); err != nil {
 			return nil, fmt.Errorf("refuse embedded DCGM: %w", err)
 		}

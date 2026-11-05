@@ -6,14 +6,11 @@
 package dcgm
 
 import (
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
 	"slices"
-	"strings"
-	"sync"
 	"testing"
 
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
@@ -133,7 +130,7 @@ func TestInitDCGMPassesGoDCGMMode(t *testing.T) {
 }
 
 func TestInitDCGMRejectsUnknownMode(t *testing.T) {
-	for _, mode := range []sessionMode{0, autoMode + 1} {
+	for _, mode := range []sessionMode{0, embeddedMode + 1} {
 		cleanup, err := initDCGM(mode)
 		if cleanup != nil {
 			t.Fatalf("initDCGM(%d) returned a cleanup function", mode)
@@ -194,24 +191,6 @@ func TestNewEmbeddedSourceNativeOptions(t *testing.T) {
 	}
 }
 
-func TestNewAutoSourceNativeOptions(t *testing.T) {
-	source := NewAutoSource(AutoOptions{GroupNamePrefix: "hv"})
-	standalone, standaloneOK := source.native.(*nativeLibrary)
-	embedded, embeddedOK := source.fallback.(*nativeLibrary)
-	if !standaloneOK || !embeddedOK {
-		t.Fatalf("natives = %T, %T; want *nativeLibrary", source.native, source.fallback)
-	}
-	if want := (StandaloneOptions{Address: "localhost", GroupNamePrefix: "hv"}); standalone.options != want || standalone.mode != standaloneMode {
-		t.Fatalf("standalone options = %+v, mode %v; want %+v, %v", standalone.options, standalone.mode, want, standaloneMode)
-	}
-	if want := (StandaloneOptions{GroupNamePrefix: "hv"}); embedded.options != want || embedded.mode != embeddedMode {
-		t.Fatalf("embedded options = %+v, mode %v; want %+v, %v", embedded.options, embedded.mode, want, embeddedMode)
-	}
-}
-
-// TestNewStandaloneSourceReadsLiveMetrics pins that LiveMetrics reaches the
-// native read: the stock CLI sets it to read fields from the driver, not the
-// hostengine cache.
 func TestNewStandaloneSourceReadsLiveMetrics(t *testing.T) {
 	library, ok := NewStandaloneSource(StandaloneOptions{LiveMetrics: true}).native.(*nativeLibrary)
 	if !ok {
@@ -231,48 +210,5 @@ func TestNewStandaloneSourceReadsLiveMetrics(t *testing.T) {
 	}
 	if liveReads != 1 || values[gpusignals.PowerDraw.ID()].Value.GetDoubleValue() != 251.5 {
 		t.Fatalf("live reads = %d, power draw = %+v; want one live read of 251.5 W", liveReads, values[gpusignals.PowerDraw.ID()])
-	}
-}
-
-func TestAutoSourceFallsBackOnGoDCGMConnectError(t *testing.T) {
-	var modes []sessionMode
-	dcgmInit := func(mode sessionMode, _ ...string) (func(), error) {
-		modes = append(modes, mode)
-		if mode == standaloneMode {
-			return nil, errors.New("error connecting to nv-hostengine: Host engine connection invalid/disconnected")
-		}
-		return func() {}, nil
-	}
-	var processMode sessionMode
-	source := newSourceInMode(&nativeLibrary{dcgmInit: dcgmInit, options: StandaloneOptions{Address: "localhost"}, mode: standaloneMode},
-		&sync.Mutex{}, &processMode, autoMode)
-	source.fallback = &nativeLibrary{dcgmInit: dcgmInit, mode: embeddedMode}
-	source.beforeEmbedded = func(context.Context) error { return nil }
-
-	if err := source.ensureInitialized(context.Background()); err != nil {
-		t.Fatalf("ensureInitialized() error = %v", err)
-	}
-	if !slices.Equal(modes, []sessionMode{standaloneMode, embeddedMode}) || processMode != embeddedMode {
-		t.Fatalf("Init modes = %v, process mode = %v; want [standalone embedded], embedded", modes, processMode)
-	}
-}
-
-func TestAutoSourceReportsGoDCGMEmbeddedFailure(t *testing.T) {
-	dcgmInit := func(mode sessionMode, _ ...string) (func(), error) {
-		if mode == standaloneMode {
-			return nil, errors.New("error connecting to nv-hostengine: Host engine connection invalid/disconnected")
-		}
-		return nil, errors.New("error starting nv-hostengine: DCGM initialization error")
-	}
-	var processMode sessionMode
-	source := newSourceInMode(&nativeLibrary{dcgmInit: dcgmInit, options: StandaloneOptions{Address: "localhost"}, mode: standaloneMode},
-		&sync.Mutex{}, &processMode, autoMode)
-	source.fallback = &nativeLibrary{dcgmInit: dcgmInit, mode: embeddedMode}
-	source.beforeEmbedded = func(context.Context) error { return nil }
-
-	failure := collectionError(source.ensureInitialized(context.Background()))
-	if failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || failure.GetSourceError() != "DCGM_ST_INIT_ERROR" ||
-		!strings.Contains(failure.GetDetail(), "embedded DCGM failed: error starting nv-hostengine: DCGM initialization error") {
-		t.Fatalf("failure = %v, want UNAVAILABLE DCGM_ST_INIT_ERROR with the embedded error", &failure)
 	}
 }

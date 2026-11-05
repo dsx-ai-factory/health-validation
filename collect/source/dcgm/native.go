@@ -22,7 +22,6 @@ type sessionMode uint8
 const (
 	standaloneMode sessionMode = iota + 1
 	embeddedMode
-	autoMode
 )
 
 func (mode sessionMode) String() string {
@@ -31,8 +30,6 @@ func (mode sessionMode) String() string {
 		return "standalone"
 	case embeddedMode:
 		return "embedded"
-	case autoMode:
-		return "auto"
 	default:
 		return "unknown"
 	}

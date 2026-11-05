@@ -361,7 +361,6 @@ func TestNewAcceptsEveryDCGMSourceMode(t *testing.T) {
 	for name, source := range map[string]*dcgmsource.Source{
 		"standalone": dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{}),
 		"embedded":   dcgmsource.NewEmbeddedSource(dcgmsource.EmbeddedOptions{}),
-		"auto":       dcgmsource.NewAutoSource(dcgmsource.AutoOptions{}),
 	} {
 		if _, err := New(source, gpusignals.PowerDraw.ID(), gpusignals.TemperatureCelsius.ID()); err != nil {
 			t.Fatalf("New(%s) error = %v", name, err)
