@@ -17,6 +17,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/internal/celeval"
+	"github.com/dsx-ai-factory/health-validation/catalog/internal/scope"
 )
 
 // EvaluationEngine evaluates health check definitions against signal values.
@@ -66,7 +67,7 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 	if err := checkEntities(cd, []observed{o}); err != nil {
 		return health.CheckVerdict{}, err
 	}
-	scoper, _ := o.m.(health.ObservedValuesScoper)
+	scoper, _ := o.m.(scope.Scoper)
 	return e.evaluateAgainst(cd, o.signals, scoper, o.errs, o.entity, p, now)
 }
 
@@ -199,7 +200,7 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 			}
 			matched = true
 
-			scoper, _ := o.m.(health.ObservedValuesScoper)
+			scoper, _ := o.m.(scope.Scoper)
 			v, err := e.evaluateAgainst(cd, o.signals, scoper, o.errs, o.entity, p, now)
 			if err != nil {
 				return nil, fmt.Errorf("evaluating %q: %w", id, err)
@@ -395,7 +396,7 @@ func checkLevelSkip(cd *health.CheckDefinition, p Params, now time.Time) (health
 // confirmed the measurement [routes] to the check, so this is the pure
 // data path. entity names the measurement's subject (see
 // [health.EntityIdentifier]) and is empty for host-wide measurements.
-func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals map[string]any, scoper health.ObservedValuesScoper, errs []health.ErroredMeasurement, entity string, p Params, now time.Time) (health.CheckVerdict, error) {
+func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals map[string]any, scoper scope.Scoper, errs []health.ErroredMeasurement, entity string, p Params, now time.Time) (health.CheckVerdict, error) {
 	// If any of the sensor's per-field failures cover a signal the
 	// check requires, report the check as Unknown rather
 	// than running CEL against a zero value where a real measurement
@@ -492,9 +493,9 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 // observedValues limits signals to the ones cd requires. A sibling field the
 // check never read may be unfed (narrowed collection, unmapped or failed
 // signal), and its zero value would read as a real measurement. A
-// measurement that implements [health.ObservedValuesScoper] then narrows the
-// result to the check's own part.
-func observedValues(cd *health.CheckDefinition, signals map[string]any, scoper health.ObservedValuesScoper) map[string]any {
+// measurement that implements [scope.Scoper] then narrows the result to the
+// check's own part.
+func observedValues(cd *health.CheckDefinition, signals map[string]any, scoper scope.Scoper) map[string]any {
 	out := make(map[string]any, len(cd.RequiredSignals))
 	for _, name := range cd.RequiredSignals {
 		if v, ok := signals[name]; ok {
@@ -502,7 +503,7 @@ func observedValues(cd *health.CheckDefinition, signals map[string]any, scoper h
 		}
 	}
 	if scoper != nil {
-		return scoper.ScopeObservedValues(cd.ID, out)
+		return scoper.ScopeObservedValues(scope.Request{CheckID: cd.ID, Observed: out})
 	}
 	return out
 }

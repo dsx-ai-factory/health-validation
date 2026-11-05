@@ -12,7 +12,10 @@ go_library(
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/catalog/xid",
     visibility = ["//visibility:public"],
-    deps = ["//catalog/health"],
+    deps = [
+        "//catalog/health",
+        "//catalog/internal/scope",
+    ],
 )
 
 go_test(
@@ -29,5 +32,6 @@ go_test(
         "//catalog",
         "//catalog/health",
         "//catalog/internal/evaluation",
+        "//catalog/internal/scope",
     ],
 )

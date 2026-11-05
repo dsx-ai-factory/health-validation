@@ -13,6 +13,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/internal/scope"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
@@ -855,7 +856,7 @@ func TestXidErrors_EveryCheckReportsItsOwnEvents(t *testing.T) {
 		for _, name := range cd.RequiredSignals {
 			observed[name] = foreign[name]
 		}
-		scoped := xid.XidMeasurement{}.ScopeObservedValues(cd.ID, observed)
+		scoped := xid.XidMeasurement{}.ScopeObservedValues(scope.Request{CheckID: cd.ID, Observed: observed})
 		for name, value := range scoped {
 			if got, err := json.Marshal(value); err != nil || string(got) != "null" {
 				t.Errorf("%s %s = %s, want null", cd.ID, name, got)

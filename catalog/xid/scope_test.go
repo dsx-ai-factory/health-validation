@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/dsx-ai-factory/health-validation/catalog/internal/scope"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
@@ -31,7 +32,7 @@ func TestScopeLeavesInputUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, checkID := range []string{"gpu_xid_13", "gpu_xid_149_4"} {
-		xid.XidMeasurement{}.ScopeObservedValues(checkID, observed)
+		xid.XidMeasurement{}.ScopeObservedValues(scope.Request{CheckID: checkID, Observed: observed})
 		after, err := json.Marshal(observed)
 		if err != nil {
 			t.Fatal(err)
@@ -50,7 +51,7 @@ func TestScopeLeavesUnknownChecksUnscoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := json.Marshal(xid.XidMeasurement{}.ScopeObservedValues("my_xid_79_burst", observed))
+	got, err := json.Marshal(xid.XidMeasurement{}.ScopeObservedValues(scope.Request{CheckID: "my_xid_79_burst", Observed: observed}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +71,7 @@ func TestScopeGroupsOnlyEventsWithMessages(t *testing.T) {
 		line,
 		{PCIAddress: "0000:8a:00", XidCode: 13},
 	}}
-	got := xid.XidMeasurement{}.ScopeObservedValues("gpu_xid_13", observed)[xid.SignalEvents].([]xid.XidEvent)
+	got := xid.XidMeasurement{}.ScopeObservedValues(scope.Request{CheckID: "gpu_xid_13", Observed: observed})[xid.SignalEvents].([]xid.XidEvent)
 	var counts []int64
 	for _, e := range got {
 		counts = append(counts, e.Count)

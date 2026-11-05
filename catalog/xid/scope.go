@@ -3,15 +3,17 @@
 
 package xid
 
-// ScopeObservedValues implements [health.ObservedValuesScoper]: a check
-// from [Checks] reports only its own events, grouped, and count entries.
-func (XidMeasurement) ScopeObservedValues(checkID string, observed map[string]any) map[string]any {
-	s, ok := checkScopes[checkID]
+import "github.com/dsx-ai-factory/health-validation/catalog/internal/scope"
+
+// ScopeObservedValues implements [scope.Scoper]: a check from [Checks]
+// reports only its own events, grouped, and count entries.
+func (XidMeasurement) ScopeObservedValues(req scope.Request) map[string]any {
+	s, ok := checkScopes[req.CheckID]
 	if !ok {
 		// shortcut: a custom Xid check is not in checkScopes, so it reports every code; add a way to declare its code if users ask.
-		return observed
+		return req.Observed
 	}
-	return s.apply(observed)
+	return s.apply(req.Observed)
 }
 
 // checkScope is what one check from [Checks] judges: an Xid code, or an
