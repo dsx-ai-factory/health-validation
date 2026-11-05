@@ -238,45 +238,70 @@ An `AdjustableThreshold` must declare at least one bound. That category promises
 operators a documented tunable range; without a bound it is indistinguishable
 from `DefaultThreshold`.
 
-## Getting your signals collected (demonstration wiring — subject to change)
+## Getting your signals collected
 
-> The mechanics in this section use the toolkit's sensor/backend layer, which is
-> demonstration-grade and **subject to change.** Keep this wiring thin.
-
-There are two situations.
-
-**1. Your signals come from a domain the toolkit already enumerates** (e.g. GPU
-via NVML). Attach a *prober* to the shared backend so the existing
-category-measurement carries your extra signals. A prober implements
-`nvml.DeviceProber` (`Measure(ProbeContext) health.Measurement` plus an
-`Errored` fallback); it reads per-device state into your own measurement type
-whose `Category()` is `health.GPU` and whose struct fields (via `json` tags)
-are exactly your check's `RequiredSignals`. Install it on the app's shared NVML
-backend:
+Your checks read a measurement type you define: a struct whose `json`-tagged
+fields are exactly your checks' `RequiredSignals`. A per-GPU type also carries
+a `gpu_id` field and embeds `observations.Entity`, which records the GPU's
+identity and any collection failures:
 
 ```go
-// Layer your prober onto the one NVML enumeration the node and NVLink
-// sensors already share — no second session.
-a = a.WithGPUBackend(a.NVMLBackend().WithGPUProbe(mygpu.Probe()))
+type ECCMeasurement struct {
+	GPUID string `json:"gpu_id"`
+	observations.Entity
+	DoubleBit int64 `json:"ecc_double_bit"`
+}
+
+func (ECCMeasurement) Category() health.Category { return health.GPU }
+func (m ECCMeasurement) EntityID() string        { return m.GPUID }
 ```
 
-**2. Your signals come from a new source.** You would implement collection here,
-but this is exactly the layer flagged as unstable — approach it knowing the
-interfaces may move.
+`app.GPUAdapter` fills one per GPU from collect signals, given which signal
+sets which field:
+
+```go
+ecc, err := app.GPUAdapter[mygpu.ECCMeasurement]("ecc", map[string]string{
+	gpusignals.ECCDoubleBitVolatileTotal.ID(): "ecc_double_bit",
+})
+```
+
+The adapter groups observations by GPU and fails a field that could not be
+read, or that nothing reported, so a check never passes on a value that was
+not collected. It is registered alongside the built-ins, which keep running.
+
+Where the signal comes from depends on what reads it:
+
+- **A signal collect's NVML sensor reads** (ECC, row remapping, temperature,
+  clocks, utilization, …): nothing more. The built-in NVML sensor supplies it
+  from the session health-validation already holds, and only when a check that
+  will run needs it.
+- **Any other signal:** register a collect sensor that produces it, claiming
+  the signal IDs it supplies:
+  `a.WithCollect(mysensor.New(), mysignals.All().IDs()...)`.
+
+The same `WithCollect` call replaces a built-in source for the signals it
+claims. Each signal has one source, and the claim names it, so a later release
+that adds built-in sources never changes which sensor feeds your checks.
 
 ## Registering and running your checks
 
-The app builder is the demonstration entry point. `WithChecks` registers your
-definitions alongside the built-ins (declared classification honored; a
-duplicate ID fails):
+The app builder is the entry point. `WithChecks` registers your definitions
+alongside the built-ins (declared classification honored; a duplicate ID
+fails), and `WithCollectAdapters` registers the adapters that feed them:
 
 ```go
 func main() {
-	a := app.New().WithChecks(mychecks.All()...)
-	a = configureGPU(a) // installs your prober; keep this platform-split (see below)
+	ecc, err := app.GPUAdapter[mygpu.ECCMeasurement]("ecc", mygpu.ECCSignals)
+	if err != nil {
+		log.Fatal(err)
+	}
+	a := app.New().WithChecks(mychecks.All()...).WithCollectAdapters(ecc)
 	os.Exit(a.Run(os.Args[1:], os.Stdout, os.Stderr))
 }
 ```
+
+Registration errors, such as a field name the measurement does not have or a
+signal claimed by two sensors, exit `2` before anything is collected.
 
 If you do not want the node runner at all, use the catalog directly — the most
 stable path:
@@ -302,13 +327,14 @@ GPU vertical, that is roughly:
 |---|---|
 | <nobr>`gpu/measurement.go`</nobr> | Your measurement type (`Category() == health.GPU`) whose `json`-tagged fields are exactly your checks' `RequiredSignals`. |
 | <nobr>`gpu/*.go`</nobr> | One `health.CheckDefinition` per condition. |
-| <nobr>`gpu/checks.go`</nobr> | An `All()` that returns every definition; passed to `app.WithChecks`. |
-| <nobr>`gpu/probe_linux.go`</nobr> | Your `nvml.DeviceProber` that reads the signals into the measurement. |
-| `main.go` + `backend_{linux,other}.go` | Wires `WithChecks` and `WithGPUProbe`, **platform-split** — the NVML prober is linux+cgo, so gate it behind `//go:build linux` and provide a no-op `configureGPU` for other platforms, so the binary still builds and `version` runs off-linux. |
+| <nobr>`gpu/checks.go`</nobr> | An `All()` that returns every definition, passed to `app.WithChecks`, and the signal-to-field map passed to `app.GPUAdapter`. |
+| `main.go` | Wires `WithChecks` and `WithCollectAdapters`. |
 
-health-validation owns the NVML lifecycle, device enumeration, and the
-built-in sensors; your module owns only its measurement, its checks, and its
-per-device read.
+None of this is platform-specific: off Linux the built-in GPU sensors report
+your signals as unavailable, so the binary still builds and `version` runs.
+health-validation owns the NVML session, device enumeration, and the built-in
+sensors; your module owns only its measurement, its checks, and the map
+between them.
 
 ## Testing your extension
 

@@ -172,15 +172,10 @@ var (
 	_ toolkit.MultiBackend  = (*nvml.NVMLBackend)(nil)
 )
 
-// NVMLBackend returns the App's built-in NVML backend. Layer custom per-GPU
-// signals onto it with WithGPUProbe / WithNVLinkProbe and install the result
-// via the matching setter:
-//
-//	a := app.New()
-//	a.WithGPUBackend(a.NVMLBackend().WithGPUProbe(eccProbe{}))
-//
-// A WithGPUBackend override replaces the built-in DCGM and NVML collect
-// sensors for the GPU domain with the legacy GPU sensor over that backend.
+// NVMLBackend returns the App's built-in NVML backend, which the NVLink
+// sensor reads. Layer custom per-GPU NVLink signals onto it with
+// WithNVLinkProbe and install the result with [App.WithNVLinkBackend]. For
+// per-GPU signals outside NVLink, use a [GPUAdapter] instead.
 //
 // It is defined only on linux: the per-device probe type ([nvml.DeviceProber])
 // is cgo/NVML-specific, and a consumer's probe code is linux-tagged too.

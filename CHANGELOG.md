@@ -45,6 +45,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `docs/integration.md`. The new `Catalog.ConfiguredOverrides` returns the
   overrides a catalog is configured with, resolved as evaluation would. ([#93](https://github.com/dsx-ai-factory/health-validation/pull/93))
 
+### Features
+
+- `app.GPUAdapter` builds one measurement of your own type per GPU from
+  collect signals, for checks added with `WithChecks`, leaving the built-in GPU
+  domain in place. The built-in NVML sensor now offers every signal collect's
+  NVML sensor reads except those taken from DCGM, so a signal such as ECC or
+  row remapping needs only the adapter. `docs/extending.md` describes the
+  wiring. `WithGPUBackend`, `NVMLBackend.WithGPUProbe`, and `WithNodeBackend`
+  are deprecated in its favor or in favor of `WithCollect`.
+
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
 Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,

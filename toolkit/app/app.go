@@ -8,14 +8,16 @@
 // same builder lets a downstream consumer build their own single binary that
 // inherits all of go-health's behavior — config loading, the built-in NVIDIA
 // check catalog, the host sensors, and the JSON verdict — while contributing
-// their own checks and per-GPU probes:
+// their own checks and the per-GPU measurements those checks read:
 //
 //	func main() {
-//		a := app.New().WithStderrLogging().WithChecks(mychecks.All()...)
-//		// attach domain-scoped probes to the built-in NVML backend, then
-//		// install it for the GPU and NVLink sensors:
-//		b := a.NVMLBackend().WithGPUProbe(myGPUProbe{}).WithNVLinkProbe(myNVLinkProbe{})
-//		a.WithGPUBackend(b).WithNVLinkBackend(b)
+//		ecc, err := app.GPUAdapter[mygpu.ECCMeasurement]("ecc", map[string]string{
+//			gpusignals.ECCDoubleBitVolatileTotal.ID(): "ecc_double_bit",
+//		})
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//		a := app.New().WithStderrLogging().WithChecks(mychecks.All()...).WithCollectAdapters(ecc)
 //		os.Exit(a.Run(os.Args[1:], os.Stdout, os.Stderr))
 //	}
 //
@@ -154,19 +156,15 @@ func (a *App) WithChecks(defs ...health.CheckDefinition) *App {
 	return a
 }
 
-// WithGPUBackend overrides the GPU sensor's backend (default: the shared host
-// NVML backend). The canonical use attaches a probe to the built-in NVML
-// backend before installing it:
+// WithGPUBackend replaces the GPU domain's built-in DCGM and NVML collect
+// sensors with a legacy GPU sensor over b. Built-in GPU checks then read only
+// what b's measurements carry, and are skipped if they carry none of it. The
+// override is the caller's to manage; see [App.Close].
 //
-//	a.WithGPUBackend(a.NVMLBackend().WithGPUProbe(eccProbe{}))
-//
-// To drive both per-GPU domains from one probed NVML backend, install it under
-// both setters (it satisfies [toolkit.GPUBackend] and [toolkit.NVLinkBackend]):
-//
-//	b := a.NVMLBackend().WithGPUProbe(myGPU{}).WithNVLinkProbe(myNVLink{})
-//	a.WithGPUBackend(b).WithNVLinkBackend(b)
-//
-// The override is the caller's to manage; see [App.Close].
+// Deprecated: to add per-GPU signals for your own checks, register a
+// [GPUAdapter] with [App.WithCollectAdapters], which leaves the built-in GPU
+// domain in place. To replace a built-in GPU source, pass a collect sensor and
+// the GPU signal IDs it replaces to [App.WithCollect].
 func (a *App) WithGPUBackend(b toolkit.GPUBackend) *App {
 	a.gpu = b
 	return a
@@ -186,7 +184,8 @@ func (a *App) WithNodeBackend(b toolkit.NodeBackend) *App {
 }
 
 // WithNVLinkBackend overrides the NVLink sensor's backend (default: the shared
-// host NVML backend). See [App.WithGPUBackend] for attaching a probe.
+// host NVML backend). Attach a probe to [App.NVMLBackend] with
+// WithNVLinkProbe and install the result here.
 func (a *App) WithNVLinkBackend(b toolkit.NVLinkBackend) *App {
 	a.nvlink = b
 	return a
@@ -264,7 +263,7 @@ func (a *App) WithNodeID(id string) *App {
 //
 // Backends installed via the With*Backend setters are the caller's to manage
 // and are not closed here: a foreign backend is owned by whoever built it, and
-// a probe-derived NVML backend (a.NVMLBackend().WithGPUProbe(…)) is a
+// a probe-derived NVML backend (a.NVMLBackend().WithNVLinkProbe(…)) is a
 // lightweight view the one-shot run discards on exit.
 func (a *App) Close() error { return a.host.close() }
 

@@ -115,6 +115,9 @@ func (b *NVMLBackend) ensure() error {
 // GPU and NVLink setters) to keep them on a single enumeration.
 //
 //	b := nvml.New().WithGPUProbe(eccProbe{})
+//
+// Deprecated: the GPU domain is read by collect sensors. Register an
+// app.GPUAdapter for the per-GPU signals your checks read instead.
 func (b *NVMLBackend) WithGPUProbe(p DeviceProber) *NVMLBackend {
 	cp := *b
 	cp.gpuProber = p

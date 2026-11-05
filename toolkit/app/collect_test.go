@@ -1130,6 +1130,59 @@ func TestWithCollectFailsOnlyTheGPUWithoutAUUID(t *testing.T) {
 	}
 }
 
+// eccMeasurement is a consumer's per-GPU measurement for GPUAdapter.
+type eccMeasurement struct {
+	GPUID string `json:"gpu_id"`
+	observations.Entity
+	DoubleBit int64 `json:"ecc_double_bit"`
+}
+
+func (eccMeasurement) Category() health.Category { return health.GPU }
+func (m eccMeasurement) EntityID() string        { return m.GPUID }
+
+// A consumer check reads a signal the built-in NVML sensor already declares by
+// registering only a GPUAdapter: no sensor, no claim, and the built-in GPU
+// domain keeps running.
+func TestGPUAdapterReadsBuiltinSignalsWithoutASensor(t *testing.T) {
+	ecc := gpusignals.ECCDoubleBitVolatileTotal
+	builtin := &collectHardwareSensor{
+		id: "test.builtin", signals: collect.Signals{ecc},
+		values: map[string]*observation.Value{ecc.ID(): {Kind: &observation.Value_UintValue{UintValue: 2}}},
+	}
+	adapter, err := GPUAdapter[eccMeasurement]("ecc", map[string]string{ecc.ID(): "ecc_double_bit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sensors, err := New().WithCollectAdapters(adapter).collectSensors(time.Second, []collect.Sensor{builtin}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
+	if err = cat.Register(health.CheckDefinition{
+		ID: "gpu_ecc_double_bit", Name: "ECC double-bit", Category: health.GPU,
+		RequiredSignals: []string{"ecc_double_bit"},
+		Rules:           []health.Rule{{Expression: "ecc_double_bit > 0", Severity: health.Critical}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	verdict, err := toolkit.Collect(cat, sensors...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if builtin.calls != 1 || len(verdict.CheckResults) != 1 {
+		t.Fatalf("calls=%d verdict=%+v", builtin.calls, verdict)
+	}
+	if v := verdict.CheckResults[0]; v.Severity != health.Critical || !slices.Equal(v.AffectedEntities, []string{"GPU-1"}) {
+		t.Fatalf("verdict = %+v, want CRITICAL on GPU-1", v)
+	}
+}
+
+func TestGPUAdapterRejectsUnusableType(t *testing.T) {
+	if _, err := GPUAdapter[eccMeasurement]("ecc", map[string]string{"s": "typo"}); err == nil || !strings.Contains(err.Error(), `GPU adapter "ecc"`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestWithCollectRegistersReusableDomainAdapters(t *testing.T) {
 	source := &collectHardwareSensor{}
 	a := New().WithCollect(source, claimMapped(source)...)
