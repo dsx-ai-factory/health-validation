@@ -150,13 +150,6 @@ type XidMeasurement struct {
 	Since      string     `json:"since"`
 	Events     []XidEvent `json:"events"`
 	errors     []health.ErroredMeasurement
-	// covered and scopes come from the registered checks (see [XidMeasurement.WithChecks]);
-	// nil means the checks [Checks] builds.
-	covered    codeSet
-	scopes     map[string]checkScope
-	Since      string     `json:"since"`
-	Events     []XidEvent `json:"events"`
-	errors     []health.ErroredMeasurement
 	EventCount int64 `json:"event_count"`
 }
 

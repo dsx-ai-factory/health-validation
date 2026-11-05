@@ -326,23 +326,21 @@ func Checks() []health.CheckDefinition {
 	}
 	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+4)
 	for _, c := range criticalXids {
-		checks = append(checks, withErrorCode(criticalCheck(c), c.code))
+		checks = append(checks, criticalCheck(c))
 	}
 	for _, c := range nvlink5Xids {
-		checks = append(checks, withErrorCode(nvlink5Check(c), c.code))
+		checks = append(checks, nvlink5Check(c))
 	}
 	for _, c := range nvlink5SubXidCodes {
-		def := nvlink5SubXidCodeCheck(c)
-		def.ErrorCodes = []string{c.subXidCode}
-		checks = append(checks, def)
+		checks = append(checks, nvlink5SubXidCodeCheck(c))
 	}
 	for _, class := range warningClasses {
 		for _, code := range class.codes {
-			checks = append(checks, withErrorCode(warningCheck(code, class), code))
+			checks = append(checks, warningCheck(code, class))
 		}
 	}
-	checks = append(checks, withErrorCode(xid45Check(), 45))
-	checks = append(checks, withErrorCode(xid154Check(), 154))
+	checks = append(checks, xid45Check())
+	checks = append(checks, xid154Check())
 	checks = append(checks, informationalCheck())
 	checks = append(checks, unknownCheck())
 	// Every check reports its own events, whatever signals its builder set.
@@ -352,12 +350,6 @@ func Checks() []health.CheckDefinition {
 		}
 	}
 	return checks
-}
-
-// withErrorCode declares the Xid code a check reports on.
-func withErrorCode(def health.CheckDefinition, code int64) health.CheckDefinition {
-	def.ErrorCodes = []string{strconv.FormatInt(code, 10)}
-	return def
 }
 
 // criticalCheck builds the per-code CRITICAL check for one Xid.
@@ -602,63 +594,23 @@ var infoSet = func() codeSet {
 	return set
 }()
 
-// coveredFrom returns the codes some check in defs reports on. Only Xid
-// checks count, and a sub-code such as "149.4" adds nothing, because its code
-// has a check of its own.
-func coveredFrom(defs []*health.CheckDefinition) codeSet {
+// builtinCovered is the codes some check in [checkScopes] reports on. A
+// sub-code check adds nothing, because its code has a check of its own.
+var builtinCovered = sync.OnceValue(func() codeSet {
 	covered := codeSet{}
-	for _, def := range defs {
-		if def.Category != health.Xid {
-			continue
-		}
-		for _, c := range def.ErrorCodes {
-			if code, ok := parseCode(c); ok {
-				covered[code] = true
-			}
+	for _, s := range checkScopes {
+		if s.sub == "" {
+			covered[s.code] = true
 		}
 	}
 	return covered
-}
-
-// parseCode reads an ErrorCodes entry that is a plain code, not a sub-code.
-func parseCode(s string) (int64, bool) {
-	if strings.Contains(s, ".") {
-		return 0, false
-	}
-	code, err := strconv.ParseInt(s, 10, 64)
-	return code, err == nil
-}
-
-// builtinCovered is the covered set of the checks [Checks] builds.
-var builtinCovered = sync.OnceValue(func() codeSet { return coveredFrom(builtinDefs()) })
-
-// builtinDefs is [Checks] as pointers, the form the catalog passes to [XidMeasurement.WithChecks].
-func builtinDefs() []*health.CheckDefinition {
-	checks := Checks()
-	defs := make([]*health.CheckDefinition, len(checks))
-	for i := range checks {
-		defs[i] = &checks[i]
-	}
-	return defs
-}
-
-// coveredSet is the set of codes some registered check reports on.
-func (m XidMeasurement) coveredSet() codeSet {
-	if m.covered != nil {
-		return m.covered
-	}
-	return builtinCovered()
-}
+})
 
 // isUnknown reports whether no check covers code and the catalog does not list it.
-func (m XidMeasurement) isUnknown(code int64) bool {
-	return !m.coveredSet()[code] && !infoSet[code]
-}
+func isUnknown(code int64) bool { return !builtinCovered()[code] && !infoSet[code] }
 
 // isInformational reports whether code is an infoXids code no check covers.
-func (m XidMeasurement) isInformational(code int64) bool {
-	return infoSet[code] && !m.coveredSet()[code]
-}
+func isInformational(code int64) bool { return infoSet[code] && !builtinCovered()[code] }
 
 // countsWhere is xid_counts restricted to the codes keep accepts. It is never
 // nil, like the other derived signals.
@@ -672,22 +624,10 @@ func (m XidMeasurement) countsWhere(keep func(int64) bool) map[int64]int64 {
 	return out
 }
 
-func (m XidMeasurement) unknownCounts() map[int64]int64 { return m.countsWhere(m.isUnknown) }
+func (m XidMeasurement) unknownCounts() map[int64]int64 { return m.countsWhere(isUnknown) }
 
 func (m XidMeasurement) informationalCounts() map[int64]int64 {
-	return m.countsWhere(m.isInformational)
-}
-
-var _ health.CheckSetAware = XidMeasurement{}
-
-// WithChecks implements [health.CheckSetAware]: a code is covered when a
-// registered check declares it in ErrorCodes, so a custom Xid check keeps its
-// code out of gpu_xid_unknown and gpu_xid_informational, and its verdict
-// reports only its own events.
-func (m XidMeasurement) WithChecks(defs []*health.CheckDefinition) health.Measurement {
-	m.covered = coveredFrom(defs)
-	m.scopes = scopesFrom(defs)
-	return m
+	return m.countsWhere(isInformational)
 }
 
 // catchAllCheck builds a check that fires when any code in the derived
