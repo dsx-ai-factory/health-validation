@@ -79,6 +79,32 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 	}
 }
 
+// Production collection goes through collect sensors. Only domains not yet
+// migrated may still run a legacy toolkit sensor by default; shrink this list
+// as each one moves, and do not grow it.
+func TestDefaultLegacySensorsAreOnlyUnmigratedDomains(t *testing.T) {
+	a := New()
+	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	cycle, err := newCycle(time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sensors, err := a.sensors(cycle, requiredSignals{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyPkg := reflect.TypeFor[toolkit.NVLinkSensor]().PkgPath()
+	var legacy []string
+	for _, s := range sensors {
+		if typ := reflect.TypeOf(s); typ.Kind() == reflect.Pointer && typ.Elem().PkgPath() == legacyPkg {
+			legacy = append(legacy, typ.Elem().Name())
+		}
+	}
+	if want := []string{"NVLinkSensor", "RDMALinkFlapSensor"}; !slices.Equal(legacy, want) {
+		t.Fatalf("default legacy sensors = %v, want %v; new production domains must use collect sensors", legacy, want)
+	}
+}
+
 func TestCollectSkipsUnselectedBridgeSources(t *testing.T) {
 	source := &collectAppSensor{}
 	a := New().WithCollect(source).WithCollectAdapters(customCountAdapter())
