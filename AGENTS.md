@@ -75,7 +75,8 @@ This file provides guidance to AI coding agents when working with code in this r
 | `nvlink_p2p` | nvlink | Unhealthy P2P peer count exceeds `max_unhealthy_p2p_peers` | None |
 | `rdma_linkflap_fatal` | infiniband | Count of mlx5 RDMA link outages (down→up ≥ `min_outage_seconds`) reaches `fatal_flap_threshold` | None |
 | `gpu_xid_<code>` | xid | A critical-class Xid code is seen on a GPU in the system journal within the collection window | A warning-class Xid code is seen on a GPU in the system journal within the collection window |
-| `gpu_xid_149_<hex>` | xid | An Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype on a GPU whose decode-table resolution is a GPU reset | The same, for a subtype the table resolves to IGNORE |
+| `gpu_xid_144`..`gpu_xid_150` | xid | An NVLink5 occurrence's decode-table row resolves to a GPU reset; or it is Fatal with no confirmed row, or the driver version needed to confirm its row is unknown (an unconfirmed reset) | Its line could not be decoded, or (Xid 145 only) its row defers to an Xid 154 and none was logged for the GPU. A row that defers to a logged Xid 154 is INFO; `gpu_xid_154` reports the action |
+| `gpu_xid_149_<hex>` | xid | An Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype on a GPU whose decode-table resolution is a GPU reset | None (INFO for a subtype the table resolves to IGNORE) |
 | `gpu_xid_154` | xid | The driver requested a GPU reset or reboot for a GPU | The driver requested a P2P drain or an action the catalog does not map, or an Xid 154's transition could not be read |
 
 ---
