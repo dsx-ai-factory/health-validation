@@ -15,7 +15,6 @@ import (
 func cloneDefinition(cd health.CheckDefinition) health.CheckDefinition {
 	cd.Thresholds = cloneThresholds(cd.Thresholds)
 	cd.Dependencies = slices.Clone(cd.Dependencies)
-	cd.ErrorCodes = slices.Clone(cd.ErrorCodes)
 	cd.Architectures = slices.Clone(cd.Architectures)
 	cd.ExecutionContexts = slices.Clone(cd.ExecutionContexts)
 	cd.Prerequisites = slices.Clone(cd.Prerequisites)
