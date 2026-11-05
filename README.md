@@ -15,7 +15,7 @@ For raw observations without catalog evaluation, use the experimental `collect`
 package. See [Shared raw collection library](docs/integration.md#shared-raw-collection-library)
 for its ten collection families, typed targets, and custom sensor registration.
 
-> **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor/backend layer that feeds it is a reference implementation and is subject to change.
+> **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor and adapter layer that feeds it is a reference implementation and is subject to change.
 
 ## What it does
 
@@ -323,8 +323,8 @@ positive and later than every supplied start time. Either bound may be omitted.
 Duplicate GPU bounds or multiple node-wide start times will result in an error.
 
 These flags filter the default Xid journal sensor within the current boot.
-Other journal sensors, including RDMA link-flap detection, and backends supplied
-through `WithXidBackend` keep their own collection behavior.
+Other journal sensors, including RDMA link-flap detection, and sensors that
+claim the Xid signals through `WithCollect` keep their own collection behavior.
 
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 
@@ -408,16 +408,10 @@ cat := catalog.New(
     catalog.WithExecutionContext(health.OperatorInfra),
 )
 
-// backend implements toolkit.GPUBackend.
-// On Linux, use nvml.New() from toolkit/nvml (requires cgo + NVML).
-// For testing without hardware, use toolkit.MockGPU().
-gpuSensor := toolkit.NewGPUSensor(backend)
-nodeSensor := toolkit.NewNodeSensor(backend)
-cpuSensor := toolkit.NewCPUSensor(toolkit.SysfsCPU())
-// The Xid sensor reads the system journal, so it takes its own backend rather
-// than the GPU one: toolkit.Journalctl() in production, toolkit.MockXid(...) in tests.
-xidSensor := toolkit.NewXidSensor(toolkit.Journalctl())
-verdict, err := toolkit.Collect(cat, gpuSensor, nodeSensor, cpuSensor, xidSensor)
+// mySensor is any toolkit.Sensor. To reuse the stock CLI's collect sensors
+// instead, build a toolkit/app App and add sources with WithCollect and
+// adapters with WithCollectAdapters; see docs/extending.md.
+verdict, err := toolkit.Collect(cat, mySensor)
 ```
 
 Disable a specific check:

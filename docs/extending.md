@@ -20,9 +20,9 @@ health-validation itself.
 >   `Rule`, `ThresholdSpec`, the `Measurement` interface, the enums) and the
 >   `catalog` registry/evaluation engine — is the extension surface. Your check
 >   definitions are data written against it.
-> - The **toolkit** sensor and backend implementations (the NVML/sysfs/journal
->   sensors, the `toolkit.Collect` pipeline, the `app.App` builder, and the
->   probe seams shown below) are **reference implementations for demonstration
+> - The **toolkit** collection wiring (the collect bridge and adapters, the
+>   `toolkit.Collect` pipeline, the `app.App` builder, and the `GPUAdapter` and
+>   `WithCollect` seams shown below) are **reference implementations for demonstration
 >   and are subject to change.** They are functional today, but do not treat
 >   their API as stable; expect the collection wiring to churn.
 

@@ -52,8 +52,8 @@ This file provides guidance to AI coding agents when working with code in this r
 - **CLI cadence default is unfiltered.** Checks declare `SchedulingCadence`. Pass `--cadence` (or set cadence in `EvaluationOptions` / `CollectionOptions`) to apply the nested Continuous ⊂ Prolog ⊂ Maintenance window. Checks outside the window are reported as `CADENCE_MISMATCH` skips. Omit it and all registered checks run, including Prolog power/throttle/compute-apps checks. Cadence is per evaluation so one constructed catalog can serve Continuous and Prolog windows. Cluster YAML is thresholds/disables/timeout only — not the run window.
 - **The exit policy lives only in `toolkit/app`.** The catalog library has no exit-code method. `exitCodeForVerdict` plus the `exitOK`/`exitUnhealthy`/`exitError` constants map PASS/INFO/WARNING→0, CRITICAL/UNKNOWN→1, tool/runtime error→2. WARNING→0 is deliberate and noted as eventually-configurable.
 - **OUT_OF_BAND context is defined but not used** by any registered check. The enum value exists in the codebase; no current check declares it as a valid context.
-- **The CLI's GPU checks and `nvlink_fabric` need DCGM.** Power, power-limit, pstate, throttle, and Fabric Manager status signals come from a DCGM hostengine already running on the node (`localhost`), through the DCGM 4 client library (`libdcgm.so.4`). With either missing, those checks fail closed with a collection error; there is no fallback to NVML. Compute processes and the rest of the NVLink domain still come from NVML. `WithGPUBackend` and `WithNVLinkBackend` restore the legacy NVML sensors.
-- **NVML backend is Linux-only.** The `toolkit/nvml/` package is gated on `//go:build linux` and requires cgo. The catalog and direct evaluation path work on any platform.
+- **The CLI's GPU checks and `nvlink_fabric` need DCGM.** Power, power-limit, pstate, throttle, and Fabric Manager status signals come from a DCGM hostengine already running on the node (`localhost`), through the DCGM 4 client library (`libdcgm.so.4`). With either missing, those checks fail closed with a collection error; there is no fallback to NVML. Compute processes and the rest of the NVLink domain come from NVML.
+- **NVML collection is Linux-only.** `collect/source/nvml` is gated on `//go:build linux` and requires cgo. The catalog and direct evaluation path work on any platform.
 
 ### Taxonomy: current checks by domain and severity
 
@@ -115,7 +115,7 @@ bazel run //tools/go -- mod tidy -diff   # verify: exit 0 + no output = CI will 
 # Run from a Linux VM or container to catch linux-only build-tag failures
 # (nogo, PIE linking, etc.) that never execute on darwin.
 bazel test --config=ci --platforms=//build/platforms:linux_amd64 \
-  //toolkit/nvml:nvml_test
+  //collect/source/nvml:nvml_test
 
 # Build the operator CLI for every supported target platform. It links NVML
 # via cgo, so it is a linux-only artifact; CI builds both arches (build-only,
@@ -166,7 +166,7 @@ The dependency direction is strict: `catalog → (nothing)`, `collect → (nothi
 
 **`catalog/internal/evaluation/`** — orchestrates a single check evaluation: filters by architecture/context, resolves threshold overrides, calls CEL, returns `CheckVerdict`.
 
-**`toolkit/`** — integration layer for consumers. Defines `Sensor`, the per-domain backend interfaces, `Collect()` (runs sensors → evaluates catalog → node verdict), the deprecated `SysfsCPU` file backend (the CLI collects CPU through `collect/sensors/cpu`), the deprecated `Journalctl` command backend (the CLI collects Xid through `collect/sensors/xid`), the deprecated `JournalctlRDMALinkFlap` command backend (the CLI collects RDMA link flaps through `collect/sensors/linkflap`), and mock helpers for testing.
+**`toolkit/`** — integration layer for consumers. Defines `Sensor`, `Collect()` (runs sensors → evaluates catalog → node verdict), the collect bridge that turns collect sensors into toolkit sensors (`internal/collectbridge`, `internal/collectadapters`, `observations`), the deprecated `JournalctlRDMALinkFlap` command backend (the CLI collects RDMA link flaps through `collect/sensors/linkflap`), and the opt-in generic InfiniBand sensor.
 
 #### Data flow
 
@@ -192,23 +192,22 @@ The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PAS
 
 #### Sensors vs. backends
 
-Two distinct concepts in `toolkit/`:
+- **Collect sensor** — implements `collect.Sensor` (in `collect/sensors/`) and reports raw observations for the signals it declares. It knows nothing about checks.
+- **Adapter** — a `CollectAdapter` that assembles one catalog domain's measurements from observations. Built-in adapters live in `toolkit/internal/collectadapters`, mapped by `toolkit/observations`. The bridge in `toolkit/internal/collectbridge` runs each source once per cycle and exposes each adapter as a `toolkit.Sensor` for `Collect`.
 
-- **Sensor** — implements `toolkit.Sensor`, holds a backend, and produces `[]health.Measurement` for `Collect`. `GPUSensor` produces per-GPU measurements; `CPUSensor` produces one host-wide logical-CPU measurement.
-- **Collect sensor and adapter** — the CLI's production path. A `collect.Sensor` reports observations once per collection cycle through `toolkit/internal/collectbridge`, which logs one warning per distinct source, operation, and error category that times out or fails as a whole, or for any failed read of a node-wide sensor such as CPU sysfs (not for errors on individual GPUs); a collect adapter converts the observations to measurements. `WithCollect` replaces a built-in collect source.
-- **Backend** — a data source for one sensor. Defined as a sensor-facing interface in `toolkit/`. `SysfsCPU` is a deprecated context-aware file backend in `toolkit/`, superseded in the CLI by the `collect/sensors/cpu` collect sensor; `Journalctl` and `JournalctlRDMALinkFlap` are deprecated command backends, superseded in the CLI by the `collect/sensors/xid` and `collect/sensors/linkflap` collect sensors; `NVMLBackend` lives in `toolkit/nvml/` because it is gated on linux + cgo + libnvidia-ml.
+`App.WithCollect(sensor, signalIDs...)` replaces a built-in source for the signals it claims; `App.WithCollectAdapters` adds caller adapters. The bridge (`toolkit/internal/collectbridge`) runs each source once per collection cycle and logs one warning per distinct source, operation, and error category that times out or fails as a whole, or for any failed read of a node-wide sensor such as CPU sysfs (not for errors on individual GPUs). The deprecated RDMA link-flap override and the generic InfiniBand domain still use legacy `toolkit.Sensor` backends.
 
 #### Adding a sensor for a new domain
 
 1. Define the typed measurement struct (with `Category()` returning the new `health.Category` value, signal constants, a `MeasurementSignals()` function that returns a copy of the signal list, and an `ErroredXxx` helper that defaults to every signal) in `catalog/<domain>/measurement.go`.
    If the domain has several like entities rather than being host-wide, also implement `health.EntityIdentifier` (`EntityID() string`) on it. The evaluation engine copies that value into a non-PASS verdict's `AffectedEntities`, which is what feeds the JSON verdict's `affected_components[].checks[].entities` and the `health_validation.check.affected_entities` metric. Omit it and a failing per-entity check cannot say which entity failed. It also keys duplicate detection: evaluation rejects two measurements feeding one check for the same `health.EntityKey` (`ErrAmbiguousMeasurement`, CLI exit 2), a type without `EntityIdentifier` is keyed as the node, so two instances collide, and an empty `EntityID()` is accepted only on a collection failure (values without an identity are rejected). When the ID is not a verified hardware identity (a source-local slot, a whole-source failure), also implement `health.EntityKeyed` with `ProvisionalEntity(source, slot)` or `SourceEntity(source)`. GPU/NVLink measurements take one via `SetEntityKey`.
-2. Declare the sensor-facing backend interface in `toolkit/` (e.g. `NVLinkBackend` with `Measure() ([]health.Measurement, error)`).
-3. Implement `toolkit.Sensor` wrapping that interface (e.g. `NVLinkSensor`), forwarding `Measure()` from the backend.
-4. Add a `MockXxx(...)` constructor alongside the real one so consumers can test without hardware — see `gpu_backend.go` for the pattern.
+2. Define the collect signals in `collect/signals/<domain>` and a `collect.Sensor` that reports them in `collect/sensors/<domain>`.
+3. Map the signals to the measurement's fields in `toolkit/observations/mapping.go` and add a built-in adapter in `toolkit/internal/collectadapters`.
+4. Register the sensor and adapter in `builtinCollect` (`toolkit/app/collect.go`). App tests replace a built-in source with an in-memory `collect.Sensor` claimed through `WithCollect`; see `toolkit/app/fixture_test.go`.
 
-#### Adding a backend implementation
+#### Adding a data source for an existing domain
 
-To feed the CLI from a new data source, implement a `collect.Sensor` and pass it to `WithCollect` with the signal IDs it replaces. To plug one into a library sensor instead, implement the existing backend interface (`GPUBackend.Measure`) on a struct in whichever package its dependencies require. No registration needed — Go satisfies the interface structurally. Use `NVMLBackend` (`toolkit/nvml/`) as the template for backends that need a build-tagged subpackage.
+Implement `collect.Sensor` for the signals the source can report, in whichever package its dependencies require (a build-tagged subpackage for cgo sources, like `collect/source/nvml`). A consumer swaps it in with `WithCollect(sensor, signalIDs...)`; making it the stock CLI's default means registering it in `builtinCollect` instead of the source it replaces.
 
 #### The operator CLI (`toolkit/cmd/health-validation`)
 
@@ -219,7 +218,7 @@ The logic lives in `toolkit/app/`; `toolkit/cmd/health-validation/main.go` is a 
 
 - `toolkit/app/backend_linux.go` (`//go:build linux && !android`) — `newHostBackend()` returns the cgo host backend: the collect NVML and DCGM sources and the shared GPU inventory.
 - `toolkit/app/backend_other.go` (`//go:build !linux || android`) — `newHostBackend()` returns a stub whose GPU inventory cannot open.
-- `toolkit/app/app.go` / `toolkit/app/config.go` stay platform-agnostic; tests replace the host backend and use collect sensor fakes or `toolkit.MockGPU`/`MockNode`, without hardware or cgo.
+- `toolkit/app/app.go` / `toolkit/app/config.go` stay platform-agnostic; tests replace `App.host` with a fake and claim the CPU and Xid signals from in-memory collect sensors, so they run without hardware or cgo.
 
 Consequence: on darwin `go build ./toolkit/cmd/health-validation` succeeds (stub backend) and `go test ./toolkit/app` passes, but `health-validation run` exits `1` with a CRITICAL `architecture_discovery` verdict — there is no data source off-linux. Follow this split for any future production binary that depends on a build-tagged backend.
 
@@ -247,7 +246,7 @@ If the dep ends up linked into the CLI, `toolkit/cmd/health-validation/SHIPPED_M
 
 **BUILD files** — Gazelle manages `BUILD.bazel` files. After adding or removing `.go` files or changing imports, run `bazel run //tools/gazelle` to regenerate. Do not hand-edit dep lists that Gazelle owns.
 
-**Mock constructors** — test doubles use exported constructor functions that return the interface (e.g. `MockGPU(...)`, `MockCommandExecutor(...)`), not exported mock structs. The underlying type stays unexported.
+**Mock constructors** — test doubles use exported constructor functions that return the interface (e.g. `MockRDMALinkFlap(...)`, `MockCommandExecutor(...)`), not exported mock structs. The underlying type stays unexported.
 
 **Example tests** — every `agentkit/examples/*` program keeps a `main_test.go` that runs its wiring (signal selection, sensor and catalog construction) without hardware under `bazel test //...`. Examples only fail at runtime against real sources, so CI's compile check alone misses a signal or check the example's sensors reject.
 
@@ -269,4 +268,4 @@ GOTOOLCHAIN=go1.27.3 go install golang.org/x/tools/go/analysis/passes/fieldalign
 
 The CI-equivalent check runs on Linux: `bazel test --config=ci --platforms=//build/platforms:linux_amd64 <target>` — run it on the **test** target holding the struct, since a struct in a `_test.go` file is only analyzed when its `go_test` builds (an image or library build won't catch it).
 
-For `//go:build linux`-tagged files that also pull in cgo (e.g. `toolkit/nvml/`), local checking on darwin is not reliable — darwin's clang can't cross-compile linux cgo, so nogo never runs against these files locally and the tool errors out. When CI's nogo step rejects a struct in such a file, it prints a unified-diff patch in the failure log; apply it verbatim with `patch -p1 <<'EOF' … EOF` or by hand.
+For `//go:build linux`-tagged files that also pull in cgo (e.g. `collect/source/nvml/`), local checking on darwin is not reliable — darwin's clang can't cross-compile linux cgo, so nogo never runs against these files locally and the tool errors out. When CI's nogo step rejects a struct in such a file, it prints a unified-diff patch in the failure log; apply it verbatim with `patch -p1 <<'EOF' … EOF` or by hand.

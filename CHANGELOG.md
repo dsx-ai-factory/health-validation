@@ -29,8 +29,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   node, and from NVML only for compute processes. Nodes need `nv-hostengine`
   and the DCGM 4 client library (`libdcgm.so.4`); without them the GPU power,
   power-limit, pstate, and throttle checks report a collection failure. There
-  is no fallback to NVML. `WithGPUBackend` still selects the legacy NVML GPU
-  sensor.
+  is no fallback to NVML.
 - The CLI reads the NVLink domain through collect sensors: fabric
   registration from DCGM, and link state, count, speed, capabilities, P2P,
   and fabric health from NVML. Without a reachable hostengine, `nvlink_fabric`
@@ -46,17 +45,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     `check_collection` instead of skipping it. The CLI is unchanged: it stops
     at `architecture_discovery` before running any check.
 
-  `WithNVLinkBackend` still selects the legacy sensor and is deprecated in
-  favor of `WithCollect`. Library callers migrating:
+  Library callers migrating:
   - The collect adapter name `nvlink` is reserved for the built-in NVLink
     adapter.
   - A caller sensor passed to `WithCollect` that produces NVLink signals must
     name them, or the run fails because the built-in sources produce them too.
-  - `WithGPUBackend` alone no longer keeps DCGM and NVML collection off: the
-    built-in `gpu.dcgm` and `gpu.nvml` sensors still run for NVLink. Add
-    `WithNVLinkBackend`, or claim the NVLink signals through `WithCollect`.
-    A caller sensor reusing either ID collides with the built-in unless it
-    claims every signal the built-in would read.
 - The collect adapter name `gpu` is reserved for the built-in GPU adapter.
   Drop a caller-registered adapter of that name: the built-in one reads the
   canonical GPU signals from whichever registered sensor produces them.
@@ -141,13 +134,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     - `App.Run` no longer closes the host's DCGM and NVML connections; call
       `App.Close` when done with the App.
 
+- The legacy toolkit sensors for the CPU, GPU, node, NVLink, and Xid domains
+  are removed with their backends and mocks: `CPUBackend`, `CPUSensor`,
+  `SysfsCPU`, `MockCPU`, `GPUBackend`, `GPUSensor`, `MockGPU`, `NodeBackend`,
+  `NodeSensor`, `MockNode`, `NVLinkBackend`, `NVLinkSensor`, `MockNVLink`,
+  `XidBackend`, `XidSensor`, `Journalctl`, `MockXid`, `LazyGPUBackend`,
+  `MultiBackend`, and the `toolkit/nvml` package. So are `App.WithGPUBackend`,
+  `WithNodeBackend`, `WithCPUBackend`, `WithXidBackend`, `WithNVLinkBackend`,
+  and `App.NVMLBackend` with its probe API. To replace a built-in source, pass
+  a collect sensor and the signal IDs it supplies to `WithCollect`; for per-GPU
+  signals of your own, register a `GPUAdapter`. To test without hardware, pass
+  any `toolkit.Sensor` to `toolkit.Collect`, or claim signals from an
+  in-memory collect sensor (see `docs/faq.md`). The stock CLI is unaffected.
+
 ### Features
 
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
-  domain in place. `docs/extending.md` describes the wiring. `WithGPUBackend`,
-  `NVMLBackend.WithGPUProbe`, and `WithNodeBackend` are deprecated in its
-  favor or in favor of `WithCollect`.
+  domain in place. `docs/extending.md` describes the wiring.
 - The built-in NVML source (`gpu.nvml`), which produced only the
   compute-process signals, now produces every signal collect's NVML sensor
   declares
@@ -158,8 +162,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `gpu.performance.state`, `gpu.clock.hardware_slowdown.active`,
   `gpu.clock.hardware_thermal_slowdown.active`, and
   `gpu.clock.hardware_power_brake_slowdown.active`. A signal such as ECC or
-  row remapping therefore needs only a `GPUAdapter`, unless `WithGPUBackend`
-  and `WithNVLinkBackend` are both set. A `WithCollect` claim on any of these signals still takes
+  row remapping therefore needs only a `GPUAdapter`. A `WithCollect` claim on any of these signals still takes
   precedence over the built-in source.
 - `health.KeyOf` treats a zero `EntityKey` as unset and keys the measurement
   by its `EntityID`, so a measurement embedding `observations.Entity` that a
