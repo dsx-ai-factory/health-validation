@@ -208,3 +208,13 @@ func TestRunJournalctl(t *testing.T) {
 		})
 	}
 }
+
+// exitOne returns a real *exec.ExitError with code 1 and no output.
+func exitOne(t *testing.T) error {
+	t.Helper()
+	err := exec.Command("false").Run()
+	if err == nil {
+		t.Fatal("expected `false` to exit non-zero")
+	}
+	return err
+}

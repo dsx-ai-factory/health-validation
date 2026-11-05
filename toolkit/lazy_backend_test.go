@@ -35,7 +35,7 @@ func (nodeMultiBackend) Close() error                                 { return n
 
 // TestLazyGPUBackend_HungInitDoesNotHang verifies a backend whose
 // initialization blocks is bounded by the watchdog: the NVML-backed
-// sensors degrade and the independent Xid sensor still runs, with no hang.
+// sensor degrades and an independent sensor still runs, with no hang.
 func TestLazyGPUBackend_HungInitDoesNotHang(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
@@ -48,11 +48,10 @@ func TestLazyGPUBackend_HungInitDoesNotHang(t *testing.T) {
 		<-release // model a wedged nvml.New()/lib.Init()
 		return newNodeMultiBackend(node.NodeMeasurement{GPUCount: 4}), nil
 	})
-	// Node and NVLink share the backend; Xid is independent of it.
+	// The node sensor is independent of the backend.
 	sensors := []toolkit.Sensor{
-		toolkit.NewNodeSensor(backend),
 		toolkit.NewNVLinkSensor(backend),
-		toolkit.NewXidSensor(toolkit.MockXid()),
+		nodeSensor(4),
 	}
 
 	done := make(chan health.NodeVerdict, 1)
@@ -63,14 +62,11 @@ func TestLazyGPUBackend_HungInitDoesNotHang(t *testing.T) {
 
 	select {
 	case nv := <-done:
-		if got := nv.SeverityByDomain[health.Node]; got != health.Unknown {
-			t.Errorf("node domain = %v, want UNKNOWN (init timed out)", got)
-		}
 		if got := nv.SeverityByDomain[health.NVLink]; got != health.Unknown {
-			t.Errorf("nvlink domain = %v, want UNKNOWN (skipped after shared init wedged)", got)
+			t.Errorf("nvlink domain = %v, want UNKNOWN (init timed out)", got)
 		}
-		if got := nv.SeverityByDomain[health.Xid]; got != health.Pass {
-			t.Errorf("xid domain = %v, want PASS (independent of NVML init)", got)
+		if got := nv.SeverityByDomain[health.Node]; got != health.Pass {
+			t.Errorf("node domain = %v, want PASS (independent of NVML init)", got)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("CollectWithOptions hung on a backend whose init blocks")
@@ -78,8 +74,8 @@ func TestLazyGPUBackend_HungInitDoesNotHang(t *testing.T) {
 }
 
 // TestLazyGPUBackend_InitErrorDegrades verifies a backend whose
-// initialization fails degrades the NVML-backed sensors to Unknown
-// without aborting the run, while the Xid sensor still produces a verdict.
+// initialization fails degrades the NVML-backed sensor to Unknown
+// without aborting the run, while an independent sensor still produces a verdict.
 func TestLazyGPUBackend_InitErrorDegrades(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
@@ -90,23 +86,19 @@ func TestLazyGPUBackend_InitErrorDegrades(t *testing.T) {
 		return nil, errors.New("nvml init: ERROR_DRIVER_NOT_LOADED")
 	})
 	sensors := []toolkit.Sensor{
-		toolkit.NewNodeSensor(backend),
 		toolkit.NewNVLinkSensor(backend),
-		toolkit.NewXidSensor(toolkit.MockXid()),
+		nodeSensor(4),
 	}
 
 	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: time.Second}, sensors...)
 	if err != nil {
 		t.Fatalf("CollectWithOptions returned error, want graceful degrade: %v", err)
 	}
-	if got := nv.SeverityByDomain[health.Node]; got != health.Unknown {
-		t.Errorf("node domain = %v, want UNKNOWN (init failed)", got)
-	}
 	if got := nv.SeverityByDomain[health.NVLink]; got != health.Unknown {
 		t.Errorf("nvlink domain = %v, want UNKNOWN (init failed)", got)
 	}
-	if got := nv.SeverityByDomain[health.Xid]; got != health.Pass {
-		t.Errorf("xid domain = %v, want PASS (independent of NVML init)", got)
+	if got := nv.SeverityByDomain[health.Node]; got != health.Pass {
+		t.Errorf("node domain = %v, want PASS (independent of NVML init)", got)
 	}
 }
 
@@ -141,7 +133,7 @@ func TestLazyGPUBackend_SkipsCloseWhileMeasureInFlight(t *testing.T) {
 	// Time out MeasureNode so its goroutine stays parked inside the backend.
 	done := make(chan struct{})
 	go func() {
-		_, _ = toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, toolkit.NewNodeSensor(backend))
+		_, _ = toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, toolkit.NewNVLinkSensor(backend))
 		close(done)
 	}()
 	select {

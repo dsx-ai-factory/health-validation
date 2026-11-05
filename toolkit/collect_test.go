@@ -27,9 +27,7 @@ func TestCollectWithOptions_ZeroValueHealthyNode(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	sensor := nodeSensor(4)
 
 	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{}, sensor)
 	if err != nil {
@@ -41,9 +39,7 @@ func TestCollectWithOptions_ZeroValueHealthyNode(t *testing.T) {
 }
 
 func TestCollectMeasurementsWithTimeoutPreservesSensor(t *testing.T) {
-	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	sensor := nodeSensor(4)
 
 	groups := toolkit.CollectMeasurementsWithTimeout(time.Second, sensor)
 	if len(groups) != 1 || groups[0].Sensor != "node" || len(groups[0].Measurements) != 1 {
@@ -58,9 +54,7 @@ func TestCollect_FailingNode(t *testing.T) {
 	)
 
 	// Only 3 GPUs visible against the default expected count of 4.
-	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 3},
-	))
+	sensor := nodeSensor(3)
 
 	nv, err := toolkit.Collect(cat, sensor)
 	if err != nil {
@@ -76,9 +70,7 @@ func TestCollectWithOptions_ContinuousCadenceSkipsPrologChecks(t *testing.T) {
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
-	sensor := toolkit.NewGPUSensor(toolkit.MockGPU(
-		gpu.GPUMeasurement{GPUID: "GPU-0"},
-	))
+	sensor := staticSensor{name: "gpu", ms: []health.Measurement{gpu.GPUMeasurement{GPUID: "GPU-0"}}}
 	cadence := health.Continuous
 	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Cadence: &cadence}, sensor)
 	if err != nil {
@@ -256,9 +248,7 @@ func TestCollect_FailingSensorDoesNotMaskHealthy(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	healthy := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	healthy := nodeSensor(4)
 	failing := failingSensor{
 		name: "nvlink",
 		errored: func(err error) []health.Measurement {
@@ -409,9 +399,7 @@ func TestCollectWithOptions_TimeoutDoesNotMaskHealthy(t *testing.T) {
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
-	healthy := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	healthy := nodeSensor(4)
 	slow := &blockingSensor{
 		name:     "nvlink",
 		honorCtx: true,
@@ -518,9 +506,7 @@ func TestCollectWithOptions_CircuitBreakerScopedToResource(t *testing.T) {
 
 	// A healthy sensor on a different backend (its own resource key) must
 	// still be collected despite the wedge.
-	healthy := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	healthy := nodeSensor(4)
 
 	done := make(chan health.NodeVerdict, 1)
 	go func() {
@@ -542,29 +528,20 @@ func TestCollectWithOptions_CircuitBreakerScopedToResource(t *testing.T) {
 }
 
 // TestSensorsShareResourceKeyForSharedBackend verifies the wiring behind
-// the circuit breaker: the GPU, Node, and NVLink sensors report the same
-// resource key when they share a backend, and a different one otherwise.
-// The shared source is a [toolkit.LazyGPUBackend] (a single MultiBackend
-// installed under all three sensors), mirroring the production wiring where
-// one lazily-constructed NVML backend feeds every GPU-side sensor.
+// the circuit breaker: sensors report the same resource key when they share a
+// backend, and a different one otherwise.
 func TestSensorsShareResourceKeyForSharedBackend(t *testing.T) {
 	backend := toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) {
 		return newNodeMultiBackend(node.NodeMeasurement{GPUCount: 4}), nil
 	})
-	gpuSensor := toolkit.NewGPUSensor(backend)
-	nodeSensor := toolkit.NewNodeSensor(backend)
-	nvlinkSensor := toolkit.NewNVLinkSensor(backend)
-
-	key := gpuSensor.ResourceKey()
+	key := toolkit.NewNVLinkSensor(backend).ResourceKey()
 	if key == "" {
-		t.Fatal("GPU sensor reported an empty resource key")
+		t.Fatal("NVLink sensor reported an empty resource key")
 	}
-	if nodeSensor.ResourceKey() != key || nvlinkSensor.ResourceKey() != key {
-		t.Errorf("sensors sharing a backend differ: gpu=%q node=%q nvlink=%q",
-			key, nodeSensor.ResourceKey(), nvlinkSensor.ResourceKey())
+	if again := toolkit.NewNVLinkSensor(backend).ResourceKey(); again != key {
+		t.Errorf("sensors sharing a backend differ: %q and %q", key, again)
 	}
-
-	other := toolkit.NewNodeSensor(toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) {
+	other := toolkit.NewNVLinkSensor(toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) {
 		return newNodeMultiBackend(node.NodeMeasurement{GPUCount: 8}), nil
 	}))
 	if other.ResourceKey() == key {

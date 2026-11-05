@@ -116,7 +116,7 @@ func TestCollectRunnerMixedLegacyAndSharedCycle(t *testing.T) {
 	if err := cat.Register(cpu.CPUCount()); err != nil {
 		t.Fatal(err)
 	}
-	legacy := toolkit.NewCPUSensor(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 8, OnlineCPUCount: 8}))
+	legacy := cpuSensor{cpu.CPUMeasurement{PossibleCPUCount: 8, OnlineCPUCount: 8}}
 	verdict, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: time.Second}, r.Sensor(countAdapter(runnerCount.ID(), other.ID())), legacy)
 	if err != nil {
 		t.Fatal(err)
@@ -627,3 +627,12 @@ func TestCollectRunnerRejectsFutureJournalEntry(t *testing.T) {
 		}
 	}
 }
+
+// cpuSensor is a toolkit sensor reporting one fixed CPU measurement.
+type cpuSensor struct{ m cpu.CPUMeasurement }
+
+func (cpuSensor) Name() string { return "cpu" }
+func (s cpuSensor) Measure(context.Context) ([]health.Measurement, error) {
+	return []health.Measurement{s.m}, nil
+}
+func (cpuSensor) Errored(error) []health.Measurement { return nil }

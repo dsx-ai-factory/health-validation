@@ -391,3 +391,12 @@ func TestLinkFlapCoexistsWithSysfsPortSensor(t *testing.T) {
 		t.Fatalf("link-flap measurement beside the port sensor failed: %v", m.Errors())
 	}
 }
+
+func exitOneWithStderr(t *testing.T) error {
+	t.Helper()
+	_, err := exec.Command("sh", "-c", "echo 'unsupported journalctl flag' >&2; exit 1").Output()
+	if err == nil {
+		t.Fatal("expected command to exit non-zero")
+	}
+	return err
+}

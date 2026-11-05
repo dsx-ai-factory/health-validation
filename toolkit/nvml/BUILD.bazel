@@ -26,8 +26,6 @@ go_library(
 go_test(
     name = "nvml_test",
     srcs = [
-        "gpu_collect_parity_test.go",
-        "gpu_process_parity_test.go",
         "nvlink_parity_internal_test.go",
         "nvml_backend_active_test.go",
         "nvml_backend_arch_test.go",

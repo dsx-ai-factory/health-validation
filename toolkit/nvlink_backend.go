@@ -4,6 +4,8 @@
 package toolkit
 
 import (
+	"fmt"
+
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 )
@@ -37,4 +39,15 @@ type mockNVLinkBackend struct {
 
 func (m mockNVLinkBackend) MeasureNVLink() ([]health.Measurement, error) {
 	return m.measurements, nil
+}
+
+// backendResourceKey identifies a backend instance, so sensors sharing one
+// source report the same key and Collect's circuit breaker skips the rest
+// once it times out instead of re-entering a wedged source. A nil backend is
+// unkeyed.
+func backendResourceKey(b any) string {
+	if b == nil {
+		return ""
+	}
+	return fmt.Sprintf("%p", b)
 }

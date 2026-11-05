@@ -63,48 +63,28 @@ func parityCases() []parityCase {
 	}
 }
 
-// Legacy backends and collect sources fed the same node give the same verdict
-// and exit code.
-func TestRunCollectParity(t *testing.T) {
+// Each fixture node gives its expected exit code, and every failing Xid result
+// names the GPU that logged it (#231).
+func TestRunFixtureVerdicts(t *testing.T) {
 	for _, tc := range parityCases() {
 		t.Run(tc.name, func(t *testing.T) {
-			legacy, legacyExit := runFixture(t, tc.node, legacyPath)
-			collected, collectExit := runFixture(t, tc.node, collectPath)
-			if legacyExit != tc.exit || collectExit != tc.exit {
-				t.Errorf("exit = %d legacy, %d collect, want %d", legacyExit, collectExit, tc.exit)
+			v, code := runFixture(t, tc.node)
+			if code != tc.exit {
+				t.Errorf("exit = %d, want %d", code, tc.exit)
 			}
-			unnameXidGPUs(&legacy)
-			unnameXidGPUs(&collected)
-			if diff := verdictDiff(legacy, collected); diff != "" {
-				t.Errorf("legacy (-) and collect (+) verdicts differ at %s", diff)
+			for _, r := range v.CheckResults {
+				if r.Category == health.Xid && r.Severity != health.Pass && len(r.AffectedEntities) == 0 {
+					t.Errorf("%s names no GPU", r.CheckID)
+				}
 			}
 		})
 	}
 }
 
-// unnameXidGPUs drops the GPU address that collect's Xid adapter names on
-// Xid results and the legacy Xid backend leaves empty; xid_collect_test.go
-// covers the naming.
-func unnameXidGPUs(v *health.NodeVerdict) {
-	for i, r := range v.CheckResults {
-		if r.Category == health.Xid {
-			v.CheckResults[i].AffectedEntities = nil
-			delete(v.CheckResults[i].ObservedValues, "pci_address")
-		}
-	}
-	for i, c := range v.AffectedComponents {
-		if c.Category == health.Xid {
-			for j := range v.AffectedComponents[i].Checks {
-				v.AffectedComponents[i].Checks[j].Entities = nil
-			}
-		}
-	}
-}
-
-// The legacy Xid parser drops these lines, so their checks pass. The collect
-// parser reads the MIG and PCI-less forms as Xids, and fails the domain closed
-// on a line it cannot parse.
-func TestRunCollectDocumentedDivergences(t *testing.T) {
+// The legacy Xid parser dropped these lines, so their checks passed. The
+// collect parser reads the MIG and PCI-less forms as Xids, and fails the domain
+// closed on a line it cannot parse.
+func TestRunXidLinesLegacyDropped(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		line     string
@@ -128,15 +108,9 @@ func TestRunCollectDocumentedDivergences(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := healthyGB200()
 			f.xid = []string{tc.line}
-			legacy, legacyExit := runFixture(t, f, legacyPath)
-			collected, collectExit := runFixture(t, f, collectPath)
-			if legacyExit != exitOK || collectExit != exitUnhealthy {
-				t.Fatalf("exit = %d legacy, %d collect, want %d and %d", legacyExit, collectExit, exitOK, exitUnhealthy)
-			}
-			for _, r := range legacy.CheckResults {
-				if strings.HasPrefix(r.CheckID, "gpu_xid_") && r.Severity != health.Pass {
-					t.Errorf("legacy %s = %s, want PASS", r.CheckID, r.Severity)
-				}
+			collected, code := runFixture(t, f)
+			if code != exitUnhealthy {
+				t.Fatalf("exit = %d, want %d", code, exitUnhealthy)
 			}
 			failed := 0
 			for _, r := range collected.CheckResults {
@@ -145,11 +119,11 @@ func TestRunCollectDocumentedDivergences(t *testing.T) {
 				}
 				failed++
 				if r.Severity != tc.severity || !r.RecommendedAction.Equal(tc.action) {
-					t.Errorf("collect %s = %s %+v, want %s %+v", r.CheckID, r.Severity, r.RecommendedAction, tc.severity, tc.action)
+					t.Errorf("%s = %s %+v, want %s %+v", r.CheckID, r.Severity, r.RecommendedAction, tc.severity, tc.action)
 				}
 			}
 			if failed == 0 {
-				t.Error("collect has no matching Xid result")
+				t.Error("no matching Xid result")
 			}
 		})
 	}

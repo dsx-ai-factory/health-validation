@@ -308,7 +308,7 @@ func TestRunAuditsBeforeCollectingAndPublishesAfterVerdict(t *testing.T) {
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := fixtureApp(healthyGB200(), collectPath)
+	a := fixtureApp(healthyGB200())
 	host := a.host.(sharedInventoryHost)
 	host.gpu = slices.Clone(host.gpu)
 	host.gpu[0] = loggedSensor{Sensor: host.gpu[0], log: log}

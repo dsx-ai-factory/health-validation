@@ -157,12 +157,9 @@ func (s nvmlGPUSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*
 	return sensor.Measure(ctx, opts...)
 }
 
-// One NVMLBackend backs the legacy overrides (WithGPUBackend,
-// WithNodeBackend, WithNVLinkBackend): it implements each narrow
-// per-domain interface (and MultiBackend for the lazy wrapper).
+// One NVMLBackend backs the legacy NVLink override (WithNVLinkBackend) through
+// the lazy wrapper.
 var (
-	_ toolkit.GPUBackend    = (*nvml.NVMLBackend)(nil)
-	_ toolkit.NodeBackend   = (*nvml.NVMLBackend)(nil)
 	_ toolkit.NVLinkBackend = (*nvml.NVMLBackend)(nil)
 	_ toolkit.MultiBackend  = (*nvml.NVMLBackend)(nil)
 )

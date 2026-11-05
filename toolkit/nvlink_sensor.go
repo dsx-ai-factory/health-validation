@@ -32,9 +32,8 @@ func NewNVLinkSensor(backend NVLinkBackend) *NVLinkSensor {
 
 func (s *NVLinkSensor) Name() string { return "nvlink" }
 
-// Measure does not use the context for the same reason as
-// [GPUSensor.Measure]: the NVLink signals come from the cgo NVML backend,
-// bounded by the caller's watchdog.
+// Measure does not use the context: the NVLink signals come from the cgo
+// NVML backend, bounded by the caller's watchdog.
 func (s *NVLinkSensor) Measure(_ context.Context) ([]health.Measurement, error) {
 	return s.backend.MeasureNVLink()
 }
@@ -47,6 +46,5 @@ func (s *NVLinkSensor) Errored(err error) []health.Measurement {
 	return []health.Measurement{m}
 }
 
-// ResourceKey groups this sensor with the others sharing its backend (see
-// [GPUSensor.ResourceKey]).
+// ResourceKey groups this sensor with the others sharing its backend.
 func (s *NVLinkSensor) ResourceKey() string { return backendResourceKey(s.backend) }
