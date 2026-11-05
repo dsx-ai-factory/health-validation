@@ -13,6 +13,7 @@ var _ health.DerivedSignaler = XidMeasurement{}
 // reimplementing the NVIDIA-specific parts.
 func (m XidMeasurement) DerivedSignals(health.Host) map[string]any {
 	return map[string]any{
-		SignalSubXidCodeCounts: subXidCodeCounts(m.Events),
+		SignalSubXidCodeCounts:     subXidCodeCounts(m.Events),
+		SignalRecoveryActionCounts: recoveryActionCounts(m.Events),
 	}
 }

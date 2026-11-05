@@ -6,7 +6,7 @@ Xid covers NVRM Xid fault events logged by the NVIDIA driver to the kernel ring 
 
 ## Single-rule checks reading `gpu_id`, `pci_address`, `xid_counts`, `events`
 
-These 39 checks share the properties below and each has one rule.
+These 38 checks share the properties below and each has one rule.
 
 | Property | Value |
 |---|---|
@@ -64,7 +64,6 @@ These 39 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_119`</nobr> | GPU Xid 119 (GSP RPC timeout) | <nobr>`119 in xid_counts && xid_counts[119] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_120`</nobr> | GPU Xid 120 (GSP error) | <nobr>`120 in xid_counts && xid_counts[120] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_140`</nobr> | GPU Xid 140 (ECC unrecovered error) | <nobr>`140 in xid_counts && xid_counts[140] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
-| <nobr>`gpu_xid_154`</nobr> | GPU Xid 154 (GPU recovery action changed) | <nobr>`154 in xid_counts && xid_counts[154] >= occurrences`</nobr> | INFO | <nobr>`drain`</nobr>: <nobr>`xid_154`</nobr> |
 | <nobr>`gpu_xid_158`</nobr> | GPU Xid 158 (GPU fatal timeout) | <nobr>`158 in xid_counts && xid_counts[158] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 
 ## Single-rule checks reading `gpu_id`, `pci_address`, `xid_counts`, `events`
@@ -560,4 +559,47 @@ Detects NVRM Xid 150 in the system journal within the collection window, differe
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
 - **WARNING** when `150 in xid_counts && xid_counts[150] > (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) && xid_counts[150] - (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 150 detected: NVLink MSE error (Nonfatal).
+
+## GPU Xid 154 (GPU recovery action changed)
+
+`gpu_xid_154`
+
+Detects NVRM Xid 154 in the system journal within the collection window and reports the recovery action the driver last requested for each GPU.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`recovery_action_counts`</nobr>, <nobr>`events`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Xid 154 reports asking for one recovery action as a GPU's current action, within the collection window, that cause that action's rule to fire. |
+
+**Rules**
+
+- **CRITICAL** when `("0x2" in recovery_action_counts && recovery_action_counts["0x2"] >= occurrences) \|\| ("0x6" in recovery_action_counts && recovery_action_counts["0x6"] >= occurrences) \|\| ("0x7" in recovery_action_counts && recovery_action_counts["0x7"] >= occurrences)`
+  - Message: GPU Xid 154: the driver requested an OS reboot for at least one GPU.
+  - Action: operational state `drain`, then `restart_os` → `service_required`
+- **CRITICAL** when `("0x1" in recovery_action_counts && recovery_action_counts["0x1"] >= occurrences) \|\| ("0x4" in recovery_action_counts && recovery_action_counts["0x4"] >= occurrences)`
+  - Message: GPU Xid 154: the driver requested a GPU reset for at least one GPU.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **WARNING** when `("0x3" in recovery_action_counts && recovery_action_counts["0x3"] >= occurrences)`
+  - Message: GPU Xid 154: the driver requested that peer-to-peer traffic be stopped for at least one GPU. Stop scheduling new work, stop the processes using peer-to-peer and disable persistence mode, then re-run and follow the recovery action reported then; reset the GPU only if Drain P2P is still requested.
+  - Action: operational state `drain`, then `xid_154`
+- **WARNING** when `recovery_action_counts.exists(k, !(k in ["0x0", "0x2", "0x6", "0x7", "0x1", "0x4", "0x3", "unreadable"]) && recovery_action_counts[k] >= occurrences)`
+  - Message: GPU Xid 154: the driver requested a recovery action this catalog does not recognize for at least one GPU; report the action code.
+  - Action: operational state `drain`, then `service_required`
+- **WARNING** when `"unreadable" in recovery_action_counts && recovery_action_counts["unreadable"] >= occurrences`
+  - Message: GPU Xid 154: the recovery action for at least one GPU could not be read from its log line; inspect the Xid 154 line in the system journal.
+  - Action: operational state `monitor`
+- **INFO** when `"0x0" in recovery_action_counts && recovery_action_counts["0x0"] >= occurrences`
+  - Message: GPU Xid 154: the driver requested no recovery action (None) for at least one GPU. Correlate with the accompanying Xid.
 

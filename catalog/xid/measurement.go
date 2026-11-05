@@ -23,8 +23,11 @@ const (
 	SignalXidCounts        = "xid_counts"
 	SignalFatalXidCounts   = "fatal_xid_counts"
 	SignalSubXidCodeCounts = "sub_xid_code_counts"
-	SignalSince            = "since"
-	SignalEventCount       = "event_count"
+	// SignalRecoveryActionCounts is derived rather than stored; see
+	// [XidMeasurement.DerivedSignals].
+	SignalRecoveryActionCounts = "recovery_action_counts"
+	SignalSince                = "since"
+	SignalEventCount           = "event_count"
 )
 
 var measurementSignals = []string{
@@ -34,6 +37,7 @@ var measurementSignals = []string{
 	SignalXidCounts,
 	SignalFatalXidCounts,
 	SignalSubXidCodeCounts,
+	SignalRecoveryActionCounts,
 	SignalSince,
 	SignalEventCount,
 }
@@ -57,6 +61,15 @@ func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 // Count is set only in verdict output, where identical events are
 // grouped (see [XidMeasurement.ScopeObservedValues]); a measurement
 // holds one event per line and leaves it zero.
+// XidEvent is a single parsed "NVRM: Xid …" log line. Pid and
+// ProcessName are populated only when the driver attributed the fault
+// to a process; some Xid lines carry neither. NVLink5 is populated only
+// for the NVLink5/NVSwitch fault family (Xid 144-150), which carries a
+// sub-component and severity instead of pid/name. GPC, TPC, and SM are
+// the graphics unit an Xid 13 exception names, all nil when the line
+// does not name one. Sequence is the line's position in its source scan,
+// counting from 1, so events can be put in log order; zero means the
+// source did not say.
 type XidEvent struct {
 	NVLink5        *NVLink5Detail  `json:"nvlink5,omitempty"`
 	RecoveryAction *RecoveryAction `json:"recovery_action,omitempty"`
@@ -69,6 +82,7 @@ type XidEvent struct {
 	XidCode        int64           `json:"xid_code"`
 	Pid            int64           `json:"pid"`
 	Count          int64           `json:"count,omitempty"`
+	Sequence       int64           `json:"sequence,omitempty"`
 }
 
 // RecoveryAction is the transition an Xid 154 line reports: the driver
