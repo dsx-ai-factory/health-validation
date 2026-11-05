@@ -85,7 +85,7 @@ func fixtureCases() []fixtureCase {
 			{check: "gpu_xid_149_4", severity: health.Critical, action: resetGPU, entities: []string{"0018:01:00"}},
 		}},
 		{name: "Xid 145 nonfatal", node: xid(xid145Line), exit: exitOK, want: []fixtureResult{
-			{check: "gpu_xid_145", severity: health.Warning, action: health.NoAction, entities: []string{"0000:5f:00"}},
+			{check: "gpu_xid_145", severity: health.Info, action: health.NoAction, entities: []string{"0000:5f:00"}},
 		}},
 		{name: "Xid 154", node: xid(xid154Line), exit: exitUnhealthy, want: []fixtureResult{
 			{check: "gpu_xid_154", severity: health.Critical, action: resetGPU, entities: []string{"0000:01:00"}},

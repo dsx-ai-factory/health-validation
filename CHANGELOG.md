@@ -133,6 +133,19 @@ Changes to behavior and APIs outside the
     action the catalog does not map, or a transition that cannot be read, is
     WARNING with `monitor`. `None` is INFO.
     ([#78](https://github.com/dsx-ai-factory/health-validation/pull/78))
+  - `gpu_xid_144` through `gpu_xid_150` report what each occurrence resolves to
+    in NVIDIA's Xid 144-150 decode table instead of following the Fatal or
+    Nonfatal flag NVRM prints. A row that resolves to a GPU reset is CRITICAL
+    with `reset_gpu` then `service_required`, as is a Fatal occurrence the table
+    can't confirm, including when the driver version is unknown. A line that
+    can't be decoded is WARNING with `monitor`. A row that resolves to no action
+    is INFO, so most Nonfatal occurrences no longer warn. Xid 145 rows that defer
+    to Xid 154 are INFO pointing to `gpu_xid_154`, or WARNING recommending
+    `monitor` with `restart_app` when the GPU logged no Xid 154. The 144-150
+    checks use the `occurrences` threshold like every other Xid check, and a
+    `gpu_xid_149_<hex>` subtype the table resolves to no action reports INFO
+    instead of WARNING.
+    ([#271](https://github.com/dsx-ai-factory/health-validation/pull/271))
 - A check's `Dependencies` no longer skip it. A dependent check always runs
   and reports its own result. Only when its entity could not be read at all and
   a dependency is Critical or Unknown does its collection-failure message name
