@@ -356,3 +356,14 @@ func TestMeasureMetricsWithoutUUID(t *testing.T) {
 		t.Fatal(validationErr)
 	}
 }
+
+func TestNewAcceptsEveryDCGMSourceMode(t *testing.T) {
+	for name, source := range map[string]*dcgmsource.Source{
+		"standalone": dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{}),
+		"embedded":   dcgmsource.NewEmbeddedSource(dcgmsource.EmbeddedOptions{}),
+	} {
+		if _, err := New(source, gpusignals.PowerDraw.ID(), gpusignals.TemperatureCelsius.ID()); err != nil {
+			t.Fatalf("New(%s) error = %v", name, err)
+		}
+	}
+}
