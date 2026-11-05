@@ -1,0 +1,16 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "findings",
+    srcs = ["findings.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/catalog/internal/findings",
+    visibility = ["//:__subpackages__"],
+    deps = ["//catalog/health"],
+)
+
+go_test(
+    name = "findings_test",
+    srcs = ["findings_test.go"],
+    embed = [":findings"],
+    deps = ["//catalog/health"],
+)

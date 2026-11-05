@@ -15,6 +15,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 
@@ -72,6 +73,21 @@ var ErrArchitectureUnset = errors.New("architecture must be set via WithArchitec
 // for List/Overrides but fails closed at evaluation.
 func WithArchitecture(arch string) Option {
 	return func(c *Catalog) { c.architecture = arch }
+}
+
+// WithAccumulator registers a, replacing a built-in or earlier accumulator of
+// the same name, so a consumer can configure what the catalog ships: for Xid,
+// the codes its own checks cover.
+func WithAccumulator(a health.Accumulator) Option {
+	return func(c *Catalog) {
+		for i, existing := range c.accumulators {
+			if existing.Name() == a.Name() {
+				c.accumulators[i] = a
+				return
+			}
+		}
+		c.accumulators = append(c.accumulators, a)
+	}
 }
 
 // WithDriverVersion sets the node's NVIDIA driver version, which reaches
@@ -171,11 +187,16 @@ func (c *Catalog) RegisterAccumulator(a health.Accumulator) error {
 // accumulate runs each accumulator over the collected measurements and
 // returns everything they derived. Each sees only what was collected, not
 // another accumulator's outputs, so registration order cannot change the
-// result.
-func accumulate(accumulators []health.Accumulator, measurements []health.Measurement) ([]health.Measurement, error) {
+// result. Every registered check is passed too, in ID order: what a derivation
+// depends on is what the checks cover, not what runs here.
+func accumulate(accumulators []health.Accumulator, measurements []health.Measurement, checks map[string]*health.CheckDefinition) ([]health.Measurement, error) {
+	defs := make([]*health.CheckDefinition, 0, len(checks))
+	for _, id := range slices.Sorted(maps.Keys(checks)) {
+		defs = append(defs, checks[id])
+	}
 	var derived []health.Measurement
 	for _, a := range accumulators {
-		out, err := a.Accumulate(measurements)
+		out, err := a.Accumulate(measurements, defs)
 		if err != nil {
 			return nil, fmt.Errorf("accumulator %s: %w", a.Name(), err)
 		}
@@ -330,8 +351,9 @@ func (c *Catalog) requireArchitecture() error {
 	return nil
 }
 
-// Evaluate runs a single check against a typed measurement. It evaluates that
-// check alone, so [health.CheckDefinition.Dependencies] has no effect here.
+// Evaluate runs a single check against a typed measurement, or against what
+// the registered accumulators derive from it. It evaluates that check alone,
+// so [health.CheckDefinition.Dependencies] has no effect here.
 func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVerdict, error) {
 	if err := c.requireArchitecture(); err != nil {
 		return health.CheckVerdict{}, err
@@ -346,7 +368,31 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 	}
 
 	snap := c.snapshotParams()
-	return c.evaluationEngine.EvaluateCheck(cd, m, snap.host, snap.forCheck(checkID))
+	checks, _ := c.batchSnapshot(EvaluationOptions{})
+	c.mu.RLock()
+	accumulators := slices.Clone(c.accumulators)
+	c.mu.RUnlock()
+	derived, err := accumulate(accumulators, []health.Measurement{m}, checks)
+	if err != nil {
+		return health.CheckVerdict{}, err
+	}
+
+	// The check reads m itself or whatever the accumulators derived from it,
+	// whichever carries its signals.
+	var first health.CheckVerdict
+	for i, candidate := range append([]health.Measurement{m}, derived...) {
+		v, err := c.evaluationEngine.EvaluateCheck(cd, candidate, snap.host, snap.forCheck(checkID))
+		if err != nil {
+			return health.CheckVerdict{}, err
+		}
+		if i == 0 {
+			first = v
+		}
+		if !v.Skipped || v.SkipReason != health.NoApplicableMeasurement {
+			return v, nil
+		}
+	}
+	return first, nil
 }
 
 // EvaluateAll runs all checks whose Category matches the provided
@@ -416,7 +462,7 @@ func (c *Catalog) evaluateAllRaw(opts EvaluationOptions, measurements ...health.
 	accumulators := slices.Clone(c.accumulators)
 	c.mu.RUnlock()
 
-	derived, err := accumulate(accumulators, measurements)
+	derived, err := accumulate(accumulators, measurements, checks)
 	if err != nil {
 		return nil, err
 	}

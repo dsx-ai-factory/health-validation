@@ -2,6 +2,7 @@ package catalog_test
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,7 +27,11 @@ func (doublingAccumulator) Outputs() []health.Measurement {
 	return []health.Measurement{doubledMeasurement{}}
 }
 
-func (doublingAccumulator) Accumulate(ms []health.Measurement) ([]health.Measurement, error) {
+func (doublingAccumulator) Inputs() []health.Measurement {
+	return []health.Measurement{node.NodeMeasurement{}}
+}
+
+func (doublingAccumulator) Accumulate(ms []health.Measurement, _ []*health.CheckDefinition) ([]health.Measurement, error) {
 	var out []health.Measurement
 	for _, m := range ms {
 		if n, ok := m.(node.NodeMeasurement); ok {
@@ -40,8 +45,22 @@ type failingAccumulator struct{}
 
 func (failingAccumulator) Name() string                  { return "failing" }
 func (failingAccumulator) Outputs() []health.Measurement { return nil }
-func (failingAccumulator) Accumulate([]health.Measurement) ([]health.Measurement, error) {
+func (failingAccumulator) Inputs() []health.Measurement  { return nil }
+func (failingAccumulator) Accumulate([]health.Measurement, []*health.CheckDefinition) ([]health.Measurement, error) {
 	return nil, errors.New("boom")
+}
+
+// recordingAccumulator remembers the check IDs it was handed.
+type recordingAccumulator struct{ seen *[]string }
+
+func (recordingAccumulator) Name() string                  { return "recording" }
+func (recordingAccumulator) Outputs() []health.Measurement { return nil }
+func (recordingAccumulator) Inputs() []health.Measurement  { return nil }
+func (r recordingAccumulator) Accumulate(_ []health.Measurement, checks []*health.CheckDefinition) ([]health.Measurement, error) {
+	for _, cd := range checks {
+		*r.seen = append(*r.seen, cd.ID)
+	}
+	return nil, nil
 }
 
 func doubledCheck() health.CheckDefinition {
@@ -107,6 +126,74 @@ func TestEvaluateAll_AccumulatorErrorFailsEvaluation(t *testing.T) {
 	_, err := accumulatingCatalog(t, failingAccumulator{}).EvaluateAll(node.NodeMeasurement{})
 	if err == nil || !strings.Contains(err.Error(), "failing") {
 		t.Errorf("err = %v, want an error naming the failing accumulator", err)
+	}
+}
+
+// An accumulator sees every registered check, in ID order, whether or not it
+// runs here: a disabled check still covers what it covers, and one scoped to
+// other architectures covers codes that are not expected on this one.
+func TestEvaluateAll_AccumulatorSeesEveryRegisteredCheck(t *testing.T) {
+	var seen []string
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithDisabledChecks("a_disabled"))
+	cat.MustRegister(doubledCheck())
+	disabled := doubledCheck()
+	disabled.ID = "a_disabled"
+	cat.MustRegister(disabled)
+	hopperOnly := doubledCheck()
+	hopperOnly.ID = "b_hopper_only"
+	hopperOnly.Architectures = []string{"H100"}
+	cat.MustRegister(hopperOnly)
+	if err := cat.RegisterAccumulator(recordingAccumulator{seen: &seen}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := cat.EvaluateAllWithOptions(catalog.EvaluationOptions{}, node.NodeMeasurement{}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"a_disabled", "b_hopper_only", "test_doubled"}; !slices.Equal(seen, want) {
+		t.Errorf("accumulator saw %v, want %v", seen, want)
+	}
+}
+
+// notFailing has the name of failingAccumulator and none of its fault.
+type notFailing struct{ failingAccumulator }
+
+func (notFailing) Accumulate([]health.Measurement, []*health.CheckDefinition) ([]health.Measurement, error) {
+	return nil, nil
+}
+
+// WithAccumulator is how a consumer configures one the catalog ships, so it
+// replaces an accumulator of the same name instead of adding a second.
+func TestWithAccumulator_ReplacesOneOfTheSameName(t *testing.T) {
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"),
+		catalog.WithAccumulator(failingAccumulator{}), catalog.WithAccumulator(notFailing{}))
+	if _, err := cat.EvaluateAll(node.NodeMeasurement{}); err != nil {
+		t.Errorf("EvaluateAll = %v, want the replacement to run, not the original", err)
+	}
+	if err := cat.RegisterAccumulator(failingAccumulator{}); err == nil {
+		t.Error("the name is still free after WithAccumulator; it should be registered once")
+	}
+
+	added := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithAccumulator(failingAccumulator{}))
+	if _, err := added.EvaluateAll(node.NodeMeasurement{}); err == nil {
+		t.Error("WithAccumulator for a new name did not register it")
+	}
+}
+
+// A check reading a derived signal needs the accumulator's inputs collected,
+// since a derived signal cannot be.
+func TestCollectedSignals_MapsDerivedSignalsToTheirInputs(t *testing.T) {
+	cat := accumulatingCatalog(t, doublingAccumulator{})
+	cd := doubledCheck()
+	got := cat.CollectedSignals(&cd)
+	if !slices.Equal(got[health.Node], []string{"gpu_count"}) || len(got) != 1 {
+		t.Errorf("CollectedSignals = %v, want the node measurement's gpu_count", got)
+	}
+
+	plain := health.CheckDefinition{Category: health.Node, RequiredSignals: []string{"gpu_count"}}
+	got = accumulatingCatalog(t).CollectedSignals(&plain)
+	if !slices.Equal(got[health.Node], []string{"gpu_count"}) {
+		t.Errorf("a signal no accumulator derives stands as it is, got %v", got)
 	}
 }
 

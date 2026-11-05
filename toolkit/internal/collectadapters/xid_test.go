@@ -75,8 +75,8 @@ func requireXid(t *testing.T, got, want xid.XidMeasurement) {
 	if len(got.Errors()) != 0 {
 		t.Fatalf("unexpected errors: %v", got.Errors())
 	}
-	gotFields := []any{got.Since, got.XidCounts, got.FatalXidCounts, got.Events, got.EventCount}
-	wantFields := []any{want.Since, want.XidCounts, want.FatalXidCounts, want.Events, want.EventCount}
+	gotFields := []any{got.Since, got.Events}
+	wantFields := []any{want.Since, want.Events}
 	if !reflect.DeepEqual(gotFields, wantFields) {
 		t.Fatalf("measurement:\n got=%+v\nwant=%+v", got, want)
 	}
@@ -116,10 +116,7 @@ func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
 	obs = append(obs, xidInt(xidsignals.GPC, "f", 1), xidInt(xidsignals.TPC, "f", 3), xidInt(xidsignals.SM, "f", 0), xidMarker())
 	got := only[xid.XidMeasurement](t, XID().Build(obs))
 	want := xid.XidMeasurement{
-		Since:          "boot",
-		XidCounts:      map[int64]int64{79: 2, 149: 1, 145: 1, 154: 1, 13: 1},
-		FatalXidCounts: map[int64]int64{149: 1},
-		EventCount:     6,
+		Since: "boot",
 		Events: []xid.XidEvent{
 			{PCIAddress: "0000:01:00", XidCode: 79, Pid: 1234, ProcessName: "python3", Message: "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3, GPU has fallen off the bus."},
 			{PCIAddress: "0000:01:00", XidCode: 79},
@@ -201,6 +198,9 @@ func xidCatalog(t *testing.T) *catalog.Catalog {
 			t.Fatal(err)
 		}
 	}
+	if err := cat.RegisterAccumulator(xid.Accumulator{}); err != nil {
+		t.Fatal(err)
+	}
 	return cat
 }
 
@@ -240,8 +240,12 @@ func TestXIDAdapterMixedTimeoutAndParseError(t *testing.T) {
 
 func TestXIDAdapterFailureCoversDerivedSignals(t *testing.T) {
 	m := only[xid.XidMeasurement](t, XID().Build(nil))
-	failed := m.Errors()[0].FailedSignals()
-	for key := range (xid.XidMeasurement{}).DerivedSignals(health.Host{}) {
+	derived, err := xid.Accumulator{}.Accumulate([]health.Measurement{m}, nil)
+	if err != nil || len(derived) != 1 {
+		t.Fatalf("Accumulate = %v, %v", derived, err)
+	}
+	failed := derived[0].Errors()[0].FailedSignals()
+	for _, key := range xid.DerivedMeasurementSignals() {
 		if !slices.Contains(failed, key) {
 			t.Fatalf("derived signal %q not failed: %v", key, failed)
 		}
@@ -264,8 +268,8 @@ func TestXIDAdapterAgreesWithToMeasurements(t *testing.T) {
 	batch := append(xidEvent("a", 79), xidMarker())
 	direct := only[xid.XidMeasurement](t, observations.ToMeasurements(batch))
 	requireXid(t, only[xid.XidMeasurement](t, XID().Build(batch)), direct)
-	if direct.XidCounts[79] != 1 {
-		t.Fatalf("ToMeasurements counts = %v, want Xid 79", direct.XidCounts)
+	if len(direct.Events) != 1 || direct.Events[0].XidCode != 79 {
+		t.Fatalf("ToMeasurements events = %v, want Xid 79", direct.Events)
 	}
 }
 

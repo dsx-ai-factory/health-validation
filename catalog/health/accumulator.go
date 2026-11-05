@@ -25,13 +25,21 @@ type Accumulator interface {
 	// measurement without running Accumulate.
 	Outputs() []Measurement
 
-	// Accumulate receives every measurement the run collected and returns
-	// what it derives from them, or nothing when its inputs are absent.
+	// Inputs returns a zero value of every measurement type Accumulate
+	// reads. Collection planning reads it to collect what a check needs
+	// when the check requires a signal only an accumulator produces.
+	Inputs() []Measurement
+
+	// Accumulate receives every measurement the run collected and every
+	// check the catalog has registered, disabled ones included, and returns
+	// what it derives, or nothing when its inputs are absent. checks lets a
+	// derivation depend on what the checks cover, such as which event codes
+	// some check declares; it must not be modified.
 	//
 	// An input that failed to collect is the accumulator's to carry
 	// forward: it must return its outputs errored for the signals that
 	// depended on that input, or a check reading them would report PASS
 	// on data nobody observed. The error return is reserved for a fault in
 	// the accumulator itself, and fails the whole evaluation.
-	Accumulate(measurements []Measurement) ([]Measurement, error)
+	Accumulate(measurements []Measurement, checks []*CheckDefinition) ([]Measurement, error)
 }

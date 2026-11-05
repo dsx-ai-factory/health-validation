@@ -94,18 +94,7 @@ func buildXid(obs []*observation.Observation) (xid.XidMeasurement, error) {
 		if err != nil {
 			return xid.XidMeasurement{}, err
 		}
-		if m.XidCounts == nil {
-			m.XidCounts = map[int64]int64{}
-		}
-		m.XidCounts[event.XidCode]++
-		if event.NVLink5 != nil && event.NVLink5.Fatal {
-			if m.FatalXidCounts == nil {
-				m.FatalXidCounts = map[int64]int64{}
-			}
-			m.FatalXidCounts[event.XidCode]++
-		}
 		m.Events = append(m.Events, event)
-		m.EventCount++
 	}
 	return m, nil
 }

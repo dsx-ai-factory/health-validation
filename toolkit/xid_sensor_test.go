@@ -23,13 +23,13 @@ func xidPresenceCheck() health.CheckDefinition {
 		Name:              "Xid Present (test)",
 		Description:       "test-only: any Xid event is critical",
 		Category:          health.Xid,
-		RequiredSignals:   []string{xid.SignalEventCount},
+		RequiredSignals:   []string{xid.SignalXidCounts},
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
 		Rules: []health.Rule{
 			{
-				Expression: "event_count > 0",
+				Expression: "size(xid_counts) > 0",
 				Severity:   health.Critical,
-				Message:    "observed ${event_count} Xid event(s)",
+				Message:    "observed Xid event(s)",
 			},
 		},
 	}
@@ -41,6 +41,9 @@ func xidCatalog() *catalog.Catalog {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 	cat.MustRegister(xidPresenceCheck())
+	if err := cat.RegisterAccumulator(xid.Accumulator{}); err != nil {
+		panic(err)
+	}
 	return cat
 }
 
@@ -68,11 +71,13 @@ func TestXidSensor_Measure_AggregatesEvents(t *testing.T) {
 	if !ok {
 		t.Fatalf("measurement is %T, want xid.XidMeasurement", ms[0])
 	}
-	if m.EventCount != 2 {
-		t.Errorf("EventCount = %d, want 2", m.EventCount)
+	if len(m.Events) != 2 {
+		t.Errorf("events = %d, want 2", len(m.Events))
 	}
-	if got := m.XidCounts[79]; got != 2 {
-		t.Errorf("XidCounts[79] = %d, want 2", got)
+	for _, e := range m.Events {
+		if e.XidCode != 79 {
+			t.Errorf("event code = %d, want 79", e.XidCode)
+		}
 	}
 }
 

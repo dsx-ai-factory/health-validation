@@ -53,15 +53,14 @@ var xidNVLink5RE = regexp.MustCompile(
 		`(\S+)\s+(Fatal|Nonfatal)\s+XC(\d+)\s+i(\d+)\s+Link\s+(-?\d+)` +
 		`(?:\s+\(([^)]*)\))?`)
 
-// ParseXid scans lines for NVRM Xid entries and returns the aggregate
-// measurement for the window described by since (e.g. "boot"). Lines
-// that do not match are skipped. The returned measurement always has a
-// non-nil meaning even with zero events: EventCount is 0 and XidCounts
-// is nil, which a check reads as "no Xid faults observed".
+// ParseXid scans lines for NVRM Xid entries and returns the measurement for
+// the window described by since (e.g. "boot"). Lines that do not match are
+// skipped. The measurement is returned even with zero events, which a check
+// reads as "no Xid faults observed".
 //
-// Every field this parses comes straight from the log line. Reading
-// meaning out of those fields — register bits, the decode table — is
-// the catalog's job, so every source of Xid events shares it.
+// Every field this parses comes straight from the log line. Counting the
+// events and reading meaning out of them — register bits, the decode table —
+// is the catalog's job, so every source of Xid events shares it.
 func ParseXid(since string, lines []string) xid.XidMeasurement {
 	m := xid.XidMeasurement{Since: since}
 	for _, line := range lines {
@@ -77,17 +76,6 @@ func ParseXid(since string, lines []string) xid.XidMeasurement {
 		}
 
 		m.Events = append(m.Events, ev)
-		if m.XidCounts == nil {
-			m.XidCounts = make(map[int64]int64)
-		}
-		m.XidCounts[ev.XidCode]++
-		m.EventCount++
-		if ev.NVLink5 != nil && ev.NVLink5.Fatal {
-			if m.FatalXidCounts == nil {
-				m.FatalXidCounts = make(map[int64]int64)
-			}
-			m.FatalXidCounts[ev.XidCode]++
-		}
 	}
 	return m
 }

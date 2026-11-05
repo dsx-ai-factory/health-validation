@@ -129,22 +129,14 @@ func TestFromMeasurementsTargetsNodeForHostWideMeasurements(t *testing.T) {
 
 func TestFromMeasurementsEncodesCollectionsAsJSON(t *testing.T) {
 	bySignal := exportBySignal(t, xid.XidMeasurement{
-		XidCounts: map[int64]int64{79: 2},
-		Events:    []xid.XidEvent{{}},
+		Events: []xid.XidEvent{{XidCode: 79}, {XidCode: 79}},
 	})
 
-	var counts map[string]int64
-	if err := json.Unmarshal([]byte(bySignal["xid.xid_counts"].GetValue().GetStringValue()), &counts); err != nil || counts["79"] != 2 {
-		t.Fatalf("xid_counts = %q (%v)", bySignal["xid.xid_counts"].GetValue().GetStringValue(), err)
-	}
 	var events []map[string]any
-	if err := json.Unmarshal([]byte(bySignal["xid.events"].GetValue().GetStringValue()), &events); err != nil || len(events) != 1 {
+	if err := json.Unmarshal([]byte(bySignal["xid.events"].GetValue().GetStringValue()), &events); err != nil || len(events) != 2 {
 		t.Fatalf("events = %q (%v)", bySignal["xid.events"].GetValue().GetStringValue(), err)
 	}
-	// An unset map or list is an empty collection, not JSON null.
-	if got := bySignal["xid.fatal_xid_counts"].GetValue().GetStringValue(); got != "{}" {
-		t.Fatalf("fatal_xid_counts = %q, want {}", got)
-	}
+	// An unset list is an empty collection, not JSON null.
 	if got := exportBySignal(t, xid.XidMeasurement{})["xid.events"].GetValue().GetStringValue(); got != "[]" {
 		t.Fatalf("events = %q, want []", got)
 	}

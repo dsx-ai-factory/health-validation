@@ -11,18 +11,28 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/xid"
 )
 
+// derived is the counts the catalog derives from m's events.
+func derived(t *testing.T, m catalogxid.XidMeasurement) catalogxid.XidDerivedMeasurement {
+	t.Helper()
+	out, err := catalogxid.Accumulator{}.Accumulate([]health.Measurement{m}, nil)
+	if err != nil || len(out) != 1 {
+		t.Fatalf("Accumulate = %v, %v", out, err)
+	}
+	return out[0].(catalogxid.XidDerivedMeasurement)
+}
+
 func TestParseXid_FullLine(t *testing.T) {
 	m := xid.ParseXid("boot", []string{
 		"NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3",
 	})
 
-	if m.EventCount != 1 {
-		t.Fatalf("EventCount = %d, want 1", m.EventCount)
+	if len(m.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(m.Events))
 	}
 	if m.Since != "boot" {
 		t.Errorf("Since = %q, want boot", m.Since)
 	}
-	if got := m.XidCounts[79]; got != 1 {
+	if got := derived(t, m).XidCounts[79]; got != 1 {
 		t.Errorf("XidCounts[79] = %d, want 1", got)
 	}
 
@@ -46,8 +56,8 @@ func TestParseXid_CodeOnly(t *testing.T) {
 		"NVRM: Xid (PCI:0000:01:00): 31, Ch 0000000a, intr 10000000",
 	})
 
-	if m.EventCount != 1 {
-		t.Fatalf("EventCount = %d, want 1", m.EventCount)
+	if len(m.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(m.Events))
 	}
 	ev := m.Events[0]
 	if ev.XidCode != 31 {
@@ -68,13 +78,13 @@ func TestParseXid_RepeatedCodeIncrementsCount(t *testing.T) {
 		"NVRM: Xid (PCI:0000:03:00): 31, pid=3, name=c",
 	})
 
-	if m.EventCount != 3 {
-		t.Fatalf("EventCount = %d, want 3", m.EventCount)
+	if len(m.Events) != 3 {
+		t.Fatalf("events = %d, want 3", len(m.Events))
 	}
-	if got := m.XidCounts[79]; got != 2 {
+	if got := derived(t, m).XidCounts[79]; got != 2 {
 		t.Errorf("XidCounts[79] = %d, want 2", got)
 	}
-	if got := m.XidCounts[31]; got != 1 {
+	if got := derived(t, m).XidCounts[31]; got != 1 {
 		t.Errorf("XidCounts[31] = %d, want 1", got)
 	}
 	if len(m.Events) != 3 {
@@ -87,8 +97,8 @@ func TestParseXid_WithJournalPrefix(t *testing.T) {
 		"Jun 09 12:00:00 node1 kernel: NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
 	})
 
-	if m.EventCount != 1 {
-		t.Fatalf("EventCount = %d, want 1", m.EventCount)
+	if len(m.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(m.Events))
 	}
 	ev := m.Events[0]
 	if ev.XidCode != 48 || ev.ProcessName != "cuda-app" || ev.PCIAddress != "0000:65:00" {
@@ -119,8 +129,8 @@ func TestParseXid_Message(t *testing.T) {
 	}
 	for _, test := range tests {
 		m := xid.ParseXid("boot", []string{test.line})
-		if m.EventCount != 1 {
-			t.Fatalf("%q: EventCount = %d, want 1", test.line, m.EventCount)
+		if len(m.Events) != 1 {
+			t.Fatalf("%q: events = %d, want 1", test.line, len(m.Events))
 		}
 		if got := m.Events[0].Message; got != test.want {
 			t.Errorf("%q: Message = %q, want %q", test.line, got, test.want)
@@ -136,8 +146,8 @@ func TestParseXid_NonMatchingLinesSkipped(t *testing.T) {
 		"NVRM: Xid (PCI:0000:01:00): 13, pid=42, name=worker",
 	})
 
-	if m.EventCount != 1 {
-		t.Fatalf("EventCount = %d, want 1 (only the Xid line)", m.EventCount)
+	if len(m.Events) != 1 {
+		t.Fatalf("events = %d, want 1 (only the Xid line)", len(m.Events))
 	}
 	if m.Events[0].XidCode != 13 {
 		t.Errorf("XidCode = %d, want 13", m.Events[0].XidCode)
@@ -149,13 +159,13 @@ func TestParseXid_NVLink5Fatal(t *testing.T) {
 		"NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000 0x00000001 0x00000002)",
 	})
 
-	if m.EventCount != 1 {
-		t.Fatalf("EventCount = %d, want 1", m.EventCount)
+	if len(m.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(m.Events))
 	}
-	if got := m.XidCounts[149]; got != 1 {
+	if got := derived(t, m).XidCounts[149]; got != 1 {
 		t.Errorf("XidCounts[149] = %d, want 1", got)
 	}
-	if got := m.FatalXidCounts[149]; got != 1 {
+	if got := derived(t, m).FatalXidCounts[149]; got != 1 {
 		t.Errorf("FatalXidCounts[149] = %d, want 1", got)
 	}
 
@@ -194,14 +204,14 @@ func TestParseXid_NVLink5Nonfatal(t *testing.T) {
 		"NVRM: Xid (PCI:0000:5f:00): 145, RLW_REMAP Nonfatal XC0 i0 Link 02",
 	})
 
-	if m.EventCount != 1 {
-		t.Fatalf("EventCount = %d, want 1", m.EventCount)
+	if len(m.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(m.Events))
 	}
-	if got := m.XidCounts[145]; got != 1 {
+	if got := derived(t, m).XidCounts[145]; got != 1 {
 		t.Errorf("XidCounts[145] = %d, want 1", got)
 	}
-	if len(m.FatalXidCounts) != 0 {
-		t.Errorf("FatalXidCounts = %v, want empty (Nonfatal event)", m.FatalXidCounts)
+	if len(derived(t, m).FatalXidCounts) != 0 {
+		t.Errorf("FatalXidCounts = %v, want empty (Nonfatal event)", derived(t, m).FatalXidCounts)
 	}
 
 	ev := m.Events[0]
@@ -232,16 +242,16 @@ func TestParseXid_NonNVLink5CodesUnaffected(t *testing.T) {
 	if m.Events[0].NVLink5 != nil {
 		t.Errorf("NVLink5 = %+v, want nil for a non-144-150 code", m.Events[0].NVLink5)
 	}
-	if len(m.FatalXidCounts) != 0 {
-		t.Errorf("FatalXidCounts = %v, want empty", m.FatalXidCounts)
+	if len(derived(t, m).FatalXidCounts) != 0 {
+		t.Errorf("FatalXidCounts = %v, want empty", derived(t, m).FatalXidCounts)
 	}
 }
 
 func TestParseXid_NoLines_EmptyMeasurement(t *testing.T) {
 	m := xid.ParseXid("boot", nil)
 
-	if m.EventCount != 0 {
-		t.Errorf("EventCount = %d, want 0", m.EventCount)
+	if len(m.Events) != 0 {
+		t.Errorf("events = %d, want 0", len(m.Events))
 	}
 	if len(m.Events) != 0 {
 		t.Errorf("len(Events) = %d, want 0", len(m.Events))
@@ -311,8 +321,8 @@ func TestParseXid_NVLink5_RealWorldVariations(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			m := xid.ParseXid("boot", []string{tc.line})
-			if m.EventCount != 1 {
-				t.Fatalf("EventCount = %d, want 1", m.EventCount)
+			if len(m.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(m.Events))
 			}
 			ev := m.Events[0]
 			if ev.NVLink5 == nil {
@@ -353,10 +363,10 @@ func TestParseXid_RecoveryAction(t *testing.T) {
 		"NVRM: Xid (PCI:0019:01:00): 154, GPU recovery action changed from 0x4 (Drain and Reset) to 0x1 (GPU Reset Required)",
 	})
 
-	if m.EventCount != 2 {
-		t.Fatalf("EventCount = %d, want 2", m.EventCount)
+	if len(m.Events) != 2 {
+		t.Fatalf("events = %d, want 2", len(m.Events))
 	}
-	if got := m.XidCounts[154]; got != 2 {
+	if got := derived(t, m).XidCounts[154]; got != 2 {
 		t.Errorf("XidCounts[154] = %d, want 2", got)
 	}
 
@@ -436,8 +446,8 @@ func TestParseXid_RecoveryActionWithProcess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := xid.ParseXid("boot", []string{tt.line})
-			if m.EventCount != 1 {
-				t.Fatalf("EventCount = %d, want 1", m.EventCount)
+			if len(m.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(m.Events))
 			}
 			ev := m.Events[0]
 			if ev.XidCode != 154 || ev.PCIAddress != "0019:01:00" {

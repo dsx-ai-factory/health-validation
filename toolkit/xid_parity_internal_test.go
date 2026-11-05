@@ -128,7 +128,7 @@ func onlyXid(t *testing.T, measurements []health.Measurement) xid.XidMeasurement
 // xidStored lists the stored fields; comparing whole measurements would also
 // compare their errors.
 func xidStored(m xid.XidMeasurement) []any {
-	return []any{m.Events, m.XidCounts, m.FatalXidCounts, m.EventCount, m.Since}
+	return []any{m.Events, m.Since}
 }
 
 func failedXidSignals(m xid.XidMeasurement) []string {
@@ -147,6 +147,9 @@ func xidParityCatalog(t *testing.T) *catalog.Catalog {
 		if err := cat.Register(check); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := cat.RegisterAccumulator(xid.Accumulator{}); err != nil {
+		t.Fatal(err)
 	}
 	return cat
 }
@@ -314,11 +317,11 @@ func TestXidCollectDocumentedDivergences(t *testing.T) {
 	counts := func(t *testing.T, line string, code int64) {
 		t.Helper()
 		f := xidParityFixture{entries: xidLines(line)}
-		if legacy := legacyXidMeasurement(ctx, t, f); legacy.EventCount != 0 {
-			t.Fatalf("legacy counted %v", legacy.XidCounts)
+		if legacy := legacyXidMeasurement(ctx, t, f); len(legacy.Events) != 0 {
+			t.Fatalf("legacy parsed %v", legacy.Events)
 		}
-		if bridged := collectXidMeasurement(ctx, t, f); bridged.XidCounts[code] != 1 {
-			t.Fatalf("collect counts = %v, want Xid %d", bridged.XidCounts, code)
+		if bridged := collectXidMeasurement(ctx, t, f); len(bridged.Events) != 1 || bridged.Events[0].XidCode != code {
+			t.Fatalf("collect events = %v, want one Xid %d", bridged.Events, code)
 		}
 	}
 	event := func(t *testing.T, line string) (xid.XidEvent, xid.XidEvent) {

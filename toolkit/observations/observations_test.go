@@ -508,8 +508,8 @@ func TestToMeasurementsRejectsMixedXidForms(t *testing.T) {
 		Outcome: &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_StringValue{StringValue: xidsignals.WindowBoot}}},
 	}
 	field := &observation.Observation{
-		SignalId: "xid.event_count", Source: "toolkit.xid", Target: observation.NodeTarget(""), ObservedAt: timestamppb.Now(),
-		Outcome: &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_IntValue{IntValue: 0}}},
+		SignalId: "xid.since", Source: "toolkit.xid", Target: observation.NodeTarget(""), ObservedAt: timestamppb.Now(),
+		Outcome: &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_StringValue{StringValue: xidsignals.WindowBoot}}},
 	}
 	var xids []xid.XidMeasurement
 	for _, m := range ToMeasurements([]*observation.Observation{marker, field}) {

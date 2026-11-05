@@ -65,7 +65,7 @@ func TestEvaluate_SkipDisabled(t *testing.T) {
 	)
 
 	v, err := cat.Evaluate("gpu_xid_79", xid.XidMeasurement{
-		XidCounts: map[int64]int64{79: 1}, Since: "boot", EventCount: 1,
+		Events: []xid.XidEvent{{XidCode: 79}}, Since: "boot",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -171,13 +171,11 @@ func TestEvaluateAll_RoutesByRequiredSignals_NoCrossMeasurementSkips(t *testing.
 // architecture-inapplicable checks skip, and every other domain's checks
 // are visible as SENSOR_MISSING skips instead of vanishing from the output.
 func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
-	// Xid 79 is CRITICAL; the measurement carries all xid signals. The full
-	// catalog also holds gpu/node/nvlink/cpu checks in other categories.
+	// Xid 79 is CRITICAL. The full catalog also holds gpu/node/nvlink/cpu
+	// checks in other categories.
 	m := xid.XidMeasurement{
-		XidCounts:  map[int64]int64{79: 1},
-		EventCount: 1,
-		Since:      "boot",
-		Events:     []xid.XidEvent{{XidCode: 79}},
+		Since:  "boot",
+		Events: []xid.XidEvent{{XidCode: 79}},
 	}
 
 	cat := catalog.New(
@@ -922,10 +920,8 @@ func TestEvaluateAll_NodeVerdict(t *testing.T) {
 
 	// Xid 79 ("GPU has fallen off the bus") is a CRITICAL-severity check.
 	m := xid.XidMeasurement{
-		XidCounts:  map[int64]int64{79: 1},
-		EventCount: 1,
-		Since:      "boot",
-		Events:     []xid.XidEvent{{XidCode: 79}},
+		Since:  "boot",
+		Events: []xid.XidEvent{{XidCode: 79}},
 	}
 
 	nv, err := cat.EvaluateAll(m)
@@ -1014,7 +1010,7 @@ func TestEvaluateAll_HonorsDisabledChecks(t *testing.T) {
 	)
 
 	nv, err := cat.EvaluateAll(xid.XidMeasurement{
-		XidCounts: map[int64]int64{79: 1}, Since: "boot", EventCount: 1,
+		Events: []xid.XidEvent{{XidCode: 79}}, Since: "boot",
 	})
 	if err != nil {
 		t.Fatal(err)

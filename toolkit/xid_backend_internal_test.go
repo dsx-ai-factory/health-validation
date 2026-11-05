@@ -55,7 +55,7 @@ func TestJournalctlBackendMeasure(t *testing.T) {
 		name          string
 		wantErrorText string
 		fake          fakeJournal
-		wantEvents    int64
+		wantEvents    int
 		wantErrored   bool
 		emptyRead     bool
 	}{
@@ -139,8 +139,8 @@ func TestJournalctlBackendMeasure(t *testing.T) {
 			if !ok {
 				t.Fatalf("measurement type = %T, want xid.XidMeasurement", ms[0])
 			}
-			if measurement.EventCount != tt.wantEvents {
-				t.Errorf("event count = %d, want %d", measurement.EventCount, tt.wantEvents)
+			if len(measurement.Events) != tt.wantEvents {
+				t.Errorf("event count = %d, want %d", len(measurement.Events), tt.wantEvents)
 			}
 		})
 	}

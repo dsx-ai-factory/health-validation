@@ -437,7 +437,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	sensors, err := a.sensors(cycle, requiredFor(runnable), xidJournal)
+	sensors, err := a.sensors(cycle, requiredFor(cat, runnable), xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError

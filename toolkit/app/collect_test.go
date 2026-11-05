@@ -1203,7 +1203,7 @@ func TestCollectSensorsRequestsOnlyRunnableCheckSignals(t *testing.T) {
 			for i := range test.runnable {
 				runnable = append(runnable, &test.runnable[i])
 			}
-			sensors, err := New().collectSensors(time.Second, []collect.Sensor{source}, []CollectAdapter{collectadapters.CPU()}, requiredFor(runnable))
+			sensors, err := New().collectSensors(time.Second, []collect.Sensor{source}, []CollectAdapter{collectadapters.CPU()}, requiredFor(catalog.New(), runnable))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1236,11 +1236,12 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 				fed[s] = true
 			}
 		}
-		for _, cd := range catalog.New().List(catalog.Filter{}) {
+		cat := catalog.New()
+		for _, cd := range cat.List(catalog.Filter{}) {
 			if cd.Category != adapter.Category() {
 				continue
 			}
-			for _, s := range cd.RequiredSignals {
+			for _, s := range cat.CollectedSignals(cd)[adapter.Category()] {
 				if !fed[s] {
 					t.Errorf("built-in check %s requires %q, which adapter %q does not feed", cd.ID, s, adapter.Name())
 				}
@@ -1265,7 +1266,7 @@ func TestCollectSensorsUncollectedSiblingSignalLeavesCheckPassing(t *testing.T) 
 		"sys/devices/system/cpu/possible": {Data: []byte("0-143\n")},
 		"sys/devices/system/cpu/online":   {Data: []byte("0-143\n")},
 	}
-	sensors, err := New().collectSensors(time.Second, []collect.Sensor{cpusensor.New(sysfs)}, []CollectAdapter{collectadapters.CPU()}, requiredFor(runnable))
+	sensors, err := New().collectSensors(time.Second, []collect.Sensor{cpusensor.New(sysfs)}, []CollectAdapter{collectadapters.CPU()}, requiredFor(cat, runnable))
 	if err != nil {
 		t.Fatal(err)
 	}

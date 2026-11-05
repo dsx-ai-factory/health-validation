@@ -1084,13 +1084,15 @@ func TestXidTimeFlags(t *testing.T) {
 						t.Fatal(err)
 					}
 					for _, o := range batch.GetObservations() {
-						if o.GetSignalId() == "xid.xid_counts" {
-							var counts map[int64]int64
-							if err := json.Unmarshal([]byte(o.GetValue().GetStringValue()), &counts); err != nil {
+						if o.GetSignalId() == "xid.events" {
+							var events []struct {
+								XidCode int64 `json:"xid_code"`
+							}
+							if err := json.Unmarshal([]byte(o.GetValue().GetStringValue()), &events); err != nil {
 								t.Fatal(err)
 							}
-							for code, count := range counts {
-								found[code] = count > 0
+							for _, e := range events {
+								found[e.XidCode] = true
 							}
 						}
 					}

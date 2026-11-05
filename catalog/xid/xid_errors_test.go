@@ -13,7 +13,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/catalog/internal/scope"
+	"github.com/dsx-ai-factory/health-validation/catalog/internal/findings"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
@@ -26,6 +26,8 @@ func xidCatalogFor(t *testing.T, architecture string, opts ...catalog.Option) *c
 	defaults := []catalog.Option{
 		catalog.WithArchitecture(architecture),
 		catalog.WithExecutionContext(health.OperatorInfra),
+		// A test's own WithAccumulator, applied after this one, replaces it.
+		catalog.WithAccumulator(xid.Accumulator{}),
 	}
 	cat := catalog.NewEmpty(append(defaults, opts...)...)
 	for _, cd := range xid.Checks() {
@@ -49,16 +51,11 @@ func occurrencesOverride(checkID string, occurrences int64) catalog.Option {
 // measurementFor builds an XidMeasurement directly from raw Xid codes —
 // the catalog-native way, with no dmesg parsing. Parsing "NVRM: Xid …"
 // log lines is the toolkit's concern (toolkit/xid.ParseXid) and is tested
-// there; the catalog only needs the aggregated XidCounts/EventCount.
+// there; the catalog counts the events itself.
 func measurementFor(codes ...int64) xid.XidMeasurement {
 	m := xid.XidMeasurement{Since: "boot"}
 	for _, code := range codes {
 		m.Events = append(m.Events, xid.XidEvent{PCIAddress: "0000:01:00", XidCode: code, Pid: 1, ProcessName: "app"})
-		if m.XidCounts == nil {
-			m.XidCounts = make(map[int64]int64)
-		}
-		m.XidCounts[code]++
-		m.EventCount++
 	}
 	return m
 }
@@ -435,20 +432,14 @@ func TestXidErrors_Xid151IsCritical(t *testing.T) {
 // event (144-150), the way toolkit/xid.ParseXid would after decoding the
 // extended Fatal/Nonfatal log format.
 func nvlink5MeasurementFor(code int64, fatal bool) xid.XidMeasurement {
-	m := xid.XidMeasurement{
-		Since:     "boot",
-		XidCounts: map[int64]int64{code: 1},
+	return xid.XidMeasurement{
+		Since: "boot",
 		Events: []xid.XidEvent{{
 			PCIAddress: "0000:01:00",
 			XidCode:    code,
 			NVLink5:    &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", Fatal: fatal, Link: 8},
 		}},
-		EventCount: 1,
 	}
-	if fatal {
-		m.FatalXidCounts = map[int64]int64{code: 1}
-	}
-	return m
 }
 
 func TestXidErrors_NVLink5_FatalIsCritical(t *testing.T) {
@@ -510,8 +501,6 @@ func TestXidErrors_NVLink5_FatalIsNotAlsoNonfatal(t *testing.T) {
 
 func TestXidErrors_NVLink5_FatalAndNonfatalReportsBoth(t *testing.T) {
 	m := nvlink5MeasurementFor(149, true)
-	m.XidCounts[149] = 2
-	m.EventCount = 2
 	m.Events = append(m.Events, xid.XidEvent{
 		PCIAddress: "0000:01:00",
 		XidCode:    149,
@@ -539,8 +528,6 @@ func TestXidErrors_NVLink5_FatalAndNonfatalReportsBoth(t *testing.T) {
 
 func TestXidErrors_NVLink5_OccurrencesCountFatalAndNonfatalSeparately(t *testing.T) {
 	m := nvlink5MeasurementFor(149, true)
-	m.XidCounts[149] = 2
-	m.EventCount = 2
 	m.Events = append(m.Events, xid.XidEvent{
 		PCIAddress: "0000:01:00",
 		XidCode:    149,
@@ -560,9 +547,6 @@ func TestXidErrors_NVLink5_OccurrencesCountFatalAndNonfatalSeparately(t *testing
 		t.Errorf("one Fatal plus one Nonfatal severity = %v, want PASS", v.Severity)
 	}
 
-	m.XidCounts[149] = 3
-	m.FatalXidCounts[149] = 2
-	m.EventCount = 3
 	m.Events = append(m.Events, xid.XidEvent{
 		PCIAddress: "0000:01:00",
 		XidCode:    149,
@@ -583,8 +567,6 @@ func TestXidErrors_NVLink5_OccurrencesCountFatalAndNonfatalSeparately(t *testing
 
 func TestXidErrors_NVLink5_OccurrencesThresholdsCanBeOverriddenIndependently(t *testing.T) {
 	m := nvlink5MeasurementFor(149, true)
-	m.XidCounts[149] = 2
-	m.EventCount = 2
 	m.Events = append(m.Events, xid.XidEvent{
 		PCIAddress: "0000:01:00",
 		XidCode:    149,
@@ -660,9 +642,8 @@ func intrInfoForSubXidCode(subcode string) string {
 // NETIR_LINK_EVT/NETIR_LINK_DOWN event carrying the given subcode, the way
 // toolkit/xid.ParseXid would after decoding the extended log format.
 func nvlink5SubXidCodeMeasurementFor(subcode string, fatal bool) xid.XidMeasurement {
-	m := xid.XidMeasurement{
-		Since:     "boot",
-		XidCounts: map[int64]int64{149: 1},
+	return xid.XidMeasurement{
+		Since: "boot",
 		Events: []xid.XidEvent{{
 			PCIAddress: "0000:01:00",
 			XidCode:    149,
@@ -673,12 +654,7 @@ func nvlink5SubXidCodeMeasurementFor(subcode string, fatal bool) xid.XidMeasurem
 				Link:         8,
 			},
 		}},
-		EventCount: 1,
 	}
-	if fatal {
-		m.FatalXidCounts = map[int64]int64{149: 1}
-	}
-	return m
 }
 
 func TestXidErrors_NVLink5SubXidCode_Critical(t *testing.T) {
@@ -734,9 +710,6 @@ func TestXidErrors_NVLink5SubXidCode_OccurrencesOverride(t *testing.T) {
 	}
 
 	m.Events = append(m.Events, m.Events[0])
-	m.XidCounts[149] = 2
-	m.FatalXidCounts[149] = 2
-	m.EventCount = 2
 	nv, err = cat.EvaluateAll(m)
 	if err != nil {
 		t.Fatal(err)
@@ -838,32 +811,19 @@ func TestXidErrors_WorstSeverityWins(t *testing.T) {
 }
 
 func TestXidErrors_EveryCheckReportsItsOwnEvents(t *testing.T) {
-	// No check is on code 9999, so every built-in check scopes away each
-	// signal it reports; a check the measurement did not recognise would
-	// get them back unchanged. Like evaluation, each check is given only
-	// its required signals.
-	foreign := map[string]any{
-		xid.SignalEvents:           []xid.XidEvent{{PCIAddress: "0000:01:00", XidCode: 9999}},
-		xid.SignalXidCounts:        map[int64]int64{9999: 1},
-		xid.SignalFatalXidCounts:   map[int64]int64{9999: 1},
-		xid.SignalSubXidCodeCounts: map[string]int64{"9999.1": 1},
+	// No check is on code 9999, so every check reports nothing of it. A check
+	// the catalog did not know the codes of would report xid_counts, 9999
+	// included.
+	nv, err := xidCatalog(t).EvaluateAll(measurementFor(9999))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, cd := range xid.Checks() {
-		if !slices.Contains(cd.RequiredSignals, xid.SignalEvents) {
-			t.Errorf("%s RequiredSignals = %v, want %s included", cd.ID, cd.RequiredSignals, xid.SignalEvents)
-		}
-		if cd.ID == "gpu_xid_unknown" || cd.ID == "gpu_xid_informational" {
+	for _, v := range nv.CheckResults {
+		if v.CheckID == "gpu_xid_unknown" || v.CheckID == "gpu_xid_informational" {
 			continue // their own events are the codes no check is on; see catch_all_test.go
 		}
-		observed := map[string]any{}
-		for _, name := range cd.RequiredSignals {
-			observed[name] = foreign[name]
-		}
-		scoped := xid.XidMeasurement{}.ScopeObservedValues(scope.Request{CheckID: cd.ID, Observed: observed})
-		for name, value := range scoped {
-			if got, err := json.Marshal(value); err != nil || string(got) != "null" {
-				t.Errorf("%s %s = %s, want null", cd.ID, name, got)
-			}
+		if len(v.ObservedValues) != 0 {
+			t.Errorf("%s observed values = %v, want none", v.CheckID, v.ObservedValues)
 		}
 	}
 }
@@ -894,46 +854,48 @@ func TestXidErrors_VerdictScopesAndGroupsEvents(t *testing.T) {
 		Message: "NVRM: Xid (PCI:0000:89:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
 	}
 	m := xid.XidMeasurement{
-		Since:          "boot",
-		XidCounts:      map[int64]int64{13: 3, 48: 1, 149: 1, 154: 1},
-		FatalXidCounts: map[int64]int64{149: 1},
-		Events:         []xid.XidEvent{unit, esr, unit, ecc, link, recovery},
-		EventCount:     6,
+		Since:  "boot",
+		Events: []xid.XidEvent{unit, esr, unit, ecc, link, recovery},
 	}
 	nv, err := xidCatalog(t).EvaluateAll(m)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	grouped := func(e xid.XidEvent, count int64) xid.XidEvent {
-		e.Count = count
-		return e
+	group := func(e xid.XidEvent, count int64) xid.EventGroup {
+		return xid.EventGroup{XidEvent: e, Count: count}
+	}
+	// finding is what a verdict reports for one code: the codes it answers to,
+	// how many events, and those events grouped by line.
+	finding := func(count int64, codes []string, groups ...xid.EventGroup) findings.Finding {
+		return findings.Finding{Codes: codes, Count: count, Evidence: groups}
 	}
 	tests := []struct {
 		want    map[string]any
 		checkID string
 	}{
 		{checkID: "gpu_xid_13", want: map[string]any{
-			"events":     []xid.XidEvent{grouped(unit, 2), grouped(esr, 1)},
-			"xid_counts": map[int64]int64{13: 3},
+			"error_codes": []string{"13"},
+			"findings":    []findings.Finding{finding(3, []string{"13"}, group(unit, 2), group(esr, 1))},
 		}},
 		{checkID: "gpu_xid_48", want: map[string]any{
-			"events":     []xid.XidEvent{grouped(ecc, 1)},
-			"xid_counts": map[int64]int64{48: 1},
+			"error_codes": []string{"48"},
+			"findings":    []findings.Finding{finding(1, []string{"48"}, group(ecc, 1))},
 		}},
+		// A subtype event answers to its code and to its subtype, so both
+		// checks report it.
 		{checkID: "gpu_xid_149", want: map[string]any{
-			"events":           []xid.XidEvent{grouped(link, 1)},
-			"xid_counts":       map[int64]int64{149: 1},
-			"fatal_xid_counts": map[int64]int64{149: 1},
+			"error_codes": []string{"149"},
+			"findings":    []findings.Finding{finding(1, []string{"149", "149.4"}, group(link, 1))},
 		}},
 		{checkID: "gpu_xid_149_4", want: map[string]any{
-			"events":              []xid.XidEvent{grouped(link, 1)},
-			"sub_xid_code_counts": map[string]int64{"149.4": 1},
+			"error_codes": []string{"149.4"},
+			"findings":    []findings.Finding{finding(1, []string{"149", "149.4"}, group(link, 1))},
 		}},
 		{checkID: "gpu_xid_154", want: map[string]any{
-			"events":     []xid.XidEvent{grouped(recovery, 1)},
-			"xid_counts": map[int64]int64{154: 1},
+			"error_codes": []string{"154"},
+			"findings":    []findings.Finding{finding(1, []string{"154"}, group(recovery, 1))},
 		}},
-		{checkID: "gpu_xid_79", want: map[string]any{"events": nil, "xid_counts": nil}},
+		{checkID: "gpu_xid_79", want: map[string]any{}},
 	}
 	for _, test := range tests {
 		v, ok := checkResult(nv, test.checkID)

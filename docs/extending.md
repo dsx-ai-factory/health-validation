@@ -238,6 +238,39 @@ An `AdjustableThreshold` must declare at least one bound. That category promises
 operators a documented tunable range; without a bound it is indistinguishable
 from `DefaultThreshold`.
 
+## Custom Xid checks: say which codes they cover
+
+An Xid check fires on its own rules over the signals the catalog derives from
+the node's Xid events (`xid_counts` and the others on `xid.XidDerivedMeasurement`),
+so a check on Xid 179 works as it is. The catalog does not know it covers 179,
+though: `gpu_xid_unknown` also reports that code (a WARNING with the `monitor`
+state and no drain; a code on the catalog's no-resolution list is reported by
+`gpu_xid_informational` as INFO instead), and your check's verdict carries its
+`RequiredSignals` instead of only its own events.
+
+Name the codes when you build the catalog. The claim is keyed by your check's
+ID, and nothing is added to the check definition:
+
+```go
+cat := catalog.New(catalog.WithAccumulator(xid.Accumulator{
+	Claims: map[string][]string{"site_xid_179": {"179"}}, // or "149.4" for an NVLink5 subtype
+}))
+cat.MustRegister(mychecks.Xid179())
+```
+
+With the claim, the code stays out of the catch-alls and the verdict reports
+`error_codes` and the `findings` for those codes, grouped by driver line. The
+catalog does not check a claim against your rules, so keep the two in step.
+
+A claim stands whether or not its check runs on the node: a code outside the
+architectures your check lists is not expected there. An ID that is not a
+registered check claims nothing, and a check you disable still covers its codes.
+
+`catalog.New()` registers the Xid accumulator that derives those signals. A
+catalog built with `catalog.NewEmpty()` needs
+`catalog.WithAccumulator(xid.Accumulator{})` as well as the checks, or no Xid
+check has anything to read.
+
 ## Getting your signals collected (demonstration wiring — subject to change)
 
 > The mechanics in this section use the toolkit's sensor/backend layer, which is

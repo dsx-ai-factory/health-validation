@@ -1,41 +1,50 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package xid defines the measurement type for NVRM Xid errors parsed
+// Package xid defines the measurement types for NVRM Xid errors parsed
 // from the system journal. Xid errors are GPU faults the NVIDIA driver
-// logs to the kernel ring buffer / syslog; a sensor collects them and
-// the catalog evaluates the aggregate against GPU checks.
+// logs to the kernel ring buffer / syslog. A sensor reports the events it
+// read as an [XidMeasurement]; the catalog's [Accumulator] derives what the
+// checks read from them as an [XidDerivedMeasurement].
 package xid
 
 import (
 	"slices"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/internal/findings"
 )
 
-// Xid signal field names. These are the keys used in CEL rule
-// expressions and must match the RequiredSignals declared in checks
-// that consume Xid measurements.
+// Signals an [XidMeasurement] carries: what a sensor observed.
 const (
-	SignalEvents                 = "events"
+	SignalEvents = "events"
+	SignalSince  = "since"
+)
+
+// Signals an [XidDerivedMeasurement] carries. These are the keys used in CEL
+// rule expressions and must match the RequiredSignals declared in the checks.
+const (
 	SignalXidCounts              = "xid_counts"
 	SignalFatalXidCounts         = "fatal_xid_counts"
 	SignalSubXidCodeCounts       = "sub_xid_code_counts"
 	SignalUnknownXidCounts       = "unknown_xid_counts"
 	SignalInformationalXidCounts = "informational_xid_counts"
-	SignalSince                  = "since"
-	SignalEventCount             = "event_count"
+	SignalEvidence               = findings.Signal
+	SignalUnknownFindings        = "unknown_findings"
+	SignalInformationalFindings  = "informational_findings"
 )
 
-var measurementSignals = []string{
-	SignalEvents,
+var measurementSignals = []string{SignalEvents, SignalSince}
+
+var derivedMeasurementSignals = []string{
 	SignalXidCounts,
 	SignalFatalXidCounts,
 	SignalSubXidCodeCounts,
 	SignalUnknownXidCounts,
 	SignalInformationalXidCounts,
-	SignalSince,
-	SignalEventCount,
+	SignalEvidence,
+	SignalUnknownFindings,
+	SignalInformationalFindings,
 }
 
 // MeasurementSignals lists every signal an XidMeasurement carries.
@@ -45,6 +54,10 @@ var measurementSignals = []string{
 // The returned slice is a copy.
 func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 
+// DerivedMeasurementSignals lists every signal an XidDerivedMeasurement
+// carries. The returned slice is a copy.
+func DerivedMeasurementSignals() []string { return slices.Clone(derivedMeasurementSignals) }
+
 // XidEvent is a single parsed "NVRM: Xid …" log line. Message is the
 // line from its "NVRM: Xid" marker onward, as the driver logged it. Pid
 // and ProcessName are populated only when the driver attributed the
@@ -53,10 +66,6 @@ func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 // carries a sub-component and severity instead of pid/name. GPC, TPC,
 // and SM are the graphics unit an Xid 13 exception names, all nil when
 // the line does not name one.
-//
-// Count is set only in verdict output, where identical events are
-// grouped (see [XidMeasurement.ScopeObservedValues]); a measurement
-// holds one event per line and leaves it zero.
 type XidEvent struct {
 	NVLink5        *NVLink5Detail  `json:"nvlink5,omitempty"`
 	RecoveryAction *RecoveryAction `json:"recovery_action,omitempty"`
@@ -68,7 +77,13 @@ type XidEvent struct {
 	Message        string          `json:"message"`
 	XidCode        int64           `json:"xid_code"`
 	Pid            int64           `json:"pid"`
-	Count          int64           `json:"count,omitempty"`
+}
+
+// EventGroup is the events of one identical driver line, as a verdict reports
+// them: the event and how many times the line was logged.
+type EventGroup struct {
+	XidEvent
+	Count int64 `json:"count"`
 }
 
 // RecoveryAction is the transition an Xid 154 line reports: the driver
@@ -116,30 +131,16 @@ type NVLink5Detail struct {
 	Fatal        bool     `json:"fatal"`
 }
 
-// XidMeasurement is the aggregate of every Xid event observed in the
-// window described by Since. One measurement is produced per sensor
-// pass, even when no events were found (EventCount == 0), so a check
-// always runs and can report PASS.
-//
-// XidCounts maps each Xid code to the number of times it occurred and
-// is the headline signal for catalog rules (e.g. xid_counts[79] > 0).
-// FatalXidCounts is the same shape, but counts only occurrences NVRM
-// itself marked Fatal; today that is populated exclusively by the
-// NVLink5 family (Xid 144-150) since no other Xid code's log line
-// carries a fatal/nonfatal distinction. The sub_xid_code_counts signal
-// is derived from Events rather than stored (see [XidMeasurement.DerivedSignals]):
-// it is keyed by [XidEvent.SubXidCode] (e.g. "149.4") instead of the
-// bare Xid code, so a check can act on one documented fault subtype
-// rather than the whole code. Events preserves the full per-occurrence
-// detail — process name, PCI address, pid, and (for 144-150) NVLink5 —
-// for message interpolation and richer rules.
+// XidMeasurement is every Xid event a sensor read in the window described
+// by Since, one per log line and nothing more: counting, classifying and
+// grouping them is the catalog's job (see [Accumulator]), so every source of
+// events is interpreted the same way. One measurement is produced per sensor
+// pass, even when no events were found, so a check always runs and can report
+// PASS. No check reads it directly; they read the [XidDerivedMeasurement].
 type XidMeasurement struct {
-	XidCounts      map[int64]int64 `json:"xid_counts"`
-	FatalXidCounts map[int64]int64 `json:"fatal_xid_counts"`
-	Since          string          `json:"since"`
-	Events         []XidEvent      `json:"events"`
-	errors         []health.ErroredMeasurement
-	EventCount     int64 `json:"event_count"`
+	Events []XidEvent `json:"events"`
+	Since  string     `json:"since"`
+	errors []health.ErroredMeasurement
 }
 
 // ErroredXid returns an XidMeasurement marked errored for a whole-query

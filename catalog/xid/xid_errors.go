@@ -320,37 +320,62 @@ var infoXids = []int64{
 // IGNORE/empty, and Unused codes, have no check of their own and are
 // reported together by [informationalCheck].
 func Checks() []health.CheckDefinition {
+	built := builtins()
+	checks := make([]health.CheckDefinition, len(built))
+	for i, b := range built {
+		checks[i] = b.def
+	}
+	return checks
+}
+
+// builtin is a check [Checks] ships and the codes it covers: what its verdict
+// reports, and what keeps those codes out of the catch-all checks. The catch-alls
+// cover none.
+type builtin struct {
+	codes []string
+	def   health.CheckDefinition
+}
+
+// builtins is [Checks] with each check's codes, built from the same lists so
+// the two cannot drift.
+func builtins() []builtin {
+	code := func(c int64) []string { return []string{strconv.FormatInt(c, 10)} }
 	warningCount := 0
 	for _, class := range warningClasses {
 		warningCount += len(class.codes)
 	}
-	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+4)
+	out := make([]builtin, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+4)
 	for _, c := range criticalXids {
-		checks = append(checks, criticalCheck(c))
+		out = append(out, builtin{code(c.code), criticalCheck(c)})
 	}
 	for _, c := range nvlink5Xids {
-		checks = append(checks, nvlink5Check(c))
+		out = append(out, builtin{code(c.code), nvlink5Check(c)})
 	}
 	for _, c := range nvlink5SubXidCodes {
-		checks = append(checks, nvlink5SubXidCodeCheck(c))
+		out = append(out, builtin{[]string{c.subXidCode}, nvlink5SubXidCodeCheck(c)})
 	}
 	for _, class := range warningClasses {
-		for _, code := range class.codes {
-			checks = append(checks, warningCheck(code, class))
+		for _, c := range class.codes {
+			out = append(out, builtin{code(c), warningCheck(c, class)})
 		}
 	}
-	checks = append(checks, xid45Check())
-	checks = append(checks, xid154Check())
-	checks = append(checks, informationalCheck())
-	checks = append(checks, unknownCheck())
-	// Every check reports its own events, whatever signals its builder set.
-	for i := range checks {
-		if !slices.Contains(checks[i].RequiredSignals, SignalEvents) {
-			checks[i].RequiredSignals = append(checks[i].RequiredSignals, SignalEvents)
-		}
-	}
-	return checks
+	out = append(out, builtin{code(45), xid45Check()})
+	out = append(out, builtin{code(154), xid154Check()})
+	out = append(out, builtin{nil, informationalCheck()})
+	out = append(out, builtin{nil, unknownCheck()})
+	return out
 }
+
+// builtinClaims maps each check [Checks] ships to the codes it covers.
+var builtinClaims = sync.OnceValue(func() map[string][]string {
+	claims := map[string][]string{}
+	for _, b := range builtins() {
+		if len(b.codes) > 0 {
+			claims[b.def.ID] = b.codes
+		}
+	}
+	return claims
+})
 
 // criticalCheck builds the per-code CRITICAL check for one Xid.
 func criticalCheck(c criticalXid) health.CheckDefinition {
@@ -594,51 +619,25 @@ var infoSet = func() codeSet {
 	return set
 }()
 
-// builtinCovered is the codes some check in [checkScopes] reports on. A
-// sub-code check adds nothing, because its code has a check of its own.
-var builtinCovered = sync.OnceValue(func() codeSet {
-	covered := codeSet{}
-	for _, s := range checkScopes {
-		if s.sub == "" {
-			covered[s.code] = true
-		}
+// parseCode reads a plain Xid code, not a sub-code such as "149.4".
+func parseCode(s string) (int64, bool) {
+	if strings.Contains(s, ".") {
+		return 0, false
 	}
-	return covered
-})
-
-// isUnknown reports whether no check covers code and the catalog does not list it.
-func isUnknown(code int64) bool { return !builtinCovered()[code] && !infoSet[code] }
-
-// isInformational reports whether code is an infoXids code no check covers.
-func isInformational(code int64) bool { return infoSet[code] && !builtinCovered()[code] }
-
-// countsWhere is xid_counts restricted to the codes keep accepts. It is never
-// nil, like the other derived signals.
-func (m XidMeasurement) countsWhere(keep func(int64) bool) map[int64]int64 {
-	out := make(map[int64]int64)
-	for code, n := range m.XidCounts {
-		if keep(code) {
-			out[code] = n
-		}
-	}
-	return out
+	code, err := strconv.ParseInt(s, 10, 64)
+	return code, err == nil
 }
 
-func (m XidMeasurement) unknownCounts() map[int64]int64 { return m.countsWhere(isUnknown) }
-
-func (m XidMeasurement) informationalCounts() map[int64]int64 {
-	return m.countsWhere(isInformational)
-}
-
-// catchAllCheck builds a check that fires when any code in the derived
-// signal reaches occurrences. It applies to every architecture, because the
-// codes it reports have no architecture to scope them to.
-func catchAllCheck(id, name, description, signal string, severity health.Severity, message string, action health.RecommendedAction) health.CheckDefinition {
+// catchAllCheck builds a check that fires when any code in the counts signal
+// reaches occurrences, and reports the matching evidence signal. It applies to
+// every architecture, because the codes it reports have no architecture to
+// scope them to. It covers no code: it owns the codes nothing else does.
+func catchAllCheck(id, name, description, counts, evidence string, severity health.Severity, message string, action health.RecommendedAction) health.CheckDefinition {
 	def := baseCheck(id, name, description, action)
-	def.RequiredSignals = []string{signal}
+	def.RequiredSignals = []string{counts, evidence}
 	def.Architectures = slices.Clone(allArchitectures)
 	def.Rules = []health.Rule{{
-		Expression: fmt.Sprintf("%[1]s.exists(c, %[1]s[c] >= occurrences)", signal),
+		Expression: fmt.Sprintf("%[1]s.exists(c, %[1]s[c] >= occurrences)", counts),
 		Severity:   severity,
 		Message:    message,
 	}}
@@ -652,6 +651,7 @@ func unknownCheck() health.CheckDefinition {
 		"GPU Xid not described by the catalog",
 		"Detects NVRM Xid codes in the system journal that no Health Validation check covers and that are not informational.",
 		SignalUnknownXidCounts,
+		SignalUnknownFindings,
 		health.Warning,
 		"A GPU Xid code that Health Validation has no check for was logged, so it recommends no action.",
 		health.Monitor,
@@ -666,8 +666,9 @@ func informationalCheck() health.CheckDefinition {
 		"GPU Xid with no resolution in the catalog",
 		"Detects NVRM Xid codes in the system journal that the NVIDIA Xid catalog marks Unused, IGNORE or gives no resolution, and that no Health Validation check covers.",
 		SignalInformationalXidCounts,
+		SignalInformationalFindings,
 		health.Info,
-		"A GPU Xid code that NVIDIA's Xid catalog gives no resolution was logged. No action is needed. The driver message is in events.",
+		"A GPU Xid code that NVIDIA's Xid catalog gives no resolution was logged. No action is needed. The driver message is in informational_findings.",
 		health.NoAction,
 	)
 }

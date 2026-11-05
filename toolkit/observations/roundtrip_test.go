@@ -106,7 +106,7 @@ func TestToMeasurementsFailsValueThatDoesNotFitField(t *testing.T) {
 	}
 	for _, o := range observations {
 		switch o.GetSignalId() {
-		case "xid.event_count":
+		case "xid.since":
 			o.Outcome = &observation.Observation_Value{Value: boolValue(true)}
 		case "xid.events":
 			o.Outcome = &observation.Observation_Value{Value: stringValue("not json")}
@@ -116,7 +116,7 @@ func TestToMeasurementsFailsValueThatDoesNotFitField(t *testing.T) {
 	m := only[xid.XidMeasurement](t, ToMeasurements(observations))
 	got := failedSignals(m)
 	slices.Sort(got)
-	if !slices.Equal(got, []string{"event_count", "events"}) {
+	if !slices.Equal(got, []string{"events", "since"}) {
 		t.Fatalf("failed signals = %v", got)
 	}
 }
@@ -151,10 +151,7 @@ func roundTripFixture() []health.Measurement {
 		cpu.CPUMeasurement{PossibleCPUCount: 64, OnlineCPUCount: 63, NUMANodeCount: 2},
 		node.NodeMeasurement{GPUCount: 8},
 		xid.XidMeasurement{
-			Since:          "boot",
-			EventCount:     3,
-			XidCounts:      map[int64]int64{79: 1, 149: 1, 13: 1},
-			FatalXidCounts: map[int64]int64{79: 1},
+			Since: "boot",
 			Events: []xid.XidEvent{
 				{XidCode: 79, PCIAddress: "0000:01:00", ProcessName: "python", Pid: 7},
 				{XidCode: 149, PCIAddress: "0000:02:00", NVLink5: &xid.NVLink5Detail{SubComponent: "NETIR", Link: 3, Fatal: true, DebugData: []string{"0x1"}}},
