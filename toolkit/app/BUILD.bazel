@@ -41,7 +41,6 @@ go_library(
             "//collect/sensors/nvml",
             "//collect/source/dcgm",
             "//collect/source/nvml",
-            "//toolkit/nvml",
         ],
         "//conditions:default": [],
     }),

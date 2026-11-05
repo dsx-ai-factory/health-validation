@@ -12,9 +12,6 @@ go_library(
         "ib_backend.go",
         "ib_sensor.go",
         "journal.go",
-        "lazy_backend.go",
-        "nvlink_backend.go",
-        "nvlink_sensor.go",
         "rdma_linkflap_backend.go",
         "rdma_linkflap_parse.go",
         "rdma_linkflap_sensor.go",
@@ -25,7 +22,6 @@ go_library(
         "//catalog",
         "//catalog/health",
         "//catalog/infiniband",
-        "//catalog/nvlink",
     ],
 )
 
@@ -37,7 +33,6 @@ go_test(
         "example_test.go",
         "export_test.go",
         "journal_internal_test.go",
-        "lazy_backend_test.go",
         "linkflap_parity_internal_test.go",
         "rdma_linkflap_backend_internal_test.go",
         "rdma_linkflap_parse_test.go",

@@ -66,10 +66,9 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
+		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink", "infiniband"}},
 		// A claim replaces a built-in source's signals, not the source list.
-		{name: "CPU claimed", app: withCPU(New(), healthyCPU()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
-		{name: "NVLink override", app: New().WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband"}},
+		{name: "CPU claimed", app: withCPU(New(), healthyCPU()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink", "infiniband"}},
 		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink"}},
 	}
 	for _, test := range tests {
@@ -604,8 +603,8 @@ func TestWithCollectReservesEveryCategoryAdapterName(t *testing.T) {
 		configure func(*App)
 		name      string
 	}{
-		{name: "gpu"}, // built-in active
-		{name: "nvlink", configure: func(a *App) { a.WithNVLinkBackend(spyBackend{called: new(bool)}) }},
+		{name: "gpu"},    // built-in active
+		{name: "nvlink"}, // built-in active
 		{name: "infiniband", configure: func(a *App) { a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()) }},
 	} {
 		t.Run(test.name, func(t *testing.T) {

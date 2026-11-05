@@ -48,7 +48,7 @@ func GPU() *domainAdapter {
 	return newDomainAdapter(health.GPU, erroredGPU)
 }
 
-// NVLink replaces toolkit.NVLinkSensor for the stock CLI's NVLink domain.
+// NVLink builds the stock CLI's NVLink domain.
 func NVLink() *domainAdapter {
 	return newDomainAdapter(health.NVLink, erroredNVLink)
 }

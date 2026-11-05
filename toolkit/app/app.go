@@ -23,11 +23,11 @@
 //		os.Exit(code)
 //	}
 //
-// The GPU, node, CPU, NVLink, Xid, and RDMA link-flap domains come from collect
+// The GPU, NVLink, node, CPU, Xid, and RDMA link-flap domains come from collect
 // sensors (DCGM and NVML, the host's NVML GPU inventory, sysfs, and the
 // journal); [App.WithCollect] replaces a built-in source by claiming its
-// signals. [App.WithNVLinkBackend] and [App.WithRDMALinkFlapBackend] still swap
-// in legacy toolkit sensors, and the generic InfiniBand sensor is opt-in.
+// signals. [App.WithRDMALinkFlapBackend] still swaps in a legacy toolkit
+// sensor, and the generic InfiniBand sensor is opt-in.
 // Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
 // honored verbatim. Registration fails only on the catalog's own validation
@@ -97,7 +97,6 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 // invoked there.
 type hostBackend interface {
 	gpuSensors() []collect.Sensor
-	nvlinkBackend() toolkit.NVLinkBackend
 	gpuInventory() *gpuinventory.Inventory
 	close() error
 }
@@ -108,11 +107,9 @@ type App struct {
 	host        hostBackend
 	hostname    func() (string, error)
 	openJournal func() (io.WriteCloser, error)
-	// nvlink, rdmaLinkFlap, and ib are legacy backend overrides set by the
-	// matching With*Backend setter. A nil nvlink or rdmaLinkFlap uses the
-	// built-in collect sensors. The generic ib backend has no default and is
-	// opt-in.
-	nvlink       toolkit.NVLinkBackend
+	// rdmaLinkFlap and ib are legacy backend overrides set by the matching
+	// With*Backend setter. A nil rdmaLinkFlap uses the built-in collect sensor.
+	// The generic ib backend has no default and is opt-in.
 	rdmaLinkFlap toolkit.RDMALinkFlapBackend
 	ib           toolkit.IBBackend
 	// prog is the program name used in usage and error-message prefixes. It
@@ -146,18 +143,6 @@ func New() *App {
 // overrides like built-ins. A duplicate ID makes [App.Run] fail.
 func (a *App) WithChecks(defs ...health.CheckDefinition) *App {
 	a.customChecks = append(a.customChecks, defs...)
-	return a
-}
-
-// WithNVLinkBackend replaces the NVLink domain's built-in collect sources
-// (DCGM for fabric registration, NVML for links, P2P, and fabric health) with a
-// legacy NVLink sensor over b. Attach a probe to [App.NVMLBackend] with
-// WithNVLinkProbe and install the result here.
-//
-// Deprecated: pass a collect sensor and the NVLink signal IDs it replaces to
-// [App.WithCollect] instead.
-func (a *App) WithNVLinkBackend(b toolkit.NVLinkBackend) *App {
-	a.nvlink = b
 	return a
 }
 
@@ -209,12 +194,8 @@ func (a *App) WithNodeID(id string) *App {
 
 // Close shuts down the App's host backend, the built-in DCGM and NVML
 // connections. Call it when you are done with the App; [App.Run] leaves them
-// open so one App can run more than once.
-//
-// Backends installed via the With*Backend setters are the caller's to manage
-// and are not closed here: a foreign backend is owned by whoever built it, and
-// a probe-derived NVML backend (a.NVMLBackend().WithNVLinkProbe(…)) is a
-// lightweight view discarded when the process exits.
+// open so one App can run more than once. Backends installed via the
+// With*Backend setters are the caller's to manage and are not closed here.
 func (a *App) Close() error { return a.host.close() }
 
 // Run is the health-validation CLI entrypoint:
@@ -413,10 +394,6 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 // sources are measured once now under cycle.
 func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
 	var sensors []toolkit.Sensor
-	// Without an override, the NVLink domain comes from builtinCollect.
-	if a.nvlink != nil {
-		sensors = append(sensors, toolkit.NewNVLinkSensor(a.nvlink))
-	}
 	// Without an override, the link-flap measurement comes from builtinCollect.
 	if a.rdmaLinkFlap != nil {
 		sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(a.rdmaLinkFlap))
@@ -583,7 +560,6 @@ func xidJournalFromFlags(fs *flag.FlagSet) (collect.Sensor, error) {
 
 var categoryBySensor = map[string]health.Category{
 	"infiniband":    health.InfiniBand,
-	"nvlink":        health.NVLink,
 	"rdma_linkflap": health.InfiniBand,
 }
 

@@ -91,7 +91,7 @@ func unhealthyGB200() nodeFixture {
 	return f
 }
 
-// fixturePID is the PID both renderings give a GPU's i-th compute process.
+// fixturePID is the PID of a GPU's i-th compute process.
 func fixturePID(i int) uint32 { return uint32(4242 + i) }
 
 // dcgm is what collect's DCGM sensor reports for g.
@@ -264,23 +264,21 @@ func fixtureApp(f nodeFixture) *App {
 		fakeHost:  fakeHost{b: spyBackend{called: new(bool)}},
 		inventory: gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: len(f.gpus), model: f.model}, nil }),
 	}
-	{
-		now := timestamppb.Now()
-		var dcgm, nvml []*observation.Observation
-		for _, g := range f.gpus {
-			linkDCGM, linkNVML := g.nvlinkObservations(now, f.gpus)
-			dcgm = append(append(dcgm, g.dcgm(now)...), linkDCGM...)
-			nvml = append(append(nvml, g.processes(now)...), linkNVML...)
-		}
-		host.gpu = []collect.Sensor{
-			fixedSensor{id: "gpu.dcgm", signals: slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals), obs: dcgm},
-			fixedSensor{id: "gpu.nvml", signals: slices.Concat(processGPUSignals, nvmlNVLinkSignals), obs: nvml},
-		}
-		a.WithCollect(cpusensor.New(cpuFS(f.possibleCPUs, f.onlineCPUs, f.numaNodes)), observations.MappedSignalsFor(health.CPU)...)
-		a.WithCollect(xidsensor.New(journal.New(fixtureJournal(f.xid))), xidsignals.All().IDs()...)
-		a.WithCollect(linkflapsensor.New(journal.New(fixtureJournal(f.linkFlaps)), linkflapsensor.WithLookback(linkFlapLookback)),
-			ibsignals.LinkFlapSignals().IDs()...)
+	now := timestamppb.Now()
+	var dcgm, nvml []*observation.Observation
+	for _, g := range f.gpus {
+		linkDCGM, linkNVML := g.nvlinkObservations(now, f.gpus)
+		dcgm = append(append(dcgm, g.dcgm(now)...), linkDCGM...)
+		nvml = append(append(nvml, g.processes(now)...), linkNVML...)
 	}
+	host.gpu = []collect.Sensor{
+		fixedSensor{id: "gpu.dcgm", signals: slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals), obs: dcgm},
+		fixedSensor{id: "gpu.nvml", signals: slices.Concat(processGPUSignals, nvmlNVLinkSignals), obs: nvml},
+	}
+	a.WithCollect(cpusensor.New(cpuFS(f.possibleCPUs, f.onlineCPUs, f.numaNodes)), observations.MappedSignalsFor(health.CPU)...)
+	a.WithCollect(xidsensor.New(journal.New(fixtureJournal(f.xid))), xidsignals.All().IDs()...)
+	a.WithCollect(linkflapsensor.New(journal.New(fixtureJournal(f.linkFlaps)), linkflapsensor.WithLookback(linkFlapLookback)),
+		ibsignals.LinkFlapSignals().IDs()...)
 	a.host = host
 	return a
 }

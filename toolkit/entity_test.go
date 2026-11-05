@@ -10,28 +10,8 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 )
-
-// A degraded sensor's placeholder names no GPU, so it is keyed by the sensor
-// rather than taking the sensor name as a GPU identity. The key names the
-// toolkit sensor, so it differs from the built-in collect adapter's failure of
-// the same domain ("collect.gpu").
-func TestDegradedGPUSensorsAreKeyedBySource(t *testing.T) {
-	for _, s := range []toolkit.Sensor{
-		toolkit.NewNVLinkSensor(toolkit.MockNVLink(nvlink.NVLinkMeasurement{})),
-	} {
-		want := health.SourceEntity("toolkit." + s.Name())
-		got := s.Errored(errors.New("timed out"))
-		if len(got) != 1 || health.KeyOf(got[0]) != want {
-			t.Errorf("%s: Errored keyed %v, want %v", s.Name(), health.KeyOf(got[0]), want)
-		}
-		if health.KeyOf(got[0]) == health.SourceEntity("collect."+s.Name()) {
-			t.Errorf("%s: sensor failure shares the collect adapter's key", s.Name())
-		}
-	}
-}
 
 type privateGPU struct {
 	Label  string `json:"gpu_id"`

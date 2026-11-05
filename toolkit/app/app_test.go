@@ -342,13 +342,10 @@ func TestRunCommandPassesDriverVersion(t *testing.T) {
 
 // --- Per-domain backend override locks ------------------------------------
 
-// spyBackend backs the legacy NVLink sensor with no measurements, and carries
-// the flag the host's GPU spy sensor sets when measured.
+// spyBackend carries the flag the host's GPU spy sensor sets when measured.
 type spyBackend struct {
 	called *bool
 }
-
-func (spyBackend) MeasureNVLink() ([]health.Measurement, error) { return nil, nil }
 
 // gpuSpySensor stands in for the host's built-in GPU collect sensors. It
 // records whether it was measured and reports fakeHost's four GPUs as healthy
@@ -464,7 +461,7 @@ type fakeHost struct {
 func (h fakeHost) gpuSensors() []collect.Sensor {
 	return []collect.Sensor{gpuSpySensor{called: h.b.called}}
 }
-func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
+
 func (h fakeHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) {
 		return inventoryReader{gpus: 4, model: "NVIDIA GB200", driver: h.driver}, nil
@@ -500,7 +497,6 @@ func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapsho
 type panicHost struct{}
 
 func (panicHost) gpuSensors() []collect.Sensor          { panic("unexpected GPU sensor access") }
-func (panicHost) nvlinkBackend() toolkit.NVLinkBackend  { panic("unexpected NVLink backend access") }
 func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
 func (panicHost) close() error                          { panic("unexpected host backend close") }
 
@@ -959,7 +955,7 @@ type erroringHost struct {
 func (h erroringHost) gpuSensors() []collect.Sensor {
 	return []collect.Sensor{gpuSpySensor{called: h.b.called}}
 }
-func (h erroringHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
+
 func (erroringHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })
 }

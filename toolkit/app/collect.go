@@ -199,13 +199,11 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 		collectadapters.XID(func() map[string]string {
 			return gpuinventory.UUIDsByPCI(inventory.Cached(cycle))
 		}),
+		collectadapters.NVLink(),
 	}
 	if a.rdmaLinkFlap == nil {
 		sources = append(sources, linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)))
 		adapters = append(adapters, collectadapters.InfiniBand())
-	}
-	if a.nvlink == nil {
-		adapters = append(adapters, collectadapters.NVLink())
 	}
 	return sources, adapters
 }
