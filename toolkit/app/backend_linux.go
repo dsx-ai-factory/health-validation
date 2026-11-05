@@ -8,6 +8,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -45,10 +46,10 @@ type nvmlHost struct {
 	inventory *gpuinventory.Inventory
 	dcgm      *dcgmsource.Source
 	// inst is the collect NVML instance, once opened; processes reads through it.
-	inst      nvmlsource.Instance
-	processes collect.Sensor
-	gpu       []collect.Sensor
-	mu        sync.Mutex
+	inst       nvmlsource.Instance
+	nvmlSensor collect.Sensor
+	gpu        []collect.Sensor
+	mu         sync.Mutex
 }
 
 func newHostBackend() hostBackend {
@@ -65,7 +66,7 @@ func newHostBackend() hostBackend {
 	if err != nil {
 		panic(err)
 	}
-	h.gpu = []collect.Sensor{dcgm, processSensor{host: h}}
+	h.gpu = []collect.Sensor{dcgm, nvmlGPUSensor{host: h}}
 	h.inventory = gpuinventory.New(h.openInventory)
 	return h
 }
@@ -101,18 +102,18 @@ func (h *nvmlHost) openInventory() (gpuinventory.Reader, error) {
 	return gpuinventory.NVML(inst), nil
 }
 
-// nvmlProcessSensor returns the collect NVML sensor over the shared instance.
-func (h *nvmlHost) nvmlProcessSensor() (collect.Sensor, error) {
+// sharedNVMLSensor returns the collect NVML sensor over the shared instance.
+func (h *nvmlHost) sharedNVMLSensor() (collect.Sensor, error) {
 	inst, err := h.instance()
 	if err != nil {
 		return nil, err
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.processes == nil {
-		h.processes = nvmlsensor.NewWithOptions(inst, nvmlsensor.WithProcessCmdlineDiagnostics(true))
+	if h.nvmlSensor == nil {
+		h.nvmlSensor = nvmlsensor.NewWithOptions(inst, nvmlsensor.WithProcessCmdlineDiagnostics(true))
 	}
-	return h.processes, nil
+	return h.nvmlSensor, nil
 }
 
 func (h *nvmlHost) gpuSensors() []collect.Sensor          { return h.gpu }
@@ -137,15 +138,24 @@ func (h *nvmlHost) close() error {
 	return err
 }
 
-// processSensor declares only the compute-process signals of collect's NVML
-// sensor, which DCGM cannot supply, so it does not overlap the DCGM sensor.
-type processSensor struct{ host *nvmlHost }
+// nvmlGPUSignals is every signal collect's NVML sensor reads except those the
+// stock CLI takes from DCGM. A caller adapter can request any of them and the
+// shared NVML instance supplies it, under its native-call gate, without the
+// caller registering a sensor. The stock CLI requests only processGPUSignals.
+var nvmlGPUSignals = slices.DeleteFunc(
+	nvmlsensor.NewWithOptions(nil, nvmlsensor.WithProcessCmdlineDiagnostics(true)).Signals(),
+	func(s collect.Signal) bool { return slices.Contains(dcgmGPUSignals.IDs(), s.ID()) },
+)
 
-func (processSensor) ID() string               { return nvmlsensor.ID }
-func (processSensor) Signals() collect.Signals { return processGPUSignals }
+// nvmlGPUSensor is the shared collect NVML sensor, declaring nvmlGPUSignals so
+// it does not overlap the DCGM sensor.
+type nvmlGPUSensor struct{ host *nvmlHost }
 
-func (s processSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
-	sensor, err := s.host.nvmlProcessSensor()
+func (nvmlGPUSensor) ID() string               { return nvmlsensor.ID }
+func (nvmlGPUSensor) Signals() collect.Signals { return nvmlGPUSignals }
+
+func (s nvmlGPUSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	sensor, err := s.host.sharedNVMLSensor()
 	if err != nil {
 		return nil, err
 	}
