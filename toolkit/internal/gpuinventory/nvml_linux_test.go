@@ -25,12 +25,15 @@ type basicDevice struct {
 	device.Device
 	name    string
 	uuid    string
+	busID   string
 	nameRet nvml.Return
 	// nameRead fails the test when GetName is called.
 	nameRead bool
 }
 
 func (d *basicDevice) UUID() string { return d.uuid }
+
+func (d *basicDevice) PCIBusID() string { return d.busID }
 
 func (d *basicDevice) GetName() (string, nvml.Return) {
 	if d.nameRead {
@@ -81,7 +84,7 @@ func withRecords(records ...nvmlsource.InventoryDevice) *fakeInstance {
 }
 
 func gpu(index uint32, name string) nvmlsource.InventoryDevice {
-	return nvmlsource.InventoryDevice{SourceIndex: index, Device: &basicDevice{name: name, uuid: fmt.Sprintf("GPU-%d", index)}}
+	return nvmlsource.InventoryDevice{SourceIndex: index, Device: &basicDevice{name: name, uuid: fmt.Sprintf("GPU-%d", index), busID: fmt.Sprintf("0000:%02x:00.0", index+1)}}
 }
 
 func readSnapshot(t *testing.T, inst nvmlsource.Instance) *observation.GPUInventorySnapshot {
@@ -113,7 +116,7 @@ func TestNVMLReaderReadsBasicInventory(t *testing.T) {
 			t.Errorf("entry %d = index %d, failed %q; want index %d, failed %q", i, entries[i].GetSourceIndex(), entries[i].GetCollectionError().GetOperation(), i, want)
 		}
 	}
-	if entries[0].GetGpu().GetUuid() != "GPU-0" || entries[0].GetGpu().GetModel() != "NVIDIA GB200" {
+	if entries[0].GetGpu().GetUuid() != "GPU-0" || entries[0].GetGpu().GetModel() != "NVIDIA GB200" || entries[0].GetGpu().GetBusId() != "0000:01:00.0" {
 		t.Errorf("healthy entry = %v", entries[0].GetGpu())
 	}
 	// Legacy counts every slot whose handle loaded.
@@ -122,6 +125,15 @@ func TestNVMLReaderReadsBasicInventory(t *testing.T) {
 	}
 	if arch, err := Architecture(snapshot); err != nil || arch != "GB200" {
 		t.Errorf("Architecture = %q, %v; want GB200", arch, err)
+	}
+}
+
+func TestNVMLReaderReportsMissingBusID(t *testing.T) {
+	noBus := gpu(0, "NVIDIA GB200")
+	noBus.Device.(*basicDevice).busID = ""
+	entry := readSnapshot(t, withRecords(noBus)).GetInventory().GetEntries()[0]
+	if entry.GetGpu().BusId != nil || entry.GetGpu().GetUuid() != "GPU-0" || entry.GetFieldErrors()["bus_id"].GetOperation() != "GetPciInfo" || entry.GetFieldErrors()["bus_id"].GetSourceError() != "" {
+		t.Errorf("entry = %v, want the UUID and a GetPciInfo bus_id field error with no NVML code", entry)
 	}
 }
 

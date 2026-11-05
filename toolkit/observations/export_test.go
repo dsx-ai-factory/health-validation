@@ -208,3 +208,48 @@ func keys(bySignal map[string]*observation.Observation) []string {
 	slices.Sort(out)
 	return out
 }
+
+// targetLabel renders a target as kind:id for comparison.
+func targetLabel(target *observation.ObservationTarget) string {
+	switch {
+	case target == nil:
+		return "none"
+	case target.GetGpu() != nil:
+		return "gpu:" + target.GetGpu().GetUuid()
+	case target.GetPci() != nil:
+		return "pci:" + target.GetPci().GetAddress()
+	case target.GetNode() != nil:
+		return "node:" + target.GetNode().GetId()
+	}
+	return fmt.Sprintf("other:%v", target)
+}
+
+func TestFromMeasurementsTargetsXidByIdentity(t *testing.T) {
+	for name, tc := range map[string]struct {
+		nodeID string
+		want   string
+		m      xid.XidMeasurement
+	}{
+		"UUID":                {testNode, "gpu:GPU-a", xid.XidMeasurement{GPUID: "GPU-a", PCIAddress: "0000:89:00"}},
+		"PCI address only":    {testNode, "pci:0000:c1:00.0", xid.XidMeasurement{PCIAddress: "0000:c1:00"}},
+		"no identity":         {testNode, "node:" + testNode, xid.XidMeasurement{Since: "boot"}},
+		"failed scan":         {testNode, "node:" + testNode, xid.ErroredXid("boot", errors.New("journal unreadable"))},
+		"unparseable address": {testNode, "node:" + testNode, xid.XidMeasurement{PCIAddress: "0000:01:20"}},
+		"no node ID":          {"", "none", xid.XidMeasurement{Since: "boot"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			observations, err := FromMeasurements("xid", tc.nodeID, time.Unix(1, 0), tc.m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := observation.ValidateBatch(&observation.ObservationBatch{Observations: observations}); err != nil {
+				t.Fatal(err)
+			}
+			for _, o := range observations {
+				if got := targetLabel(o.GetTarget()); got != tc.want {
+					t.Fatalf("%s target = %s, want %s", o.GetSignalId(), got, tc.want)
+				}
+			}
+		})
+	}
+}
