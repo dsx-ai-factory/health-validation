@@ -230,7 +230,8 @@ The catalog includes these check families:
 | `nvlink_capabilities` | nvlink | Whether each GPU reports its expected NVLink capabilities | None |
 | `nvlink_p2p` | nvlink | Peer GPUs reachable over NVLink P2P | `max_unhealthy_p2p_peers` |
 | `rdma_linkflap_fatal` | infiniband | mlx5 RDMA link outages that stayed down past a window | `min_outage_seconds`, `fatal_flap_threshold` |
-| `gpu_xid_<code>` | xid | One check per Xid code seen in the journal, with catalog-defined severity and action | `occurrences`; Xids 144–150 use `fatal_occurrences`, `nonfatal_occurrences` |
+| `gpu_xid_<code>` | xid | One check per Xid code seen in the journal, with catalog-defined severity and action | `occurrences` |
+| `gpu_xid_144`..`gpu_xid_150` | xid | What each NVLink5 occurrence resolves to through NVIDIA's decode table; Xid 145 rows that defer to Xid 154 leave the action to `gpu_xid_154` | `occurrences` |
 | `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | `occurrences` |
 | `gpu_xid_154` | xid | The recovery action Xid 154 last reported per GPU (CRITICAL for a reset or reboot; WARNING for a P2P drain, one the catalog does not map, or an unreadable transition; INFO for none; `occurrences` counts reports per action) | `occurrences` |
 | `gpu_xid_informational` | xid | A logged Xid code that NVIDIA's Xid catalog marks Unused, IGNORE or gives no resolution, and no registered check covers (INFO, no action) | `occurrences` |
@@ -443,8 +444,7 @@ checks:
   gpu_xid_79:
     occurrences: 2
   gpu_xid_149:
-    fatal_occurrences: 1
-    nonfatal_occurrences: 5
+    occurrences: 3
 disabled_checks:
   - gpu_power_state
 ```
