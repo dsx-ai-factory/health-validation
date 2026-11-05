@@ -238,6 +238,8 @@ If the dep ends up linked into the CLI, `toolkit/cmd/health-validation/SHIPPED_M
 
 **Enum handling** — all enums use the generic `marshalEnum[T]` / `unmarshalEnum[T]` helpers in `catalog/health/enum.go`. Follow the same pattern for new enums.
 
+**Built-in collect sources** — `WithCollect` callers claim signals explicitly, so adding a built-in collect source or a signal to one is not a breaking change. When a built-in source starts producing a signal it did not before, note it under CHANGELOG Features, naming the source and signal, so a caller that replaces that source with claims can add the new signal; otherwise the built-in supplies it and the domain is read from both.
+
 **Check dependencies** — `Dependencies` declares that another check's observed Critical or Unknown rule result explains this one's inability to collect. It is not a prerequisite relation: checks never read each other's results, so a dependency that did not run has no effect, and a dependent whose signals are readable always evaluates. Its only effect is naming the cause on a verdict for an entity this check could not read at all, which requires the collection errors to cover every signal the measurement carries. A dependent may declare architectures its dependency lacks, so the built-in edges only take effect on GB200/GB300 where `gpu_count` applies.
 
 **BUILD files** — Gazelle manages `BUILD.bazel` files. After adding or removing `.go` files or changing imports, run `bazel run //tools/gazelle` to regenerate. Do not hand-edit dep lists that Gazelle owns.
