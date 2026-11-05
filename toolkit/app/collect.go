@@ -25,6 +25,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
+	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/google/uuid"
 )
 
@@ -97,6 +98,36 @@ type collectSource struct {
 func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 	a.collectAdapters = append(a.collectAdapters, adapters...)
 	return a
+}
+
+// GPUAdapter returns a collect adapter that builds one M per GPU for checks
+// added with [App.WithChecks]. signals maps each collect signal ID it reads to
+// the json-tagged field of M it sets; see [observations.NewGPUConverter] for
+// what M needs. Register it with [App.WithCollectAdapters]. A signal the
+// built-in NVML sensor reads, such as ECC or row remapping, needs no sensor;
+// any other needs a sensor registered with [App.WithCollect].
+func GPUAdapter[M health.Measurement](name string, signals map[string]string) (CollectAdapter, error) {
+	converter, err := observations.NewGPUConverter[M](signals)
+	if err != nil {
+		return nil, fmt.Errorf("GPU adapter %q: %w", name, err)
+	}
+	return gpuAdapter{name: name, converter: converter}, nil
+}
+
+type gpuAdapter struct {
+	converter *observations.GPUConverter
+	name      string
+}
+
+func (a gpuAdapter) Name() string                 { return a.name }
+func (a gpuAdapter) Category() health.Category    { return a.converter.Category() }
+func (a gpuAdapter) Signals() map[string][]string { return a.converter.Feeds() }
+func (a gpuAdapter) Build(obs []*observation.Observation) []health.Measurement {
+	return a.converter.ToMeasurements(obs)
+}
+
+func (a gpuAdapter) Errored(err error) []health.Measurement {
+	return []health.Measurement{a.converter.Errored("collect."+a.name, err)}
 }
 
 // dcgmGPUSignals are the GPU domain's signals the stock CLI reads from DCGM.

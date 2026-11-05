@@ -80,6 +80,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   are collected. If discovery fails, `run` still reports the
   `architecture_discovery` verdict and exits 1.
 
+### Features
+
+- `app.GPUAdapter` builds one measurement of your own type per GPU from
+  collect signals, for checks added with `WithChecks`, leaving the built-in GPU
+  domain in place. The built-in NVML sensor now offers every signal collect's
+  NVML sensor reads except those taken from DCGM, so a signal such as ECC or
+  row remapping needs only the adapter. `docs/extending.md` describes the
+  wiring. `WithGPUBackend`, `NVMLBackend.WithGPUProbe`, and `WithNodeBackend`
+  are deprecated in its favor or in favor of `WithCollect`.
+
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
 Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,

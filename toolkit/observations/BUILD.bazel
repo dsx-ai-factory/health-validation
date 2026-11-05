@@ -5,6 +5,7 @@ package(default_visibility = ["//build/visibility:toolkit_consumers"])
 go_library(
     name = "observations",
     srcs = [
+        "converter.go",
         "export.go",
         "ingest.go",
         "linkflap.go",
@@ -37,6 +38,7 @@ go_library(
 go_test(
     name = "observations_test",
     srcs = [
+        "converter_test.go",
         "entity_test.go",
         "export_test.go",
         "linkflap_test.go",
