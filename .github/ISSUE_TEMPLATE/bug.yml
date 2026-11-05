@@ -13,7 +13,7 @@ body:
     id: version
     attributes:
       label: Affected component and version
-      description: Include CLI version JSON, embedded module versions, or a source commit SHA. For containers, include the image tag and digest.
+      description: Include CLI version JSON or embedded module versions. For source builds, include the version tag or commit SHA and the build command.
       placeholder: "health-validation version --output json"
     validations:
       required: true
