@@ -3,6 +3,25 @@
 All notable changes to NVIDIA Health Validation are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [catalog/v0.3.2] and [toolkit/v0.3.2] - 2026-11-05
+
+Patch release on the v0.3 line, following v0.3.1.
+
+### Security
+
+- Build with Go 1.27.3, which carries the latest Go security fixes. The
+  `go` directive in every module is raised to match. ([#203](https://github.com/dsx-ai-factory/health-validation/pull/203))
+
+## [catalog/v0.3.1] and [toolkit/v0.3.1] - 2026-10-13
+
+Patch release on the v0.3 line.
+
+### Security
+
+- Build with Go 1.27.2 and `golang.org/x/net` 0.60.0. ([#159](https://github.com/dsx-ai-factory/health-validation/pull/159))
+- The container image uses an Ubuntu base with the `libssl3t64`
+  3.0.13-0ubuntu3.16 update. ([#162](https://github.com/dsx-ai-factory/health-validation/pull/162))
+
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
 Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,
@@ -131,6 +150,10 @@ and documentation-only changes are omitted.
 - Operator CLI (`health-validation run`) producing structured JSON verdicts.
 - CEL-based rule evaluation engine with operator-configurable threshold overrides.
 
+[catalog/v0.3.2]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.2
+[toolkit/v0.3.2]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.2
+[catalog/v0.3.1]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.1
+[toolkit/v0.3.1]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.1
 [catalog/v0.3.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.0
 [toolkit/v0.3.0]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.0
 [catalog/v0.2.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.2.0
