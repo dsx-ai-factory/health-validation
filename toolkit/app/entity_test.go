@@ -65,14 +65,29 @@ func (shadowCPUAdapter) Errored(err error) []health.Measurement {
 	return []health.Measurement{cpu.ErroredCPU(err)}
 }
 
-// Name reservation only catches an adapter reusing a built-in name. The
-// check/entity guard catches one that emits a built-in category under
-// another name.
+// A caller adapter feeding a field an active built-in adapter also feeds is
+// rejected at registration, before anything is measured.
 func TestRunRejectsCallerAdapterDuplicatingBuiltinCategory(t *testing.T) {
 	a := cadenceRunApp().WithNodeID(testNodeID).
-		WithCollect(&collectAppSensor{}).
+		WithCollect(&collectAppSensor{}, claimAll(&collectAppSensor{})...).
 		WithCollectAdapters(shadowCPUAdapter{})
-	runAmbiguous(t, a, `check "cpu_count", node`)
+	a.cpu = nil // activate the built-in CPU adapter
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"run"}, &stdout, &stderr); code != exitError || stdout.Len() != 0 {
+		t.Fatalf("exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if want := `collect adapter "shadow-cpu" feeds cpu field "online_cpu_count", which the built-in "cpu" adapter also reports`; !strings.Contains(stderr.String(), want) {
+		t.Fatalf("stderr=%q, want %q", stderr.String(), want)
+	}
+}
+
+// With the built-in adapter replaced by a legacy sensor, registration allows
+// the caller adapter, and the check/entity guard catches the duplicate.
+func TestRunRejectsCallerAdapterDuplicatingLegacySensor(t *testing.T) {
+	a := cadenceRunApp().WithNodeID(testNodeID).
+		WithCollect(&collectAppSensor{}, claimAll(&collectAppSensor{})...).
+		WithCollectAdapters(shadowCPUAdapter{})
+	runAmbiguous(t, a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34})), `check "cpu_count", node`)
 }
 
 // NVML's slot 0 and DCGM's slot 0 failing are two unresolved GPUs. The run

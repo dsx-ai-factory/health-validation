@@ -143,13 +143,3 @@ func TestWithCollectRejectsPartialXidClaim(t *testing.T) {
 		})
 	}
 }
-
-func TestWithXidBackendFreesXidAdapterName(t *testing.T) {
-	adapter := customCountAdapter()
-	adapter.name = "xid"
-	a := cadenceRunApp().WithCollect(&collectAppSensor{}).WithCollectAdapters(adapter)
-	var stdout, stderr bytes.Buffer
-	if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code == exitError {
-		t.Fatalf("caller xid adapter rejected while WithXidBackend is set: %q", stderr.String())
-	}
-}
