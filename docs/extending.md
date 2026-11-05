@@ -274,6 +274,14 @@ The adapter groups observations by GPU and fails a field that could not be
 read, or that nothing reported, so a check never passes on a value that was
 not collected. It is registered alongside the built-ins, which keep running.
 
+Your measurement can also read a signal the built-in checks use, such as the
+GPU performance state, so one check can combine it with yours. Give it a field
+name of your own (`pstate`, mapped from `gpusignals.PerformanceState.ID()`):
+registration rejects a field the built-in GPU measurement already reports, such
+as `gpu_pstate`, because both measurements would describe the same GPU. Your
+copy is the raw signal value; built-in conversions, such as the P0–P15 range
+check on the performance state, apply only to the built-in field.
+
 Where the signal comes from depends on what reads it:
 
 - **A signal collect's NVML sensor reads** (ECC, row remapping, temperature,
