@@ -51,6 +51,7 @@ go_test(
     name = "app_test",
     srcs = [
         "app_test.go",
+        "backend_linux_test.go",
         "collect_test.go",
         "config_test.go",
         "discovery_linux_test.go",
