@@ -18,37 +18,6 @@ const (
 	informationalID = "gpu_xid_informational"
 )
 
-// customXidCheck is a private check on Xid 179, as docs/extending.md shows.
-func customXidCheck(id string, errorCodes ...string) health.CheckDefinition {
-	return health.CheckDefinition{
-		ID:          id,
-		Name:        "GPU Xid 179 (site-specific)",
-		Description: "Detects NVRM Xid 179.",
-		Category:    health.Xid,
-
-		RequiredSignals: []string{xid.SignalXidCounts, xid.SignalEvents},
-		ErrorCodes:      errorCodes,
-		Thresholds: map[string]health.ThresholdSpec{
-			"occurrences": {
-				Value: int64(1), ValueType: health.ThresholdInt64,
-				Category: health.DefaultThreshold, Description: "occurrences", Unit: "count",
-			},
-		},
-		Rules: []health.Rule{{
-			Expression: "179 in xid_counts && xid_counts[179] >= occurrences",
-			Severity:   health.Warning,
-			Message:    "GPU Xid 179 detected.",
-		}},
-		ConditionScope:    health.NodeScope,
-		ExecutionClass:    health.Passive,
-		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
-		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200"},
-		Provenance:        health.Private,
-		MaturityLevel:     health.Stable,
-	}
-}
-
 func unknownVerdict(t *testing.T, nv health.NodeVerdict) health.CheckVerdict {
 	t.Helper()
 	v, ok := checkResult(nv, unknownID)
@@ -115,45 +84,6 @@ func TestXidUnknown_OccurrencesOverride(t *testing.T) {
 	}
 }
 
-func TestXidUnknown_CustomCheckWithErrorCodeIsKnown(t *testing.T) {
-	cat := xidCatalog(t)
-	if err := cat.Register(customXidCheck("site_xid_179", "179")); err != nil {
-		t.Fatal(err)
-	}
-	nv, err := cat.EvaluateAll(measurementFor(179, 9999))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v, _ := checkResult(nv, "site_xid_179"); v.Severity != health.Warning {
-		t.Errorf("custom check severity = %v, want WARNING", v.Severity)
-	}
-	u := unknownVerdict(t, nv)
-	counts, _ := json.Marshal(u.ObservedValues[xid.SignalUnknownXidCounts])
-	if string(counts) != `{"9999":1}` {
-		t.Errorf("unknown_xid_counts = %s, want only 9999 (179 has a check)", counts)
-	}
-	// The custom check reports only its own events.
-	custom, _ := checkResult(nv, "site_xid_179")
-	events, _ := json.Marshal(custom.ObservedValues[xid.SignalEvents])
-	if strings.Contains(string(events), `"xid_code":9999`) {
-		t.Errorf("custom check events = %s, want only code 179", events)
-	}
-}
-
-func TestXidUnknown_CustomCheckWithoutErrorCodeStaysUnknown(t *testing.T) {
-	cat := xidCatalog(t)
-	if err := cat.Register(customXidCheck("site_xid_179")); err != nil {
-		t.Fatal(err)
-	}
-	nv, err := cat.EvaluateAll(measurementFor(179))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v := unknownVerdict(t, nv); v.Severity != health.Warning {
-		t.Errorf("an undeclared custom check's code: %s severity = %v, want WARNING", unknownID, v.Severity)
-	}
-}
-
 func TestXidUnknown_DisabledCheckStillCoversItsCode(t *testing.T) {
 	cat := xidCatalog(t, catalog.WithDisabledChecks("gpu_xid_13"))
 	nv, err := cat.EvaluateAll(measurementFor(13))
@@ -162,20 +92,6 @@ func TestXidUnknown_DisabledCheckStillCoversItsCode(t *testing.T) {
 	}
 	if v := unknownVerdict(t, nv); v.Severity != health.Pass {
 		t.Errorf("code of a disabled check: %s severity = %v, want PASS", unknownID, v.Severity)
-	}
-}
-
-func TestXidUnknown_SingleCheckEvaluationSeesCustomChecks(t *testing.T) {
-	cat := xidCatalog(t)
-	if err := cat.Register(customXidCheck("site_xid_179", "179")); err != nil {
-		t.Fatal(err)
-	}
-	v, err := cat.Evaluate(unknownID, measurementFor(179))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Pass {
-		t.Errorf("%s severity = %v, want PASS", unknownID, v.Severity)
 	}
 }
 
@@ -225,58 +141,5 @@ func TestXidInformational_ReportsOnlyInfoEventsAndCounts(t *testing.T) {
 	unknown, _ := json.Marshal(u.ObservedValues[xid.SignalUnknownXidCounts])
 	if string(unknown) != `{"9999":1}` {
 		t.Errorf("unknown_xid_counts = %s, want only 9999", unknown)
-	}
-}
-
-func TestXidInformational_CustomCheckOnInfoCodeTakesItOver(t *testing.T) {
-	cat := xidCatalog(t)
-	def := customXidCheck("site_xid_172", "172")
-	def.Rules = []health.Rule{{
-		Expression: "172 in xid_counts && xid_counts[172] >= occurrences",
-		Severity:   health.Critical,
-		Message:    "GPU Xid 172 detected.",
-	}}
-	def.Architectures = []string{"GB200"}
-	if err := cat.Register(def); err != nil {
-		t.Fatal(err)
-	}
-	nv, err := cat.EvaluateAll(measurementFor(172))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v, _ := checkResult(nv, "site_xid_172"); v.Severity != health.Critical {
-		t.Errorf("custom check severity = %v, want CRITICAL", v.Severity)
-	}
-	if v := informationalVerdict(t, nv); v.Severity != health.Pass {
-		t.Errorf("a covered info code: %s severity = %v, want PASS", informationalID, v.Severity)
-	}
-}
-
-func TestXidErrorCodes_RejectsMalformedXidCode(t *testing.T) {
-	for _, bad := range []string{"", "xid179", "179.", "-1", "149.g"} {
-		cat := xidCatalog(t)
-		if err := cat.Register(customXidCheck("site_bad", bad)); err == nil {
-			t.Errorf("error code %q registered, want an error", bad)
-		}
-	}
-	for _, good := range []string{"179", "149.4", "149.A"} {
-		cat := xidCatalog(t)
-		if err := cat.Register(customXidCheck("site_ok", good)); err != nil {
-			t.Errorf("error code %q: %v", good, err)
-		}
-	}
-}
-
-func TestXidErrorCodes_EveryBuiltinChecksDeclaresItsCode(t *testing.T) {
-	for _, cd := range xid.Checks() {
-		if cd.ID == unknownID || cd.ID == informationalID {
-			if len(cd.ErrorCodes) != 0 {
-				t.Errorf("%s ErrorCodes = %v, want none", cd.ID, cd.ErrorCodes)
-			}
-			continue
-		}
-		if len(cd.ErrorCodes) != 1 {
-			t.Errorf("%s ErrorCodes = %v, want exactly one", cd.ID, cd.ErrorCodes)
-		}
 	}
 }

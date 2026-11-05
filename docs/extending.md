@@ -238,23 +238,6 @@ An `AdjustableThreshold` must declare at least one bound. That category promises
 operators a documented tunable range; without a bound it is indistinguishable
 from `DefaultThreshold`.
 
-## Custom Xid checks: declare the codes
-
-An Xid check fires on its own rules, so a check on Xid 179 works without any
-extra field. Set `ErrorCodes` as well so the catalog knows the check covers
-that code:
-
-```go
-ErrorCodes: []string{"179"}, // or "149.4" for an NVLink5 sub-code
-```
-
-Without it, `gpu_xid_unknown` also reports Xid 179 (a WARNING with the
-`monitor` state and no drain; a code on the catalog's no-resolution list is
-reported by `gpu_xid_informational` as INFO instead), and your check's verdict lists every Xid event
-on the node instead of only its own. `ErrorCodes` is optional, and registration
-rejects a value that is not an Xid code or sub-code. The catalog does not check
-it against your rules, so keep the two in step.
-
 ## Getting your signals collected (demonstration wiring — subject to change)
 
 > The mechanics in this section use the toolkit's sensor/backend layer, which is

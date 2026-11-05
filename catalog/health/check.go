@@ -6,7 +6,6 @@ package health
 import (
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 	"time"
 )
@@ -32,14 +31,7 @@ type CheckDefinition struct {
 	// An ID that is not registered is an inactive edge by design, so a consumer
 	// may register any subset of the catalog. Validate rejects only a check that
 	// names itself.
-	Dependencies []string `json:"dependencies,omitempty"`
-	// ErrorCodes names the event codes this check reports on, in its
-	// category's vocabulary: for [Xid], a code such as "179", or a sub-code
-	// such as "149.4". It is optional. A measurement that sees the registered
-	// checks (see [CheckSetAware]) uses it to tell the codes some check
-	// covers from those none does, and to report only this check's events.
-	// The catalog trusts the declaration: it does not check it against Rules.
-	ErrorCodes        []string           `json:"error_codes,omitempty"`
+	Dependencies      []string           `json:"dependencies,omitempty"`
 	Architectures     []string           `json:"architectures,omitempty"`
 	Rules             []Rule             `json:"rules"`
 	ExecutionContexts []ExecutionContext `json:"execution_contexts"`
@@ -78,9 +70,6 @@ func (cd CheckDefinition) Validate() error {
 
 	if slices.Contains(cd.Dependencies, cd.ID) {
 		return fmt.Errorf("check %q lists itself as a dependency", cd.ID)
-	}
-	if err := validateErrorCodes(cd); err != nil {
-		return err
 	}
 
 	for _, name := range names {
@@ -213,22 +202,4 @@ func (r Rule) HasRecommendedAction() bool {
 type Prerequisite struct {
 	Name       string `json:"name"`
 	MinVersion string `json:"min_version"`
-}
-
-// xidErrorCode matches an Xid code ("179") or an NVLink5 sub-code ("149.4"),
-// the two forms an Xid measurement reports.
-var xidErrorCode = regexp.MustCompile(`^[0-9]+(\.[0-9A-F]+)?$`)
-
-// validateErrorCodes rejects an ErrorCodes entry that is not a code in the
-// vocabulary of the check's category. Only Xid has one so far.
-func validateErrorCodes(cd CheckDefinition) error {
-	if cd.Category != Xid {
-		return nil
-	}
-	for _, code := range cd.ErrorCodes {
-		if !xidErrorCode.MatchString(code) {
-			return fmt.Errorf("check %q error code %q: want an Xid code such as \"179\" or a sub-code such as \"149.4\"", cd.ID, code)
-		}
-	}
-	return nil
 }

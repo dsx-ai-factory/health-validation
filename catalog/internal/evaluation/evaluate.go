@@ -71,20 +71,6 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 	return e.evaluateAgainst(cd, o.signals, scoper, o.errs, o.entity, p, now)
 }
 
-// WithChecks gives a [health.CheckSetAware] measurement the registered
-// checks and returns any other measurement unchanged.
-func WithChecks(m health.Measurement, checks map[string]*health.CheckDefinition) health.Measurement {
-	aware, ok := m.(health.CheckSetAware)
-	if !ok {
-		return m
-	}
-	defs := make([]*health.CheckDefinition, 0, len(checks))
-	for _, cd := range checks {
-		defs = append(defs, cd)
-	}
-	return aware.WithChecks(defs)
-}
-
 // observed is one measurement with everything evaluation reads from it
 // extracted once. Fields are ordered for nogo's pointer-scan metric.
 type observed struct {
@@ -152,7 +138,7 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 	obs := make([]observed, len(measurements))
 	presentCategories := make(map[health.Category]bool)
 	for i, m := range measurements {
-		obs[i] = observe(WithChecks(m, checks), host)
+		obs[i] = observe(m, host)
 		presentCategories[obs[i].category] = true
 	}
 
