@@ -26,15 +26,21 @@ type criticalXid struct {
 }
 
 var (
-	allArchitectures             = []string{"GB200", "GB300", "B200", "H100", "H200", "A100"}
-	blackwellArchitectures       = []string{"GB200", "GB300", "B200"}
-	hopperBlackwellArchitectures = []string{"GB200", "GB300", "B200", "H100", "H200"}
-	ampereHopperArchitectures    = []string{"H100", "H200", "A100"}
-	hopperArchitectures          = []string{"H100", "H200"}
-	// graceBlackwellArchitectures covers Xids NVIDIA's catalog marks
-	// GraceBlackwell and do not occur on an HGX B200 baseboard.
-	graceBlackwellArchitectures = []string{"GB200", "GB300"}
-	hgxArchitectures            = []string{"B200", "H100", "H200", "A100"}
+	ampereArchitectures    = []string{"A100"}
+	hopperArchitectures    = []string{"H100", "H200"}
+	blackwellArchitectures = []string{"GB200", "GB300", "B200"}
+	// rubinArchitectures is listed wherever GB300 is: NVIDIA's Xid catalog
+	// marks the same Xids as applying to Vera Rubin and GB300.
+	rubinArchitectures = []string{"VR200"}
+
+	allArchitectures                  = slices.Concat(blackwellArchitectures, hopperArchitectures, ampereArchitectures, rubinArchitectures)
+	blackwellRubinArchitectures       = slices.Concat(blackwellArchitectures, rubinArchitectures)
+	hopperBlackwellRubinArchitectures = slices.Concat(blackwellArchitectures, hopperArchitectures, rubinArchitectures)
+	ampereHopperArchitectures         = slices.Concat(hopperArchitectures, ampereArchitectures)
+	// graceBlackwellRubinArchitectures covers Xids NVIDIA's catalog marks
+	// GraceBlackwell and Vera Rubin and do not occur on an HGX B200 baseboard.
+	graceBlackwellRubinArchitectures = []string{"GB200", "GB300", "VR200"}
+	hgxArchitectures                 = []string{"B200", "H100", "H200", "A100"}
 )
 
 // resetAndService is the remediation sequence for a Xid code
@@ -63,29 +69,29 @@ var criticalXids = []criticalXid{
 	},
 	{code: 95, action: resetAndService(), architectures: allArchitectures, description: "uncontained memory error"},
 	{code: 109, action: resetAndService(), architectures: allArchitectures, description: "context switch timeout error"},
-	{code: 110, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "security fault error"},
+	{code: 110, action: resetAndService(), architectures: hopperBlackwellRubinArchitectures, description: "security fault error"},
 	{code: 119, action: resetAndService(), architectures: allArchitectures, description: "GSP RPC timeout"},
 	{code: 120, action: resetAndService(), architectures: allArchitectures, description: "GSP error"},
 	{code: 136, action: resetAndService(), architectures: hopperArchitectures, description: "link training failed"},
 	{code: 140, action: resetAndService(), architectures: allArchitectures, description: "ECC unrecovered error"},
-	{code: 142, action: health.Drain(health.RemediationActionServiceRequired), architectures: graceBlackwellArchitectures, description: "NVENC3 error"},
-	{code: 143, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "GPU initialization error"},
+	{code: 142, action: health.Drain(health.RemediationActionServiceRequired), architectures: graceBlackwellRubinArchitectures, description: "NVENC3 error"},
+	{code: 143, action: resetAndService(), architectures: hopperBlackwellRubinArchitectures, description: "GPU initialization error"},
 	// 144-150 (NVLink5/NETIR family) are not listed here: they get their
 	// own severity-differentiated checks below, built by nvlink5Check.
 	{
 		code:          151,
 		action:        health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired),
-		architectures: hopperBlackwellArchitectures,
+		architectures: hopperBlackwellRubinArchitectures,
 		description:   "key rotation error",
 		message:       "GPU Xid 151 (key rotation error) detected. Restart the affected VM; contact the operator if the error persists.",
 	},
-	{code: 155, action: resetAndService(), architectures: blackwellArchitectures, description: "NVLink SW-defined error"},
-	{code: 156, action: resetAndService(), architectures: hopperBlackwellArchitectures, description: "resource retirement event"},
+	{code: 155, action: resetAndService(), architectures: blackwellRubinArchitectures, description: "NVLink SW-defined error"},
+	{code: 156, action: resetAndService(), architectures: hopperBlackwellRubinArchitectures, description: "resource retirement event"},
 	{code: 158, action: resetAndService(), architectures: allArchitectures, description: "GPU fatal timeout"},
 	{
 		code:          159,
 		action:        resetAndService(),
-		architectures: blackwellArchitectures,
+		architectures: blackwellRubinArchitectures,
 		description:   "CHI non-data error",
 		message:       "GPU Xid 159 detected: CHI non-data error. NVIDIA's CHECK_UVM guidance is to reset the GPU if UVM or vGPU is in use; otherwise ignore the error. Health Validation cannot determine whether either was in use when this error occurred, so it recommends a GPU reset as a conservative default.",
 	},
@@ -279,13 +285,13 @@ var warningClasses = []warningClass{
 	},
 	{
 		action:        health.Drain(health.RemediationActionRestartApp),
-		architectures: hopperBlackwellArchitectures,
+		architectures: hopperBlackwellRubinArchitectures,
 		message:       "GPU Xid %d detected: application-level error. Restart the faulting application.",
 		codes:         []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105},
 	},
 	{
 		action:        health.Drain(health.RemediationActionRestartApp),
-		architectures: blackwellArchitectures,
+		architectures: blackwellRubinArchitectures,
 		message:       "GPU Xid %d detected: application-level error. Restart the faulting application.",
 		codes:         []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139},
 	},
@@ -395,8 +401,8 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 			Unit:        "count",
 		},
 	}
-	// NVLink5 (144-150) is Blackwell-only per NVIDIA's Xid catalog.
-	def.Architectures = slices.Clone(blackwellArchitectures)
+	// NVLink5 (144-150) is Blackwell and Vera Rubin only per NVIDIA's Xid catalog.
+	def.Architectures = slices.Clone(blackwellRubinArchitectures)
 	def.Rules = []health.Rule{
 		{
 			Expression:        fmt.Sprintf("%[1]d in fatal_xid_counts && fatal_xid_counts[%[1]d] >= fatal_occurrences", c.code),
@@ -432,7 +438,7 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 		action,
 	)
 	def.RequiredSignals = []string{SignalSubXidCodeCounts}
-	def.Architectures = slices.Clone(blackwellArchitectures)
+	def.Architectures = slices.Clone(blackwellRubinArchitectures)
 	def.Rules = []health.Rule{{
 		Expression: fmt.Sprintf("%[1]q in sub_xid_code_counts && sub_xid_code_counts[%[1]q] >= occurrences", c.subXidCode),
 		Severity:   severity,
@@ -537,7 +543,7 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     slices.Clone(blackwellArchitectures),
+		Architectures:     slices.Clone(blackwellRubinArchitectures),
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
