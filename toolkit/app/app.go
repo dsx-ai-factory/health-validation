@@ -176,6 +176,9 @@ func (a *App) WithGPUBackend(b toolkit.GPUBackend) *App {
 // with a legacy Node sensor over b. The node domain has no probe seam —
 // gpu_count is a scalar aggregate — so this is a full backend swap.
 // Architecture discovery still reads the host inventory.
+//
+// Deprecated: pass a collect sensor and the node signal IDs it replaces to
+// [App.WithCollect] instead.
 func (a *App) WithNodeBackend(b toolkit.NodeBackend) *App {
 	a.node = b
 	return a
