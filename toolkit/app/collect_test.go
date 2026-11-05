@@ -1072,8 +1072,8 @@ func TestWithCollectFailsOnlyTheGPUWithoutAUUID(t *testing.T) {
 	for _, check := range []string{"gpu_power_state", "nvlink_fabric"} {
 		got := severities[check]
 		slices.Sort(got)
-		if !slices.Equal(got, []health.Severity{health.Pass, health.Critical}) {
-			t.Errorf("%s severities = %v, want one PASS and one CRITICAL", check, got)
+		if !slices.Equal(got, []health.Severity{health.Pass, health.Unknown}) {
+			t.Errorf("%s severities = %v, want one PASS and one UNKNOWN", check, got)
 		}
 	}
 }

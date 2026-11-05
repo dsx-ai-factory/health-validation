@@ -313,11 +313,9 @@ func routes(cd *health.CheckDefinition, category health.Category, signals map[st
 // measurement carries, which is the signature a sensor emits when it could not
 // read the entity at all.
 //
-// This is what separates a device that vanished from the enumeration, where a
-// Critical dependency genuinely explains this check too, from read failures on
-// a device that enumerated fine, even ones that together cover every signal
-// this check requires. Those are independent faults, and naming the dependency
-// on them would credit an unrelated cause.
+// An observed Critical or Unknown dependency can explain a lost entity.
+// Failures affecting only part of the measurement must not be attributed to
+// that dependency, even if every signal required by this check failed.
 func lostEntity(errs []health.ErroredMeasurement, signals map[string]any) bool {
 	if len(errs) == 0 || len(signals) == 0 {
 		return false

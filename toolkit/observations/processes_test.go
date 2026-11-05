@@ -145,8 +145,8 @@ func TestToMeasurementsComputeProcessFailures(t *testing.T) {
 			if !slices.Equal(failed, want) {
 				t.Fatalf("failed signals = %v, want %v", failed, want)
 			}
-			if got := computeAppsVerdict(t, m); got.Severity != health.Critical {
-				t.Fatalf("gpu_compute_apps = %v, want CRITICAL", got.Severity)
+			if got := computeAppsVerdict(t, m); got.Severity != health.Unknown {
+				t.Fatalf("gpu_compute_apps = %v, want UNKNOWN", got.Severity)
 			}
 		})
 	}

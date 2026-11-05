@@ -194,8 +194,8 @@ Per-check results use five severity levels:
 | PASS | No condition detected. Node is eligible for the next workload. |
 | INFO | Anomaly within safe operating bounds. Monitor for trend. |
 | WARNING | Condition that degrades performance or increases failure risk. |
-| CRITICAL | Imminent risk of failure, data corruption, or unrecoverable state. Remove from service. |
 | UNKNOWN | Check could not complete. Eligibility for the affected component cannot be assessed. |
+| CRITICAL | Imminent risk of failure, data corruption, or unrecoverable state. Remove from service. |
 
 `skipped` is a separate per-check state, not a severity level. A skipped check contributes nothing to the node-level verdict.
 
