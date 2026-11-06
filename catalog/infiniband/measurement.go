@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package infiniband defines the measurement type and checks for
-// InfiniBand / RDMA network health derived from the system journal. The
-// mlx5 driver logs RDMA interface link transitions ("Link up"/"Link
-// down") to the kernel journal; a sensor pairs each down with its next
-// up, and the catalog evaluates the resulting outage durations against
-// the link-flap checks.
+// Package infiniband defines the measurement types and checks for
+// InfiniBand / RDMA network health. The link-flap checks read the system
+// journal: the mlx5 driver logs RDMA interface link transitions ("Link
+// up"/"Link down"), a sensor pairs each down with its next up, and the
+// catalog evaluates the resulting outage durations. The fabric port checks
+// read port state and rate from sysfs ([PortMeasurement]), covering ports
+// that are down without ever having flapped.
 package infiniband
 
 import (
