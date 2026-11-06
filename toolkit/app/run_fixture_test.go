@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -53,15 +54,16 @@ type nodeFixture struct {
 }
 
 type fixtureGPU struct {
-	uuid       string
-	cmdlines   []string
-	powerW     float64
-	limitW     float64
-	enforcedW  float64
-	pstate     int64
-	slowdown   bool
-	thermal    bool
-	powerBrake bool
+	uuid        string
+	cmdlines    []string
+	powerW      float64
+	limitW      float64
+	enforcedW   float64
+	pstate      int64
+	slowdown    bool
+	thermal     bool
+	powerBrake  bool
+	pstateFails bool
 }
 
 // healthyNode is a node of model with n identical idle GPUs whose UUIDs
@@ -96,11 +98,15 @@ func (g fixtureGPU) legacy() gpu.GPUMeasurement {
 	for i, c := range g.cmdlines {
 		lines[i] = fmt.Sprintf("pid=%d %s", fixturePID(i), strconv.Quote(c))
 	}
-	return gpu.GPUMeasurement{
+	m := gpu.GPUMeasurement{
 		GPUID: g.uuid, AveragePowerDrawW: g.powerW, PowerLimitW: g.limitW, EnforcedPowerLimitW: g.enforcedW,
 		GPUPstate: g.pstate, HWSlowdown: g.slowdown, HWThermalSlowdown: g.thermal, HWPowerBrakeSlowdown: g.powerBrake,
 		ComputeProcessCount: int64(len(g.cmdlines)), ComputeProcessCmdlines: strings.Join(lines, "\n"),
 	}
+	if g.pstateFails {
+		m.AddError(errors.New("pstate unreadable"), gpu.SignalGPUPstate)
+	}
+	return m
 }
 
 // dcgm is what collect's DCGM sensor reports for g.
@@ -118,11 +124,16 @@ func (g fixtureGPU) dcgm(now *timestamppb.Timestamp) []*observation.Observation 
 	boolean := func(v bool) *observation.Value {
 		return &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: v}}
 	}
+	pstate := value(gpusignals.PerformanceState, &observation.Value{Kind: &observation.Value_IntValue{IntValue: g.pstate}})
+	if g.pstateFails {
+		pstate = observation.NewCollectionErrorObservation(gpusignals.PerformanceState.ID(), gpusignals.PerformanceState.Unit(), "dcgm", "metrics", target, now,
+			&observation.CollectionError{Category: observation.CollectionErrorCategorySourceError, Detail: "pstate unreadable"})
+	}
 	return []*observation.Observation{
 		value(gpusignals.PowerDraw, double(g.powerW)),
 		value(gpusignals.PowerLimitRequested, double(g.limitW)),
 		value(gpusignals.PowerLimitEnforced, double(g.enforcedW)),
-		value(gpusignals.PerformanceState, &observation.Value{Kind: &observation.Value_IntValue{IntValue: g.pstate}}),
+		pstate,
 		value(gpusignals.HardwareSlowdownActive, boolean(g.slowdown)),
 		value(gpusignals.HardwareThermalSlowdownActive, boolean(g.thermal)),
 		value(gpusignals.HardwarePowerBrakeSlowdownActive, boolean(g.powerBrake)),
@@ -273,7 +284,8 @@ func runFixture(t *testing.T, f nodeFixture, fromCollect bool) (health.NodeVerdi
 }
 
 // normalizeVerdict clears what differs between runs and orders what
-// producers may order differently, such as per-entity results.
+// producers may order differently, such as per-entity results. It also clears
+// UNKNOWN results' messages: collect names the failing source and operation.
 func normalizeVerdict(t *testing.T, raw []byte) health.NodeVerdict {
 	t.Helper()
 	var v health.NodeVerdict
@@ -285,6 +297,9 @@ func normalizeVerdict(t *testing.T, raw []byte) health.NodeVerdict {
 		for i := range results {
 			results[i].Timestamp = time.Time{}
 			results[i].TraceID, results[i].SpanID = "", ""
+			if results[i].Severity == health.Unknown {
+				results[i].Messages = nil
+			}
 		}
 		slices.SortStableFunc(results, func(a, b health.CheckVerdict) int {
 			if c := strings.Compare(a.CheckID, b.CheckID); c != 0 {
