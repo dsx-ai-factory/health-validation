@@ -4,6 +4,7 @@
 package health
 
 import (
+	"maps"
 	"slices"
 	"time"
 
@@ -53,7 +54,7 @@ type CheckVerdict struct {
 // change to the NodeVerdict JSON shape (removed fields, renamed fields,
 // changed semantics); increment MINOR for additive fields, enum values, or
 // outcomes. When this changes, update catalog/health/node-verdict.schema.json to match.
-const NodeVerdictSchemaVersion = "0.5"
+const NodeVerdictSchemaVersion = "0.6"
 
 // NodeVerdict aggregates per-check verdicts into a node-level
 // health assessment.
@@ -71,12 +72,20 @@ type NodeVerdict struct {
 	OverallSeverity    Severity              `json:"overall_severity"`
 }
 
-// AffectedComponent summarizes a category with non-Pass results.
+// AffectedCheck is one non-PASS check in a domain. Entities names the devices
+// that failed it, sorted and without duplicates. A check that identifies no
+// device leaves Entities empty.
+type AffectedCheck struct {
+	CheckID  string   `json:"check_id"`
+	Entities []string `json:"entities,omitempty"`
+}
+
+// AffectedComponent summarizes one category with non-PASS results.
+// Each check appears once, with the entities that failed it.
 type AffectedComponent struct {
-	CheckIDs    []string `json:"check_ids"`
-	Entities    []string `json:"entities,omitempty"`
-	Category    Category `json:"category"`
-	MaxSeverity Severity `json:"max_severity"`
+	Checks      []AffectedCheck `json:"checks"`
+	Category    Category        `json:"category"`
+	MaxSeverity Severity        `json:"max_severity"`
 }
 
 // AggregateNodeVerdict builds a NodeVerdict from a set of check verdicts.
@@ -98,8 +107,12 @@ func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 		Timestamp:        now,
 	}
 
-	domainChecks := make(map[Category][]string)
-	domainEntities := make(map[Category][]string)
+	//	category: GPU
+	//	├── check: gpu_count
+	//	└── check: gpu_power_limit
+	//	    ├── entity: GPU-1
+	//	    └── entity: GPU-2
+	byDomain := make(map[Category]map[string][]string)
 
 	for _, v := range verdicts {
 		// Stamp a unique id on every check invocation and the shared trace
@@ -120,8 +133,12 @@ func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 		)
 
 		if v.Severity > Pass {
-			domainChecks[v.Category] = append(domainChecks[v.Category], v.CheckID)
-			domainEntities[v.Category] = append(domainEntities[v.Category], v.AffectedEntities...)
+			categoryChecks := byDomain[v.Category]
+			if categoryChecks == nil {
+				categoryChecks = make(map[string][]string)
+				byDomain[v.Category] = categoryChecks
+			}
+			categoryChecks[v.CheckID] = append(categoryChecks[v.CheckID], v.AffectedEntities...)
 		}
 	}
 	nv.RecommendedAction = nodeRecommendedAction(nv.CheckResults)
@@ -129,10 +146,9 @@ func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 	for domain, sev := range nv.SeverityByDomain {
 		if sev > Pass {
 			nv.AffectedComponents = append(nv.AffectedComponents, AffectedComponent{
+				Checks:      checksInOrder(byDomain[domain]),
 				Category:    domain,
 				MaxSeverity: sev,
-				CheckIDs:    domainChecks[domain],
-				Entities:    domainEntities[domain],
 			})
 		}
 	}
@@ -225,4 +241,18 @@ func nodeActionRank(action RemediationAction) int {
 		}
 	}
 	return len(nodeActionPriority)
+}
+
+// checksInOrder returns one entry per check ID, sorted by ID. Each entry's
+// entities are sorted and de-duplicated.
+func checksInOrder(byID map[string][]string) []AffectedCheck {
+	ids := slices.Sorted(maps.Keys(byID))
+	checks := make([]AffectedCheck, 0, len(ids))
+	for _, id := range ids {
+		checks = append(checks, AffectedCheck{
+			CheckID:  id,
+			Entities: slices.Compact(slices.Sorted(slices.Values(byID[id]))),
+		})
+	}
+	return checks
 }

@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Breaking Changes
 
+- Verdict `schema_version` is now `0.6`. `affected_components` lists each
+  failing check once, under `checks`, with that check's `entities`. The
+  parallel `check_ids` and `entities` arrays are removed.
+  ([#210](https://github.com/dsx-ai-factory/health-validation/issues/210))
 - Verdict `schema_version` is now `0.5`. Collection failures report `UNKNOWN`
   instead of `CRITICAL`. Update alerts that match collection failures as
   `CRITICAL` to handle `UNKNOWN`. `CRITICAL` now ranks above `UNKNOWN`, and the
