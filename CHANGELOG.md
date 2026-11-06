@@ -21,11 +21,33 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The public `catalog/version` package is removed. Read the version from a
   verdict's `catalog_version`. In unstamped builds, `health-validation version`
   now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`.
-- The CLI collects every built-in domain except NVLink through `collect`
-  sensors and the toolkit's collect bridge instead of the legacy toolkit
-  sensors. Severities, failed signals, and recommended actions match the legacy
-  sensors except as listed below, and collection-failure messages now name the
-  collect source and operation, for example
+- The CLI reads the GPU domain from DCGM, through a hostengine running on the
+  node, and from NVML only for compute processes. Nodes need `nv-hostengine`
+  and the DCGM 4 client library (`libdcgm.so.4`); without them the GPU power,
+  power-limit, pstate, and throttle checks report a collection failure. There
+  is no fallback to NVML. `WithGPUBackend` still selects the legacy NVML GPU
+  sensor.
+- The collect adapter name `gpu` is reserved for the built-in GPU adapter.
+  Drop a caller-registered adapter of that name: the built-in one reads the
+  canonical GPU signals from whichever registered sensor produces them.
+- `run` records every validated threshold override in the host's systemd
+  journal before collecting and exits `2` if it cannot. Container deployments
+  that pass overrides must mount `/run/systemd/journal/socket`; see
+  `docs/integration.md`. The new `Catalog.ConfiguredOverrides` returns the
+  overrides a catalog is configured with, resolved as evaluation would. ([#93](https://github.com/dsx-ai-factory/health-validation/pull/93))
+- `CheckDefinition.Validate`, and so `Catalog.Register` and `MustRegister`,
+  rejects a check that names no `RequiredSignals`, or a blank one. A check
+  with none was routed every measurement of its category and ran its rules on
+  zero values when collection failed. Name the signals the check's rules
+  read. A custom check
+  passed to the CLI through `App.WithChecks` without them now stops the run
+  with exit 2 once GPU architecture discovery succeeds, before the sensors
+  are collected. If discovery fails, `run` still reports the
+  `architecture_discovery` verdict and exits 1.
+- Domains the CLI collects through `collect` sensors and the toolkit's collect
+  bridge report the same severities, failed signals, and recommended actions
+  as the legacy toolkit sensors, except as listed below. Collection-failure
+  messages now name the collect source and operation, for example
   `cpu.sysfs operation "read /sys/devices/system/cpu/online" failed with …`.
   Each domain's `With*Backend` setter still selects its legacy sensor.
   - CPU and NUMA: only the collection-failure wording changes. ([#135](https://github.com/dsx-ai-factory/health-validation/pull/135))
@@ -47,11 +69,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Node GPU count and architecture discovery: a driver that hangs during
     discovery ends in a discovery-failure verdict after the collection timeout
     instead of hanging the run. ([#195](https://github.com/dsx-ai-factory/health-validation/pull/195))
-  - GPU: ([#262](https://github.com/dsx-ai-factory/health-validation/pull/262))
-    - Nodes need `nv-hostengine` and the DCGM 4 client library
-      (`libdcgm.so.4`); without them the GPU power, power-limit, pstate, and
-      throttle checks report a collection failure. There is no fallback to
-      NVML. Compute processes still come from NVML.
+  - GPU, beyond the DCGM entry above: ([#262](https://github.com/dsx-ai-factory/health-validation/pull/262))
     - A GPU whose UUID cannot be read is named by its source-local slot in
       `affected_entities`.
     - A process that exits between the NVML and procfs reads is left out of
@@ -61,22 +79,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
       checks it feeds fail.
     - Power comes from DCGM in watts, so `observed_values` can differ from
       NVML's by a fraction of a watt.
-    - The collect adapter name `gpu` is reserved for the built-in GPU adapter.
-      Drop a caller-registered adapter of that name.
-  - RDMA link flap: ([#236](https://github.com/dsx-ai-factory/health-validation/pull/236))
-    - A line that looks like an mlx5 link transition but does not parse fails
-      `rdma_linkflap_fatal` with `check_collection`; the legacy sensor skipped
-      it.
-    - A transition counts only when the message starts with `mlx5_core`, so
-      another subsystem's line that mentions the driver no longer counts.
-    - Interface names drop the kernel's ` (unregistering)` suffix, and
-      durations use journald's timestamps, so an outage across a DST change is
-      measured correctly.
-    - A failed scan labels `since` as `boot`, and a source that reports
-      nothing fails the check instead of skipping it.
-    - `WithCollect` must claim all link-flap signals or none.
-      `App.WithRDMALinkFlapBackend` and `toolkit.JournalctlRDMALinkFlap` are
-      deprecated.
   - Across domains:
     - Per-GPU results are ordered by GPU identity rather than NVML index.
     - Architecture discovery that finds NVML busy with an earlier call in the
@@ -86,20 +88,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
       report the same GPUs.
     - `App.Run` no longer closes the host's DCGM and NVML connections; call
       `App.Close` when done with the App.
-- `run` records every validated threshold override in the host's systemd
-  journal before collecting and exits `2` if it cannot. Container deployments
-  that pass overrides must mount `/run/systemd/journal/socket`; see
-  `docs/integration.md`. The new `Catalog.ConfiguredOverrides` returns the
-  overrides a catalog is configured with, resolved as evaluation would. ([#93](https://github.com/dsx-ai-factory/health-validation/pull/93))
-- `CheckDefinition.Validate`, and so `Catalog.Register` and `MustRegister`,
-  rejects a check that names no `RequiredSignals`, or a blank one. A check
-  with none was routed every measurement of its category and ran its rules on
-  zero values when collection failed. Name the signals the check's rules
-  read. A custom check
-  passed to the CLI through `App.WithChecks` without them now stops the run
-  with exit 2 once GPU architecture discovery succeeds, before the sensors
-  are collected. If discovery fails, `run` still reports the
-  `architecture_discovery` verdict and exits 1.
 
 ### Fixes
 
