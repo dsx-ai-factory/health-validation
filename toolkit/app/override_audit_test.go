@@ -320,8 +320,11 @@ func TestRunAuditsBeforeCollectingAndPublishesAfterVerdict(t *testing.T) {
 	if code := a.Run([]string{"run", "--node-id", testNodeID, "--cadence", "CONTINUOUS", "--config", path}, loggedWriter{Writer: &stdout, log: log}, &stderr); code != exitOK {
 		t.Fatalf("exit = %d, want %d; stderr = %q", code, exitOK, stderr.String())
 	}
-	if want := []string{"audit", "collect", "verdict", "metrics"}; !slices.Equal(log.events, want) {
-		t.Errorf("events = %v, want %v", log.events, want)
+	log.mu.Lock()
+	events := slices.Clone(log.events)
+	log.mu.Unlock()
+	if want := []string{"audit", "collect", "verdict", "metrics"}; !slices.Equal(events, want) {
+		t.Errorf("events = %v, want %v", events, want)
 	}
 	if len(rec.datagrams) != 1 {
 		t.Fatalf("wrote %d audit entries, want 1", len(rec.datagrams))

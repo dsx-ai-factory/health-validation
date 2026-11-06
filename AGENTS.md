@@ -195,7 +195,7 @@ The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PAS
 Two distinct concepts in `toolkit/`:
 
 - **Sensor** — implements `toolkit.Sensor`, holds a backend, and produces `[]health.Measurement` for `Collect`. `GPUSensor` produces per-GPU measurements; `CPUSensor` produces one host-wide logical-CPU measurement.
-- **Collect sensor and adapter** — the CLI's production path. A `collect.Sensor` reports observations once per collection cycle through `toolkit/internal/collectbridge`, which logs a warning for each source that times out or fails as a whole (not for errors on individual GPUs); a collect adapter converts the observations to measurements. `WithCollect` replaces a built-in collect source.
+- **Collect sensor and adapter** — the CLI's production path. A `collect.Sensor` reports observations once per collection cycle through `toolkit/internal/collectbridge`, which logs one warning per distinct source, operation, and error category that times out or fails as a whole (not for errors on individual GPUs); a collect adapter converts the observations to measurements. `WithCollect` replaces a built-in collect source.
 - **Backend** — a data source for one sensor. Defined as a sensor-facing interface in `toolkit/`. `SysfsCPU` is a deprecated context-aware file backend in `toolkit/`, superseded in the CLI by the `collect/sensors/cpu` collect sensor; `Journalctl` and `JournalctlRDMALinkFlap` are deprecated command backends, superseded in the CLI by the `collect/sensors/xid` and `collect/sensors/linkflap` collect sensors; `NVMLBackend` lives in `toolkit/nvml/` because it is gated on linux + cgo + libnvidia-ml.
 
 #### Adding a sensor for a new domain
