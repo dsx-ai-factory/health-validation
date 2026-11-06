@@ -279,7 +279,9 @@ duplicate ID fails):
 func main() {
 	a := app.New().WithChecks(mychecks.All()...)
 	a = configureGPU(a) // installs your prober; keep this platform-split (see below)
-	os.Exit(a.Run(os.Args[1:], os.Stdout, os.Stderr))
+	code := a.Run(os.Args[1:], os.Stdout, os.Stderr)
+	_ = a.Close() // Run leaves the GPU sources open for another run
+	os.Exit(code)
 }
 ```
 
