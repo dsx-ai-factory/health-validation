@@ -19,11 +19,13 @@ const linkFlapSinceUnknown = "boot"
 
 // InfiniBand is the category's one built-in adapter. It replaces
 // toolkit.RDMALinkFlapSensor for the stock CLI's link-flap measurement and
-// feeds infiniband.PortMeasurement from the collect sysfs port sensor.
+// feeds infiniband.PortMeasurement from the collect sysfs port sensor, plus the
+// node-wide infiniband.PortInventoryMeasurement derived from those ports.
 func InfiniBand() *domainAdapter {
 	a := newDomainAdapter(health.InfiniBand, erroredInfiniBand)
+	feedInventory(a)
 	a.complete = func(measurements []health.Measurement) []health.Measurement {
-		return completePorts(completeLinkFlap(measurements))
+		return completeInventory(completePorts(completeLinkFlap(measurements)))
 	}
 	return a
 }
@@ -32,11 +34,21 @@ func InfiniBand() *domainAdapter {
 // link-flap measurement still comes from the legacy toolkit sensor: failing
 // the link-flap type here as well would give its check two measurements.
 func InfiniBandPorts() *domainAdapter {
-	a := newDomainAdapter(health.InfiniBand, erroredPorts)
+	a := newDomainAdapter(health.InfiniBand, erroredPortTypes)
+	feedInventory(a)
 	linkFlap := ibsignals.LinkFlapSignals().IDs()
 	maps.DeleteFunc(a.feeds, func(id string, _ []string) bool { return slices.Contains(linkFlap, id) })
-	a.complete = completePorts
+	a.complete = func(measurements []health.Measurement) []health.Measurement {
+		return completeInventory(completePorts(measurements))
+	}
 	return a
+}
+
+// feedInventory also maps the rate onto the inventory's signal, so signal
+// narrowing requests it when only the inventory's check will run.
+func feedInventory(a *domainAdapter) {
+	rate := ibsignals.RateGbps.ID()
+	a.feeds[rate] = slices.Concat(a.feeds[rate], []string{infiniband.SignalPortRatesGbps})
 }
 
 // erroredInfiniBand fails every measurement type of the category, so a
@@ -45,7 +57,13 @@ func InfiniBandPorts() *domainAdapter {
 func erroredInfiniBand(err error) []health.Measurement {
 	return append([]health.Measurement{
 		infiniband.ErroredLinkFlap(linkFlapSinceUnknown, err, infiniband.MeasurementSignals()...),
-	}, erroredPorts(err)...)
+	}, erroredPortTypes(err)...)
+}
+
+// erroredPortTypes fails both port measurement types: the per-port one and the
+// node-wide inventory.
+func erroredPortTypes(err error) []health.Measurement {
+	return append(erroredPorts(err), infiniband.ErroredPortInventory(err))
 }
 
 // erroredPorts is a failure to read any port. It names no device, so it is
@@ -83,4 +101,17 @@ func completePorts(measurements []health.Measurement) []health.Measurement {
 		return measurements
 	}
 	return append(measurements, erroredPorts(errors.New("no InfiniBand port observations were collected"))...)
+}
+
+// completeInventory adds the node-wide inventory, derived from the port
+// measurements so both shapes come from one pass over the observations. It
+// runs after completePorts, so a node with no ports yields an errored inventory.
+func completeInventory(measurements []health.Measurement) []health.Measurement {
+	var ports []infiniband.PortMeasurement
+	for _, m := range measurements {
+		if p, ok := m.(infiniband.PortMeasurement); ok {
+			ports = append(ports, p)
+		}
+	}
+	return append(measurements, infiniband.InventoryOf(ports))
 }

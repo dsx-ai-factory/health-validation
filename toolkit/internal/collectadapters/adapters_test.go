@@ -15,6 +15,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -99,6 +100,20 @@ func TestDomainAdaptersKeyDomainFailureBySource(t *testing.T) {
 		if len(got) != 1 || health.KeyOf(got[0]) != health.SourceEntity(adapterSource(a.Category())) {
 			t.Fatalf("%s: Errored = %v keyed %v, want one source-level measurement", a.Name(), got, health.KeyOf(got[0]))
 		}
+	}
+	// InfiniBand fails both of its port measurements beside the link flap: the
+	// per-port one is keyed by its source, the node-wide inventory by the node.
+	var port, inventory health.Measurement
+	for _, m := range InfiniBand().Errored(errors.New("unavailable")) {
+		switch m.(type) {
+		case infiniband.PortMeasurement:
+			port = m
+		case infiniband.PortInventoryMeasurement:
+			inventory = m
+		}
+	}
+	if port == nil || inventory == nil || health.KeyOf(port) != health.SourceEntity(adapterSource(health.InfiniBand)) || health.KeyOf(inventory) != health.NodeEntity() {
+		t.Fatalf("infiniband: port=%v inventory=%v, want a source-level port and a node-level inventory", port, inventory)
 	}
 	if got := CPU().Errored(errors.New("unavailable")); health.KeyOf(got[0]) != health.NodeEntity() {
 		t.Fatalf("cpu: Errored keyed %v, want the node", health.KeyOf(got[0]))

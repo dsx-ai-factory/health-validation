@@ -55,6 +55,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   exclusion list means a misspelled entry checks more ports, never fewer.
   It runs on GB200 and GB300; B200 waits on the architecture validation
   process being settled in #255.
+- `rdma_fabric_port_count` (InfiniBand, B200, experimental): CRITICAL when
+  fewer than `expected_fabric_ports` ports at or above `fabric_port_rate_gbps`
+  are present. It counts presence and rate, not state, so it catches a rail
+  missing from sysfs or trained below fabric rate, which a per-port check
+  cannot see; `ib_port_state` reports a rail that is down. The collect adapter
+  derives its node-wide `infiniband.PortInventoryMeasurement` from the same
+  per-port measurements, so the sensor reads sysfs once.
 - The stock CLI feeds that check from the `collect/sensors/infiniband` sysfs
   sensor through the collect bridge, requesting port signals only when a port
   check will run. It selects devices under `/sys/class/infiniband` by PCI
