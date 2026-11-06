@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -225,5 +226,30 @@ func TestToMeasurementsRejectsMixedLinkFlapForms(t *testing.T) {
 	m := onlyLinkFlap(t, ToMeasurements(append(flaps(), field)))
 	if len(m.Errors()) != 1 || !slices.Equal(m.Errors()[0].FailedSignals(), infiniband.MeasurementSignals()) {
 		t.Fatalf("mixed link-flap forms = %+v, want one errored measurement", m)
+	}
+}
+
+// TestToMeasurementsLinkFlapKeepsComputeProcesses keeps the compute-process
+// assembly when link-flap observations share the batch: ToMeasurements routes
+// link-flap signals aside, and dropping the process path there would leave
+// gpu_compute_apps without its input.
+func TestToMeasurementsLinkFlapKeepsComputeProcesses(t *testing.T) {
+	obs := slices.Concat(
+		processObservations(1, cmdlineObservation(10, "python train.py")),
+		flaps(down("ib0", time.Minute), up("ib0", 2*time.Minute)),
+	)
+	measurements := ToMeasurements(obs)
+	g := only[gpu.GPUMeasurement](t, measurements)
+	if failed := failedSignals(g); len(failed) != 0 {
+		t.Fatalf("GPU failed signals = %v", failed)
+	}
+	if g.ComputeProcessCount != 1 || g.ComputeProcessCmdlines != `pid=10 "python train.py"` {
+		t.Fatalf("count=%d cmdlines=%q, want the one process", g.ComputeProcessCount, g.ComputeProcessCmdlines)
+	}
+	if got := computeAppsVerdict(t, g); got.Severity != health.Critical {
+		t.Fatalf("gpu_compute_apps = %v, want CRITICAL", got.Severity)
+	}
+	if m := onlyLinkFlap(t, measurements); len(m.Errors()) != 0 || !slices.Equal(m.OutageDurations, []int64{60}) {
+		t.Fatalf("link flap = %+v errors %v", m, m.Errors())
 	}
 }
