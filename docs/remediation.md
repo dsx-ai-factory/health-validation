@@ -167,13 +167,13 @@ whichever Xid it accompanied:
 - **CRITICAL** with `["restart_os", "service_required"]` for a reboot or bus
   reset, and with `["reset_gpu", "service_required"]` for a GPU reset or
   Drain and Reset.
-- **WARNING** with `["xid_154"]` for Drain P2P: stop scheduling and P2P
-  work, re-run, and follow the action reported then. The driver often clears
-  this request without logging another Xid 154, so a reset is warranted
-  only if it persists.
-- **WARNING** with `["service_required"]` for an action this catalog does
-  not map, such as Recover IMEX Domain, and with `monitor` for a transition
-  that could not be read.
+- **WARNING** with `["xid_154"]` for Drain P2P: disable new scheduling,
+  quiesce P2P traffic and UVM persistence, then re-query the recovery
+  action, and reset the GPU only if Drain P2P remains. The driver often
+  clears this request without logging another Xid 154, so the journal
+  alone cannot show that it was cleared.
+- **WARNING** with `monitor` for an action this catalog does not map, such
+  as Recover IMEX Domain, and for a transition that could not be read.
 - **INFO** with no action for None.
 
 The action is the one Xid 154 last requested for each GPU. "Last" is by
@@ -182,13 +182,14 @@ keeps the most disruptive action they report, so a None cannot clear a
 request. An unreadable transition never replaces an action read for the
 same GPU. The `occurrences` threshold applies per action: each action's
 rule fires once that many Xid 154 reports ask for it as a GPU's current
-action.
+action. When a GPU's order is unknown, every one of its reports counts
+toward the action it names, so an uncertain request still counts.
 
 | Action | Description |
 |---|---|
 | <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for warning-class per-Xid checks. |
 | <nobr>`update_swfw`</nobr> | Bring the GPU driver/firmware and related software to compatible versions, or correct the vGPU configuration. Recommended for Xid 78 (vGPU start error), raised when the guest VM's driver is incompatible with the host vGPU Manager or the vGPU type is not supported for the guest OS or GPU. The guest driver is installed inside the VM; the host vGPU Manager and the vGPU type are managed by the infrastructure operator. |
-| <nobr>`xid_154`</nobr> | Follow the recovery action the accompanying Xid 154 (GPU recovery action changed) reports. Recommended for Drain P2P (0x3): quiesce peer-to-peer traffic, re-run, and follow the action Xid 154 reports then. |
+| <nobr>`xid_154`</nobr> | Follow the recovery action the accompanying Xid 154 (GPU recovery action changed) reports. Recommended for Drain P2P (0x3): quiesce peer-to-peer traffic, re-query the recovery action, and reset the GPU only if Drain P2P remains. |
 
 `gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at
 WARNING when Xid 45 is the only Xid seen within the collection window. When

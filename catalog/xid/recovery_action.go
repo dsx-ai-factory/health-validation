@@ -13,7 +13,7 @@ import (
 func readableRecoveryReports(events []XidEvent) map[string][]XidEvent {
 	reports := make(map[string][]XidEvent)
 	for _, ev := range events {
-		if ev.RecoveryAction != nil {
+		if ev.XidCode == 154 && ev.RecoveryAction != nil {
 			reports[ev.PCIAddress] = append(reports[ev.PCIAddress], ev)
 		}
 	}

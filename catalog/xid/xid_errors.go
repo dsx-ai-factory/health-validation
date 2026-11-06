@@ -95,7 +95,7 @@ var recoverySteps = []recoveryStep{
 	{
 		codes:     []uint32{0x3}, // Drain P2P
 		requested: "that peer-to-peer traffic be stopped",
-		guidance:  "Stop scheduling new work, stop the processes using peer-to-peer and disable persistence mode, then re-run and follow the recovery action reported then; reset the GPU only if Drain P2P is still requested.",
+		guidance:  "Disable new scheduling, quiesce P2P traffic and UVM persistence, then re-query the recovery action. Reset the GPU only if Drain P2P remains after quiescing.",
 		severity:  health.Warning,
 		action:    health.Drain(health.RemediationActionXid154),
 	},
@@ -618,11 +618,9 @@ func xid154Check() health.CheckDefinition {
 		health.Rule{
 			Expression:        fmt.Sprintf("recovery_action_counts.exists(k, !(k in [%s]) && recovery_action_counts[k] >= occurrences)", strings.Join(append(mapped, strconv.Quote(recoveryActionUnreadable)), ", ")),
 			Severity:          health.Warning,
-			Message:           "GPU Xid 154: the driver requested a recovery action this catalog does not recognize for at least one GPU; report the action code.",
-			RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
+			Message:           "GPU Xid 154: the driver requested a recovery action this catalog does not recognize for at least one GPU. Monitor, investigate the printed transition and the accompanying Xid, and report the action code.",
+			RecommendedAction: health.Monitor,
 		},
-		// After the unrecognized-action rule, so a tie keeps the action
-		// the driver did name.
 		health.Rule{
 			Expression:        reached(strconv.Quote(recoveryActionUnreadable)),
 			Severity:          health.Warning,
