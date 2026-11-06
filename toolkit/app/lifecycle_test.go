@@ -7,9 +7,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -127,5 +129,86 @@ func TestStalledNativeSourceFailsOnlyItsChecks(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// gatedReader holds a process-wide gate for each read, as the NVML source's
+// native-call gate does, and refuses a read while another holds it. The first
+// read parks until release; done closes once it has returned the gate.
+type gatedReader struct {
+	gate    *sync.Mutex
+	entered *atomic.Int32
+	release chan struct{}
+	done    chan struct{}
+}
+
+func (gatedReader) ID() string { return "nvml" }
+
+func (r gatedReader) Read(ctx context.Context) (*observation.GPUInventorySnapshot, error) {
+	if !r.gate.TryLock() {
+		return nil, fmt.Errorf("read GPU inventory: %w", gpuinventory.ErrSourceBusy)
+	}
+	first := r.entered.Add(1) == 1
+	if first {
+		defer close(r.done)
+	}
+	defer r.gate.Unlock()
+	if first {
+		<-r.release
+	}
+	return inventoryReader{gpus: 4, model: "NVIDIA GB200"}.Read(ctx)
+}
+
+// A timeout stops waiting for a native read but not the read itself, and Run
+// leaves the host open, so the next run on the same App can find the source
+// still busy. That run reports UNKNOWN with retry_collection without entering
+// the library again, and a run after the read returns passes.
+func TestNextRunFindsTimedOutReadBusy(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(config, []byte("collection_timeout_seconds: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var entered atomic.Int32
+	reader := gatedReader{gate: new(sync.Mutex), entered: &entered, release: make(chan struct{}), done: make(chan struct{})}
+	release := sync.OnceFunc(func() { close(reader.release) })
+	t.Cleanup(release)
+	host := fakeHost{b: spyBackend{called: new(bool)}}
+	a := cadenceRunApp()
+	a.host = sharedInventoryHost{
+		fakeHost:  host,
+		inventory: gpuinventory.New(func() (gpuinventory.Reader, error) { return reader, nil }),
+		gpu:       host.gpuSensors(),
+	}
+	run := func(want int) health.NodeVerdict {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		if code := a.runCommand([]string{"--node-id", testNodeID, "--config", config}, &stdout, &stderr); code != want {
+			t.Fatalf("exit = %d, want %d; stderr = %q", code, want, stderr.String())
+		}
+		var v health.NodeVerdict
+		if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+			t.Fatalf("unmarshal verdict: %v; stdout = %s", err, stdout.String())
+		}
+		return v
+	}
+	discovery := func(run string, v health.NodeVerdict, severity health.Severity, action health.RecommendedAction) {
+		t.Helper()
+		if len(v.CheckResults) != 1 || v.CheckResults[0].CheckID != "architecture_discovery" ||
+			v.OverallSeverity != severity || !v.RecommendedAction.Equal(action) {
+			t.Fatalf("%s verdict = %+v, want one %s architecture_discovery result recommending %+v", run, v, severity, action)
+		}
+	}
+
+	// A discovery timeout is not a busy source, so it keeps the generic drain.
+	discovery("run 1", run(exitUnhealthy), health.Critical, health.GenericDrain())
+	discovery("run 2", run(exitUnhealthy), health.Unknown, health.Drain(health.RemediationActionRetryCollection))
+	if n := entered.Load(); n != 1 {
+		t.Fatalf("native reads entered = %d, want 1", n)
+	}
+
+	release()
+	<-reader.done
+	if v := run(exitOK); v.OverallSeverity != health.Pass {
+		t.Errorf("run 3 severity = %s, want PASS", v.OverallSeverity)
 	}
 }
