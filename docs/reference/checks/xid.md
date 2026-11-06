@@ -561,3 +561,61 @@ Detects NVRM Xid 150 in the system journal within the collection window, differe
 - **WARNING** when `150 in xid_counts && xid_counts[150] > (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) && xid_counts[150] - (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 150 detected: NVLink MSE error (Nonfatal).
 
+## GPU Xid with no resolution in the catalog
+
+`gpu_xid_informational`
+
+Detects NVRM Xid codes in the system journal that the NVIDIA Xid catalog marks Unused, IGNORE or gives no resolution, and that no Health Validation check covers.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`informational_xid_counts`</nobr>, <nobr>`events`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
+
+**Rules**
+
+- **INFO** when `informational_xid_counts.exists(c, informational_xid_counts[c] >= occurrences)`
+  - Message: A GPU Xid code that NVIDIA's Xid catalog gives no resolution was logged. No action is needed. The driver message is in events.
+
+## GPU Xid not described by the catalog
+
+`gpu_xid_unknown`
+
+Detects NVRM Xid codes in the system journal that no Health Validation check covers and that are not informational.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`unknown_xid_counts`</nobr>, <nobr>`events`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
+
+**Rules**
+
+- **WARNING** when `unknown_xid_counts.exists(c, unknown_xid_counts[c] >= occurrences)`
+  - Message: A GPU Xid code that Health Validation has no check for was logged, so it recommends no action.
+
+**Recommended action:** operational state `monitor`
+

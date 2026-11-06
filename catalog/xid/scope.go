@@ -6,8 +6,15 @@ package xid
 import "github.com/dsx-ai-factory/health-validation/catalog/internal/scope"
 
 // ScopeObservedValues implements [scope.Scoper]: a check from [Checks]
-// reports only its own events, grouped, and count entries.
+// reports only its own events, grouped, and count entries. The catch-all
+// checks report the codes no other check covers.
 func (XidMeasurement) ScopeObservedValues(req scope.Request) map[string]any {
+	switch req.CheckID {
+	case unknownCheckID:
+		return checkScope{rest: isUnknown}.apply(req.Observed)
+	case informationalCheckID:
+		return checkScope{rest: isInformational}.apply(req.Observed)
+	}
 	s, ok := checkScopes[req.CheckID]
 	if !ok {
 		// shortcut: a custom Xid check is not in checkScopes, so it reports every code; add a way to declare its code if users ask.
@@ -16,11 +23,13 @@ func (XidMeasurement) ScopeObservedValues(req scope.Request) map[string]any {
 	return s.apply(req.Observed)
 }
 
-// checkScope is what one check from [Checks] judges: an Xid code, or an
-// NVLink5 fault subtype such as "149.4" (see [XidEvent.SubXidCode]).
+// checkScope is what one check from [Checks] judges: an Xid code, an
+// NVLink5 fault subtype such as "149.4" (see [XidEvent.SubXidCode]), or, for
+// a catch-all check, every code rest accepts.
 type checkScope struct {
-	sub  string // set for a sub-code check
-	code int64  // set for a code check
+	rest func(code int64) bool // set for a catch-all check
+	sub  string                // set for a sub-code check
+	code int64                 // set for a code check
 }
 
 // checkScopes maps each check [Checks] builds to its scope, from the same
@@ -50,6 +59,9 @@ var checkScopes = func() map[string]checkScope {
 // keep reports whether e is one of the check's own events. A sub-code
 // check keeps the events sub_xid_code_counts counts under its subtype.
 func (s checkScope) keep(e XidEvent) bool {
+	if s.rest != nil {
+		return s.rest(e.XidCode)
+	}
 	if s.sub == "" {
 		return e.XidCode == s.code
 	}
@@ -67,11 +79,15 @@ func (s checkScope) apply(observed map[string]any) map[string]any {
 				value = groupEvents(v, s.keep)
 			}
 		case map[int64]int64:
-			if s.sub == "" && (name == SignalXidCounts || name == SignalFatalXidCounts) {
+			if s.rest != nil {
+				if name == SignalXidCounts || name == SignalFatalXidCounts || name == SignalUnknownXidCounts || name == SignalInformationalXidCounts {
+					value = onlyWhere(v, s.rest)
+				}
+			} else if s.sub == "" && (name == SignalXidCounts || name == SignalFatalXidCounts) {
 				value = onlyKey(v, s.code)
 			}
 		case map[string]int64:
-			if s.sub != "" && name == SignalSubXidCodeCounts {
+			if s.rest == nil && s.sub != "" && name == SignalSubXidCodeCounts {
 				value = onlyKey(v, s.sub)
 			}
 		}
@@ -110,4 +126,18 @@ func onlyKey[K comparable](counts map[K]int64, key K) map[K]int64 {
 		return nil
 	}
 	return map[K]int64{key: n}
+}
+
+// onlyWhere is [onlyKey] for every key keep accepts.
+func onlyWhere(counts map[int64]int64, keep func(int64) bool) map[int64]int64 {
+	var out map[int64]int64
+	for k, n := range counts {
+		if keep(k) {
+			if out == nil {
+				out = map[int64]int64{}
+			}
+			out[k] = n
+		}
+	}
+	return out
 }
