@@ -6,6 +6,7 @@
 package dcgm
 
 import (
+	"errors"
 	"testing"
 
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
@@ -62,6 +63,46 @@ func TestCategoryFromCodeNoData(t *testing.T) {
 	for _, code := range []int{godcgm.DCGM_ST_NO_DATA, godcgm.DCGM_ST_STALE_DATA} {
 		if got := categoryFromCode(code); got != observation.CollectionErrorCategoryUnavailable {
 			t.Errorf("categoryFromCode(%d) = %v, want %v", code, got, observation.CollectionErrorCategoryUnavailable)
+		}
+	}
+}
+
+func TestDCGMErrorFromStatusText(t *testing.T) {
+	tests := []struct {
+		err          string
+		wantSource   string
+		wantCategory observation.CollectionErrorCategory
+	}{
+		{
+			err:          "error connecting to nv-hostengine: Host engine connection invalid/disconnected",
+			wantSource:   "DCGM_ST_CONNECTION_NOT_VALID",
+			wantCategory: observation.CollectionErrorCategoryUnavailable,
+		},
+		{
+			err:          "error getting entity count: Host engine connection invalid/disconnected",
+			wantSource:   "DCGM_ST_CONNECTION_NOT_VALID",
+			wantCategory: observation.CollectionErrorCategoryUnavailable,
+		},
+		{
+			err:          "error initializing DCGM: DCGM initialization error",
+			wantSource:   "DCGM_ST_INIT_ERROR",
+			wantCategory: observation.CollectionErrorCategoryUnavailable,
+		},
+		{
+			err:          "error starting nv-hostengine: DCGM initialization error",
+			wantSource:   "DCGM_ST_INIT_ERROR",
+			wantCategory: observation.CollectionErrorCategoryUnavailable,
+		},
+		{err: "libdcgm.so.4 not found", wantCategory: observation.CollectionErrorCategoryOther},
+	}
+	for _, test := range tests {
+		var failure *dcgmError
+		if !errors.As(dcgmErrorFromError(errors.New(test.err)), &failure) {
+			t.Fatalf("dcgmErrorFromError(%q) is not a *dcgmError", test.err)
+		}
+		if failure.sourceError != test.wantSource || failure.category != test.wantCategory || failure.detail != test.err {
+			t.Errorf("dcgmErrorFromError(%q) = %q %v %q, want %q %v", test.err,
+				failure.sourceError, failure.category, failure.detail, test.wantSource, test.wantCategory)
 		}
 	}
 }

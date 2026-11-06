@@ -8,12 +8,15 @@ import (
 	"maps"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
+	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
@@ -52,35 +55,6 @@ func TestDomainAdaptersPreserveExistingMappings(t *testing.T) {
 // Endpoint and pair observations group with the GPU they belong to; a
 // per-source group would merge every GPU's links and stamp the source label
 // as their GPU ID.
-func TestAdapterGroupKeysEndpointsAndPairsByGPU(t *testing.T) {
-	at := func(target *observation.ObservationTarget) *observation.Observation {
-		return &observation.Observation{Source: "nvml", Target: target}
-	}
-	first := adapterGroup(at(observation.GPUTarget("GPU-1")))
-	second := adapterGroup(at(observation.GPUTarget("GPU-2")))
-	if first == second {
-		t.Fatal("two GPUs share a group")
-	}
-	for _, test := range []struct {
-		target *observation.ObservationTarget
-		want   adapterKey
-	}{
-		{observation.NVLinkEndpointTarget("GPU-1", 0), first},
-		{observation.NVLinkEndpointTarget("GPU-2", 17), second},
-		{observation.GPUPairTarget("GPU-2", "GPU-1"), second},
-	} {
-		if got := adapterGroup(at(test.target)); got != test.want {
-			t.Errorf("adapterGroup(%v) = %v, want %v", test.target, got, test.want)
-		}
-	}
-	// Source-scoped observations from different sources share one group.
-	other := at(nil)
-	other.Source = "dcgm"
-	if adapterGroup(at(nil)) != adapterGroup(other) {
-		t.Error("source-scoped observations from two sources are split")
-	}
-}
-
 func TestDomainAdaptersNamespaceFailedSourceLocalSlots(t *testing.T) {
 	first := failedObservation(gpusignals.PerformanceState.ID(), &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable})
 	first.Source = "a:b"
@@ -131,16 +105,31 @@ func TestDomainAdaptersKeyDomainFailureBySource(t *testing.T) {
 	}
 }
 
-// A timeout reported by DCGM and NVML stays one source-level measurement, so
-// every field fails as a timeout rather than as never collected.
-func TestNVLinkAdapterMergesSourceLevelFailures(t *testing.T) {
+// A timeout reported by DCGM and NVML keeps one measurement per source, and
+// each fails the other source's fields as a timeout rather than as never
+// collected.
+func TestNVLinkAdapterSourceLevelFailuresCoverEachOther(t *testing.T) {
 	timeout := &observation.CollectionError{Category: observation.CollectionErrorCategoryTimeout}
 	dcgm := failedObservation(gpusignals.NVLinkFabricAccessTimeoutRecovery.ID(), timeout)
 	nvml := failedObservation(gpusignals.NVLinkLinkCount.ID(), timeout)
 	dcgm.Target, nvml.Target, nvml.Source = nil, nil, "nvml"
 	got := NVLink().Build([]*observation.Observation{dcgm, nvml})
-	if len(got) != 1 || health.KeyOf(got[0]) != health.SourceEntity(adapterSource(health.NVLink)) {
-		t.Fatalf("Build = %v, want one measurement keyed by the adapter", got)
+	keys := []health.EntityKey{health.SourceEntity(dcgm.GetSource()), health.SourceEntity("nvml")}
+	if len(got) != 2 || health.KeyOf(got[0]) != keys[0] || health.KeyOf(got[1]) != keys[1] {
+		t.Fatalf("Build = %v, want one measurement per source", got)
+	}
+	for _, m := range got {
+		for _, field := range []string{nvlink.SignalFabricAccessTimeoutRecovery, nvlink.SignalLinkCount} {
+			timedOut := false
+			for _, e := range m.Errors() {
+				if slices.Contains(e.FailedSignals(), field) {
+					timedOut = errors.Is(e.Err(), health.ErrCollectionTimeout)
+				}
+			}
+			if !timedOut {
+				t.Errorf("%v: %s is not a timeout: %v", health.KeyOf(m), field, m.Errors())
+			}
+		}
 	}
 }
 
@@ -351,6 +340,50 @@ func TestNodeAdapterBuildsGPUCount(t *testing.T) {
 	empty := only[node.NodeMeasurement](t, a.Build(nil))
 	if len(empty.Errors()) == 0 || !slices.Contains(empty.Errors()[0].FailedSignals(), node.SignalGPUCount) {
 		t.Fatalf("empty input did not fail gpu_count: %v", empty.Errors())
+	}
+}
+
+// A successful inventory read that finds no GPUs is a count of zero that the
+// rule judges; a failed or absent read is a collection failure.
+func TestNodeAdapterGPUCountVerdicts(t *testing.T) {
+	failed := observation.NewCollectionErrorObservation(gpuinventory.GPUCount.ID(), gpuinventory.GPUCount.Unit(), gpuinventory.SensorID, "GPUInventory", nil,
+		timestamppb.Now(), &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable, SourceError: "ERROR_UNINITIALIZED"})
+	collectionFailure := health.Drain(health.RemediationActionCheckCollection)
+	for _, tt := range []struct {
+		name  string
+		obs   []*observation.Observation
+		ruled bool
+	}{
+		{name: "successful zero", obs: []*observation.Observation{nodeCountObservation(gpuinventory.SensorID, 0)}, ruled: true},
+		{name: "failed enumeration", obs: []*observation.Observation{failed}},
+		{name: "no observations"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.TenantGuest))
+			cat.MustRegister(node.GPUCount())
+			nv, err := cat.EvaluateAll(Node().Build(tt.obs)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := health.Unknown
+			if tt.ruled {
+				want = health.Critical
+			}
+			if len(nv.CheckResults) != 1 || nv.CheckResults[0].Severity != want {
+				t.Fatalf("results = %+v, want one %v gpu_count", nv.CheckResults, want)
+			}
+			v := nv.CheckResults[0]
+			if tt.ruled {
+				if v.ObservedValues[node.SignalGPUCount] != int64(0) || !v.RecommendedAction.Equal(node.GPUCount().RecommendedAction) {
+					t.Fatalf("verdict = %+v, want the rule to judge a count of 0", v)
+				}
+				return
+			}
+			if v.ObservedValues != nil || len(v.Messages) != 1 || !strings.HasPrefix(v.Messages[0], "measurement unavailable: ") ||
+				!v.RecommendedAction.Equal(collectionFailure) {
+				t.Fatalf("verdict = %+v, want a collection failure", v)
+			}
+		})
 	}
 }
 

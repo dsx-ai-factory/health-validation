@@ -138,14 +138,14 @@ func TestGPUPowerLimit_Scenarios(t *testing.T) {
 		{
 			// A read failure must fail the check, not fall through to CEL
 			// against a zero value.
-			name: "errored signal forces critical",
+			name: "errored signal reports unknown",
 			cat:  func() *catalog.Catalog { return newCatalog() },
 			measurement: func() gpu.GPUMeasurement {
 				m := matchingPowerLimits(1200)
 				m.AddError(errors.New("nvml power limit query failed"), gpu.SignalPowerLimitW)
 				return m
 			},
-			wantSeverity: health.Critical,
+			wantSeverity: health.Unknown,
 			wantAction:   health.Drain(health.RemediationActionCheckCollection),
 		},
 	}

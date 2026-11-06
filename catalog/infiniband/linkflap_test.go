@@ -141,10 +141,10 @@ func TestRDMALinkFlapFatal(t *testing.T) {
 		{
 			// A journal read that failed entirely must fail the check, not
 			// pass it: the required signal is unavailable.
-			name:         "errored journal forces critical",
+			name:         "errored journal reports unknown",
 			cat:          func() *catalog.Catalog { return linkflapCatalog() },
 			measurement:  infiniband.ErroredLinkFlap("boot", errors.New("journal unreadable"), infiniband.MeasurementSignals()...),
-			wantSeverity: health.Critical,
+			wantSeverity: health.Unknown,
 		},
 		{
 			// The check is scoped to GB200/GB300: on another architecture it

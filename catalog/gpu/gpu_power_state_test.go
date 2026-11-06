@@ -85,12 +85,12 @@ func TestGPUPowerState(t *testing.T) {
 		},
 		{
 			// A GPU whose performance state could not be collected propagates
-			// to Critical regardless of the rule, since the data the check
+			// to Unknown regardless of the rule, since the data the check
 			// needs is unavailable.
-			name:         "errored GPU forces critical",
+			name:         "errored GPU reports unknown",
 			cat:          func() *catalog.Catalog { return newCatalog() },
 			measurement:  gpu.ErroredGPU("GPU-0", errors.New("nvml pstate query failed"), gpu.SignalGPUPstate),
-			wantSeverity: health.Critical,
+			wantSeverity: health.Unknown,
 		},
 	}
 

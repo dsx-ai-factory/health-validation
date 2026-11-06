@@ -27,8 +27,8 @@
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
-// honored verbatim. The only registration constraint is the catalog's
-// existing duplicate-ID guard.
+// honored verbatim. Registration fails only on the catalog's own validation
+// or a duplicate ID.
 package app
 
 import (
@@ -68,7 +68,7 @@ import (
 const (
 	exitOK        = 0 // PASS, INFO, WARNING
 	exitUnhealthy = 1 // CRITICAL, UNKNOWN
-	exitError     = 2 // config/backend/collection/output failure; no verdict
+	exitError     = 2 // config/backend/collection/audit/output failure; no verdict
 )
 
 // exitCodeForVerdict applies the exit policy to a produced verdict; the
@@ -83,14 +83,15 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 	}
 }
 
-// hostBackend is the platform-split source of the built-in NVML data sources.
-// On linux it is one [nvml.NVMLBackend] feeding the legacy GPU and NVLink
-// sensors, plus the collect NVML GPU inventory that architecture discovery
-// and the node GPU count share; off linux it is a stub that errors at
-// Measure, keeping the command buildable (and `version` runnable) while
-// surfacing a clear runtime error if `run` is invoked there.
+// hostBackend is the platform-split source of the built-in GPU data sources.
+// On linux it is one [nvml.NVMLBackend] feeding the legacy NVLink sensor, the
+// collect GPU sensors (DCGM, plus NVML for compute processes), and the collect
+// NVML GPU inventory that architecture discovery and the node GPU count share;
+// off linux it is a stub that errors at Measure, keeping the command buildable
+// (and `version` runnable) while surfacing a clear runtime error if `run` is
+// invoked there.
 type hostBackend interface {
-	gpuBackend() toolkit.GPUBackend
+	gpuSensors() []collect.Sensor
 	nvlinkBackend() toolkit.NVLinkBackend
 	gpuInventory() *gpuinventory.Inventory
 	close() error
@@ -98,17 +99,19 @@ type hostBackend interface {
 
 // App is the health-validation CLI, assembled with the builder methods and
 // run with [App.Run]. It wires six sensors (GPU, node, NVLink, CPU, Xid,
-// InfiniBand), each from its own per-domain backend — the shared host NVML
-// backend, sysfs, or the journal by default, or a caller-supplied override.
+// InfiniBand), each from its own per-domain source — DCGM, the shared host
+// NVML backend, sysfs, or the journal by default, or a caller-supplied
+// override.
 type App struct {
-	host     hostBackend
-	hostname func() (string, error)
+	host        hostBackend
+	hostname    func() (string, error)
+	openJournal func() (io.WriteCloser, error)
 	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
 	// overrides set by the matching With*Backend setter. A nil override uses the
-	// default: the shared host NVML backend for gpu/nvlink, the host GPU
-	// inventory for node, the sysfs collect sensor for cpu, and the journal
-	// collect sensors for xid and rdmaLinkFlap. The generic ib backend has no
-	// default and is opt-in.
+	// default: the host's DCGM and NVML collect sensors for gpu, the shared host
+	// NVML backend for nvlink, the host GPU inventory for node, the sysfs
+	// collect sensor for cpu, and the journal collect sensors for xid and
+	// rdmaLinkFlap. The generic ib backend has no default and is opt-in.
 	gpu          toolkit.GPUBackend
 	node         toolkit.NodeBackend
 	nvlink       toolkit.NVLinkBackend
@@ -134,8 +137,9 @@ type App struct {
 // an App is safe on a host without a GPU/driver, and `version` runs there.
 func New() *App {
 	return &App{
-		host:     newHostBackend(),
-		hostname: os.Hostname,
+		host:        newHostBackend(),
+		hostname:    os.Hostname,
+		openJournal: dialJournal,
 	}
 }
 
@@ -432,6 +436,12 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
+	// Fail closed: no verdict may rest on an override the journal did not record.
+	if auditErr := a.auditOverrides(cat); auditErr != nil {
+		fmt.Fprintf(stderr, "%s: audit threshold overrides: %v\n", a.prog, auditErr)
+		return exitError
+	}
+
 	runnable, err := cat.RunnableChecks(catalog.EvaluationOptions{Cadence: cadence})
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
@@ -457,18 +467,16 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 // sensors returns the legacy sensors and the collect-backed sensors, whose
 // sources are measured once now under cycle.
 func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
-	gpu := a.gpu
-	if gpu == nil {
-		gpu = a.host.gpuBackend()
-	}
 	nvlink := a.nvlink
 	if nvlink == nil {
 		nvlink = a.host.nvlinkBackend()
 	}
-	sensors := []toolkit.Sensor{
-		toolkit.NewGPUSensor(gpu),
-		toolkit.NewNVLinkSensor(nvlink),
+	var sensors []toolkit.Sensor
+	// Without an override, the GPU domain comes from builtinCollect.
+	if a.gpu != nil {
+		sensors = append(sensors, toolkit.NewGPUSensor(a.gpu))
 	}
+	sensors = append(sensors, toolkit.NewNVLinkSensor(nvlink))
 	// Without an override, the Xid domain comes from builtinCollect.
 	if a.xid != nil {
 		sensors = append(sensors, toolkit.NewXidSensor(a.xid))
@@ -491,7 +499,7 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 	if a.node != nil {
 		sensors = append(sensors, toolkit.NewNodeSensor(a.node))
 	}
-	builtinSources, builtinAdapters := a.builtinCollect()
+	builtinSources, builtinAdapters := a.builtinCollect(cycle)
 	if xidJournal != nil {
 		for i, source := range builtinSources {
 			if source.ID() == xidsensor.ID {
@@ -827,8 +835,8 @@ func loadOptionalConfig(path string) (*Config, error) {
 // timeout. arch and driverVersion are what discovery found about the node.
 func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string, driverVersion health.DriverVersion, executionContext health.ExecutionContext) (*catalog.Catalog, time.Duration, error) {
 	// register adds the caller-supplied checks to a freshly built catalog.
-	// Classification is passed through untouched; the only failure is the
-	// catalog's duplicate-ID guard.
+	// Classification is passed through untouched; registration fails only on
+	// the catalog's own validation or a duplicate ID.
 	register := func(c *catalog.Catalog) error {
 		for _, cd := range customChecks {
 			if err := c.Register(cd); err != nil {

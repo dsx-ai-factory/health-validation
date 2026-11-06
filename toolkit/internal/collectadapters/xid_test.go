@@ -96,6 +96,7 @@ func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
 	obs := []*observation.Observation{
 		xidInt(xidsignals.Code, "a", 79), xidString(xidsignals.PCIAddress, "a", "0000:01:00"),
 		xidInt(xidsignals.PID, "a", 1234), xidString(xidsignals.ProcessName, "a", "python3"),
+		xidString(xidsignals.Message, "a", "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3, GPU has fallen off the bus."),
 	}
 	obs = append(obs, xidEvent("b", 79)...)
 	obs = append(obs, xidEvent("c", 149)...)
@@ -120,7 +121,7 @@ func TestXIDAdapterBuildsEventsInOrder(t *testing.T) {
 		FatalXidCounts: map[int64]int64{149: 1},
 		EventCount:     6,
 		Events: []xid.XidEvent{
-			{PCIAddress: "0000:01:00", XidCode: 79, Pid: 1234, ProcessName: "python3"},
+			{PCIAddress: "0000:01:00", XidCode: 79, Pid: 1234, ProcessName: "python3", Message: "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3, GPU has fallen off the bus."},
 			{PCIAddress: "0000:01:00", XidCode: 79},
 			{PCIAddress: "0000:01:00", XidCode: 149, NVLink5: &xid.NVLink5Detail{
 				SubComponent: "NETIR_LINK_EVT", Fatal: true, Link: 8, IntrInfo: "0x004505c6", ErrorStatus: "0x00000000",
@@ -203,6 +204,41 @@ func xidCatalog(t *testing.T) *catalog.Catalog {
 	return cat
 }
 
+func TestXIDAdapterCollectionFailuresAreUnknown(t *testing.T) {
+	for _, category := range []observation.CollectionErrorCategory{
+		observation.CollectionErrorCategoryPermissionDenied,
+		observation.CollectionErrorCategorySourceError,
+		observation.CollectionErrorCategoryParseError,
+	} {
+		t.Run(category.String(), func(t *testing.T) {
+			var obs []*observation.Observation
+			for _, signal := range xidsignals.All() {
+				obs = append(obs, xidFailure(signal, category, nil))
+			}
+			verdict, err := xidCatalog(t).EvaluateAll(XID().Build(obs)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if verdict.OverallSeverity != health.Unknown {
+				t.Fatalf("overall = %v, want UNKNOWN", verdict.OverallSeverity)
+			}
+			var foundXid13 bool
+			for _, result := range verdict.CheckResults {
+				foundXid13 = foundXid13 || result.CheckID == "gpu_xid_13"
+				if result.Severity != health.Unknown || !result.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckCollection)) {
+					t.Errorf("%s = %v %v, want UNKNOWN check_collection", result.CheckID, result.Severity, result.RecommendedAction)
+				}
+				if result.ConditionScope != health.NodeScope || result.Skipped || result.ObservedValues != nil {
+					t.Errorf("%s = %+v, want a node-local collection failure without observed values", result.CheckID, result)
+				}
+			}
+			if !foundXid13 {
+				t.Fatal("gpu_xid_13 was not evaluated")
+			}
+		})
+	}
+}
+
 func TestXIDAdapterTimeoutKeepsRetry(t *testing.T) {
 	var obs []*observation.Observation
 	for _, s := range xidsignals.All() {
@@ -220,8 +256,8 @@ func TestXIDAdapterTimeoutKeepsRetry(t *testing.T) {
 		t.Fatalf("evaluated %d checks and %d architecture skips, want %d", len(verdict.CheckResults), skipped, len(xid.Checks()))
 	}
 	for _, result := range verdict.CheckResults {
-		if result.Severity != health.Critical || !result.RecommendedAction.Equal(health.Drain(health.RemediationActionRetryCollection)) {
-			t.Fatalf("%s = %v %v, want CRITICAL retry_collection", result.CheckID, result.Severity, result.RecommendedAction)
+		if result.Severity != health.Unknown || !result.RecommendedAction.Equal(health.Drain(health.RemediationActionRetryCollection)) {
+			t.Fatalf("%s = %v %v, want UNKNOWN retry_collection", result.CheckID, result.Severity, result.RecommendedAction)
 		}
 	}
 }

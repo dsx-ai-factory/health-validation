@@ -45,7 +45,7 @@ func (s *NodeSensor) Measure(_ context.Context) ([]health.Measurement, error) {
 }
 
 // Errored reports the node as unobservable so node-level checks
-// (e.g. gpu_count) fail Critical when collection could not run.
+// (e.g. gpu_count) report Unknown when collection could not run.
 func (s *NodeSensor) Errored(err error) []health.Measurement {
 	return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
 }

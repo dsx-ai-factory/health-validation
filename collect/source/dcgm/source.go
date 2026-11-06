@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
 // Name identifies DCGM as an observation source.
@@ -33,6 +35,17 @@ var errClosed = errors.New("DCGM source is closed")
 // must remain coordinated process-wide.
 var defaultNativeCallMu sync.Mutex
 
+// go-dcgm ignores the mode and address of every Init while an earlier Init is
+// still open, so sources record the first successful mode here and reject any
+// other mode. While the first source is open, a later standalone source with
+// another address reads the first source's hostengine. Sources open at the same
+// time share one DCGM connection and its field watches, so closing one stops
+// the field updates the others read; keep one source open per process. The mode
+// stays set after every source closes, because re-initializing libdcgm in
+// another mode after go-dcgm's final Shutdown is untested. It is read and
+// written only while holding defaultNativeCallMu.
+var defaultProcessMode sessionMode
+
 // StandaloneOptions configures a connection to an external DCGM hostengine.
 type StandaloneOptions struct {
 	// Address is the hostengine endpoint. Empty defaults to localhost.
@@ -43,6 +56,21 @@ type StandaloneOptions struct {
 	GroupNamePrefix string
 	// IsSocket indicates that Address is a Unix domain socket path.
 	IsSocket bool
+	// LiveMetrics reads metric fields from the driver on each read instead of
+	// the hostengine's cache. A cached sample can be as old as the watch
+	// interval of whichever client already watches the field, since a new
+	// watch does not trigger a sample. DCGM fails the whole read if any
+	// requested field does not support live reads.
+	LiveMetrics bool
+}
+
+// EmbeddedOptions configures DCGM started inside this process.
+type EmbeddedOptions struct {
+	// GroupNamePrefix names this source's DCGM field group. An embedded engine
+	// opens no listener, so no other process can list the group. The source
+	// appends the process ID and a process-local sequence before the "-fields"
+	// suffix. Empty uses "shared-signal-collection".
+	GroupNamePrefix string
 }
 
 func metricWatchName(prefix string, processID int, sequence uint64) string {
@@ -63,19 +91,36 @@ type Source struct {
 	nativeCallMu       *sync.Mutex
 	cleanup            func()
 	watchCleanup       func() error
+	processMode        *sessionMode
 	metricWatchSignals []string
 	metricWatchFrozen  atomic.Bool
 	ready              bool
 	closed             bool
+	mode               sessionMode
 }
 
 // NewStandaloneSource creates a source connected to an external DCGM
-// hostengine. Embedded DCGM is intentionally not exposed by this package.
+// hostengine.
 func NewStandaloneSource(options StandaloneOptions) *Source {
 	if options.Address == "" {
 		options.Address = "localhost"
 	}
-	return newSource(newNative(options), &defaultNativeCallMu)
+	source := newSource(newNative(options, standaloneMode), &defaultNativeCallMu)
+	source.mode = standaloneMode
+	source.processMode = &defaultProcessMode
+	return source
+}
+
+// NewEmbeddedSource creates a source that starts DCGM inside this process on
+// its first collection and shuts it down on Close. It never checks for another
+// DCGM engine on the node; the caller must. It is meant for short-lived one-shot
+// processes; long-running agents should use NewStandaloneSource. A process runs
+// DCGM in one mode, so a source of the other mode reports NOT_CONFIGURED.
+func NewEmbeddedSource(options EmbeddedOptions) *Source {
+	source := newSource(newNative(StandaloneOptions{GroupNamePrefix: options.GroupNamePrefix}, embeddedMode), &defaultNativeCallMu)
+	source.mode = embeddedMode
+	source.processMode = &defaultProcessMode
+	return source
 }
 
 func newSource(native nativeAPI, nativeCallMu *sync.Mutex) *Source {
@@ -143,9 +188,19 @@ func (source *Source) ensureInitialized() error {
 	if source.ready {
 		return nil
 	}
+	if source.processMode != nil && *source.processMode != 0 && *source.processMode != source.mode {
+		return &dcgmError{
+			category: observation.CollectionErrorCategoryNotConfigured,
+			detail: fmt.Sprintf("this process set DCGM to %s mode with its first DCGM source and keeps that mode until it exits; this source uses %s mode",
+				*source.processMode, source.mode),
+		}
+	}
 	cleanup, err := source.native.Init()
 	if err != nil {
 		return err
+	}
+	if source.processMode != nil && *source.processMode == 0 {
+		*source.processMode = source.mode
 	}
 	source.cleanup = cleanup
 	source.ready = true

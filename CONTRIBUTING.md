@@ -49,6 +49,12 @@ New GPU health checks are the most common contribution. Before implementing:
 3. Wait for a maintainer to acknowledge the issue before writing code, to avoid
    wasted effort on proposals that don't align with project scope.
 
+For changes that need design agreement, follow the
+[design proposal guide](docs/design/index.md). Open a design-only Markdown PR
+using the template, then merge the accepted design before submitting its
+implementation PRs. Routine fixes can use the normal PR path. Existing
+[governance requirements](GOVERNANCE.md) still apply.
+
 ## Development Setup
 
 Use [Bazelisk](https://github.com/bazelbuild/bazelisk) or the Bazel version pinned

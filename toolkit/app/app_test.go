@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
@@ -24,7 +25,9 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
@@ -191,7 +194,7 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	}
 }
 
-// TestWithChecksDuplicateIDFails confirms the only registration constraint:
+// TestWithChecksDuplicateIDFails confirms the duplicate-ID constraint:
 // a custom check whose ID collides with a built-in (here gpu_count) makes
 // catalog construction fail rather than silently shadowing.
 func TestWithChecksDuplicateIDFails(t *testing.T) {
@@ -204,6 +207,24 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "already registered") {
 		t.Errorf("error = %q, want it to mention the duplicate registration", err.Error())
+	}
+}
+
+// TestWithChecksRejectsCheckWithoutRequiredSignals confirms a custom check that
+// names no signals stops catalog construction instead of reading every
+// measurement of its category.
+func TestWithChecksRejectsCheckWithoutRequiredSignals(t *testing.T) {
+	c := customCheck()
+	c.RequiredSignals = nil
+
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{c}, "", health.DriverVersion{}, health.OperatorInfra)
+	if err == nil {
+		t.Fatal("expected a registration error, got nil")
+	}
+	for _, want := range []string{"registering custom check", "RequiredSignals must name at least one signal"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err.Error(), want)
+		}
 	}
 }
 
@@ -341,6 +362,54 @@ func (s spyBackend) MeasureGPUs() ([]health.Measurement, error) {
 func (spyBackend) MeasureNode() ([]health.Measurement, error)   { return nil, nil }
 func (spyBackend) MeasureNVLink() ([]health.Measurement, error) { return nil, nil }
 
+// gpuSpySensor stands in for the host's built-in GPU collect sensors. It
+// records whether it was measured and reports fakeHost's four GPUs as healthy
+// idle GB200s.
+type gpuSpySensor struct {
+	called *bool
+}
+
+func (gpuSpySensor) ID() string { return "test.gpu" }
+func (gpuSpySensor) Signals() collect.Signals {
+	return slices.Concat(dcgmGPUSignals, processGPUSignals)
+}
+
+func (s gpuSpySensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	*s.called = true
+	op := collect.NewOp(opts...)
+	selected, err := op.Signals(s.Signals())
+	if err != nil {
+		return nil, err
+	}
+	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
+	now := timestamppb.Now()
+	for i := range 4 {
+		target := observation.GPUTarget(fmt.Sprintf("GPU-%d", i))
+		for _, signal := range selected {
+			value := &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: false}}
+			switch signal {
+			case gpusignals.PowerDraw:
+				value.Kind = &observation.Value_DoubleValue{DoubleValue: 700}
+			case gpusignals.PowerLimitRequested, gpusignals.PowerLimitEnforced:
+				value.Kind = &observation.Value_DoubleValue{DoubleValue: 1200}
+			case gpusignals.PerformanceState:
+				value.Kind = &observation.Value_IntValue{IntValue: 0}
+			case gpusignals.ProcessCount:
+				value.Kind = &observation.Value_UintValue{UintValue: 0}
+			case gpusignals.ProcessCmdline:
+				batch.Observations = append(batch.Observations, observation.NewNoValueObservation(signal.ID(), signal.Unit(), s.ID(), target, now,
+					&observation.NoValue{Reason: observation.NoValueReasonNoTargets}))
+				continue
+			}
+			batch.Observations = append(batch.Observations, &observation.Observation{
+				SignalId: signal.ID(), Source: s.ID(), Target: target, ObservedAt: now, Unit: signal.Unit(),
+				Outcome: &observation.Observation_Value{Value: value},
+			})
+		}
+	}
+	return batch, nil
+}
+
 type cpuBackendFunc func(context.Context) (cpu.CPUMeasurement, error)
 
 func (f cpuBackendFunc) MeasureCPU(ctx context.Context) (cpu.CPUMeasurement, error) {
@@ -383,7 +452,9 @@ type fakeHost struct {
 	driver string
 }
 
-func (h fakeHost) gpuBackend() toolkit.GPUBackend       { return h.b }
+func (h fakeHost) gpuSensors() []collect.Sensor {
+	return []collect.Sensor{gpuSpySensor{called: h.b.called}}
+}
 func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (h fakeHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) {
@@ -419,7 +490,7 @@ func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapsho
 // panicHost ensures invalid input returns before touching the host backend.
 type panicHost struct{}
 
-func (panicHost) gpuBackend() toolkit.GPUBackend        { panic("unexpected GPU backend access") }
+func (panicHost) gpuSensors() []collect.Sensor          { panic("unexpected GPU sensor access") }
 func (panicHost) nvlinkBackend() toolkit.NVLinkBackend  { panic("unexpected NVLink backend access") }
 func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
 func (panicHost) close() error                          { panic("unexpected host backend close") }
@@ -822,7 +893,7 @@ func (failingNodeBackend) MeasureNode() ([]health.Measurement, error) {
 // codes. The custom check is CRITICAL when gpu_count > 8, so the count picks
 // the verdict. A backend that fails to collect no longer aborts the run: the
 // failure is degraded to an errored measurement that fails the dependent
-// check Critical, so it exits exitUnhealthy (a produced CRITICAL verdict) with
+// check Unknown, so it exits exitUnhealthy (a produced UNKNOWN verdict) with
 // the verdict still written — not exitError, which is reserved for the case
 // where no verdict is produced at all.
 func TestEvaluateExitCodes(t *testing.T) {
@@ -833,7 +904,7 @@ func TestEvaluateExitCodes(t *testing.T) {
 	}{
 		{toolkit.NewNodeSensor(toolkit.MockNode(node.NodeMeasurement{GPUCount: 16})), "critical verdict", exitUnhealthy},
 		{toolkit.NewNodeSensor(toolkit.MockNode(node.NodeMeasurement{GPUCount: 8})), "healthy verdict", exitOK},
-		{toolkit.NewNodeSensor(failingNodeBackend{}), "collection failure degrades to critical", exitUnhealthy},
+		{toolkit.NewNodeSensor(failingNodeBackend{}), "collection failure reports unknown", exitUnhealthy},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -948,7 +1019,9 @@ type erroringHost struct {
 	b spyBackend
 }
 
-func (h erroringHost) gpuBackend() toolkit.GPUBackend       { return h.b }
+func (h erroringHost) gpuSensors() []collect.Sensor {
+	return []collect.Sensor{gpuSpySensor{called: h.b.called}}
+}
 func (h erroringHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (erroringHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })

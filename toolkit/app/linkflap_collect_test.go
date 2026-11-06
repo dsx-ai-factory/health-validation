@@ -110,8 +110,8 @@ func TestRunCommandLinkFlapCleanScanPasses(t *testing.T) {
 func TestRunCommandLinkFlapSilentSourceFails(t *testing.T) {
 	calls := 0
 	got := runLinkFlapApp(t, linkFlapApp(&calls), exitUnhealthy)
-	if got.Severity != health.Critical || !got.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckCollection)) {
-		t.Fatalf("rdma_linkflap_fatal = %v %v, want CRITICAL check collection", got.Severity, got.RecommendedAction)
+	if got.Severity != health.Unknown || !got.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckCollection)) {
+		t.Fatalf("rdma_linkflap_fatal = %v %v, want UNKNOWN check collection", got.Severity, got.RecommendedAction)
 	}
 }
 

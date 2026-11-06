@@ -592,7 +592,7 @@ func TestNVLinkCollectParity(t *testing.T) {
 }
 
 // TestNVLinkCollectTimeoutParity stalls both paths past their timeout. Every
-// NVLink check must fail with a retry-collection action on both.
+// NVLink check must report Unknown with retry_collection on both paths.
 func TestNVLinkCollectTimeoutParity(t *testing.T) {
 	const timeout = 10 * time.Millisecond
 	release := make(chan struct{})
@@ -613,12 +613,12 @@ func TestNVLinkCollectTimeoutParity(t *testing.T) {
 			continue
 		}
 		checked++
-		if v.Severity != health.Critical || !v.RecommendedAction.Equal(retry) {
-			t.Errorf("legacy %s: %s %v, want CRITICAL %v", v.CheckID, v.Severity, v.RecommendedAction, retry)
+		if v.Severity != health.Unknown || !v.RecommendedAction.Equal(retry) {
+			t.Errorf("legacy %s: %s %v, want UNKNOWN %v", v.CheckID, v.Severity, v.RecommendedAction, retry)
 		}
 		for _, c := range bridged[v.CheckID] {
-			if c.severity != health.Critical || !c.action.Equal(retry) {
-				t.Errorf("collect %s: %s %v, want CRITICAL %v", v.CheckID, c.severity, c.action, retry)
+			if c.severity != health.Unknown || !c.action.Equal(retry) {
+				t.Errorf("collect %s: %s %v, want UNKNOWN %v", v.CheckID, c.severity, c.action, retry)
 			}
 		}
 	}
@@ -629,7 +629,7 @@ func TestNVLinkCollectTimeoutParity(t *testing.T) {
 
 // TestNVLinkCollectZeroGPUs pins an expected difference: with no GPUs, legacy
 // returns no NVLink measurement, so its checks skip, while collect reports the
-// missing GPUs and every NVLink check fails with check_collection.
+// missing data and every NVLink check reports Unknown with check_collection.
 func TestNVLinkCollectZeroGPUs(t *testing.T) {
 	legacy, err := legacyNVLink(t, nil, 0, nil).MeasureNVLink()
 	if err != nil {
@@ -645,8 +645,8 @@ func TestNVLinkCollectZeroGPUs(t *testing.T) {
 	}
 	for id, results := range bridged {
 		for _, r := range results {
-			if r.severity != health.Critical || !r.action.Equal(check) {
-				t.Errorf("collect %s: %s %v, want CRITICAL %v", id, r.severity, r.action, check)
+			if r.severity != health.Unknown || !r.action.Equal(check) {
+				t.Errorf("collect %s: %s %v, want UNKNOWN %v", id, r.severity, r.action, check)
 			}
 		}
 	}

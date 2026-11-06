@@ -42,7 +42,7 @@ func (s *GPUSensor) Measure(_ context.Context) ([]health.Measurement, error) {
 
 // Errored reports the whole GPU domain as unobservable — one errored
 // measurement covering every GPU signal — so per-GPU checks fail
-// Critical when collection could not run.
+// Unknown when collection could not run.
 func (s *GPUSensor) Errored(err error) []health.Measurement {
 	m := gpu.ErroredGPU(s.Name(), err, gpu.MeasurementSignals()...)
 	m.SetEntityKey(health.SourceEntity(sensorSource(s.Name())))

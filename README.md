@@ -25,7 +25,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
   "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
@@ -54,7 +54,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
@@ -167,7 +167,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 }
 ```
 
-The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
+The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/audit/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
 
 The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers. `catalog_version` names the module version, and so the catalog, that produced the verdict, so consumers can verify which check logic and default thresholds were available when the run occurred.
 
@@ -177,7 +177,7 @@ The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.j
 Sensor.Measure() --> []Measurement --> Catalog.EvaluateAll() --> NodeVerdict
 ```
 
-Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor reading Linux sysfs (the CLI collects CPU through `collect/sensors/cpu`), an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface a CRITICAL verdict or skip.
+Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor reading Linux sysfs (the CLI collects CPU through `collect/sensors/cpu`), an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
 
 The CPU sensor counts the logical CPUs in `/sys/devices/system/cpu/possible` and `/sys/devices/system/cpu/online`, and the NUMA nodes in `/sys/devices/system/node/online`. The `cpu_count` check requires no operator configuration and reports CRITICAL when a kernel-possible CPU is not online. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM or machine-SKU count, process affinity, or cgroup CPU limits.
 
@@ -194,8 +194,8 @@ Per-check results use five severity levels:
 | PASS | No condition detected. Node is eligible for the next workload. |
 | INFO | Anomaly within safe operating bounds. Monitor for trend. |
 | WARNING | Condition that degrades performance or increases failure risk. |
-| CRITICAL | Imminent risk of failure, data corruption, or unrecoverable state. Remove from service. |
 | UNKNOWN | Check could not complete. Eligibility for the affected component cannot be assessed. |
+| CRITICAL | Imminent risk of failure, data corruption, or unrecoverable state. Remove from service. |
 
 `skipped` is a separate per-check state, not a severity level. A skipped check contributes nothing to the node-level verdict.
 
@@ -243,8 +243,8 @@ Warning-class Xids are individual `gpu_xid_<code>` checks.
 
 - go 1.27.3
 - Linux sysfs exposing `/sys/devices/system/cpu/{possible,online}` and `/sys/devices/system/node/online` (required for CPU collection)
-- NVIDIA driver (required for the GPU sensor; not required if you supply measurements directly)
-- NVML (libnvidia-ml) for the NVML-backed sensor
+- NVIDIA driver with NVML (libnvidia-ml), for GPU inventory, compute processes, and NVLink (not required if you supply measurements directly)
+- For the CLI's GPU power, power-limit, pstate, and throttle checks: a running DCGM hostengine (`nv-hostengine`) on the node and the DCGM 4 client library (`libdcgm.so.4`). Without them those checks fail with a collection error.
 
 OS: Linux (x86_64, aarch64). CPU collection reads sysfs directly without sudo or an external executable. The toolkit GPU sensor is Linux-only; the catalog package compiles and runs on any platform.
 
@@ -328,7 +328,7 @@ Collect sensor measurements without evaluating checks:
 ./health-validation collect > observations.json
 ```
 
-For `collect`, an optional config's check IDs select the sensor domains to run. Without one, every built-in sensor domain runs. The output is one `ObservationBatch` (`collect/proto/health/v1/observation.proto`) in protojson form, with one observation per measurement field. Each signal ID is the domain plus the field name the checks read (e.g. `nvlink.inactive_count`); these are toolkit names, not canonical collect signal IDs. GPU measurements target the GPU and host-wide ones target the node (`--node-id`, defaulting to the hostname). Each observation carries a `value`, a `collectionError`, or a `noValue`; map and list fields are JSON-encoded strings. A signal the source reports as unsupported is a `noValue` with reason `NO_VALUE_REASON_NOT_SUPPORTED`, never a zero value. Sensor failures remain structured data and do not change the successful exit code.
+For `collect`, an optional config's check IDs select the sensor domains to run. Without one, every built-in sensor domain runs. The output is one `ObservationBatch` (`collect/proto/health/v1/observation.proto`) in protojson form, with one observation per measurement field. Each signal ID is the domain plus the field name the checks read (e.g. `nvlink.inactive_count`); these are toolkit names, not canonical collect signal IDs. GPU measurements target the GPU and host-wide ones target the node (`--node-id`, defaulting to the hostname). Each observation carries a `value`, a `collectionError`, or a `noValue`; map and list fields are JSON-encoded strings. A signal the source reports as unsupported is a `noValue` with reason `NO_VALUE_REASON_NOT_SUPPORTED`, never a zero value. Sensor failures remain structured data and do not change the successful exit code. Threshold values in that config are validated but not applied, and `collect` records no override audit entries.
 
 Slurm prolog integration:
 
@@ -339,7 +339,7 @@ nodename="$SLURMD_NODENAME"
 VERDICT=$(./health-validation run --node-id "$nodename")
 EXIT=$?
 
-# Exit 2: the tool could not produce a verdict (config/backend/collection error).
+# Exit 2: the tool could not produce a verdict (config/backend/collection/audit error).
 if [ $EXIT -eq 2 ]; then
   echo "health-validation failed to run" >&2
   exit 1
@@ -443,6 +443,10 @@ skipped checks are excluded from `overall_severity`, a disable narrows the
 minimum bar the node is held to — read `skipped_checks`, not just the exit code,
 to know what actually ran.
 
+Each threshold override is also recorded in the host's systemd journal, and the
+run exits `2` if it cannot be. See
+[docs/integration.md](docs/integration.md#audit-trail-for-overrides).
+
 ### Publishing metrics
 
 The same config file can push the verdict to an OTLP/HTTP metrics endpoint —
@@ -543,6 +547,7 @@ this config has no field for it.
 7. [catalog/health/node-verdict.schema.json](catalog/health/node-verdict.schema.json): JSON Schema for the node verdict output
 8. [CONTRIBUTING.md](CONTRIBUTING.md)
 9. [ROADMAP.md](ROADMAP.md): development focus areas and related work
+10. [Design proposals](docs/design/index.md): propose and review substantial changes before implementation
 
 ## Maintainers
 

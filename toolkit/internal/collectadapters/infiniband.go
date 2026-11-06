@@ -9,7 +9,6 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
-	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 )
 
 // linkFlapSinceUnknown labels a link-flap failure whose window is unknown,
@@ -18,17 +17,8 @@ const linkFlapSinceUnknown = "boot"
 
 // InfiniBand is the category's one built-in adapter. It replaces
 // toolkit.RDMALinkFlapSensor for the stock CLI's link-flap measurement.
-//
-// The adapter is per entity (nodeScoped is false), so a per-port type can
-// share it, but infiniband.LinkFlapMeasurement is a whole-node aggregate:
-// its transitions, scan marker, and source-scoped failures group into one
-// measurement however many sources produce them.
 func InfiniBand() *domainAdapter {
-	a := newDomainAdapter(health.InfiniBand, erroredInfiniBand, false)
-	a.nodeSignals = make(map[string]bool)
-	for _, id := range ibsignals.LinkFlapSignals().IDs() {
-		a.nodeSignals[id] = true
-	}
+	a := newDomainAdapter(health.InfiniBand, erroredInfiniBand)
 	a.complete = completeLinkFlap
 	return a
 }

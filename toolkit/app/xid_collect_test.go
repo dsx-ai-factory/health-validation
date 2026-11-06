@@ -111,9 +111,15 @@ func TestRunCommandXidCleanScanPasses(t *testing.T) {
 	a := cadenceRunApp()
 	a.xid = nil
 	a.WithCollect(xidAppSensor{calls: &calls, obs: []*observation.Observation{xidAppMarker()}}, xidsignals.All().IDs()...)
-	for id, v := range runXidApp(t, a, exitOK) {
-		if v.Severity == health.Critical {
-			t.Fatalf("%s = CRITICAL on a clean scan", id)
+	verdicts := runXidApp(t, a, exitOK)
+	if len(verdicts) == 0 {
+		t.Fatal("no Xid check ran on a clean scan")
+	}
+	// Observed values show the rules ran on a zero-event scan rather than a
+	// collection failure, which carries none.
+	for id, v := range verdicts {
+		if v.Severity != health.Pass || v.ObservedValues == nil {
+			t.Fatalf("%s = %v with observed values %v, want PASS from a zero-event scan", id, v.Severity, v.ObservedValues)
 		}
 	}
 }

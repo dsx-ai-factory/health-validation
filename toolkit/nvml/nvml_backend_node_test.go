@@ -63,9 +63,7 @@ func TestMeasureNode_Healthy(t *testing.T) {
 }
 
 // A DeviceGetCount failure flags every node-level signal via a typed
-// *nvml.Error: without an enumerated device list gpu_count cannot be
-// trusted, so any node-level check whose RequiredSignals overlap with
-// the failed entry must fail Critical.
+// *nvml.Error because the GPU count could not be collected.
 func TestMeasureNode_CountFailureFlagsAllSignals(t *testing.T) {
 	b := nvml.NewWithLibrary(nodeOnlyLib(0, gonvml.ERROR_UNKNOWN))
 	t.Cleanup(func() { b.Close() })

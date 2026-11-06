@@ -17,6 +17,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/internal/celeval"
+	"github.com/dsx-ai-factory/health-validation/catalog/internal/scope"
 )
 
 // EvaluationEngine evaluates health check definitions against signal values.
@@ -66,7 +67,8 @@ func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Me
 	if err := checkEntities(cd, []observed{o}); err != nil {
 		return health.CheckVerdict{}, err
 	}
-	return e.evaluateAgainst(cd, o.signals, o.errs, o.entity, p, now)
+	scoper, _ := o.m.(scope.Scoper)
+	return e.evaluateAgainst(cd, o.signals, scoper, o.errs, o.entity, p, now)
 }
 
 // observed is one measurement with everything evaluation reads from it
@@ -198,28 +200,27 @@ func (e *EvaluationEngine) EvaluateBatch(checks map[string]*health.CheckDefiniti
 			}
 			matched = true
 
-			v, err := e.evaluateAgainst(cd, o.signals, o.errs, o.entity, p, now)
+			scoper, _ := o.m.(scope.Scoper)
+			v, err := e.evaluateAgainst(cd, o.signals, scoper, o.errs, o.entity, p, now)
 			if err != nil {
 				return nil, fmt.Errorf("evaluating %q: %w", id, err)
 			}
 			// Two conditions, both required. ObservedValues separates a matched
 			// rule, which always records it, from [ErroredVerdict], which never
-			// does: a dependency that went Critical because its own measurement
-			// could not be collected observed no fault, so it explains nothing
+			// does: a dependency whose own measurement could not be
+			// collected observed no fault, so it explains nothing
 			// about a sibling that also could not be read. The comparison is
-			// >= so [health.Unknown], which ranks above Critical and means the
-			// check could not complete, is not the one severity excluded from
-			// explaining anything.
-			if v.Severity >= health.Critical && v.ObservedValues != nil {
-				failed[id] = v.Severity
+			// >= Unknown so a rule that matched Unknown explains a dependent
+			// just as a Critical one does.
+			if v.Severity >= health.Unknown && v.ObservedValues != nil {
+				failed[id] = health.Worse(failed[id], v.Severity)
 			}
 
 			// This entity could not be read at all and a dependency already
 			// reported Critical, which is the fault this verdict restates. Name
 			// it so the operator reads one cause instead of correlating several
 			// identical reports. The wording claims only that the dependency is
-			// Critical: it may be so because its own measurement errored, which
-			// is a different fact from an observed fault.
+			// Critical or Unknown from an observed rule match.
 			//
 			// The cause extends the existing message instead of adding a second
 			// one. A consumer classifies a collection failure by every message
@@ -282,13 +283,8 @@ func checkEntities(cd *health.CheckDefinition, routed []observed) error {
 	return nil
 }
 
-// reportsFailure reports whether o's errors fail a signal cd reads. A check
-// that requires no signals reads them all, so o must have lost every signal it
-// carries; a partial failure would leave values that check can read.
+// reportsFailure reports whether o's errors fail a signal cd reads.
 func reportsFailure(cd *health.CheckDefinition, o observed) bool {
-	if len(cd.RequiredSignals) == 0 {
-		return lostEntity(o.errs, o.signals)
-	}
 	detail, _ := matchingError(o.errs, cd.RequiredSignals)
 	return detail != ""
 }
@@ -315,11 +311,9 @@ func routes(cd *health.CheckDefinition, category health.Category, signals map[st
 // measurement carries, which is the signature a sensor emits when it could not
 // read the entity at all.
 //
-// This is what separates a device that vanished from the enumeration, where a
-// Critical dependency genuinely explains this check too, from read failures on
-// a device that enumerated fine, even ones that together cover every signal
-// this check requires. Those are independent faults, and naming the dependency
-// on them would credit an unrelated cause.
+// An observed Critical or Unknown dependency can explain a lost entity.
+// Failures affecting only part of the measurement must not be attributed to
+// that dependency, even if every signal required by this check failed.
 func lostEntity(errs []health.ErroredMeasurement, signals map[string]any) bool {
 	if len(errs) == 0 || len(signals) == 0 {
 		return false
@@ -339,9 +333,8 @@ func lostEntity(errs []health.ErroredMeasurement, signals map[string]any) bool {
 	return true
 }
 
-// failedDependency returns the first dependency of cd that evaluated Critical or
-// worse, with the severity it reported, so the batch path can name it as the
-// cause on a verdict that only restates it.
+// failedDependency returns the first declared dependency with an observed
+// Critical or Unknown rule result.
 func failedDependency(cd *health.CheckDefinition, failed map[string]health.Severity) (string, health.Severity, bool) {
 	for _, dep := range cd.Dependencies {
 		if sev, ok := failed[dep]; ok {
@@ -403,9 +396,9 @@ func checkLevelSkip(cd *health.CheckDefinition, p Params, now time.Time) (health
 // confirmed the measurement [routes] to the check, so this is the pure
 // data path. entity names the measurement's subject (see
 // [health.EntityIdentifier]) and is empty for host-wide measurements.
-func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals map[string]any, errs []health.ErroredMeasurement, entity string, p Params, now time.Time) (health.CheckVerdict, error) {
+func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals map[string]any, scoper scope.Scoper, errs []health.ErroredMeasurement, entity string, p Params, now time.Time) (health.CheckVerdict, error) {
 	// If any of the sensor's per-field failures cover a signal the
-	// check requires, fail the check with a Critical verdict rather
+	// check requires, report the check as Unknown rather
 	// than running CEL against a zero value where a real measurement
 	// should be. The verdict's detail joins every error entry that
 	// touched one of this check's required signals so the message
@@ -419,7 +412,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		return withEntity(ErroredVerdict(cd, now, detail, action), entity), nil
 	}
 
-	resolved, err := resolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
+	resolved, err := ResolveThresholds(cd.ID, cd.Thresholds, p.Overrides, p.Architecture)
 	if err != nil {
 		return health.CheckVerdict{}, err
 	}
@@ -475,7 +468,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		action = topRuleAction
 	}
 
-	observed := observedValues(cd, signals)
+	observed := observedValues(cd, signals, scoper)
 	if !anyMatched {
 		// No rule matched; check passes.
 		v := verdictFor(cd, now)
@@ -499,17 +492,18 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 
 // observedValues limits signals to the ones cd requires. A sibling field the
 // check never read may be unfed (narrowed collection, unmapped or failed
-// signal), and its zero value would read as a real measurement. A check that
-// declares no required signals can read any field, so it keeps them all.
-func observedValues(cd *health.CheckDefinition, signals map[string]any) map[string]any {
-	if len(cd.RequiredSignals) == 0 {
-		return signals
-	}
+// signal), and its zero value would read as a real measurement. A
+// measurement that implements [scope.Scoper] then narrows the result to the
+// check's own part.
+func observedValues(cd *health.CheckDefinition, signals map[string]any, scoper scope.Scoper) map[string]any {
 	out := make(map[string]any, len(cd.RequiredSignals))
 	for _, name := range cd.RequiredSignals {
 		if v, ok := signals[name]; ok {
 			out[name] = v
 		}
+	}
+	if scoper != nil {
+		return scoper.ScopeObservedValues(scope.Request{CheckID: cd.ID, Observed: out})
 	}
 	return out
 }
@@ -537,7 +531,7 @@ func withEntity(v health.CheckVerdict, entity string) health.CheckVerdict {
 // matchingError inspects the error entries whose FailedSignals overlap the
 // check's required signals. It returns a joined detail string of their
 // causes ("" when none match) and the recommended action for the resulting
-// Critical verdict.
+// Unknown verdict.
 //
 // These are observation failures, not observed faults — the CEL rules
 // never ran — so the action is never the check's hardware-remediation
@@ -610,7 +604,7 @@ func skippedVerdict(cd *health.CheckDefinition, ts time.Time, reason health.Skip
 	return v
 }
 
-// ErroredVerdict builds a Critical CheckVerdict for a check whose input
+// ErroredVerdict builds an Unknown CheckVerdict for a check whose input
 // measurement could not be observed — the engine emits one when a sensor's
 // errored measurement satisfies the check's schema (architecture, context,
 // RequiredSignals) but the data is unavailable. action is the
@@ -619,7 +613,7 @@ func skippedVerdict(cd *health.CheckDefinition, ts time.Time, reason health.Skip
 // matched.
 func ErroredVerdict(cd *health.CheckDefinition, ts time.Time, detail string, action health.RecommendedAction) health.CheckVerdict {
 	v := verdictFor(cd, ts)
-	v.Severity = health.Critical
+	v.Severity = health.Unknown
 	v.Messages = []string{fmt.Sprintf("measurement unavailable: %s", detail)}
 	v.RecommendedAction = action
 	// The rules never ran, so nothing beyond this node was observed. Like the

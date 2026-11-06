@@ -266,9 +266,9 @@ func TestLinkFlapCollectParity(t *testing.T) {
 		}, entries: []flapParityEntry{
 			flapAt(5*time.Minute, flapLine("ib0", "down")), flapAt(4*time.Minute, flapLine("ib0", "up")),
 		}}, want: health.Pass},
-		{f: flapParityFixture{name: "journalctl missing", legacyErr: notFound, collectErr: notFound}, want: health.Critical},
-		{f: flapParityFixture{name: "journalctl exits non-zero", legacyErr: exitOneWithStderr(t), collectErr: exitOneWithStderr(t)}, want: health.Critical},
-		{f: flapParityFixture{name: "empty journal"}, want: health.Critical},
+		{f: flapParityFixture{name: "journalctl missing", legacyErr: notFound, collectErr: notFound}, want: health.Unknown},
+		{f: flapParityFixture{name: "journalctl exits non-zero", legacyErr: exitOneWithStderr(t), collectErr: exitOneWithStderr(t)}, want: health.Unknown},
+		{f: flapParityFixture{name: "empty journal"}, want: health.Unknown},
 	}
 	for _, tt := range tests {
 		t.Run(tt.f.name, func(t *testing.T) {
@@ -310,8 +310,8 @@ func TestLinkFlapCollectTimeoutParity(t *testing.T) {
 	if !reflect.DeepEqual(l, bridged) {
 		t.Errorf("verdicts differ: legacy=%+v collect=%+v", l, bridged)
 	}
-	if bridged.severity != health.Critical || !bridged.action.Equal(health.Drain(health.RemediationActionRetryCollection)) {
-		t.Errorf("collect = %+v, want CRITICAL with retry collection", bridged)
+	if bridged.severity != health.Unknown || !bridged.action.Equal(health.Drain(health.RemediationActionRetryCollection)) {
+		t.Errorf("collect = %+v, want UNKNOWN with retry collection", bridged)
 	}
 }
 
@@ -340,8 +340,8 @@ func TestLinkFlapCollectDocumentedDivergences(t *testing.T) {
 		if v := evaluateFlap(t, legacyFlapMeasurement(ctx, t, f)); v.severity != health.Pass {
 			t.Fatalf("legacy = %+v, want PASS", v)
 		}
-		if v := evaluateFlap(t, collectFlapMeasurement(ctx, t, f)); v.severity != health.Critical || !v.action.Equal(checkCollection) {
-			t.Fatalf("collect = %+v, want CRITICAL check collection", v)
+		if v := evaluateFlap(t, collectFlapMeasurement(ctx, t, f)); v.severity != health.Unknown || !v.action.Equal(checkCollection) {
+			t.Fatalf("collect = %+v, want UNKNOWN check collection", v)
 		}
 	})
 	// The legacy pattern matched mlx5_core anywhere in a line, so another

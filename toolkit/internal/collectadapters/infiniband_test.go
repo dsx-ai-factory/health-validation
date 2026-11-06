@@ -79,9 +79,6 @@ func TestInfiniBandAdapter(t *testing.T) {
 	if got, want := slices.Sorted(maps.Keys(a.Signals())), slices.Sorted(slices.Values(ibsignals.LinkFlapSignals().IDs())); !slices.Equal(got, want) {
 		t.Fatalf("signals = %v, want %v", got, want)
 	}
-	if a.nodeScoped {
-		t.Fatal("the shared InfiniBand adapter must stay per entity for per-port types")
-	}
 	m := onlyLinkFlap(t, a.Build(slices.Concat(
 		[]*observation.Observation{flapMarker("infiniband.journal")},
 		flapTransition("infiniband.journal", "c1", ibsignals.LinkStateDown, 0),
@@ -134,8 +131,8 @@ func TestInfiniBandAdapterFailsSilentSource(t *testing.T) {
 			if len(m.Errors()) != 1 || !strings.Contains(m.Errors()[0].Err().Error(), "no link-flap scan marker") {
 				t.Fatalf("errors = %v", m.Errors())
 			}
-			if v := linkFlapVerdict(t, m); v.Severity != health.Critical {
-				t.Fatalf("verdict = %v, want CRITICAL", v.Severity)
+			if v := linkFlapVerdict(t, m); v.Severity != health.Unknown {
+				t.Fatalf("verdict = %v, want UNKNOWN", v.Severity)
 			}
 		})
 	}
@@ -149,8 +146,8 @@ func TestInfiniBandAdapterErroredCoversLinkFlap(t *testing.T) {
 		t.Fatalf("errors = %v", m.Errors())
 	}
 	v := linkFlapVerdict(t, m)
-	if v.Severity != health.Critical || !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRetryCollection)) {
-		t.Fatalf("verdict = %v %v, want CRITICAL retry collection", v.Severity, v.RecommendedAction)
+	if v.Severity != health.Unknown || !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRetryCollection)) {
+		t.Fatalf("verdict = %v %v, want UNKNOWN retry collection", v.Severity, v.RecommendedAction)
 	}
 	if !errors.Is(m.Errors()[0].Err(), health.ErrCollectionTimeout) {
 		t.Fatal("timeout not preserved")

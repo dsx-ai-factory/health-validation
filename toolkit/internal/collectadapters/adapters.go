@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
@@ -16,7 +15,6 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
-	"google.golang.org/protobuf/proto"
 )
 
 // sourceLevelGPU identifies failures not attributable to one GPU.
@@ -30,49 +28,37 @@ type domainAdapter struct {
 	complete func([]health.Measurement) []health.Measurement
 	// feeds maps each collect signal ID to the catalog signals it fills;
 	// several when one raw value is split into multiple catalog fields.
-	feeds map[string][]string
-	// nodeSignals group into the node group even when nodeScoped is false:
-	// they feed a whole-node aggregate in a domain whose other measurement
-	// types are per entity.
-	nodeSignals map[string]bool
-	category    health.Category
-	// nodeScoped domains build one measurement from every source's
-	// observations. Health Validation is node-local, so a node target's ID
-	// (empty by convention) and a source-scoped failure both describe this
-	// node; grouping them per source would split one fact set into partial
-	// measurements that each fail the other's fields.
-	nodeScoped bool
+	feeds    map[string][]string
+	category health.Category
 }
 
 // CPU replaces toolkit.CPUSensor for the stock CLI's CPU domain.
 func CPU() *domainAdapter {
-	return newDomainAdapter(health.CPU, erroredCPU, true)
+	return newDomainAdapter(health.CPU, erroredCPU)
 }
 
 // Node replaces toolkit.NodeSensor for the stock CLI's node domain. Its
 // gpu_count comes from the shared GPU inventory (gpuinventory.GPUCount).
 func Node() *domainAdapter {
-	return newDomainAdapter(health.Node, erroredNode, true)
+	return newDomainAdapter(health.Node, erroredNode)
 }
 
-// GPU prepares the cutover of toolkit.GPUSensor (toolkit.NewGPUSensor).
-// The app still registers that legacy sensor; only tests use this adapter.
-// Unmapped catalog signals remain failures until cutover coverage is complete.
+// GPU replaces toolkit.GPUSensor for the stock CLI's GPU domain.
 func GPU() *domainAdapter {
-	return newDomainAdapter(health.GPU, erroredGPU, false)
+	return newDomainAdapter(health.GPU, erroredGPU)
 }
 
 // NVLink prepares the cutover of toolkit.NVLinkSensor (toolkit.NewNVLinkSensor).
 // The app still registers that legacy sensor; only tests use this adapter.
 func NVLink() *domainAdapter {
-	return newDomainAdapter(health.NVLink, erroredNVLink, false)
+	return newDomainAdapter(health.NVLink, erroredNVLink)
 }
 
 // newDomainAdapter requests every signal the converter maps onto category,
 // so the adapter and the converter cannot disagree.
-func newDomainAdapter(category health.Category, errored func(error) []health.Measurement, nodeScoped bool) *domainAdapter {
+func newDomainAdapter(category health.Category, errored func(error) []health.Measurement) *domainAdapter {
 	return &domainAdapter{
-		category: category, errored: errored, nodeScoped: nodeScoped,
+		category: category, errored: errored,
 		feeds: observations.MappedFeeds(category),
 	}
 }
@@ -86,7 +72,7 @@ func (a *domainAdapter) Signals() map[string][]string { return maps.Clone(a.feed
 
 // Build consumes observations already validated by the bridge.
 func (a *domainAdapter) Build(obs []*observation.Observation) []health.Measurement {
-	measurements := adaptCategory(a.category, a.feeds, a.nodeScoped, a.nodeSignals, obs)
+	measurements := adaptCategory(a.category, a.feeds, obs)
 	if a.complete != nil {
 		measurements = a.complete(measurements)
 	}
@@ -123,101 +109,14 @@ func erroredNVLink(err error) []health.Measurement {
 	return []health.Measurement{m}
 }
 
-// adaptCategory groups observations per GPU, or into one group when
-// nodeScoped or for nodeSignals, converts each group with
-// observations.ToMeasurements, and keeps measurements of category.
-func adaptCategory(category health.Category, feeds map[string][]string, nodeScoped bool, nodeSignals map[string]bool, obs []*observation.Observation) []health.Measurement {
-	groups := make(map[adapterKey][]*observation.Observation)
-	for _, o := range obs {
-		if _, ok := feeds[o.GetSignalId()]; !ok {
-			continue
-		}
-		var key adapterKey
-		if !nodeScoped && !nodeSignals[o.GetSignalId()] {
-			key = adapterGroup(o)
-		}
-		groups[key] = append(groups[key], o)
-	}
-	var out []health.Measurement
-	keys := make([]adapterKey, 0, len(groups))
-	for key := range groups {
-		keys = append(keys, key)
-	}
-	// Map iteration is random; sort so Build output order is stable for tests,
-	// logs, and run-to-run diffs.
-	slices.SortFunc(keys, func(a, b adapterKey) int { return strings.Compare(a.label(), b.label()) })
-	for _, key := range keys {
-		group := groups[key]
-		if key.kind == "source" {
-			group = asOneSource(category, group)
-		}
-		for _, m := range observations.ToMeasurements(group) {
-			if m.Category() != category {
-				continue
-			}
-			// UUID-less slots are meaningful only within their producing source.
-			if key.kind != "uuid" && key.namespace != "" {
-				switch value := m.(type) {
-				case gpu.GPUMeasurement:
-					value.GPUID = key.label()
-					m = value
-				case nvlink.NVLinkMeasurement:
-					value.GPUID = key.label()
-					m = value
-				}
-			}
-			out = append(out, m)
-		}
-	}
-	return out
-}
-
-// asOneSource re-keys source-scoped observations from several sources to the
-// adapter's source. ToMeasurements keys each source apart, so a timeout across
-// DCGM and NVML would otherwise become two measurements, each failing the
-// fields only the other feeds as never collected.
-func asOneSource(category health.Category, obs []*observation.Observation) []*observation.Observation {
-	if !slices.ContainsFunc(obs, func(o *observation.Observation) bool { return o.GetSource() != obs[0].GetSource() }) {
-		return obs
-	}
-	out := make([]*observation.Observation, len(obs))
-	for i, o := range obs {
-		out[i] = proto.CloneOf(o)
-		out[i].Source = adapterSource(category)
-	}
-	return out
-}
-
-// adapterKey identifies one GPU group: by UUID, by source-local slot, or one
-// shared group for every source's source-scoped observations.
-type adapterKey struct {
-	namespace string
-	gpuID     string
-	kind      string
-}
-
-// label renders k as a sortable GPU ID, qualified by source for a slot.
-func (k adapterKey) label() string { return fmt.Sprintf("%s:%q/%q", k.kind, k.namespace, k.gpuID) }
-
-// adapterGroup assigns o to its GPU group: an NVLink endpoint's GPU or a
-// pair's source GPU, as observations.targetID does. Slots are namespaced by
-// source so two producers' slot 0 are never merged without a UUID.
-// Source-scoped observations name no GPU, so every source's share one group:
-// split per source, each would fail the fields only the others feed.
-func adapterGroup(o *observation.Observation) adapterKey {
-	target := o.GetTarget()
-	ref := target.GetGpu()
-	switch {
-	case target.GetNvLinkEndpoint() != nil:
-		ref = target.GetNvLinkEndpoint().GetGpu()
-	case target.GetGpuPair() != nil:
-		ref = target.GetGpuPair().GetSourceGpu()
-	}
-	if ref.GetUuid() != "" {
-		return adapterKey{kind: "uuid", gpuID: ref.GetUuid()}
-	}
-	if slot := ref.GetSourceLocalId(); slot != "" {
-		return adapterKey{kind: "slot", namespace: o.GetSource(), gpuID: slot}
-	}
-	return adapterKey{kind: "source"}
+// adaptCategory converts the observations of signals feeds maps, together, so
+// a source-wide failure meets the GPUs other sources read, and keeps
+// measurements of category. The converter keys each GPU by UUID, or by source
+// and slot when a source could not read its UUID.
+func adaptCategory(category health.Category, feeds map[string][]string, obs []*observation.Observation) []health.Measurement {
+	obs = slices.DeleteFunc(slices.Clone(obs), func(o *observation.Observation) bool {
+		_, ok := feeds[o.GetSignalId()]
+		return !ok
+	})
+	return slices.DeleteFunc(observations.ToMeasurements(obs), func(m health.Measurement) bool { return m.Category() != category })
 }

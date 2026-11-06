@@ -40,7 +40,7 @@ func (s *XidSensor) Measure(ctx context.Context) ([]health.Measurement, error) {
 }
 
 // Errored reports the Xid journal as unreadable so Xid checks fail
-// Critical when collection could not run.
+// Unknown when collection could not run.
 func (s *XidSensor) Errored(err error) []health.Measurement {
 	return []health.Measurement{xid.ErroredXid(sinceBoot, err, xid.MeasurementSignals()...)}
 }

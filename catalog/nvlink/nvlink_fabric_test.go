@@ -68,13 +68,13 @@ func TestNVLinkFabric(t *testing.T) {
 			wantSkipReason: health.ArchitectureUnsupported,
 		},
 		{
-			name: "errored GPU forces critical",
+			name: "errored GPU reports unknown",
 			cat:  func() *catalog.Catalog { return fabricCatalog() },
 			measurement: func() nvlink.NVLinkMeasurement {
 				return nvlink.ErroredNVLink("GPU-0", errors.New("nvml fabric query failed"),
 					nvlink.SignalFabricRegistrationIncomplete, nvlink.SignalFabricRegistrationFailed)
 			},
-			wantSeverity: health.Critical,
+			wantSeverity: health.Unknown,
 		},
 	}
 

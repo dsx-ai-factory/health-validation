@@ -50,14 +50,15 @@ pull a specific tag or architecture.
 For a local Linux/amd64 build that produces a loadable tarball, see
 [Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md#build-a-linux-image-from-macos).
 
-The image carries the CLI on an Ubuntu base — **not** the NVIDIA driver or
-`journalctl`. Different check domains need different host resources mounted in;
+The image carries the CLI on an Ubuntu base — **not** the NVIDIA driver,
+`journalctl`, or DCGM. Different check domains need different host resources mounted in;
 running with the wrong flags makes the affected checks report an **error
 verdict** (CRITICAL/UNKNOWN), so a misconfigured run is loud, never silently
 wrong.
 
 Use the provided wrapper, which bind-mounts the host's `journalctl` binary and
-its shared-library dependencies as well as the journal resources:
+DCGM client library (`libdcgm.so.4`), with their shared-library dependencies,
+as well as the journal resources, and runs on the host network:
 
 ```shell
 scripts/health-validation-run.sh ghcr.io/dsx-ai-factory/health-validation:<tag> \
@@ -71,12 +72,18 @@ command is:
 ```shell
 docker run --rm \
   --gpus all \
+  --network host \
+  --pid host \
   -e NVIDIA_DRIVER_CAPABILITIES=utility \
+  -e LD_LIBRARY_PATH=<directory of the host's libdcgm.so.4> \
   -v /run/log/journal:/run/log/journal:ro \
   -v /var/log/journal:/var/log/journal:ro \
   -v /etc/machine-id:/etc/machine-id:ro \
+  --mount type=bind,source=/run/systemd/journal/socket,target=/run/systemd/journal/socket,readonly \
   -v /usr/bin/journalctl:/usr/bin/journalctl:ro \
   -v <journalctl ldd dependencies, one -v per .so, excluding libc/libpthread/libm> \
+  -v <host libdcgm.so.4 path>:<same path>:ro \
+  -v <libdcgm.so.4 ldd dependencies, as for journalctl> \
   ghcr.io/dsx-ai-factory/health-validation:<tag> \
   run --node-id "$NODE_NAME"
 ```
@@ -85,9 +92,21 @@ docker run --rm \
   `libnvidia-ml.so.1` it needs — required for `gpu_count` and `nvlink_*`. Keep
   it `all` (a scoped subset makes `gpu_count` fire CRITICAL on visibility, not
   health).
+- `--network host`, the `libdcgm.so.4` mounts, and `LD_LIBRARY_PATH` let the
+  CLI load the DCGM client and reach the host's DCGM hostengine on
+  `localhost` — required for `gpu_average_power_draw`, `gpu_power_limit`,
+  `gpu_power_state`, and `gpu_sensor_throttle`. Without them those checks
+  report a collection failure. The node must run `nv-hostengine`.
+- `--pid host` lets `gpu_compute_apps` see compute processes that other
+  containers or the host run. NVML omits processes outside the caller's PID
+  namespace, so without it a leftover process passes unnoticed.
 - The journal, machine-id, `journalctl`, and its shared-library mounts are
   required for both `gpu_xid_*` and `rdma_linkflap_fatal`; without them the
   journal-backed checks report a collection failure rather than a false PASS.
+- The journald socket mount is needed when `run --config` overrides
+  thresholds: each override is recorded in the host journal, and the run exits
+  `2` if it cannot be. A read-only bind still lets the tool send entries.
+  Leave it out when you pass no overrides; `collect` does not need it.
 
 The wrapper includes the complete mount set for journal-backed checks;
 `gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host. The
@@ -113,7 +132,12 @@ link flags).
 
 The binary links NVML via cgo, so it is a Linux artifact and needs the NVIDIA
 driver and `libnvidia-ml` on the host at runtime (and `journalctl` on
-PATH for Xid checks). Place it on each node (config-management, image bake, or a
+PATH for Xid checks). The GPU power, power-limit, pstate, and throttle checks
+read DCGM: the node must run the DCGM hostengine (`nv-hostengine`, listening on
+`localhost`) and provide the DCGM 4 client library (`libdcgm.so.4`, from the
+DCGM package). If the hostengine is unreachable or the library is missing,
+those checks report a collection failure, never a PASS; the binary does not
+fall back to NVML for them. Place it on each node (config-management, image bake, or a
 shared mount) alongside any override config (below).
 
 ## 2. Wire it into the workload lifecycle
@@ -164,13 +188,32 @@ There is no Helm chart or operator yet; you assemble it from the image:
   acting on the report is your controller's job.
 
 The NVIDIA device-plugin allocation must expose all node GPUs to the pod for
-`gpu_count` and `nvlink_*`. Journal-backed checks (`gpu_xid_*` and
+`gpu_count` and `nvlink_*`. The pod also needs what the Docker wrapper adds for
+the GPU checks:
+
+- `hostNetwork: true`, so the CLI reaches the node's DCGM hostengine on
+  `localhost` (`gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`,
+  `gpu_sensor_throttle`).
+- The host's `libdcgm.so.4`, and every non-glibc dependency reported by
+  `ldd <host libdcgm.so.4 path>`, mounted read-only at the same paths, with
+  `LD_LIBRARY_PATH` set to the library's directory. Pointing
+  `LD_LIBRARY_PATH` into a host-root mount such as `/host` instead is safe
+  only when that directory holds DCGM's libraries alone. DCGM packages
+  install into the system library directory, where the loader would then
+  take every library from the host, glibc included.
+- `hostPID: true`, so `gpu_compute_apps` sees compute processes outside the
+  pod.
+
+Without the first two, the DCGM-backed checks report collection failures.
+Journal-backed checks (`gpu_xid_*` and
 `rdma_linkflap_fatal`) need one of these arrangements:
 
 1. **Explicit read-only hostPaths (least host exposure).** Mount the host's
    journal directories, `/etc/machine-id`, `journalctl`, and every non-glibc
    dependency reported by `ldd $(command -v journalctl)` at the same paths in
-   the container. This is the Kubernetes equivalent of
+   the container. With threshold overrides, also mount the journald socket
+   `/run/systemd/journal/socket` (`hostPath` type `Socket`). This is the
+   Kubernetes equivalent of
    `scripts/health-validation-run.sh`; it requires no change to the image. The
    dependency paths are host-specific, so this profile is described rather
    than represented by a portable manifest below.
@@ -187,25 +230,31 @@ The NVIDIA device-plugin allocation must expose all node GPUs to the pod for
    `journalctl` child processes use the host filesystem. The shim must be
    supplied by a small image overlay or another executable volume: the stock
    image deliberately does not include `journalctl`. Run this pod as UID 0
-   with `SYS_CHROOT`; it does not need `hostPID`, `nsenter`, or `privileged`.
+   with `SYS_CHROOT`; the shim needs no `nsenter` or `privileged`. It covers
+   only `journalctl`: the CLI still loads `libdcgm.so.4` through the mounts
+   above.
+   With threshold overrides, also mount `/run/systemd/journal/socket` as its
+   own `hostPath` (type `Socket`) at the same path: the binary, not the shim,
+   writes the audit entries.
 
-Both options use `hostPath`, which Kubernetes Pod Security Baseline and
-Restricted policies prohibit. Keep every hostPath read-only, place this
+Both options use `hostPath`, `hostNetwork`, and `hostPID`, which Kubernetes Pod
+Security Baseline and Restricted policies prohibit. Keep every hostPath read-only, place this
 workload only in an operator-approved namespace, and grant no broader host
 access than needed. The chroot option exposes the whole host filesystem
 read-only, so prefer explicit mounts where that policy boundary matters.
 
 #### Security context and check coverage
 
-An operator-approved namespace here means one allowed to use `hostPath`; it
-does **not** mean the pod needs `privileged: true`. The intended profiles are:
+An operator-approved namespace here means one allowed to use `hostPath`,
+`hostNetwork`, and `hostPID`; it does **not** mean the pod needs `privileged: true`. The intended profiles are:
 
 | Profile | Host access and security context | Checks with complete coverage |
 | --- | --- | --- |
-| Docker wrapper | Read-only journal, machine-id, `journalctl`, and its `ldd` dependencies; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; no `--privileged`, host PID namespace, or extra capabilities. | All stock CLI checks, provided the container sees all node GPUs. |
-| Kubernetes explicit mounts | The same read-only paths as the wrapper. `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities, `privileged`, host PID namespace, or host networking. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
-| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, host PID namespace, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin. |
-| GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | GPU/NVLink and CPU/NUMA checks can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
+| Docker wrapper | Read-only journal, machine-id, `journalctl`, `libdcgm.so.4`, and their `ldd` dependencies; `LD_LIBRARY_PATH`; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; host network and PID namespaces; no `--privileged` or extra capabilities. | All stock CLI checks, provided the container sees all node GPUs and the node runs `nv-hostengine`. |
+| Kubernetes explicit mounts | The same read-only paths and `LD_LIBRARY_PATH` as the wrapper. `hostNetwork: true`, `hostPID: true`, `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities or `privileged`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
+| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above, plus the `libdcgm.so.4` mounts and `LD_LIBRARY_PATH` of the explicit profile. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
+| GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | Checks outside the journal can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
+| GPU access but no DCGM | No host network, no `libdcgm.so.4`, or no `nv-hostengine` on the node. | Checks outside DCGM can run; `gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`, and `gpu_sensor_throttle` return collection-failure verdicts rather than PASS. |
 
 The image runs as root by default. An explicitly non-root Docker user or pod
 may be viable only when its host-mapped UID/GID has journal-read permission;
@@ -214,7 +263,7 @@ journal-backed checks. CPU/NUMA checks need no elevated privilege, but observe
 the sysfs view supplied by the container runtime.
 
 The following is a complete chroot-profile example. Replace the image, target
-node, and GPU count with values for your fleet. The GPU limit must equal the
+node, GPU count, and `libdcgm.so.4` path with values for your fleet. The GPU limit must equal the
 node's full GPU count: a smaller allocation intentionally makes `gpu_count`
 report CRITICAL.
 
@@ -238,6 +287,10 @@ spec:
     spec:
       nodeName: <target-node-name>
       restartPolicy: Never
+      hostNetwork: true
+      hostPID: true
+      # Keep cluster DNS (e.g. for a metrics endpoint) on the host network.
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: health-validation
           image: <registry>/health-validation:<tag>
@@ -251,6 +304,8 @@ spec:
               value: /opt/host-journalctl:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: utility
+            - name: LD_LIBRARY_PATH
+              value: <directory of the host's libdcgm.so.4>
           resources:
             limits:
               nvidia.com/gpu: <all-gpus-on-node>
@@ -267,6 +322,10 @@ spec:
             - name: journalctl-shim
               mountPath: /opt/host-journalctl
               readOnly: true
+            # Add one such mount per non-glibc `ldd` dependency of libdcgm.so.4.
+            - name: libdcgm
+              mountPath: <host libdcgm.so.4 path>
+              readOnly: true
       volumes:
         - name: host-root
           hostPath:
@@ -276,10 +335,14 @@ spec:
           configMap:
             name: health-validation-journalctl-shim
             defaultMode: 0555
+        - name: libdcgm
+          hostPath:
+            path: <host libdcgm.so.4 path>
+            type: File
 ```
 
 For periodic operation, use the same container, security context, environment,
-and volumes in a `DaemonSet`, replace `nodeName` with a fleet `nodeSelector` or
+host namespaces, and volumes in a `DaemonSet`, replace `nodeName` with a fleet `nodeSelector` or
 affinity rule, and run the one-shot command in a loop:
 
 ```yaml
@@ -296,6 +359,9 @@ spec:
       labels:
         app: health-validation
     spec:
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: health-validation
           image: <registry>/health-validation:<tag>
@@ -335,7 +401,7 @@ Two signals, coarse then precise.
 
 **Exit code** (for shell gating): `0` = PASS/INFO/WARNING, `1` =
 CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict (config/backend/
-collection/output failure — stdout is empty, error on stderr). It does **not**
+collection/audit/output failure — stdout is empty, error on stderr). It does **not**
 distinguish CRITICAL from UNKNOWN or INFO from WARNING.
 
 **The JSON `NodeVerdict`** (for anything precise) — a versioned contract you can
@@ -346,8 +412,8 @@ validate against the published
   this with the version your integration expects when you need to confirm that
   a check-logic or default-threshold fix was present. Custom checks, overrides,
   and disabled checks do not change this value.
-- **`overall_severity`** — the authoritative level (`PASS`/`INFO`/`WARNING`/
-  `CRITICAL`/`UNKNOWN`). Gate on this, not only the exit code.
+- **`overall_severity`** — the authoritative level, ordered `PASS` < `INFO` <
+  `WARNING` < `UNKNOWN` < `CRITICAL`. Gate on this, not only the exit code.
 - **`recommended_action`** — what to do. `NodeVerdict.recommended_action`
   contains the node-level drain sequence selected from eligible failing
   checks, and each check result retains its own recommendation. The field
@@ -424,7 +490,9 @@ overwriting — the history is what turns per-node gating into fleet insight.
 If you want to keep the raw node-local measurements and evaluate them
 elsewhere, run `health-validation collect` instead of `run`. It emits the
 sensor readings as an `ObservationBatch` (protojson) with no verdict, so ship
-and store it the same way as a verdict.
+and store it the same way as a verdict. `collect` validates threshold overrides
+in its config but applies none and records none; health-validation does not
+record overrides applied when you evaluate the batch elsewhere.
 
 ### Pushing metrics to a collector
 
@@ -446,27 +514,25 @@ pipeline above is unaffected by collector latency.
 
 #### Publishing metrics from a container
 
-The wrapper and the `docker run` invocation above deliberately do **not** use
-host networking, and the Kubernetes guidance below explicitly rules it out. So
-`http://127.0.0.1:44318` inside the container resolves to the *container's* own
-loopback, not the node's — the collector never receives anything, and the only
-symptom is a warning line on stderr.
+The wrapper, the `docker run` invocation, and the Kubernetes profiles above use
+host networking so the CLI can reach the DCGM hostengine, so
+`http://127.0.0.1:44318` reaches a collector listening on the node's loopback.
+A Kubernetes collector reached by a service DNS name also works, provided the
+pod keeps `dnsPolicy: ClusterFirstWithHostNet`.
 
-Pick one, in order of preference:
+Without host networking (for example, a run where the DCGM-backed checks are
+disabled), `127.0.0.1` inside the container is the *container's* own loopback:
+the collector never receives anything, and the only symptom is a warning line
+on stderr. Then either:
 
 1. **Point at a routable address.** If the collector listens on a node IP or a
-   cluster service, use that; nothing about the container changes. In
-   Kubernetes this is usually a collector DaemonSet reached through
-   `status.hostIP` or a service DNS name.
+   cluster service, use that. In Kubernetes this is usually a collector
+   DaemonSet reached through `status.hostIP` or a service DNS name.
 2. **Publish to the host gateway.** Add
    `--add-host=host.docker.internal:host-gateway` to the run invocation and set
    `endpoint: http://host.docker.internal:44318`. The collector must be
    listening on an address reachable from the bridge network, not only on
    `127.0.0.1`.
-3. **Host networking** (`--network host`, or `hostNetwork: true`). This works
-   with a loopback-only collector and needs no collector change, but it gives up
-   the network isolation the security posture below relies on. Weigh it
-   accordingly; it is the reason the stock wrapper does not do it for you.
 
 ## 5. Tune thresholds for your fleet (overrides)
 
@@ -493,6 +559,46 @@ Maintain one config per node-class (GB200 vs H100, expected GPU counts) and
 select it at invocation. To turn a check off entirely, list it under `disabled_checks:` in the config
 (or use `catalog.WithDisabledChecks` when embedding the library). It then
 appears in `skipped_checks` with `skip_reason: CHECK_DISABLED`.
+
+### Audit trail for overrides
+
+Each `health-validation run` records every threshold override from its config
+in the host's systemd journal, one entry per override, before it runs the
+checks. That includes overrides on disabled or skipped checks. Nothing is
+written when the config has no overrides, when the config is invalid, or when
+the architecture cannot be discovered, and `collect` writes nothing. Entries
+stay if the run later exits `2`. If an entry cannot be written, or a value
+contains a newline, the run exits `2` with nothing on stdout.
+
+Each entry carries:
+
+| Field | Value |
+| --- | --- |
+| `CHECK_ID`, `THRESHOLD_NAME` | The overridden threshold. |
+| `ORIGINAL_VALUE` | The catalog value for the node's architecture, as JSON; `null` when the catalog has none for it. |
+| `OVERRIDE_VALUE` | The value from the config, as JSON. |
+| `PROVENANCE` | Who authored the check: `nvidia` for built-ins. |
+| `PRIORITY` | `5` (notice). |
+| `__REALTIME_TIMESTAMP` | When journald received the entry; set by journald, not the tool. |
+
+Read them with:
+
+```shell
+journalctl MESSAGE_ID=e5a478e586994730854b18982d557053 -o json
+journalctl -t health-validation
+```
+
+Entries carry no run or verdict ID, so matching them to a verdict by host
+(`_HOSTNAME`) and time is approximate when runs overlap or a failed run left
+entries.
+
+health-validation only sends entries to journald's socket and never opens the
+journal files for writing, so it cannot alter or remove an entry once written.
+This does not protect entries from host root. To detect tampering, enable
+Forward Secure Sealing with `journalctl --setup-keys`, keep the verification key
+it prints off the host, and check with `journalctl --verify --verify-key=KEY`.
+journald can also drop an entry after accepting it, for example under rate
+limiting or when its storage is full.
 
 ## 6. Add a check the catalog doesn't have
 
@@ -568,6 +674,82 @@ memory emit unsupported rather than `Used / Total`.
 Chassis serial is reported only from platform-info version 2. The pinned NVML
 binding requests version 1, so that field currently reports unsupported rather
 than presenting rack GUID bytes as a chassis serial.
+
+### DCGM modes
+
+`source/dcgm` has two constructors. Each returns the same `*dcgm.Source`, so
+the DCGM sensor emits the same signals in both modes:
+
+- `NewStandaloneSource(StandaloneOptions{...})` connects to a running
+  `nv-hostengine`. `Address` defaults to `localhost`; set `IsSocket` when it is
+  a Unix socket path. It never starts DCGM itself. When no hostengine answers,
+  DCGM retries the connect for about 5 seconds and then reports
+  `DCGM_ST_CONNECTION_NOT_VALID`. That retry runs inside the first source call,
+  so the collection timeout must cover it.
+- `NewEmbeddedSource(EmbeddedOptions{...})` starts DCGM inside the process on
+  its first collection and shuts it down on `Close`. It never checks for
+  another DCGM engine on the node; the caller must.
+
+The source never picks a mode or falls back from standalone to embedded. That
+choice belongs to the caller. Use embedded sources only in short-lived,
+one-shot processes; a
+long-running agent should use a standalone hostengine. NVIDIA recommends one
+hostengine per node, because two hostengines managing the same GPUs keep
+separate state and can issue conflicting watches
+([nv-hostengine reference](https://docs.nvidia.com/datacenter/dcgm/latest/reference/command-line-reference/nv-hostengine.html#host-engine-state-and-restarts)).
+
+DCGM also reports `DCGM_ST_CONNECTION_NOT_VALID` for a hostengine that is running
+but unreachable, so a failed connect does not prove that no engine runs. The
+`agentkit/examples/scan-one-off-evaluate` example uses standalone mode by
+default. With `--dcgm-mode=embedded`, it checks for another engine first and
+exits with an error, without starting DCGM, when the process runs outside the
+host PID namespace, when it cannot read `/proc/1/comm`, or when an
+`nv-hostengine`, `dcgm-exporter`, or `dcgmi` process is running. A non-root run cannot read
+`/proc/1/comm` when `/proc` is mounted with any `hidepid` value, unless it has
+`CAP_SYS_PTRACE` or, for `hidepid=1` or `2`, belongs to the mount's `gid=`
+group. `dcgm-exporter` embeds DCGM unless it is given a remote hostengine
+(`DCGM_REMOTE_HOSTENGINE_INFO` or `-r`), and `dcgmi diag` can start an embedded
+engine. `--dcgm-address` and `--dcgm-socket` apply only to standalone mode;
+combining them with `--dcgm-mode=embedded` is an error.
+
+With `dcgm.enabled` set (the Helm chart default is off), the GPU Operator runs
+`nv-hostengine` in the `nvidia-dcgm` DaemonSet and points `dcgm-exporter` at
+it. That pod has its own network namespace unless `dcgm.hostNetwork` is set, so
+`localhost:5555` on the host does not reach it. Standalone mode with the default
+address reports `DCGM_ST_CONNECTION_NOT_VALID`, and embedded mode refuses
+because the check finds the pod's `nv-hostengine`. Use standalone mode with
+`--dcgm-address` set to an address that reaches the pod, such as its pod IP.
+
+The check cannot see DCGM embedded in any other process, including another
+one-shot run that started embedded DCGM at the same time, so do not overlap
+one-shot runs on a node. A root run without `CAP_SYS_PTRACE` on a `/proc`
+mounted with `hidepid=2` or `4` can read PID 1 but not other users' processes,
+so the check can miss an `nv-hostengine` run as another user.
+
+Every mode loads `libdcgm.so.4`, which the `health-validation` container image
+does not include. In standalone mode, the loaded `libdcgm.so.4` must be the same
+DCGM version as the hostengine; otherwise every call fails with "API version
+mismatch". Embedded mode also loads `libnvidia-ml.so.1` into the process;
+standalone mode does not. If NVML does not load, embedded DCGM still starts but manages no GPUs, so the DCGM
+sensor reports every signal as no value with reason `NO_TARGETS` ("No GPUs
+detected") and the cause appears only in the DCGM log. Keep one DCGM source
+open per process: sources share one DCGM connection and its field watches, so
+closing one stops the field updates the others read. A process runs DCGM in one
+mode, and a source of the other mode reports `NOT_CONFIGURED`. A collection timeout
+stops the wait, not the native call. Until it returns, later source calls
+return `ErrInUse`, which sensors report as unavailable observations, and
+`Close` returns `ErrInUse` instead of waiting. A DCGM start that fails after
+loading `libdcgm.so.4` keeps the library loaded until the process exits; DCGM
+stays initialized until a later source starts and closes as the last open DCGM
+source. A failed embedded start reports `DCGM_ST_INIT_ERROR`. libdcgm writes the
+cause to the DCGM log when it can write that file, and prints some causes to
+stderr as well.
+
+Embedded DCGM writes ERROR-level logs to `/var/log/nv-hostengine.log`. Set
+`__DCGM_DBG_FILE` to another path and `__DCGM_DBG_LVL` to change the level. A
+run that cannot write the file loses these logs without an error. Do not set
+`__DCGM_DBG_FILE` to `-`, which sends DCGM logs to stdout, where the example
+writes its JSON.
 
 ### Register and collect
 

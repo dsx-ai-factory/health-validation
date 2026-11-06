@@ -17,7 +17,7 @@
   "properties": {
     "schema_version": {
       "description": "MAJOR.MINOR contract version. Consumers must check this before acting on a verdict; an unrecognised or missing value is untrusted output.",
-      "const": "0.4"
+      "const": "0.5"
     },
     "catalog_version": {
       "description": "Catalog module version that produced this verdict: a release or pseudo-version on stamped builds, or on unstamped local builds the module version Go embeds, dev+<commit>, or dev. Overrides and custom checks do not change it.",
@@ -193,9 +193,9 @@
       }
     },
     "severity": {
-      "description": "Graduated health severity. Ordered PASS < INFO < WARNING < CRITICAL; UNKNOWN means the check could not complete.",
+      "description": "Graduated health severity. Ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL; UNKNOWN means the check could not complete.",
       "type": "string",
-      "enum": ["PASS", "INFO", "WARNING", "CRITICAL", "UNKNOWN"]
+      "enum": ["PASS", "INFO", "WARNING", "UNKNOWN", "CRITICAL"]
     },
     "category": {
       "description": "Hardware/interconnect domain a check monitors.",

@@ -10,6 +10,7 @@ go_library(
         "backend_other.go",
         "collect.go",
         "config.go",
+        "override_audit.go",
         "version.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/app",
@@ -21,6 +22,7 @@ go_library(
         "//collect/sensors/cpu",
         "//collect/sensors/linkflap",
         "//collect/sensors/xid",
+        "//collect/signals/gpu",
         "//collect/signals/infiniband",
         "//collect/signals/xid",
         "//internal/version",
@@ -35,6 +37,9 @@ go_library(
         "@org_golang_google_protobuf//encoding/protojson",
     ] + select({
         "@rules_go//go/platform:linux": [
+            "//collect/sensors/dcgm",
+            "//collect/sensors/nvml",
+            "//collect/source/dcgm",
             "//collect/source/nvml",
             "//toolkit/nvml",
         ],
@@ -52,6 +57,7 @@ go_test(
         "entity_test.go",
         "linkflap_collect_test.go",
         "node_parity_linux_test.go",
+        "override_audit_test.go",
         "version_test.go",
         "xid_collect_test.go",
     ],

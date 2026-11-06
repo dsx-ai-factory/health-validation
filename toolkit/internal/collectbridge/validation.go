@@ -187,9 +187,6 @@ func validateCollectObservation(o *observation.Observation, s collect.Signal) er
 	if pair := o.GetTarget().GetGpuPair(); pair != nil && pair.GetSourceGpu().GetUuid() != "" && pair.GetSourceGpu().GetUuid() == pair.GetPeerGpu().GetUuid() {
 		return fmt.Errorf("GPU pair target requires two distinct GPUs")
 	}
-	if collectSourceLocal(o.GetTarget()) && o.GetCollectionError() == nil {
-		return fmt.Errorf("source-local GPU identity requires a collection error")
-	}
 	if entry := o.GetTarget().GetJournalEntry(); entry != nil && (strings.TrimSpace(entry.GetBootId()) == "" || strings.TrimSpace(entry.GetCursor()) == "") {
 		return fmt.Errorf("journal entry target requires a boot ID and cursor")
 	}
@@ -245,6 +242,23 @@ func gpuRefs(target *observation.ObservationTarget) []*observation.GPURef {
 		return []*observation.GPURef{kind.GpuProcess.GetGpu()}
 	default:
 		return nil
+	}
+}
+
+// failSourceLocalOutcomes fails each observation of a GPU known only by a
+// source-local ID. Its outcome cannot be joined to a verified GPU, so it fails
+// that GPU's checks, as an unreadable UUID does on the legacy path, instead of
+// rejecting the batch and every other GPU in it.
+func failSourceLocalOutcomes(batch *observation.ObservationBatch) {
+	for _, o := range batch.GetObservations() {
+		if o.GetCollectionError() == nil && collectSourceLocal(o.GetTarget()) {
+			o.Outcome = &observation.Observation_CollectionError{CollectionError: &observation.CollectionError{
+				Category:  observation.CollectionErrorCategoryUnavailable,
+				Source:    o.GetSource(),
+				Operation: "identity",
+				Detail:    "GPU UUID unavailable",
+			}}
+		}
 	}
 }
 

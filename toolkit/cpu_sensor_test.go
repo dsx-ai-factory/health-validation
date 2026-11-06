@@ -140,7 +140,7 @@ func TestCPUSensor_ErroredAttributesAllSignals(t *testing.T) {
 	}
 }
 
-func TestCollectWithOptions_CPUTimeoutDegradesToCritical(t *testing.T) {
+func TestCollectWithOptions_CPUTimeoutDegradesToUnknown(t *testing.T) {
 	sensor := toolkit.NewCPUSensor(cpuBackendFunc(func(ctx context.Context) (cpu.CPUMeasurement, error) {
 		<-ctx.Done()
 		return cpu.CPUMeasurement{}, ctx.Err()
@@ -150,8 +150,8 @@ func TestCollectWithOptions_CPUTimeoutDegradesToCritical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectWithOptions returned error: %v", err)
 	}
-	if verdict.OverallSeverity != health.Critical {
-		t.Fatalf("overall = %v, want CRITICAL", verdict.OverallSeverity)
+	if verdict.OverallSeverity != health.Unknown {
+		t.Fatalf("overall = %v, want UNKNOWN", verdict.OverallSeverity)
 	}
 	if len(verdict.CheckResults) != 1 {
 		t.Fatalf("got %d check results, want 1", len(verdict.CheckResults))
@@ -160,8 +160,8 @@ func TestCollectWithOptions_CPUTimeoutDegradesToCritical(t *testing.T) {
 	if result.CheckID != "cpu_availability_test" {
 		t.Errorf("CheckID = %q, want cpu_availability_test", result.CheckID)
 	}
-	if result.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", result.Severity)
+	if result.Severity != health.Unknown {
+		t.Errorf("severity = %v, want UNKNOWN", result.Severity)
 	}
 	if len(result.Messages) != 1 || !strings.Contains(result.Messages[0], health.ErrCollectionTimeout.Error()) {
 		t.Errorf("messages = %v, want collection timeout", result.Messages)
@@ -181,8 +181,8 @@ func TestCollectWithOptions_CPUBackendFailureProducesResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectWithOptions returned error: %v", err)
 	}
-	if verdict.OverallSeverity != health.Critical {
-		t.Fatalf("overall = %v, want CRITICAL", verdict.OverallSeverity)
+	if verdict.OverallSeverity != health.Unknown {
+		t.Fatalf("overall = %v, want UNKNOWN", verdict.OverallSeverity)
 	}
 	if len(verdict.SkippedChecks) != 0 {
 		t.Errorf("skipped checks = %+v, want none", verdict.SkippedChecks)

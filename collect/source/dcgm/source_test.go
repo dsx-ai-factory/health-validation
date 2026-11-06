@@ -27,6 +27,7 @@ type fakeNative struct {
 	uuidErr           error
 	inventoryErr      error
 	enumerationErr    error
+	initErr           error
 	gpuUUIDs          map[uint]string
 	readStarted       chan struct{}
 	uuidStarted       chan struct{}
@@ -43,10 +44,15 @@ type fakeNative struct {
 	readCalls         atomic.Int32
 	watchCleanupCalls atomic.Int32
 	watchCalls        atomic.Int32
+	// The watch cleanup needs the DCGM client the client cleanup releases.
+	watchCleanedAfterClient atomic.Bool
 }
 
 func (native *fakeNative) Init() (func(), error) {
 	native.initCalls.Add(1)
+	if native.initErr != nil {
+		return nil, native.initErr
+	}
 	return func() { native.cleanupCalls.Add(1) }, nil
 }
 
@@ -110,6 +116,9 @@ func (native *fakeNative) WatchMetrics([]string) (func() error, error) {
 	native.watchCalls.Add(1)
 	return func() error {
 		native.watchCleanupCalls.Add(1)
+		if native.cleanupCalls.Load() != 0 {
+			native.watchCleanedAfterClient.Store(true)
+		}
 		return nil
 	}, nil
 }
@@ -129,6 +138,13 @@ func (native *fakeNative) ReadGPUMetrics(_ uint, signalIDs []string) (map[string
 		}}
 	}
 	return values, nil
+}
+
+func newSourceInMode(native nativeAPI, gate *sync.Mutex, processMode *sessionMode, mode sessionMode) *Source {
+	source := newSource(native, gate)
+	source.mode = mode
+	source.processMode = processMode
+	return source
 }
 
 func TestMetricWatchName(t *testing.T) {
@@ -570,6 +586,252 @@ func TestReadGPUMetricsRejectsConcurrentNativeCall(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("first native read did not finish")
+	}
+}
+
+func TestSourceRejectsSecondDCGMMode(t *testing.T) {
+	tests := []struct {
+		name          string
+		wantDetail    string
+		first, second sessionMode
+	}{
+		{
+			name:       "standalone then embedded",
+			wantDetail: "this process set DCGM to standalone mode with its first DCGM source and keeps that mode until it exits; this source uses embedded mode",
+			first:      standaloneMode,
+			second:     embeddedMode,
+		},
+		{
+			name:       "embedded then standalone",
+			wantDetail: "this process set DCGM to embedded mode with its first DCGM source and keeps that mode until it exits; this source uses standalone mode",
+			first:      embeddedMode,
+			second:     standaloneMode,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gate := &sync.Mutex{}
+			var processMode sessionMode
+			firstNative, secondNative := &fakeNative{}, &fakeNative{}
+			first := newSourceInMode(firstNative, gate, &processMode, test.first)
+			second := newSourceInMode(secondNative, gate, &processMode, test.second)
+
+			if _, failure := first.GPUIdentities(context.Background(), newTestCycle(t, "first")); failure != nil {
+				t.Fatalf("first GPUIdentities() failure = %v", failure)
+			}
+			if processMode != test.first {
+				t.Fatalf("process mode = %v, want %v", processMode, test.first)
+			}
+			assertModeMismatch := func(cycleID string) {
+				t.Helper()
+				_, failure := second.GPUIdentities(context.Background(), newTestCycle(t, cycleID))
+				if failure.GetCategory() != observation.CollectionErrorCategoryNotConfigured ||
+					failure.GetOperation() != "identity" || failure.GetSource() != Name ||
+					failure.GetDetail() != test.wantDetail {
+					t.Fatalf("second GPUIdentities() failure = %v", failure)
+				}
+				if got := secondNative.initCalls.Load(); got != 0 {
+					t.Fatalf("second Init() calls = %d, want 0", got)
+				}
+			}
+			assertModeMismatch("second")
+			if err := first.Close(); err != nil {
+				t.Fatalf("first Close() error = %v", err)
+			}
+			assertModeMismatch("after-close")
+		})
+	}
+}
+
+func TestSourceSharesProcessModeWithSameMode(t *testing.T) {
+	gate := &sync.Mutex{}
+	var processMode sessionMode
+	natives := []*fakeNative{{}, {}}
+	for position, native := range natives {
+		source := newSourceInMode(native, gate, &processMode, standaloneMode)
+		if _, failure := source.GPUIdentities(context.Background(), newTestCycle(t, fmt.Sprintf("source-%d", position))); failure != nil {
+			t.Fatalf("source %d GPUIdentities() failure = %v", position, failure)
+		}
+		if got := native.initCalls.Load(); got != 1 {
+			t.Fatalf("source %d Init() calls = %d, want 1", position, got)
+		}
+	}
+}
+
+var errNoHostengine = &dcgmError{
+	sourceError: "DCGM_ST_CONNECTION_NOT_VALID",
+	category:    observation.CollectionErrorCategoryUnavailable,
+	detail:      "error connecting to nv-hostengine: Host engine connection invalid/disconnected",
+}
+
+func TestFailedInitLeavesModeUnset(t *testing.T) {
+	gate := &sync.Mutex{}
+	var processMode sessionMode
+	standaloneNative := &fakeNative{initErr: errNoHostengine}
+	standalone := newSourceInMode(standaloneNative, gate, &processMode, standaloneMode)
+
+	_, failure := standalone.GPUIdentities(context.Background(), newTestCycle(t, "failed-init"))
+	if failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || failure.GetDetail() != errNoHostengine.Error() {
+		t.Fatalf("GPUIdentities() failure = %v", failure)
+	}
+	if got := standaloneNative.initCalls.Load(); got != 1 {
+		t.Fatalf("Init() calls = %d, want 1", got)
+	}
+	if processMode != 0 {
+		t.Fatalf("process mode after failed Init = %v, want unset", processMode)
+	}
+
+	embedded := newSourceInMode(&fakeNative{}, gate, &processMode, embeddedMode)
+	if _, embeddedFailure := embedded.GPUIdentities(context.Background(), newTestCycle(t, "embedded")); embeddedFailure != nil {
+		t.Fatalf("embedded GPUIdentities() failure = %v", embeddedFailure)
+	}
+	if processMode != embeddedMode {
+		t.Fatalf("process mode = %v, want %v", processMode, embeddedMode)
+	}
+
+	standaloneNative.initErr = nil
+	_, failure = standalone.GPUIdentities(context.Background(), newTestCycle(t, "retry"))
+	if failure.GetCategory() != observation.CollectionErrorCategoryNotConfigured {
+		t.Fatalf("retry failure = %v, want NOT_CONFIGURED", failure)
+	}
+	if got := standaloneNative.initCalls.Load(); got != 1 {
+		t.Fatalf("Init() calls after retry = %d, want 1", got)
+	}
+}
+
+func TestReadGPUMetricsReportsModeMismatch(t *testing.T) {
+	processMode := standaloneMode
+	native := &fakeNative{}
+	source := newSourceInMode(native, &sync.Mutex{}, &processMode, embeddedMode)
+	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
+		t.Fatal(err)
+	}
+
+	values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "mismatch"), 0, []string{signalPowerDraw})
+	failure := values[signalPowerDraw].CollectionError
+	want := "this process set DCGM to standalone mode with its first DCGM source and keeps that mode until it exits; this source uses embedded mode"
+	if failure.GetCategory() != observation.CollectionErrorCategoryNotConfigured || failure.GetDetail() != want {
+		t.Fatalf("ReadGPUMetrics() failure = %v", failure)
+	}
+	if native.initCalls.Load() != 0 || native.watchCalls.Load() != 0 {
+		t.Fatalf("Init() calls = %d, WatchMetrics() calls = %d, want 0 and 0", native.initCalls.Load(), native.watchCalls.Load())
+	}
+}
+
+func TestNewSourceConstructorsShareProcessState(t *testing.T) {
+	for _, test := range []struct {
+		source *Source
+		mode   sessionMode
+	}{
+		{source: NewStandaloneSource(StandaloneOptions{}), mode: standaloneMode},
+		{source: NewEmbeddedSource(EmbeddedOptions{GroupNamePrefix: "hv"}), mode: embeddedMode},
+	} {
+		if test.source.mode != test.mode || test.source.nativeCallMu != &defaultNativeCallMu || test.source.processMode != &defaultProcessMode {
+			t.Fatalf("%v source = mode %v, shared gate %t, shared process mode %t", test.mode, test.source.mode,
+				test.source.nativeCallMu == &defaultNativeCallMu, test.source.processMode == &defaultProcessMode)
+		}
+	}
+}
+
+func TestEmbeddedSourceInitializesOnFirstCollection(t *testing.T) {
+	var processMode sessionMode
+	native := &fakeNative{}
+	source := newSourceInMode(native, &sync.Mutex{}, &processMode, embeddedMode)
+	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
+		t.Fatal(err)
+	}
+	if got := native.initCalls.Load(); got != 0 {
+		t.Fatalf("Init() calls before collection = %d, want 0", got)
+	}
+
+	cycle := newTestCycle(t, "first-collection")
+	if _, failure := source.GPUIdentities(context.Background(), cycle); failure != nil {
+		t.Fatalf("GPUIdentities() failure = %v", failure)
+	}
+	if native.initCalls.Load() != 1 || processMode != embeddedMode {
+		t.Fatalf("Init() calls = %d, process mode = %v; want 1, embedded", native.initCalls.Load(), processMode)
+	}
+	source.ReadGPUMetrics(context.Background(), cycle, 0, []string{signalPowerDraw})
+	if got := native.watchCalls.Load(); got != 1 {
+		t.Fatalf("WatchMetrics() calls = %d, want 1", got)
+	}
+}
+
+func TestEmbeddedCloseReleasesWatchThenClient(t *testing.T) {
+	var processMode sessionMode
+	native := &fakeNative{}
+	source := newSourceInMode(native, &sync.Mutex{}, &processMode, embeddedMode)
+	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
+		t.Fatal(err)
+	}
+	values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "read"), 0, []string{signalPowerDraw})
+	if failure := values[signalPowerDraw].CollectionError; failure != nil {
+		t.Fatalf("ReadGPUMetrics() failure = %v", failure)
+	}
+
+	for range 2 {
+		if err := source.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}
+	if native.watchCleanupCalls.Load() != 1 || native.cleanupCalls.Load() != 1 || native.watchCleanedAfterClient.Load() {
+		t.Fatalf("watch cleanups = %d, client cleanups = %d, watch after client = %t; want 1, 1, false",
+			native.watchCleanupCalls.Load(), native.cleanupCalls.Load(), native.watchCleanedAfterClient.Load())
+	}
+}
+
+func TestModesShareNativeCallGate(t *testing.T) {
+	gate := &sync.Mutex{}
+	var processMode sessionMode
+	standaloneNative := &fakeNative{readStarted: make(chan struct{}), releaseRead: make(chan struct{})}
+	releaseRead := func() {
+		select {
+		case <-standaloneNative.releaseRead:
+		default:
+			close(standaloneNative.releaseRead)
+		}
+	}
+	t.Cleanup(releaseRead)
+	standalone := newSourceInMode(standaloneNative, gate, &processMode, standaloneMode)
+	if err := standalone.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
+		t.Fatal(err)
+	}
+	embeddedNative := &fakeNative{}
+	embedded := newSourceInMode(embeddedNative, gate, &processMode, embeddedMode)
+
+	blockedCycle := newTestCycle(t, "blocked")
+	read := make(chan map[string]FieldValue, 1)
+	go func() {
+		read <- standalone.ReadGPUMetrics(context.Background(), blockedCycle, 0, []string{signalPowerDraw})
+	}()
+	select {
+	case <-standaloneNative.readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("standalone read did not start")
+	}
+
+	_, failure := embedded.GPUIdentities(context.Background(), newTestCycle(t, "embedded"))
+	if failure.GetCategory() != observation.CollectionErrorCategoryUnavailable {
+		t.Fatalf("embedded GPUIdentities() failure = %v, want UNAVAILABLE", failure)
+	}
+	if err := embedded.Close(); !errors.Is(err, ErrInUse) {
+		t.Fatalf("embedded Close() during standalone call = %v, want ErrInUse", err)
+	}
+
+	releaseRead()
+	select {
+	case values := <-read:
+		if values[signalPowerDraw].CollectionError != nil {
+			t.Fatalf("standalone read failure = %v", values[signalPowerDraw].CollectionError)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("standalone read did not finish")
+	}
+	if err := embedded.Close(); err != nil {
+		t.Fatalf("embedded Close() after standalone call = %v", err)
+	}
+	if got := embeddedNative.initCalls.Load(); got != 0 {
+		t.Fatalf("embedded Init() calls = %d, want 0", got)
 	}
 }
 

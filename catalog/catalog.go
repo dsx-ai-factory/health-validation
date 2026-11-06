@@ -353,10 +353,10 @@ func (c *Catalog) EvaluateAllWithOptions(opts EvaluationOptions, measurements ..
 // A check is evaluated once per measurement that feeds it (so a
 // per-entity check yields one verdict per entity) and skipped
 // NoApplicableMeasurement once when its category was collected but no
-// measurement carried its required signals. An errored measurement that
-// routes to a check produces a Critical verdict carrying the sensor's
-// detail; it never reaches checks whose required signals its schema does
-// not carry.
+// measurement carried its required signals. A routed measurement produces
+// an Unknown verdict with the sensor's detail when a collection error
+// affects a required signal. Checks whose required signals were collected
+// still evaluate normally against the partial measurement.
 //
 // A check whose category supplied no measurement at all is skipped
 // [health.SensorMissing], with the category named in SkipDetail.
