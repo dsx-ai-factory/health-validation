@@ -43,10 +43,11 @@ var errNoObservation = errors.New("no observation was collected for these signal
 //   - A mapped collect signal ID sets the catalog fields the mapping
 //     table assigns it, as during migration to collect sensors.
 //
-// Canonical Xid signals instead build one Xid measurement per GPU from their
-// journal-entry events, or one naming no GPU for a scan with no events; a
-// batch that also carries <domain>.<field> Xid observations yields one
-// errored Xid measurement, since the two cannot be merged.
+// Canonical Xid and RDMA link-flap signals instead build their measurements
+// from journal-entry events: Xid one per GPU, or one naming no GPU for a scan
+// with no events, and link flaps one per node. A batch that also carries
+// those measurements in <domain>.<field> form yields one errored measurement,
+// since the two cannot be merged.
 //
 // Both shapes may appear in one batch and feed one measurement. Other
 // signals are ignored. Collection failures attach to the affected catalog
@@ -56,32 +57,52 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // observations yields no measurement, so its checks are skipped as missing.
 func ToMeasurements(observations []*observation.Observation) []health.Measurement {
 	b := &builder{entities: make(map[entityKey]*entity)}
-	var xidObservations []*observation.Observation
+	var xidObservations, linkFlapObservations []*observation.Observation
 	links := make(nvlinkLinks)
 	processes := make(gpuProcesses)
 	for _, current := range observations {
-		if xidSignals[current.GetSignalId()] {
+		switch {
+		case xidSignals[current.GetSignalId()]:
 			xidObservations = append(xidObservations, current)
-			continue
+		case linkFlapSignals[current.GetSignalId()]:
+			linkFlapObservations = append(linkFlapObservations, current)
+		default:
+			if f, ok := resolve(current); ok && !processes.add(current) && !links.add(current, f) {
+				b.add(current, f)
+			}
 		}
-		f, ok := resolve(current)
-		if !ok || processes.add(current) || links.add(current, f) {
-			continue
-		}
-		b.add(current, f)
 	}
 	links.feed(b)
 	processes.feed(b)
 	out := b.measurements()
-	if len(xidObservations) == 0 {
+	if len(xidObservations) > 0 {
+		out = withCanonical(out, canonicalXid(xidObservations), func(err error) health.Measurement {
+			return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)
+		})
+	}
+	if len(linkFlapObservations) > 0 {
+		out = withCanonical(out, []health.Measurement{canonicalLinkFlap(linkFlapObservations)}, func(err error) health.Measurement {
+			return infiniband.ErroredLinkFlap(linkFlapSinceUnknown, err, infiniband.MeasurementSignals()...)
+		})
+	}
+	return out
+}
+
+// withCanonical appends canonical, built from canonical observations of one
+// type. When out also holds that type, built from <domain>.<field>
+// observations, the two cannot be merged, so both are replaced by one
+// measurement from failed.
+func withCanonical(out, canonical []health.Measurement, failed func(error) health.Measurement) []health.Measurement {
+	if len(canonical) == 0 {
 		return out
 	}
-	xids := canonicalXid(xidObservations)
-	if slices.ContainsFunc(out, func(other health.Measurement) bool { return other.Category() == health.Xid }) {
-		out = slices.DeleteFunc(out, func(other health.Measurement) bool { return other.Category() == health.Xid })
-		xids = []health.Measurement{xid.ErroredXid(xidsignals.WindowBoot, errors.New("xid observed in both canonical and field form"), xid.MeasurementSignals()...)}
+	typ := reflect.TypeOf(canonical[0])
+	same := func(other health.Measurement) bool { return reflect.TypeOf(other) == typ }
+	if slices.ContainsFunc(out, same) {
+		out = slices.DeleteFunc(out, same)
+		canonical = []health.Measurement{failed(fmt.Errorf("%s observed in both canonical and field form", canonical[0].Category()))}
 	}
-	return append(out, xids...)
+	return append(out, canonical...)
 }
 
 // measurementTypes are the measurement types ToMeasurements rebuilds. Each
@@ -638,6 +659,30 @@ func collectionFailure(failure *observation.CollectionError) error {
 		msg += ": " + failure.GetDetail()
 	}
 	return restoredError{msg: msg, timeout: timeout}
+}
+
+// firstFailure returns the first non-timeout failure, else the first
+// timeout, else nil.
+func firstFailure(obs []*observation.Observation) error {
+	var timeout error
+	for _, o := range obs {
+		var err error
+		switch {
+		case o.GetCollectionError() != nil:
+			err = collectionFailure(o.GetCollectionError())
+		case o.GetNoValue() != nil:
+			err = noValueFailure(o.GetSource(), o.GetNoValue())
+		default:
+			continue
+		}
+		if !errors.Is(err, health.ErrCollectionTimeout) {
+			return err
+		}
+		if timeout == nil {
+			timeout = err
+		}
+	}
+	return timeout
 }
 
 func noValueFailure(source string, noValue *observation.NoValue) error {

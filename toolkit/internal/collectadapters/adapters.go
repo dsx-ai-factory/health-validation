@@ -23,6 +23,9 @@ const sourceLevelGPU = "gpu"
 // domainAdapter assembles one catalog category from mapped signals.
 type domainAdapter struct {
 	errored func(error) []health.Measurement
+	// complete, when set, adds a failed measurement for each type Build
+	// must always produce but the observations did not build.
+	complete func([]health.Measurement) []health.Measurement
 	// feeds maps each collect signal ID to the catalog signals it fills;
 	// several when one raw value is split into multiple catalog fields.
 	feeds    map[string][]string
@@ -70,6 +73,9 @@ func (a *domainAdapter) Signals() map[string][]string { return maps.Clone(a.feed
 // Build consumes observations already validated by the bridge.
 func (a *domainAdapter) Build(obs []*observation.Observation) []health.Measurement {
 	measurements := adaptCategory(a.category, a.feeds, obs)
+	if a.complete != nil {
+		measurements = a.complete(measurements)
+	}
 	if len(measurements) == 0 {
 		return a.Errored(fmt.Errorf("no %s observations were collected", a.Name()))
 	}

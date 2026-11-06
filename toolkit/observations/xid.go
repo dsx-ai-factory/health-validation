@@ -29,12 +29,13 @@ var xidSignals = func() map[string]bool {
 }()
 
 // canonicalXid builds one XidMeasurement per GPU from canonical Xid
-// observations, keyed by normalized PCI address. A scan with no events yields one measurement naming no GPU. Any
-// failure yields a single measurement with a single error naming every
-// MeasurementSignals entry; a single error, because evaluation recommends
-// retry_collection only when every failure is a timeout.
+// observations, keyed by normalized PCI address. A scan with no events yields
+// one measurement naming no GPU. Any failure yields a single measurement
+// with a single error naming every MeasurementSignals entry; a single error,
+// because evaluation recommends retry_collection only when every failure is a
+// timeout.
 func canonicalXid(obs []*observation.Observation) []health.Measurement {
-	if err := firstXidFailure(obs); err != nil {
+	if err := firstFailure(obs); err != nil {
 		return []health.Measurement{xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)}
 	}
 	measurements, err := buildXid(obs)
@@ -42,30 +43,6 @@ func canonicalXid(obs []*observation.Observation) []health.Measurement {
 		return []health.Measurement{xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)}
 	}
 	return measurements
-}
-
-// firstXidFailure returns the first non-timeout failure, else the first
-// timeout, else nil.
-func firstXidFailure(obs []*observation.Observation) error {
-	var timeout error
-	for _, o := range obs {
-		var err error
-		switch {
-		case o.GetCollectionError() != nil:
-			err = collectionFailure(o.GetCollectionError())
-		case o.GetNoValue() != nil:
-			err = noValueFailure(o.GetSource(), o.GetNoValue())
-		default:
-			continue
-		}
-		if !errors.Is(err, health.ErrCollectionTimeout) {
-			return err
-		}
-		if timeout == nil {
-			timeout = err
-		}
-	}
-	return timeout
 }
 
 func buildXid(obs []*observation.Observation) ([]health.Measurement, error) {

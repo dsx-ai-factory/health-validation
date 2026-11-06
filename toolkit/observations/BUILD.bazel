@@ -7,6 +7,7 @@ go_library(
     srcs = [
         "export.go",
         "ingest.go",
+        "linkflap.go",
         "mapping.go",
         "nvlink.go",
         "processes.go",
@@ -25,6 +26,7 @@ go_library(
         "//collect/observation",
         "//collect/signals/cpu",
         "//collect/signals/gpu",
+        "//collect/signals/infiniband",
         "//collect/signals/xid",
         "//toolkit/internal/gpuinventory",
         "//toolkit/internal/pciaddr",
@@ -37,6 +39,7 @@ go_test(
     srcs = [
         "entity_test.go",
         "export_test.go",
+        "linkflap_test.go",
         "nvlink_test.go",
         "observations_test.go",
         "processes_test.go",
@@ -58,6 +61,7 @@ go_test(
         "//collect/observation",
         "//collect/signals/cpu",
         "//collect/signals/gpu",
+        "//collect/signals/infiniband",
         "//collect/signals/process",
         "//collect/signals/xid",
         "//toolkit/internal/gpuinventory",
