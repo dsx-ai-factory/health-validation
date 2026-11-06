@@ -48,6 +48,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   with exit 2 once GPU architecture discovery succeeds, before the sensors
   are collected. If discovery fails, `run` still reports the
   `architecture_discovery` verdict and exits 1.
+
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
 Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,
