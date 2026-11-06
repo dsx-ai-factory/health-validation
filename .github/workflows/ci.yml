@@ -239,9 +239,8 @@ jobs:
   # Publish one OCI index containing linux/amd64 and linux/arm64. Main advances
   # both its immutable pseudo-version and latest; release tags publish
   # only the immutable semantic version. The architecture build jobs execute
-  # each stamped image and verify its version first. The
-  # GITHUB_TOKEN is scoped to this job, and rules_oci reads the credentials
-  # written by docker login.
+  # each stamped image and verify its version first. rules_oci reads the
+  # NGC service key written by docker login.
   publish-image:
     if: >-
       github.repository == 'dsx-ai-factory/health-validation' &&
@@ -257,7 +256,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: write
     steps:
       # Version generation needs the module's complete tag history.
       - uses: actions/checkout@v7.0.1
@@ -268,18 +266,22 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
-      - name: Log in to GHCR
+      - name: Publish multi-architecture image to NGC
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_USER: ${{ github.actor }}
-        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
-
-      - name: Publish multi-architecture image
-        env:
-          IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          IMAGE_REPOSITORY: ${{ secrets.CONTAINER_IMAGE_REPOSITORY }}
+          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
           EXPECTED_VERSION: ${{ needs.release-metadata.outputs.version }}
           HEALTH_VALIDATION_VERSION: ${{ needs.release-metadata.outputs.version }}
         run: |
+          if [[ ! "$IMAGE_REPOSITORY" =~ ^nvcr\.io/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$ ]]; then
+            echo "::error::CONTAINER_IMAGE_REPOSITORY must be nvcr.io/<org>/<team>/<image> without a tag or digest"
+            exit 1
+          fi
+          if [[ -z "$NGC_API_KEY" ]]; then
+            echo "::error::NGC_API_KEY must contain an NGC service key with publish access to the configured team"
+            exit 1
+          fi
+
           version="$EXPECTED_VERSION"
           if [[ -z "$version" ]]; then
             echo "could not determine the image version" >&2
@@ -291,6 +293,20 @@ jobs:
             tags+=(--tag latest)
           fi
 
+          export DOCKER_CONFIG
+          DOCKER_CONFIG="$(mktemp -d)"
+          cleanup() {
+            docker logout nvcr.io >/dev/null 2>&1 || true
+            rm -rf -- "$DOCKER_CONFIG"
+          }
+          trap cleanup EXIT
+          # Pull the public base anonymously; the publish key is scoped to a private team.
+          mkdir "$DOCKER_CONFIG/base-pull"
+          printf '%s\n' '{"auths":{}}' > "$DOCKER_CONFIG/base-pull/config.json"
+          printf '%s' "$NGC_API_KEY" | docker login nvcr.io \
+            --username '$oauthtoken' --password-stdin
+
           bazel run --config=release-ci --remote_download_outputs=toplevel \
+            --repo_env=DOCKER_CONFIG="$DOCKER_CONFIG/base-pull" \
             //toolkit/cmd/health-validation:health-validation.image.push -- \
             --repository "$IMAGE_REPOSITORY" "${tags[@]}"
