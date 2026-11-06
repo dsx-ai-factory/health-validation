@@ -18,7 +18,9 @@
 //			log.Fatal(err)
 //		}
 //		a := app.New().WithStderrLogging().WithChecks(mychecks.All()...).WithCollectAdapters(ecc)
-//		os.Exit(a.Run(os.Args[1:], os.Stdout, os.Stderr))
+//		code := a.Run(os.Args[1:], os.Stdout, os.Stderr)
+//		_ = a.Close()
+//		os.Exit(code)
 //	}
 //
 // Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
@@ -106,9 +108,6 @@ type hostBackend interface {
 // InfiniBand), each from its own per-domain source — DCGM, the shared host
 // NVML backend, sysfs, or the journal by default, or a caller-supplied
 // override.
-//
-// An App serves one run. The run and collect subcommands close the host
-// sources they open, so build a new App for each run.
 type App struct {
 	host        hostBackend
 	hostname    func() (string, error)
@@ -267,14 +266,14 @@ func (a *App) WithNodeID(id string) *App {
 	return a
 }
 
-// Close shuts down the App's host backend — the built-in NVML connection.
-// [App.Run] calls it for the caller, so it is needed only if you assemble an
-// App without running it.
+// Close shuts down the App's host backend, the built-in DCGM and NVML
+// connections. Call it when you are done with the App; [App.Run] leaves them
+// open so one App can run more than once.
 //
 // Backends installed via the With*Backend setters are the caller's to manage
 // and are not closed here: a foreign backend is owned by whoever built it, and
 // a probe-derived NVML backend (a.NVMLBackend().WithNVLinkProbe(…)) is a
-// lightweight view the one-shot run discards on exit.
+// lightweight view discarded when the process exits.
 func (a *App) Close() error { return a.host.close() }
 
 // Run is the health-validation CLI entrypoint:
@@ -283,8 +282,7 @@ func (a *App) Close() error { return a.host.close() }
 //	health-validation [--verbose] version [--short] [--output json]
 //
 // It parses the top-level flags, dispatches the subcommand, writes output to
-// stdout and diagnostics to stderr, and returns the process exit code. Call it
-// once per App.
+// stdout and diagnostics to stderr, and returns the process exit code.
 func (a *App) Run(args []string, stdout, stderr io.Writer) int {
 	if a.prog == "" {
 		a.prog = filepath.Base(os.Args[0])
@@ -395,13 +393,6 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: --execution-context: %v\n", a.prog, err)
 		return exitError
 	}
-
-	// Close only the host backend: per-domain overrides are caller-owned (see
-	// [App.Close]). The host backend owns the DCGM and NVML sources, and
-	// architecture discovery and node share one GPU inventory read per cycle.
-	// Deferred before architecture detection so the NVML handle that detection
-	// opens is always released.
-	defer a.host.close()
 
 	// Load the config before touching the hardware so a typo is reported as a
 	// config error rather than surfacing after a full collection — and so the
@@ -722,7 +713,6 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
-	defer a.host.close()
 	// Whole categories, not runnable signals: a batch may be evaluated later
 	// under a different cadence or config.
 	required := make(requiredSignals, len(categories))

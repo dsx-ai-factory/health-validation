@@ -22,5 +22,8 @@ import (
 )
 
 func main() {
-	os.Exit(app.New().WithStderrLogging().Run(os.Args[1:], os.Stdout, os.Stderr))
+	a := app.New().WithStderrLogging()
+	code := a.Run(os.Args[1:], os.Stdout, os.Stderr)
+	_ = a.Close()
+	os.Exit(code)
 }

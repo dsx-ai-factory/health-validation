@@ -374,9 +374,15 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 	}
 }
 
+// keepOpenHost fails a run that closes the host: the caller owns that close.
+type keepOpenHost struct{ hostBackend }
+
+func (keepOpenHost) close() error { panic("Run closed the host backend") }
+
 func TestWithCollectCreatesFreshCycleOnRepeatedRuns(t *testing.T) {
 	sensor := &collectAppSensor{}
 	a := cadenceRunApp().WithNodeID(testNodeID).WithChecks(mixedChecks()...).WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(customCountAdapter())
+	a.host = keepOpenHost{a.host}
 	for range 2 {
 		var stdout, stderr bytes.Buffer
 		if code := a.Run([]string{"run"}, &stdout, &stderr); code == exitError {

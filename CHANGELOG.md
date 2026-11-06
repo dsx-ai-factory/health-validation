@@ -128,7 +128,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
       instead of the reset, restart, and escalate sequence.
     - The CLI needs access to every GPU on the node, so that DCGM and NVML
       report the same GPUs.
-    - An `App` serves one run; build a new one for each run.
+    - `App.Run` no longer closes the host's DCGM and NVML connections; call
+      `App.Close` when done with the App.
 - `run` records every validated threshold override in the host's systemd
   journal before collecting and exits `2` if it cannot. Container deployments
   that pass overrides must mount `/run/systemd/journal/socket`; see
