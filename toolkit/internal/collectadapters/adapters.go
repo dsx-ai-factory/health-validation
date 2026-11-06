@@ -48,8 +48,7 @@ func GPU() *domainAdapter {
 	return newDomainAdapter(health.GPU, erroredGPU)
 }
 
-// NVLink prepares the cutover of toolkit.NVLinkSensor (toolkit.NewNVLinkSensor).
-// The app still registers that legacy sensor; only tests use this adapter.
+// NVLink replaces toolkit.NVLinkSensor for the stock CLI's NVLink domain.
 func NVLink() *domainAdapter {
 	return newDomainAdapter(health.NVLink, erroredNVLink)
 }

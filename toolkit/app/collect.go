@@ -116,6 +116,21 @@ var (
 // default, so a change in collect cannot move the check's window.
 const linkFlapLookback = time.Hour
 
+// The NVLink domain reads fabric registration and health from DCGM, and link
+// state, count, speed, capabilities, and P2P from NVML, which DCGM has no
+// fields for.
+var (
+	dcgmNVLinkSignals = collect.Signals{
+		gpusignals.FabricManagerStatus, gpusignals.NVLinkFabricBandwidthDegraded,
+		gpusignals.NVLinkFabricRouteRecoveryActive, gpusignals.NVLinkFabricRouteUnhealthy,
+		gpusignals.NVLinkFabricAccessTimeoutRecovery,
+	}
+	nvmlNVLinkSignals = slices.Concat(collect.Signals{
+		gpusignals.NVLinkState, gpusignals.NVLinkLinkCount, gpusignals.NVLinkSpeedCommon,
+		gpusignals.NVLinkEndpointSpeed, gpusignals.NVLinkP2PStatus,
+	}, gpusignals.EndpointCapabilitySignals())
+)
+
 // builtinCollect returns the stock CLI's collect-backed domains. A domain
 // moves here from the legacy sensor list in runCommand when it migrates; its
 // With*Backend override keeps the legacy sensor instead. The node domain and
@@ -124,9 +139,13 @@ const linkFlapLookback = time.Hour
 func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectAdapter) {
 	var sources []collect.Sensor
 	var adapters []CollectAdapter
+	// The host GPU sensors also feed NVLink; a source left with no requested
+	// signals does not run.
+	if a.gpu == nil || a.nvlink == nil {
+		sources = append(sources, a.host.gpuSensors()...)
+	}
 	if a.gpu == nil {
 		inventory := a.host.gpuInventory()
-		sources = append(sources, a.host.gpuSensors()...)
 		adapters = append(adapters, powerDrawGate{
 			CollectAdapter: collectadapters.GPU(),
 			architecture: func() (string, error) {
@@ -156,6 +175,9 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 	if a.rdmaLinkFlap == nil {
 		sources = append(sources, linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)))
 		adapters = append(adapters, collectadapters.InfiniBand())
+	}
+	if a.nvlink == nil {
+		adapters = append(adapters, collectadapters.NVLink())
 	}
 	return sources, adapters
 }

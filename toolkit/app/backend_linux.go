@@ -8,6 +8,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -21,21 +22,21 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit/nvml"
 )
 
-// nvmlHost is the production hostBackend: one [nvml.NVMLBackend] feeding the
-// legacy NVLink sensor, the collect GPU sensors, and the collect NVML GPU
-// inventory that architecture discovery and the node GPU count share. The
-// legacy backend is wrapped in a [toolkit.LazyGPUBackend] so its NVML library
-// open is deferred into Collect's per-sensor watchdog — a wedged driver or a
-// missing libnvidia-ml then trips the watchdog and degrades the NVLink sensor
-// (while the independent Xid sensor still runs) instead of hanging before any
-// verdict — and so close skips shutdown while a timed-out Measure may still be
-// parked inside the cgo call. The inventory and the compute-process sensor
-// share one collect NVML instance, opened on first use under the cycle's
-// timeout.
+// nvmlHost is the production hostBackend: the collect GPU sensors and the
+// collect NVML GPU inventory that architecture discovery and the node GPU
+// count share, plus one [nvml.NVMLBackend] that only the legacy
+// WithNVLinkBackend override path ([App.NVMLBackend]) opens. That backend is
+// wrapped in a [toolkit.LazyGPUBackend] so its NVML library open runs under
+// Collect's per-sensor watchdog, and close skips shutdown while a timed-out
+// Measure may still be parked inside the cgo call. The inventory and the NVML
+// sensor share one collect NVML instance, opened on first use under the
+// cycle's timeout.
 //
 // The GPU domain reads DCGM through a hostengine already running on the node,
-// and NVML only for compute processes. Neither falls back to the other: an
-// unreachable hostengine fails the DCGM-backed GPU checks.
+// and NVML only for compute processes. The NVLink domain reads fabric
+// registration and health from DCGM, and links and P2P from NVML. Neither
+// falls back to the other: an unreachable hostengine fails the DCGM-backed
+// checks.
 //
 // b is the raw backend the probe accessor ([App.NVMLBackend]) hands out; lazy
 // wraps it.
@@ -61,7 +62,7 @@ func newHostBackend() hostBackend {
 	}
 	// The signal set is fixed, so New fails only on a programming error that
 	// the app tests catch; it records the watch without calling DCGM.
-	dcgm, err := dcgmsensor.New(h.dcgm, dcgmGPUSignals.IDs()...)
+	dcgm, err := dcgmsensor.New(h.dcgm, slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals).IDs()...)
 	if err != nil {
 		panic(err)
 	}
@@ -137,12 +138,15 @@ func (h *nvmlHost) close() error {
 	return err
 }
 
-// processSensor declares only the compute-process signals of collect's NVML
-// sensor, which DCGM cannot supply, so it does not overlap the DCGM sensor.
+// processSensor declares the signals of collect's NVML sensor that the stock
+// CLI reads from NVML, compute processes and NVLink, so it does not overlap the
+// DCGM sensor.
 type processSensor struct{ host *nvmlHost }
 
-func (processSensor) ID() string               { return nvmlsensor.ID }
-func (processSensor) Signals() collect.Signals { return processGPUSignals }
+func (processSensor) ID() string { return nvmlsensor.ID }
+func (processSensor) Signals() collect.Signals {
+	return slices.Concat(processGPUSignals, nvmlNVLinkSignals)
+}
 
 func (s processSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	sensor, err := s.host.nvmlProcessSensor()
@@ -152,8 +156,8 @@ func (s processSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*
 	return sensor.Measure(ctx, opts...)
 }
 
-// One NVMLBackend backs the legacy NVLink sensor, and WithGPUBackend and
-// WithNodeBackend overrides may still use it: it implements each narrow
+// One NVMLBackend backs the legacy overrides (WithGPUBackend,
+// WithNodeBackend, WithNVLinkBackend): it implements each narrow
 // per-domain interface (and MultiBackend for the lazy wrapper).
 var (
 	_ toolkit.GPUBackend    = (*nvml.NVMLBackend)(nil)
