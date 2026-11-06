@@ -106,7 +106,7 @@ func TestToMeasurementsXidCleanScanHasNoIdentity(t *testing.T) {
 	}
 }
 
-// One unparseable line fails every Xid check, as before the split.
+// One unparseable line fails every Xid check, naming no GPU.
 func TestToMeasurementsXidFailureStaysNodeWide(t *testing.T) {
 	parseError := observation.NewCollectionErrorObservation(xidsignals.Code.ID(), xidsignals.Code.Unit(), "xid.journal", "parse",
 		observation.JournalEntryTarget("boot", "c"), nil,

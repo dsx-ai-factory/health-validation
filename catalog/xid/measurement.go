@@ -119,9 +119,8 @@ type NVLink5Detail struct {
 // XidMeasurement holds the Xid events one GPU logged in the window
 // described by Since, so its counts and events are that GPU's. A window
 // with no Xid events yields one measurement with no GPU identity, so every
-// check still runs and can report PASS. The toolkit's deprecated
-// journalctl sensor still produces one identity-less measurement for all
-// GPUs.
+// check runs and can report PASS. The toolkit's deprecated journalctl
+// sensor produces one identity-less measurement for all GPUs.
 //
 // XidCounts maps each Xid code to the number of times it occurred and
 // is the headline signal for catalog rules (e.g. xid_counts[79] > 0).
