@@ -30,6 +30,7 @@ SUFFIXES = (
     ".go",
     ".proto",
     ".js",
+    ".mjs",
     ".ts",
     ".tsx",
     ".css",
