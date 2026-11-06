@@ -90,7 +90,41 @@ func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, er
 	watchID := metricWatchSequence.Add(1)
 	name := metricWatchName(library.options.GroupNamePrefix, os.Getpid(), watchID)
 
-	fieldGroup, err := godcgm.FieldGroupCreate(name+"-fields", fieldIDs)
+	return startMetricWatch(name+"-fields", fieldIDs, metricWatchOperations{
+		create:  godcgm.FieldGroupCreate,
+		watch:   godcgm.WatchFieldsWithGroup,
+		unwatch: godcgm.UnwatchFields,
+		destroy: godcgm.FieldGroupDestroy,
+	})
+}
+
+type metricWatchOperations struct {
+	create  func(string, []godcgm.Short) (godcgm.FieldHandle, error)
+	watch   func(godcgm.FieldHandle, godcgm.GroupHandle) error
+	unwatch func(godcgm.FieldHandle, godcgm.GroupHandle) error
+	destroy func(godcgm.FieldHandle) error
+}
+
+func (ops metricWatchOperations) unwatchFields(fieldGroup godcgm.FieldHandle, gpuGroup godcgm.GroupHandle) error {
+	if err := ops.unwatch(fieldGroup, gpuGroup); err != nil {
+		var failure *godcgm.Error
+		if errors.As(err, &failure) && failure.Code == godcgm.DCGM_ST_NOT_WATCHED {
+			return nil
+		}
+		return fmt.Errorf("unwatch DCGM metric fields: %w", err)
+	}
+	return nil
+}
+
+func (ops metricWatchOperations) destroyFieldGroup(fieldGroup godcgm.FieldHandle) error {
+	if err := ops.destroy(fieldGroup); err != nil {
+		return fmt.Errorf("destroy DCGM metric field group: %w", err)
+	}
+	return nil
+}
+
+func startMetricWatch(name string, fieldIDs []godcgm.Short, ops metricWatchOperations) (func() error, error) {
+	fieldGroup, err := ops.create(name, fieldIDs)
 	if err != nil {
 		return nil, dcgmErrorFromError(err)
 	}
@@ -99,21 +133,23 @@ func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, er
 	// per-collection enumeration. This group is scoped to GPU field metrics;
 	// health and other entity types require separate purpose-specific groups.
 	gpuGroup := godcgm.GroupAllGPUs()
-	if err := godcgm.WatchFieldsWithGroup(fieldGroup, gpuGroup); err != nil {
-		return nil, errors.Join(
-			dcgmErrorFromError(err),
-			unwatchFields(fieldGroup, gpuGroup),
-			destroyFieldGroup(fieldGroup),
-		)
+	// A failed watch can still have installed part of its state. Retain its
+	// cleanup before attempting setup, and do not destroy its group until
+	// unwatching has succeeded.
+	watch := &metricWatch{
+		unwatch: func() error { return ops.unwatchFields(fieldGroup, gpuGroup) },
+		destroy: func() error { return ops.destroyFieldGroup(fieldGroup) },
+	}
+	if err := ops.watch(fieldGroup, gpuGroup); err != nil {
+		cleanupErr := watch.close()
+		if cleanupErr != nil {
+			return watch.close, errors.Join(dcgmErrorFromError(err), cleanupErr)
+		}
+		return nil, dcgmErrorFromError(err)
 	}
 
 	// DCGM owns the special all-GPU group; release only our watch and field group.
-	return func() error {
-		return errors.Join(
-			unwatchFields(fieldGroup, gpuGroup),
-			destroyFieldGroup(fieldGroup),
-		)
-	}, nil
+	return watch.close, nil
 }
 
 func (library *nativeLibrary) ReadGPUMetrics(
@@ -291,18 +327,4 @@ func decodeObservationValue(value godcgm.FieldValue_v1) (observation.Value, *obs
 			Detail:   fmt.Sprintf("DCGM field %d has unsupported type %d", value.FieldID, value.FieldType),
 		}
 	}
-}
-
-func unwatchFields(fieldGroup godcgm.FieldHandle, gpuGroup godcgm.GroupHandle) error {
-	if err := godcgm.UnwatchFields(fieldGroup, gpuGroup); err != nil {
-		return fmt.Errorf("unwatch DCGM metric fields: %w", err)
-	}
-	return nil
-}
-
-func destroyFieldGroup(fieldGroup godcgm.FieldHandle) error {
-	if err := godcgm.FieldGroupDestroy(fieldGroup); err != nil {
-		return fmt.Errorf("destroy DCGM metric field group: %w", err)
-	}
-	return nil
 }

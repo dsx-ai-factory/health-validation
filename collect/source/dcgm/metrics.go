@@ -64,6 +64,9 @@ func (source *Source) ReadGPUMetrics(
 		if err := source.ensureMetricWatch(); err != nil {
 			return nil, err
 		}
+		if source.closed.Load() {
+			return nil, errClosed
+		}
 		if err := callContext.Err(); err != nil {
 			return nil, err
 		}

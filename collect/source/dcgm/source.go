@@ -89,13 +89,14 @@ type Source struct {
 	// Production sources share this lock and fail fast when it is held. The lock
 	// protects native calls and the source state changed by those calls.
 	nativeCallMu       *sync.Mutex
-	cleanup            func()
-	watchCleanup       func() error
+	clientCleanup      func()
+	metricWatchCleanup func() error
 	processMode        *sessionMode
 	metricWatchSignals []string
 	metricWatchFrozen  atomic.Bool
 	ready              bool
-	closed             bool
+	watchActive        bool
+	closed             atomic.Bool
 	mode               sessionMode
 }
 
@@ -136,10 +137,10 @@ func (*Source) ID() string { return Name }
 //
 // AddMetricsToWatch must not run concurrently with collection or Close.
 func (source *Source) AddMetricsToWatch(signalIDs []string) error {
-	if source.closed {
+	if source.closed.Load() {
 		return fmt.Errorf("DCGM source is closed")
 	}
-	if source.metricWatchFrozen.Load() || source.ready || source.watchCleanup != nil {
+	if source.metricWatchFrozen.Load() || source.ready || source.metricWatchCleanup != nil {
 		return fmt.Errorf("DCGM source collection already started")
 	}
 	if len(signalIDs) == 0 {
@@ -171,7 +172,7 @@ func (source *Source) startNativeCall() error {
 	if !source.nativeCallMu.TryLock() {
 		return ErrInUse
 	}
-	if source.closed {
+	if source.closed.Load() {
 		source.nativeCallMu.Unlock()
 		return errClosed
 	}
@@ -185,6 +186,9 @@ func (source *Source) finishNativeCall() {
 
 // ensureInitialized opens the DCGM client on the first native operation.
 func (source *Source) ensureInitialized() error {
+	if source.closed.Load() {
+		return errClosed
+	}
 	if source.ready {
 		return nil
 	}
@@ -195,56 +199,71 @@ func (source *Source) ensureInitialized() error {
 				*source.processMode, source.mode),
 		}
 	}
-	cleanup, err := source.native.Init()
+	clientCleanup, err := source.native.Init()
 	if err != nil {
 		return err
 	}
 	if source.processMode != nil && *source.processMode == 0 {
 		*source.processMode = source.mode
 	}
-	source.cleanup = cleanup
+	source.clientCleanup = clientCleanup
 	source.ready = true
 	return nil
 }
 
 // ensureMetricWatch creates the configured DCGM watch on its first call.
 func (source *Source) ensureMetricWatch() error {
-	if source.watchCleanup != nil {
+	if source.closed.Load() {
+		return errClosed
+	}
+	if source.watchActive {
 		return nil
 	}
-	cleanup, err := source.native.WatchMetrics(source.metricWatchSignals)
+	// Failed setup may still own resources. Finish rollback before creating
+	// another watch, and keep its handle if rollback fails again.
+	if source.metricWatchCleanup != nil {
+		if err := source.metricWatchCleanup(); err != nil {
+			return err
+		}
+		source.metricWatchCleanup = nil
+	}
+	if source.closed.Load() {
+		return errClosed
+	}
+	metricWatchCleanup, err := source.native.WatchMetrics(source.metricWatchSignals)
+	source.metricWatchCleanup = metricWatchCleanup
 	if err != nil {
 		return err
 	}
-	if cleanup == nil {
+	if metricWatchCleanup == nil {
 		return fmt.Errorf("DCGM metric watch returned no cleanup function")
 	}
-	source.watchCleanup = cleanup
+	source.watchActive = true
 	return nil
 }
 
-// Close releases the watch and DCGM client. It returns ErrInUse instead of
-// waiting when a native call may still be running.
+// Close stops new native work and releases owned watches and field groups
+// before the client reference. ErrInUse or a cleanup failure requires another
+// Close call to finish; successful cleanup steps do not repeat.
 func (source *Source) Close() error {
+	// A busy close is still a close request. The in-flight call may finish,
+	// but subsequent operations must not enter DCGM.
+	source.closed.Store(true)
 	if !source.nativeCallMu.TryLock() {
 		return ErrInUse
 	}
 	defer source.nativeCallMu.Unlock()
-	if source.closed {
-		return nil
+	if source.metricWatchCleanup != nil {
+		if err := source.metricWatchCleanup(); err != nil {
+			return err
+		}
+		source.metricWatchCleanup = nil
+		source.watchActive = false
 	}
-	source.closed = true
-	watchCleanup := source.watchCleanup
-	source.watchCleanup = nil
-	cleanup := source.cleanup
-	source.cleanup = nil
+	if source.clientCleanup != nil {
+		source.clientCleanup()
+		source.clientCleanup = nil
+	}
 	source.ready = false
-	var err error
-	if watchCleanup != nil {
-		err = watchCleanup()
-	}
-	if cleanup != nil {
-		cleanup()
-	}
-	return err
+	return nil
 }
