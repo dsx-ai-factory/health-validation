@@ -3,8 +3,11 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "infiniband",
     srcs = [
+        "fabric.go",
+        "fabric_port_count.go",
         "linkflap.go",
         "measurement.go",
+        "measurement_inventory.go",
         "measurement_port.go",
         "port_state.go",
     ],
@@ -16,7 +19,9 @@ go_library(
 go_test(
     name = "infiniband_test",
     srcs = [
+        "fabric_port_count_test.go",
         "linkflap_test.go",
+        "measurement_inventory_test.go",
         "measurement_port_test.go",
         "port_state_test.go",
     ],

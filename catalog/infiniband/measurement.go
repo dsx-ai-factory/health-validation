@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package infiniband defines the measurement types and checks for
-// InfiniBand / RDMA network health. It carries two views of the fabric,
-// each with its own measurement type and data source:
+// InfiniBand / RDMA network health. It carries three views of the fabric,
+// each with its own measurement type:
 //
 //   - [LinkFlapMeasurement] is history: the mlx5 driver logs RDMA link
 //     transitions to the kernel journal, a sensor pairs each down with its
@@ -11,8 +11,11 @@
 //   - [PortMeasurement] is the present: sysfs reports the current state of
 //     every port on every channel adapter, one measurement per port, and
 //     the port-state check evaluates it.
+//   - [PortInventoryMeasurement] is which ports exist and at what rate, one
+//     per node, derived from the ports; the fabric port count check
+//     evaluates it.
 //
-// The two schemas are disjoint so a check routes to exactly one of them.
+// The schemas are disjoint so a check routes to exactly one of them.
 package infiniband
 
 import (

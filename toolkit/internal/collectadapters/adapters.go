@@ -62,16 +62,6 @@ func NVLink() *domainAdapter {
 	return newDomainAdapter(health.NVLink, erroredNVLink, false)
 }
 
-// InfiniBand feeds infiniband.PortMeasurement from the collect sysfs port
-// sensor; the journal link-flap sensor still supplies the category's other
-// type. Finding no ports is a collection failure like any other domain's:
-// a missing driver or the device-name filter can leave sysfs empty, so
-// absence cannot be read as "nothing to check". Deployments without
-// InfiniBand disable the port check instead.
-func InfiniBand() *domainAdapter {
-	return newDomainAdapter(health.InfiniBand, erroredInfiniBand, false)
-}
-
 // newDomainAdapter requests every signal the converter maps onto category,
 // so the adapter and the converter cannot disagree.
 func newDomainAdapter(category health.Category, errored func(error) []health.Measurement, nodeScoped bool) *domainAdapter {

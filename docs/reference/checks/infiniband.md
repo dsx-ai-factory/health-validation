@@ -38,6 +38,37 @@ Verifies every port (InfiniBand and RoCE alike, unless its link layer is exclude
 
 **Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
 
+## RDMA Fabric Port Count
+
+`rdma_fabric_port_count`
+
+Verifies that at least expected_fabric_ports RDMA ports (InfiniBand or RoCE) at a rate of at least fabric_port_rate_gbps are present. Catches GPU fabric rails that are missing or trained below fabric rate.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`community`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`experimental`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`B200`</nobr> |
+| Required signals | <nobr>`port_rates_gbps`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`expected_fabric_ports`</nobr> | 8 | count | <nobr>`DEFAULT`</nobr> | Fabric ports the node must expose: one per GPU on HGX B200 (8). Override per fleet for other rail layouts. |
+| <nobr>`fabric_port_rate_gbps`</nobr> | 400 | Gb/s | <nobr>`DEFAULT`</nobr> | Minimum port rate, in Gb/s, for a port to count as a fabric rail: 400 for the NDR / 400GbE rails on HGX B200 and GB200. Ports below it, such as front-end or storage NICs, are ignored. |
+
+**Rules**
+
+- **CRITICAL** when `size(port_rates_gbps.filter(p, port_rates_gbps[p] >= fabric_port_rate_gbps)) < expected_fabric_ports`
+  - Message: Fewer than $\{expected_fabric_ports\} RDMA fabric ports (rate >= $\{fabric_port_rate_gbps\} Gb/s) are present. A port absent from port_rates_gbps is missing; one below the rate has trained down.
+
+**Recommended action:** operational state `drain`, then `restart_os` → `service_required`
+
 ## RDMA Link Flap (Fatal)
 
 `rdma_linkflap_fatal`

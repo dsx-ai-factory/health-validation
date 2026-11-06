@@ -160,11 +160,21 @@ func TestBuiltinCollectInfiniBandPortVerdicts(t *testing.T) {
 	}
 }
 
-// collectInfiniBandPorts runs the stock InfiniBand wiring over fsys as
-// /sys/class/infiniband and returns the port measurements it builds. The
-// source options default to the stock CLI's; pass collect's defaults
-// explicitly to contrast them.
+// collectInfiniBandPorts is collectInfiniBandAll without the node-wide
+// inventory: the per-port measurements alone.
 func collectInfiniBandPorts(t *testing.T, runnable []*health.CheckDefinition, fsys fs.FS, sourceOpts ...ibsource.Option) []health.Measurement {
+	t.Helper()
+	return slices.DeleteFunc(collectInfiniBandAll(t, runnable, fsys, sourceOpts...), func(m health.Measurement) bool {
+		_, inventory := m.(infiniband.PortInventoryMeasurement)
+		return inventory
+	})
+}
+
+// collectInfiniBandAll runs the stock InfiniBand wiring over fsys as
+// /sys/class/infiniband and returns every measurement it builds: one per
+// port, plus the node-wide inventory. The source options default to the
+// stock CLI's; pass collect's defaults explicitly to contrast them.
+func collectInfiniBandAll(t *testing.T, runnable []*health.CheckDefinition, fsys fs.FS, sourceOpts ...ibsource.Option) []health.Measurement {
 	t.Helper()
 	if sourceOpts == nil {
 		sourceOpts = []ibsource.Option{ibsource.WithVendors(ibsource.VendorNVIDIA)}

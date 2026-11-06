@@ -216,6 +216,13 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 					v.CheckID, v.SkipDetail)
 			}
 		case health.DeploymentUnsupported:
+		case health.ArchitectureUnsupported:
+			// Likewise decided first, but only for a check that does not
+			// list this catalog's architecture at all.
+			if cd, err := cat.Get(v.CheckID); err != nil || slices.Contains(cd.Architectures, "GB200") {
+				t.Errorf("CheckID %q skipped as SIGNAL_UNAVAILABLE_ARCHITECTURE on an architecture it lists",
+					v.CheckID)
+			}
 		default:
 			t.Errorf("CheckID %q (category %v) skip reason = %v, want SENSOR_MISSING",
 				v.CheckID, v.Category, v.SkipReason)

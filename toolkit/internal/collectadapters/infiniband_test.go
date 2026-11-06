@@ -32,9 +32,12 @@ func TestInfiniBandAdapterGroupsByPort(t *testing.T) {
 	}
 	obs := slices.Concat(portObservations("mlx5_1", 1, "Ethernet", 100), portObservations("mlx5_0", 1, "InfiniBand", 400))
 	obs = append(obs, healthyGPUObservations()...)
-	got := a.Build(obs)
+	got, inventory := splitPorts(t, a.Build(obs))
 	if len(got) != 2 {
-		t.Fatalf("got %d measurements, want two ports: %v", len(got), got)
+		t.Fatalf("got %d ports, want two: %v", len(got), got)
+	}
+	if want := map[string]float64{"mlx5_0/1": 400, "mlx5_1/1": 100}; !reflect.DeepEqual(inventory.RatesGbps, want) {
+		t.Errorf("inventory = %v, want %v", inventory.RatesGbps, want)
 	}
 	for i, want := range []infiniband.PortMeasurement{
 		{Device: "mlx5_0", Port: 1, State: "ACTIVE", PhysicalState: "LinkUp", RateGbps: 400, LinkLayer: "InfiniBand"},
@@ -42,7 +45,7 @@ func TestInfiniBandAdapterGroupsByPort(t *testing.T) {
 	} {
 		// The converter records the key it grouped by, the port's verified ID.
 		want.SetEntityKey(health.VerifiedEntity(want.EntityID()))
-		if !reflect.DeepEqual(got[i], want) {
+		if !reflect.DeepEqual(health.Measurement(got[i]), want) {
 			t.Errorf("measurement %d = %+v (errors %v), want %+v", i, got[i], got[i].Errors(), want)
 		}
 	}
@@ -63,9 +66,15 @@ func TestInfiniBandAdapterAttributesFailures(t *testing.T) {
 	rateFailed.Outcome = &observation.Observation_CollectionError{CollectionError: unreadable}
 	obs = append(obs, replace(portObservations("mlx5_0", 1, "InfiniBand", 400), ibsignals.RateGbps.ID(), rateFailed)...)
 
+	ports, inventory := splitPorts(t, InfiniBand().Build(obs))
 	byEntity := make(map[string]infiniband.PortMeasurement)
-	for _, m := range InfiniBand().Build(obs) {
-		byEntity[m.(infiniband.PortMeasurement).EntityID()] = m.(infiniband.PortMeasurement)
+	for _, p := range ports {
+		byEntity[p.EntityID()] = p
+	}
+	// An unreadable rate leaves the port out of the inventory without failing
+	// it: the failures name their ports, so they are not a source failure.
+	if len(inventory.RatesGbps) != 0 || len(inventory.Errors()) != 0 {
+		t.Errorf("inventory = %v (errors %v), want empty and unerrored", inventory.RatesGbps, inventory.Errors())
 	}
 	if len(byEntity) != 2 {
 		t.Fatalf("got %v, want the port and the device", byEntity)
@@ -98,10 +107,14 @@ func TestInfiniBandAdapterSourceFailure(t *testing.T) {
 		{name: "no observations", got: InfiniBand().Build(nil), want: health.SourceEntity("collect.infiniband")},
 		{name: "errored", got: InfiniBand().Errored(errors.New("timeout")), want: health.SourceEntity("collect.infiniband")},
 	} {
-		if len(tc.got) != 1 {
-			t.Fatalf("%s: got %d measurements, want one: %v", tc.name, len(tc.got), tc.got)
+		ports, inventory := splitPorts(t, tc.got)
+		if len(ports) != 1 {
+			t.Fatalf("%s: got %d ports, want one: %v", tc.name, len(ports), tc.got)
 		}
-		port := tc.got[0].(infiniband.PortMeasurement)
+		if got := failed(inventory); !slices.Equal(got, infiniband.PortInventorySignals()) {
+			t.Errorf("%s: inventory failed = %v, want %v", tc.name, got, infiniband.PortInventorySignals())
+		}
+		port := ports[0]
 		if port.EntityID() != "" {
 			t.Errorf("%s: EntityID = %q, want empty", tc.name, port.EntityID())
 		}
@@ -124,7 +137,7 @@ func TestInfiniBandAdapterDistinguishesPortsFromEnumerationFailure(t *testing.T)
 	for _, m := range ms {
 		keys = append(keys, health.KeyOf(m))
 	}
-	want := []health.EntityKey{health.VerifiedEntity("mlx5_0/1"), health.VerifiedEntity("mlx5_1/1"), health.SourceEntity("infiniband.sysfs")}
+	want := []health.EntityKey{health.VerifiedEntity("mlx5_0/1"), health.VerifiedEntity("mlx5_1/1"), health.SourceEntity("infiniband.sysfs"), health.NodeEntity()}
 	if !slices.Equal(keys, want) {
 		t.Fatalf("keys = %v, want %v", keys, want)
 	}
@@ -151,6 +164,41 @@ func TestInfiniBandAdapterDistinguishesPortsFromEnumerationFailure(t *testing.T)
 	if len(passed) != 2 || len(critical) != 1 {
 		t.Fatalf("ib_port_state results: passed %v, critical %v; want two passes and one unnamed failure: %+v", passed, critical, verdict.CheckResults)
 	}
+}
+
+// The inventory reads the same rate signal as the per-port measurement, so the
+// adapter maps it onto both and signal narrowing requests it for either check.
+func TestInfiniBandAdapterMapsRateOntoInventory(t *testing.T) {
+	got := InfiniBand().Signals()[ibsignals.RateGbps.ID()]
+	for _, want := range []string{infiniband.SignalIBRateGbps, infiniband.SignalPortRatesGbps} {
+		if !slices.Contains(got, want) {
+			t.Errorf("rate feeds %v, want %q among them", got, want)
+		}
+	}
+}
+
+// splitPorts separates the adapter's per-port measurements from the single
+// node-wide inventory built beside them.
+func splitPorts(t *testing.T, ms []health.Measurement) ([]infiniband.PortMeasurement, infiniband.PortInventoryMeasurement) {
+	t.Helper()
+	var (
+		ports     []infiniband.PortMeasurement
+		inventory []infiniband.PortInventoryMeasurement
+	)
+	for _, m := range ms {
+		switch m := m.(type) {
+		case infiniband.PortMeasurement:
+			ports = append(ports, m)
+		case infiniband.PortInventoryMeasurement:
+			inventory = append(inventory, m)
+		default:
+			t.Fatalf("unexpected measurement %T", m)
+		}
+	}
+	if len(inventory) != 1 {
+		t.Fatalf("got %d inventories, want exactly one: %v", len(inventory), ms)
+	}
+	return ports, inventory[0]
 }
 
 // sourceFailure is a target-less collection failure: no port was enumerated.

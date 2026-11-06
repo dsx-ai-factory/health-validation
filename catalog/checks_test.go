@@ -59,6 +59,7 @@ func TestNew_RegistersBuiltinCheck(t *testing.T) {
 		"numa_node_count",
 		"nvlink_capabilities",
 		"nvlink_fabric",
+		"rdma_fabric_port_count",
 	}
 
 	cat := catalog.New()

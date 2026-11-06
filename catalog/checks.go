@@ -27,6 +27,7 @@ func builtinChecks() []health.CheckDefinition {
 		node.GPUCount(),
 		infiniband.RDMALinkFlapFatal(),
 		infiniband.PortState(),
+		infiniband.RDMAFabricPortCount(),
 		nvlink.NVLinkActive(),
 		nvlink.NVLinkFabricHealth(),
 		nvlink.NVLinkFabric(),
