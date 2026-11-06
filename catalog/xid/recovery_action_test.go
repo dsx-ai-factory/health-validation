@@ -317,3 +317,13 @@ func TestRecoveryActionCounts_CountsCurrentActionReports(t *testing.T) {
 		})
 	}
 }
+
+// TestTerminalRecoveryActions_OnlyXid154 pins that a recovery action is
+// read only from Xid 154 lines, even if another event carries one.
+func TestTerminalRecoveryActions_OnlyXid154(t *testing.T) {
+	other := recoveryEvent("0019:01:00", "0x0", "None", "0x2", "OS Reboot")
+	other.XidCode = 13
+	if got := xid.TerminalRecoveryActions([]xid.XidEvent{other}); got != nil {
+		t.Errorf("TerminalRecoveryActions = %v, want nil for a non-154 event", got)
+	}
+}

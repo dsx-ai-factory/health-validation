@@ -69,7 +69,6 @@ func TestDerivedSignals_UnparseableActionCodeSurvives(t *testing.T) {
 func TestXid154Check_ReportsRequestedAction(t *testing.T) {
 	restartOS := health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired)
 	reset := health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
-	service := health.Drain(health.RemediationActionServiceRequired)
 
 	tests := []struct {
 		name         string
@@ -83,7 +82,7 @@ func TestXid154Check_ReportsRequestedAction(t *testing.T) {
 		{name: "system reboot", toCodes: []string{"0x7"}, wantSeverity: health.Critical, wantAction: restartOS},
 		{name: "bus reset", toCodes: []string{"0x6"}, wantSeverity: health.Critical, wantAction: restartOS},
 		{name: "drain p2p", toCodes: []string{"0x3"}, wantSeverity: health.Warning, wantAction: health.Drain(health.RemediationActionXid154)},
-		{name: "unmapped", toCodes: []string{"0x5"}, wantSeverity: health.Warning, wantAction: service},
+		{name: "unmapped", toCodes: []string{"0x5"}, wantSeverity: health.Warning, wantAction: health.Monitor},
 		{name: "reboot outranks reset", toCodes: []string{"0x1", "0x2"}, wantSeverity: health.Critical, wantAction: restartOS},
 		{name: "none", toCodes: []string{"0x0"}, wantSeverity: health.Info, wantAction: health.NoAction},
 	}

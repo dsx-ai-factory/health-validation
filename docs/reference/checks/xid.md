@@ -592,11 +592,11 @@ Detects NVRM Xid 154 in the system journal within the collection window and repo
   - Message: GPU Xid 154: the driver requested a GPU reset for at least one GPU.
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
 - **WARNING** when `("0x3" in recovery_action_counts && recovery_action_counts["0x3"] >= occurrences)`
-  - Message: GPU Xid 154: the driver requested that peer-to-peer traffic be stopped for at least one GPU. Stop scheduling new work, stop the processes using peer-to-peer and disable persistence mode, then re-run and follow the recovery action reported then; reset the GPU only if Drain P2P is still requested.
+  - Message: GPU Xid 154: the driver requested that peer-to-peer traffic be stopped for at least one GPU. Disable new scheduling, quiesce P2P traffic and UVM persistence, then re-query the recovery action. Reset the GPU only if Drain P2P remains after quiescing.
   - Action: operational state `drain`, then `xid_154`
 - **WARNING** when `recovery_action_counts.exists(k, !(k in ["0x0", "0x2", "0x6", "0x7", "0x1", "0x4", "0x3", "unreadable"]) && recovery_action_counts[k] >= occurrences)`
-  - Message: GPU Xid 154: the driver requested a recovery action this catalog does not recognize for at least one GPU; report the action code.
-  - Action: operational state `drain`, then `service_required`
+  - Message: GPU Xid 154: the driver requested a recovery action this catalog does not recognize for at least one GPU. Monitor, investigate the printed transition and the accompanying Xid, and report the action code.
+  - Action: operational state `monitor`
 - **WARNING** when `"unreadable" in recovery_action_counts && recovery_action_counts["unreadable"] >= occurrences`
   - Message: GPU Xid 154: the recovery action for at least one GPU could not be read from its log line; inspect the Xid 154 line in the system journal.
   - Action: operational state `monitor`
