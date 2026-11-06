@@ -7,6 +7,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -112,6 +115,49 @@ func TestRunCommandLinkFlapSilentSourceFails(t *testing.T) {
 	got := runLinkFlapApp(t, linkFlapApp(&calls), exitUnhealthy)
 	if got.Severity != health.Unknown || !got.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckCollection)) {
 		t.Fatalf("rdma_linkflap_fatal = %v %v, want UNKNOWN check collection", got.Severity, got.RecommendedAction)
+	}
+}
+
+// TestRunCommandLinkFlapReadsOneHourWindow pins the CLI's own lookback: the
+// built-in sensor reads from one hour before the run, whatever collect's
+// default is.
+func TestRunCommandLinkFlapReadsOneHourWindow(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "args")
+	t.Setenv("LINKFLAP_TEST_ARGS", argsPath)
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	entry := `{"__CURSOR":"c1","__REALTIME_TIMESTAMP":"1","_BOOT_ID":"0123456789abcdef0123456789abcdef","MESSAGE":"unrelated"}`
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$LINKFLAP_TEST_ARGS\"\necho '" + entry + "'\n"
+	if err := os.WriteFile(filepath.Join(dir, "journalctl"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	a := cadenceRunApp()
+	a.rdmaLinkFlap = nil
+	before := time.Now()
+	got := runLinkFlapApp(t, a, exitOK)
+	after := time.Now()
+	if got.Severity != health.Pass {
+		t.Fatalf("rdma_linkflap_fatal = %v, want PASS on a quiet window", got.Severity)
+	}
+
+	data, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var since int64 = -1
+	for _, arg := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if value, ok := strings.CutPrefix(arg, "--since=@"); ok {
+			if since, err = strconv.ParseInt(value, 10, 64); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if lo, hi := before.Add(-linkFlapLookback).Unix(), after.Add(-linkFlapLookback).Unix(); since < lo || since > hi {
+		t.Fatalf("journalctl --since=@%d, want within [%d, %d] (one hour before the run); args = %q", since, lo, hi, data)
+	}
+	if linkFlapLookback != time.Hour {
+		t.Fatalf("linkFlapLookback = %v, want the legacy one hour", linkFlapLookback)
 	}
 }
 

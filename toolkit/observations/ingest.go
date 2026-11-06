@@ -43,9 +43,10 @@ var errNoObservation = errors.New("no observation was collected for these signal
 //   - A mapped collect signal ID sets the catalog fields the mapping
 //     table assigns it, as during migration to collect sensors.
 //
-// Canonical Xid and RDMA link-flap signals instead each build one
-// measurement from their journal-entry events; a batch that also carries
-// that measurement in <domain>.<field> form yields one errored measurement,
+// Canonical Xid and RDMA link-flap signals instead build their measurements
+// from journal-entry events: Xid one per GPU, or one naming no GPU for a scan
+// with no events, and link flaps one per node. A batch that also carries
+// those measurements in <domain>.<field> form yields one errored measurement,
 // since the two cannot be merged.
 //
 // Both shapes may appear in one batch and feed one measurement. Other
@@ -80,24 +81,28 @@ func ToMeasurements(observations []*observation.Observation) []health.Measuremen
 		})
 	}
 	if len(linkFlapObservations) > 0 {
-		out = withCanonical(out, canonicalLinkFlap(linkFlapObservations), func(err error) health.Measurement {
+		out = withCanonical(out, []health.Measurement{canonicalLinkFlap(linkFlapObservations)}, func(err error) health.Measurement {
 			return infiniband.ErroredLinkFlap(linkFlapSinceUnknown, err, infiniband.MeasurementSignals()...)
 		})
 	}
 	return out
 }
 
-// withCanonical appends m, built from canonical observations. When out also
-// holds m's type, built from <domain>.<field> observations, the two cannot be
-// merged, so both are replaced by one measurement from failed.
-func withCanonical(out []health.Measurement, m health.Measurement, failed func(error) health.Measurement) []health.Measurement {
-	typ := reflect.TypeOf(m)
+// withCanonical appends canonical, built from canonical observations of one
+// type. When out also holds that type, built from <domain>.<field>
+// observations, the two cannot be merged, so both are replaced by one
+// measurement from failed.
+func withCanonical(out, canonical []health.Measurement, failed func(error) health.Measurement) []health.Measurement {
+	if len(canonical) == 0 {
+		return out
+	}
+	typ := reflect.TypeOf(canonical[0])
 	same := func(other health.Measurement) bool { return reflect.TypeOf(other) == typ }
 	if slices.ContainsFunc(out, same) {
 		out = slices.DeleteFunc(out, same)
-		m = failed(fmt.Errorf("%s observed in both canonical and field form", m.Category()))
+		canonical = []health.Measurement{failed(fmt.Errorf("%s observed in both canonical and field form", canonical[0].Category()))}
 	}
-	return append(out, m)
+	return append(out, canonical...)
 }
 
 // measurementTypes are the measurement types ToMeasurements rebuilds. Each
@@ -313,8 +318,11 @@ func (b *builder) add(current *observation.Observation, f feed) {
 
 // targetID returns the entity an observation describes and, for a GPU, the
 // gpu_id label its measurement carries. The label is empty for a source-level
-// observation, which names no GPU.
+// observation, which names no GPU. Xid observations follow [xidTargetID].
 func targetID(s *schema, current *observation.Observation) (health.EntityKey, string, error) {
+	if s.category == health.Xid.String() {
+		return xidTargetID(current)
+	}
 	target := current.GetTarget()
 	if s.gpuID < 0 {
 		return health.NodeEntity(), "", nil
@@ -364,13 +372,33 @@ func gpuRef(target *observation.ObservationTarget) *observation.GPURef {
 	}
 }
 
+// xidTargetID returns the entity an exported Xid observation's target names:
+// a GPU by UUID or PCI address. A node target or no target is the measurement
+// that names no GPU, from a clean or failed scan. The label is always empty,
+// since an Xid measurement carries its gpu_id as a field.
+func xidTargetID(current *observation.Observation) (health.EntityKey, string, error) {
+	target := current.GetTarget()
+	switch {
+	case target == nil || target.GetNode() != nil:
+		return health.NodeEntity(), "", nil
+	case target.GetGpu().GetUuid() != "":
+		return health.VerifiedEntity(target.GetGpu().GetUuid()), "", nil
+	case target.GetPci() != nil:
+		address, _, _ := strings.Cut(target.GetPci().GetAddress(), ".")
+		return health.VerifiedEntity(address), "", nil
+	}
+	return health.SourceEntity(current.GetSource()), "", fmt.Errorf("signal %q does not identify an Xid GPU target", current.GetSignalId())
+}
+
 func (b *builder) entity(s *schema, id health.EntityKey, label string) *entity {
 	key := entityKey{schema: s, id: id}
 	if e := b.entities[key]; e != nil {
 		return e
 	}
 	e := &entity{value: reflect.New(s.typ).Elem(), fed: make(map[string]bool), errIndex: make(map[string]int)}
-	if s.gpuID >= 0 {
+	// An Xid measurement's gpu_id comes from its own field: its target may be
+	// a PCI address or the node, and it never takes the GPU placeholder.
+	if s.gpuID >= 0 && s.category != health.Xid.String() {
 		if label != "" {
 			e.value.Field(s.gpuID).SetString(label)
 			e.fed[gpuIDField] = true

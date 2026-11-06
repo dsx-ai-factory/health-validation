@@ -29,6 +29,7 @@ go_library(
         "//collect/signals/infiniband",
         "//collect/signals/xid",
         "//toolkit/internal/gpuinventory",
+        "//toolkit/internal/pciaddr",
         "@org_golang_google_protobuf//types/known/timestamppb",
     ],
 )
@@ -44,6 +45,7 @@ go_test(
         "processes_test.go",
         "roundtrip_test.go",
         "unsigned_test.go",
+        "xid_test.go",
     ],
     embed = [":observations"],
     deps = [

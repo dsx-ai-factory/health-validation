@@ -111,6 +111,11 @@ var (
 	processGPUSignals = collect.Signals{gpusignals.ProcessCount, gpusignals.ProcessCmdline}
 )
 
+// linkFlapLookback is the window rdma_linkflap_fatal judges, as the legacy
+// backend's default was. The CLI sets it rather than inheriting the sensor's
+// default, so a change in collect cannot move the check's window.
+const linkFlapLookback = time.Hour
+
 // builtinCollect returns the stock CLI's collect-backed domains. A domain
 // moves here from the legacy sensor list in runCommand when it migrates; its
 // With*Backend override keeps the legacy sensor instead. The node domain and
@@ -139,10 +144,17 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 	}
 	if a.xid == nil {
 		sources = append(sources, xidsensor.New(nil))
-		adapters = append(adapters, collectadapters.XID())
+		// GPUs are named from the inventory discovery or the node domain
+		// already read this cycle. The lookup never reads NVML itself, so a
+		// wedged driver cannot hold up Xid collection; without a snapshot,
+		// each GPU is named by its PCI address.
+		inventory := a.host.gpuInventory()
+		adapters = append(adapters, collectadapters.XID(func() map[string]string {
+			return gpuinventory.UUIDsByPCI(inventory.Cached(cycle))
+		}))
 	}
 	if a.rdmaLinkFlap == nil {
-		sources = append(sources, linkflapsensor.New(nil))
+		sources = append(sources, linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)))
 		adapters = append(adapters, collectadapters.InfiniBand())
 	}
 	return sources, adapters
