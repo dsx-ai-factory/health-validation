@@ -27,6 +27,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   power-limit, pstate, and throttle checks report a collection failure. There
   is no fallback to NVML. `WithGPUBackend` still selects the legacy NVML GPU
   sensor.
+- The CLI reads the NVLink domain through collect sensors: link state,
+  count, speed, capabilities, and P2P from NVML, and fabric registration and
+  health from DCGM. Without a reachable hostengine, `nvlink_fabric` and
+  `nvlink_fabric_health` report a collection failure. Other differences from
+  the legacy NVLink sensor, from the conversion added in
+  [#237](https://github.com/dsx-ai-factory/health-validation/pull/237):
+  - A driver reporting `NOT_SUPPORTED` past a GPU's last link no longer fails
+    `nvlink_capabilities`, and a disabled link past the reported count no
+    longer fails `nvlink_active`: links past the count are not read.
+  - An unknown fabric health value fails `nvlink_fabric_health` with
+    `check_collection` instead of passing.
+  - A node with no GPUs fails every NVLink check with `check_collection`
+    instead of skipping it.
+
+  `WithNVLinkBackend` still selects the legacy sensor and is deprecated in
+  favor of `WithCollect`.
 - The collect adapter name `gpu` is reserved for the built-in GPU adapter.
   Drop a caller-registered adapter of that name: the built-in one reads the
   canonical GPU signals from whichever registered sensor produces them.

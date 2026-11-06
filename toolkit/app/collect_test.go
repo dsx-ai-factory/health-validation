@@ -65,11 +65,13 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid"}},
-		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"cpu", "node", "xid"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "node", "xid"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "xid"}},
-		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID}, adapters: []string{"gpu", "cpu", "node"}},
+		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink"}},
+		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"cpu", "node", "xid", "nvlink"}},
+		{name: "GPU and NVLink overrides", app: New().WithGPUBackend(spyBackend{called: new(bool)}).WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"cpu", "node", "xid"}},
+		{name: "NVLink override", app: New().WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "node", "xid", "nvlink"}},
+		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "nvlink"}},
+		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID}, adapters: []string{"gpu", "cpu", "node", "nvlink"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)
@@ -83,7 +85,7 @@ func TestCollectSkipsUnselectedBridgeSources(t *testing.T) {
 	source := &collectAppSensor{}
 	a := New().WithCollect(source).WithCollectAdapters(customCountAdapter())
 	builtinSources, builtinAdapters := a.builtinCollect(nil)
-	sensors, err := a.collectSensors(time.Second, builtinSources, builtinAdapters, requiredSignals{health.NVLink: nil})
+	sensors, err := a.collectSensors(time.Second, builtinSources, builtinAdapters, requiredSignals{health.InfiniBand: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,7 +543,7 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 					return collect.Signals{collect.NewSignal(customCountSignal, "1"), nil}
 				}}).WithCollectAdapters(customCountAdapter())
 			case "no adapter":
-				a.WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})).WithGPUBackend(spyBackend{called: new(bool)}).WithCollect(sensor)
+				a.WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})).WithGPUBackend(spyBackend{called: new(bool)}).WithNVLinkBackend(spyBackend{called: new(bool)}).WithCollect(sensor)
 			case "nil adapter":
 				a.WithCollect(sensor).WithCollectAdapters(nil)
 			case "typed nil adapter":
