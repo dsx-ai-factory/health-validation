@@ -949,20 +949,20 @@ func writeVerdict(verdict health.NodeVerdict, prog, nodeID string, stdout, stder
 // the CLI would otherwise fall into: continuing with an empty architecture
 // disables filtering and evaluates every check against the wrong thresholds,
 // and letting architecture-scoped checks skip would aggregate an all-GPUs-lost
-// node to PASS. A busy source still drains, but another call in this process
-// holds it, so the action is to retry the collection rather than reset,
-// restart, and escalate.
+// node to PASS. A busy source is a collection failure, not evidence of a
+// fault: another call in this process holds it, so the verdict is Unknown and
+// the action is to retry the collection.
 func discoveryFailureVerdict(cause error, busy bool) health.NodeVerdict {
-	action := health.GenericDrain()
+	severity, action := health.Critical, health.GenericDrain()
 	if busy {
-		action = health.Drain(health.RemediationActionRetryCollection)
+		severity, action = health.Unknown, health.Drain(health.RemediationActionRetryCollection)
 	}
 	cv := health.CheckVerdict{
 		Timestamp:         time.Now(),
 		CheckID:           "architecture_discovery",
 		Category:          health.Node,
 		ConditionScope:    health.NodeScope,
-		Severity:          health.Critical,
+		Severity:          severity,
 		Messages:          []string{fmt.Sprintf("could not determine GPU architecture: %v", cause)},
 		RecommendedAction: action,
 		MaturityLevel:     health.Stable,

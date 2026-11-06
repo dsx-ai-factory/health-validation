@@ -80,8 +80,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Across domains:
     - Per-GPU results are ordered by GPU identity rather than NVML index.
     - Architecture discovery that finds NVML busy with an earlier call in the
-      same process still drains the node but recommends `retry_collection`
-      instead of the reset, restart, and escalate sequence.
+      same process reports UNKNOWN with `retry_collection` instead of CRITICAL
+      with the reset, restart, and escalate sequence.
     - The CLI needs access to every GPU on the node, so that DCGM and NVML
       report the same GPUs.
     - `App.Run` no longer closes the host's DCGM and NVML connections; call
