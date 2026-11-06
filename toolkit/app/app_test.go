@@ -1140,17 +1140,18 @@ func (openFailedHost) gpuInventory() *gpuinventory.Inventory {
 	})
 }
 
-// Only a busy source turns a discovery failure into retry_collection; any
-// other open error keeps the generic drain.
+// Only a busy source turns a discovery failure into an Unknown
+// retry_collection; any other open error stays a Critical generic drain.
 func TestRunCommandDiscoveryOpenFailureAction(t *testing.T) {
 	var collected bool
 	spy := erroringHost{b: spyBackend{called: &collected}}
 	for name, tc := range map[string]struct {
-		host hostBackend
-		want health.RecommendedAction
+		host     hostBackend
+		want     health.RecommendedAction
+		severity health.Severity
 	}{
-		"busy":  {host: busyHost{spy}, want: health.Drain(health.RemediationActionRetryCollection)},
-		"other": {host: openFailedHost{spy}, want: health.GenericDrain()},
+		"busy":  {host: busyHost{spy}, want: health.Drain(health.RemediationActionRetryCollection), severity: health.Unknown},
+		"other": {host: openFailedHost{spy}, want: health.GenericDrain(), severity: health.Critical},
 	} {
 		t.Run(name, func(t *testing.T) {
 			a := New()
@@ -1164,8 +1165,9 @@ func TestRunCommandDiscoveryOpenFailureAction(t *testing.T) {
 				t.Fatalf("unmarshal verdict: %v; stdout = %s", err, stdout.String())
 			}
 			if len(v.CheckResults) != 1 || v.CheckResults[0].CheckID != "architecture_discovery" ||
-				!v.CheckResults[0].RecommendedAction.Equal(tc.want) || !v.RecommendedAction.Equal(tc.want) {
-				t.Fatalf("verdict = %+v, want one architecture_discovery result recommending %+v", v, tc.want)
+				!v.CheckResults[0].RecommendedAction.Equal(tc.want) || !v.RecommendedAction.Equal(tc.want) ||
+				v.CheckResults[0].Severity != tc.severity || v.OverallSeverity != tc.severity {
+				t.Fatalf("verdict = %+v, want one %v architecture_discovery result recommending %+v", v, tc.severity, tc.want)
 			}
 		})
 	}
