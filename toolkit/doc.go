@@ -23,9 +23,9 @@
 //   - [MockGPU], [MockCPU], and the other mock constructors used in tests.
 //
 // SysfsCPU reports the kernel's CPU availability and NUMA topology view, not
-// expected VM/SKU capacity, process affinity, or cgroup CPU limits. Other backends (DCGM,
-// nvidia-smi, partner-specific) are implemented out of tree by satisfying the
-// relevant narrow interface, such as [GPUBackend] or [CPUBackend].
+// expected VM/SKU capacity, process affinity, or cgroup CPU limits. Other
+// backends (nvidia-smi, partner-specific) are implemented out of tree by
+// satisfying the relevant narrow interface, such as [GPUBackend] or [CPUBackend].
 //
 // # Wiring example
 //

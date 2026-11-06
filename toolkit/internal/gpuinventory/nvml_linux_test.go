@@ -190,10 +190,22 @@ func TestNVMLReaderFailures(t *testing.T) {
 	t.Run("read error", func(t *testing.T) {
 		inst := withRecords(gpu(0, "NVIDIA GB200"))
 		inst.readErr = nvmlsource.ErrInUse
-		if _, err := NVML(inst).Read(context.Background()); !errors.Is(err, nvmlsource.ErrInUse) {
-			t.Fatalf("err = %v, want ErrInUse", err)
+		if _, err := NVML(inst).Read(context.Background()); !errors.Is(err, nvmlsource.ErrInUse) || !errors.Is(err, ErrSourceBusy) {
+			t.Fatalf("err = %v, want ErrInUse marked ErrSourceBusy", err)
 		}
 	})
+}
+
+func TestOpenNVMLMarksBusyOpen(t *testing.T) {
+	open := OpenNVML(func() (nvmlsource.Instance, error) { return nil, nvmlsource.ErrInUse })
+	if _, err := open(); !errors.Is(err, nvmlsource.ErrInUse) || !errors.Is(err, ErrSourceBusy) {
+		t.Fatalf("err = %v, want ErrInUse marked ErrSourceBusy", err)
+	}
+	failed := errors.New("load NVML")
+	open = OpenNVML(func() (nvmlsource.Instance, error) { return nil, failed })
+	if _, err := open(); !errors.Is(err, failed) || errors.Is(err, ErrSourceBusy) {
+		t.Fatalf("err = %v, want only the open error", err)
+	}
 }
 
 // The driver version is recorded on every slot, failed ones included, so it

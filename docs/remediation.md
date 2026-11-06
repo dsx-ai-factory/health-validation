@@ -87,7 +87,7 @@ step (log it, surface it to a human) rather than an error.
 Most checks outside the Xid catalog recommend the same default sequence:
 CPU/NUMA topology, GPU count and power, most NVLink connectivity checks,
 InfiniBand link health, and the CLI's own architecture-discovery failure
-(`health.GenericDrain()`):
+unless NVML was busy (`health.GenericDrain()`):
 
 ```json
 "remediation_actions": ["reset_gpu", "restart_os", "service_required"]
@@ -181,5 +181,5 @@ fault. They are not hardware remediation steps.
 
 | Action | Description |
 |---|---|
-| <nobr>`retry_collection`</nobr> | The measurement could not be collected in time (a sensor timeout). Retry collection — re-run `health-validation` — before assuming a hardware fault; investigate if it keeps timing out. |
+| <nobr>`retry_collection`</nobr> | The measurement could not be collected in time (a sensor timeout). Architecture discovery also recommends it, with a drain, when NVML was busy with an earlier call in the same process. Retry collection — re-run `health-validation` — before assuming a hardware fault; investigate if it keeps timing out. |
 | <nobr>`check_collection`</nobr> | The measurement could not be collected for a non-timeout reason (a driver, permission, or decode failure). Investigate the collection mechanism itself (driver, permissions, sensor) rather than the hardware, which was never actually observed. |
