@@ -20,6 +20,7 @@ go_test(
     name = "infiniband_test",
     srcs = [
         "fabric_port_count_test.go",
+        "fabric_split_test.go",
         "linkflap_test.go",
         "measurement_inventory_test.go",
         "measurement_port_test.go",

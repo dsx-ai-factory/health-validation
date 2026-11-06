@@ -8,7 +8,7 @@ InfiniBand covers InfiniBand network health: port state, error rates, and link i
 
 `ib_port_state`
 
-Verifies every port (InfiniBand and RoCE alike, unless its link layer is excluded) is in the expected logical state (ACTIVE) and physical link state (LinkUp). Fails CRITICAL per port that is not.
+Verifies every fabric port (rate at or above fabric_port_rate_gbps, InfiniBand and RoCE alike) is in the expected logical state (ACTIVE) and physical link state (LinkUp). Fails CRITICAL per port that is not.
 
 | Property | Value |
 |---|---|
@@ -19,21 +19,21 @@ Verifies every port (InfiniBand and RoCE alike, unless its link layer is exclude
 | Maturity | <nobr>`experimental`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`ib_device`</nobr>, <nobr>`ib_port`</nobr>, <nobr>`ib_state`</nobr>, <nobr>`ib_physical_state`</nobr>, <nobr>`ib_link_layer`</nobr> |
+| Required signals | <nobr>`ib_device`</nobr>, <nobr>`ib_port`</nobr>, <nobr>`ib_state`</nobr>, <nobr>`ib_physical_state`</nobr>, <nobr>`ib_rate_gbps`</nobr>, <nobr>`ib_link_layer`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`excluded_link_layers`</nobr> | [] |  | <nobr>`DEFAULT`</nobr> | Link layers, as sysfs names them ("InfiniBand", "Ethernet"), whose ports this check does not assess. Empty by default, so every port is checked. Add "Ethernet" for a fleet whose RoCE ports are uncabled, rather than disabling the check. A misspelled entry excludes nothing. |
-| <nobr>`expected_ib_physical_state`</nobr> | LinkUp | state | <nobr>`DEFAULT`</nobr> | Physical link state every port must report, as sysfs names it in phys_state. Override per fleet. |
-| <nobr>`expected_ib_state`</nobr> | ACTIVE | state | <nobr>`DEFAULT`</nobr> | Logical port state every port must report, as sysfs names it (the text after the colon in /sys/class/infiniband/&lt;dev>/ports/&lt;n>/state). Override per fleet. |
+| <nobr>`expected_ib_physical_state`</nobr> | LinkUp | state | <nobr>`DEFAULT`</nobr> | Physical link state every fabric port must report, as sysfs names it in phys_state. Override per fleet. |
+| <nobr>`expected_ib_state`</nobr> | ACTIVE | state | <nobr>`DEFAULT`</nobr> | Logical port state every fabric port must report, as sysfs names it (the text after the colon in /sys/class/infiniband/&lt;dev>/ports/&lt;n>/state). Override per fleet. |
+| <nobr>`fabric_port_rate_gbps`</nobr> | 400 | Gb/s | <nobr>`DEFAULT`</nobr> | Minimum port rate, in Gb/s, for a port to count as a fabric rail: 400 for the NDR / 400GbE rails on HGX B200 and GB200. Ports below it, such as front-end or storage NICs, are ignored. |
 
 **Rules**
 
-- **CRITICAL** when `!(ib_link_layer in excluded_link_layers) && ib_state != expected_ib_state`
+- **CRITICAL** when `ib_rate_gbps >= fabric_port_rate_gbps && ib_state != expected_ib_state`
   - Message: Port $\{ib_device\}:$\{ib_port\} ($\{ib_link_layer\}): state $\{ib_state\}, expected $\{expected_ib_state\}.
-- **CRITICAL** when `!(ib_link_layer in excluded_link_layers) && ib_physical_state != expected_ib_physical_state`
+- **CRITICAL** when `ib_rate_gbps >= fabric_port_rate_gbps && ib_physical_state != expected_ib_physical_state`
   - Message: Port $\{ib_device\}:$\{ib_port\} ($\{ib_link_layer\}): physical state $\{ib_physical_state\}, expected $\{expected_ib_physical_state\}.
 
 **Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`

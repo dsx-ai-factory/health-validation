@@ -95,10 +95,17 @@ func TestBuiltinCollectNarrowsInfiniBandToPortChecks(t *testing.T) {
 	}{
 		{name: "link flap only", runnable: []health.CheckDefinition{infiniband.RDMALinkFlapFatal()}},
 		{name: "port state", runnable: []health.CheckDefinition{infiniband.PortState()}, want: [][]string{{
-			ibsignals.StateName.ID(), ibsignals.PhysicalStateName.ID(), ibsignals.LinkLayer.ID(),
+			ibsignals.StateName.ID(), ibsignals.PhysicalStateName.ID(), ibsignals.LinkLayer.ID(), ibsignals.RateGbps.ID(),
+		}}},
+		// The inventory reads the rate alone: no state is collected for it.
+		{name: "fabric port count", runnable: []health.CheckDefinition{infiniband.RDMAFabricPortCount()}, want: [][]string{{
+			ibsignals.RateGbps.ID(),
 		}}},
 		{name: "link flap and port state", runnable: []health.CheckDefinition{infiniband.RDMALinkFlapFatal(), infiniband.PortState()}, want: [][]string{{
-			ibsignals.StateName.ID(), ibsignals.PhysicalStateName.ID(), ibsignals.LinkLayer.ID(),
+			ibsignals.StateName.ID(), ibsignals.PhysicalStateName.ID(), ibsignals.LinkLayer.ID(), ibsignals.RateGbps.ID(),
+		}}},
+		{name: "both fabric checks", runnable: []health.CheckDefinition{infiniband.PortState(), infiniband.RDMAFabricPortCount()}, want: [][]string{{
+			ibsignals.StateName.ID(), ibsignals.PhysicalStateName.ID(), ibsignals.LinkLayer.ID(), ibsignals.RateGbps.ID(),
 		}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -119,7 +126,8 @@ func TestBuiltinCollectNarrowsInfiniBandToPortChecks(t *testing.T) {
 }
 
 // End to end through the stock wiring: sysfs ports become per-port verdicts
-// that name the failing port, RoCE ports included, and a healthy fleet passes.
+// that name the failing fabric port, RoCE ports included, while a down port
+// below fabric rate (an uncabled front-end or storage NIC) is not reported.
 func TestBuiltinCollectInfiniBandPortVerdicts(t *testing.T) {
 	cat, _, err := buildCatalog(nil, nil, "GB200", health.OperatorInfra)
 	if err != nil {
@@ -133,7 +141,8 @@ func TestBuiltinCollectInfiniBandPortVerdicts(t *testing.T) {
 	for _, port := range []struct{ device, layer, state, phys, rate string }{
 		{"mlx5_0", "Ethernet", "4: ACTIVE", "5: LinkUp", "100 Gb/sec (4X EDR)"},
 		{"mlx5_1", "InfiniBand", "4: ACTIVE", "5: LinkUp", "400 Gb/sec (4X NDR)"},
-		{"mlx5_2", "InfiniBand", "1: DOWN", "2: Polling", "10 Gb/sec (4X SDR)"},
+		{"mlx5_2", "Ethernet", "1: DOWN", "3: Disabled", "400 Gb/sec (4X NDR)"},
+		{"mlx5_3", "InfiniBand", "1: DOWN", "2: Polling", "10 Gb/sec (4X SDR)"},
 	} {
 		sysfs[port.device+"/device/vendor"] = &fstest.MapFile{Data: []byte(ibsource.VendorNVIDIA)}
 		sysfs[port.device+"/ports/1/link_layer"] = &fstest.MapFile{Data: []byte(port.layer)}
@@ -142,21 +151,89 @@ func TestBuiltinCollectInfiniBandPortVerdicts(t *testing.T) {
 		sysfs[port.device+"/ports/1/rate"] = &fstest.MapFile{Data: []byte(port.rate)}
 	}
 	measurements := collectInfiniBandPorts(t, runnable, sysfs)
-	if len(measurements) != 3 {
+	if len(measurements) != 4 {
 		t.Fatalf("got %d measurements, want one per port: %v", len(measurements), measurements)
 	}
 	verdict, err := cat.EvaluateAllWithOptions(catalog.EvaluationOptions{}, measurements...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var downPort bool
+	var critical []string
 	for _, c := range verdict.CheckResults {
 		if c.CheckID == "ib_port_state" && c.Severity == health.Critical {
-			downPort = downPort || slices.Equal(c.AffectedEntities, []string{"mlx5_2/1"})
+			critical = append(critical, c.AffectedEntities...)
 		}
 	}
-	if !downPort {
-		t.Fatalf("want ib_port_state CRITICAL naming mlx5_2/1: %+v", verdict.CheckResults)
+	if !slices.Equal(critical, []string{"mlx5_2/1"}) {
+		t.Fatalf("ib_port_state CRITICAL for %v, want only the fabric rail mlx5_2/1: %+v", critical, verdict.CheckResults)
+	}
+}
+
+// End to end on HGX B200: the node-wide inventory and the per-port state come
+// from one pass over sysfs, and the two fabric checks divide the work. A down
+// rail is named by ib_port_state and still counts; a rail missing from sysfs
+// fails the count while every port that is present stays healthy.
+func TestBuiltinCollectInfiniBandFabricChecksDivideTheWork(t *testing.T) {
+	cat, _, err := buildCatalog(nil, nil, "B200", health.OperatorInfra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnable, err := cat.RunnableChecks(catalog.EvaluationOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := func(rails int, downRail string) fstest.MapFS {
+		sysfs := fstest.MapFS{}
+		add := func(device, layer, state, phys, rate string) {
+			sysfs[device+"/device/vendor"] = &fstest.MapFile{Data: []byte(ibsource.VendorNVIDIA)}
+			sysfs[device+"/ports/1/link_layer"] = &fstest.MapFile{Data: []byte(layer)}
+			sysfs[device+"/ports/1/state"] = &fstest.MapFile{Data: []byte(state)}
+			sysfs[device+"/ports/1/phys_state"] = &fstest.MapFile{Data: []byte(phys)}
+			sysfs[device+"/ports/1/rate"] = &fstest.MapFile{Data: []byte(rate)}
+		}
+		for i := range rails {
+			device := fmt.Sprintf("mlx5_%d", i)
+			if device == downRail {
+				add(device, "Ethernet", "1: DOWN", "3: Disabled", "400 Gb/sec (4X NDR)")
+				continue
+			}
+			add(device, "Ethernet", "4: ACTIVE", "5: LinkUp", "400 Gb/sec (4X NDR)")
+		}
+		add("mlx5_8", "Ethernet", "4: ACTIVE", "5: LinkUp", "200 Gb/sec (4X HDR)")
+		return sysfs
+	}
+	for _, tc := range []struct {
+		sysfs      fstest.MapFS
+		name       string
+		stateNames []string
+		countFails bool
+	}{
+		{name: "healthy", sysfs: node(8, "")},
+		{name: "down rail", sysfs: node(8, "mlx5_3"), stateNames: []string{"mlx5_3/1"}},
+		{name: "missing rail", sysfs: node(7, ""), countFails: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			verdict, err := cat.EvaluateAllWithOptions(catalog.EvaluationOptions{}, collectInfiniBandAll(t, runnable, tc.sysfs)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var countFails bool
+			var named []string
+			for _, c := range verdict.CheckResults {
+				switch {
+				case c.CheckID == "rdma_fabric_port_count":
+					countFails = c.Severity == health.Critical
+				case c.CheckID == "ib_port_state" && c.Severity == health.Critical:
+					named = append(named, c.AffectedEntities...)
+				}
+			}
+			if countFails != tc.countFails {
+				t.Errorf("rdma_fabric_port_count critical = %v, want %v", countFails, tc.countFails)
+			}
+			if !slices.Equal(named, tc.stateNames) && (len(named) != 0 || len(tc.stateNames) != 0) {
+				t.Errorf("ib_port_state names %v, want %v", named, tc.stateNames)
+			}
+		})
 	}
 }
 
