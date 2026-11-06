@@ -4,7 +4,9 @@
 package collectadapters
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"maps"
 	"reflect"
 	"slices"
@@ -316,10 +318,16 @@ func TestXIDAdapterNamesGPUsByUUID(t *testing.T) {
 		calls++
 		return map[string]string{"0000:01:00": "GPU-a"}
 	})
+	var logs bytes.Buffer
+	defer slog.SetDefault(slog.Default())
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	obs := append(xidEvent("a", 79), xidInt(xidsignals.Code, "b", 48), xidString(xidsignals.PCIAddress, "b", "0000:02:00"), xidMarker())
 	got := adapter.Build(obs)
 	if len(got) != 2 || got[0].(xid.XidMeasurement).GPUID != "GPU-a" || got[1].(xid.XidMeasurement).GPUID != "" || calls != 1 {
 		t.Fatalf("got %+v after %d lookups, want GPU-a and an unnamed GPU after 1", got, calls)
+	}
+	if !strings.Contains(logs.String(), "pci_address=0000:02:00") || strings.Count(logs.String(), "\n") != 1 {
+		t.Errorf("logs = %q, want one warning for 0000:02:00", logs.String())
 	}
 }
 

@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"sync"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -156,18 +155,12 @@ func Count(snapshot *observation.GPUInventorySnapshot) (int64, bool) {
 }
 
 // UUIDsByPCI maps the PCI address of each GPU with a UUID and bus ID, in the
-// form the driver prints in Xid lines (0000:89:00), to its UUID. It warns
-// about a GPU with a UUID but no bus ID, since its Xid results can only name
-// it by PCI address.
+// form the driver prints in Xid lines (0000:89:00), to its UUID.
 func UUIDsByPCI(snapshot *observation.GPUInventorySnapshot) map[string]string {
 	out := make(map[string]string)
 	for _, entry := range snapshot.GetInventory().GetEntries() {
 		uuid, busID := entry.GetGpu().GetUuid(), entry.GetGpu().GetBusId()
-		switch {
-		case uuid == "":
-		case busID == "":
-			slog.Warn("GPU bus ID unavailable; Xid results name this GPU by PCI address", "uuid", uuid)
-		default:
+		if uuid != "" && busID != "" {
 			out[pciaddr.Normalize(busID)] = uuid
 		}
 	}

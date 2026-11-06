@@ -4,10 +4,8 @@
 package gpuinventory
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"log/slog"
 	"maps"
 	"strings"
 	"testing"
@@ -286,15 +284,9 @@ func TestUUIDsByPCI(t *testing.T) {
 		gpu("GPU-c", ""),
 		gpu("", "0000:c1:00.0"),
 	}}}}
-	var logs bytes.Buffer
-	defer slog.SetDefault(slog.Default())
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	want := map[string]string{"0000:89:00": "GPU-a", "0008:06:00": "GPU-b"}
 	if got := UUIDsByPCI(snapshot); !maps.Equal(got, want) {
 		t.Fatalf("UUIDsByPCI = %v, want %v", got, want)
-	}
-	if !strings.Contains(logs.String(), "uuid=GPU-c") || strings.Count(logs.String(), "\n") != 1 {
-		t.Errorf("logs = %q, want one warning for GPU-c", logs.String())
 	}
 	if got := UUIDsByPCI(nil); len(got) != 0 {
 		t.Fatalf("UUIDsByPCI(nil) = %v, want empty", got)
