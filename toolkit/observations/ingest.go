@@ -55,7 +55,7 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // its checks cannot pass on data that was never collected. A domain with no
 // observations yields no measurement, so its checks are skipped as missing.
 func ToMeasurements(observations []*observation.Observation) []health.Measurement {
-	b := &builder{entities: make(map[entityKey]*entity)}
+	b := &builder{entities: make(map[entityKey]*entity), schemas: schemas()}
 	var xidObservations []*observation.Observation
 	links := make(nvlinkLinks)
 	processes := make(gpuProcesses)
@@ -108,26 +108,31 @@ var schemas = sync.OnceValue(func() []*schema {
 	out := make([]*schema, 0, len(measurementTypes))
 	seen := make(map[string]bool, len(measurementTypes))
 	for _, m := range measurementTypes {
-		s := &schema{typ: reflect.TypeOf(m), category: m.Category().String(), fields: make(map[string]int), gpuID: -1}
+		s := newSchema(m)
 		if seen[s.category] {
 			panic(fmt.Sprintf("observations: two measurement types for domain %q", s.category))
 		}
 		seen[s.category] = true
-		for i := range s.typ.NumField() {
-			name, ok := signalName(s.typ.Field(i))
-			if !ok {
-				continue
-			}
-			s.fields[name] = i
-			s.order = append(s.order, name)
-			if name == gpuIDField {
-				s.gpuID = i
-			}
-		}
 		out = append(out, s)
 	}
 	return out
 })
+
+func newSchema(m health.Measurement) *schema {
+	s := &schema{typ: reflect.TypeOf(m), category: m.Category().String(), fields: make(map[string]int), gpuID: -1}
+	for i := range s.typ.NumField() {
+		name, ok := signalName(s.typ.Field(i))
+		if !ok {
+			continue
+		}
+		s.fields[name] = i
+		s.order = append(s.order, name)
+		if name == gpuIDField {
+			s.gpuID = i
+		}
+	}
+	return s
+}
 
 func schemaFor(m health.Measurement) *schema {
 	for _, s := range schemas() {
@@ -234,6 +239,7 @@ type entityError struct {
 
 type builder struct {
 	entities map[entityKey]*entity
+	schemas  []*schema
 	order    []entityKey
 }
 
@@ -493,7 +499,7 @@ func (e *entity) addError(err error, fields ...string) {
 // source-level measurement stays when some field it failed reached no GPU,
 // so the failure is never lost.
 func (b *builder) foldSourceFailures() {
-	for _, s := range schemas() {
+	for _, s := range b.schemas {
 		if s.gpuID < 0 {
 			continue
 		}
@@ -568,11 +574,11 @@ func (e *entity) inherit(source *entity) []string {
 func (b *builder) measurements() []health.Measurement {
 	b.foldSourceFailures()
 	keys := slices.Clone(b.order)
-	slices.SortStableFunc(keys, func(a, b entityKey) int {
-		if a.schema != b.schema {
-			return slices.Index(schemas(), a.schema) - slices.Index(schemas(), b.schema)
+	slices.SortStableFunc(keys, func(x, y entityKey) int {
+		if x.schema != y.schema {
+			return slices.Index(b.schemas, x.schema) - slices.Index(b.schemas, y.schema)
 		}
-		return strings.Compare(a.id.String(), b.id.String())
+		return strings.Compare(x.id.String(), y.id.String())
 	})
 
 	out := make([]health.Measurement, 0, len(keys))

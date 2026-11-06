@@ -9,11 +9,11 @@ import (
 	"context"
 	"fmt"
 	"runtime"
-	"slices"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -29,14 +29,13 @@ func newHostBackend() hostBackend { return stubHost{} }
 func (stubHost) gpuSensors() []collect.Sensor         { return []collect.Sensor{unavailableGPUSensor{}} }
 func (stubHost) nvlinkBackend() toolkit.NVLinkBackend { return unavailableBackend{} }
 
-// unavailableGPUSensor declares the GPU domain's collect signals and fails at
-// Measure, so the GPU checks report why rather than going unconfigured.
+// unavailableGPUSensor declares every GPU collect signal, a superset of what
+// the linux DCGM and NVML sensors declare, and fails at Measure, so GPU checks
+// and caller adapters report why rather than going unconfigured.
 type unavailableGPUSensor struct{}
 
-func (unavailableGPUSensor) ID() string { return "gpu.unavailable" }
-func (unavailableGPUSensor) Signals() collect.Signals {
-	return slices.Concat(dcgmGPUSignals, processGPUSignals)
-}
+func (unavailableGPUSensor) ID() string               { return "gpu.unavailable" }
+func (unavailableGPUSensor) Signals() collect.Signals { return gpusignals.All() }
 
 func (unavailableGPUSensor) Measure(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
 	return nil, fmt.Errorf("DCGM and NVML GPU collection are only available on linux (current platform: %s)", runtime.GOOS)
