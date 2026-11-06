@@ -217,29 +217,6 @@ func TestEvaluateAll_ProvisionalIdentityCannotCarryValues(t *testing.T) {
 	wantAmbiguous(t, probeCatalog(), "gpu_pstate_probe", health.SourceEntity("nvml"), m)
 }
 
-// A check with no required signals reads every signal, so a provisional
-// measurement feeding it must have lost all of them. One failed field would
-// leave values under an identity nothing verifies.
-func TestEvaluateAll_ProvisionalIdentityFeedingAnySignalCheck(t *testing.T) {
-	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
-	cat.MustRegister(health.CheckDefinition{
-		ID:                "reads_any_gpu_signal",
-		Category:          health.GPU,
-		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
-		Thresholds:        map[string]health.ThresholdSpec{},
-		Rules:             []health.Rule{{Expression: "gpu_pstate != 0", Severity: health.Critical, Message: "pstate"}},
-	})
-
-	if _, err := cat.EvaluateAll(slotFailure("nvml", "0")); err != nil {
-		t.Fatalf("fully failed slot: EvaluateAll: %v", err)
-	}
-
-	partial := gpu.GPUMeasurement{GPUID: "nvml-index-0", GPUPstate: 8}
-	partial.AddError(errors.New("power read failed"), gpu.SignalAveragePowerDrawW)
-	partial.SetEntityKey(health.ProvisionalEntity("nvml", "0"))
-	wantAmbiguous(t, cat, "reads_any_gpu_signal", health.ProvisionalEntity("nvml", "0"), partial)
-}
-
 func TestEvaluateAll_MissingIdentityFailsClosed(t *testing.T) {
 	for _, key := range []health.EntityKey{
 		health.ProvisionalEntity("", "0"),

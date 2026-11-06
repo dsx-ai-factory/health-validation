@@ -13,7 +13,7 @@ import (
 
 func TestCatalog_RegisterAndGet(t *testing.T) {
 	cat := NewEmpty()
-	cd := health.CheckDefinition{ID: "test_check", Name: "Test"}
+	cd := health.CheckDefinition{ID: "test_check", Name: "Test", RequiredSignals: []string{"signal"}}
 
 	if err := cat.Register(cd); err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestCatalog_RegisterAndGet(t *testing.T) {
 
 func TestCatalog_RegisterDuplicate(t *testing.T) {
 	cat := NewEmpty()
-	cd := health.CheckDefinition{ID: "dup"}
+	cd := health.CheckDefinition{ID: "dup", RequiredSignals: []string{"signal"}}
 
 	if err := cat.Register(cd); err != nil {
 		t.Fatal(err)
@@ -49,21 +49,21 @@ func TestCatalog_GetNotFound(t *testing.T) {
 
 func TestCatalog_MustRegisterPanics(t *testing.T) {
 	cat := NewEmpty()
-	cat.MustRegister(health.CheckDefinition{ID: "x"})
+	cat.MustRegister(health.CheckDefinition{ID: "x", RequiredSignals: []string{"signal"}})
 
 	defer func() {
 		if r := recover(); r == nil {
 			t.Error("expected panic on duplicate MustRegister")
 		}
 	}()
-	cat.MustRegister(health.CheckDefinition{ID: "x"})
+	cat.MustRegister(health.CheckDefinition{ID: "x", RequiredSignals: []string{"signal"}})
 }
 
 func TestCatalog_List(t *testing.T) {
 	cat := NewEmpty()
-	cat.MustRegister(health.CheckDefinition{ID: "gpu_thermal", Category: health.GPU, MaturityLevel: health.Stable})
-	cat.MustRegister(health.CheckDefinition{ID: "nvlink_replay", Category: health.NVLink, MaturityLevel: health.Stable})
-	cat.MustRegister(health.CheckDefinition{ID: "gpu_xid", Category: health.GPU, MaturityLevel: health.Experimental})
+	cat.MustRegister(health.CheckDefinition{ID: "gpu_thermal", Category: health.GPU, MaturityLevel: health.Stable, RequiredSignals: []string{"signal"}})
+	cat.MustRegister(health.CheckDefinition{ID: "nvlink_replay", Category: health.NVLink, MaturityLevel: health.Stable, RequiredSignals: []string{"signal"}})
+	cat.MustRegister(health.CheckDefinition{ID: "gpu_xid", Category: health.GPU, MaturityLevel: health.Experimental, RequiredSignals: []string{"signal"}})
 
 	t.Run("all", func(t *testing.T) {
 		got := cat.List(Filter{})
@@ -100,9 +100,9 @@ func TestCatalog_List(t *testing.T) {
 
 func TestCatalog_ListByArchitecture(t *testing.T) {
 	cat := NewEmpty()
-	cat.MustRegister(health.CheckDefinition{ID: "gb200_only", Architectures: []string{"GB200"}})
-	cat.MustRegister(health.CheckDefinition{ID: "h100_only", Architectures: []string{"H100"}})
-	cat.MustRegister(health.CheckDefinition{ID: "all_arch"})
+	cat.MustRegister(health.CheckDefinition{ID: "gb200_only", Architectures: []string{"GB200"}, RequiredSignals: []string{"signal"}})
+	cat.MustRegister(health.CheckDefinition{ID: "h100_only", Architectures: []string{"H100"}, RequiredSignals: []string{"signal"}})
+	cat.MustRegister(health.CheckDefinition{ID: "all_arch", RequiredSignals: []string{"signal"}})
 
 	got := cat.List(Filter{Architecture: "GB200"})
 	if len(got) != 2 {
@@ -115,8 +115,8 @@ func TestCatalog_Len(t *testing.T) {
 	if cat.Len() != 0 {
 		t.Errorf("empty catalog Len() = %d", cat.Len())
 	}
-	cat.MustRegister(health.CheckDefinition{ID: "a"})
-	cat.MustRegister(health.CheckDefinition{ID: "b"})
+	cat.MustRegister(health.CheckDefinition{ID: "a", RequiredSignals: []string{"signal"}})
+	cat.MustRegister(health.CheckDefinition{ID: "b", RequiredSignals: []string{"signal"}})
 	if cat.Len() != 2 {
 		t.Errorf("Len() = %d, want 2", cat.Len())
 	}
@@ -130,9 +130,9 @@ func TestCatalog_Categories(t *testing.T) {
 		t.Errorf("empty catalog Categories() = %v, want none", got)
 	}
 
-	cat.MustRegister(health.CheckDefinition{ID: "n1", Category: health.Node})
-	cat.MustRegister(health.CheckDefinition{ID: "n2", Category: health.Node})
-	cat.MustRegister(health.CheckDefinition{ID: "g1", Category: health.GPU})
+	cat.MustRegister(health.CheckDefinition{ID: "n1", Category: health.Node, RequiredSignals: []string{"signal"}})
+	cat.MustRegister(health.CheckDefinition{ID: "n2", Category: health.Node, RequiredSignals: []string{"signal"}})
+	cat.MustRegister(health.CheckDefinition{ID: "g1", Category: health.GPU, RequiredSignals: []string{"signal"}})
 
 	got := cat.Categories()
 	want := []health.Category{health.GPU, health.Node}
@@ -155,6 +155,7 @@ func TestCatalog_RegisterRejectsRequiredFixedThreshold(t *testing.T) {
 				RequiredOverride: true,
 			},
 		},
+		RequiredSignals: []string{"signal"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "cannot require an override") {
 		t.Fatalf("Register error = %v, want fixed-and-required rejection", err)
@@ -172,6 +173,7 @@ func TestCatalog_RegisterRejectsIncompletePerArchitecture(t *testing.T) {
 				Category:        health.DefaultThreshold,
 			},
 		},
+		RequiredSignals: []string{"signal"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "GB300") {
 		t.Fatalf("Register error = %v, want missing GB300 named", err)
@@ -199,6 +201,7 @@ func TestCatalog_RegisterNormalizesThresholdValues(t *testing.T) {
 				Category:  health.DefaultThreshold,
 			},
 		},
+		RequiredSignals: []string{"signal"},
 	}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -237,6 +240,7 @@ func TestCatalog_RegisterDoesNotMutateCallerThresholds(t *testing.T) {
 				Category:        health.DefaultThreshold,
 			},
 		},
+		RequiredSignals: []string{"signal"},
 	}
 
 	if err := NewEmpty().Register(cd); err != nil {
@@ -257,8 +261,27 @@ func TestCatalog_RegisterRejectsUndeclaredThresholdType(t *testing.T) {
 		Thresholds: map[string]health.ThresholdSpec{
 			"expected_count": {Value: int64(4), Category: health.DefaultThreshold},
 		},
+		RequiredSignals: []string{"signal"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "ValueType is required") {
 		t.Fatalf("Register error = %v, want an undeclared-type rejection", err)
 	}
+}
+
+func TestCatalog_RegisterRejectsCheckWithoutRequiredSignals(t *testing.T) {
+	cat := NewEmpty()
+	cd := health.CheckDefinition{ID: "no_signals"}
+	if err := cat.Register(cd); err == nil || !strings.Contains(err.Error(), "RequiredSignals must name at least one signal") {
+		t.Fatalf("Register error = %v, want a missing-RequiredSignals rejection", err)
+	}
+	if _, err := cat.Get("no_signals"); err == nil {
+		t.Error("rejected check was stored")
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Error("MustRegister did not panic on a check without RequiredSignals")
+		}
+	}()
+	cat.MustRegister(cd)
 }

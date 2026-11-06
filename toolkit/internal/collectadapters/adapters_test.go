@@ -8,8 +8,10 @@ import (
 	"maps"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -338,6 +340,50 @@ func TestNodeAdapterBuildsGPUCount(t *testing.T) {
 	empty := only[node.NodeMeasurement](t, a.Build(nil))
 	if len(empty.Errors()) == 0 || !slices.Contains(empty.Errors()[0].FailedSignals(), node.SignalGPUCount) {
 		t.Fatalf("empty input did not fail gpu_count: %v", empty.Errors())
+	}
+}
+
+// A successful inventory read that finds no GPUs is a count of zero that the
+// rule judges; a failed or absent read is a collection failure.
+func TestNodeAdapterGPUCountVerdicts(t *testing.T) {
+	failed := observation.NewCollectionErrorObservation(gpuinventory.GPUCount.ID(), gpuinventory.GPUCount.Unit(), gpuinventory.SensorID, "GPUInventory", nil,
+		timestamppb.Now(), &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable, SourceError: "ERROR_UNINITIALIZED"})
+	collectionFailure := health.Drain(health.RemediationActionCheckCollection)
+	for _, tt := range []struct {
+		name  string
+		obs   []*observation.Observation
+		ruled bool
+	}{
+		{name: "successful zero", obs: []*observation.Observation{nodeCountObservation(gpuinventory.SensorID, 0)}, ruled: true},
+		{name: "failed enumeration", obs: []*observation.Observation{failed}},
+		{name: "no observations"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.TenantGuest))
+			cat.MustRegister(node.GPUCount())
+			nv, err := cat.EvaluateAll(Node().Build(tt.obs)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := health.Unknown
+			if tt.ruled {
+				want = health.Critical
+			}
+			if len(nv.CheckResults) != 1 || nv.CheckResults[0].Severity != want {
+				t.Fatalf("results = %+v, want one %v gpu_count", nv.CheckResults, want)
+			}
+			v := nv.CheckResults[0]
+			if tt.ruled {
+				if v.ObservedValues[node.SignalGPUCount] != int64(0) || !v.RecommendedAction.Equal(node.GPUCount().RecommendedAction) {
+					t.Fatalf("verdict = %+v, want the rule to judge a count of 0", v)
+				}
+				return
+			}
+			if v.ObservedValues != nil || len(v.Messages) != 1 || !strings.HasPrefix(v.Messages[0], "measurement unavailable: ") ||
+				!v.RecommendedAction.Equal(collectionFailure) {
+				t.Fatalf("verdict = %+v, want a collection failure", v)
+			}
+		})
 	}
 }
 

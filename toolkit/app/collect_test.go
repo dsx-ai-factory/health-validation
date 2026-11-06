@@ -1246,9 +1246,6 @@ func TestCollectSensorsRequestsOnlyRunnableCheckSignals(t *testing.T) {
 			cpusignals.NUMANodeOnlineCount.ID(),
 		}}, bridged: 1},
 		{name: "no domain check runs", runnable: []health.CheckDefinition{gpu.GPUPowerState()}},
-		{name: "check reads any signal", runnable: []health.CheckDefinition{{ID: "custom", Category: health.CPU}}, want: [][]string{{
-			cpusignals.PossibleCount.ID(), cpusignals.OnlineCount.ID(), cpusignals.NUMANodeOnlineCount.ID(),
-		}}, bridged: 1},
 		{name: "check needs an unmapped signal", runnable: []health.CheckDefinition{
 			cpu.NUMANodeCount(), {ID: "custom", Category: health.CPU, RequiredSignals: []string{"unmapped"}},
 		}, want: [][]string{{cpusignals.NUMANodeOnlineCount.ID()}}, bridged: 1},
