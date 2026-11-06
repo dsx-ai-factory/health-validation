@@ -136,7 +136,14 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 	}
 	if a.xid == nil {
 		sources = append(sources, xidsensor.New(nil))
-		adapters = append(adapters, collectadapters.XID())
+		// GPUs are named from the inventory discovery or the node domain
+		// already read this cycle. The lookup never reads NVML itself, so a
+		// wedged driver cannot hold up Xid collection; without a snapshot,
+		// each GPU is named by its PCI address.
+		inventory := a.host.gpuInventory()
+		adapters = append(adapters, collectadapters.XID(func() map[string]string {
+			return gpuinventory.UUIDsByPCI(inventory.Cached(cycle))
+		}))
 	}
 	return sources, adapters
 }

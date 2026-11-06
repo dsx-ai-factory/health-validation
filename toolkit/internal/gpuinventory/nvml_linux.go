@@ -24,12 +24,12 @@ import (
 const nvmlSource = "nvml"
 
 // NVML reads the basic inventory from inst's existing enumeration: every
-// slot with its handle and UUID outcome, which needs no further NVML call,
-// GPU models in index order until one maps to an architecture, as legacy
-// discovery read them, and the system driver version, which the catalog
-// needs before it is built. Serial, VBIOS, PCI, platform, and fabric
-// attributes are not read; collect's NVML sensor can enrich the same devices
-// on request.
+// slot with its handle, UUID and bus ID outcome, which needs no further NVML
+// call, GPU models in index order until one maps to an architecture, as
+// legacy discovery read them, and the system driver version, which the
+// catalog needs before it is built. Serial, VBIOS, other PCI, platform, and
+// fabric attributes are not read; collect's NVML sensor can enrich the same
+// devices on request.
 func NVML(inst nvmlsource.Instance) Reader { return nvmlReader{inst: inst} }
 
 type nvmlReader struct {
@@ -97,6 +97,12 @@ func basicEntry(record nvmlsource.InventoryDevice) *observation.GPUInventoryEntr
 	default:
 		uuid := record.Device.UUID()
 		entry.Gpu.Uuid = &uuid
+		if busID := record.Device.PCIBusID(); busID != "" {
+			entry.Gpu.BusId = &busID
+		} else {
+			// The enumeration drops the read's return code, so the cause is unknown.
+			entry.FieldErrors = map[string]*observation.CollectionError{"bus_id": nvmlFailure("GetPciInfo", nvml.SUCCESS, "no bus ID; NVML return code not kept")}
+		}
 	}
 	return entry
 }

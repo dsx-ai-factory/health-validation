@@ -6,6 +6,7 @@ package gpuinventory
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -246,5 +247,48 @@ func TestArchitecture(t *testing.T) {
 				t.Fatalf("Architecture = %q, %v; want %q", got, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestCachedNeverReads(t *testing.T) {
+	reader := &fakeReader{snapshot: inventory(gpuEntry(0, "NVIDIA GB200"))}
+	opens := 0
+	inv := New(func() (Reader, error) { opens++; return reader, nil })
+	cycle := testCycle(t, "first")
+	if got := inv.Cached(cycle); got != nil || opens != 0 || reader.reads != 0 {
+		t.Fatalf("Cached before a read = %v after %d opens and %d reads, want nil without reading", got, opens, reader.reads)
+	}
+	read := inv.Snapshot(context.Background(), cycle)
+	if got := inv.Cached(cycle); got != read || reader.reads != 1 {
+		t.Fatalf("Cached = %v after %d reads, want the cycle's snapshot from one read", got, reader.reads)
+	}
+	if got := inv.Cached(testCycle(t, "second")); got != nil {
+		t.Fatalf("Cached for another cycle = %v, want nil", got)
+	}
+}
+
+func TestUUIDsByPCI(t *testing.T) {
+	gpu := func(uuid, busID string) *observation.GPUInventoryEntry {
+		device := &observation.GPUDevice{}
+		if uuid != "" {
+			device.Uuid = &uuid
+		}
+		if busID != "" {
+			device.BusId = &busID
+		}
+		return &observation.GPUInventoryEntry{Gpu: device}
+	}
+	snapshot := &observation.GPUInventorySnapshot{Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: &observation.GPUInventory{Entries: []*observation.GPUInventoryEntry{
+		gpu("GPU-a", "0000:89:00.0"),
+		gpu("GPU-b", "00000008:06:00.0"),
+		gpu("GPU-c", ""),
+		gpu("", "0000:c1:00.0"),
+	}}}}
+	want := map[string]string{"0000:89:00": "GPU-a", "0008:06:00": "GPU-b"}
+	if got := UUIDsByPCI(snapshot); !maps.Equal(got, want) {
+		t.Fatalf("UUIDsByPCI = %v, want %v", got, want)
+	}
+	if got := UUIDsByPCI(nil); len(got) != 0 {
+		t.Fatalf("UUIDsByPCI(nil) = %v, want empty", got)
 	}
 }
