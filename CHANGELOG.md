@@ -48,13 +48,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Features
 
 - `ib_port_state`, an InfiniBand port check evaluating the new
-  `infiniband.PortMeasurement` (one per sysfs port, RoCE included): every port
-  must be ACTIVE with its physical link up. Verdicts name the port (`mlx5_0/1`)
-  in `affected_components[].entities`. `excluded_link_layers` (empty by
-  default) lets a fleet with uncabled RoCE ports leave Ethernet out; an
-  exclusion list means a misspelled entry checks more ports, never fewer.
-  It runs on GB200 and GB300; B200 waits on the architecture validation
-  process being settled in #255.
+  `infiniband.PortMeasurement` (one per sysfs port, RoCE included): every
+  fabric port must be ACTIVE with its physical link up. Verdicts name the port
+  (`mlx5_0/1`) in `affected_components[].entities`. A fabric port is one at or
+  above `fabric_port_rate_gbps` (400 by default), so front-end and storage
+  NICs that a node may leave uncabled are not assessed; a port whose rate
+  cannot be read reports UNKNOWN. It runs on GB200 and GB300; B200 waits on
+  the architecture validation process being settled in #255.
 - `rdma_fabric_port_count` (InfiniBand, B200, experimental): CRITICAL when
   fewer than `expected_fabric_ports` ports at or above `fabric_port_rate_gbps`
   are present. It counts presence and rate, not state, so it catches a rail

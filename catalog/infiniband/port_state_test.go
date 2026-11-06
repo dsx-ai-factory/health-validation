@@ -50,6 +50,8 @@ func TestPortStateDefinition(t *testing.T) {
 		infiniband.SignalIBPort,
 		infiniband.SignalIBState,
 		infiniband.SignalIBPhysicalState,
+		// Selects the fabric ports the check applies to.
+		infiniband.SignalIBRateGbps,
 		// Required for the message alone: the check applies to every link
 		// layer, so it must name the one it actually found.
 		infiniband.SignalIBLinkLayer,
@@ -141,40 +143,41 @@ func TestPortState_NamesTheActualLinkLayer(t *testing.T) {
 	}
 }
 
-// A down RoCE port is CRITICAL by default; a fleet whose Ethernet ports are
-// uncabled adds them to excluded_link_layers instead of disabling the check.
-// The list excludes rather than includes so a typo checks more ports, never
-// fewer: "Infiniband" excludes nothing and the down port still fails.
-func TestPortState_ExcludedLinkLayers(t *testing.T) {
-	down := port("DOWN", "Polling")
-	down.LinkLayer = "Ethernet"
-	cat := ibCatalog(catalog.WithOverrides(catalog.NewOverrideSet(
-		catalog.Override{CheckID: "ib_port_state", ThresholdName: "excluded_link_layers", Value: []string{"Ethernet"}},
+// The check applies to fabric ports, those at or above fabric_port_rate_gbps,
+// on any link layer. A down front-end or storage port, which a node may
+// legitimately leave uncabled, is outside that class; a fleet whose rails run
+// slower moves the rate floor instead of disabling the check.
+func TestPortState_ScopedToFabricPorts(t *testing.T) {
+	down := func(layer string, rate float64) infiniband.PortMeasurement {
+		m := port("DOWN", "Disabled")
+		m.LinkLayer, m.RateGbps = layer, rate
+		return m
+	}
+	lowerFloor := ibCatalog(catalog.WithOverrides(catalog.NewOverrideSet(
+		catalog.Override{CheckID: "ib_port_state", ThresholdName: "fabric_port_rate_gbps", Value: float64(100)},
 	)))
-	v, err := cat.Evaluate("ib_port_state", down)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Skipped || v.Severity != health.Pass {
-		t.Errorf("down Ethernet port with Ethernet excluded: skipped=%v severity=%v, want PASS", v.Skipped, v.Severity)
-	}
-	v, err = cat.Evaluate("ib_port_state", port("DOWN", "Polling"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("down InfiniBand port still checked: severity = %v, want CRITICAL", v.Severity)
-	}
-
-	typo := ibCatalog(catalog.WithOverrides(catalog.NewOverrideSet(
-		catalog.Override{CheckID: "ib_port_state", ThresholdName: "excluded_link_layers", Value: []string{"Infiniband"}},
-	)))
-	v, err = typo.Evaluate("ib_port_state", port("DOWN", "Polling"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Severity != health.Critical {
-		t.Errorf("misspelled exclusion must exclude nothing: severity = %v, want CRITICAL", v.Severity)
+	for _, tc := range []struct {
+		name string
+		cat  *catalog.Catalog
+		m    infiniband.PortMeasurement
+		want health.Severity
+	}{
+		{"down RoCE rail", ibCatalog(), down("Ethernet", 400), health.Critical},
+		{"down InfiniBand rail", ibCatalog(), down("InfiniBand", 400), health.Critical},
+		{"down 800 Gb/s rail", ibCatalog(), down("InfiniBand", 800), health.Critical},
+		{"down 200 Gb/s front-end port", ibCatalog(), down("Ethernet", 200), health.Pass},
+		{"down 100 Gb/s storage port", ibCatalog(), down("InfiniBand", 100), health.Pass},
+		{"down storage port with the floor lowered", lowerFloor, down("InfiniBand", 100), health.Critical},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := tc.cat.Evaluate("ib_port_state", tc.m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Skipped || v.Severity != tc.want {
+				t.Errorf("skipped=%v severity=%v, want %v", v.Skipped, v.Severity, tc.want)
+			}
+		})
 	}
 }
 
@@ -226,9 +229,9 @@ func TestPortState_Errored(t *testing.T) {
 	}
 }
 
-// A port missing only its rate still has both state signals, so this check
-// evaluates normally; the failure belongs to a check that reads the rate.
-func TestPortState_UnrelatedSignalErrorStillEvaluates(t *testing.T) {
+// The rate decides whether a port is a fabric port, so a port whose rate could
+// not be read cannot be shown healthy or exempt and does not pass the check.
+func TestPortState_UnreadableRateDoesNotPass(t *testing.T) {
 	m := port("ACTIVE", "LinkUp")
 	m.AddError(errors.New("rate: permission denied"), infiniband.SignalIBRateGbps)
 
@@ -236,8 +239,8 @@ func TestPortState_UnrelatedSignalErrorStillEvaluates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Skipped || v.Severity != health.Pass {
-		t.Fatalf("skipped=%v severity=%v, want PASS despite the unrelated rate failure", v.Skipped, v.Severity)
+	if v.Skipped || v.Severity != health.Unknown {
+		t.Fatalf("skipped=%v severity=%v, want UNKNOWN when the rate could not be read", v.Skipped, v.Severity)
 	}
 }
 
