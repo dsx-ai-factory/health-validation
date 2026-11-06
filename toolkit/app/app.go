@@ -37,6 +37,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -105,6 +106,9 @@ type hostBackend interface {
 // InfiniBand), each from its own per-domain source — DCGM, the shared host
 // NVML backend, sysfs, or the journal by default, or a caller-supplied
 // override.
+//
+// An App serves one run. The run and collect subcommands close the host
+// sources they open, so build a new App for each run.
 type App struct {
 	host        hostBackend
 	hostname    func() (string, error)
@@ -135,9 +139,10 @@ type App struct {
 	nodeIDSet     bool
 }
 
-// New returns an App wired to the production host backend (an NVML backend on
-// linux). Construction is side-effect free — NVML init is lazy — so building
-// an App is safe on a host without a GPU/driver, and `version` runs there.
+// New returns an App wired to the production host backend (NVML and DCGM on
+// linux). Construction is side-effect free — NVML and DCGM init is lazy — so
+// building an App is safe on a host without a GPU/driver, and `version` runs
+// there.
 func New() *App {
 	return &App{
 		host:        newHostBackend(),
@@ -278,7 +283,8 @@ func (a *App) Close() error { return a.host.close() }
 //	health-validation [--verbose] version [--short] [--output json]
 //
 // It parses the top-level flags, dispatches the subcommand, writes output to
-// stdout and diagnostics to stderr, and returns the process exit code.
+// stdout and diagnostics to stderr, and returns the process exit code. Call it
+// once per App.
 func (a *App) Run(args []string, stdout, stderr io.Writer) int {
 	if a.prog == "" {
 		a.prog = filepath.Base(os.Args[0])
@@ -391,7 +397,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Close only the host backend: per-domain overrides are caller-owned (see
-	// [App.Close]). gpu/nvlink default to the one shared host backend, and
+	// [App.Close]). The host backend owns the DCGM and NVML sources, and
 	// architecture discovery and node share one GPU inventory read per cycle.
 	// Deferred before architecture detection so the NVML handle that detection
 	// opens is always released.
@@ -419,11 +425,13 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	// where they apply. A discovery failure is a node fault — the GPUs are
 	// unenumerable or unreadable — so drain for that explicit reason instead
 	// of evaluating with no architecture (Evaluate requires WithArchitecture).
-	snapshot := a.host.gpuInventory().Snapshot(context.Background(), cycle)
+	inventory := a.host.gpuInventory()
+	snapshot := inventory.Snapshot(context.Background(), cycle)
 	arch, err := gpuinventory.Architecture(snapshot)
 	if err != nil {
-		slog.Warn("architecture discovery failed", "err", err)
-		verdict := discoveryFailureVerdict(err)
+		busy := errors.Is(inventory.Cause(cycle), gpuinventory.ErrSourceBusy)
+		slog.Warn("architecture discovery failed", "err", err, "busy", busy)
+		verdict := discoveryFailureVerdict(err, busy)
 		code := writeVerdict(verdict, a.prog, resolvedNodeID, stdout, stderr)
 		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
 		return code
@@ -954,8 +962,14 @@ func writeVerdict(verdict health.NodeVerdict, prog, nodeID string, stdout, stder
 // the CLI would otherwise fall into: continuing with an empty architecture
 // disables filtering and evaluates every check against the wrong thresholds,
 // and letting architecture-scoped checks skip would aggregate an all-GPUs-lost
-// node to PASS.
-func discoveryFailureVerdict(cause error) health.NodeVerdict {
+// node to PASS. A busy source still drains, but another call in this process
+// holds it, so the action is to retry the collection rather than reset,
+// restart, and escalate.
+func discoveryFailureVerdict(cause error, busy bool) health.NodeVerdict {
+	action := health.GenericDrain()
+	if busy {
+		action = health.Drain(health.RemediationActionRetryCollection)
+	}
 	cv := health.CheckVerdict{
 		Timestamp:         time.Now(),
 		CheckID:           "architecture_discovery",
@@ -963,7 +977,7 @@ func discoveryFailureVerdict(cause error) health.NodeVerdict {
 		ConditionScope:    health.NodeScope,
 		Severity:          health.Critical,
 		Messages:          []string{fmt.Sprintf("could not determine GPU architecture: %v", cause)},
-		RecommendedAction: health.GenericDrain(),
+		RecommendedAction: action,
 		MaturityLevel:     health.Stable,
 		NVIDIAEndorsed:    true,
 	}

@@ -65,6 +65,70 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   category name (`cpu`, `nvlink`, …) is reserved for built-in adapters, and a
   caller adapter may not feed a catalog field that an active built-in adapter
   of its category also feeds. The stock CLI is unaffected.
+- The CLI collects every built-in domain except NVLink through `collect`
+  sensors and the toolkit's collect bridge instead of the legacy toolkit
+  sensors. Severities, failed signals, and recommended actions match the legacy
+  sensors except as listed below, and collection-failure messages now name the
+  collect source and operation, for example
+  `cpu.sysfs operation "read /sys/devices/system/cpu/online" failed with …`.
+  Each domain's `With*Backend` setter still selects its legacy sensor.
+  - CPU and NUMA: only the collection-failure wording changes. ([#135](https://github.com/dsx-ai-factory/health-validation/pull/135))
+  - Xid: ([#179](https://github.com/dsx-ai-factory/health-validation/pull/179))
+    - An Xid line with a device address that cannot be parsed fails every Xid
+      check with `check_collection`; the legacy sensor dropped it and passed.
+    - A boot with no readable kernel entries fails the Xid checks.
+    - MIG-attributed lines (`GPU-I:`/`GPU-CI:`) and addresses without the
+      `PCI:` token now count, so their checks can fail where they passed.
+    - Kernel lines that contain `NVRM: Xid ` without a device address are
+      ignored.
+    - `name=<unknown>` with a numeric pid gives an empty process name, an
+      overflowing pid is absent, and NVLink5 process names are trimmed.
+    - An Xid entry stamped in the future after a clock step fails the Xid
+      checks until the clock passes it.
+    - `WithCollect` must claim all Xid signals or none, and the collect adapter
+      name `xid` is reserved. `toolkit.Journalctl` and `App.WithXidBackend` are
+      deprecated.
+  - Node GPU count and architecture discovery: a driver that hangs during
+    discovery ends in a discovery-failure verdict after the collection timeout
+    instead of hanging the run. ([#195](https://github.com/dsx-ai-factory/health-validation/pull/195))
+  - GPU: ([#262](https://github.com/dsx-ai-factory/health-validation/pull/262))
+    - Nodes need `nv-hostengine` and the DCGM 4 client library
+      (`libdcgm.so.4`); without them the GPU power, power-limit, pstate, and
+      throttle checks report a collection failure. There is no fallback to
+      NVML. Compute processes still come from NVML.
+    - A GPU whose UUID cannot be read is named by its source-local slot in
+      `affected_entities`.
+    - A process that exits between the NVML and procfs reads is left out of
+      `compute_process_cmdlines`.
+    - When every GPU source times out, each source gives its own
+      `retry_collection` result per check. When one source stalls, only the
+      checks it feeds fail.
+    - Power comes from DCGM in watts, so `observed_values` can differ from
+      NVML's by a fraction of a watt.
+    - The collect adapter name `gpu` is reserved for the built-in GPU adapter.
+      Drop a caller-registered adapter of that name.
+  - RDMA link flap: ([#236](https://github.com/dsx-ai-factory/health-validation/pull/236))
+    - A line that looks like an mlx5 link transition but does not parse fails
+      `rdma_linkflap_fatal` with `check_collection`; the legacy sensor skipped
+      it.
+    - A transition counts only when the message starts with `mlx5_core`, so
+      another subsystem's line that mentions the driver no longer counts.
+    - Interface names drop the kernel's ` (unregistering)` suffix, and
+      durations use journald's timestamps, so an outage across a DST change is
+      measured correctly.
+    - A failed scan labels `since` as `boot`, and a source that reports
+      nothing fails the check instead of skipping it.
+    - `WithCollect` must claim all link-flap signals or none.
+      `App.WithRDMALinkFlapBackend` and `toolkit.JournalctlRDMALinkFlap` are
+      deprecated.
+  - Across domains:
+    - Per-GPU results are ordered by GPU identity rather than NVML index.
+    - Architecture discovery that finds NVML busy with an earlier call in the
+      same process still drains the node but recommends `retry_collection`
+      instead of the reset, restart, and escalate sequence.
+    - The CLI needs access to every GPU on the node, so that DCGM and NVML
+      report the same GPUs.
+    - An `App` serves one run; build a new one for each run.
 - `run` records every validated threshold override in the host's systemd
   journal before collecting and exits `2` if it cannot. Container deployments
   that pass overrides must mount `/run/systemd/journal/socket`; see
@@ -103,6 +167,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `health.KeyOf` treats a zero `EntityKey` as unset and keys the measurement
   by its `EntityID`, so a measurement embedding `observations.Entity` that a
   test constructs directly names its GPU.
+
+### Fixes
+
+- Collect sources log a warning to stderr when they time out or fail as a
+  whole, including failures a sensor reports inside its batch, as the legacy
+  sensors did. Each line names the collect sensor (`sensor`) and the failing
+  library or reader (`source`); the legacy lines named the toolkit sensor.
+  Errors on individual GPUs are not logged.
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 

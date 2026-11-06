@@ -67,7 +67,7 @@ func newHostBackend() hostBackend {
 		panic(err)
 	}
 	h.gpu = []collect.Sensor{dcgm, nvmlGPUSensor{host: h}}
-	h.inventory = gpuinventory.New(h.openInventory)
+	h.inventory = gpuinventory.New(gpuinventory.OpenNVML(h.instance))
 	return h
 }
 
@@ -92,14 +92,6 @@ func (h *nvmlHost) instance() (nvmlsource.Instance, error) {
 	}
 	h.inst = inst
 	return inst, nil
-}
-
-func (h *nvmlHost) openInventory() (gpuinventory.Reader, error) {
-	inst, err := h.instance()
-	if err != nil {
-		return nil, err
-	}
-	return gpuinventory.NVML(inst), nil
 }
 
 // sharedNVMLSensor returns the collect NVML sensor over the shared instance.

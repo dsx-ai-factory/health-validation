@@ -1109,11 +1109,68 @@ func TestRunCommandArchDiscoveryFailureDrains(t *testing.T) {
 	if got := v.CheckResults[0]; got.CheckID != "architecture_discovery" || got.ConditionScope != health.NodeScope {
 		t.Errorf("check result = {id:%q scope:%v}, want {architecture_discovery NODE}", got.CheckID, got.ConditionScope)
 	}
+	if got := v.CheckResults[0].RecommendedAction; !got.Equal(health.GenericDrain()) {
+		t.Errorf("RecommendedAction = %+v, want the generic drain", got)
+	}
 	if collected {
 		t.Error("collected measurements despite discovery failure; must not evaluate against wrong thresholds")
 	}
 	if cpuCollected {
 		t.Error("collected CPU measurements despite discovery failure")
+	}
+}
+
+// busyHost is an erroringHost whose inventory source refuses discovery
+// because an earlier call in this process is still running.
+type busyHost struct{ erroringHost }
+
+func (busyHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) {
+		return nil, fmt.Errorf("open NVML: %w", gpuinventory.ErrSourceBusy)
+	})
+}
+
+// openFailedHost is an erroringHost whose inventory source fails to open for
+// a reason other than a busy source.
+type openFailedHost struct{ erroringHost }
+
+func (openFailedHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) {
+		return nil, errors.New("open NVML: driver not loaded")
+	})
+}
+
+// Only a busy source turns a discovery failure into retry_collection; any
+// other open error keeps the generic drain.
+func TestRunCommandDiscoveryOpenFailureAction(t *testing.T) {
+	var collected bool
+	spy := erroringHost{b: spyBackend{called: &collected}}
+	for name, tc := range map[string]struct {
+		host hostBackend
+		want health.RecommendedAction
+	}{
+		"busy":  {host: busyHost{spy}, want: health.Drain(health.RemediationActionRetryCollection)},
+		"other": {host: openFailedHost{spy}, want: health.GenericDrain()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := New()
+			a.host = tc.host
+			var stdout, stderr bytes.Buffer
+			if code := a.runCommand([]string{"--node-id", testNodeID}, &stdout, &stderr); code != exitUnhealthy {
+				t.Fatalf("runCommand exit = %d, want exitUnhealthy; stderr = %q", code, stderr.String())
+			}
+			var v health.NodeVerdict
+			if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+				t.Fatalf("unmarshal verdict: %v; stdout = %s", err, stdout.String())
+			}
+			if len(v.CheckResults) != 1 || v.CheckResults[0].CheckID != "architecture_discovery" ||
+				!v.CheckResults[0].RecommendedAction.Equal(tc.want) || !v.RecommendedAction.Equal(tc.want) {
+				t.Fatalf("verdict = %+v, want one architecture_discovery result recommending %+v", v, tc.want)
+			}
+		})
+	}
+	if collected {
+		t.Error("collected measurements despite discovery failure")
 	}
 }
 
@@ -1356,11 +1413,10 @@ func TestRunCommandExecutionContextSelection(t *testing.T) {
 }
 
 func TestRunCommandCadenceAcceptsFoldedAndPaddedNames(t *testing.T) {
-	a := cadenceRunApp()
 	for _, name := range []string{"continuous", "  CONTINUOUS  "} {
 		t.Run(name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			if code := a.runCommand([]string{"--node-id", testNodeID, "--cadence", name}, &stdout, &stderr); code == exitError {
+			if code := cadenceRunApp().runCommand([]string{"--node-id", testNodeID, "--cadence", name}, &stdout, &stderr); code == exitError {
 				t.Fatalf("runCommand --cadence %q exit = %d; stderr = %q", name, code, stderr.String())
 			}
 			var v health.NodeVerdict
