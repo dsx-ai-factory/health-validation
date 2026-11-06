@@ -53,11 +53,14 @@ func linkFlapMatcher(since string) journalMatcher {
 func TestReadJournalCleanBootIsNotErrored(t *testing.T) {
 	const since = "2026-08-31 13:00:00"
 
-	// The liveness probe (-n 1) returns a line so the journal itself reads as
-	// readable; the scoped kernel read has no entries.
+	// The liveness probe (-n 1 --dmesg) returns a kernel line so the kernel
+	// journal itself reads as readable; the scoped kernel read has no matches.
 	run := cannedRun(func(_ context.Context, args ...string) ([]byte, error) {
 		if slices.Contains(args, "-n") {
-			return []byte("some unrelated log line\n"), nil
+			if !slices.Contains(args, "--dmesg") {
+				t.Fatal("journalReadable must probe with --dmesg")
+			}
+			return []byte("some kernel log line\n"), nil
 		}
 		if slices.Contains(args, "--quiet") {
 			return nil, exitOne(t)
@@ -74,6 +77,34 @@ func TestReadJournalCleanBootIsNotErrored(t *testing.T) {
 	}
 	if errs := ms[0].Errors(); len(errs) != 0 {
 		t.Errorf("clean boot recorded %d collection error(s), want 0: %v", len(errs), errs)
+	}
+}
+
+// TestReadJournalUserJournalDoesNotCountAsReadable covers a non-root run where
+// an unscoped --boot probe would see the caller's own journal while --dmesg is
+// empty. That must be a collection error, not a false clean boot / PASS.
+func TestReadJournalUserJournalDoesNotCountAsReadable(t *testing.T) {
+	const since = "2026-08-31 13:00:00"
+
+	run := cannedRun(func(_ context.Context, args ...string) ([]byte, error) {
+		if slices.Contains(args, "-n") {
+			if slices.Contains(args, "--dmesg") {
+				return nil, nil // kernel journal not visible
+			}
+			return []byte("user journal line\n"), nil
+		}
+		if slices.Contains(args, "--quiet") {
+			return nil, exitOne(t)
+		}
+		return []byte("-- No entries --\n"), exitOne(t)
+	})
+
+	ms, err := readJournal(context.Background(), run, linkFlapMatcher(since))
+	if err != nil {
+		t.Fatalf("readJournal: %v", err)
+	}
+	if errs := ms[0].Errors(); len(errs) == 0 {
+		t.Fatal("unreadable kernel journal must be recorded as a collection error")
 	}
 }
 
