@@ -4,13 +4,13 @@
 // Package observations converts between the catalog's typed measurements
 // and the shared collect observation contract.
 //
-// [FromMeasurements] gives toolkit sensor output the ObservationBatch shape,
-// one observation per measurement field named <domain>.<field>.
-// [ToMeasurements] rebuilds measurements from a batch for evaluation. It
-// accepts those toolkit-shaped observations and observations from collect
-// sensors under mapped signal IDs, including both in one batch, so sensors
-// can move to collect one at a time. A mapped signal is a collect signal with
-// a row in this package's mapping table.
+// [FromMeasurements] writes measurements as observations, one per measurement
+// field named <domain>.<field>; this is the format the health-validation
+// collect command emits. [ToMeasurements] rebuilds measurements from a batch
+// for evaluation. It reads that measurement-shaped format and observations
+// from collect sensors under mapped signal IDs, including both in one batch.
+// A mapped signal is a collect signal with a row in this package's mapping
+// table.
 package observations
 
 import (
