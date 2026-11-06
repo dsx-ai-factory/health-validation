@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -79,20 +80,44 @@ func (*nativeLibrary) AllGPUIndices() ([]uint, error) {
 	return gpuIndices, nil
 }
 
-func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, error) {
-	// One field group lets DCGM watch every configured metric together.
+// MetricWatchGroups resolves signals and checks field-group limits before Init.
+func (library *nativeLibrary) MetricWatchGroups(signalIDs []string) ([]metricWatchGroup, error) {
+	if policy := library.options.WatchPolicy; policy != nil {
+		signalOverrides := make([]string, 0, len(policy.SignalIntervals))
+		for signalID := range policy.SignalIntervals {
+			signalOverrides = append(signalOverrides, signalID)
+		}
+		slices.Sort(signalOverrides)
+		for _, signalID := range signalOverrides {
+			if _, supported := fieldsBySignal[signalID]; !supported {
+				return nil, fmt.Errorf("DCGM watch interval override names unsupported signal %q", signalID)
+			}
+		}
+	}
+	if len(signalIDs) == 0 {
+		return []metricWatchGroup{}, nil
+	}
 	mappings, err := fieldMappingsFor(signalIDs)
 	if err != nil {
 		return nil, err
 	}
-	fieldIDs := uniqueFieldIDs(mappings)
+	fields := make([]metricWatchField, 0, len(mappings))
+	for _, mapping := range mappings {
+		fields = append(fields, metricWatchField{signalID: mapping.signalID, fieldID: uint16(mapping.fieldID)})
+	}
+	return groupMetricFields(fields, library.options.WatchPolicy)
+}
 
+func (library *nativeLibrary) WatchMetrics(groups []metricWatchGroup) (func() error, error) {
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("at least one DCGM metric field group is required")
+	}
 	watchID := metricWatchSequence.Add(1)
 	name := metricWatchName(library.options.GroupNamePrefix, os.Getpid(), watchID)
 
-	return startMetricWatch(name+"-fields", fieldIDs, metricWatchOperations{
+	return startMetricWatches(name, groups, metricWatchOperations{
 		create:  godcgm.FieldGroupCreate,
-		watch:   godcgm.WatchFieldsWithGroup,
+		watchEx: godcgm.WatchFieldsWithGroupEx,
 		unwatch: godcgm.UnwatchFields,
 		destroy: godcgm.FieldGroupDestroy,
 	})
@@ -100,7 +125,7 @@ func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, er
 
 type metricWatchOperations struct {
 	create  func(string, []godcgm.Short) (godcgm.FieldHandle, error)
-	watch   func(godcgm.FieldHandle, godcgm.GroupHandle) error
+	watchEx func(godcgm.FieldHandle, godcgm.GroupHandle, int64, float64, int32) error
 	unwatch func(godcgm.FieldHandle, godcgm.GroupHandle) error
 	destroy func(godcgm.FieldHandle) error
 }
@@ -111,45 +136,64 @@ func (ops metricWatchOperations) unwatchFields(fieldGroup godcgm.FieldHandle, gp
 		if errors.As(err, &failure) && failure.Code == godcgm.DCGM_ST_NOT_WATCHED {
 			return nil
 		}
-		return fmt.Errorf("unwatch DCGM metric fields: %w", err)
+		return fmt.Errorf("unwatch DCGM metric fields: %w", dcgmErrorFromError(err))
 	}
 	return nil
 }
 
 func (ops metricWatchOperations) destroyFieldGroup(fieldGroup godcgm.FieldHandle) error {
 	if err := ops.destroy(fieldGroup); err != nil {
-		return fmt.Errorf("destroy DCGM metric field group: %w", err)
+		return fmt.Errorf("destroy DCGM metric field group: %w", dcgmErrorFromError(err))
 	}
 	return nil
 }
 
-func startMetricWatch(name string, fieldIDs []godcgm.Short, ops metricWatchOperations) (func() error, error) {
-	fieldGroup, err := ops.create(name, fieldIDs)
-	if err != nil {
-		return nil, dcgmErrorFromError(err)
-	}
-
-	// DCGM_GROUP_ALL_GPUS follows GPU attachment changes, matching the source's
-	// per-collection enumeration. This group is scoped to GPU field metrics;
-	// health and other entity types require separate purpose-specific groups.
+func startMetricWatches(name string, groups []metricWatchGroup, ops metricWatchOperations) (func() error, error) {
+	// DCGM owns the special all-GPU entity group. Only field groups and
+	// watches created here belong to this source.
 	gpuGroup := godcgm.GroupAllGPUs()
-	// A failed watch can still have installed part of its state. Retain its
-	// cleanup before attempting setup, and do not destroy its group until
-	// unwatching has succeeded.
-	watch := &metricWatch{
-		unwatch: func() error { return ops.unwatchFields(fieldGroup, gpuGroup) },
-		destroy: func() error { return ops.destroyFieldGroup(fieldGroup) },
-	}
-	if err := ops.watch(fieldGroup, gpuGroup); err != nil {
-		cleanupErr := watch.close()
-		if cleanupErr != nil {
-			return watch.close, errors.Join(dcgmErrorFromError(err), cleanupErr)
+	watches := make(metricWatches, 0, len(groups))
+	for index, group := range groups {
+		fieldIDs := make([]godcgm.Short, len(group.fieldIDs))
+		for i, fieldID := range group.fieldIDs {
+			fieldIDs[i] = godcgm.Short(fieldID)
 		}
-		return nil, dcgmErrorFromError(err)
+		groupName := name + "-fields"
+		if group.interval != 0 {
+			groupName = fmt.Sprintf("%s-%d-fields", name, index)
+		}
+		fieldGroup, err := ops.create(groupName, fieldIDs)
+		if err != nil {
+			return rollbackMetricWatches(watches, err)
+		}
+		// Retain cleanup before watch setup, which can fail after installing
+		// part of its state. Unwatch must succeed before group destruction.
+		watch := &metricWatch{
+			unwatch: func() error { return ops.unwatchFields(fieldGroup, gpuGroup) },
+			destroy: func() error { return ops.destroyFieldGroup(fieldGroup) },
+		}
+		watches = append(watches, watch)
+		interval := group.interval
+		if interval == 0 {
+			interval = 30 * time.Second
+		}
+		// Preserve go-dcgm's cache settings: no maximum age, one sample.
+		err = ops.watchEx(fieldGroup, gpuGroup, interval.Microseconds(), 0, 1)
+		if err != nil {
+			return rollbackMetricWatches(watches, err)
+		}
 	}
+	return watches.close, nil
+}
 
-	// DCGM owns the special all-GPU group; release only our watch and field group.
-	return watch.close, nil
+func rollbackMetricWatches(watches metricWatches, setupErr error) (func() error, error) {
+	// Normalize each operation before joining so setup remains the primary
+	// reported failure while every cleanup cause is retained.
+	setupErr = dcgmErrorFromError(setupErr)
+	if cleanupErr := watches.close(); cleanupErr != nil {
+		return watches.close, errors.Join(setupErr, cleanupErr)
+	}
+	return nil, setupErr
 }
 
 func (library *nativeLibrary) ReadGPUMetrics(

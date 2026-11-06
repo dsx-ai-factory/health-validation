@@ -8,13 +8,16 @@ import "github.com/dsx-ai-factory/health-validation/collect/observation"
 // nativeAPI keeps platform-specific DCGM calls behind a small internal
 // interface. The unsupported implementation returns a collection error.
 type nativeAPI interface {
+	// MetricWatchGroups validates signals and groups fields before Init. A
+	// successful result is non-nil; an empty result supports inventory-only use.
+	MetricWatchGroups([]string) ([]metricWatchGroup, error)
 	Init() (func(), error)
 	AllGPUIndices() ([]uint, error)
 	ReadGPUUUIDs([]uint) (map[uint]GPUIdentityEntry, error)
 	ReadGPUInventory([]uint) (map[uint]*observation.GPUInventoryEntry, error)
 	// WatchMetrics returns cleanup for every resource it still owns, including
 	// after failed setup. Cleanup retries only unfinished steps.
-	WatchMetrics([]string) (func() error, error)
+	WatchMetrics([]metricWatchGroup) (func() error, error)
 	ReadGPUMetrics(uint, []string) (map[string]FieldValue, error)
 }
 

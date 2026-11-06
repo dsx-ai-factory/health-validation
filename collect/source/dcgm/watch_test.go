@@ -51,3 +51,41 @@ func TestMetricWatchCleanupRetriesUnfinishedSteps(t *testing.T) {
 		})
 	}
 }
+
+func TestMetricWatchesCleanupRetainsOnlyUnfinishedGroups(t *testing.T) {
+	unwatchCalls, destroyCalls := [3]int{}, [3]int{}
+	watches := make(metricWatches, 0, 3)
+	for index := range 3 {
+		watches = append(watches, &metricWatch{
+			unwatch: func() error {
+				unwatchCalls[index]++
+				if index == 0 && unwatchCalls[index] == 1 {
+					return errors.New("unwatch failed")
+				}
+				return nil
+			},
+			destroy: func() error {
+				destroyCalls[index]++
+				if index == 1 && destroyCalls[index] == 1 {
+					return errors.New("destroy failed")
+				}
+				return nil
+			},
+		})
+	}
+	if err := watches.close(); err == nil {
+		t.Fatal("cleanup failures were hidden")
+	}
+	if unwatchCalls != [3]int{1, 1, 1} || destroyCalls != [3]int{0, 1, 1} {
+		t.Fatalf("first cleanup: unwatch=%v destroy=%v", unwatchCalls, destroyCalls)
+	}
+	if err := watches.close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := watches.close(); err != nil {
+		t.Fatal(err)
+	}
+	if unwatchCalls != [3]int{2, 1, 1} || destroyCalls != [3]int{1, 2, 1} {
+		t.Fatalf("retry repeated finished work: unwatch=%v destroy=%v", unwatchCalls, destroyCalls)
+	}
+}

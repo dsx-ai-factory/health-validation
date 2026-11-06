@@ -3,6 +3,8 @@
 
 package dcgm
 
+import "errors"
+
 // metricWatch retains each owned cleanup step until it succeeds. Callers
 // serialize cleanup with native operations through the source's native gate.
 type metricWatch struct {
@@ -24,4 +26,16 @@ func (watch *metricWatch) close() error {
 		watch.destroy = nil
 	}
 	return nil
+}
+
+type metricWatches []*metricWatch
+
+func (watches metricWatches) close() error {
+	var failures []error
+	for _, watch := range watches {
+		if err := watch.close(); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
 }

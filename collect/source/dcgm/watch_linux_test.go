@@ -14,7 +14,7 @@ import (
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
 )
 
-func TestStartMetricWatchOwnership(t *testing.T) {
+func TestStartMetricWatchesOwnership(t *testing.T) {
 	failure := errors.New("native operation failed")
 	for _, test := range []struct {
 		name        string
@@ -61,16 +61,19 @@ func TestStartMetricWatchOwnership(t *testing.T) {
 				}
 				return nil
 			}
-			cleanup, err := startMetricWatch("test-watch-fields", []godcgm.Short{fieldsBySignal[signalPowerDraw].fieldID}, metricWatchOperations{
+			cleanup, err := startMetricWatches("test-watch", []metricWatchGroup{{fieldIDs: []uint16{uint16(fieldsBySignal[signalPowerDraw].fieldID)}}}, metricWatchOperations{
 				create: func(name string, fields []godcgm.Short) (godcgm.FieldHandle, error) {
 					if name != "test-watch-fields" || !slices.Equal(fields, []godcgm.Short{fieldsBySignal[signalPowerDraw].fieldID}) {
 						t.Fatalf("created unexpected group %q with fields %v", name, fields)
 					}
 					return ownedFieldGroup, step("create")
 				},
-				watch: func(fieldGroup godcgm.FieldHandle, group godcgm.GroupHandle) error {
+				watchEx: func(fieldGroup godcgm.FieldHandle, group godcgm.GroupHandle, interval int64, maxAge float64, maxSamples int32) error {
 					if fieldGroup != ownedFieldGroup || group != godcgm.GroupAllGPUs() {
 						t.Fatal("watch does not use the owned field group and special all-GPU group")
+					}
+					if interval != 30_000_000 || maxAge != 0 || maxSamples != 1 {
+						t.Fatalf("default watch settings = (%d, %v, %d), want (30000000, 0, 1)", interval, maxAge, maxSamples)
 					}
 					_ = step("watch")
 					if test.watchFails {
@@ -93,7 +96,7 @@ func TestStartMetricWatchOwnership(t *testing.T) {
 			})
 			wantError := test.watchFails || test.failingStep == "create"
 			if (err != nil) != wantError || (cleanup != nil) != test.wantCleanup {
-				t.Fatalf("startMetricWatch() cleanup present = %v, error = %v", cleanup != nil, err)
+				t.Fatalf("startMetricWatches() cleanup present = %v, error = %v", cleanup != nil, err)
 			}
 			if !slices.Equal(operations, test.wantSetup) {
 				t.Fatalf("setup operations = %v, want %v", operations, test.wantSetup)
@@ -113,7 +116,7 @@ func TestStartMetricWatchOwnership(t *testing.T) {
 	}
 }
 
-func TestStartMetricWatchUnwatchRequiresConfirmedAbsence(t *testing.T) {
+func TestStartMetricWatchesUnwatchRequiresConfirmedAbsence(t *testing.T) {
 	for _, test := range []struct {
 		failure error
 		name    string
@@ -126,9 +129,9 @@ func TestStartMetricWatchUnwatchRequiresConfirmedAbsence(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			destroys := 0
-			cleanup, err := startMetricWatch("test-watch-fields", []godcgm.Short{fieldsBySignal[signalPowerDraw].fieldID}, metricWatchOperations{
+			cleanup, err := startMetricWatches("test-watch", []metricWatchGroup{{fieldIDs: []uint16{uint16(fieldsBySignal[signalPowerDraw].fieldID)}}}, metricWatchOperations{
 				create:  func(string, []godcgm.Short) (godcgm.FieldHandle, error) { return godcgm.FieldHandle{}, nil },
-				watch:   func(godcgm.FieldHandle, godcgm.GroupHandle) error { return nil },
+				watchEx: func(godcgm.FieldHandle, godcgm.GroupHandle, int64, float64, int32) error { return nil },
 				unwatch: func(godcgm.FieldHandle, godcgm.GroupHandle) error { return test.failure },
 				destroy: func(godcgm.FieldHandle) error { destroys++; return nil },
 			})

@@ -48,6 +48,13 @@ type fakeNative struct {
 	watchCleanedAfterClient atomic.Bool
 }
 
+func (*fakeNative) MetricWatchGroups(signalIDs []string) ([]metricWatchGroup, error) {
+	if len(signalIDs) == 0 {
+		return []metricWatchGroup{}, nil
+	}
+	return []metricWatchGroup{{fieldIDs: []uint16{1}}}, nil
+}
+
 func (native *fakeNative) Init() (func(), error) {
 	native.initCalls.Add(1)
 	if native.initErr != nil {
@@ -112,7 +119,7 @@ func (native *fakeNative) ReadGPUInventory(gpuIndices []uint) (map[uint]*observa
 	return gpus, nil
 }
 
-func (native *fakeNative) WatchMetrics([]string) (func() error, error) {
+func (native *fakeNative) WatchMetrics([]metricWatchGroup) (func() error, error) {
 	native.watchCalls.Add(1)
 	return func() error {
 		native.watchCleanupCalls.Add(1)

@@ -19,7 +19,7 @@ type cleanupNative struct {
 	fakeNative
 }
 
-func (native *cleanupNative) WatchMetrics([]string) (func() error, error) {
+func (native *cleanupNative) WatchMetrics([]metricWatchGroup) (func() error, error) {
 	native.watchCalls.Add(1)
 	return func() error {
 		native.watchCleanupCalls.Add(1)
@@ -174,12 +174,12 @@ func (native *blockingSetupNative) Init() (func(), error) {
 	return native.fakeNative.Init()
 }
 
-func (native *blockingSetupNative) WatchMetrics(signals []string) (func() error, error) {
+func (native *blockingSetupNative) WatchMetrics(groups []metricWatchGroup) (func() error, error) {
 	if native.blockWatch {
 		close(native.started)
 		<-native.release
 	}
-	return native.fakeNative.WatchMetrics(signals)
+	return native.fakeNative.WatchMetrics(groups)
 }
 
 func TestCloseDuringSetupPreventsMetricRead(t *testing.T) {
