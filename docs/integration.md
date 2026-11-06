@@ -90,8 +90,9 @@ docker run --rm \
 
 - `--gpus all -e NVIDIA_DRIVER_CAPABILITIES=utility` gives NVML the GPUs and the
   `libnvidia-ml.so.1` it needs — required for `gpu_count` and `nvlink_*`. Keep
-  it `all` (a scoped subset makes `gpu_count` fire CRITICAL on visibility, not
-  health).
+  it `all`: a scoped subset makes `gpu_count` fire CRITICAL on visibility, not
+  health, and the hostengine, which sees every GPU on the node, would report
+  GPUs that NVML in the container cannot.
 - `--network host`, the `libdcgm.so.4` mounts, and `LD_LIBRARY_PATH` let the
   CLI load the DCGM client and reach the host's DCGM hostengine on
   `localhost` — required for `gpu_average_power_draw`, `gpu_power_limit`,
@@ -509,6 +510,24 @@ matter for integration: publishing never changes the verdict or the exit code �
 a dead collector is a logged warning, not a failed health check — and the JSON
 verdict is written to stdout before the push, so your capture step in the
 pipeline above is unaffected by collector latency.
+
+### Warnings on stderr
+
+`run` and `collect` log one warning to stderr for each distinct source,
+operation, and error category that times out or fails as a whole, such as an
+unreachable hostengine, an unreadable journal, or unreadable CPU sysfs. One
+source can log more than one line when different operations fail:
+
+```
+level=WARN msg="collect source failed; degrading to errored observations" sensor=gpu.dcgm source=dcgm operation=... category=... error=...
+```
+
+A timeout logs `collect source timed out; degrading to errored observations`.
+`sensor` is the collect sensor and `source` the library or reader that failed.
+The verdict carries the same failure on every check that source feeds, so the
+warning is for diagnosis; alert on the verdict. Errors on individual GPUs are
+not logged, even when one error repeats on every GPU, such as a failed DCGM
+field watch; only the verdict reports them.
 
 #### Publishing metrics from a container
 

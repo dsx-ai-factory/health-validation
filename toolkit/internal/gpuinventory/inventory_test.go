@@ -6,6 +6,7 @@ package gpuinventory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -171,6 +172,32 @@ func TestOpenAndReadAreBoundedByCycleTimeout(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if o := measureCount(t, inv); o.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryTimeout {
 				t.Fatalf("observation=%v, want a timeout", o)
+			}
+		})
+	}
+}
+
+func TestCauseKeepsTheFailureError(t *testing.T) {
+	busy := fmt.Errorf("%w: test", ErrSourceBusy)
+	for name, tc := range map[string]struct {
+		inv  *Inventory
+		busy bool
+	}{
+		"open":    {inv: New(func() (Reader, error) { return nil, busy }), busy: true},
+		"read":    {inv: New(opened(&fakeReader{err: busy})), busy: true},
+		"success": {inv: New(opened(&fakeReader{snapshot: inventory(gpuEntry(0, "NVIDIA GB200"))}))},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cycle := testCycle(t, "cycle")
+			snapshot := tc.inv.Snapshot(context.Background(), cycle)
+			if got := errors.Is(tc.inv.Cause(cycle), ErrSourceBusy); got != tc.busy {
+				t.Fatalf("Cause = %v, busy = %v, want %v", tc.inv.Cause(cycle), got, tc.busy)
+			}
+			if tc.busy && snapshot.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryUnavailable {
+				t.Fatalf("snapshot = %v, want an UNAVAILABLE collection error", snapshot)
+			}
+			if err := tc.inv.Cause(testCycle(t, "other")); err != nil {
+				t.Fatalf("Cause for another cycle = %v, want nil", err)
 			}
 		})
 	}

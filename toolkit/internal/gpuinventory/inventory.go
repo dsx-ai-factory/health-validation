@@ -25,6 +25,11 @@ var GPUCount = collect.NewSignal("node.gpu.count", "1")
 // SensorID identifies the collect sensor that reports [GPUCount].
 const SensorID = "node.gpu_inventory"
 
+// ErrSourceBusy marks a source that refused a call because an earlier call in
+// this process is still inside the native library. It does not show the node
+// is faulty: the read can succeed once that call returns.
+var ErrSourceBusy = errors.New("GPU inventory source is busy with an earlier call")
+
 // handleOperation is the operation an NVML inventory reports for a slot
 // whose device handle could not be retrieved.
 const handleOperation = "DeviceGetHandleByIndex"
@@ -46,6 +51,7 @@ type Reader interface {
 type Inventory struct {
 	open     func() (Reader, error)
 	reader   Reader
+	cause    error
 	cycle    *collect.Cycle
 	snapshot *observation.GPUInventorySnapshot
 	mu       sync.Mutex
@@ -66,23 +72,35 @@ func (i *Inventory) Snapshot(ctx context.Context, cycle *collect.Cycle) *observa
 	if i.cycle == cycle && i.snapshot != nil {
 		return i.snapshot
 	}
-	i.cycle, i.snapshot = cycle, i.read(ctx, cycle)
+	i.cycle = cycle
+	i.snapshot, i.cause = i.read(ctx, cycle)
 	return i.snapshot
 }
 
-func (i *Inventory) read(ctx context.Context, cycle *collect.Cycle) *observation.GPUInventorySnapshot {
+// Cause returns the error behind cycle's failed snapshot, or nil when that
+// snapshot succeeded or belongs to another cycle.
+func (i *Inventory) Cause(cycle *collect.Cycle) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.cycle != cycle {
+		return nil
+	}
+	return i.cause
+}
+
+func (i *Inventory) read(ctx context.Context, cycle *collect.Cycle) (*observation.GPUInventorySnapshot, error) {
 	at := timestamppb.Now()
 	if cycle != nil {
 		at = timestamppb.New(cycle.StartedAt())
 	}
-	failed := func(operation string, err error) *observation.GPUInventorySnapshot {
+	failed := func(operation string, err error) (*observation.GPUInventorySnapshot, error) {
 		category := observation.CollectionErrorCategoryUnavailable
 		if errors.Is(err, collect.ErrCollectionTimeout) {
 			category = observation.CollectionErrorCategoryTimeout
 		}
 		return &observation.GPUInventorySnapshot{Source: SensorID, CollectedAt: at, Outcome: &observation.GPUInventorySnapshot_CollectionError{
 			CollectionError: &observation.CollectionError{Source: SensorID, Operation: operation, Category: category, Detail: err.Error()},
-		}}
+		}}, err
 	}
 	if i.reader == nil {
 		reader, err := run(ctx, cycle, SensorID, func(context.Context) (Reader, error) {
@@ -111,7 +129,7 @@ func (i *Inventory) read(ctx context.Context, cycle *collect.Cycle) *observation
 	if snapshot.GetSource() == "" {
 		snapshot.Source = i.reader.ID()
 	}
-	return snapshot
+	return snapshot, nil
 }
 
 // run bounds call by cycle's timeout, so a hung library load or native read

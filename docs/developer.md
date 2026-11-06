@@ -52,7 +52,7 @@ The repo is a single Go module with one `go.mod` and one version. Its packages
 are grouped by directory:
 
 - **`catalog/`** — check catalog and CEL evaluation engine (no external deps)
-- **`toolkit/`** — NVML backend, sensors, and the `health-validation` CLI
+- **`toolkit/`** — sensors, collect adapters, the NVML backend, and the `health-validation` CLI
 - **`collect/`** — telemetry collection emitting protobuf observations
 - **`agentkit/`** — gRPC/HTTP server exposing `collect`
 
@@ -141,8 +141,8 @@ a GitHub URL for those.
 
 macOS tests do not exercise files guarded by `//go:build linux`. Use a Linux VM
 or container to validate those paths with the CI configuration. GPU hardware
-collection also requires the NVIDIA driver and NVML; the stock CLI's hardware
-collection is unavailable on macOS.
+collection also requires the NVIDIA driver, NVML, and a DCGM hostengine; the
+stock CLI's hardware collection is unavailable on macOS.
 
 ### Build a Linux image from macOS
 
