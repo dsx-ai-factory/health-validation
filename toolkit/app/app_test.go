@@ -302,15 +302,6 @@ func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
 	}
 }
 
-// echoIBBackend yields a [driverEchoMeasurement] through the opt-in
-// InfiniBand sensor.
-type echoIBBackend struct{}
-
-func (echoIBBackend) MeasureIB(context.Context) ([]health.Measurement, error) {
-	return []health.Measurement{driverEchoMeasurement{}}, nil
-}
-func (echoIBBackend) Errored(error) []health.Measurement { return nil }
-
 // TestRunCommandPassesDriverVersion confirms runCommand hands the version
 // the GPU inventory recorded to the catalog it evaluates with.
 func TestRunCommandPassesDriverVersion(t *testing.T) {
@@ -318,9 +309,8 @@ func TestRunCommandPassesDriverVersion(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}, driver: echoedDriverVersion}
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	withCleanXid(withCPU(a, healthyCPU()))
-	// The opt-in InfiniBand sensor accepts any measurement, so it carries
-	// the echo into an otherwise stock run.
-	a.WithIBBackend(echoIBBackend{})
+	// A caller adapter carries the echo into an otherwise stock run.
+	withShadow(a, shadowAdapter{name: "driver-echo", category: health.Node, ms: []health.Measurement{driverEchoMeasurement{}}})
 
 	var stdout, stderr bytes.Buffer
 	a.runCommand([]string{"--node-id", "n1"}, &stdout, &stderr)
@@ -435,17 +425,6 @@ func (s gpuSpySensor) Measure(_ context.Context, opts ...collect.OpOption) (*obs
 	return batch, nil
 }
 
-type ibSpyBackend struct {
-	called *bool
-}
-
-func (b ibSpyBackend) MeasureIB(context.Context) ([]health.Measurement, error) {
-	*b.called = true
-	return nil, nil
-}
-
-func (ibSpyBackend) Errored(error) []health.Measurement { return nil }
-
 // fakeHost stands in for the platform host backend so these tests run anywhere
 // (no NVML, no cgo). Installed by overwriting App.host.
 //
@@ -549,7 +528,6 @@ func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	withCleanXid(withCPU(a, healthyCPU()))
-	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitOK {
@@ -650,7 +628,6 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	withCleanXid(withCPU(a, healthyCPU()))
-	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand([]string{"--node-id", "  cli-node  "}, &stdout, &stderr); code != exitOK {
@@ -674,7 +651,6 @@ func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	withCleanXid(withCPU(a, healthyCPU()))
-	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
 	var stdout, stderr bytes.Buffer
 	if code := a.Run([]string{"run", "--node-id", "cli-node"}, &stdout, &stderr); code != exitOK {
@@ -728,7 +704,6 @@ func TestWithCollectReplacesSysfsCPU(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanXid(withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 8, online: 8, numa: 34}))
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithIBBackend(ibSpyBackend{called: new(bool)})
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitOK {
@@ -923,25 +898,6 @@ func TestWriteVerdictNodeID(t *testing.T) {
 			t.Errorf("stderr = %q, want required node ID error", stderr.String())
 		}
 	})
-}
-
-// The IB sensor is opt-in: supplied a backend via WithIBBackend, it collects
-// with no config needed. (Without a backend it does not run at all.)
-func TestIBSensorCollectsWithBackend(t *testing.T) {
-	var ibCalled bool
-	a := New().WithNodeID(testNodeID)
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	withCleanXid(withCPU(a, healthyCPU()))
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithIBBackend(ibSpyBackend{called: &ibCalled})
-
-	var stdout, stderr bytes.Buffer
-	if code := a.runCommand(nil, &stdout, &stderr); code == exitError {
-		t.Fatalf("runCommand exit = %d; stderr = %q", code, stderr.String())
-	}
-	if !ibCalled {
-		t.Fatal("InfiniBand sensor did not collect")
-	}
 }
 
 // erroringHost is a hostBackend whose architecture discovery fails while its

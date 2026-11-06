@@ -27,8 +27,7 @@
 // sensors (DCGM and NVML, the host's NVML GPU inventory, sysfs, and the
 // journal); [App.WithCollect] replaces a built-in source by claiming its
 // signals. [App.WithRDMALinkFlapBackend] still swaps in a legacy toolkit
-// sensor, and the generic InfiniBand sensor is opt-in.
-// Custom checks register alongside the built-ins as a pure
+// sensor. Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
 // honored verbatim. Registration fails only on the catalog's own validation
 // or a duplicate ID.
@@ -107,11 +106,9 @@ type App struct {
 	host        hostBackend
 	hostname    func() (string, error)
 	openJournal func() (io.WriteCloser, error)
-	// rdmaLinkFlap and ib are legacy backend overrides set by the matching
-	// With*Backend setter. A nil rdmaLinkFlap uses the built-in collect sensor.
-	// The generic ib backend has no default and is opt-in.
+	// rdmaLinkFlap is the legacy link-flap override set by
+	// WithRDMALinkFlapBackend; nil uses the built-in collect sensor.
 	rdmaLinkFlap toolkit.RDMALinkFlapBackend
-	ib           toolkit.IBBackend
 	// prog is the program name used in usage and error-message prefixes. It
 	// defaults to filepath.Base(os.Args[0]); see WithProgramName.
 	prog            string
@@ -154,17 +151,6 @@ func (a *App) WithChecks(defs ...health.CheckDefinition) *App {
 // to [App.WithCollect] instead.
 func (a *App) WithRDMALinkFlapBackend(b toolkit.RDMALinkFlapBackend) *App {
 	a.rdmaLinkFlap = b
-	return a
-}
-
-// WithIBBackend sets the generic InfiniBand sensor's backend. It is opt-in: the
-// catalog's only built-in InfiniBand check (rdma_linkflap_fatal) is fed by the
-// link-flap sensor, not this one. Supply a backend here to contribute
-// additional InfiniBand measurements — the backend owns device enumeration, the
-// measurement types it emits, and (with the checks a consumer adds via
-// WithChecks) those extra checks.
-func (a *App) WithIBBackend(b toolkit.IBBackend) *App {
-	a.ib = b
 	return a
 }
 
@@ -398,13 +384,6 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 	if a.rdmaLinkFlap != nil {
 		sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(a.rdmaLinkFlap))
 	}
-	// The generic InfiniBand sensor is opt-in: the catalog's built-in
-	// InfiniBand check (rdma_linkflap_fatal) is fed by the link-flap sensor,
-	// so this one runs only when a consumer supplies a backend (and its own
-	// checks) via WithIBBackend.
-	if a.ib != nil {
-		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
-	}
 	builtinSources, builtinAdapters := a.builtinCollect(cycle)
 	if xidJournal != nil {
 		for i, source := range builtinSources {
@@ -559,7 +538,6 @@ func xidJournalFromFlags(fs *flag.FlagSet) (collect.Sensor, error) {
 }
 
 var categoryBySensor = map[string]health.Category{
-	"infiniband":    health.InfiniBand,
 	"rdma_linkflap": health.InfiniBand,
 }
 

@@ -9,8 +9,6 @@ go_library(
     srcs = [
         "collect.go",
         "doc.go",
-        "ib_backend.go",
-        "ib_sensor.go",
         "journal.go",
         "rdma_linkflap_backend.go",
         "rdma_linkflap_parse.go",

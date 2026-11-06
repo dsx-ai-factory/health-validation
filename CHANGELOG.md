@@ -141,7 +141,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `XidBackend`, `XidSensor`, `Journalctl`, `MockXid`, `LazyGPUBackend`,
   `MultiBackend`, and the `toolkit/nvml` package. So are `App.WithGPUBackend`,
   `WithNodeBackend`, `WithCPUBackend`, `WithXidBackend`, `WithNVLinkBackend`,
-  and `App.NVMLBackend` with its probe API. To replace a built-in source, pass
+  and `App.NVMLBackend` with its probe API, and the opt-in generic InfiniBand
+  sensor (`IBBackend`, `IBSensor`, `NewIBSensor`, `App.WithIBBackend`).
+  For your own InfiniBand measurements, register a collect sensor and adapter
+  with `WithCollect` and `WithCollectAdapters`. To replace a built-in source, pass
   a collect sensor and the signal IDs it supplies to `WithCollect`; for per-GPU
   signals of your own, register a `GPUAdapter`. To test without hardware, pass
   any `toolkit.Sensor` to `toolkit.Collect`, or claim signals from an
