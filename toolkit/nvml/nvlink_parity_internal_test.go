@@ -310,8 +310,9 @@ func legacyNVLink(t *testing.T, gpus []*parityGPU, failedSlots int, block chan s
 }
 
 // collectNVLink measures the same GPUs through the collect NVML sensor, the
-// DCGM Fabric Manager status, the bridge, and the built-in NVLink adapter. Like the
-// app, it requests only the signals the runnable checks on arch require.
+// DCGM Fabric Manager status, the bridge, and the built-in NVLink adapter.
+// Like the app, it requests only the signals the runnable checks on arch
+// require.
 func collectNVLink(t *testing.T, arch string, gpus []*parityGPU, failedSlots int, timeout time.Duration, block chan struct{}) []health.Measurement {
 	t.Helper()
 	inst := &parityInstance{block: block, devices: make(map[string]device.Device)}
@@ -514,7 +515,7 @@ func TestNVLinkCollectParity(t *testing.T) {
 		{name: "disabled link past the reported count", shape: gb200, differs: []string{"nvlink_active"}, mutate: func(g []*parityGPU) {
 			g[0].links, g[0].answering, g[0].inactive = 17, 18, map[int]bool{17: true}
 		}},
-		// Legacy reads health value 3 as false; DCGM reports a parse error.
+		// Legacy reads health value 3 as false; the collect NVML sensor reports a parse error.
 		{name: "unknown fabric health value", shape: gb200, differs: []string{"nvlink_fabric_health"}, mutate: func(g []*parityGPU) {
 			g[0].fabric.HealthMask = 3 | 2<<2 | 2<<4 | 2<<6
 		}},
