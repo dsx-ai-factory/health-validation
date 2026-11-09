@@ -17,14 +17,16 @@ import (
 // expressions and must match the RequiredSignals declared in checks
 // that consume Xid measurements.
 const (
-	SignalGPUID            = "gpu_id"
-	SignalPCIAddress       = "pci_address"
-	SignalEvents           = "events"
-	SignalXidCounts        = "xid_counts"
-	SignalFatalXidCounts   = "fatal_xid_counts"
-	SignalSubXidCodeCounts = "sub_xid_code_counts"
-	SignalSince            = "since"
-	SignalEventCount       = "event_count"
+	SignalGPUID                  = "gpu_id"
+	SignalPCIAddress             = "pci_address"
+	SignalEvents                 = "events"
+	SignalXidCounts              = "xid_counts"
+	SignalFatalXidCounts         = "fatal_xid_counts"
+	SignalSubXidCodeCounts       = "sub_xid_code_counts"
+	SignalUnknownXidCounts       = "unknown_xid_counts"
+	SignalInformationalXidCounts = "informational_xid_counts"
+	SignalSince                  = "since"
+	SignalEventCount             = "event_count"
 )
 
 var measurementSignals = []string{
@@ -34,6 +36,8 @@ var measurementSignals = []string{
 	SignalXidCounts,
 	SignalFatalXidCounts,
 	SignalSubXidCodeCounts,
+	SignalUnknownXidCounts,
+	SignalInformationalXidCounts,
 	SignalSince,
 	SignalEventCount,
 }

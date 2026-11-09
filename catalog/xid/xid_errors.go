@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
@@ -291,23 +292,39 @@ var warningClasses = []warningClass{
 	},
 }
 
+// infoXids lists the codes NVIDIA's public Xid catalog
+// (https://docs.nvidia.com/deploy/xid-errors/latest/analyzing-xid-catalog.html)
+// marks Unused, gives the IGNORE resolution, or gives no resolution. They
+// have no check of their own, and are known, not unknown. A code the catalog
+// later gives an action stays informational until it is removed from here.
+var infoXids = []int64{
+	1, 2, 3, 4, 5, 6, 7, 9, 10, 12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+	26, 27, 28, 29, 30, 33, 34, 35, 36, 37, 38, 42, 43, 44, 47, 49, 50, 51, 52,
+	53, 55, 56, 57, 58, 59, 61, 63, 65, 66, 67, 73, 81, 87, 90, 91, 92, 93,
+	106, 107, 108, 111, 112, 113, 114, 115, 116, 117, 118, 121, 122, 123, 124,
+	125, 137, 138, 141, 152, 153, 157, 160, 161,
+	162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172,
+}
+
 // Checks returns every Xid check shipped with the catalog: one CRITICAL
 // check per critical Xid code, one Fatal/Nonfatal check per NVLink5
 // (144-150) code, one additional per-SubXidCode check for each fault
 // subtype NVIDIA's decode table differentiates that way (see
 // [nvlink5SubXidCodeCheck]), one architecture-scoped check per warning Xid,
-// and an INFO check for Xid 154 (a recovery-action notice that only annotates
-// another Xid).
+// an INFO check for Xid 154 (a recovery-action notice that only annotates
+// another Xid), [informationalCheck], which reports the codes NVIDIA gives no
+// resolution, and [unknownCheck], which reports codes no other check covers.
 //
 // Every check consumes an [XidMeasurement] produced by the journal Xid
 // sensor and tests its xid_counts map. Codes whose immediate action is
-// IGNORE/empty, and Unused codes, are not represented and never fire.
+// IGNORE/empty, and Unused codes, have no check of their own and are
+// reported together by [informationalCheck].
 func Checks() []health.CheckDefinition {
 	warningCount := 0
 	for _, class := range warningClasses {
 		warningCount += len(class.codes)
 	}
-	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+2)
+	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+4)
 	for _, c := range criticalXids {
 		checks = append(checks, criticalCheck(c))
 	}
@@ -324,6 +341,8 @@ func Checks() []health.CheckDefinition {
 	}
 	checks = append(checks, xid45Check())
 	checks = append(checks, xid154Check())
+	checks = append(checks, informationalCheck())
+	checks = append(checks, unknownCheck())
 	// Every check reports its own events, whatever signals its builder set.
 	for i := range checks {
 		if !slices.Contains(checks[i].RequiredSignals, SignalEvents) {
@@ -554,4 +573,101 @@ func codeCheckID(code int64) string { return fmt.Sprintf("gpu_xid_%d", code) }
 // such as gpu_xid_149_4 for "149.4".
 func subXidCodeCheckID(subXidCode string) string {
 	return "gpu_xid_" + strings.ToLower(strings.Replace(subXidCode, ".", "_", 1))
+}
+
+const (
+	// unknownCheckID is the check that reports Xid codes no other check covers.
+	unknownCheckID = "gpu_xid_unknown"
+	// informationalCheckID is the check that reports the infoXids no other check covers.
+	informationalCheckID = "gpu_xid_informational"
+)
+
+// codeSet is a set of Xid codes.
+type codeSet map[int64]bool
+
+// infoSet is infoXids as a set.
+var infoSet = func() codeSet {
+	set := codeSet{}
+	for _, code := range infoXids {
+		set[code] = true
+	}
+	return set
+}()
+
+// builtinCovered is the codes some check in [checkScopes] reports on. A
+// sub-code check adds nothing, because its code has a check of its own.
+var builtinCovered = sync.OnceValue(func() codeSet {
+	covered := codeSet{}
+	for _, s := range checkScopes {
+		if s.sub == "" {
+			covered[s.code] = true
+		}
+	}
+	return covered
+})
+
+// isUnknown reports whether no check covers code and the catalog does not list it.
+func isUnknown(code int64) bool { return !builtinCovered()[code] && !infoSet[code] }
+
+// isInformational reports whether code is an infoXids code no check covers.
+func isInformational(code int64) bool { return infoSet[code] && !builtinCovered()[code] }
+
+// countsWhere is xid_counts restricted to the codes keep accepts. It is never
+// nil, like the other derived signals.
+func (m XidMeasurement) countsWhere(keep func(int64) bool) map[int64]int64 {
+	out := make(map[int64]int64)
+	for code, n := range m.XidCounts {
+		if keep(code) {
+			out[code] = n
+		}
+	}
+	return out
+}
+
+func (m XidMeasurement) unknownCounts() map[int64]int64 { return m.countsWhere(isUnknown) }
+
+func (m XidMeasurement) informationalCounts() map[int64]int64 {
+	return m.countsWhere(isInformational)
+}
+
+// catchAllCheck builds a check that fires when any code in the derived
+// signal reaches occurrences. It applies to every architecture, because the
+// codes it reports have no architecture to scope them to.
+func catchAllCheck(id, name, description, signal string, severity health.Severity, message string, action health.RecommendedAction) health.CheckDefinition {
+	def := baseCheck(id, name, description, action)
+	def.RequiredSignals = []string{SignalGPUID, SignalPCIAddress, signal}
+	def.Architectures = slices.Clone(allArchitectures)
+	def.Rules = []health.Rule{{
+		Expression: fmt.Sprintf("%[1]s.exists(c, %[1]s[c] >= occurrences)", signal),
+		Severity:   severity,
+		Message:    message,
+	}}
+	return def
+}
+
+// unknownCheck reports codes no other check covers.
+func unknownCheck() health.CheckDefinition {
+	return catchAllCheck(
+		unknownCheckID,
+		"GPU Xid not described by the catalog",
+		"Detects NVRM Xid codes in the system journal that no Health Validation check covers and that are not informational.",
+		SignalUnknownXidCounts,
+		health.Warning,
+		"A GPU Xid code that Health Validation has no check for was logged, so it recommends no action.",
+		health.Monitor,
+	)
+}
+
+// informationalCheck reports the infoXids no other check covers. NVIDIA's
+// catalog gives these codes no resolution, so the node takes no action.
+func informationalCheck() health.CheckDefinition {
+	return catchAllCheck(
+		informationalCheckID,
+		"GPU Xid with no resolution in the catalog",
+		"Detects NVRM Xid codes in the system journal that the NVIDIA Xid catalog marks Unused, IGNORE or gives no resolution, and that no Health Validation check covers.",
+		SignalInformationalXidCounts,
+		health.Info,
+		"A GPU Xid code that NVIDIA's Xid catalog gives no resolution was logged. No action is needed. The driver message is in events.",
+		health.NoAction,
+	)
 }
