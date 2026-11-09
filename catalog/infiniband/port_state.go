@@ -20,6 +20,12 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // disabling the check. An exclusion list fails safe: a misspelled entry
 // checks more ports than intended instead of letting a down port pass.
 //
+// It assumes the run sees the node's RDMA devices under /sys/class/infiniband:
+// a bare-metal host, a container or Kubernetes worker on host sysfs, or a VM
+// with HCAs or SR-IOV VFs passed through. A guest with no RDMA device assigned
+// sees none, which the sensor reports as a collection failure rather than a
+// clean host, so such deployments disable the check.
+//
 // It consumes a [PortMeasurement] from the sysfs port sensor and evaluates one
 // port per measurement. Both expected states are operator-overridable for
 // fleets that run a different steady state.
@@ -27,7 +33,7 @@ func PortState() health.CheckDefinition {
 	return health.CheckDefinition{
 		ID:          "ib_port_state",
 		Name:        "InfiniBand Port State",
-		Description: "Verifies every port (InfiniBand and RoCE alike, unless its link layer is excluded) is in the expected logical state (ACTIVE) and physical link state (LinkUp). Fails CRITICAL per port that is not.",
+		Description: "Verifies every port (InfiniBand and RoCE alike, unless its link layer is excluded) is in the expected logical state (ACTIVE) and physical link state (LinkUp). Fails CRITICAL per port that is not. Assumes the run sees the node's RDMA devices under /sys/class/infiniband; a guest with no RDMA device assigned sees none and reports UNKNOWN, so such deployments list the check in disabled_checks.",
 		Category:    health.InfiniBand,
 
 		RequiredSignals: []string{

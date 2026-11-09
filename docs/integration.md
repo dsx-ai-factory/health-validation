@@ -122,8 +122,11 @@ software RDMA devices are not checked. Selection reads each device's own
 `device/vendor` file, which physical and SR-IOV virtual functions have; mlx5
 scalable functions (auxiliary-bus subfunctions) carry no vendor file of their
 own and are not checked, though their parent function is. Finding no ports is
-a collection failure, not a skip, so a deployment without InfiniBand lists the
-check in `disabled_checks`.
+a collection failure, not a skip: the check assumes the run sees the node's
+RDMA devices, which holds on a bare-metal host, in a container or Kubernetes
+worker on host sysfs, and in a VM with HCAs or SR-IOV VFs passed through. A
+deployment without InfiniBand, or a tenant guest with no RDMA device assigned,
+lists the check in `disabled_checks`.
 
 ### Static binary (bare metal, Slurm)
 

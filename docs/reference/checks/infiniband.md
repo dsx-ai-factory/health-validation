@@ -8,7 +8,7 @@ InfiniBand covers InfiniBand network health: port state, error rates, and link i
 
 `ib_port_state`
 
-Verifies every port (InfiniBand and RoCE alike, unless its link layer is excluded) is in the expected logical state (ACTIVE) and physical link state (LinkUp). Fails CRITICAL per port that is not.
+Verifies every port (InfiniBand and RoCE alike, unless its link layer is excluded) is in the expected logical state (ACTIVE) and physical link state (LinkUp). Fails CRITICAL per port that is not. Assumes the run sees the node's RDMA devices under /sys/class/infiniband; a guest with no RDMA device assigned sees none and reports UNKNOWN, so such deployments list the check in disabled_checks.
 
 | Property | Value |
 |---|---|
