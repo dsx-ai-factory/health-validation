@@ -38,8 +38,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     longer fails `nvlink_active`: links past the count are not read.
   - An unknown fabric health value fails `nvlink_fabric_health` with
     `check_collection` instead of passing.
-  - A node with no GPUs fails every NVLink check with `check_collection`
-    instead of skipping it.
+  - Through the library, a node with no GPUs fails every NVLink check with
+    `check_collection` instead of skipping it. The CLI is unchanged: it stops
+    at `architecture_discovery` before running any check.
 
   `WithNVLinkBackend` still selects the legacy sensor and is deprecated in
   favor of `WithCollect`. Library callers migrating:
