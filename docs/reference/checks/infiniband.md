@@ -26,8 +26,8 @@ Verifies every port (InfiniBand and RoCE alike, unless its link layer is exclude
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
 | <nobr>`excluded_link_layers`</nobr> | [] |  | <nobr>`DEFAULT`</nobr> | Link layers, as sysfs names them ("InfiniBand", "Ethernet"), whose ports this check does not assess. Empty by default, so every port is checked. Add "Ethernet" for a fleet whose RoCE ports are uncabled, rather than disabling the check. A misspelled entry excludes nothing. |
-| <nobr>`expected_ib_physical_state`</nobr> | LinkUp | state | <nobr>`DEFAULT`</nobr> | Physical link state every port must report, as sysfs names it in phys_state. Override per fleet. |
-| <nobr>`expected_ib_state`</nobr> | ACTIVE | state | <nobr>`DEFAULT`</nobr> | Logical port state every port must report, as sysfs names it (the text after the colon in /sys/class/infiniband/&lt;dev>/ports/&lt;n>/state). Override per fleet. |
+| <nobr>`expected_ib_physical_state`</nobr> | LinkUp | state | <nobr>`DEFAULT`</nobr> | Physical link state every port must report, as sysfs names it in phys_state: Sleep, Polling, Disabled, PortConfigurationTraining, LinkUp, LinkErrorRecovery, or Phy Test. Case-sensitive; a misspelling fails every port rather than passing one. Override per fleet. |
+| <nobr>`expected_ib_state`</nobr> | ACTIVE | state | <nobr>`DEFAULT`</nobr> | Logical port state every port must report, as sysfs names it (the text after the colon in /sys/class/infiniband/&lt;dev>/ports/&lt;n>/state): DOWN, INIT, ARMED, ACTIVE, or ACTIVE_DEFER. Case-sensitive; a misspelling fails every port rather than passing one. Override per fleet. |
 
 **Rules**
 
