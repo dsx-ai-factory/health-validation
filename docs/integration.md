@@ -118,9 +118,12 @@ that nothing was logged in the window.
 `ib_port_state` reads `/sys/class/infiniband`, which the container sees
 through the host's sysfs without extra mounts, and examines every NVIDIA HCA
 there (PCI vendor `0x15b3`), not only `mlx*`-named ones; other vendors' and
-software RDMA devices are not checked. Finding no ports is a collection failure,
-not a skip, so a deployment without InfiniBand lists the check in
-`disabled_checks`.
+software RDMA devices are not checked. Selection reads each device's own
+`device/vendor` file, which physical and SR-IOV virtual functions have; mlx5
+scalable functions (auxiliary-bus subfunctions) carry no vendor file of their
+own and are not checked, though their parent function is. Finding no ports is
+a collection failure, not a skip, so a deployment without InfiniBand lists the
+check in `disabled_checks`.
 
 ### Static binary (bare metal, Slurm)
 

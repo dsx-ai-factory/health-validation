@@ -61,6 +61,11 @@ func WithExcludedDevices(names ...string) Option {
 // devices named mlx*, as GPUd does, which misses an NVIDIA HCA the host has
 // renamed (rdma0); a name filter wide enough to catch that also admits other
 // vendors' and software RDMA devices, which have no PCI function.
+//
+// Only the device's own vendor file is consulted. A physical or SR-IOV
+// virtual function has one; an mlx5 scalable function is an auxiliary-bus
+// device whose vendor is recorded on its parent, so it is skipped like a
+// software RDMA device. Its parent function is still selected.
 func WithVendors(ids ...string) Option {
 	return func(s *Source) {
 		s.vendors = make(map[string]bool, len(ids))
