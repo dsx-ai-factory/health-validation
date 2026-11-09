@@ -576,13 +576,13 @@ Detects NVRM Xid codes in the system journal that the NVIDIA Xid catalog marks U
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
-| Required signals | <nobr>`informational_xid_counts`</nobr>, <nobr>`events`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`informational_xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -604,13 +604,13 @@ Detects NVRM Xid codes in the system journal that no Health Validation check cov
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
-| Required signals | <nobr>`unknown_xid_counts`</nobr>, <nobr>`events`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`unknown_xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences within the collection window that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 **Rules**
 

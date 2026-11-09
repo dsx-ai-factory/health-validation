@@ -635,7 +635,7 @@ func (m XidMeasurement) informationalCounts() map[int64]int64 {
 // codes it reports have no architecture to scope them to.
 func catchAllCheck(id, name, description, signal string, severity health.Severity, message string, action health.RecommendedAction) health.CheckDefinition {
 	def := baseCheck(id, name, description, action)
-	def.RequiredSignals = []string{signal}
+	def.RequiredSignals = []string{SignalGPUID, SignalPCIAddress, signal}
 	def.Architectures = slices.Clone(allArchitectures)
 	def.Rules = []health.Rule{{
 		Expression: fmt.Sprintf("%[1]s.exists(c, %[1]s[c] >= occurrences)", signal),
