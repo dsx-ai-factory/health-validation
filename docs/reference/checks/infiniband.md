@@ -36,7 +36,7 @@ Verifies every port (InfiniBand and RoCE alike, unless its link layer is exclude
 - **CRITICAL** when `!(ib_link_layer in excluded_link_layers) && ib_physical_state != expected_ib_physical_state`
   - Message: Port $\{ib_device\}:$\{ib_port\} ($\{ib_link_layer\}): physical state $\{ib_physical_state\}, expected $\{expected_ib_physical_state\}.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`, then `restart_os` → `service_required`
 
 ## RDMA Link Flap (Fatal)
 

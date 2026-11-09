@@ -111,8 +111,8 @@ func TestPortState_Critical(t *testing.T) {
 			if !strings.Contains(joined, "mlx5_0:1") {
 				t.Errorf("messages = %q, want the port identified", joined)
 			}
-			if !v.RecommendedAction.Equal(health.GenericDrain()) {
-				t.Errorf("RecommendedAction = %v, want drain", v.RecommendedAction)
+			if want := health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired); !v.RecommendedAction.Equal(want) {
+				t.Errorf("RecommendedAction = %v, want %v: a GPU reset cannot bring a port up", v.RecommendedAction, want)
 			}
 		})
 	}

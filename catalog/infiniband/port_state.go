@@ -43,10 +43,13 @@ func PortState() health.CheckDefinition {
 		SchedulingCadence: health.Continuous,
 		Architectures:     []string{"GB200", "GB300", "B200"},
 
-		ConditionScope:    health.ClusterScope,
-		Provenance:        health.NVIDIA,
-		MaturityLevel:     health.Experimental,
-		RecommendedAction: health.GenericDrain(),
+		ConditionScope: health.ClusterScope,
+		Provenance:     health.NVIDIA,
+		MaturityLevel:  health.Experimental,
+		// A GPU reset cannot bring a NIC port up, so the generic sequence's
+		// first step is skipped; the link-flap check keeps GenericDrain from
+		// the downstream behavior #51 recorded.
+		RecommendedAction: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired),
 
 		Thresholds: map[string]health.ThresholdSpec{
 			"excluded_link_layers": {
