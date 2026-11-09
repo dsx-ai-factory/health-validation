@@ -57,7 +57,7 @@ func TestPortStateDefinition(t *testing.T) {
 	if got := def.RequiredSignals; !slices.Equal(got, want) {
 		t.Errorf("RequiredSignals = %v, want %v", got, want)
 	}
-	if got, want := def.Architectures, []string{"GB200", "GB300", "B200"}; !slices.Equal(got, want) {
+	if got, want := def.Architectures, []string{"GB200", "GB300"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
 	if len(def.Rules) != 2 {

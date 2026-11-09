@@ -53,7 +53,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   in `affected_components[].entities`. `excluded_link_layers` (empty by
   default) lets a fleet with uncabled RoCE ports leave Ethernet out; an
   exclusion list means a misspelled entry checks more ports, never fewer.
-  It runs on GB200, GB300, and B200, like `rdma_linkflap_fatal`.
+  It runs on GB200 and GB300; B200 waits on the architecture validation
+  process being settled in #255.
 - The stock CLI feeds that check from the `collect/sensors/infiniband` sysfs
   sensor through the collect bridge, requesting port signals only when a port
   check will run. It selects devices under `/sys/class/infiniband` by PCI

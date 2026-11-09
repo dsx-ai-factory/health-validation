@@ -41,7 +41,7 @@ func PortState() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300", "B200"},
+		Architectures:     []string{"GB200", "GB300"},
 
 		ConditionScope: health.ClusterScope,
 		Provenance:     health.NVIDIA,

@@ -18,7 +18,7 @@ Verifies every port (InfiniBand and RoCE alike, unless its link layer is exclude
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`experimental`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`ib_device`</nobr>, <nobr>`ib_port`</nobr>, <nobr>`ib_state`</nobr>, <nobr>`ib_physical_state`</nobr>, <nobr>`ib_link_layer`</nobr> |
 
 **Thresholds**
