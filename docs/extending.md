@@ -311,7 +311,9 @@ fails), and `WithCollectAdapters` registers the adapters that feed them:
 
 ```go
 func main() {
-	clock, err := app.GPUAdapter[mygpu.ClockMeasurement]("clock", mygpu.ClockSignals)
+	clock, err := app.GPUAdapter[mygpu.ClockMeasurement]("clock", map[string]string{
+		gpusignals.SMClock.ID(): "sm_clock_mhz",
+	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)

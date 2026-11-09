@@ -417,7 +417,7 @@ func (a *App) declareAdapters(adapters []CollectAdapter) ([]declaredAdapter, err
 			for _, signal := range caller.signals {
 				for _, field := range caller.feeds[signal] {
 					if fields[field] {
-						return nil, fmt.Errorf("collect adapter %q feeds %s field %q, which the built-in %q adapter also reports; give the field another name in your measurement type to read the same signal, or claim the signals with WithCollect to replace their built-in source", caller.name, caller.category, field, builtin.name)
+						return nil, fmt.Errorf("collect adapter %q feeds %s field %q, which the built-in %q adapter also reports; give the field another name in your measurement type to read the same signal, or drop the field and claim its signals with WithCollect so the built-in adapter reads them from your sensor", caller.name, caller.category, field, builtin.name)
 					}
 				}
 			}
