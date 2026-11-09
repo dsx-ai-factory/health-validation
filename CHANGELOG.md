@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Breaking Changes
 
+- Verdict `schema_version` is now `0.5`. Collection failures report `UNKNOWN`
+  instead of `CRITICAL`. Update alerts that match collection failures as
+  `CRITICAL` to handle `UNKNOWN`. `CRITICAL` now ranks above `UNKNOWN`, and the
+  Go `Critical` and `Unknown` constants swap numeric values. ([#267](https://github.com/dsx-ai-factory/health-validation/pull/267))
 - The `catalog`, `toolkit`, `collect`, and `agentkit` modules are merged into
   the single root module `github.com/dsx-ai-factory/health-validation`, with one
   `go.mod` and one version. Import paths are unchanged. Replace requires on
@@ -17,6 +21,29 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The public `catalog/version` package is removed. Read the version from a
   verdict's `catalog_version`. In unstamped builds, `health-validation version`
   now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`.
+- The CLI reads the GPU domain from DCGM, through a hostengine running on the
+  node, and from NVML only for compute processes. Nodes need `nv-hostengine`
+  and the DCGM 4 client library (`libdcgm.so.4`); without them the GPU power,
+  power-limit, pstate, and throttle checks report a collection failure. There
+  is no fallback to NVML. `WithGPUBackend` still selects the legacy NVML GPU
+  sensor.
+- The collect adapter name `gpu` is reserved for the built-in GPU adapter.
+  Drop a caller-registered adapter of that name: the built-in one reads the
+  canonical GPU signals from whichever registered sensor produces them.
+- `run` records every validated threshold override in the host's systemd
+  journal before collecting and exits `2` if it cannot. Container deployments
+  that pass overrides must mount `/run/systemd/journal/socket`; see
+  `docs/integration.md`. The new `Catalog.ConfiguredOverrides` returns the
+  overrides a catalog is configured with, resolved as evaluation would. ([#93](https://github.com/dsx-ai-factory/health-validation/pull/93))
+- `CheckDefinition.Validate`, and so `Catalog.Register` and `MustRegister`,
+  rejects a check that names no `RequiredSignals`, or a blank one. A check
+  with none was routed every measurement of its category and ran its rules on
+  zero values when collection failed. Name the signals the check's rules
+  read. A custom check
+  passed to the CLI through `App.WithChecks` without them now stops the run
+  with exit 2 once GPU architecture discovery succeeds, before the sensors
+  are collected. If discovery fails, `run` still reports the
+  `architecture_discovery` verdict and exits 1.
 
 ### Features
 
@@ -51,6 +78,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   is verified under `<device>/<port>`, and a failure before any port was
   enumerated is keyed by its source (`collect.infiniband` for the bridge
   adapter) via `SetEntityKey`.
+- The built-in `infiniband` collect adapter carries both the link-flap and
+  the port measurement types, so its name stays reserved when
+  `WithRDMALinkFlapBackend` keeps the legacy link-flap sensor; the adapter
+  then builds only ports (`collectadapters.InfiniBandPorts`), leaving the
+  link-flap measurement to that sensor.
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 

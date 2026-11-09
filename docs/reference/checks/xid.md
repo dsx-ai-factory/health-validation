@@ -4,7 +4,7 @@
 
 Xid covers NVRM Xid fault events logged by the NVIDIA driver to the kernel ring buffer. Xid measurements are collected separately from GPU telemetry and route only to Xid checks.
 
-## Single-rule checks reading `xid_counts`
+## Single-rule checks reading `gpu_id`, `pci_address`, `xid_counts`, `events`
 
 These 39 checks share the properties below and each has one rule.
 
@@ -17,13 +17,13 @@ These 39 checks share the properties below and each has one rule.
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 | Check | Name | Condition | Severity | Recommended action |
 |---|---|---|---|---|
@@ -67,7 +67,7 @@ These 39 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_154`</nobr> | GPU Xid 154 (GPU recovery action changed) | <nobr>`154 in xid_counts && xid_counts[154] >= occurrences`</nobr> | INFO | <nobr>`drain`</nobr>: <nobr>`xid_154`</nobr> |
 | <nobr>`gpu_xid_158`</nobr> | GPU Xid 158 (GPU fatal timeout) | <nobr>`158 in xid_counts && xid_counts[158] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 
-## Single-rule checks reading `xid_counts`
+## Single-rule checks reading `gpu_id`, `pci_address`, `xid_counts`, `events`
 
 These 14 checks share the properties below and each has one rule.
 
@@ -80,13 +80,13 @@ These 14 checks share the properties below and each has one rule.
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 | Check | Name | Condition | Severity | Recommended action |
 |---|---|---|---|---|
@@ -105,7 +105,7 @@ These 14 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_151`</nobr> | GPU Xid 151 (key rotation error) | <nobr>`151 in xid_counts && xid_counts[151] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`restart_os`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_156`</nobr> | GPU Xid 156 (resource retirement event) | <nobr>`156 in xid_counts && xid_counts[156] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 
-## Single-rule checks reading `xid_counts`
+## Single-rule checks reading `gpu_id`, `pci_address`, `xid_counts`, `events`
 
 These 13 checks share the properties below and each has one rule.
 
@@ -118,13 +118,13 @@ These 13 checks share the properties below and each has one rule.
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 | Check | Name | Condition | Severity | Recommended action |
 |---|---|---|---|---|
@@ -142,7 +142,7 @@ These 13 checks share the properties below and each has one rule.
 | <nobr>`gpu_xid_155`</nobr> | GPU Xid 155 (NVLink SW-defined error) | <nobr>`155 in xid_counts && xid_counts[155] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 | <nobr>`gpu_xid_159`</nobr> | GPU Xid 159 (CHI non-data error) | <nobr>`159 in xid_counts && xid_counts[159] >= occurrences`</nobr> | CRITICAL | <nobr>`drain`</nobr>: <nobr>`reset_gpu`</nobr> → <nobr>`service_required`</nobr> |
 
-## Single-rule checks reading `sub_xid_code_counts`
+## Single-rule checks reading `gpu_id`, `pci_address`, `sub_xid_code_counts`, `events`
 
 These 20 checks share the properties below and each has one rule.
 
@@ -155,13 +155,13 @@ These 20 checks share the properties below and each has one rule.
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`sub_xid_code_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`sub_xid_code_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 | Check | Name | Condition | Severity | Recommended action |
 |---|---|---|---|---|
@@ -190,7 +190,7 @@ These 20 checks share the properties below and each has one rule.
 
 `gpu_xid_45`
 
-Detects NVRM Xid 45 in the system journal since boot; informational when another Xid is present.
+Detects NVRM Xid 45 in the system journal within the collection window; informational when another Xid is present.
 
 | Property | Value |
 |---|---|
@@ -201,13 +201,13 @@ Detects NVRM Xid 45 in the system journal since boot; informational when another
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -221,7 +221,7 @@ Detects NVRM Xid 45 in the system journal since boot; informational when another
 
 `gpu_xid_54`
 
-Detects NVRM Xid 54 in the system journal since boot.
+Detects NVRM Xid 54 in the system journal within the collection window.
 
 | Property | Value |
 |---|---|
@@ -232,13 +232,13 @@ Detects NVRM Xid 54 in the system journal since boot.
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -251,7 +251,7 @@ Detects NVRM Xid 54 in the system journal since boot.
 
 `gpu_xid_80`
 
-Detects warning-class NVRM Xid 80 in the system journal since boot.
+Detects warning-class NVRM Xid 80 in the system journal within the collection window.
 
 | Property | Value |
 |---|---|
@@ -262,13 +262,13 @@ Detects warning-class NVRM Xid 80 in the system journal since boot.
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -281,7 +281,7 @@ Detects warning-class NVRM Xid 80 in the system journal since boot.
 
 `gpu_xid_136`
 
-Detects NVRM Xid 136 in the system journal since boot.
+Detects NVRM Xid 136 in the system journal within the collection window.
 
 | Property | Value |
 |---|---|
@@ -292,13 +292,13 @@ Detects NVRM Xid 136 in the system journal since boot.
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -311,7 +311,7 @@ Detects NVRM Xid 136 in the system journal since boot.
 
 `gpu_xid_142`
 
-Detects NVRM Xid 142 in the system journal since boot.
+Detects NVRM Xid 142 in the system journal within the collection window.
 
 | Property | Value |
 |---|---|
@@ -322,13 +322,13 @@ Detects NVRM Xid 142 in the system journal since boot.
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences since boot that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
 
 **Rules**
 
@@ -341,7 +341,7 @@ Detects NVRM Xid 142 in the system journal since boot.
 
 `gpu_xid_144`
 
-Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 144 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -352,14 +352,14 @@ Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences on one GPU within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences on one GPU within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -373,7 +373,7 @@ Detects NVRM Xid 144 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_145`
 
-Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 145 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -384,14 +384,14 @@ Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences on one GPU within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences on one GPU within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -405,7 +405,7 @@ Detects NVRM Xid 145 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_146`
 
-Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 146 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -416,14 +416,14 @@ Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences on one GPU within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences on one GPU within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -437,7 +437,7 @@ Detects NVRM Xid 146 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_147`
 
-Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 147 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -448,14 +448,14 @@ Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences on one GPU within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences on one GPU within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -469,7 +469,7 @@ Detects NVRM Xid 147 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_148`
 
-Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 148 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -480,14 +480,14 @@ Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences on one GPU within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences on one GPU within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -501,7 +501,7 @@ Detects NVRM Xid 148 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_149`
 
-Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 149 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -512,14 +512,14 @@ Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences on one GPU within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences on one GPU within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -533,7 +533,7 @@ Detects NVRM Xid 149 in the system journal since boot, differentiated by the Fat
 
 `gpu_xid_150`
 
-Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
+Detects NVRM Xid 150 in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.
 
 | Property | Value |
 |---|---|
@@ -544,14 +544,14 @@ Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fat
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
-| Required signals | <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`fatal_xid_counts`</nobr>, <nobr>`events`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences since boot that trigger the CRITICAL rule. |
-| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences since boot that trigger the WARNING rule. |
+| <nobr>`fatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Fatal occurrences on one GPU within the collection window that trigger the CRITICAL rule. |
+| <nobr>`nonfatal_occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Nonfatal occurrences on one GPU within the collection window that trigger the WARNING rule. |
 
 **Rules**
 
@@ -560,4 +560,62 @@ Detects NVRM Xid 150 in the system journal since boot, differentiated by the Fat
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
 - **WARNING** when `150 in xid_counts && xid_counts[150] > (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) && xid_counts[150] - (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 150 detected: NVLink MSE error (Nonfatal).
+
+## GPU Xid with no resolution in the catalog
+
+`gpu_xid_informational`
+
+Detects NVRM Xid codes in the system journal that the NVIDIA Xid catalog marks Unused, IGNORE or gives no resolution, and that no Health Validation check covers.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`informational_xid_counts`</nobr>, <nobr>`events`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
+
+**Rules**
+
+- **INFO** when `informational_xid_counts.exists(c, informational_xid_counts[c] >= occurrences)`
+  - Message: A GPU Xid code that NVIDIA's Xid catalog gives no resolution was logged. No action is needed. The driver message is in events.
+
+## GPU Xid not described by the catalog
+
+`gpu_xid_unknown`
+
+Detects NVRM Xid codes in the system journal that no Health Validation check covers and that are not informational.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`unknown_xid_counts`</nobr>, <nobr>`events`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
+
+**Rules**
+
+- **WARNING** when `unknown_xid_counts.exists(c, unknown_xid_counts[c] >= occurrences)`
+  - Message: A GPU Xid code that Health Validation has no check for was logged, so it recommends no action.
+
+**Recommended action:** operational state `monitor`
 

@@ -16,7 +16,9 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
+	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/pciaddr"
 )
 
 // exportOperation names the toolkit step in a CollectionError. The toolkit's
@@ -44,7 +46,8 @@ const toolkitSourcePrefix = "toolkit."
 //
 // A measurement with a gpu_id targets that GPU, or its source-local slot
 // when provisional; one with ib_device and ib_port targets that InfiniBand
-// port (or the device, for port 0); a source-level failure has no target;
+// port (or the device, for port 0); a source-level failure has no target; an
+// Xid measurement targets its GPU UUID, else its PCI address, else the node;
 // any other measurement targets the node, or carries no target when nodeID
 // is empty. Scalar
 // fields keep their type; maps, slices, and structs are encoded as a JSON
@@ -96,7 +99,12 @@ func export(source, nodeID string, at *timestamppb.Timestamp, m health.Measureme
 		}
 	}
 
-	target := measurementTarget(m, v, nodeID, failures)
+	var target *observation.ObservationTarget
+	if x, ok := v.Interface().(xid.XidMeasurement); ok {
+		target = xidTarget(x, nodeID, failures)
+	} else {
+		target = measurementTarget(m, v, nodeID, failures)
+	}
 	sensorSource := source
 	if key := health.KeyOf(m); key.Provisional() {
 		source = key.Source()
@@ -174,6 +182,22 @@ func measurementTarget(m health.Measurement, v reflect.Value, nodeID string, fai
 		}
 		// Port 0 describes the device, as when its ports could not be listed.
 		return observation.InfiniBandDeviceTarget(name)
+	}
+	if nodeID == "" {
+		return nil
+	}
+	return observation.NodeTarget(nodeID)
+}
+
+// xidTarget returns the GPU an Xid measurement names: by UUID, else by PCI
+// address with function 0 (dddd:bb:dd.0). A clean or failed scan names no
+// GPU and targets the node.
+func xidTarget(m xid.XidMeasurement, nodeID string, failures map[string][]error) *observation.ObservationTarget {
+	if m.GPUID != "" && len(failures[xid.SignalGPUID]) == 0 {
+		return observation.GPUTarget(m.GPUID)
+	}
+	if addr, ok := pciaddr.Parse(m.PCIAddress); ok && len(failures[xid.SignalPCIAddress]) == 0 {
+		return observation.PCITarget(addr.String() + ".0")
 	}
 	if nodeID == "" {
 		return nil

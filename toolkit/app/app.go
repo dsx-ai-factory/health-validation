@@ -21,14 +21,14 @@
 //
 // Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
 // its own per-domain backend, defaulting to the shared host NVML backend for
-// GPU/NVLink, the host's collect NVML GPU inventory for node, sysfs for CPU
-// and InfiniBand, and the journal (through the collect sensor) for Xid. A
+// GPU/NVLink, the host's collect NVML GPU inventory for node, sysfs for CPU,
+// and the journal (through collect sensors) for Xid and InfiniBand link flaps. A
 // With*Backend setter overrides exactly one domain; the
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
-// honored verbatim. The only registration constraint is the catalog's
-// existing duplicate-ID guard.
+// honored verbatim. Registration fails only on the catalog's own validation
+// or a duplicate ID.
 package app
 
 import (
@@ -41,6 +41,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	"github.com/dsx-ai-factory/health-validation/internal/version"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
@@ -66,7 +68,7 @@ import (
 const (
 	exitOK        = 0 // PASS, INFO, WARNING
 	exitUnhealthy = 1 // CRITICAL, UNKNOWN
-	exitError     = 2 // config/backend/collection/output failure; no verdict
+	exitError     = 2 // config/backend/collection/audit/output failure; no verdict
 )
 
 // exitCodeForVerdict applies the exit policy to a produced verdict; the
@@ -81,14 +83,15 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 	}
 }
 
-// hostBackend is the platform-split source of the built-in NVML data sources.
-// On linux it is one [nvml.NVMLBackend] feeding the legacy GPU and NVLink
-// sensors, plus the collect NVML GPU inventory that architecture discovery
-// and the node GPU count share; off linux it is a stub that errors at
-// Measure, keeping the command buildable (and `version` runnable) while
-// surfacing a clear runtime error if `run` is invoked there.
+// hostBackend is the platform-split source of the built-in GPU data sources.
+// On linux it is one [nvml.NVMLBackend] feeding the legacy NVLink sensor, the
+// collect GPU sensors (DCGM, plus NVML for compute processes), and the collect
+// NVML GPU inventory that architecture discovery and the node GPU count share;
+// off linux it is a stub that errors at Measure, keeping the command buildable
+// (and `version` runnable) while surfacing a clear runtime error if `run` is
+// invoked there.
 type hostBackend interface {
-	gpuBackend() toolkit.GPUBackend
+	gpuSensors() []collect.Sensor
 	nvlinkBackend() toolkit.NVLinkBackend
 	gpuInventory() *gpuinventory.Inventory
 	close() error
@@ -96,18 +99,19 @@ type hostBackend interface {
 
 // App is the health-validation CLI, assembled with the builder methods and
 // run with [App.Run]. It wires six sensors (GPU, node, NVLink, CPU, Xid,
-// InfiniBand), each from its own per-domain backend — the shared host NVML
-// backend, sysfs, or the journal by default, or a caller-supplied override.
+// InfiniBand), each from its own per-domain source — DCGM, the shared host
+// NVML backend, sysfs, or the journal by default, or a caller-supplied
+// override.
 type App struct {
-	host     hostBackend
-	hostname func() (string, error)
+	host        hostBackend
+	hostname    func() (string, error)
+	openJournal func() (io.WriteCloser, error)
 	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
 	// overrides set by the matching With*Backend setter. A nil override uses the
-	// default: the shared host NVML backend for gpu/nvlink, the host GPU
-	// inventory for node, the sysfs collect sensor for cpu, the journal collect
-	// sensor for xid, and
-	// [toolkit.JournalctlRDMALinkFlap] for rdmaLinkFlap. The generic ib backend
-	// has no default and is opt-in.
+	// default: the host's DCGM and NVML collect sensors for gpu, the shared host
+	// NVML backend for nvlink, the host GPU inventory for node, the sysfs
+	// collect sensor for cpu, and the journal collect sensors for xid and
+	// rdmaLinkFlap. The generic ib backend has no default and is opt-in.
 	gpu          toolkit.GPUBackend
 	node         toolkit.NodeBackend
 	nvlink       toolkit.NVLinkBackend
@@ -133,8 +137,9 @@ type App struct {
 // an App is safe on a host without a GPU/driver, and `version` runs there.
 func New() *App {
 	return &App{
-		host:     newHostBackend(),
-		hostname: os.Hostname,
+		host:        newHostBackend(),
+		hostname:    os.Hostname,
+		openJournal: dialJournal,
 	}
 }
 
@@ -204,10 +209,12 @@ func (a *App) WithXidBackend(b toolkit.XidBackend) *App {
 	return a
 }
 
-// WithRDMALinkFlapBackend overrides the RDMA link-flap sensor's backend
-// (default: [toolkit.JournalctlRDMALinkFlap], which reads mlx5 link transitions
-// from the system journal). This sensor feeds the built-in rdma_linkflap_fatal
-// check and runs by default, like the Xid sensor.
+// WithRDMALinkFlapBackend replaces the collect sensor that reads mlx5 RDMA
+// link transitions from the system journal, which feeds the built-in
+// rdma_linkflap_fatal check, with a legacy toolkit link-flap sensor over b.
+//
+// Deprecated: pass a collect sensor and the link-flap signal IDs it replaces
+// to [App.WithCollect] instead.
 func (a *App) WithRDMALinkFlapBackend(b toolkit.RDMALinkFlapBackend) *App {
 	a.rdmaLinkFlap = b
 	return a
@@ -319,8 +326,8 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 // overrides and custom checks), and evaluates it against the six domain
 // sensors. Each sensor's backend is the caller's override if set, else the
 // default: the shared host NVML backend for gpu/nvlink, the host GPU inventory
-// for node, sysfs for cpu and infiniband, and the system journal, through the
-// collect sensor, for xid.
+// for node, sysfs for cpu, and the system journal, through collect sensors,
+// for xid and the InfiniBand link-flap measurement.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -332,11 +339,17 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		"evaluate checks whose scheduling cadence covers this window (CONTINUOUS, PROLOG, MAINTENANCE); omit to run every registered check")
 	executionContextFlag := fs.String("execution-context", health.TenantGuest.String(),
 		"execution context used to select checks (OPERATOR_INFRA, TENANT_GUEST, OUT_OF_BAND)")
+	registerXidTimeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitError
 	}
 	if fs.NArg() != 0 {
 		fmt.Fprintf(stderr, "%s: unexpected argument %q\n", a.prog, fs.Arg(0))
+		return exitError
+	}
+	xidJournal, err := xidJournalFromFlags(fs)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
 
@@ -399,7 +412,8 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	// where they apply. A discovery failure is a node fault — the GPUs are
 	// unenumerable or unreadable — so drain for that explicit reason instead
 	// of evaluating with no architecture (Evaluate requires WithArchitecture).
-	arch, err := gpuinventory.Architecture(a.host.gpuInventory().Snapshot(context.Background(), cycle))
+	snapshot := a.host.gpuInventory().Snapshot(context.Background(), cycle)
+	arch, err := gpuinventory.Architecture(snapshot)
 	if err != nil {
 		slog.Warn("architecture discovery failed", "err", err)
 		verdict := discoveryFailureVerdict(err)
@@ -408,9 +422,23 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 
-	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, executionContext)
+	// The driver version comes from the same snapshot. Unlike architecture
+	// an unknown version is not a node fault: whatever depends on it treats
+	// it as unknown, so log it and continue.
+	driverVersion, ok := gpuinventory.DriverVersion(snapshot)
+	if !ok {
+		slog.Warn("driver version unreadable; continuing without it")
+	}
+
+	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, driverVersion, executionContext)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+
+	// Fail closed: no verdict may rest on an override the journal did not record.
+	if auditErr := a.auditOverrides(cat); auditErr != nil {
+		fmt.Fprintf(stderr, "%s: audit threshold overrides: %v\n", a.prog, auditErr)
 		return exitError
 	}
 
@@ -419,11 +447,13 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
 		return exitError
 	}
-	sensors, err := a.sensors(cycle, requiredFor(runnable))
+
+	sensors, err := a.sensors(cycle, requiredFor(runnable), xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError
 	}
+
 	verdict, produced, code := evaluate(cat, toolkit.CollectionOptions{
 		Cadence: cadence,
 		Timeout: timeout,
@@ -436,33 +466,29 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 
 // sensors returns the legacy sensors and the collect-backed sensors, whose
 // sources are measured once now under cycle.
-func (a *App) sensors(cycle *collect.Cycle, required requiredSignals) ([]toolkit.Sensor, error) {
-	gpu := a.gpu
-	if gpu == nil {
-		gpu = a.host.gpuBackend()
-	}
+func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
 	nvlink := a.nvlink
 	if nvlink == nil {
 		nvlink = a.host.nvlinkBackend()
 	}
-	rdmaLinkFlap := a.rdmaLinkFlap
-	if rdmaLinkFlap == nil {
-		rdmaLinkFlap = toolkit.JournalctlRDMALinkFlap()
+	var sensors []toolkit.Sensor
+	// Without an override, the GPU domain comes from builtinCollect.
+	if a.gpu != nil {
+		sensors = append(sensors, toolkit.NewGPUSensor(a.gpu))
 	}
-
-	sensors := []toolkit.Sensor{
-		toolkit.NewGPUSensor(gpu),
-		toolkit.NewNVLinkSensor(nvlink),
-	}
+	sensors = append(sensors, toolkit.NewNVLinkSensor(nvlink))
 	// Without an override, the Xid domain comes from builtinCollect.
 	if a.xid != nil {
 		sensors = append(sensors, toolkit.NewXidSensor(a.xid))
 	}
-	sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(rdmaLinkFlap))
+	// Without an override, the link-flap measurement comes from builtinCollect.
+	if a.rdmaLinkFlap != nil {
+		sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(a.rdmaLinkFlap))
+	}
 	// The generic InfiniBand sensor is opt-in: the built-in InfiniBand checks
-	// are fed by the link-flap sensor above and the collect port sensor from
-	// builtinCollect, so this one runs only when a consumer supplies a backend
-	// (and its own checks) via WithIBBackend.
+	// are fed by the link-flap and port collect sensors from builtinCollect,
+	// so this one runs only when a consumer supplies a backend (and its own
+	// checks) via WithIBBackend.
 	if a.ib != nil {
 		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
 	}
@@ -473,7 +499,14 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals) ([]toolkit
 	if a.node != nil {
 		sensors = append(sensors, toolkit.NewNodeSensor(a.node))
 	}
-	builtinSources, builtinAdapters := a.builtinCollect()
+	builtinSources, builtinAdapters := a.builtinCollect(cycle)
+	if xidJournal != nil {
+		for i, source := range builtinSources {
+			if source.ID() == xidsensor.ID {
+				builtinSources[i] = xidJournal
+			}
+		}
+	}
 	collectSensors, err := a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
 	if err != nil {
 		return nil, err
@@ -562,6 +595,63 @@ func usage(prog string) string {
 	return "usage: " + prog + " <collect|run|version> [flags]"
 }
 
+func registerXidTimeFlags(fs *flag.FlagSet) {
+	fs.Var(new(xidFromFlag), "xid-from", "read Xid entries strictly after Unix seconds; repeat PCI_ADDRESS=SECONDS for per-GPU bounds")
+	fs.Int64("xid-to", 0, "read Xid journal entries strictly before this Unix timestamp in seconds (positive; optional)")
+}
+
+type xidFromFlag struct {
+	from    *int64
+	gpuFrom map[string]int64
+}
+
+func (f *xidFromFlag) String() string { return "" }
+
+func (f *xidFromFlag) Set(value string) error {
+	address, raw, perGPU := strings.Cut(value, "=")
+	if !perGPU {
+		raw = value
+	}
+	timestamp, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return fmt.Errorf("--xid-from requires Unix seconds or PCI_ADDRESS=SECONDS: %w", err)
+	}
+	if !perGPU {
+		if f.from != nil {
+			return fmt.Errorf("--xid-from: node-wide bound supplied more than once")
+		}
+		f.from = &timestamp
+		return nil
+	}
+	if address == "" {
+		return fmt.Errorf("--xid-from requires a GPU PCI address before '='")
+	}
+	if f.gpuFrom == nil {
+		f.gpuFrom = make(map[string]int64)
+	}
+	if _, exists := f.gpuFrom[address]; exists {
+		return fmt.Errorf("--xid-from: duplicate GPU PCI address %q", address)
+	}
+	f.gpuFrom[address] = timestamp
+	return nil
+}
+
+func xidJournalFromFlags(fs *flag.FlagSet) (collect.Sensor, error) {
+	from := fs.Lookup("xid-from").Value.(*xidFromFlag)
+	var to *int64
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "xid-to" {
+			value := f.Value.(flag.Getter).Get().(int64)
+			to = &value
+		}
+	})
+	sensor, err := xidsensor.NewWithTimeRanges(nil, from.from, to, from.gpuFrom)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --xid-from/--xid-to bounds: %w", err)
+	}
+	return sensor, nil
+}
+
 var categoryBySensor = map[string]health.Category{
 	"cpu":           health.CPU,
 	"gpu":           health.GPU,
@@ -579,11 +669,17 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 	configPath := fs.String("config", "", "path to a YAML config listing checks to collect")
 	nodeID := fs.String("node-id", a.nodeID,
 		"identifier of the node under test, the target of host-wide observations (overrides the configured default or system hostname)")
+	registerXidTimeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitError
 	}
 	if fs.NArg() != 0 {
 		fmt.Fprintf(stderr, "%s: unexpected argument %q\n", a.prog, fs.Arg(0))
+		return exitError
+	}
+	xidJournal, err := xidJournalFromFlags(fs)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
 	nodeIDSet := a.nodeIDSet
@@ -602,7 +698,7 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
-	cat, timeout, err := buildCatalog(cfg, a.customChecks, "", health.TenantGuest)
+	cat, timeout, err := buildCatalog(cfg, a.customChecks, "", health.DriverVersion{}, health.TenantGuest)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
@@ -624,7 +720,7 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
-	allSensors, err := a.sensors(cycle, required)
+	allSensors, err := a.sensors(cycle, required, xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
 		return exitError
@@ -736,11 +832,11 @@ func loadOptionalConfig(path string) (*Config, error) {
 // so a config may target a custom check too — and its
 // collection_timeout_seconds (if set) is the timeout; otherwise the toolkit
 // default is used. A nil cfg means no config file: built-ins only, default
-// timeout.
-func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string, executionContext health.ExecutionContext) (*catalog.Catalog, time.Duration, error) {
+// timeout. arch and driverVersion are what discovery found about the node.
+func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch string, driverVersion health.DriverVersion, executionContext health.ExecutionContext) (*catalog.Catalog, time.Duration, error) {
 	// register adds the caller-supplied checks to a freshly built catalog.
-	// Classification is passed through untouched; the only failure is the
-	// catalog's duplicate-ID guard.
+	// Classification is passed through untouched; registration fails only on
+	// the catalog's own validation or a duplicate ID.
 	register := func(c *catalog.Catalog) error {
 		for _, cd := range customChecks {
 			if err := c.Register(cd); err != nil {
@@ -754,7 +850,7 @@ func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch strin
 	// NVML reports "unknown" for unrecognized devices so scoped checks still skip.
 	// Evaluate requires a non-empty architecture; the CLI fails discovery before
 	// it would construct a catalog with none.
-	opts := []catalog.Option{catalog.WithExecutionContext(executionContext)}
+	opts := []catalog.Option{catalog.WithExecutionContext(executionContext), catalog.WithDriverVersion(driverVersion)}
 	if arch != "" {
 		opts = append(opts, catalog.WithArchitecture(arch))
 	}

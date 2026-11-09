@@ -20,6 +20,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
 	"github.com/dsx-ai-factory/health-validation/collect/source/nvml/device"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
@@ -152,6 +153,7 @@ type parityDevice struct {
 }
 
 func (d *parityDevice) UUID() string                     { return fmt.Sprintf("GPU-%d", d.index) }
+func (d *parityDevice) PCIBusID() string                 { return fmt.Sprintf("0000:%02x:00.0", d.index+1) }
 func (d *parityDevice) GetName() (string, gonvml.Return) { return d.slot.name, gonvml.SUCCESS }
 
 // parityHost serves one collect NVML inventory to the app.
@@ -159,7 +161,7 @@ type parityHost struct {
 	inventory *gpuinventory.Inventory
 }
 
-func (parityHost) gpuBackend() toolkit.GPUBackend { panic("legacy GPU backend is not under test") }
+func (parityHost) gpuSensors() []collect.Sensor { panic("built-in GPU sensors are not under test") }
 func (parityHost) nvlinkBackend() toolkit.NVLinkBackend {
 	panic("legacy NVLink backend is not under test")
 }
@@ -203,14 +205,14 @@ type discovery struct {
 func runCollect(t *testing.T, n parityNode) (discovery, health.NodeVerdict, int32) {
 	t.Helper()
 	inst := n.collectInstance()
-	a := New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{}))
+	a := New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})).WithGPUBackend(toolkit.MockGPU())
 	a.host = parityHost{inventory: gpuinventory.New(func() (gpuinventory.Reader, error) { return gpuinventory.NVML(inst), nil })}
 	cycle, err := newCycle(n.timeout())
 	if err != nil {
 		t.Fatal(err)
 	}
 	arch, err := gpuinventory.Architecture(a.host.gpuInventory().Snapshot(context.Background(), cycle))
-	sources, adapters := a.builtinCollect()
+	sources, adapters := a.builtinCollect(cycle)
 	sensors, err2 := a.collectSensorsIn(cycle, sources, adapters, nil)
 	if err2 != nil {
 		t.Fatal(err2)
@@ -254,8 +256,8 @@ func TestNodeCollectParity(t *testing.T) {
 		// A GPU whose handle loads counts even when its UUID does not read.
 		{name: "partial identity", node: parityNode{slots: []gpuSlot{gb200, noUUIDGPU, gb200, gb200}}, severity: health.Pass},
 		{name: "every slot failed", node: parityNode{slots: []gpuSlot{lostGPU, lostGPU, lostGPU, lostGPU}}, severity: health.Critical},
-		{name: "enumeration failure", node: parityNode{count: gonvml.ERROR_UNKNOWN}, severity: health.Critical},
-		{name: "collection timeout", node: parityNode{slots: []gpuSlot{gb200, gb200, gb200, gb200}, block: make(chan struct{})}, severity: health.Critical},
+		{name: "enumeration failure", node: parityNode{count: gonvml.ERROR_UNKNOWN}, severity: health.Unknown},
+		{name: "collection timeout", node: parityNode{slots: []gpuSlot{gb200, gb200, gb200, gb200}, block: make(chan struct{})}, severity: health.Unknown},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.node.block != nil {
@@ -288,7 +290,7 @@ func TestNodeCollectTimeoutRecommendsRetry(t *testing.T) {
 	defer close(block)
 	discovered, verdict, _ := runCollect(t, parityNode{slots: []gpuSlot{gb200}, block: block})
 	got := gpuCountResult(t, verdict)
-	if !discovered.failed || got.severity != health.Critical || !got.action.Equal(health.Drain(health.RemediationActionRetryCollection)) {
-		t.Fatalf("discovery=%+v gpu_count=%+v, want a failed discovery and CRITICAL with retry collection", discovered, got)
+	if !discovered.failed || got.severity != health.Unknown || !got.action.Equal(health.Drain(health.RemediationActionRetryCollection)) {
+		t.Fatalf("discovery=%+v gpu_count=%+v, want a failed discovery and UNKNOWN with retry collection", discovered, got)
 	}
 }

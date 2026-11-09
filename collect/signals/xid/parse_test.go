@@ -12,10 +12,13 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	// want.Message is filled from message, or from input when message is
+	// empty, because the line has no prefix before its marker.
 	tests := []struct {
-		name  string
-		input string
-		want  Event
+		name    string
+		input   string
+		message string
+		want    Event
 	}{
 		{
 			name:  "ordinary full",
@@ -33,14 +36,16 @@ func TestParse(t *testing.T) {
 			want:  Event{PCIAddress: "0000:01:00", Code: 79},
 		},
 		{
-			name:  "journal prefix",
-			input: "Jun 09 12:00:00 node1 kernel: NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
-			want:  Event{PCIAddress: "0000:65:00", Code: 48, PID: 999, HasPID: true, ProcessName: "cuda-app"},
+			name:    "journal prefix",
+			input:   "Jun 09 12:00:00 node1 kernel: NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
+			message: "NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
+			want:    Event{PCIAddress: "0000:65:00", Code: 48, PID: 999, HasPID: true, ProcessName: "cuda-app"},
 		},
 		{
-			name:  "unknown attribution",
-			input: "[111111111.111] NVRM: Xid (PCI:0000:05:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus.",
-			want:  Event{PCIAddress: "0000:05:00", Code: 79},
+			name:    "unknown attribution",
+			input:   "[111111111.111] NVRM: Xid (PCI:0000:05:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus.",
+			message: "NVRM: Xid (PCI:0000:05:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus.",
+			want:    Event{PCIAddress: "0000:05:00", Code: 79},
 		},
 		{
 			name:  "numeric pid unknown name",
@@ -143,6 +148,49 @@ func TestParse(t *testing.T) {
 			}},
 		},
 		{
+			name:  "13 multiple warp errors",
+			input: "NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Global Exception on (GPC 11, TPC 2, SM 1): Multiple Warp Errors",
+			want:  Event{PCIAddress: "0000:85:00", Code: 13, GPC: new(int64(11)), TPC: new(int64(2)), SM: new(int64(1))},
+		},
+		{
+			name:  "13 out of range register",
+			input: "NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Warp Exception on (GPC 2, TPC 0, SM 0): Out Of Range Register",
+			want:  Event{PCIAddress: "0000:85:00", Code: 13, GPC: new(int64(2)), TPC: new(int64(0)), SM: new(int64(0))},
+		},
+		{
+			name:  "13 out of range address with attribution",
+			input: "NVRM: Xid (PCI:0000:89:00): 13, pid=1582259, name=nvc:[driver], Graphics SM Warp Exception on (GPC 1, TPC 3, SM 0): Out Of Range Address",
+			want: Event{
+				PCIAddress: "0000:89:00", Code: 13, PID: 1582259, HasPID: true, ProcessName: "nvc:[driver]",
+				GPC: new(int64(1)), TPC: new(int64(3)), SM: new(int64(0)),
+			},
+		},
+		{
+			name:  "13 SM exception with uneven spacing",
+			input: "NVRM: Xid (PCI:0000:85:00): 13, Graphics SM Global Exception on (GPC  9,TPC 2,  SM 1): Multiple Warp Errors",
+			want:  Event{PCIAddress: "0000:85:00", Code: 13, GPC: new(int64(9)), TPC: new(int64(2)), SM: new(int64(1))},
+		},
+		{
+			name:  "13 SM exception with unknown attribution",
+			input: "NVRM: Xid (PCI:0000:ae:00): 13, pid='<unknown>', name=<unknown>, Graphics SM Warp Exception on (GPC 2, TPC 0, SM 0): Illegal Instruction Encoding",
+			want:  Event{PCIAddress: "0000:ae:00", Code: 13, GPC: new(int64(2)), TPC: new(int64(0)), SM: new(int64(0))},
+		},
+		{
+			name:  "13 ESR without unit",
+			input: "NVRM: Xid (PCI:0000:c1:00): 13, Graphics Exception: ESR 0x5697b0=0x0 0x5697b4=0x20 0x5697a8=0x1f81fb60 0x5697ac=0x1174",
+			want:  Event{PCIAddress: "0000:c1:00", Code: 13},
+		},
+		{
+			name:  "13 partial unit",
+			input: "NVRM: Xid (PCI:0000:85:00): 13, Graphics Exception on (GPC 0, TPC 2): x",
+			want:  Event{PCIAddress: "0000:85:00", Code: 13},
+		},
+		{
+			name:  "unit outside Xid 13",
+			input: "NVRM: Xid (PCI:0000:3b:00): 31, pid=1, name=a, (GPC 1, TPC 3, SM 0)",
+			want:  Event{PCIAddress: "0000:3b:00", Code: 31, PID: 1, HasPID: true, ProcessName: "a"},
+		},
+		{
 			name:  "154 unparsed transition",
 			input: "NVRM: Xid (PCI:0000:01:00): 154, something else",
 			want:  Event{PCIAddress: "0000:01:00", Code: 154},
@@ -152,6 +200,10 @@ func TestParse(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := Parse(test.input)
 			require.NoError(t, err)
+			test.want.Message = test.message
+			if test.want.Message == "" {
+				test.want.Message = test.input
+			}
 			require.Equal(t, test.want, got)
 		})
 	}

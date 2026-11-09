@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
 go_test(
     name = "xid_test",
     srcs = [
@@ -20,6 +22,5 @@ go_library(
         "signals.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/xid",
-    visibility = ["//visibility:public"],
     deps = ["//collect"],
 )

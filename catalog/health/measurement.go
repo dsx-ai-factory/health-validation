@@ -34,7 +34,7 @@ type Measurement interface {
 // failures while measuring different fields, so a single measurement
 // may carry several entries — one per failing call.
 //
-// The catalog fails a check Critical when any entry's FailedSignals
+// The catalog reports a check Unknown when any entry's FailedSignals
 // overlaps with the check's RequiredSignals; the verdict's message
 // joins the matching entries' Err.Error() strings. Checks whose
 // required signals were all collected still run normally on the
@@ -99,27 +99,35 @@ type UnsupportedSignaler interface {
 // catalog while still presenting the result to CEL as an ordinary
 // signal.
 //
-// The returned map's *key set must not depend on the measurement's
-// data*. Routing and the signal-uniqueness check ask a zero value which
-// signals a type carries (see the evaluation package's SchemaKeys), so
-// a key that appears only once some field is populated would be
-// invisible to them, and a check requiring it would never be routed a
-// measurement. Return every key every time, with an empty or nil value
-// when there is nothing to report.
+// host is what the run knows about the node rather than about this
+// measurement (see [Host]), for a derivation whose meaning depends on
+// it. It is handed to the derivation rather than copied onto each
+// measurement, so a measurement carries only what was collected and a
+// node fact has one source.
+//
+// The returned map's *key set must depend on neither the measurement's
+// data nor the host*. Routing and the signal-uniqueness check ask a zero
+// value, with a zero Host, which signals a type carries (see the
+// evaluation package's SchemaKeys), so a key that appears only once some
+// field is populated or some host fact is known would be invisible to
+// them, and a check requiring it would never be routed a measurement.
+// Return every key every time, with an empty or nil value when there is
+// nothing to report.
 //
 // Keys must also not collide with the type's own json field names. A
 // derived signal takes precedence on collision, which silently shadows
 // the field rather than failing.
 type DerivedSignaler interface {
-	DerivedSignals() map[string]any
+	DerivedSignals(host Host) map[string]any
 }
 
 // EntityIdentifier is an optional interface a measurement may implement
 // to name the entity it describes — a GPU UUID, a device path.
 //
-// Measurements that describe one of several like entities implement it;
-// host-wide ones (CPU, node, journal-derived) do not, because there is no
-// entity to name beyond the node itself. The evaluation engine copies the
+// Measurements that describe one of several like entities implement it,
+// such as a GPU's measurement or the Xid events one GPU logged; host-wide
+// ones (CPU, node, RDMA link flap) do not, because there is no entity to
+// name beyond the node itself. The evaluation engine copies the
 // returned value into a non-PASS verdict's AffectedEntities, which is how a
 // consumer learns which GPU a failing per-GPU check was looking at: the
 // check's own ID and signals are identical across every entity it ran

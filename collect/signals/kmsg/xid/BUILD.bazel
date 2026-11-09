@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
 go_library(
     name = "xid",
     srcs = [
@@ -7,7 +9,6 @@ go_library(
         "signals.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/xid",
-    visibility = ["//visibility:public"],
 )
 
 go_test(

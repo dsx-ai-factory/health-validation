@@ -46,7 +46,7 @@ func TestRDMALinkFlapFatalDefinition(t *testing.T) {
 	if got, want := def.RequiredSignals, []string{infiniband.SignalOutageDurations}; !slices.Equal(got, want) {
 		t.Errorf("RequiredSignals = %v, want %v", got, want)
 	}
-	if got, want := def.Architectures, []string{"GB200", "GB300", "B200"}; !slices.Equal(got, want) {
+	if got, want := def.Architectures, []string{"GB200", "GB300", "B200", "VR200"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
 	if !def.RecommendedAction.Equal(health.GenericDrain()) {
@@ -141,10 +141,10 @@ func TestRDMALinkFlapFatal(t *testing.T) {
 		{
 			// A journal read that failed entirely must fail the check, not
 			// pass it: the required signal is unavailable.
-			name:         "errored journal forces critical",
+			name:         "errored journal reports unknown",
 			cat:          func() *catalog.Catalog { return linkflapCatalog() },
 			measurement:  infiniband.ErroredLinkFlap("boot", errors.New("journal unreadable"), infiniband.MeasurementSignals()...),
-			wantSeverity: health.Critical,
+			wantSeverity: health.Unknown,
 		},
 		{
 			// The check is scoped to GB200/GB300: on another architecture it

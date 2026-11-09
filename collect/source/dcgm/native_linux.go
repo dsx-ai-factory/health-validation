@@ -19,24 +19,51 @@ import (
 type nativeLibrary struct {
 	readFields func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error)
 	gpuStatus  func(uint) godcgm.EntityStatus
-	options    StandaloneOptions
+	dcgmInit   func(sessionMode, ...string) (func(), error)
+	// Embedded mode ignores options.Address and options.IsSocket.
+	options StandaloneOptions
+	mode    sessionMode
 }
 
 // metricWatchSequence keeps DCGM group names unique within the process.
 var metricWatchSequence atomic.Uint64
 
-func newNative(options StandaloneOptions) nativeAPI {
-	return &nativeLibrary{options: options, readFields: readGPUFields, gpuStatus: godcgm.GetGPUStatus}
+func newNative(options StandaloneOptions, mode sessionMode) nativeAPI {
+	return &nativeLibrary{
+		options:    options,
+		mode:       mode,
+		readFields: readGPUFields,
+		gpuStatus:  godcgm.GetGPUStatus,
+		dcgmInit:   initDCGM,
+	}
+}
+
+// Tests replace goDCGMInit to check the go-dcgm mode, whose type is unexported.
+var goDCGMInit = godcgm.Init
+
+func initDCGM(mode sessionMode, args ...string) (func(), error) {
+	switch mode {
+	case embeddedMode:
+		return goDCGMInit(godcgm.Embedded)
+	case standaloneMode:
+		return goDCGMInit(godcgm.Standalone, args...)
+	default:
+		return nil, fmt.Errorf("unknown DCGM session mode %d", mode)
+	}
 }
 
 func (library *nativeLibrary) Init() (func(), error) {
-	isSocket := "0"
-	if library.options.IsSocket {
-		isSocket = "1"
+	var args []string
+	if library.mode == standaloneMode {
+		isSocket := "0"
+		if library.options.IsSocket {
+			isSocket = "1"
+		}
+		args = []string{library.options.Address, isSocket}
 	}
 	// go-dcgm already reference-counts Init and Shutdown. Keep its cleanup
 	// function with this source instead of adding another counter.
-	cleanup, err := godcgm.Init(godcgm.Standalone, library.options.Address, isSocket)
+	cleanup, err := library.dcgmInit(library.mode, args...)
 	if err != nil {
 		return nil, dcgmErrorFromError(err)
 	}
@@ -89,7 +116,7 @@ func (library *nativeLibrary) WatchMetrics(signalIDs []string) (func() error, er
 	}, nil
 }
 
-func (*nativeLibrary) ReadGPUMetrics(
+func (library *nativeLibrary) ReadGPUMetrics(
 	gpuIndex uint,
 	signalIDs []string,
 ) (map[string]FieldValue, error) {
@@ -105,9 +132,9 @@ func (*nativeLibrary) ReadGPUMetrics(
 	}
 
 	// Read every selected field for this GPU in one DCGM call.
-	values, err := godcgm.GetLatestValuesForFields(gpuIndex, fieldIDs)
+	values, err := library.readMetrics(gpuIndex, fieldIDs)
 	if err != nil {
-		return nil, dcgmErrorFromError(err)
+		return nil, err
 	}
 	results := make(map[string]FieldValue, len(mappings))
 	for _, value := range values {
@@ -180,6 +207,13 @@ func decodeMetricValue(mapping fieldMapping, value godcgm.FieldValue_v1) FieldVa
 		return FieldValue{CollectionError: &failure}
 	}
 	if sentinel, found := checkSentinel(value); found {
+		if sentinel == sentinelNotSupported && mapping.unsupportedAsNoValue {
+			return FieldValue{NoValue: &observation.NoValue{
+				Reason:       observation.NoValueReasonNotSupported,
+				SourceStatus: sentinel.sourceError(),
+				Detail:       "DCGM field value is " + sentinel.String(),
+			}}
+		}
 		failure := fieldErrorFromSentinel(sentinel)
 		return FieldValue{CollectionError: &failure}
 	}
@@ -203,6 +237,36 @@ func decodeMetricValue(mapping fieldMapping, value godcgm.FieldValue_v1) FieldVa
 		ObservedAt: time.UnixMicro(value.TS).UTC(),
 		Value:      &decoded,
 	}
+}
+
+// readMetrics reads one GPU's fields from the hostengine cache, or from the
+// driver when LiveMetrics is set.
+func (library *nativeLibrary) readMetrics(gpuIndex uint, fieldIDs []godcgm.Short) ([]godcgm.FieldValue_v1, error) {
+	if !library.options.LiveMetrics {
+		values, err := godcgm.GetLatestValuesForFields(gpuIndex, fieldIDs)
+		if err != nil {
+			return nil, dcgmErrorFromError(err)
+		}
+		return values, nil
+	}
+	live, err := library.readFields([]uint{gpuIndex}, fieldIDs)
+	if err != nil {
+		return nil, err
+	}
+	values := make([]godcgm.FieldValue_v1, 0, len(live))
+	for _, value := range live {
+		if value.EntityGroupId != godcgm.FE_GPU || value.EntityID != gpuIndex {
+			continue
+		}
+		values = append(values, godcgm.FieldValue_v1{
+			FieldID:   value.FieldID,
+			FieldType: value.FieldType,
+			Status:    value.Status,
+			TS:        value.TS,
+			Value:     value.Value,
+		})
+	}
+	return values, nil
 }
 
 // decodeObservationValue converts a supported DCGM field type into the common

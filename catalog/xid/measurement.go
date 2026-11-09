@@ -4,7 +4,7 @@
 // Package xid defines the measurement type for NVRM Xid errors parsed
 // from the system journal. Xid errors are GPU faults the NVIDIA driver
 // logs to the kernel ring buffer / syslog; a sensor collects them and
-// the catalog evaluates the aggregate against GPU checks.
+// the catalog evaluates each GPU's events against the Xid checks.
 package xid
 
 import (
@@ -17,19 +17,27 @@ import (
 // expressions and must match the RequiredSignals declared in checks
 // that consume Xid measurements.
 const (
-	SignalEvents           = "events"
-	SignalXidCounts        = "xid_counts"
-	SignalFatalXidCounts   = "fatal_xid_counts"
-	SignalSubXidCodeCounts = "sub_xid_code_counts"
-	SignalSince            = "since"
-	SignalEventCount       = "event_count"
+	SignalGPUID                  = "gpu_id"
+	SignalPCIAddress             = "pci_address"
+	SignalEvents                 = "events"
+	SignalXidCounts              = "xid_counts"
+	SignalFatalXidCounts         = "fatal_xid_counts"
+	SignalSubXidCodeCounts       = "sub_xid_code_counts"
+	SignalUnknownXidCounts       = "unknown_xid_counts"
+	SignalInformationalXidCounts = "informational_xid_counts"
+	SignalSince                  = "since"
+	SignalEventCount             = "event_count"
 )
 
 var measurementSignals = []string{
+	SignalGPUID,
+	SignalPCIAddress,
 	SignalEvents,
 	SignalXidCounts,
 	SignalFatalXidCounts,
 	SignalSubXidCodeCounts,
+	SignalUnknownXidCounts,
+	SignalInformationalXidCounts,
 	SignalSince,
 	SignalEventCount,
 }
@@ -41,17 +49,53 @@ var measurementSignals = []string{
 // The returned slice is a copy.
 func MeasurementSignals() []string { return slices.Clone(measurementSignals) }
 
-// XidEvent is a single parsed "NVRM: Xid …" log line. Pid and
-// ProcessName are populated only when the driver attributed the fault
-// to a process; some Xid lines carry neither. NVLink5 is populated only
-// for the NVLink5/NVSwitch fault family (Xid 144-150), which carries a
-// sub-component and severity instead of pid/name.
+// XidEvent is a single parsed "NVRM: Xid …" log line. Message is the
+// line from its "NVRM: Xid" marker onward, as the driver logged it. Pid
+// and ProcessName are populated only when the driver attributed the
+// fault to a process; some Xid lines carry neither. NVLink5 is populated
+// only for the NVLink5/NVSwitch fault family (Xid 144-150), which
+// carries a sub-component and severity instead of pid/name. GPC, TPC,
+// and SM are the graphics unit an Xid 13 exception names, all nil when
+// the line does not name one.
+//
+// Count is set only in verdict output, where identical events are
+// grouped (see [XidMeasurement.ScopeObservedValues]); a measurement
+// holds one event per line and leaves it zero.
 type XidEvent struct {
-	NVLink5     *NVLink5Detail `json:"nvlink5,omitempty"`
-	ProcessName string         `json:"process_name"`
-	PCIAddress  string         `json:"pci_address"`
-	XidCode     int64          `json:"xid_code"`
-	Pid         int64          `json:"pid"`
+	NVLink5        *NVLink5Detail  `json:"nvlink5,omitempty"`
+	RecoveryAction *RecoveryAction `json:"recovery_action,omitempty"`
+	GPC            *int64          `json:"gpc,omitempty"`
+	TPC            *int64          `json:"tpc,omitempty"`
+	SM             *int64          `json:"sm,omitempty"`
+	ProcessName    string          `json:"process_name"`
+	PCIAddress     string          `json:"pci_address"`
+	Message        string          `json:"message"`
+	XidCode        int64           `json:"xid_code"`
+	Pid            int64           `json:"pid"`
+	Count          int64           `json:"count,omitempty"`
+}
+
+// RecoveryAction is the transition an Xid 154 line reports: the driver
+// announcing that the recovery action it wants for a GPU has changed.
+//
+// Like [NVLink5Detail], every field is taken verbatim from the log
+// line rather than interpreted. NVRM prints both a raw code and the
+// name it expands to, e.g.
+//
+//	NVRM: Xid (PCI:0019:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x4 (Drain and Reset)
+//
+// An Xid 154 does not describe a fault of its own; it reports the
+// recovery action the driver now wants for the GPU after some *other*
+// Xid. The codes are the driver's recovery-action enum (0x0 None, 0x1
+// GPU reset, 0x4 Drain and Reset, and so on), and the name is the
+// driver's display text for it, which differs between driver releases
+// for the same code. Both are kept so a code this catalog does not map
+// still surfaces something readable.
+type RecoveryAction struct {
+	FromCode string `json:"from_code"`
+	FromName string `json:"from_name"`
+	ToCode   string `json:"to_code"`
+	ToName   string `json:"to_name"`
 }
 
 // NVLink5Detail carries the extended fields NVRM logs for the
@@ -76,10 +120,11 @@ type NVLink5Detail struct {
 	Fatal        bool     `json:"fatal"`
 }
 
-// XidMeasurement is the aggregate of every Xid event observed in the
-// window described by Since. One measurement is produced per sensor
-// pass, even when no events were found (EventCount == 0), so a check
-// always runs and can report PASS.
+// XidMeasurement holds the Xid events one GPU logged in the window
+// described by Since, so its counts and events are that GPU's. A window
+// with no Xid events yields one measurement with no GPU identity, so every
+// check runs and can report PASS. The toolkit's deprecated journalctl
+// sensor produces one identity-less measurement for all GPUs.
 //
 // XidCounts maps each Xid code to the number of times it occurred and
 // is the headline signal for catalog rules (e.g. xid_counts[79] > 0).
@@ -96,10 +141,16 @@ type NVLink5Detail struct {
 type XidMeasurement struct {
 	XidCounts      map[int64]int64 `json:"xid_counts"`
 	FatalXidCounts map[int64]int64 `json:"fatal_xid_counts"`
-	Since          string          `json:"since"`
-	Events         []XidEvent      `json:"events"`
-	errors         []health.ErroredMeasurement
-	EventCount     int64 `json:"event_count"`
+	// GPUID is the GPU's UUID as NVML reports it, empty when the PCI
+	// address did not resolve to one.
+	GPUID string `json:"gpu_id"`
+	// PCIAddress is the GPU's address as its Xid lines print it, such as
+	// 0000:89:00. It is empty when the measurement names no GPU.
+	PCIAddress string     `json:"pci_address"`
+	Since      string     `json:"since"`
+	Events     []XidEvent `json:"events"`
+	errors     []health.ErroredMeasurement
+	EventCount int64 `json:"event_count"`
 }
 
 // ErroredXid returns an XidMeasurement marked errored for a whole-query
@@ -128,3 +179,21 @@ func (XidMeasurement) Category() health.Category { return health.Xid }
 
 // Errors implements [health.Measurement].
 func (m XidMeasurement) Errors() []health.ErroredMeasurement { return m.errors }
+
+// EntityID implements [health.EntityIdentifier], so a failing check names the
+// GPU: its UUID, or its PCI address when no UUID resolved.
+func (m XidMeasurement) EntityID() string {
+	if m.GPUID != "" {
+		return m.GPUID
+	}
+	return m.PCIAddress
+}
+
+// EntityKey implements [health.EntityKeyed]. A measurement that names no GPU,
+// from a clean or failed scan, describes the node.
+func (m XidMeasurement) EntityKey() health.EntityKey {
+	if id := m.EntityID(); id != "" {
+		return health.VerifiedEntity(id)
+	}
+	return health.NodeEntity()
+}

@@ -126,15 +126,55 @@ func TestNVLinkBandwidthCountSpeed(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
-			// A GPU whose link count could not be collected propagates to
-			// Critical regardless of the rule, since the data the check
-			// needs is unavailable.
-			name: "errored GPU forces critical",
+			// VR200 GPUs expose 36 links at 41000 MB/s each.
+			name: "VR200 passes with 36 links at its own speed",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("VR200"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.NVLinkMeasurement{GPUID: "GPU-0", LinkCount: 36, SpeedMBytesPerSec: 41000}
+			},
+			wantSeverity: health.Pass,
+		},
+		{
+			name: "VR200 link shortfall",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("VR200"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.NVLinkMeasurement{GPUID: "GPU-0", LinkCount: 35, SpeedMBytesPerSec: 41000}
+			},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "36", "35"},
+		},
+		{
+			name: "VR200 speed mismatch",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("VR200"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.NVLinkMeasurement{GPUID: "GPU-0", LinkCount: 36, SpeedMBytesPerSec: 20500}
+			},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "41000", "20500"},
+		},
+		{
+			// A collection failure produces Unknown instead of evaluating a zero value.
+			name: "errored GPU reports unknown",
 			cat:  func() *catalog.Catalog { return fabricCatalog() },
 			measurement: func() nvlink.NVLinkMeasurement {
 				return nvlink.ErroredNVLink("GPU-0", errors.New("nvml field query failed"), nvlink.SignalLinkCount)
 			},
-			wantSeverity: health.Critical,
+			wantSeverity: health.Unknown,
 		},
 	}
 

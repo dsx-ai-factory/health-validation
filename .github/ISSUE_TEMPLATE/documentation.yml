@@ -1,0 +1,51 @@
+name: Documentation Request or Correction
+description: Report missing, unclear, or incorrect documentation.
+title: "[Docs]: "
+labels: ["documentation", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For usage questions, use [GitHub Discussions](https://github.com/dsx-ai-factory/health-validation/discussions/categories/q-a).
+        If the documentation is right but the software behaves differently, file a bug report instead.
+
+  - type: input
+    id: location
+    attributes:
+      label: Documentation location
+      description: Link the affected page or name the file and section. Write "Missing" when requesting new documentation.
+      placeholder: "e.g. https://docs.nvidia.com/health-validation/... or docs/integration.md"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Explain what is incorrect, unclear, outdated, or absent, and who it affects.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_change
+    attributes:
+      label: Suggested improvement
+      description: Describe the correction, example, explanation, or new content that would resolve the problem.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include the software version, related issues, or other useful context.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues for the same documentation problem.
+          required: true

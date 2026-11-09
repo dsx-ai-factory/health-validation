@@ -47,10 +47,11 @@ var errNoObservation = errors.New("no observation was collected for these signal
 //   - A mapped collect signal ID sets the catalog fields the mapping
 //     table assigns it, as during migration to collect sensors.
 //
-// Canonical Xid signals instead build one Xid measurement from their
-// journal-entry events; a batch that also carries <domain>.<field> Xid
-// observations yields one errored Xid measurement, since the two cannot be
-// merged.
+// Canonical Xid and RDMA link-flap signals instead build their measurements
+// from journal-entry events: Xid one per GPU, or one naming no GPU for a scan
+// with no events, and link flaps one per node. A batch that also carries
+// those measurements in <domain>.<field> form yields one errored measurement,
+// since the two cannot be merged.
 //
 // Both shapes may appear in one batch and feed one measurement. Other
 // signals are ignored. Collection failures attach to the affected catalog
@@ -60,24 +61,52 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // observations yields no measurement, so its checks are skipped as missing.
 func ToMeasurements(observations []*observation.Observation) []health.Measurement {
 	b := &builder{entities: make(map[entityKey]*entity)}
-	var xidObservations []*observation.Observation
+	var xidObservations, linkFlapObservations []*observation.Observation
+	links := make(nvlinkLinks)
+	processes := make(gpuProcesses)
 	for _, current := range observations {
-		if xidSignals[current.GetSignalId()] {
+		switch {
+		case xidSignals[current.GetSignalId()]:
 			xidObservations = append(xidObservations, current)
-			continue
+		case linkFlapSignals[current.GetSignalId()]:
+			linkFlapObservations = append(linkFlapObservations, current)
+		default:
+			if f, ok := resolve(current); ok && !processes.add(current) && !links.add(current, f) {
+				b.add(current, f)
+			}
 		}
-		b.add(current)
 	}
+	links.feed(b)
+	processes.feed(b)
 	out := b.measurements()
-	if len(xidObservations) == 0 {
+	if len(xidObservations) > 0 {
+		out = withCanonical(out, canonicalXid(xidObservations), func(err error) health.Measurement {
+			return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)
+		})
+	}
+	if len(linkFlapObservations) > 0 {
+		out = withCanonical(out, []health.Measurement{canonicalLinkFlap(linkFlapObservations)}, func(err error) health.Measurement {
+			return infiniband.ErroredLinkFlap(linkFlapSinceUnknown, err, infiniband.MeasurementSignals()...)
+		})
+	}
+	return out
+}
+
+// withCanonical appends canonical, built from canonical observations of one
+// type. When out also holds that type, built from <domain>.<field>
+// observations, the two cannot be merged, so both are replaced by one
+// measurement from failed.
+func withCanonical(out, canonical []health.Measurement, failed func(error) health.Measurement) []health.Measurement {
+	if len(canonical) == 0 {
 		return out
 	}
-	m := canonicalXid(xidObservations)
-	if slices.ContainsFunc(out, func(other health.Measurement) bool { return other.Category() == health.Xid }) {
-		out = slices.DeleteFunc(out, func(other health.Measurement) bool { return other.Category() == health.Xid })
-		m = xid.ErroredXid(xidsignals.WindowBoot, errors.New("xid observed in both canonical and field form"), xid.MeasurementSignals()...)
+	typ := reflect.TypeOf(canonical[0])
+	same := func(other health.Measurement) bool { return reflect.TypeOf(other) == typ }
+	if slices.ContainsFunc(out, same) {
+		out = slices.DeleteFunc(out, same)
+		canonical = []health.Measurement{failed(fmt.Errorf("%s observed in both canonical and field form", canonical[0].Category()))}
 	}
-	return append(out, m)
+	return append(out, canonical...)
 }
 
 // measurementTypes are the measurement types ToMeasurements rebuilds. Types
@@ -109,6 +138,7 @@ type schema struct {
 	fields   map[string]int
 	category string
 	order    []string
+	gpuID    int // index of the gpu_id field, or -1 for types without one
 	identity identity
 }
 
@@ -116,7 +146,7 @@ var schemas = sync.OnceValue(func() []*schema {
 	out := make([]*schema, 0, len(measurementTypes))
 	owner := make(map[string]reflect.Type)
 	for _, m := range measurementTypes {
-		s := &schema{typ: reflect.TypeOf(m), category: m.Category().String(), fields: make(map[string]int)}
+		s := &schema{typ: reflect.TypeOf(m), category: m.Category().String(), fields: make(map[string]int), gpuID: -1}
 		for i := range s.typ.NumField() {
 			name, ok := signalName(s.typ.Field(i))
 			if !ok {
@@ -129,9 +159,12 @@ var schemas = sync.OnceValue(func() []*schema {
 			owner[key] = s.typ
 			s.fields[name] = i
 			s.order = append(s.order, name)
+			if name == gpuIDField {
+				s.gpuID = i
+			}
 		}
 		switch {
-		case s.has(gpuIDField):
+		case s.gpuID >= 0:
 			s.identity = identityGPU
 		case s.has(infiniband.SignalIBDevice) && s.has(infiniband.SignalIBPort):
 			s.identity = identityIBPort
@@ -140,6 +173,15 @@ var schemas = sync.OnceValue(func() []*schema {
 	}
 	return out
 })
+
+func schemaFor(m health.Measurement) *schema {
+	for _, s := range schemas() {
+		if s.typ == reflect.TypeOf(m) {
+			return s
+		}
+	}
+	panic(fmt.Sprintf("observations: %T is not a registered measurement type", m))
+}
 
 func (s *schema) has(field string) bool {
 	_, ok := s.fields[field]
@@ -156,15 +198,6 @@ func (s *schema) identityFields() []string {
 		return []string{infiniband.SignalIBDevice, infiniband.SignalIBPort}
 	}
 	return nil
-}
-
-func schemaFor(m health.Measurement) *schema {
-	for _, s := range schemas() {
-		if s.typ == reflect.TypeOf(m) {
-			return s
-		}
-	}
-	panic(fmt.Sprintf("observations: %T is not a registered measurement type", m))
 }
 
 // schemaForField returns domain's measurement type carrying field, or nil.
@@ -197,11 +230,16 @@ var neutralFields = sync.OnceValue(func() map[string]bool {
 
 // feed is how one observation writes into a measurement.
 type feed struct {
-	schema  *schema
-	apply   func(measurement any, o *observation.Observation) error
-	unit    string
-	catalog []string
-	neutral bool
+	schema           *schema
+	apply            func(measurement any, o *observation.Observation) error
+	unit             string
+	unsupportedValue *observation.Value
+	catalog          []string
+	neutral          bool
+	aggregated       bool
+	// mapped marks a collect signal from the mapping table, which never
+	// carries gpu_id itself, unlike the <domain>.<field> form.
+	mapped bool
 }
 
 // resolve returns how current feeds a measurement, or false for a signal no
@@ -215,11 +253,14 @@ func resolve(current *observation.Observation) (feed, bool) {
 	for _, mapped := range mappings {
 		if mapped.signal.ID() == current.GetSignalId() {
 			return feed{
-				schema:  schemaFor(mapped.measurement),
-				apply:   mapped.apply,
-				catalog: mapped.catalog,
-				unit:    mapped.unit,
-				neutral: mapped.unsupportedIsNeutral,
+				schema:           schemaFor(mapped.measurement),
+				apply:            mapped.apply,
+				catalog:          mapped.catalog,
+				unit:             mapped.unit,
+				neutral:          mapped.unsupportedIsNeutral,
+				aggregated:       mapped.aggregated,
+				unsupportedValue: mapped.unsupportedValue,
+				mapped:           true,
 			}, true
 		}
 	}
@@ -241,6 +282,10 @@ type entity struct {
 	value        reflect.Value // addressable measurement struct
 	unsupported  []string
 	errs         []entityError
+	// slot marks a GPU known only by a source-local slot; valued records
+	// that some observation of it was not a collection error.
+	slot   bool
+	valued bool
 }
 
 type entityError struct {
@@ -253,16 +298,19 @@ type builder struct {
 	order    []entityKey
 }
 
-func (b *builder) add(current *observation.Observation) {
-	f, ok := resolve(current)
-	if !ok {
-		return
-	}
+func (b *builder) add(current *observation.Observation, f feed) {
 	key, label, targetErr := targetID(f.schema, current)
 	e := b.entity(f.schema, key, label)
+	if f.schema.gpuID >= 0 && current.GetTarget() != nil && gpuRef(current.GetTarget()).GetUuid() == "" {
+		e.slot = true
+	}
+	e.valued = e.valued || current.GetCollectionError() == nil
 
+	// Aggregated rows can share a field, so their failures without a GPU add
+	// to it rather than repeating it.
+	shared := f.aggregated && current.GetValue() == nil
 	for _, field := range f.catalog {
-		if e.fed[field] && !e.idFromTarget[field] {
+		if e.fed[field] && !e.idFromTarget[field] && !shared {
 			e.addError(fmt.Errorf("signal %q was observed more than once", current.GetSignalId()), f.catalog...)
 			return
 		}
@@ -276,11 +324,27 @@ func (b *builder) add(current *observation.Observation) {
 	case targetErr != nil:
 		e.addError(targetErr, append(f.schema.identityFields(), f.catalog...)...)
 	case current.GetCollectionError() != nil:
-		e.addError(collectionFailure(current.GetCollectionError()), f.catalog...)
+		fields := f.catalog
+		// A whole-source failure leaves every GPU unidentified, as the legacy
+		// sensors report it, so gpu_id carries the same failure.
+		if f.mapped && f.schema.gpuID >= 0 && current.GetTarget() == nil {
+			fields = append([]string{gpuIDField}, fields...)
+			e.fed[gpuIDField] = true
+		}
+		e.addError(collectionFailure(current.GetCollectionError()), fields...)
 	case current.GetNoValue() != nil:
-		if f.neutral && current.GetNoValue().GetReason() == observation.NoValueReasonNotSupported {
-			e.unsupported = append(e.unsupported, f.catalog...)
-			return
+		if current.GetNoValue().GetReason() == observation.NoValueReasonNotSupported {
+			if f.neutral {
+				e.unsupported = append(e.unsupported, f.catalog...)
+				return
+			}
+			if f.unsupportedValue != nil {
+				reported := &observation.Observation{SignalId: current.GetSignalId(), Unit: current.Unit, Outcome: &observation.Observation_Value{Value: f.unsupportedValue}}
+				if err := e.apply(f, reported); err != nil {
+					e.addError(err, f.catalog...)
+				}
+				return
+			}
 		}
 		e.addError(noValueFailure(current.GetSource(), current.GetNoValue()), f.catalog...)
 	default:
@@ -293,8 +357,12 @@ func (b *builder) add(current *observation.Observation) {
 // targetID returns the entity an observation describes under s's identity
 // and the label its measurement carries for it: gpu_id for a GPU,
 // "<device>/<port>" or "<device>" for an InfiniBand port. The label is
-// empty for a source-level observation, which names no entity.
+// empty for a source-level observation, which names no entity. Xid
+// observations follow [xidTargetID].
 func targetID(s *schema, current *observation.Observation) (health.EntityKey, string, error) {
+	if s.category == health.Xid.String() {
+		return xidTargetID(current)
+	}
 	switch s.identity {
 	case identityGPU:
 		return gpuTargetID(current)
@@ -307,20 +375,14 @@ func targetID(s *schema, current *observation.Observation) (health.EntityKey, st
 func gpuTargetID(current *observation.Observation) (health.EntityKey, string, error) {
 	target := current.GetTarget()
 	source := current.GetSource()
-	var ref *observation.GPURef
-	switch {
-	case target == nil:
+	if target == nil {
 		if current.GetValue() != nil {
 			return health.SourceEntity(source), "", fmt.Errorf("signal %q has no GPU target", current.GetSignalId())
 		}
 		return health.SourceEntity(source), "", nil
-	case target.GetGpu() != nil:
-		ref = target.GetGpu()
-	case target.GetNvLinkEndpoint() != nil:
-		ref = target.GetNvLinkEndpoint().GetGpu()
-	case target.GetGpuPair() != nil:
-		ref = target.GetGpuPair().GetSourceGpu()
-	default:
+	}
+	ref := gpuRef(target)
+	if ref == nil {
 		return health.SourceEntity(source), "", fmt.Errorf("signal %q does not identify a GPU target", current.GetSignalId())
 	}
 	if uuid := ref.GetUuid(); uuid != "" {
@@ -338,6 +400,41 @@ func gpuTargetID(current *observation.Observation) (health.EntityKey, string, er
 		return key, "", fmt.Errorf("signal %q has source-local GPU %q but no source", current.GetSignalId(), slot)
 	}
 	return key, fmt.Sprintf("slot:%q/%q", source, slot), nil
+}
+
+// gpuRef returns the GPU target describes: an NVLink endpoint's or a
+// process's GPU, or a pair's source GPU. It is nil for any other target.
+func gpuRef(target *observation.ObservationTarget) *observation.GPURef {
+	switch {
+	case target.GetGpu() != nil:
+		return target.GetGpu()
+	case target.GetNvLinkEndpoint() != nil:
+		return target.GetNvLinkEndpoint().GetGpu()
+	case target.GetGpuPair() != nil:
+		return target.GetGpuPair().GetSourceGpu()
+	case target.GetGpuProcess() != nil:
+		return target.GetGpuProcess().GetGpu()
+	default:
+		return nil
+	}
+}
+
+// xidTargetID returns the entity an exported Xid observation's target names:
+// a GPU by UUID or PCI address. A node target or no target is the measurement
+// that names no GPU, from a clean or failed scan. The label is always empty,
+// since an Xid measurement carries its gpu_id as a field.
+func xidTargetID(current *observation.Observation) (health.EntityKey, string, error) {
+	target := current.GetTarget()
+	switch {
+	case target == nil || target.GetNode() != nil:
+		return health.NodeEntity(), "", nil
+	case target.GetGpu().GetUuid() != "":
+		return health.VerifiedEntity(target.GetGpu().GetUuid()), "", nil
+	case target.GetPci() != nil:
+		address, _, _ := strings.Cut(target.GetPci().GetAddress(), ".")
+		return health.VerifiedEntity(address), "", nil
+	}
+	return health.SourceEntity(current.GetSource()), "", fmt.Errorf("signal %q does not identify an Xid GPU target", current.GetSignalId())
 }
 
 // ibTargetID keys a port by "<device>/<port>", or "<device>" for a
@@ -378,13 +475,19 @@ func (b *builder) entity(s *schema, id health.EntityKey, label string) *entity {
 	e := &entity{value: reflect.New(s.typ).Elem(), fed: make(map[string]bool), errIndex: make(map[string]int), idFromTarget: make(map[string]bool)}
 	switch s.identity {
 	case identityGPU:
+		// An Xid measurement's gpu_id comes from its own field: its target
+		// may be a PCI address or the node, and it never takes the GPU
+		// placeholder.
+		if s.category == health.Xid.String() {
+			break
+		}
 		if label != "" {
-			e.value.Field(s.fields[gpuIDField]).SetString(label)
+			e.value.Field(s.gpuID).SetString(label)
 			e.seed(gpuIDField)
 		} else {
 			// Matches the toolkit sensors, which name a GPU they could not
 			// identify after their domain.
-			e.value.Field(s.fields[gpuIDField]).SetString(s.category)
+			e.value.Field(s.gpuID).SetString(s.category)
 		}
 	case identityIBPort:
 		// An unidentified port keeps an empty device, which EntityID omits.
@@ -497,7 +600,92 @@ func (e *entity) addError(err error, fields ...string) {
 	e.errs = append(e.errs, entityError{err: err, fields: slices.Clone(fields)})
 }
 
+// foldSourceFailures applies each per-GPU type's source-wide failures to every
+// GPU known by UUID and drops the separate source-level measurement: a source
+// that read no GPU read none of those. Several sources can feed one GPU's
+// measurement, so otherwise the failed fields would read as missing on the
+// GPUs another source did read, failing checks the failed source does not
+// feed and hiding a timeout behind a missing-data error. With no verified GPU
+// to carry them, each source-level measurement takes the other sources'
+// failures instead, so a timeout of every source still recommends a retry.
+// Slots keep their own failures, since their identity is source-local, and a
+// source-level measurement stays when some field it failed reached no GPU,
+// so the failure is never lost.
+func (b *builder) foldSourceFailures() {
+	for _, s := range schemas() {
+		if s.gpuID < 0 {
+			continue
+		}
+		var sources, folded []entityKey
+		var verified []*entity
+		for _, key := range b.order {
+			switch {
+			case key.schema != s:
+			case key.id.SourceLevel():
+				sources = append(sources, key)
+			case !key.id.Provisional() && !key.id.Unidentified():
+				verified = append(verified, b.entities[key])
+			}
+		}
+		for _, key := range sources {
+			source := b.entities[key]
+			if len(verified) == 0 {
+				for _, other := range sources {
+					if other != key {
+						b.entities[other].inherit(source)
+					}
+				}
+				continue
+			}
+			reached := make(map[string]bool)
+			for _, e := range verified {
+				for _, field := range e.inherit(source) {
+					reached[field] = true
+				}
+			}
+			if !slices.ContainsFunc(source.failedFields(), func(field string) bool { return !reached[field] }) {
+				folded = append(folded, key)
+				delete(b.entities, key)
+			}
+		}
+		b.order = slices.DeleteFunc(b.order, func(key entityKey) bool { return slices.Contains(folded, key) })
+	}
+}
+
+// failedFields lists the fields e's failures name, other than gpu_id.
+func (e *entity) failedFields() []string {
+	var fields []string
+	for _, failure := range e.errs {
+		fields = append(fields, slices.DeleteFunc(slices.Clone(failure.fields), func(field string) bool { return field == gpuIDField })...)
+	}
+	return fields
+}
+
+// inherit fails each field source failed that e has no observation for, with
+// source's cause, and returns those fields.
+func (e *entity) inherit(source *entity) []string {
+	var inherited []string
+	for _, failure := range source.errs {
+		var fields []string
+		for _, field := range failure.fields {
+			if field != gpuIDField && !e.fed[field] {
+				fields = append(fields, field)
+			}
+		}
+		if len(fields) == 0 {
+			continue
+		}
+		e.addError(failure.err, fields...)
+		for _, field := range fields {
+			e.fed[field] = true
+		}
+		inherited = append(inherited, fields...)
+	}
+	return inherited
+}
+
 func (b *builder) measurements() []health.Measurement {
+	b.foldSourceFailures()
 	keys := slices.Clone(b.order)
 	slices.SortStableFunc(keys, func(a, b entityKey) int {
 		if a.schema != b.schema {
@@ -517,6 +705,11 @@ func (b *builder) measurements() []health.Measurement {
 		}
 		if len(missing) > 0 {
 			e.addError(errNoObservation, missing...)
+		}
+		// A slot that reported nothing but failures could not be read at all,
+		// as when its handle failed, so gpu_id carries its first failure.
+		if e.slot && !e.valued && len(e.errs) > 0 {
+			e.errs[0].fields = append(e.errs[0].fields, gpuIDField)
 		}
 
 		ptr := e.value.Addr().Interface()
@@ -564,6 +757,30 @@ func collectionFailure(failure *observation.CollectionError) error {
 		msg += ": " + failure.GetDetail()
 	}
 	return restoredError{msg: msg, timeout: timeout}
+}
+
+// firstFailure returns the first non-timeout failure, else the first
+// timeout, else nil.
+func firstFailure(obs []*observation.Observation) error {
+	var timeout error
+	for _, o := range obs {
+		var err error
+		switch {
+		case o.GetCollectionError() != nil:
+			err = collectionFailure(o.GetCollectionError())
+		case o.GetNoValue() != nil:
+			err = noValueFailure(o.GetSource(), o.GetNoValue())
+		default:
+			continue
+		}
+		if !errors.Is(err, health.ErrCollectionTimeout) {
+			return err
+		}
+		if timeout == nil {
+			timeout = err
+		}
+	}
+	return timeout
 }
 
 func noValueFailure(source string, noValue *observation.NoValue) error {

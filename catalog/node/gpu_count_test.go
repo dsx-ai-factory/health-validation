@@ -71,6 +71,19 @@ func TestGPUCount(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
+			name:         "VR200 accepts 4 GPUs",
+			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("VR200")) },
+			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 4} },
+			wantSeverity: health.Pass,
+		},
+		{
+			// A VR200 compute tray that enumerates 3 of its 4 GPUs is missing one.
+			name:         "VR200 flags a missing GPU",
+			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("VR200")) },
+			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 3} },
+			wantSeverity: health.Critical,
+		},
+		{
 			// An architecture without a canonical count skips with
 			// ArchitectureUnsupported instead of running the rule.
 			name: "skipped on an unlisted architecture",
@@ -86,14 +99,14 @@ func TestGPUCount(t *testing.T) {
 		},
 		{
 			// A NodeMeasurement whose errors cover gpu_count propagates to
-			// a Critical verdict regardless of the count rule, since the
+			// an Unknown verdict regardless of the count rule, since the
 			// data the check needed is unavailable.
-			name: "errored node forces critical",
+			name: "errored node reports unknown",
 			cat:  func() *catalog.Catalog { return newCatalog() },
 			measurement: func() node.NodeMeasurement {
 				return node.ErroredNode(errors.New("nvml init failed"), node.MeasurementSignals()...)
 			},
-			wantSeverity: health.Critical,
+			wantSeverity: health.Unknown,
 		},
 	}
 

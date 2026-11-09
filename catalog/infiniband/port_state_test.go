@@ -214,15 +214,15 @@ func TestPortState_ThresholdOverride(t *testing.T) {
 	}
 }
 
-// Ports that could not be read at all must fail the check, not pass it.
+// Ports that could not be read at all report UNKNOWN, not PASS.
 func TestPortState_Errored(t *testing.T) {
 	m := infiniband.ErroredPort("", 0, errors.New("sysfs: read /sys/class/infiniband: permission denied"), infiniband.PortMeasurementSignals...)
 	v, err := ibCatalog().Evaluate("ib_port_state", m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Skipped || v.Severity != health.Critical {
-		t.Fatalf("skipped=%v severity=%v, want CRITICAL when sysfs could not be read", v.Skipped, v.Severity)
+	if v.Skipped || v.Severity != health.Unknown {
+		t.Fatalf("skipped=%v severity=%v, want UNKNOWN when sysfs could not be read", v.Skipped, v.Severity)
 	}
 }
 

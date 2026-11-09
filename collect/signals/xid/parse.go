@@ -31,11 +31,18 @@ type ParseError struct {
 
 func (e *ParseError) Error() string { return "xid parse: " + e.Reason + ": " + e.Detail }
 
-// Event is the raw facts of one Xid line. An empty ProcessName means the
-// driver attributed no process.
+// Event is the raw facts of one Xid line. Message is the line from its
+// "NVRM: Xid" marker onward, without any kmsg or syslog prefix. An empty
+// ProcessName means the driver attributed no process. GPC, TPC, and SM are
+// the graphics unit an Xid 13 exception names; all three are nil when the
+// line does not name one.
 type Event struct {
 	NVLink5        *NVLink5
 	RecoveryAction *RecoveryAction
+	GPC            *int64
+	TPC            *int64
+	SM             *int64
+	Message        string
 	PCIAddress     string
 	ProcessName    string
 	Code           int64
@@ -71,13 +78,14 @@ var (
 	// example an OOM kill report, but cannot also supply the address.
 	lineRE = regexp.MustCompile(`NVRM: Xid \((?:PCI:)?[0-9a-fA-F]{4,}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}`)
 	// MIG GPU and compute instance attribution follows the address.
-	deviceRE   = regexp.MustCompile(`^(?:PCI:)?([0-9a-fA-F:.]+)(?:\s+GPU-I:\d+)?(?:\s+GPU-CI:\d+)?$`)
-	codeRE     = regexp.MustCompile(`^: (\d+)`)
-	pidRE      = regexp.MustCompile(`^,\s*pid=([^,]*)`)
-	nameRE     = regexp.MustCompile(`^,\s*name=([^,]*)`)
-	digitsRE   = regexp.MustCompile(`^\d+$`)
-	nvlink5RE  = regexp.MustCompile(`^,\s*(\S+)\s+(Fatal|Nonfatal)\s+XC\d+\s+i\d+\s+Link\s+(-?\d+)(?:\s+\(([^)]*)\))?`)
-	recoveryRE = regexp.MustCompile(`GPU recovery action changed from (0x[0-9a-fA-F]+) \(([^)]*)\) to (0x[0-9a-fA-F]+) \(([^)]*)\)`)
+	deviceRE       = regexp.MustCompile(`^(?:PCI:)?([0-9a-fA-F:.]+)(?:\s+GPU-I:\d+)?(?:\s+GPU-CI:\d+)?$`)
+	codeRE         = regexp.MustCompile(`^: (\d+)`)
+	pidRE          = regexp.MustCompile(`^,\s*pid=([^,]*)`)
+	nameRE         = regexp.MustCompile(`^,\s*name=([^,]*)`)
+	digitsRE       = regexp.MustCompile(`^\d+$`)
+	nvlink5RE      = regexp.MustCompile(`^,\s*(\S+)\s+(Fatal|Nonfatal)\s+XC\d+\s+i\d+\s+Link\s+(-?\d+)(?:\s+\(([^)]*)\))?`)
+	recoveryRE     = regexp.MustCompile(`GPU recovery action changed from (0x[0-9a-fA-F]+) \(([^)]*)\) to (0x[0-9a-fA-F]+) \(([^)]*)\)`)
+	graphicsUnitRE = regexp.MustCompile(`\(GPC\s+(\d+),\s*TPC\s+(\d+),\s*SM\s+(\d+)\)`)
 )
 
 // Match reports whether message is an NVRM Xid line: NVIDIA's "NVRM: Xid"
@@ -108,12 +116,21 @@ func Parse(message string) (Event, error) {
 	if err != nil {
 		return Event{}, parseError(ReasonInvalidCode)
 	}
-	event := Event{PCIAddress: address[1], Code: code}
+	// Set before any early return, so every parsed event keeps its line.
+	event := Event{Message: strings.TrimSpace(message[at[0]:]), PCIAddress: address[1], Code: code}
 	rest = rest[len(codeMatch[0]):]
 
 	if code == 154 {
 		if m := recoveryRE.FindStringSubmatch(rest); m != nil {
 			event.RecoveryAction = &RecoveryAction{FromCode: m[1], FromName: m[2], ToCode: m[3], ToName: m[4]}
+		}
+	}
+	// Read before attribution: an Xid 13 line may carry pid='<unknown>',
+	// which ends parsing. A process name (at most 15 bytes) is shorter than
+	// any match, so it cannot supply the unit.
+	if code == 13 {
+		if m := graphicsUnitRE.FindStringSubmatch(rest); m != nil {
+			event.GPC, event.TPC, event.SM = unitIndex(m[1]), unitIndex(m[2]), unitIndex(m[3])
 		}
 	}
 	if m := pidRE.FindStringSubmatch(rest); m != nil {
@@ -151,6 +168,16 @@ func Parse(message string) (Event, error) {
 		}
 	}
 	return event, nil
+}
+
+// unitIndex returns nil for an unmatched group or an index that does not
+// fit int64.
+func unitIndex(s string) *int64 {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &n
 }
 
 func parseError(reason string) *ParseError {

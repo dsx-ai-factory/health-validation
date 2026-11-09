@@ -38,12 +38,12 @@ CheckDefinition is the canonical shape of a health check in the catalog. Each de
 | <nobr>`Description`</nobr> | <nobr>`description`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`Name`</nobr> | <nobr>`name`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`ID`</nobr> | <nobr>`id`</nobr> | <nobr>`string`</nobr> |  |
-| <nobr>`Dependencies`</nobr> | <nobr>`dependencies`</nobr> | <nobr>`[]string`</nobr> | Dependencies names check IDs whose Critical verdict explains this check's inability to collect. Checks never read each other's results, so a dependency has no effect on whether this check runs, what it reports, or its severity. Its only effect is that a verdict for an entity this check could not read at all gains a message naming the dependency as the cause. An ID that is not registered is an inactive edge by design, so a consumer may register any subset of the catalog. Validate rejects only a check that names itself. |
+| <nobr>`Dependencies`</nobr> | <nobr>`dependencies`</nobr> | <nobr>`[]string`</nobr> | Dependencies names check IDs whose observed Critical or Unknown rule results explain collection failures. Checks never read each other's results, so a dependency has no effect on whether this check runs, what it reports, or its severity. Its only effect is that a verdict for an entity this check could not read at all gains a message naming the dependency as the cause. An ID that is not registered is an inactive edge by design, so a consumer may register any subset of the catalog. Validate rejects only a check that names itself. |
 | <nobr>`Architectures`</nobr> | <nobr>`architectures`</nobr> | <nobr>`[]string`</nobr> |  |
 | <nobr>`Rules`</nobr> | <nobr>`rules`</nobr> | [<nobr>`[]Rule`</nobr>](#rule) |  |
 | <nobr>`ExecutionContexts`</nobr> | <nobr>`execution_contexts`</nobr> | [<nobr>`[]ExecutionContext`</nobr>](#executioncontext) |  |
 | <nobr>`Prerequisites`</nobr> | <nobr>`prerequisites`</nobr> | [<nobr>`[]Prerequisite`</nobr>](#prerequisite) |  |
-| <nobr>`RequiredSignals`</nobr> | <nobr>`required_signals`</nobr> | <nobr>`[]string`</nobr> |  |
+| <nobr>`RequiredSignals`</nobr> | <nobr>`required_signals`</nobr> | <nobr>`[]string`</nobr> | RequiredSignals must name every signal the check's rules read. A measurement reaches the check only when it shares Category and its schema carries every one, and a collection error on any of them fails the check instead of running its rules. Rules can also read the measurement's other signals, but a collection error on one of those does not fail the check. Validate rejects an empty list or a blank name. |
 | <nobr>`RecommendedAction`</nobr> | <nobr>`recommended_action`</nobr> | [<nobr>`RecommendedAction`</nobr>](#recommendedaction) |  |
 | <nobr>`Timeout`</nobr> | <nobr>`timeout`</nobr> | <nobr>`time.Duration`</nobr> |  |
 | <nobr>`MaturityLevel`</nobr> | <nobr>`maturity_level`</nobr> | [<nobr>`MaturityLevel`</nobr>](#maturitylevel) |  |
@@ -77,13 +77,24 @@ CheckVerdict is the outcome of evaluating a single check against signal values. 
 | <nobr>`Skipped`</nobr> | <nobr>`skipped`</nobr> | <nobr>`bool`</nobr> |  |
 | <nobr>`NVIDIAEndorsed`</nobr> | <nobr>`nvidia_endorsed`</nobr> | <nobr>`bool`</nobr> |  |
 
+### DriverVersion
+
+DriverVersion is the NVIDIA driver version a node is running, e.g. "575.51.03". It is a node-wide host fact, like the GPU architecture. Raw is the text the host reported, which is what an operator sees in nvidia-smi; the numeric parts let code order versions, which text cannot ("99.0" sorts above "570.0" as a string). Order versions in Go rather than in a CEL rule, which would compare them as strings. Build values with [ParseDriverVersion]: a value without Raw reads as unknown whatever its numeric parts.
+
+| Field | JSON name | Type | Description |
+|---|---|---|---|
+| <nobr>`Raw`</nobr> |  | <nobr>`string`</nobr> |  |
+| <nobr>`Major`</nobr> |  | <nobr>`int`</nobr> |  |
+| <nobr>`Minor`</nobr> |  | <nobr>`int`</nobr> |  |
+| <nobr>`Patch`</nobr> |  | <nobr>`int`</nobr> |  |
+
 ### EntityKey
 
 EntityKey is the stable identity of the entity a measurement describes. Evaluation rejects two measurements with one key that feed the same check: it cannot tell which provider to believe, so it reports neither. Construct a key with [NodeEntity], [VerifiedEntity], [ProvisionalEntity], or [SourceEntity]. The zero value is an unidentified entity: a per-entity measurement whose producer could not name it. Like a provisional key, it may only report the collection failure that left it unnamed; collected values under it are rejected, since nothing shows they describe a GPU no other provider reports. Two unidentified measurements for one check are rejected too, since nothing tells them apart.
 
 ### ErroredMeasurement
 
-ErroredMeasurement records one per-signal collection failure on a measurement. Sensors append entries via the typed measurement's AddError method (e.g. [GPUMeasurement.AddError]) as they encounter failures while measuring different fields, so a single measurement may carry several entries — one per failing call. The catalog fails a check Critical when any entry's FailedSignals overlaps with the check's RequiredSignals; the verdict's message joins the matching entries' Err.Error() strings. Checks whose required signals were all collected still run normally on the partial data. The zero value is not valid; construct entries with [NewErroredMeasurement] (or via the typed measurement's AddError), which guarantees Err is non-nil so consumers always have a surfaceable failure cause.
+ErroredMeasurement records one per-signal collection failure on a measurement. Sensors append entries via the typed measurement's AddError method (e.g. [GPUMeasurement.AddError]) as they encounter failures while measuring different fields, so a single measurement may carry several entries — one per failing call. The catalog reports a check Unknown when any entry's FailedSignals overlaps with the check's RequiredSignals; the verdict's message joins the matching entries' Err.Error() strings. Checks whose required signals were all collected still run normally on the partial data. The zero value is not valid; construct entries with [NewErroredMeasurement] (or via the typed measurement's AddError), which guarantees Err is non-nil so consumers always have a surfaceable failure cause.
 
 ### FixedThresholdError
 
@@ -93,6 +104,14 @@ FixedThresholdError is returned when an operator attempts to override a threshol
 |---|---|---|---|
 | <nobr>`ThresholdName`</nobr> |  | <nobr>`string`</nobr> |  |
 | <nobr>`CheckID`</nobr> |  | <nobr>`string`</nobr> |  |
+
+### Host
+
+Host is what derived signals may know about the node beyond their own measurement. It is supplied once, when the catalog is built, and holds for every measurement in that run. The GPU architecture is deliberately not here: it decides which checks apply and which thresholds they use, not what a measurement's signals are.
+
+| Field | JSON name | Type | Description |
+|---|---|---|---|
+| <nobr>`DriverVersion`</nobr> |  | [<nobr>`DriverVersion`</nobr>](#driverversion) | DriverVersion is the node's NVIDIA driver version, for derivations whose meaning changed between driver releases. The zero value means it could not be determined. |
 
 ### NodeVerdict
 
@@ -109,6 +128,7 @@ NodeVerdict aggregates per-check verdicts into a node-level health assessment.
 | <nobr>`AffectedComponents`</nobr> | <nobr>`affected_components`</nobr> | [<nobr>`[]AffectedComponent`</nobr>](#affectedcomponent) |  |
 | <nobr>`CheckResults`</nobr> | <nobr>`check_results`</nobr> | [<nobr>`[]CheckVerdict`</nobr>](#checkverdict) |  |
 | <nobr>`SkippedChecks`</nobr> | <nobr>`skipped_checks`</nobr> | [<nobr>`[]CheckVerdict`</nobr>](#checkverdict) |  |
+| <nobr>`RecommendedAction`</nobr> | <nobr>`recommended_action`</nobr> | [<nobr>`RecommendedAction`</nobr>](#recommendedaction) |  |
 | <nobr>`OverallSeverity`</nobr> | <nobr>`overall_severity`</nobr> | [<nobr>`Severity`</nobr>](#severity) |  |
 
 ### Prerequisite
@@ -264,15 +284,15 @@ SchedulingCadence describes how often a check is meant to run in a node's operat
 
 ### Severity
 
-Severity represents the graduated health severity of a check result. The levels form a total order: Pass &lt; Info &lt; Warning &lt; Critical. Unknown is a special case indicating the check could not complete.
+Severity represents the graduated health severity of a check result. Levels are ordered Pass &lt; Info &lt; Warning &lt; Unknown &lt; Critical. Unknown indicates incomplete assessment, not a confirmed fault.
 
 | Name | JSON value | Description |
 |---|---|---|
 | <nobr>`Pass`</nobr> | <nobr>`PASS`</nobr> | Pass indicates no condition detected. The monitored state is within normal operating bounds. |
 | <nobr>`Info`</nobr> | <nobr>`INFO`</nobr> | Info indicates an anomaly detected within safe operating bounds. The node may remain in service; monitor for trend. |
 | <nobr>`Warning`</nobr> | <nobr>`WARNING`</nobr> | Warning indicates a condition that degrades performance or increases failure risk. The node may continue in service for a bounded window pending operator action. |
-| <nobr>`Critical`</nobr> | <nobr>`CRITICAL`</nobr> | Critical indicates imminent risk of failure, data corruption, or unrecoverable state. The node should be removed from service without delay. |
 | <nobr>`Unknown`</nobr> | <nobr>`UNKNOWN`</nobr> | Unknown indicates the check could not complete. Service eligibility for the affected component cannot be assessed. This typically results from tool failures or insufficient data. |
+| <nobr>`Critical`</nobr> | <nobr>`CRITICAL`</nobr> | Critical indicates imminent risk of failure, data corruption, or unrecoverable state. The node should be removed from service without delay. |
 
 ### SkipReason
 
@@ -287,7 +307,7 @@ SkipReason provides a machine-readable code for why a check did not run.
 | <nobr>`InsufficientHistory`</nobr> | <nobr>`INSUFFICIENT_HISTORY`</nobr> | Time-window data not yet available. |
 | <nobr>`ThresholdUnconfigured`</nobr> | <nobr>`THRESHOLD_UNCONFIGURED`</nobr> | Required threshold not supplied for this fleet. |
 | <nobr>`NoApplicableMeasurement`</nobr> | <nobr>`NO_APPLICABLE_MEASUREMENT`</nobr> | No supplied measurement carries the check's required signals. |
-| <nobr>`SensorMissing`</nobr> | <nobr>`SENSOR_MISSING`</nobr> | SensorMissing marks a check whose whole category was expected but never arrived: the sensor is absent, unconfigured, or its backend was never constructed. It is distinct from NoApplicableMeasurement, which means the category was collected but no measurement carried this check's required signals, and from a Critical errored verdict, which means the sensor ran and failed. |
+| <nobr>`SensorMissing`</nobr> | <nobr>`SENSOR_MISSING`</nobr> | SensorMissing marks a check whose whole category was expected but never arrived: the sensor is absent, unconfigured, or its backend was never constructed. It is distinct from NoApplicableMeasurement, which means the category was collected but no measurement carried this check's required signals, and from an Unknown errored verdict, which means the sensor ran and failed. |
 | <nobr>`CadenceMismatch`</nobr> | <nobr>`CADENCE_MISMATCH`</nobr> | Check is not scheduled for the requested cadence. |
 
 ### ThresholdCategory

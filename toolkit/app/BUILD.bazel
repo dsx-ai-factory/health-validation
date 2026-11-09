@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
 go_library(
     name = "app",
     srcs = [
@@ -8,10 +10,10 @@ go_library(
         "backend_other.go",
         "collect.go",
         "config.go",
+        "override_audit.go",
         "version.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/app",
-    visibility = ["//visibility:public"],
     deps = [
         "//catalog",
         "//catalog/health",
@@ -19,7 +21,11 @@ go_library(
         "//collect/observation",
         "//collect/sensors/cpu",
         "//collect/sensors/infiniband",
+        "//collect/sensors/linkflap",
         "//collect/sensors/xid",
+        "//collect/signals/gpu",
+        "//collect/signals/infiniband",
+        "//collect/signals/xid",
         "//collect/source/infiniband",
         "//internal/version",
         "//toolkit",
@@ -33,6 +39,9 @@ go_library(
         "@org_golang_google_protobuf//encoding/protojson",
     ] + select({
         "@rules_go//go/platform:linux": [
+            "//collect/sensors/dcgm",
+            "//collect/sensors/nvml",
+            "//collect/source/dcgm",
             "//collect/source/nvml",
             "//toolkit/nvml",
         ],
@@ -48,7 +57,9 @@ go_test(
         "config_test.go",
         "discovery_linux_test.go",
         "entity_test.go",
+        "linkflap_collect_test.go",
         "node_parity_linux_test.go",
+        "override_audit_test.go",
         "version_test.go",
         "xid_collect_test.go",
     ],
@@ -67,6 +78,7 @@ go_test(
         "//collect/observation",
         "//collect/sensors/cpu",
         "//collect/sensors/infiniband",
+        "//collect/sensors/linkflap",
         "//collect/sensors/xid",
         "//collect/signals/cpu",
         "//collect/signals/gpu",

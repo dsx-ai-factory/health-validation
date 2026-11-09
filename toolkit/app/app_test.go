@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -25,6 +27,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
@@ -163,7 +166,7 @@ func customCheck() health.CheckDefinition {
 // TestWithChecksRegistersCustomCheck confirms a check supplied via the
 // WithChecks SPI is registered into the catalog alongside the built-ins.
 func TestWithChecksRegistersCustomCheck(t *testing.T) {
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, "", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, "", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -179,7 +182,7 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	canonical := customCheck()
 	canonical.Provenance = health.NVIDIA
 
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, "", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, "", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -193,14 +196,14 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	}
 }
 
-// TestWithChecksDuplicateIDFails confirms the only registration constraint:
+// TestWithChecksDuplicateIDFails confirms the duplicate-ID constraint:
 // a custom check whose ID collides with a built-in (here gpu_count) makes
 // catalog construction fail rather than silently shadowing.
 func TestWithChecksDuplicateIDFails(t *testing.T) {
 	collide := customCheck()
 	collide.ID = "gpu_count" // collides with a built-in
 
-	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, "", health.OperatorInfra)
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, "", health.DriverVersion{}, health.OperatorInfra)
 	if err == nil {
 		t.Fatal("expected duplicate-ID error, got nil")
 	}
@@ -209,11 +212,29 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 	}
 }
 
+// TestWithChecksRejectsCheckWithoutRequiredSignals confirms a custom check that
+// names no signals stops catalog construction instead of reading every
+// measurement of its category.
+func TestWithChecksRejectsCheckWithoutRequiredSignals(t *testing.T) {
+	c := customCheck()
+	c.RequiredSignals = nil
+
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{c}, "", health.DriverVersion{}, health.OperatorInfra)
+	if err == nil {
+		t.Fatal("expected a registration error, got nil")
+	}
+	for _, want := range []string{"registering custom check", "RequiredSignals must name at least one signal"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err.Error(), want)
+		}
+	}
+}
+
 // TestBuildCatalogAppliesArchitecture confirms a detected architecture is
 // wired into the catalog: a check skips on an architecture it does not cover
 // (A100 here) instead of running with the wrong thresholds.
 func TestBuildCatalogAppliesArchitecture(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "A100", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, nil, "A100", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -227,6 +248,102 @@ func TestBuildCatalogAppliesArchitecture(t *testing.T) {
 		t.Errorf("skipped=%v reason=%v, want skipped with SIGNAL_UNAVAILABLE_ARCHITECTURE on A100",
 			v.Skipped, v.SkipReason)
 	}
+}
+
+// echoedDriverVersion is the version the driver-echo tests discover.
+const echoedDriverVersion = "575.51.03"
+
+func mustDriverVersion(t *testing.T) health.DriverVersion {
+	t.Helper()
+	v, ok := health.ParseDriverVersion(echoedDriverVersion)
+	if !ok {
+		t.Fatalf("ParseDriverVersion(%q) failed", echoedDriverVersion)
+	}
+	return v
+}
+
+// driverEchoCheck goes CRITICAL when a [driverEchoMeasurement] derives
+// [echoedDriverVersion].
+func driverEchoCheck() health.CheckDefinition {
+	return health.CheckDefinition{
+		ID:              "test_driver_echo",
+		Name:            "Test Driver Echo",
+		Category:        health.Node,
+		RequiredSignals: []string{"seen_driver"},
+		Rules: []health.Rule{{
+			Expression: fmt.Sprintf("seen_driver == %q", echoedDriverVersion),
+			Severity:   health.Critical,
+			Message:    "derivation saw the discovered driver version",
+		}},
+	}
+}
+
+// driverEchoMeasurement derives the driver version its catalog was built
+// with, so a rule can observe what buildCatalog handed the catalog.
+type driverEchoMeasurement struct {
+	Count int64 `json:"echo_count"`
+}
+
+func (driverEchoMeasurement) Category() health.Category           { return health.Node }
+func (driverEchoMeasurement) Errors() []health.ErroredMeasurement { return nil }
+func (driverEchoMeasurement) DerivedSignals(host health.Host) map[string]any {
+	return map[string]any{"seen_driver": host.DriverVersion.Raw}
+}
+
+// TestBuildCatalogAppliesDriverVersion confirms the discovered driver
+// version reaches the catalog, where derived signals read it, rather than
+// being dropped between discovery and evaluation.
+func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
+	cat, _, err := buildCatalog(&Config{}, []health.CheckDefinition{driverEchoCheck()}, "GB200", mustDriverVersion(t), health.OperatorInfra)
+	if err != nil {
+		t.Fatalf("buildCatalog: %v", err)
+	}
+	got, err := cat.Evaluate("test_driver_echo", driverEchoMeasurement{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Severity != health.Critical {
+		t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", got.Severity)
+	}
+}
+
+// echoIBBackend yields a [driverEchoMeasurement] through the opt-in
+// InfiniBand sensor.
+type echoIBBackend struct{}
+
+func (echoIBBackend) MeasureIB(context.Context) ([]health.Measurement, error) {
+	return []health.Measurement{driverEchoMeasurement{}}, nil
+}
+func (echoIBBackend) Errored(error) []health.Measurement { return nil }
+
+// TestRunCommandPassesDriverVersion confirms runCommand hands the version
+// the GPU inventory recorded to the catalog it evaluates with.
+func TestRunCommandPassesDriverVersion(t *testing.T) {
+	a := New().WithProgramName("test").WithChecks(driverEchoCheck())
+	a.host = fakeHost{b: spyBackend{called: new(bool)}, driver: echoedDriverVersion}
+	a.WithXidBackend(xidSpyBackend{called: new(bool)})
+	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
+	// The opt-in InfiniBand sensor accepts any measurement, so it carries
+	// the echo into an otherwise stock run.
+	a.WithIBBackend(echoIBBackend{})
+
+	var stdout, stderr bytes.Buffer
+	a.runCommand([]string{"--node-id", "n1"}, &stdout, &stderr)
+
+	var verdict health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+		t.Fatalf("unmarshal verdict: %v; stdout = %s; stderr = %s", err, stdout.String(), stderr.String())
+	}
+	for _, v := range verdict.CheckResults {
+		if v.CheckID == "test_driver_echo" {
+			if v.Severity != health.Critical {
+				t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", v.Severity)
+			}
+			return
+		}
+	}
+	t.Fatal("test_driver_echo verdict not found")
 }
 
 // --- Per-domain backend override locks ------------------------------------
@@ -246,6 +363,54 @@ func (s spyBackend) MeasureGPUs() ([]health.Measurement, error) {
 }
 func (spyBackend) MeasureNode() ([]health.Measurement, error)   { return nil, nil }
 func (spyBackend) MeasureNVLink() ([]health.Measurement, error) { return nil, nil }
+
+// gpuSpySensor stands in for the host's built-in GPU collect sensors. It
+// records whether it was measured and reports fakeHost's four GPUs as healthy
+// idle GB200s.
+type gpuSpySensor struct {
+	called *bool
+}
+
+func (gpuSpySensor) ID() string { return "test.gpu" }
+func (gpuSpySensor) Signals() collect.Signals {
+	return slices.Concat(dcgmGPUSignals, processGPUSignals)
+}
+
+func (s gpuSpySensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	*s.called = true
+	op := collect.NewOp(opts...)
+	selected, err := op.Signals(s.Signals())
+	if err != nil {
+		return nil, err
+	}
+	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
+	now := timestamppb.Now()
+	for i := range 4 {
+		target := observation.GPUTarget(fmt.Sprintf("GPU-%d", i))
+		for _, signal := range selected {
+			value := &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: false}}
+			switch signal {
+			case gpusignals.PowerDraw:
+				value.Kind = &observation.Value_DoubleValue{DoubleValue: 700}
+			case gpusignals.PowerLimitRequested, gpusignals.PowerLimitEnforced:
+				value.Kind = &observation.Value_DoubleValue{DoubleValue: 1200}
+			case gpusignals.PerformanceState:
+				value.Kind = &observation.Value_IntValue{IntValue: 0}
+			case gpusignals.ProcessCount:
+				value.Kind = &observation.Value_UintValue{UintValue: 0}
+			case gpusignals.ProcessCmdline:
+				batch.Observations = append(batch.Observations, observation.NewNoValueObservation(signal.ID(), signal.Unit(), s.ID(), target, now,
+					&observation.NoValue{Reason: observation.NoValueReasonNoTargets}))
+				continue
+			}
+			batch.Observations = append(batch.Observations, &observation.Observation{
+				SignalId: signal.ID(), Source: s.ID(), Target: target, ObservedAt: now, Unit: signal.Unit(),
+				Outcome: &observation.Observation_Value{Value: value},
+			})
+		}
+	}
+	return batch, nil
+}
 
 type cpuBackendFunc func(context.Context) (cpu.CPUMeasurement, error)
 
@@ -285,20 +450,27 @@ func (x xidSpyBackend) Measure(context.Context) ([]health.Measurement, error) {
 // catalogtest.DummyArchitecture would skip scoped checks (see
 // TestNUMANodeCountReachesVerdict).
 type fakeHost struct {
-	b spyBackend
+	b      spyBackend
+	driver string
 }
 
-func (h fakeHost) gpuBackend() toolkit.GPUBackend       { return h.b }
+func (h fakeHost) gpuSensors() []collect.Sensor {
+	return []collect.Sensor{gpuSpySensor{called: h.b.called}}
+}
 func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
-func (fakeHost) gpuInventory() *gpuinventory.Inventory {
-	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: 4, model: "NVIDIA GB200"}, nil })
+func (h fakeHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) {
+		return inventoryReader{gpus: 4, model: "NVIDIA GB200", driver: h.driver}, nil
+	})
 }
 func (fakeHost) close() error { return nil }
 
 // inventoryReader reports a basic inventory of identical GPUs without NVML.
+// An empty driver leaves the driver version unrecorded.
 type inventoryReader struct {
-	model string
-	gpus  int
+	model  string
+	driver string
+	gpus   int
 }
 
 func (inventoryReader) ID() string { return "fake" }
@@ -307,7 +479,12 @@ func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapsho
 	inventory := &observation.GPUInventory{}
 	for i := range r.gpus {
 		uuid, model := fmt.Sprintf("GPU-%d", i), r.model
-		inventory.Entries = append(inventory.Entries, &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}})
+		entry := &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}}
+		if r.driver != "" {
+			driver := r.driver
+			entry.Gpu.DriverVersion = &driver
+		}
+		inventory.Entries = append(inventory.Entries, entry)
 	}
 	return &observation.GPUInventorySnapshot{Source: "fake", Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: inventory}}, nil
 }
@@ -315,7 +492,7 @@ func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapsho
 // panicHost ensures invalid input returns before touching the host backend.
 type panicHost struct{}
 
-func (panicHost) gpuBackend() toolkit.GPUBackend        { panic("unexpected GPU backend access") }
+func (panicHost) gpuSensors() []collect.Sensor          { panic("unexpected GPU sensor access") }
 func (panicHost) nvlinkBackend() toolkit.NVLinkBackend  { panic("unexpected NVLink backend access") }
 func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
 func (panicHost) close() error                          { panic("unexpected host backend close") }
@@ -723,7 +900,7 @@ func (failingNodeBackend) MeasureNode() ([]health.Measurement, error) {
 // codes. The custom check is CRITICAL when gpu_count > 8, so the count picks
 // the verdict. A backend that fails to collect no longer aborts the run: the
 // failure is degraded to an errored measurement that fails the dependent
-// check Critical, so it exits exitUnhealthy (a produced CRITICAL verdict) with
+// check Unknown, so it exits exitUnhealthy (a produced UNKNOWN verdict) with
 // the verdict still written — not exitError, which is reserved for the case
 // where no verdict is produced at all.
 func TestEvaluateExitCodes(t *testing.T) {
@@ -734,7 +911,7 @@ func TestEvaluateExitCodes(t *testing.T) {
 	}{
 		{toolkit.NewNodeSensor(toolkit.MockNode(node.NodeMeasurement{GPUCount: 16})), "critical verdict", exitUnhealthy},
 		{toolkit.NewNodeSensor(toolkit.MockNode(node.NodeMeasurement{GPUCount: 8})), "healthy verdict", exitOK},
-		{toolkit.NewNodeSensor(failingNodeBackend{}), "collection failure degrades to critical", exitUnhealthy},
+		{toolkit.NewNodeSensor(failingNodeBackend{}), "collection failure reports unknown", exitUnhealthy},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -851,7 +1028,9 @@ type erroringHost struct {
 	b spyBackend
 }
 
-func (h erroringHost) gpuBackend() toolkit.GPUBackend       { return h.b }
+func (h erroringHost) gpuSensors() []collect.Sensor {
+	return []collect.Sensor{gpuSpySensor{called: h.b.called}}
+}
 func (h erroringHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
 func (erroringHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })
@@ -927,6 +1106,139 @@ func cadenceRunApp() *App {
 	healthyInfiniBand(a)
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 	return a
+}
+
+func TestXidTimeFlags(t *testing.T) {
+	for _, command := range []string{"run", "collect"} {
+		t.Run(command, func(t *testing.T) {
+			dir := t.TempDir()
+			argsPath := filepath.Join(dir, "args")
+			t.Setenv("XID_TEST_ARGS", argsPath)
+			t.Setenv("XID_TEST_ENTRIES", filepath.Join(dir, "entries"))
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$XID_TEST_ARGS\"\ncat \"$XID_TEST_ENTRIES\"\n"
+			if err := os.WriteFile(filepath.Join(dir, "journalctl"), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			entries := `{"__CURSOR":"gpu1","__REALTIME_TIMESTAMP":"1792600000000000","_BOOT_ID":"0123456789abcdef0123456789abcdef","MESSAGE":"NVRM: Xid (PCI:0008:06:00): 79"}` + "\n" +
+				`{"__CURSOR":"gpu2","__REALTIME_TIMESTAMP":"1792599999000000","_BOOT_ID":"0123456789abcdef0123456789abcdef","MESSAGE":"NVRM: Xid (PCI:0009:06:00): 48"}` + "\n"
+			if err := os.WriteFile(filepath.Join(dir, "entries"), []byte(entries), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for _, tt := range []struct {
+				flags  []string
+				want79 bool
+				want48 bool
+			}{
+				{nil, true, true},
+				{[]string{"--xid-from", "0"}, true, true},
+				{[]string{"--xid-to", "1792600000"}, false, true},
+				{[]string{"--xid-from", "1792600000", "--xid-to", "1792603600"}, false, false},
+				{[]string{"--xid-from", "0008:06:00=1792600000"}, false, true},
+				{[]string{"--xid-from", "0008:06:00=1792600000", "--xid-from", "0009:06:00=1792599999"}, false, false},
+				{[]string{"--xid-from", "1792600000", "--xid-from", "0009:06:00=0"}, false, true},
+			} {
+				a := cadenceRunApp()
+				a.xid = nil
+				var stdout, stderr bytes.Buffer
+				args := append([]string{command, "--node-id", testNodeID}, tt.flags...)
+				if code := a.Run(args, &stdout, &stderr); code == exitError {
+					t.Fatalf("%v: stderr = %s", args, stderr.String())
+				}
+				found := map[int64]bool{}
+				if command == "run" {
+					var verdict health.NodeVerdict
+					if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+						t.Fatal(err)
+					}
+					for _, result := range verdict.CheckResults {
+						if result.Severity == health.Critical {
+							switch result.CheckID {
+							case "gpu_xid_79":
+								found[79] = true
+							case "gpu_xid_48":
+								found[48] = true
+							}
+						}
+					}
+				} else {
+					var batch observation.ObservationBatch
+					if err := protojson.Unmarshal(stdout.Bytes(), &batch); err != nil {
+						t.Fatal(err)
+					}
+					for _, o := range batch.GetObservations() {
+						if o.GetSignalId() == "xid.xid_counts" {
+							var counts map[int64]int64
+							if err := json.Unmarshal([]byte(o.GetValue().GetStringValue()), &counts); err != nil {
+								t.Fatal(err)
+							}
+							for code, count := range counts {
+								found[code] = count > 0
+							}
+						}
+					}
+				}
+				if found[79] != tt.want79 || found[48] != tt.want48 {
+					t.Fatalf("%v: observed Xids = %v, want 79=%v, 48=%v; output=%s", args, found, tt.want79, tt.want48, stdout.String())
+				}
+				data, err := os.ReadFile(argsPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := []string{"--dmesg", "--boot", "--no-pager", "--quiet", "--output=json", "--output-fields=MESSAGE", "--all"}
+				perGPU := slices.ContainsFunc(tt.flags, func(value string) bool { return strings.Contains(value, "=") })
+				if !perGPU {
+					for i, value := range tt.flags {
+						switch value {
+						case "--xid-from":
+							want = append(want, "--since=@"+tt.flags[i+1])
+						case "--xid-to":
+							want = append(want, "--until=@"+tt.flags[i+1])
+						}
+					}
+				}
+				if got := strings.Split(strings.TrimSpace(string(data)), "\n"); !slices.Equal(got, want) {
+					t.Fatalf("journalctl args = %v, want %v", got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestInvalidXidTimeFlags(t *testing.T) {
+	for _, command := range []string{"run", "collect"} {
+		for _, flags := range [][]string{
+			{"--xid-from", "invalid"},
+			{"--xid-to", "1.5"},
+			{"--xid-from", "9223372036854775808"},
+			{"--xid-from", "-1"},
+			{"--xid-to", "0"},
+			{"--xid-to", "-1"},
+			{"--xid-from", "100", "--xid-to", "100"},
+			{"--xid-from", "101", "--xid-to", "100"},
+			{"--xid-from", "0008:06:00=-1"},
+			{"--xid-from", "0008:06:00=100", "--xid-to", "100"},
+			{"--xid-from", "0008:06:00=101", "--xid-to", "100"},
+			{"--xid-from", "0008:06:00=invalid"},
+			{"--xid-from", "0008:06:00=9223372036854775808"},
+			{"--xid-from", "0008:06:00=100", "--xid-from", "0008:06:00=101"},
+			{"--xid-from", "0008:0A:00=100", "--xid-from", "0008:0a:00.0=101"},
+			{"--xid-from", "100", "--xid-from", "101"},
+			{"--xid-from", "=100"},
+			{"--xid-from", "GPU-1=100"},
+			{"--xid-from", "06:00=100"},
+			{"--xid-from", "0008:06:20=100"},
+			{"--xid-from", "0008:06:00.1=100"},
+		} {
+			a := New().WithProgramName("test")
+			a.host = panicHost{}
+			var stdout, stderr bytes.Buffer
+			args := append([]string{command}, flags...)
+			if code := a.Run(args, &stdout, &stderr); code != exitError || stdout.Len() != 0 || !strings.Contains(stderr.String(), "xid-") {
+				t.Errorf("%v: code = %d, stdout = %q, stderr = %q", args, code, stdout.String(), stderr.String())
+			}
+		}
+	}
 }
 
 func TestRunCommandRejectsInvalidCadence(t *testing.T) {
@@ -1087,13 +1399,18 @@ func TestRunCommandCadenceContinuousSkipsPrologChecks(t *testing.T) {
 // /sys/class/infiniband. Reporting no ports would fail the port check, as
 // it does on a host whose RDMA driver is missing.
 func healthyInfiniBand(a *App) *App {
-	return a.WithCollect(healthyIBSensor{}, observations.MappedSignalsFor(health.InfiniBand)...)
+	return a.WithCollect(healthyIBSensor{}, healthyIBSensor{}.Signals().IDs()...)
 }
 
 type healthyIBSensor struct{}
 
-func (healthyIBSensor) ID() string               { return "test.infiniband" }
-func (healthyIBSensor) Signals() collect.Signals { return ibsignals.PortSignals() }
+func (healthyIBSensor) ID() string { return "test.infiniband" }
+
+// Signals are the port signals the InfiniBand adapter maps.
+func (healthyIBSensor) Signals() collect.Signals {
+	mapped := observations.MappedSignalsFor(health.InfiniBand)
+	return slices.DeleteFunc(ibsignals.PortSignals(), func(s collect.Signal) bool { return !slices.Contains(mapped, s.ID()) })
+}
 
 func (s healthyIBSensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	op := collect.NewOp(opts...)
@@ -1124,4 +1441,17 @@ func (s healthyIBSensor) Measure(_ context.Context, opts ...collect.OpOption) (*
 		})
 	}
 	return batch, nil
+}
+
+func TestXidTimeFlagsPreserveBackendOverride(t *testing.T) {
+	for _, command := range []string{"run", "collect"} {
+		a := cadenceRunApp()
+		called := false
+		a.WithXidBackend(xidSpyBackend{called: &called})
+		var stdout, stderr bytes.Buffer
+		code := a.Run([]string{command, "--node-id", testNodeID, "--xid-from", "0008:06:00=1792600000"}, &stdout, &stderr)
+		if code == exitError || !called {
+			t.Fatalf("%s: code=%d, override called=%v, stderr=%s", command, code, called, stderr.String())
+		}
+	}
 }

@@ -1,15 +1,19 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
 go_library(
     name = "observations",
     srcs = [
         "export.go",
         "ingest.go",
+        "linkflap.go",
         "mapping.go",
+        "nvlink.go",
+        "processes.go",
         "xid.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/observations",
-    visibility = ["//visibility:public"],
     deps = [
         "//catalog/cpu",
         "//catalog/gpu",
@@ -25,6 +29,7 @@ go_library(
         "//collect/signals/infiniband",
         "//collect/signals/xid",
         "//toolkit/internal/gpuinventory",
+        "//toolkit/internal/pciaddr",
         "@org_golang_google_protobuf//types/known/timestamppb",
     ],
 )
@@ -35,9 +40,13 @@ go_test(
         "entity_test.go",
         "export_test.go",
         "infiniband_test.go",
+        "linkflap_test.go",
+        "nvlink_test.go",
         "observations_test.go",
+        "processes_test.go",
         "roundtrip_test.go",
         "unsigned_test.go",
+        "xid_test.go",
     ],
     embed = [":observations"],
     deps = [

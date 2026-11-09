@@ -25,7 +25,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.3",
+  "schema_version": "0.5",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
   "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
@@ -54,7 +54,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.3",
+  "schema_version": "0.5",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
@@ -73,6 +73,9 @@ The check engine collects typed measurements from sensors, evaluates them agains
     {
       "check_ids": [
         "gpu_xid_79"
+      ],
+      "entities": [
+        "0008:01:00"
       ],
       "category": "xid",
       "max_severity": "CRITICAL"
@@ -136,6 +139,8 @@ The check engine collects typed measurements from sensors, evaluates them agains
     {
       "timestamp": "2026-06-10T14:31:12.332512987-05:00",
       "observed_values": {
+        "gpu_id": "",
+        "pci_address": "0008:01:00",
         "xid_counts": {
           "79": 1
         }
@@ -145,11 +150,14 @@ The check engine collects typed measurements from sensors, evaluates them agains
       "span_id": "e57c190b-46d2-4c8a-a3f1-9b04d7e2635c",
       "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
       "recommended_action": {
-        "remediation_actions": ["reset_gpu", "service_required"],
+        "remediation_actions": ["restart_os", "service_required"],
         "operational_state": "drain"
       },
       "messages": [
-        "GPU Xid 79 detected: GPU has fallen off the bus."
+        "GPU Xid 79 detected: GPU has fallen off the bus and is inaccessible over PCIe. Restart the host. Review system and kernel PCI event logs; contact support for further investigation."
+      ],
+      "affected_entities": [
+        "0008:01:00"
       ],
       "severity": "CRITICAL",
       "category": "xid",
@@ -159,11 +167,17 @@ The check engine collects typed measurements from sensors, evaluates them agains
     }
   ],
   "skipped_checks": [],
+  "recommended_action": {
+    "remediation_actions": ["restart_os", "service_required"],
+    "operational_state": "drain"
+  },
   "overall_severity": "CRITICAL"
 }
 ```
 
-The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
+A failing Xid result names its GPU in `affected_entities`: the GPU UUID when NVML reports the GPU, and the PCI address otherwise, as for a GPU that fell off the bus. A result from a failed journal read names no GPU.
+
+The process exit code is a coarse health signal: `0` for PASS/INFO/WARNING, `1` for CRITICAL/UNKNOWN, and `2` when the tool could not run to a verdict (config/backend/collection/audit/output failure). It does not distinguish CRITICAL from UNKNOWN or INFO from WARNING, and it does not reflect `skipped_checks` — read `overall_severity` in the JSON for the precise level.
 
 The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json) is the JSON Schema for it (`schema_version` MAJOR.MINOR); validate output against it in downstream consumers. `catalog_version` names the module version, and so the catalog, that produced the verdict, so consumers can verify which check logic and default thresholds were available when the run occurred.
 
@@ -173,7 +187,7 @@ The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.j
 Sensor.Measure() --> []Measurement --> Catalog.EvaluateAll() --> NodeVerdict
 ```
 
-Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor reading Linux sysfs (the CLI collects CPU through `collect/sensors/cpu`), an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface a CRITICAL verdict or skip.
+Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor reading Linux sysfs (the CLI collects CPU through `collect/sensors/cpu`), an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
 
 The CPU sensor counts the logical CPUs in `/sys/devices/system/cpu/possible` and `/sys/devices/system/cpu/online`, and the NUMA nodes in `/sys/devices/system/node/online`. The `cpu_count` check requires no operator configuration and reports CRITICAL when a kernel-possible CPU is not online. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM or machine-SKU count, process affinity, or cgroup CPU limits.
 
@@ -181,7 +195,7 @@ The `numa_node_count` check compares the online NUMA node count against `expecte
 
 Catalog receives measurements, routes each to matching checks by category (GPU measurements run GPU checks, node measurements run node checks), evaluates each check's CEL rules against the measurement values and resolved thresholds, and produces a flat list of check verdicts.
 
-Aggregation takes the flat list and computes the node-level verdict: the worst severity across all non-skipped checks, a `severity_by_domain` map, and a list of affected components for non-PASS results.
+Aggregation takes the flat list and computes the node-level verdict: the worst severity across all non-skipped checks, a `severity_by_domain` map, a list of affected components for non-PASS results, and one node-level remediation sequence when an actionable check fails.
 
 Per-check results use five severity levels:
 
@@ -190,8 +204,8 @@ Per-check results use five severity levels:
 | PASS | No condition detected. Node is eligible for the next workload. |
 | INFO | Anomaly within safe operating bounds. Monitor for trend. |
 | WARNING | Condition that degrades performance or increases failure risk. |
-| CRITICAL | Imminent risk of failure, data corruption, or unrecoverable state. Remove from service. |
 | UNKNOWN | Check could not complete. Eligibility for the affected component cannot be assessed. |
+| CRITICAL | Imminent risk of failure, data corruption, or unrecoverable state. Remove from service. |
 
 `skipped` is a separate per-check state, not a severity level. A skipped check contributes nothing to the node-level verdict.
 
@@ -220,6 +234,8 @@ The catalog includes these check families:
 | `gpu_xid_<code>` | xid | One check per Xid code seen in the journal, with catalog-defined severity and action | `occurrences`; Xids 144–150 use `fatal_occurrences`, `nonfatal_occurrences` |
 | `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | `occurrences` |
 | `gpu_xid_154` | xid | Xid 154 (INFO — recovery action changed) | `occurrences` |
+| `gpu_xid_informational` | xid | A logged Xid code that NVIDIA's Xid catalog marks Unused, IGNORE or gives no resolution, and no registered check covers (INFO, no action) | `occurrences` |
+| `gpu_xid_unknown` | xid | A logged Xid code that no registered check covers and that is not informational (WARNING, monitor) | `occurrences` |
 
 Each check definition carries:
 
@@ -240,8 +256,8 @@ Warning-class Xids are individual `gpu_xid_<code>` checks.
 
 - go 1.27.3
 - Linux sysfs exposing `/sys/devices/system/cpu/{possible,online}` and `/sys/devices/system/node/online` (required for CPU collection)
-- NVIDIA driver (required for the GPU sensor; not required if you supply measurements directly)
-- NVML (libnvidia-ml) for the NVML-backed sensor
+- NVIDIA driver with NVML (libnvidia-ml), for GPU inventory, compute processes, and NVLink (not required if you supply measurements directly)
+- For the CLI's GPU power, power-limit, pstate, and throttle checks: a running DCGM hostengine (`nv-hostengine`) on the node and the DCGM 4 client library (`libdcgm.so.4`). Without them those checks fail with a collection error.
 
 OS: Linux (x86_64, aarch64). CPU collection reads sysfs directly without sudo or an external executable. The toolkit GPU sensor is Linux-only; the catalog package compiles and runs on any platform.
 
@@ -278,6 +294,39 @@ The execution context defaults to `TENANT_GUEST`. Use
 `--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND` to select checks
 for a different execution context.
 
+Both `run` and `collect` can limit which Xid events are considered. By default,
+collection covers the entire current boot.
+
+After resetting an individual GPU, use `--xid-from PCI_ADDRESS=unix-seconds`
+to exclude its earlier Xids while retaining the other GPUs' history. This option
+may be repeated per GPU:
+
+```shell
+./health-validation run --xid-from 0008:06:00=1792600000 --xid-from 0009:06:00=1792603600
+```
+
+To set a start time for all GPUs on the node, use `--xid-from <unix-seconds>`.
+Optional `--xid-to <unix-seconds>` sets a shared end time for every GPU. For
+example, to evaluate Xids within the same interval on all GPUs:
+
+```shell
+./health-validation run --xid-from 1792600000 --xid-to 1792603600
+```
+
+The two forms of `--xid-from` can be combined: a GPU-specific start time
+overrides the node-wide start time for that GPU. GPUs without an override use
+the node-wide start time, or the entire current boot if none is supplied.
+Addresses use `dddd:bb:dd` (optionally `.0`), with case-insensitive hex digits
+and domains of four or more digits.
+
+Both time bounds are exclusive. Start times must be non-negative, and the end time must be
+positive and later than every supplied start time. Either bound may be omitted.
+Duplicate GPU bounds or multiple node-wide start times will result in an error.
+
+These flags filter the default Xid journal sensor within the current boot.
+Other journal sensors, including RDMA link-flap detection, and backends supplied
+through `WithXidBackend` keep their own collection behavior.
+
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 
 Run with a config file (threshold overrides):
@@ -292,7 +341,7 @@ Collect sensor measurements without evaluating checks:
 ./health-validation collect > observations.json
 ```
 
-For `collect`, an optional config's check IDs select the sensor domains to run. Without one, every built-in sensor domain runs. The output is one `ObservationBatch` (`collect/proto/health/v1/observation.proto`) in protojson form, with one observation per measurement field. Each signal ID is the domain plus the field name the checks read (e.g. `nvlink.inactive_count`); these are toolkit names, not canonical collect signal IDs. GPU measurements target the GPU and host-wide ones target the node (`--node-id`, defaulting to the hostname). Each observation carries a `value`, a `collectionError`, or a `noValue`; map and list fields are JSON-encoded strings. A signal the source reports as unsupported is a `noValue` with reason `NO_VALUE_REASON_NOT_SUPPORTED`, never a zero value. Sensor failures remain structured data and do not change the successful exit code.
+For `collect`, an optional config's check IDs select the sensor domains to run. Without one, every built-in sensor domain runs. The output is one `ObservationBatch` (`collect/proto/health/v1/observation.proto`) in protojson form, with one observation per measurement field. Each signal ID is the domain plus the field name the checks read (e.g. `nvlink.inactive_count`); these are toolkit names, not canonical collect signal IDs. GPU measurements target the GPU and host-wide ones target the node (`--node-id`, defaulting to the hostname). Xid measurements target their GPU by UUID when known, by PCI address (a `pci` target) when only the address is known, and the node otherwise; two GPUs whose printed addresses do not parse both land on the node target. Each observation carries a `value`, a `collectionError`, or a `noValue`; map and list fields are JSON-encoded strings. A signal the source reports as unsupported is a `noValue` with reason `NO_VALUE_REASON_NOT_SUPPORTED`, never a zero value. Sensor failures remain structured data and do not change the successful exit code. Threshold values in that config are validated but not applied, and `collect` records no override audit entries.
 
 Slurm prolog integration:
 
@@ -303,7 +352,7 @@ nodename="$SLURMD_NODENAME"
 VERDICT=$(./health-validation run --node-id "$nodename")
 EXIT=$?
 
-# Exit 2: the tool could not produce a verdict (config/backend/collection error).
+# Exit 2: the tool could not produce a verdict (config/backend/collection/audit error).
 if [ $EXIT -eq 2 ]; then
   echo "health-validation failed to run" >&2
   exit 1
@@ -401,11 +450,18 @@ disabled_checks:
   - gpu_power_state
 ```
 
+Xid occurrence thresholds count per GPU: `occurrences: 2` fires on a GPU that
+logged two matching Xids, not on two GPUs that logged one each.
+
 Every ID under `disabled_checks` is validated against the registered checks, so
 a typo fails the run rather than leaving the check quietly enabled. Because
 skipped checks are excluded from `overall_severity`, a disable narrows the
 minimum bar the node is held to — read `skipped_checks`, not just the exit code,
 to know what actually ran.
+
+Each threshold override is also recorded in the host's systemd journal, and the
+run exits `2` if it cannot be. See
+[docs/integration.md](docs/integration.md#audit-trail-for-overrides).
 
 ### Publishing metrics
 
@@ -458,11 +514,11 @@ Emitting the zeros matters: if only the severity in effect were reported, the
 previous run's `severity="CRITICAL"` point would sit at `1` with nothing to
 contradict it, and a node that had recovered would keep reading as critical.
 
-A check that runs per entity — most GPU and NVLink checks — produces one result
-per GPU, so `check.severity` reports the **worst** severity across them and
-`check.affected_entities` counts the distinct entities named. One failing GPU
-therefore shows as a failing check; which GPU it was is in the JSON verdict's
-`affected_entities`, not in the metrics.
+A check that runs per entity — most GPU and NVLink checks, and the Xid checks —
+produces one result per GPU, so `check.severity` reports the **worst** severity
+across them and `check.affected_entities` counts the distinct entities named.
+One failing GPU therefore shows as a failing check; which GPU it was is in the
+JSON verdict's `affected_entities`, not in the metrics.
 
 `check.skipped` reports every check against every skip reason: `1` if it was
 skipped for that reason, `0` if it was not.
@@ -507,6 +563,7 @@ this config has no field for it.
 7. [catalog/health/node-verdict.schema.json](catalog/health/node-verdict.schema.json): JSON Schema for the node verdict output
 8. [CONTRIBUTING.md](CONTRIBUTING.md)
 9. [ROADMAP.md](ROADMAP.md): development focus areas and related work
+10. [Design proposals](docs/design/index.md): propose and review substantial changes before implementation
 
 ## Maintainers
 

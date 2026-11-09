@@ -18,6 +18,7 @@ import (
 
 func TestArchitectureFromName(t *testing.T) {
 	cases := map[string]string{
+		"NVIDIA VR200":            "VR200",
 		"NVIDIA GB300":            "GB300",
 		"NVIDIA GB200":            "GB200",
 		"NVIDIA B200":             "B200",

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package pci defines raw PCI inventory and Access Control Services signals.
+// Package pci defines raw PCI inventory, link properties, and Access Control Services signals.
 package pci
 
 import "github.com/dsx-ai-factory/health-validation/collect"
@@ -17,10 +17,20 @@ var (
 	ACSCapability = collect.NewSignal("pci.acs.capability.bits", "1")
 	ACSControl    = collect.NewSignal("pci.acs.control.bits", "1")
 	ACSOffset     = collect.NewSignal("pci.acs.config.offset", "By")
+
+	LinkSpeed         = collect.NewSignal("pci.link.speed", "GT/s")
+	MaxLinkSpeed      = collect.NewSignal("pci.link.speed.max", "GT/s")
+	LinkWidth         = collect.NewSignal("pci.link.width", "1")
+	MaxLinkWidth      = collect.NewSignal("pci.link.width.max", "1")
+	LinkGeneration    = collect.NewSignal("pci.link.generation", "1")
+	MaxLinkGeneration = collect.NewSignal("pci.link.generation.max", "1")
 )
 
 // All returns the definitions in stable order. Module names identify only the
 // bound driver module, not the candidate modules from a userspace alias database.
 func All() collect.Signals {
-	return collect.Signals{Address, Vendor, Device, Class, Driver, Module, GPUPresent, ACSCapability, ACSControl, ACSOffset}
+	return collect.Signals{
+		Address, Vendor, Device, Class, Driver, Module, GPUPresent, ACSCapability, ACSControl, ACSOffset,
+		LinkSpeed, MaxLinkSpeed, LinkWidth, MaxLinkWidth, LinkGeneration, MaxLinkGeneration,
+	}
 }

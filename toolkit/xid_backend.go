@@ -37,12 +37,13 @@ type XidBackend interface {
 // (CONFIG_LOG_BUF_SHIFT, typically a few thousand lines) that wraps under
 // log pressure, so an Xid logged early on a long-lived boot can be evicted
 // before the check runs. The systemd journal persists entries for the whole
-// boot, which is what today's "retention since boot" expectation relies on
-// (the checks are scoped to --boot). Switching to kmsg trades that
+// boot, preserving the history needed by the default unfiltered collection.
+// Optional time bounds narrow which events the collect sensor evaluates.
+// Switching to kmsg trades that
 // guarantee for a best-effort recent window.
 //
 // Not adopted pending socialization and a decision on whether the
-// since-boot retention constraint can be relaxed (or the ring-buffer bound
+// full-boot retention constraint can be relaxed (or the ring-buffer bound
 // accepted). If it can, a kmsg backend is a clean simplification here.
 
 // Journalctl returns a backend that collects NVRM Xid events from the

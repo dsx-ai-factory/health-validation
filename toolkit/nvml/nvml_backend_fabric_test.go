@@ -201,8 +201,7 @@ func TestMeasureDeviceFabric_HealthAndRegistration(t *testing.T) {
 	}
 }
 
-// A hard NVML failure records one errored entry covering all six
-// fabric signals so the catalog fails the fabric check Critical.
+// A hard NVML failure flags all six fabric signals.
 func TestMeasureDeviceFabric_HardFailure(t *testing.T) {
 	withFabricInfo(t, gonvml.GpuFabricInfo_v3{}, gonvml.ERROR_UNKNOWN)
 

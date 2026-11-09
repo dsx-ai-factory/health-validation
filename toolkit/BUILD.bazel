@@ -1,4 +1,8 @@
+# gazelle:default_visibility //build/visibility:toolkit_consumers
+
 load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
 
 go_library(
     name = "toolkit",
@@ -27,7 +31,6 @@ go_library(
         "xid_sensor.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit",
-    visibility = ["//visibility:public"],
     deps = [
         "//catalog",
         "//catalog/cpu",
@@ -53,6 +56,7 @@ go_test(
         "gpu_sensor_test.go",
         "journal_internal_test.go",
         "lazy_backend_test.go",
+        "linkflap_parity_internal_test.go",
         "node_sensor_test.go",
         "rdma_linkflap_backend_internal_test.go",
         "rdma_linkflap_parse_test.go",
@@ -76,7 +80,10 @@ go_test(
         "//catalog/xid",
         "//collect",
         "//collect/sensors/cpu",
+        "//collect/sensors/infiniband",
+        "//collect/sensors/linkflap",
         "//collect/sensors/xid",
+        "//collect/source/infiniband",
         "//collect/source/journal",
         "//toolkit/internal/collectadapters",
         "//toolkit/internal/collectbridge",

@@ -15,6 +15,7 @@ go_library(
         "//collect/observation",
         "//collect/sensors/dcgm",
         "//collect/source/dcgm",
+        "//collect/source/process",
         "//toolkit/observations",
         "@com_github_google_uuid//:uuid",
     ],
@@ -31,8 +32,11 @@ go_test(
     srcs = ["main_test.go"],
     embed = [":scan-one-off-evaluate_lib"],
     deps = [
+        "//catalog/health",
         "//collect/sensors/dcgm",
+        "//collect/signals/gpu",
         "//collect/source/dcgm",
+        "//toolkit/observations",
         "@com_github_stretchr_testify//require",
     ],
 )

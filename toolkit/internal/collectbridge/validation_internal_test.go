@@ -32,6 +32,31 @@ func TestCanonicalTargetKinds(t *testing.T) {
 		t.Fatalf("node target for a GPU signal: err=%v", err)
 	}
 
+	at := timestamppb.New(time.Unix(1, 0))
+	lost := &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable}
+	for _, test := range []struct {
+		o       *observation.Observation
+		signal  collect.Signal
+		name    string
+		wantErr string
+	}{
+		{name: "P2P on a pair", signal: gpusignals.NVLinkP2PStatus, o: value(gpusignals.NVLinkP2PStatus, observation.GPUPairTarget("GPU-1", "GPU-2"))},
+		{name: "P2P value on a GPU", signal: gpusignals.NVLinkP2PStatus, o: value(gpusignals.NVLinkP2PStatus, observation.GPUTarget("GPU-1")), wantErr: "requires a GPU pair target"},
+		{
+			name: "P2P failure on its source GPU", signal: gpusignals.NVLinkP2PStatus,
+			o: observation.NewCollectionErrorObservation(gpusignals.NVLinkP2PStatus.ID(), gpusignals.NVLinkP2PStatus.Unit(), "test", "read", observation.GPUTarget("GPU-1"), at, lost),
+		},
+		{name: "link speed on an endpoint", signal: gpusignals.NVLinkEndpointSpeed, o: value(gpusignals.NVLinkEndpointSpeed, observation.NVLinkEndpointTarget("GPU-1", 3))},
+		{name: "link speed value on a GPU", signal: gpusignals.NVLinkEndpointSpeed, o: value(gpusignals.NVLinkEndpointSpeed, observation.GPUTarget("GPU-1")), wantErr: "NVLink endpoint target"},
+		{name: "link count on a GPU", signal: gpusignals.NVLinkLinkCount, o: value(gpusignals.NVLinkLinkCount, observation.GPUTarget("GPU-1"))},
+		{name: "P2P on a self-pair", signal: gpusignals.NVLinkP2PStatus, o: value(gpusignals.NVLinkP2PStatus, observation.GPUPairTarget("GPU-1", "GPU-1")), wantErr: "two distinct GPUs"},
+	} {
+		err := validateCollectObservation(test.o, test.signal)
+		if (err == nil) != (test.wantErr == "") || (err != nil && !strings.Contains(err.Error(), test.wantErr)) {
+			t.Errorf("%s: err=%v, want %q", test.name, err, test.wantErr)
+		}
+	}
+
 	// A later entry overrides an earlier one, so a per-link signal can be
 	// carved out of the whole-GPU entry.
 	index := canonicalIndex([]canonicalTarget{
@@ -125,5 +150,41 @@ func TestInfiniBandTargetKinds(t *testing.T) {
 	}
 	if err := validateCollectObservation(value(firmware, port), firmware); err == nil {
 		t.Fatal("port target accepted for a device signal")
+	}
+}
+
+// TestLinkFlapTargetRules keys each transition by its journal entry: no GPU,
+// NVLink, or InfiniBand target stands in for the netdev the driver logs.
+func TestLinkFlapTargetRules(t *testing.T) {
+	at := timestamppb.New(time.Unix(1, 0))
+	value := func(s collect.Signal, target *observation.ObservationTarget) *observation.Observation {
+		return &observation.Observation{
+			SignalId: s.ID(), Source: "test", Target: target, ObservedAt: at, Unit: s.Unit(),
+			Outcome: &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_StringValue{StringValue: "enp90s0np0"}}},
+		}
+	}
+	iface, marker := ibsignals.LinkTransitionInterface, ibsignals.LinkFlapScanSince
+	for _, signal := range ibsignals.LinkTransitionSignals() {
+		if err := validateCollectObservation(value(signal, observation.JournalEntryTarget("b", "c")), signal); err != nil {
+			t.Fatalf("%s on a journal entry rejected: %v", signal.ID(), err)
+		}
+	}
+	if err := validateCollectObservation(value(marker, observation.NodeTarget("")), marker); err != nil {
+		t.Fatalf("marker on the node rejected: %v", err)
+	}
+	for name, target := range map[string]*observation.ObservationTarget{
+		"GPU":               observation.GPUTarget("GPU-1"),
+		"NVLink endpoint":   observation.NVLinkEndpointTarget("GPU-1", 0),
+		"InfiniBand device": observation.InfiniBandDeviceTarget("mlx5_0"),
+		"InfiniBand port":   observation.InfiniBandPortTarget("mlx5_0", 1),
+		"node":              observation.NodeTarget(""),
+	} {
+		err := validateCollectObservation(value(iface, target), iface)
+		if err == nil || !strings.Contains(err.Error(), "requires a journal entry target") {
+			t.Errorf("transition on a %s target: err=%v", name, err)
+		}
+	}
+	if err := validateCollectObservation(value(marker, observation.JournalEntryTarget("b", "c")), marker); err == nil || !strings.Contains(err.Error(), "requires a node target") {
+		t.Errorf("marker on a journal entry: err=%v", err)
 	}
 }

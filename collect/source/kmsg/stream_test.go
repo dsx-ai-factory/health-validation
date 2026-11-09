@@ -51,6 +51,22 @@ func (r *streamReader) send(packet streamPacket) {
 	<-packet.processed
 }
 
+// NewStreamForTest lets external sensor tests exercise the real follow loop.
+func NewStreamForTest(t *testing.T) (*Stream, func(string, error)) {
+	t.Helper()
+	r := &streamReader{packets: make(chan streamPacket, 1), closed: make(chan struct{})}
+	s := startStream(r, time.Unix(1000, 0), "boot", 8)
+	t.Cleanup(func() { require.NoError(t, s.Close()) })
+	return s, func(body string, err error) {
+		processed := make(chan struct{})
+		r.packets <- streamPacket{body: body, err: err, processed: processed}
+		select {
+		case <-processed:
+		case <-s.done:
+		}
+	}
+}
+
 func TestStreamSharedWindow(t *testing.T) {
 	r := &streamReader{packets: make(chan streamPacket, 16), closed: make(chan struct{})}
 	s := startStream(r, time.Unix(1000, 0), "boot", 2)

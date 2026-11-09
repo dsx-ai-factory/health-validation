@@ -14,11 +14,12 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/pciaddr"
 )
 
 // xidSignals are the canonical Xid signals. They do not fit the field table:
-// one measurement aggregates repeated journal-entry events, and any failure
-// must also fail the derived sub_xid_code_counts.
+// each GPU's measurement gathers repeated journal-entry events, and any
+// failure must also fail the derived sub_xid_code_counts.
 var xidSignals = func() map[string]bool {
 	out := make(map[string]bool)
 	for _, id := range xidsignals.All().IDs() {
@@ -27,46 +28,24 @@ var xidSignals = func() map[string]bool {
 	return out
 }()
 
-// canonicalXid builds one XidMeasurement from canonical Xid observations.
-// Any failure yields a single error naming every MeasurementSignals entry; a
-// single error, because evaluation recommends retry_collection only when
-// every failure is a timeout.
-func canonicalXid(obs []*observation.Observation) health.Measurement {
-	if err := firstXidFailure(obs); err != nil {
-		return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)
+// canonicalXid builds one XidMeasurement per GPU from canonical Xid
+// observations, keyed by normalized PCI address. A scan with no events yields
+// one measurement naming no GPU. Any failure yields a single measurement
+// with a single error naming every MeasurementSignals entry; a single error,
+// because evaluation recommends retry_collection only when every failure is a
+// timeout.
+func canonicalXid(obs []*observation.Observation) []health.Measurement {
+	if err := firstFailure(obs); err != nil {
+		return []health.Measurement{xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)}
 	}
-	m, err := buildXid(obs)
+	measurements, err := buildXid(obs)
 	if err != nil {
-		return xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)
+		return []health.Measurement{xid.ErroredXid(xidsignals.WindowBoot, err, xid.MeasurementSignals()...)}
 	}
-	return m
+	return measurements
 }
 
-// firstXidFailure returns the first non-timeout failure, else the first
-// timeout, else nil.
-func firstXidFailure(obs []*observation.Observation) error {
-	var timeout error
-	for _, o := range obs {
-		var err error
-		switch {
-		case o.GetCollectionError() != nil:
-			err = collectionFailure(o.GetCollectionError())
-		case o.GetNoValue() != nil:
-			err = noValueFailure(o.GetSource(), o.GetNoValue())
-		default:
-			continue
-		}
-		if !errors.Is(err, health.ErrCollectionTimeout) {
-			return err
-		}
-		if timeout == nil {
-			timeout = err
-		}
-	}
-	return timeout
-}
-
-func buildXid(obs []*observation.Observation) (xid.XidMeasurement, error) {
+func buildXid(obs []*observation.Observation) ([]health.Measurement, error) {
 	var since string
 	var marked bool
 	var order []string
@@ -86,14 +65,25 @@ func buildXid(obs []*observation.Observation) (xid.XidMeasurement, error) {
 		entries[key][o.GetSignalId()] = o.GetValue()
 	}
 	if !marked {
-		return xid.XidMeasurement{}, errors.New("xid scan marker missing")
+		return nil, errors.New("xid scan marker missing")
 	}
-	m := xid.XidMeasurement{Since: since}
+	var gpus []xid.XidMeasurement
+	gpuIndex := map[string]int{}
 	for i, key := range order {
 		event, err := buildXidEvent(xidFields{values: entries[key], index: i + 1})
 		if err != nil {
-			return xid.XidMeasurement{}, err
+			return nil, err
 		}
+		// Normalized so every spelling of one GPU groups together and
+		// matches the adapter's UUID lookup.
+		gpu := pciaddr.Normalize(event.PCIAddress)
+		j, ok := gpuIndex[gpu]
+		if !ok {
+			j = len(gpus)
+			gpuIndex[gpu] = j
+			gpus = append(gpus, xid.XidMeasurement{Since: since, PCIAddress: gpu})
+		}
+		m := &gpus[j]
 		if m.XidCounts == nil {
 			m.XidCounts = map[int64]int64{}
 		}
@@ -107,11 +97,17 @@ func buildXid(obs []*observation.Observation) (xid.XidMeasurement, error) {
 		m.Events = append(m.Events, event)
 		m.EventCount++
 	}
-	return m, nil
+	if len(gpus) == 0 {
+		return []health.Measurement{xid.XidMeasurement{Since: since}}, nil
+	}
+	out := make([]health.Measurement, len(gpus))
+	for i, m := range gpus {
+		out[i] = m
+	}
+	return out, nil
 }
 
-// buildXidEvent builds one event. Recovery-action signals are read by no
-// field: XidEvent does not carry the Xid 154 transition.
+// buildXidEvent builds one event.
 func buildXidEvent(f xidFields) (xid.XidEvent, error) {
 	for _, required := range []collect.Signal{xidsignals.Code, xidsignals.PCIAddress} {
 		if f.values[required.ID()] == nil {
@@ -121,8 +117,12 @@ func buildXidEvent(f xidFields) (xid.XidEvent, error) {
 	event := xid.XidEvent{
 		XidCode:     f.int(xidsignals.Code),
 		PCIAddress:  f.string(xidsignals.PCIAddress),
+		Message:     f.string(xidsignals.Message),
 		Pid:         f.int(xidsignals.PID),
 		ProcessName: f.string(xidsignals.ProcessName),
+		GPC:         f.optionalInt(xidsignals.GPC),
+		TPC:         f.optionalInt(xidsignals.TPC),
+		SM:          f.optionalInt(xidsignals.SM),
 	}
 	nvlink5 := []collect.Signal{xidsignals.NVLink5SubComponent, xidsignals.NVLink5Fatal, xidsignals.NVLink5Link}
 	present := slices.IndexFunc(nvlink5, func(s collect.Signal) bool { return f.values[s.ID()] == nil }) < 0
@@ -140,6 +140,23 @@ func buildXidEvent(f xidFields) (xid.XidEvent, error) {
 		}
 		if debug := strings.Fields(f.string(xidsignals.NVLink5DebugData)); len(debug) > 0 {
 			event.NVLink5.DebugData = debug
+		}
+	}
+	recovery := []collect.Signal{
+		xidsignals.RecoveryActionFromCode, xidsignals.RecoveryActionFromName,
+		xidsignals.RecoveryActionToCode, xidsignals.RecoveryActionToName,
+	}
+	if slices.ContainsFunc(recovery, func(s collect.Signal) bool { return f.values[s.ID()] != nil }) {
+		// A transition missing its target code would read as unrecognized
+		// rather than as the action the driver named.
+		if f.values[xidsignals.RecoveryActionFromCode.ID()] == nil || f.values[xidsignals.RecoveryActionToCode.ID()] == nil {
+			return xid.XidEvent{}, fmt.Errorf("xid event %d: incomplete recovery-action fields", f.index)
+		}
+		event.RecoveryAction = &xid.RecoveryAction{
+			FromCode: f.string(xidsignals.RecoveryActionFromCode),
+			FromName: f.string(xidsignals.RecoveryActionFromName),
+			ToCode:   f.string(xidsignals.RecoveryActionToCode),
+			ToName:   f.string(xidsignals.RecoveryActionToName),
 		}
 	}
 	return event, f.err
@@ -168,6 +185,15 @@ func (f *xidFields) int(s collect.Signal) int64 {
 		f.wrongKind(s)
 	}
 	return v.GetIntValue()
+}
+
+// optionalInt keeps an absent value nil, since zero is a valid unit index.
+func (f *xidFields) optionalInt(s collect.Signal) *int64 {
+	if f.values[s.ID()] == nil {
+		return nil
+	}
+	v := f.int(s)
+	return &v
 }
 
 func (f *xidFields) string(s collect.Signal) string {

@@ -86,7 +86,7 @@ func TestRDMALinkFlapSensor_ShortOutagePasses(t *testing.T) {
 	}
 }
 
-// Errored reports the journal unreadable, failing the check Critical.
+// Errored reports the journal unreadable, reporting the check Unknown.
 func TestRDMALinkFlapSensor_Errored(t *testing.T) {
 	s := toolkit.NewRDMALinkFlapSensor(toolkit.MockRDMALinkFlap())
 	ms := s.Errored(errors.New("journal unreadable"))
@@ -97,8 +97,8 @@ func TestRDMALinkFlapSensor_Errored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if nv.OverallSeverity != health.Critical {
-		t.Errorf("OverallSeverity = %v, want CRITICAL on unreadable journal", nv.OverallSeverity)
+	if nv.OverallSeverity != health.Unknown {
+		t.Errorf("OverallSeverity = %v, want UNKNOWN on unreadable journal", nv.OverallSeverity)
 	}
 }
 

@@ -6,9 +6,10 @@ package collectadapters
 import (
 	"errors"
 	"maps"
-	"reflect"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -20,30 +21,186 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// The adapter requests exactly the mapped port signals and builds one
-// measurement per (device, port), in stable order, ignoring other domains.
-func TestInfiniBandAdapterGroupsByPort(t *testing.T) {
+var flapStart = time.Date(2026, 10, 1, 11, 0, 0, 0, time.UTC)
+
+func flapValue(source string, s collect.Signal, target *observation.ObservationTarget, v *observation.Value) *observation.Observation {
+	return &observation.Observation{
+		SignalId: s.ID(), Source: source, Target: target, ObservedAt: timestamppb.New(flapStart.Add(time.Hour)),
+		Unit: s.Unit(), Outcome: &observation.Observation_Value{Value: v},
+	}
+}
+
+func flapMarker(source string) *observation.Observation {
+	return flapValue(source, ibsignals.LinkFlapScanSince, observation.NodeTarget(""),
+		&observation.Value{Kind: &observation.Value_IntValue{IntValue: flapStart.UnixMicro()}})
+}
+
+func flapTransition(source, cursor, state string, at time.Duration) []*observation.Observation {
+	target := observation.JournalEntryTarget("boot", cursor)
+	return []*observation.Observation{
+		flapValue(source, ibsignals.LinkTransitionInterface, target, &observation.Value{Kind: &observation.Value_StringValue{StringValue: "enp90s0np0"}}),
+		flapValue(source, ibsignals.LinkTransitionState, target, &observation.Value{Kind: &observation.Value_StringValue{StringValue: state}}),
+		flapValue(source, ibsignals.LinkTransitionRealtime, target, &observation.Value{Kind: &observation.Value_IntValue{IntValue: flapStart.Add(at).UnixMicro()}}),
+	}
+}
+
+// oneOf returns the one measurement of type M among measurements, which may
+// also hold the category's other type.
+func oneOf[M health.Measurement](t *testing.T, measurements []health.Measurement) M {
+	t.Helper()
+	var found []M
+	for _, m := range measurements {
+		if typed, ok := m.(M); ok {
+			found = append(found, typed)
+		}
+	}
+	if len(found) != 1 {
+		var zero M
+		t.Fatalf("got %d %T measurements, want 1: %v", len(found), zero, measurements)
+	}
+	return found[0]
+}
+
+// ports returns the port measurements among measurements, in order.
+func ports(measurements []health.Measurement) []infiniband.PortMeasurement {
+	var out []infiniband.PortMeasurement
+	for _, m := range measurements {
+		if port, ok := m.(infiniband.PortMeasurement); ok {
+			out = append(out, port)
+		}
+	}
+	return out
+}
+
+func linkFlapVerdict(t *testing.T, m health.Measurement) health.CheckVerdict {
+	t.Helper()
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.TenantGuest))
+	if err := cat.Register(infiniband.RDMALinkFlapFatal()); err != nil {
+		t.Fatal(err)
+	}
+	v, err := cat.Evaluate("rdma_linkflap_fatal", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Skipped {
+		t.Fatalf("rdma_linkflap_fatal skipped: %+v", v)
+	}
+	return v
+}
+
+// The adapter requests every mapped InfiniBand signal and builds the
+// link-flap measurement beside the ports.
+func TestInfiniBandAdapter(t *testing.T) {
 	a := InfiniBand()
 	if a.Name() != "infiniband" || a.Category() != health.InfiniBand {
-		t.Fatalf("identity = %q/%v", a.Name(), a.Category())
+		t.Fatalf("name=%q category=%v", a.Name(), a.Category())
 	}
 	if got, want := slices.Sorted(maps.Keys(a.Signals())), slices.Sorted(slices.Values(observations.MappedSignalsFor(health.InfiniBand))); !slices.Equal(got, want) {
-		t.Fatalf("Signals = %v, want the mapped port signals %v", got, want)
+		t.Fatalf("signals = %v, want %v", got, want)
 	}
+	ms := a.Build(slices.Concat(
+		[]*observation.Observation{flapMarker("infiniband.journal")},
+		flapTransition("infiniband.journal", "c1", ibsignals.LinkStateDown, 0),
+		flapTransition("infiniband.journal", "c2", ibsignals.LinkStateUp, 45*time.Second),
+		portObservations("mlx5_0", 1, "InfiniBand", 400),
+	))
+	m := oneOf[infiniband.LinkFlapMeasurement](t, ms)
+	if len(m.Errors()) != 0 || !slices.Equal(m.OutageDurations, []int64{45}) {
+		t.Fatalf("measurement = %+v errors %v", m, m.Errors())
+	}
+	if health.KeyOf(m) != health.NodeEntity() {
+		t.Fatalf("link-flap measurement keyed %v, want the node", health.KeyOf(m))
+	}
+	if v := linkFlapVerdict(t, m); v.Severity != health.Critical {
+		t.Fatalf("verdict = %v, want CRITICAL", v.Severity)
+	}
+	if port := oneOf[infiniband.PortMeasurement](t, ms); len(port.Errors()) != 0 || port.EntityID() != "mlx5_0/1" {
+		t.Fatalf("port = %+v errors %v", port, port.Errors())
+	}
+}
+
+// TestInfiniBandAdapterGroupsLinkFlapPerNode builds one measurement from
+// several sources: grouping link-flap observations per source would split
+// one scan into partial measurements that each fail the other's fields.
+func TestInfiniBandAdapterGroupsLinkFlapPerNode(t *testing.T) {
+	obs := slices.Concat(
+		[]*observation.Observation{flapMarker("a")},
+		flapTransition("b", "c1", ibsignals.LinkStateDown, 0),
+		flapTransition("b", "c2", ibsignals.LinkStateUp, 10*time.Second),
+	)
+	m := oneOf[infiniband.LinkFlapMeasurement](t, InfiniBand().Build(obs))
+	if len(m.Errors()) != 0 || !slices.Equal(m.OutageDurations, []int64{10}) {
+		t.Fatalf("measurement = %+v errors %v", m, m.Errors())
+	}
+
+	failure := observation.NewCollectionErrorObservation(ibsignals.LinkTransitionInterface.ID(), ibsignals.LinkTransitionInterface.Unit(),
+		"c", "ReadKernelBoot", nil, timestamppb.New(time.Unix(1, 0)), &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable})
+	m = oneOf[infiniband.LinkFlapMeasurement](t, InfiniBand().Build(append(obs, failure)))
+	if len(m.Errors()) != 1 {
+		t.Fatalf("source-scoped failure from another source: errors = %v, want one", m.Errors())
+	}
+}
+
+// TestInfiniBandAdapterFailsSilentSource fails rdma_linkflap_fatal when the
+// source emitted neither a scan marker nor a collection error, rather than
+// leaving it without a measurement to skip.
+func TestInfiniBandAdapterFailsSilentSource(t *testing.T) {
+	for name, obs := range map[string][]*observation.Observation{
+		"nothing":                nil,
+		"unrelated signals only": healthyGPUObservations()[:1],
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := oneOf[infiniband.LinkFlapMeasurement](t, InfiniBand().Build(obs))
+			if len(m.Errors()) != 1 || !strings.Contains(m.Errors()[0].Err().Error(), "no link-flap scan marker") {
+				t.Fatalf("errors = %v", m.Errors())
+			}
+			if v := linkFlapVerdict(t, m); v.Severity != health.Unknown {
+				t.Fatalf("verdict = %v, want UNKNOWN", v.Severity)
+			}
+		})
+	}
+}
+
+// TestInfiniBandAdapterErroredCoversLinkFlap fails the link-flap check on a
+// domain-wide failure such as a cycle timeout, with a retry recommendation.
+func TestInfiniBandAdapterErroredCoversLinkFlap(t *testing.T) {
+	m := oneOf[infiniband.LinkFlapMeasurement](t, InfiniBand().Errored(health.ErrCollectionTimeout))
+	if len(m.Errors()) != 1 || !slices.Equal(m.Errors()[0].FailedSignals(), infiniband.MeasurementSignals()) {
+		t.Fatalf("errors = %v", m.Errors())
+	}
+	v := linkFlapVerdict(t, m)
+	if v.Severity != health.Unknown || !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRetryCollection)) {
+		t.Fatalf("verdict = %v %v, want UNKNOWN retry collection", v.Severity, v.RecommendedAction)
+	}
+	if !errors.Is(m.Errors()[0].Err(), health.ErrCollectionTimeout) {
+		t.Fatal("timeout not preserved")
+	}
+}
+
+// The adapter builds one measurement per (device, port), in stable order,
+// ignoring other domains.
+func TestInfiniBandAdapterGroupsByPort(t *testing.T) {
 	obs := slices.Concat(portObservations("mlx5_1", 1, "Ethernet", 100), portObservations("mlx5_0", 1, "InfiniBand", 400))
 	obs = append(obs, healthyGPUObservations()...)
-	got := a.Build(obs)
+	got := ports(InfiniBand().Build(obs))
 	if len(got) != 2 {
-		t.Fatalf("got %d measurements, want two ports: %v", len(got), got)
+		t.Fatalf("got %d port measurements, want two: %v", len(got), got)
 	}
 	for i, want := range []infiniband.PortMeasurement{
 		{Device: "mlx5_0", Port: 1, State: "ACTIVE", PhysicalState: "LinkUp", RateGbps: 400, LinkLayer: "InfiniBand"},
 		{Device: "mlx5_1", Port: 1, State: "ACTIVE", PhysicalState: "LinkUp", RateGbps: 100, LinkLayer: "Ethernet"},
 	} {
+		port := got[i]
+		if port.Device != want.Device || port.Port != want.Port || port.State != want.State ||
+			port.PhysicalState != want.PhysicalState || port.RateGbps != want.RateGbps || port.LinkLayer != want.LinkLayer {
+			t.Errorf("measurement %d = %+v, want %+v", i, port, want)
+		}
+		if len(port.Errors()) != 0 {
+			t.Errorf("measurement %d errors = %v, want none", i, port.Errors())
+		}
 		// The converter records the key it grouped by, the port's verified ID.
-		want.SetEntityKey(health.VerifiedEntity(want.EntityID()))
-		if !reflect.DeepEqual(got[i], want) {
-			t.Errorf("measurement %d = %+v (errors %v), want %+v", i, got[i], got[i].Errors(), want)
+		if key := health.KeyOf(port); key != health.VerifiedEntity(want.EntityID()) {
+			t.Errorf("measurement %d keyed %v, want %v", i, key, health.VerifiedEntity(want.EntityID()))
 		}
 	}
 }
@@ -64,8 +221,8 @@ func TestInfiniBandAdapterAttributesFailures(t *testing.T) {
 	obs = append(obs, replace(portObservations("mlx5_0", 1, "InfiniBand", 400), ibsignals.RateGbps.ID(), rateFailed)...)
 
 	byEntity := make(map[string]infiniband.PortMeasurement)
-	for _, m := range InfiniBand().Build(obs) {
-		byEntity[m.(infiniband.PortMeasurement).EntityID()] = m.(infiniband.PortMeasurement)
+	for _, m := range ports(InfiniBand().Build(obs)) {
+		byEntity[m.EntityID()] = m
 	}
 	if len(byEntity) != 2 {
 		t.Fatalf("got %v, want the port and the device", byEntity)
@@ -85,9 +242,9 @@ func TestInfiniBandAdapterAttributesFailures(t *testing.T) {
 }
 
 // A whole-source failure, no observations at all, and Errored each yield one
-// source-keyed measurement with every signal failed, so no check passes on
-// missing data. Zero ports is not evidence of a host without InfiniBand: a
-// missing driver or the device-name filter produces the same emptiness.
+// source-keyed port measurement with every signal failed, so no check passes
+// on missing data. Zero ports is not evidence of a host without InfiniBand: a
+// missing driver or the device filter produces the same emptiness.
 func TestInfiniBandAdapterSourceFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -98,10 +255,7 @@ func TestInfiniBandAdapterSourceFailure(t *testing.T) {
 		{name: "no observations", got: InfiniBand().Build(nil), want: health.SourceEntity("collect.infiniband")},
 		{name: "errored", got: InfiniBand().Errored(errors.New("timeout")), want: health.SourceEntity("collect.infiniband")},
 	} {
-		if len(tc.got) != 1 {
-			t.Fatalf("%s: got %d measurements, want one: %v", tc.name, len(tc.got), tc.got)
-		}
-		port := tc.got[0].(infiniband.PortMeasurement)
+		port := oneOf[infiniband.PortMeasurement](t, tc.got)
 		if port.EntityID() != "" {
 			t.Errorf("%s: EntityID = %q, want empty", tc.name, port.EntityID())
 		}
@@ -115,13 +269,14 @@ func TestInfiniBandAdapterSourceFailure(t *testing.T) {
 }
 
 // Two healthy ports beside a failure to enumerate ports are three entities:
-// each port passes under its own name and the failure fails without naming one.
+// each port passes under its own name and the failure reports UNKNOWN
+// without naming one.
 func TestInfiniBandAdapterDistinguishesPortsFromEnumerationFailure(t *testing.T) {
 	obs := slices.Concat(portObservations("mlx5_0", 1, "InfiniBand", 400), portObservations("mlx5_1", 1, "InfiniBand", 400))
 	obs = append(obs, sourceFailure())
 	ms := InfiniBand().Build(obs)
 	var keys []health.EntityKey
-	for _, m := range ms {
+	for _, m := range ports(ms) {
 		keys = append(keys, health.KeyOf(m))
 	}
 	want := []health.EntityKey{health.VerifiedEntity("mlx5_0/1"), health.VerifiedEntity("mlx5_1/1"), health.SourceEntity("infiniband.sysfs")}
@@ -134,7 +289,7 @@ func TestInfiniBandAdapterDistinguishesPortsFromEnumerationFailure(t *testing.T)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v, want the three entities told apart", err)
 	}
-	var passed, critical []string
+	var passed, unknown []string
 	for _, v := range verdict.CheckResults {
 		if v.CheckID != "ib_port_state" || v.Skipped {
 			continue
@@ -143,13 +298,39 @@ func TestInfiniBandAdapterDistinguishesPortsFromEnumerationFailure(t *testing.T)
 		case health.Pass:
 			passed = append(passed, v.AffectedEntities...)
 			passed = append(passed, "pass")
-		case health.Critical:
-			critical = append(critical, v.AffectedEntities...)
-			critical = append(critical, "critical")
+		case health.Unknown:
+			unknown = append(unknown, v.AffectedEntities...)
+			unknown = append(unknown, "unknown")
 		}
 	}
-	if len(passed) != 2 || len(critical) != 1 {
-		t.Fatalf("ib_port_state results: passed %v, critical %v; want two passes and one unnamed failure: %+v", passed, critical, verdict.CheckResults)
+	if len(passed) != 2 || len(unknown) != 1 {
+		t.Fatalf("ib_port_state results: passed %v, unknown %v; want two passes and one unnamed failure: %+v", passed, unknown, verdict.CheckResults)
+	}
+}
+
+// With the legacy link-flap sensor in place, the ports-only adapter neither
+// requests link-flap signals nor fails that type, which would duplicate the
+// legacy measurement.
+func TestInfiniBandPortsAdapterLeavesLinkFlapToLegacySensor(t *testing.T) {
+	a := InfiniBandPorts()
+	linkFlap := ibsignals.LinkFlapSignals().IDs()
+	want := slices.DeleteFunc(observations.MappedSignalsFor(health.InfiniBand), func(id string) bool { return slices.Contains(linkFlap, id) })
+	if got := slices.Sorted(maps.Keys(a.Signals())); !slices.Equal(got, slices.Sorted(slices.Values(want))) {
+		t.Fatalf("signals = %v, want the port signals %v", got, want)
+	}
+	for name, ms := range map[string][]health.Measurement{
+		"no observations": a.Build(nil),
+		"errored":         a.Errored(errors.New("timeout")),
+	} {
+		if len(ms) != 1 {
+			t.Fatalf("%s: got %d measurements, want one port failure: %v", name, len(ms), ms)
+		}
+		if key := health.KeyOf(oneOf[infiniband.PortMeasurement](t, ms)); key != health.SourceEntity("collect.infiniband") {
+			t.Errorf("%s: key = %v, want the adapter", name, key)
+		}
+	}
+	if got := a.Build(portObservations("mlx5_0", 1, "InfiniBand", 400)); len(got) != 1 || oneOf[infiniband.PortMeasurement](t, got).EntityID() != "mlx5_0/1" {
+		t.Fatalf("Build = %v, want the one port", got)
 	}
 }
 

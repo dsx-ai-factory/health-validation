@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
@@ -291,23 +292,39 @@ var warningClasses = []warningClass{
 	},
 }
 
+// infoXids lists the codes NVIDIA's public Xid catalog
+// (https://docs.nvidia.com/deploy/xid-errors/latest/analyzing-xid-catalog.html)
+// marks Unused, gives the IGNORE resolution, or gives no resolution. They
+// have no check of their own, and are known, not unknown. A code the catalog
+// later gives an action stays informational until it is removed from here.
+var infoXids = []int64{
+	1, 2, 3, 4, 5, 6, 7, 9, 10, 12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+	26, 27, 28, 29, 30, 33, 34, 35, 36, 37, 38, 42, 43, 44, 47, 49, 50, 51, 52,
+	53, 55, 56, 57, 58, 59, 61, 63, 65, 66, 67, 73, 81, 87, 90, 91, 92, 93,
+	106, 107, 108, 111, 112, 113, 114, 115, 116, 117, 118, 121, 122, 123, 124,
+	125, 137, 138, 141, 152, 153, 157, 160, 161,
+	162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172,
+}
+
 // Checks returns every Xid check shipped with the catalog: one CRITICAL
 // check per critical Xid code, one Fatal/Nonfatal check per NVLink5
 // (144-150) code, one additional per-SubXidCode check for each fault
 // subtype NVIDIA's decode table differentiates that way (see
 // [nvlink5SubXidCodeCheck]), one architecture-scoped check per warning Xid,
-// and an INFO check for Xid 154 (a recovery-action notice that only annotates
-// another Xid).
+// an INFO check for Xid 154 (a recovery-action notice that only annotates
+// another Xid), [informationalCheck], which reports the codes NVIDIA gives no
+// resolution, and [unknownCheck], which reports codes no other check covers.
 //
 // Every check consumes an [XidMeasurement] produced by the journal Xid
 // sensor and tests its xid_counts map. Codes whose immediate action is
-// IGNORE/empty, and Unused codes, are not represented and never fire.
+// IGNORE/empty, and Unused codes, have no check of their own and are
+// reported together by [informationalCheck].
 func Checks() []health.CheckDefinition {
 	warningCount := 0
 	for _, class := range warningClasses {
 		warningCount += len(class.codes)
 	}
-	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+2)
+	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+4)
 	for _, c := range criticalXids {
 		checks = append(checks, criticalCheck(c))
 	}
@@ -324,15 +341,23 @@ func Checks() []health.CheckDefinition {
 	}
 	checks = append(checks, xid45Check())
 	checks = append(checks, xid154Check())
+	checks = append(checks, informationalCheck())
+	checks = append(checks, unknownCheck())
+	// Every check reports its own events, whatever signals its builder set.
+	for i := range checks {
+		if !slices.Contains(checks[i].RequiredSignals, SignalEvents) {
+			checks[i].RequiredSignals = append(checks[i].RequiredSignals, SignalEvents)
+		}
+	}
 	return checks
 }
 
 // criticalCheck builds the per-code CRITICAL check for one Xid.
 func criticalCheck(c criticalXid) health.CheckDefinition {
 	def := baseCheck(
-		fmt.Sprintf("gpu_xid_%d", c.code),
+		codeCheckID(c.code),
 		fmt.Sprintf("GPU Xid %d (%s)", c.code, c.description),
-		fmt.Sprintf("Detects NVRM Xid %d in the system journal since boot.", c.code),
+		fmt.Sprintf("Detects NVRM Xid %d in the system journal within the collection window.", c.code),
 		c.action,
 	)
 	def.Architectures = slices.Clone(c.architectures)
@@ -373,25 +398,25 @@ func criticalCheck(c criticalXid) health.CheckDefinition {
 // outcome has to be the fallback, not an override.
 func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 	def := baseCheck(
-		fmt.Sprintf("gpu_xid_%d", c.code),
+		codeCheckID(c.code),
 		fmt.Sprintf("GPU Xid %d (%s)", c.code, c.description),
-		fmt.Sprintf("Detects NVRM Xid %d in the system journal since boot, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.", c.code),
+		fmt.Sprintf("Detects NVRM Xid %d in the system journal within the collection window, differentiated by the Fatal/Nonfatal severity NVRM assigns each occurrence.", c.code),
 		health.NoAction,
 	)
-	def.RequiredSignals = []string{SignalXidCounts, SignalFatalXidCounts}
+	def.RequiredSignals = []string{SignalGPUID, SignalPCIAddress, SignalXidCounts, SignalFatalXidCounts}
 	def.Thresholds = map[string]health.ThresholdSpec{
 		"fatal_occurrences": {
 			Value:       int64(1),
 			ValueType:   health.ThresholdInt64,
 			Category:    health.DefaultThreshold,
-			Description: "Fatal occurrences since boot that trigger the CRITICAL rule.",
+			Description: "Fatal occurrences on one GPU within the collection window that trigger the CRITICAL rule.",
 			Unit:        "count",
 		},
 		"nonfatal_occurrences": {
 			Value:       int64(1),
 			ValueType:   health.ThresholdInt64,
 			Category:    health.DefaultThreshold,
-			Description: "Nonfatal occurrences since boot that trigger the WARNING rule.",
+			Description: "Nonfatal occurrences on one GPU within the collection window that trigger the WARNING rule.",
 			Unit:        "count",
 		},
 	}
@@ -418,7 +443,6 @@ func nvlink5Check(c nvlink5Xid) health.CheckDefinition {
 // nvlink5SubXidCodeCheck builds the check for one [nvlink5SubXidCode],
 // for whichever Xid code and subcode it names.
 func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
-	id := "gpu_xid_" + strings.ToLower(strings.Replace(c.subXidCode, ".", "_", 1))
 	action := health.NoAction
 	severity := health.Warning
 	if c.critical {
@@ -426,12 +450,12 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 		severity = health.Critical
 	}
 	def := baseCheck(
-		id,
+		subXidCodeCheckID(c.subXidCode),
 		fmt.Sprintf("GPU Xid %s (%s)", c.subXidCode, c.subcode),
-		fmt.Sprintf("Detects NVRM Xid %s (%s) occurrences in the system journal since boot.", c.subXidCode, c.subcode),
+		fmt.Sprintf("Detects NVRM Xid %s (%s) occurrences in the system journal within the collection window.", c.subXidCode, c.subcode),
 		action,
 	)
-	def.RequiredSignals = []string{SignalSubXidCodeCounts}
+	def.RequiredSignals = []string{SignalGPUID, SignalPCIAddress, SignalSubXidCodeCounts}
 	def.Architectures = slices.Clone(blackwellArchitectures)
 	def.Rules = []health.Rule{{
 		Expression: fmt.Sprintf("%[1]q in sub_xid_code_counts && sub_xid_code_counts[%[1]q] >= occurrences", c.subXidCode),
@@ -444,9 +468,9 @@ func nvlink5SubXidCodeCheck(c nvlink5SubXidCode) health.CheckDefinition {
 // warningCheck builds one stable, architecture-scoped check for a warning Xid.
 func warningCheck(code int64, class warningClass) health.CheckDefinition {
 	def := baseCheck(
-		fmt.Sprintf("gpu_xid_%d", code),
+		codeCheckID(code),
 		fmt.Sprintf("GPU Xid %d Warning", code),
-		fmt.Sprintf("Detects warning-class NVRM Xid %d in the system journal since boot.", code),
+		fmt.Sprintf("Detects warning-class NVRM Xid %d in the system journal within the collection window.", code),
 		class.action,
 	)
 	def.Architectures = slices.Clone(class.architectures)
@@ -461,7 +485,7 @@ func warningCheck(code int64, class warningClass) health.CheckDefinition {
 // xid45Check builds the check for Xid 45 (preemptive removal), following
 // NVIDIA's WORKFLOW_XID_45 resolution bucket:
 //
-//   - Xid 45 is the only Xid since boot: WARNING, recommending restart_app.
+//   - Xid 45 is the only Xid within the collection window: WARNING, recommending restart_app.
 //   - Another Xid is present: INFO with no action; that Xid's own check
 //     carries the remediation.
 //
@@ -470,7 +494,7 @@ func xid45Check() health.CheckDefinition {
 	def := baseCheck(
 		"gpu_xid_45",
 		"GPU Xid 45 (preemptive removal)",
-		"Detects NVRM Xid 45 in the system journal since boot; informational when another Xid is present.",
+		"Detects NVRM Xid 45 in the system journal within the collection window; informational when another Xid is present.",
 		health.NoAction,
 	)
 	def.Architectures = slices.Clone(allArchitectures)
@@ -495,9 +519,9 @@ func xid45Check() health.CheckDefinition {
 // xid154Check builds the INFO check for Xid 154.
 func xid154Check() health.CheckDefinition {
 	def := baseCheck(
-		"gpu_xid_154",
+		codeCheckID(154),
 		"GPU Xid 154 (GPU recovery action changed)",
-		"Detects NVRM Xid 154 in the system journal since boot. Informational; correlates with an accompanying Xid.",
+		"Detects NVRM Xid 154 in the system journal within the collection window. Informational; correlates with an accompanying Xid.",
 		health.Drain(health.RemediationActionXid154),
 	)
 	def.Architectures = slices.Clone(allArchitectures)
@@ -519,13 +543,13 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		Description: description,
 		Category:    health.Xid,
 
-		RequiredSignals: []string{SignalXidCounts},
+		RequiredSignals: []string{SignalGPUID, SignalPCIAddress, SignalXidCounts},
 		Thresholds: map[string]health.ThresholdSpec{
 			"occurrences": {
 				Value:       int64(1),
 				ValueType:   health.ThresholdInt64,
 				Category:    health.DefaultThreshold,
-				Description: "Number of matching Xid occurrences since boot that causes the check to fire.",
+				Description: "Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire.",
 				Unit:        "count",
 			},
 		},
@@ -540,4 +564,110 @@ func baseCheck(id, name, description string, recommendedAction health.Recommende
 		MaturityLevel:     health.Stable,
 		RecommendedAction: recommendedAction,
 	}
+}
+
+// codeCheckID is the ID of the check on one Xid code.
+func codeCheckID(code int64) string { return fmt.Sprintf("gpu_xid_%d", code) }
+
+// subXidCodeCheckID is the ID of the check on one NVLink5 fault subtype,
+// such as gpu_xid_149_4 for "149.4".
+func subXidCodeCheckID(subXidCode string) string {
+	return "gpu_xid_" + strings.ToLower(strings.Replace(subXidCode, ".", "_", 1))
+}
+
+const (
+	// unknownCheckID is the check that reports Xid codes no other check covers.
+	unknownCheckID = "gpu_xid_unknown"
+	// informationalCheckID is the check that reports the infoXids no other check covers.
+	informationalCheckID = "gpu_xid_informational"
+)
+
+// codeSet is a set of Xid codes.
+type codeSet map[int64]bool
+
+// infoSet is infoXids as a set.
+var infoSet = func() codeSet {
+	set := codeSet{}
+	for _, code := range infoXids {
+		set[code] = true
+	}
+	return set
+}()
+
+// builtinCovered is the codes some check in [checkScopes] reports on. A
+// sub-code check adds nothing, because its code has a check of its own.
+var builtinCovered = sync.OnceValue(func() codeSet {
+	covered := codeSet{}
+	for _, s := range checkScopes {
+		if s.sub == "" {
+			covered[s.code] = true
+		}
+	}
+	return covered
+})
+
+// isUnknown reports whether no check covers code and the catalog does not list it.
+func isUnknown(code int64) bool { return !builtinCovered()[code] && !infoSet[code] }
+
+// isInformational reports whether code is an infoXids code no check covers.
+func isInformational(code int64) bool { return infoSet[code] && !builtinCovered()[code] }
+
+// countsWhere is xid_counts restricted to the codes keep accepts. It is never
+// nil, like the other derived signals.
+func (m XidMeasurement) countsWhere(keep func(int64) bool) map[int64]int64 {
+	out := make(map[int64]int64)
+	for code, n := range m.XidCounts {
+		if keep(code) {
+			out[code] = n
+		}
+	}
+	return out
+}
+
+func (m XidMeasurement) unknownCounts() map[int64]int64 { return m.countsWhere(isUnknown) }
+
+func (m XidMeasurement) informationalCounts() map[int64]int64 {
+	return m.countsWhere(isInformational)
+}
+
+// catchAllCheck builds a check that fires when any code in the derived
+// signal reaches occurrences. It applies to every architecture, because the
+// codes it reports have no architecture to scope them to.
+func catchAllCheck(id, name, description, signal string, severity health.Severity, message string, action health.RecommendedAction) health.CheckDefinition {
+	def := baseCheck(id, name, description, action)
+	def.RequiredSignals = []string{SignalGPUID, SignalPCIAddress, signal}
+	def.Architectures = slices.Clone(allArchitectures)
+	def.Rules = []health.Rule{{
+		Expression: fmt.Sprintf("%[1]s.exists(c, %[1]s[c] >= occurrences)", signal),
+		Severity:   severity,
+		Message:    message,
+	}}
+	return def
+}
+
+// unknownCheck reports codes no other check covers.
+func unknownCheck() health.CheckDefinition {
+	return catchAllCheck(
+		unknownCheckID,
+		"GPU Xid not described by the catalog",
+		"Detects NVRM Xid codes in the system journal that no Health Validation check covers and that are not informational.",
+		SignalUnknownXidCounts,
+		health.Warning,
+		"A GPU Xid code that Health Validation has no check for was logged, so it recommends no action.",
+		health.Monitor,
+	)
+}
+
+// informationalCheck reports the infoXids no other check covers. NVIDIA's
+// catalog gives these codes no resolution, so the node takes no action.
+func informationalCheck() health.CheckDefinition {
+	return catchAllCheck(
+		informationalCheckID,
+		"GPU Xid with no resolution in the catalog",
+		"Detects NVRM Xid codes in the system journal that the NVIDIA Xid catalog marks Unused, IGNORE or gives no resolution, and that no Health Validation check covers.",
+		SignalInformationalXidCounts,
+		health.Info,
+		"A GPU Xid code that NVIDIA's Xid catalog gives no resolution was logged. No action is needed. The driver message is in events.",
+		health.NoAction,
+	)
 }

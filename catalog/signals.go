@@ -81,7 +81,7 @@ func CheckDerivedSignals(measurements ...health.Measurement) error {
 		for _, key := range evaluation.FieldKeys(m) {
 			fields[key] = struct{}{}
 		}
-		for _, name := range slices.Sorted(maps.Keys(d.DerivedSignals())) {
+		for _, name := range slices.Sorted(maps.Keys(d.DerivedSignals(health.Host{}))) {
 			if _, clash := fields[name]; clash {
 				return fmt.Errorf(
 					"%T derives a signal named %q, which is also one of its json fields; the derived "+
@@ -93,18 +93,20 @@ func CheckDerivedSignals(measurements ...health.Measurement) error {
 }
 
 // CheckDerivedSignalKeysStable verifies that a measurement's derived
-// signal names do not depend on its data: the populated instance passed
-// in must advertise exactly the keys a zero value of the same type does.
-// Routing and [CheckSignalUniqueness] ask a zero value which signals a
-// type carries, so a key appearing only once some field is populated
-// would be invisible to them and any check requiring it would never be
-// routed a measurement.
+// signal names depend on neither its data nor the host: the populated
+// instance passed in, derived against host, must advertise exactly the
+// keys a zero value of the same type does against a zero [health.Host].
+// Routing and [CheckSignalUniqueness] ask a zero value, with a zero
+// Host, which signals a type carries, so a key appearing only once some
+// field is populated or some host fact is known would be invisible to
+// them and any check requiring it would never be routed a measurement.
 //
-// Unlike [CheckDerivedSignals] this needs a *populated* instance, one
-// exercising whatever the derivation reads — only the caller knows what
-// that looks like for its own type. The zero value to compare against is
-// derived here. Measurements that do not derive signals pass trivially.
-func CheckDerivedSignalKeysStable(populated health.Measurement) error {
+// Unlike [CheckDerivedSignals] this needs a *populated* instance and a
+// populated host, exercising whatever the derivation reads — only the
+// caller knows what that looks like for its own type. The zero value to
+// compare against is derived here. Measurements that do not derive
+// signals pass trivially.
+func CheckDerivedSignalKeysStable(populated health.Measurement, host health.Host) error {
 	d, ok := populated.(health.DerivedSignaler)
 	if !ok {
 		return nil
@@ -116,29 +118,31 @@ func CheckDerivedSignalKeysStable(populated health.Measurement) error {
 		return fmt.Errorf("%T derives signals but its zero value does not; pass a value type", populated)
 	}
 
-	zeroKeys := derivedKeySet(zero)
-	for _, name := range slices.Sorted(maps.Keys(d.DerivedSignals())) {
+	zeroKeys := derivedKeySet(zero, health.Host{})
+	populatedKeys := derivedKeySet(d, host)
+	for _, name := range slices.Sorted(maps.Keys(populatedKeys)) {
 		if _, ok := zeroKeys[name]; !ok {
 			return fmt.Errorf(
-				"%T derives signal %q only when populated; a zero value must advertise it too, or no "+
-					"check requiring it is ever routed a measurement", populated, name)
+				"%T derives signal %q only when populated or given a host; a zero value with a zero "+
+					"Host must advertise it too, or no check requiring it is ever routed a measurement",
+				populated, name)
 		}
 	}
-	populatedKeys := derivedKeySet(d)
 	for _, name := range slices.Sorted(maps.Keys(zeroKeys)) {
 		if _, ok := populatedKeys[name]; !ok {
 			return fmt.Errorf(
-				"%T derives signal %q only when empty; the key set must not vary with the data",
-				populated, name)
+				"%T derives signal %q only when empty; the key set must vary with neither the data "+
+					"nor the host", populated, name)
 		}
 	}
 	return nil
 }
 
-// derivedKeySet is d's derived signal names as a set.
-func derivedKeySet(d health.DerivedSignaler) map[string]struct{} {
+// derivedKeySet is d's derived signal names, derived against host, as a
+// set.
+func derivedKeySet(d health.DerivedSignaler, host health.Host) map[string]struct{} {
 	out := make(map[string]struct{})
-	for name := range d.DerivedSignals() {
+	for name := range d.DerivedSignals(host) {
 		out[name] = struct{}{}
 	}
 	return out

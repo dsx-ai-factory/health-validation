@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -99,8 +100,9 @@ func (sentinel sentinelType) sourceError() string {
 	}
 }
 
-// dcgmErrorCode reads a typed go-dcgm status when available and falls back to
-// the status embedded in older error strings.
+// dcgmErrorCode reads a typed go-dcgm status when available. Otherwise it
+// falls back to libdcgm's status text, which go-dcgm returns without the code
+// for most calls, or to an "error code N" string.
 func dcgmErrorCode(err error) (int, bool) {
 	if err == nil {
 		return 0, false
@@ -110,6 +112,14 @@ func dcgmErrorCode(err error) (int, bool) {
 		return int(dcgmFailure.Code), true
 	}
 
+	// libdcgm's texts for DCGM_ST_CONNECTION_NOT_VALID and DCGM_ST_INIT_ERROR,
+	// the status of every failed dcgmInit and embedded start.
+	switch message := err.Error(); {
+	case strings.Contains(message, "Host engine connection invalid/disconnected"):
+		return godcgm.DCGM_ST_CONNECTION_NOT_VALID, true
+	case strings.Contains(message, "DCGM initialization error"):
+		return godcgm.DCGM_ST_INIT_ERROR, true
+	}
 	matches := dcgmErrorCodePattern.FindStringSubmatch(err.Error())
 	if len(matches) != 2 {
 		return 0, false

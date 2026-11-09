@@ -25,12 +25,15 @@ type basicDevice struct {
 	device.Device
 	name    string
 	uuid    string
+	busID   string
 	nameRet nvml.Return
 	// nameRead fails the test when GetName is called.
 	nameRead bool
 }
 
 func (d *basicDevice) UUID() string { return d.uuid }
+
+func (d *basicDevice) PCIBusID() string { return d.busID }
 
 func (d *basicDevice) GetName() (string, nvml.Return) {
 	if d.nameRead {
@@ -41,11 +44,13 @@ func (d *basicDevice) GetName() (string, nvml.Return) {
 
 // fakeInstance is an nvmlsource.Instance over fixed enumeration records.
 type fakeInstance struct {
-	initErr error
-	readErr error
-	devices map[string]device.Device
-	records []nvmlsource.InventoryDevice
-	missing bool
+	initErr   error
+	readErr   error
+	devices   map[string]device.Device
+	driver    string
+	records   []nvmlsource.InventoryDevice
+	driverRet nvml.Return
+	missing   bool
 }
 
 func (i *fakeInstance) NVMLExists() bool                  { return !i.missing }
@@ -55,6 +60,10 @@ func (*fakeInstance) Shutdown() error                     { return nil }
 func (i *fakeInstance) InitError() error                  { return i.initErr }
 
 func (i *fakeInstance) InventoryDevices() []nvmlsource.InventoryDevice { return i.records }
+
+func (i *fakeInstance) Metadata() nvmlsource.Metadata {
+	return nvmlsource.Metadata{DriverVersion: i.driver, DriverReturn: i.driverRet}
+}
 
 func (i *fakeInstance) Read(read func(map[string]device.Device) error) error {
 	if i.readErr != nil {
@@ -75,7 +84,7 @@ func withRecords(records ...nvmlsource.InventoryDevice) *fakeInstance {
 }
 
 func gpu(index uint32, name string) nvmlsource.InventoryDevice {
-	return nvmlsource.InventoryDevice{SourceIndex: index, Device: &basicDevice{name: name, uuid: fmt.Sprintf("GPU-%d", index)}}
+	return nvmlsource.InventoryDevice{SourceIndex: index, Device: &basicDevice{name: name, uuid: fmt.Sprintf("GPU-%d", index), busID: fmt.Sprintf("0000:%02x:00.0", index+1)}}
 }
 
 func readSnapshot(t *testing.T, inst nvmlsource.Instance) *observation.GPUInventorySnapshot {
@@ -107,7 +116,7 @@ func TestNVMLReaderReadsBasicInventory(t *testing.T) {
 			t.Errorf("entry %d = index %d, failed %q; want index %d, failed %q", i, entries[i].GetSourceIndex(), entries[i].GetCollectionError().GetOperation(), i, want)
 		}
 	}
-	if entries[0].GetGpu().GetUuid() != "GPU-0" || entries[0].GetGpu().GetModel() != "NVIDIA GB200" {
+	if entries[0].GetGpu().GetUuid() != "GPU-0" || entries[0].GetGpu().GetModel() != "NVIDIA GB200" || entries[0].GetGpu().GetBusId() != "0000:01:00.0" {
 		t.Errorf("healthy entry = %v", entries[0].GetGpu())
 	}
 	// Legacy counts every slot whose handle loaded.
@@ -116,6 +125,15 @@ func TestNVMLReaderReadsBasicInventory(t *testing.T) {
 	}
 	if arch, err := Architecture(snapshot); err != nil || arch != "GB200" {
 		t.Errorf("Architecture = %q, %v; want GB200", arch, err)
+	}
+}
+
+func TestNVMLReaderReportsMissingBusID(t *testing.T) {
+	noBus := gpu(0, "NVIDIA GB200")
+	noBus.Device.(*basicDevice).busID = ""
+	entry := readSnapshot(t, withRecords(noBus)).GetInventory().GetEntries()[0]
+	if entry.GetGpu().BusId != nil || entry.GetGpu().GetUuid() != "GPU-0" || entry.GetFieldErrors()["bus_id"].GetOperation() != "GetPciInfo" || entry.GetFieldErrors()["bus_id"].GetSourceError() != "" {
+		t.Errorf("entry = %v, want the UUID and a GetPciInfo bus_id field error with no NVML code", entry)
 	}
 }
 
@@ -188,4 +206,47 @@ func TestNVMLReaderFailures(t *testing.T) {
 			t.Fatalf("err = %v, want ErrInUse", err)
 		}
 	})
+}
+
+// The driver version is recorded on every slot, failed ones included, so it
+// survives a lost GPU; its failure is a field error, not a discovery failure.
+func TestNVMLReaderRecordsDriverVersion(t *testing.T) {
+	lost := nvmlsource.InventoryDevice{SourceIndex: 1, HandleReturn: nvml.ERROR_GPU_IS_LOST, Error: errors.New("device 1 handle: GPU is lost")}
+
+	inst := withRecords(gpu(0, "NVIDIA GB200"), lost)
+	inst.driver = "575.51.03"
+	snapshot := readSnapshot(t, inst)
+	for i, entry := range snapshot.GetInventory().GetEntries() {
+		if entry.GetGpu().GetDriverVersion() != "575.51.03" {
+			t.Errorf("entry %d driver_version = %q", i, entry.GetGpu().GetDriverVersion())
+		}
+	}
+	if v, ok := DriverVersion(snapshot); !ok || !v.AtLeast(575, 0, 0) {
+		t.Errorf("DriverVersion = %+v, %v; want 575.51.03", v, ok)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		driver string
+		ret    nvml.Return
+	}{
+		{name: "query failed", ret: nvml.ERROR_UNKNOWN},
+		{name: "empty version"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inst := withRecords(gpu(0, "NVIDIA GB200"))
+			inst.driver, inst.driverRet = tc.driver, tc.ret
+			snapshot := readSnapshot(t, inst)
+			entry := snapshot.GetInventory().GetEntries()[0]
+			if failure := entry.GetFieldErrors()["driver_version"]; failure.GetOperation() != "SystemGetDriverVersion" {
+				t.Fatalf("driver_version field error = %v", failure)
+			}
+			if _, ok := DriverVersion(snapshot); ok {
+				t.Fatal("reported a driver version the query did not return")
+			}
+			if arch, err := Architecture(snapshot); err != nil || arch != "GB200" {
+				t.Fatalf("Architecture = %q, %v; a driver-version failure must not fail discovery", arch, err)
+			}
+		})
+	}
 }

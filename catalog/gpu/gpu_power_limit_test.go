@@ -49,6 +49,7 @@ func TestGPUPowerLimit_UsesArchitectureDefault(t *testing.T) {
 		{arch: "GB200", limitW: 1200},
 		{arch: "GB300", limitW: 1400},
 		{arch: "H100", limitW: 700},
+		{arch: "VR200", limitW: 2300},
 	} {
 		t.Run(tc.arch, func(t *testing.T) {
 			cat := catalog.New(
@@ -137,14 +138,14 @@ func TestGPUPowerLimit_Scenarios(t *testing.T) {
 		{
 			// A read failure must fail the check, not fall through to CEL
 			// against a zero value.
-			name: "errored signal forces critical",
+			name: "errored signal reports unknown",
 			cat:  func() *catalog.Catalog { return newCatalog() },
 			measurement: func() gpu.GPUMeasurement {
 				m := matchingPowerLimits(1200)
 				m.AddError(errors.New("nvml power limit query failed"), gpu.SignalPowerLimitW)
 				return m
 			},
-			wantSeverity: health.Critical,
+			wantSeverity: health.Unknown,
 			wantAction:   health.Drain(health.RemediationActionCheckCollection),
 		},
 	}

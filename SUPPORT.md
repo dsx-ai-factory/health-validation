@@ -10,14 +10,16 @@ that agreement.
 | Channel | Best for | Who | Response expectation |
 | --- | --- | --- | --- |
 | [Bug report](https://github.com/dsx-ai-factory/health-validation/issues/new?template=bug.yml) | Incorrect behavior, wrong verdicts, or crashes | Anyone | Maintainers aim to triage within 3–5 business days |
-| [Task / Question](https://github.com/dsx-ai-factory/health-validation/issues/new?template=task.yml) | Usage questions or documentation gaps | Anyone | Best effort; maintainers aim to respond within 3 business days if unanswered |
+| [Documentation request or correction](https://github.com/dsx-ai-factory/health-validation/issues/new?template=documentation.yml) | Missing, unclear, or incorrect documentation | Anyone | Best effort; maintainers aim to respond within 3 business days if unanswered |
+| [GitHub Discussions Q&A](https://github.com/dsx-ai-factory/health-validation/discussions/categories/q-a) | Usage questions | Anyone | Best effort; maintainers aim to respond within 3 business days if unanswered |
 | [Feature request](https://github.com/dsx-ai-factory/health-validation/issues/new?template=feature.yml) | New checks, signals, threshold changes, or other improvements | Anyone | Best effort; maintainers aim to respond within 3 business days if unanswered |
 | Private reporting through [SECURITY.md](./SECURITY.md) | Potential security vulnerabilities | Anyone | Follow the NVIDIA PSIRT process |
 | NVIDIA support under your commercial agreement or through your NVIDIA account team | Production incidents and contract-governed requests | Customers with an applicable support agreement | Defined in the agreement |
 
-GitHub Discussions is currently disabled. Use the Task / Question form for
-questions and the Feature Request form for proposals. Filing a proposal does
-not commit the project to implementing it; follow the proposal process in
+Ask usage questions in GitHub Discussions Q&A, not in issues. Use the
+documentation form for documentation gaps and errors, and the Feature Request
+form for proposals. Filing a proposal does not commit the project to
+implementing it; follow the proposal process in
 [CONTRIBUTING.md](./CONTRIBUTING.md). Public channels are not appropriate for
 production incidents or confidential information.
 

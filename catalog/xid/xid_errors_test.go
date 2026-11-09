@@ -4,6 +4,7 @@
 package xid_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/internal/scope"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
@@ -810,12 +812,12 @@ func checkResult(nv health.NodeVerdict, checkID string) (health.CheckVerdict, bo
 	return health.CheckVerdict{}, false
 }
 
-func TestXidErrors_IgnoredCode_Pass(t *testing.T) {
+func TestXidErrors_InfoCode_ReportedAsInfo(t *testing.T) {
 	// Xid 63 (memory remapping event) has immediate action IGNORE and is
-	// not in any bucket, so it must not fire.
+	// not in any bucket, so only gpu_xid_informational reports it, at INFO.
 	nv := evalXid(t, 63)
-	if nv.OverallSeverity != health.Pass {
-		t.Errorf("ignored code 63: OverallSeverity = %v, want PASS", nv.OverallSeverity)
+	if nv.OverallSeverity != health.Info {
+		t.Errorf("info code 63: OverallSeverity = %v, want INFO", nv.OverallSeverity)
 	}
 }
 
@@ -832,6 +834,126 @@ func TestXidErrors_WorstSeverityWins(t *testing.T) {
 	nv := evalXid(t, 11, 79)
 	if nv.OverallSeverity != health.Critical {
 		t.Errorf("OverallSeverity = %v, want CRITICAL", nv.OverallSeverity)
+	}
+}
+
+func TestXidErrors_EveryCheckReportsItsOwnEvents(t *testing.T) {
+	// No check is on code 9999, so every built-in check scopes away each
+	// signal it reports; a check the measurement did not recognise would
+	// get them back unchanged. Like evaluation, each check is given only
+	// its required signals.
+	foreign := map[string]any{
+		xid.SignalEvents:           []xid.XidEvent{{PCIAddress: "0000:01:00", XidCode: 9999}},
+		xid.SignalXidCounts:        map[int64]int64{9999: 1},
+		xid.SignalFatalXidCounts:   map[int64]int64{9999: 1},
+		xid.SignalSubXidCodeCounts: map[string]int64{"9999.1": 1},
+	}
+	for _, cd := range xid.Checks() {
+		if !slices.Contains(cd.RequiredSignals, xid.SignalEvents) {
+			t.Errorf("%s RequiredSignals = %v, want %s included", cd.ID, cd.RequiredSignals, xid.SignalEvents)
+		}
+		if cd.ID == "gpu_xid_unknown" || cd.ID == "gpu_xid_informational" {
+			continue // their own events are the codes no check is on; see catch_all_test.go
+		}
+		observed := map[string]any{}
+		for _, name := range cd.RequiredSignals {
+			observed[name] = foreign[name]
+		}
+		scoped := xid.XidMeasurement{}.ScopeObservedValues(scope.Request{CheckID: cd.ID, Observed: observed})
+		for name, value := range scoped {
+			if got, err := json.Marshal(value); err != nil || string(got) != "null" {
+				t.Errorf("%s %s = %s, want null", cd.ID, name, got)
+			}
+		}
+	}
+}
+
+func TestXidErrors_VerdictScopesAndGroupsEvents(t *testing.T) {
+	// One line for each kind of check, with the Xid 13 SM exception logged
+	// twice. Each verdict reports only its own events and counts, with the
+	// repeated line grouped; a check with nothing of its own reports null.
+	unit := xid.XidEvent{
+		PCIAddress: "0000:89:00", XidCode: 13, GPC: new(int64(1)), TPC: new(int64(3)), SM: new(int64(0)),
+		Message: "NVRM: Xid (PCI:0000:89:00): 13, Graphics SM Warp Exception on (GPC 1, TPC 3, SM 0): Out Of Range Address",
+	}
+	esr := xid.XidEvent{
+		PCIAddress: "0000:89:00", XidCode: 13,
+		Message: "NVRM: Xid (PCI:0000:89:00): 13, Graphics Exception: ESR 0x54e730=0xc12000e 0x54e734=0x24",
+	}
+	ecc := xid.XidEvent{
+		PCIAddress: "0000:8a:00", XidCode: 48, Pid: 1234, ProcessName: "python3",
+		Message: "NVRM: Xid (PCI:0000:8a:00): 48, pid=1234, name=python3, An uncorrectable double bit error (DBE) has been detected on GPU in the framebuffer at partition 0, subpartition 0.",
+	}
+	link := xid.XidEvent{
+		PCIAddress: "0018:01:00", XidCode: 149,
+		NVLink5: &xid.NVLink5Detail{SubComponent: "NETIR_LINK_EVT", IntrInfo: intrInfoForSubXidCode("149.4"), Fatal: true, Link: 8},
+		Message: "NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (" + intrInfoForSubXidCode("149.4") + ")",
+	}
+	recovery := xid.XidEvent{
+		PCIAddress: "0000:89:00", XidCode: 154,
+		Message: "NVRM: Xid (PCI:0000:89:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)",
+	}
+	m := xid.XidMeasurement{
+		Since:          "boot",
+		XidCounts:      map[int64]int64{13: 3, 48: 1, 149: 1, 154: 1},
+		FatalXidCounts: map[int64]int64{149: 1},
+		Events:         []xid.XidEvent{unit, esr, unit, ecc, link, recovery},
+		EventCount:     6,
+	}
+	nv, err := xidCatalog(t).EvaluateAll(m)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	grouped := func(e xid.XidEvent, count int64) xid.XidEvent {
+		e.Count = count
+		return e
+	}
+	tests := []struct {
+		want    map[string]any
+		checkID string
+	}{
+		{checkID: "gpu_xid_13", want: map[string]any{
+			"events":     []xid.XidEvent{grouped(unit, 2), grouped(esr, 1)},
+			"xid_counts": map[int64]int64{13: 3},
+		}},
+		{checkID: "gpu_xid_48", want: map[string]any{
+			"events":     []xid.XidEvent{grouped(ecc, 1)},
+			"xid_counts": map[int64]int64{48: 1},
+		}},
+		{checkID: "gpu_xid_149", want: map[string]any{
+			"events":           []xid.XidEvent{grouped(link, 1)},
+			"xid_counts":       map[int64]int64{149: 1},
+			"fatal_xid_counts": map[int64]int64{149: 1},
+		}},
+		{checkID: "gpu_xid_149_4", want: map[string]any{
+			"events":              []xid.XidEvent{grouped(link, 1)},
+			"sub_xid_code_counts": map[string]int64{"149.4": 1},
+		}},
+		{checkID: "gpu_xid_154", want: map[string]any{
+			"events":     []xid.XidEvent{grouped(recovery, 1)},
+			"xid_counts": map[int64]int64{154: 1},
+		}},
+		{checkID: "gpu_xid_79", want: map[string]any{"events": nil, "xid_counts": nil}},
+	}
+	for _, test := range tests {
+		v, ok := checkResult(nv, test.checkID)
+		if !ok {
+			t.Errorf("%s verdict not found", test.checkID)
+			continue
+		}
+		got, err := json.Marshal(v.ObservedValues)
+		if err != nil {
+			t.Fatalf("marshal %s observed values: %v", test.checkID, err)
+		}
+		// Every Xid check reports the GPU's identity; this measurement has none.
+		test.want["gpu_id"], test.want["pci_address"] = "", ""
+		want, err := json.Marshal(test.want)
+		if err != nil {
+			t.Fatalf("marshal %s want: %v", test.checkID, err)
+		}
+		if string(got) != string(want) {
+			t.Errorf("%s observed values =\n%s\nwant\n%s", test.checkID, got, want)
+		}
 	}
 }
 
@@ -892,5 +1014,89 @@ func TestXidErrors_CHINonDataError_ResetsGPU(t *testing.T) {
 	want := "GPU Xid 159 detected: CHI non-data error. NVIDIA's CHECK_UVM guidance is to reset the GPU if UVM or vGPU is in use; otherwise ignore the error. Health Validation cannot determine whether either was in use when this error occurred, so it recommends a GPU reset as a conservative default."
 	if len(v.Messages) != 1 || v.Messages[0] != want {
 		t.Errorf("Messages = %q, want [%q]", v.Messages, want)
+	}
+}
+
+func TestXidErrors_AllChecksRequireGPUIdentity(t *testing.T) {
+	for _, def := range xid.Checks() {
+		if len(def.RequiredSignals) < 2 || !slices.Equal(def.RequiredSignals[:2], []string{xid.SignalGPUID, xid.SignalPCIAddress}) {
+			t.Errorf("%s: RequiredSignals = %v, want gpu_id and pci_address first", def.ID, def.RequiredSignals)
+		}
+	}
+}
+
+// resultsFor returns checkID's results keyed by the entity each names, or by
+// the GPU ID in observed_values for a PASS result, which names none.
+func resultsFor(nv health.NodeVerdict, checkID string) map[string]health.CheckVerdict {
+	out := make(map[string]health.CheckVerdict)
+	for _, v := range nv.CheckResults {
+		if v.CheckID != checkID {
+			continue
+		}
+		key, _ := v.ObservedValues[xid.SignalGPUID].(string)
+		if len(v.AffectedEntities) > 0 {
+			key = v.AffectedEntities[0]
+		}
+		out[key] = v
+	}
+	return out
+}
+
+func onGPU(m xid.XidMeasurement, gpuID, pci string) xid.XidMeasurement {
+	m.GPUID, m.PCIAddress = gpuID, pci
+	return m
+}
+
+func TestXidErrors_OccurrencesCountPerGPU(t *testing.T) {
+	cat := xidCatalog(t, occurrencesOverride("gpu_xid_79", 2))
+
+	t.Run("one each", func(t *testing.T) {
+		nv, err := cat.EvaluateAll(onGPU(measurementFor(79), "GPU-a", "0000:01:00"), onGPU(measurementFor(79), "GPU-b", "0000:02:00"))
+		if err != nil {
+			t.Fatalf("EvaluateAll: %v", err)
+		}
+		results := resultsFor(nv, "gpu_xid_79")
+		if len(results) != 2 {
+			t.Fatalf("got gpu_xid_79 results %v, want one per GPU", results)
+		}
+		for gpu, v := range results {
+			if v.Severity != health.Pass {
+				t.Errorf("%s: gpu_xid_79 = %v, want PASS: one occurrence per GPU is below 2", gpu, v.Severity)
+			}
+		}
+	})
+
+	t.Run("two on one GPU", func(t *testing.T) {
+		nv, err := cat.EvaluateAll(onGPU(measurementFor(79, 79), "GPU-a", "0000:01:00"))
+		if err != nil {
+			t.Fatalf("EvaluateAll: %v", err)
+		}
+		v, ok := resultsFor(nv, "gpu_xid_79")["GPU-a"]
+		if !ok || v.Severity != health.Critical || !slices.Equal(v.AffectedEntities, []string{"GPU-a"}) {
+			t.Errorf("gpu_xid_79 = %+v, want CRITICAL naming GPU-a", v)
+		}
+	})
+}
+
+// A Fatal 149 on one GPU and a Nonfatal 149 on another are two findings, not
+// one node result carrying both messages.
+func TestXidErrors_NVLink5PerGPU(t *testing.T) {
+	nv, err := xidCatalog(t).EvaluateAll(
+		onGPU(nvlink5SubXidCodeMeasurementFor("149.4", true), "GPU-a", "0018:01:00"),
+		onGPU(nvlink5MeasurementFor(149, false), "GPU-b", "0019:01:00"),
+	)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	results := resultsFor(nv, "gpu_xid_149")
+	if v := results["GPU-a"]; v.Severity != health.Critical || !slices.Equal(v.Messages, []string{"GPU Xid 149 detected: NVLink NETIR error (Fatal)."}) {
+		t.Errorf("GPU-a gpu_xid_149 = %v %q, want CRITICAL with only the Fatal message", v.Severity, v.Messages)
+	}
+	if v := results["GPU-b"]; v.Severity != health.Warning || !slices.Equal(v.Messages, []string{"GPU Xid 149 detected: NVLink NETIR error (Nonfatal)."}) {
+		t.Errorf("GPU-b gpu_xid_149 = %v %q, want WARNING with only the Nonfatal message", v.Severity, v.Messages)
+	}
+	subCode := resultsFor(nv, "gpu_xid_149_4")
+	if subCode["GPU-a"].Severity != health.Critical || subCode["GPU-b"].Severity != health.Pass {
+		t.Errorf("gpu_xid_149_4 = GPU-a %v, GPU-b %v; want CRITICAL, PASS", subCode["GPU-a"].Severity, subCode["GPU-b"].Severity)
 	}
 }

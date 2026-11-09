@@ -1,5 +1,7 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
 go_library(
     name = "gpu",
     srcs = [
@@ -11,7 +13,6 @@ go_library(
         "telemetry.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/gpu",
-    visibility = ["//visibility:public"],
     deps = ["//collect"],
 )
 

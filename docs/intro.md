@@ -7,7 +7,7 @@ answers one question before you hand a node to a workload: is this node ready?
 
 It runs on a GPU node and checks GPUs, NVLink, CPU and NUMA topology, Xid
 errors, and InfiniBand link flaps against NVIDIA-authored checks. It returns a
-single verdict: PASS, INFO, WARNING, CRITICAL, or UNKNOWN. A failing check also
+single verdict: PASS, INFO, WARNING, UNKNOWN, or CRITICAL. A failing check also
 carries the recommended next steps, such as reset the GPU, restart the node, or
 open a service request, so your automation can act on it.
 

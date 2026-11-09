@@ -1,9 +1,12 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
 go_library(
     name = "collectadapters",
     srcs = [
         "adapters.go",
+        "infiniband.go",
         "xid.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters",
@@ -17,6 +20,7 @@ go_library(
         "//catalog/nvlink",
         "//catalog/xid",
         "//collect/observation",
+        "//collect/signals/infiniband",
         "//collect/signals/xid",
         "//toolkit/observations",
     ],
@@ -37,6 +41,7 @@ go_test(
         "//catalog/health",
         "//catalog/infiniband",
         "//catalog/node",
+        "//catalog/nvlink",
         "//catalog/xid",
         "//collect",
         "//collect/observation",

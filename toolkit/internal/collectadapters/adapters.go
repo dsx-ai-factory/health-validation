@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -25,58 +23,42 @@ const sourceLevelGPU = "gpu"
 // domainAdapter assembles one catalog category from mapped signals.
 type domainAdapter struct {
 	errored func(error) []health.Measurement
+	// complete, when set, adds a failed measurement for each type Build
+	// must always produce but the observations did not build.
+	complete func([]health.Measurement) []health.Measurement
 	// feeds maps each collect signal ID to the catalog signals it fills;
 	// several when one raw value is split into multiple catalog fields.
 	feeds    map[string][]string
 	category health.Category
-	// nodeScoped domains build one measurement from every source's
-	// observations. Health Validation is node-local, so a node target's ID
-	// (empty by convention) and a source-scoped failure both describe this
-	// node; grouping them per source would split one fact set into partial
-	// measurements that each fail the other's fields.
-	nodeScoped bool
 }
 
 // CPU replaces toolkit.CPUSensor for the stock CLI's CPU domain.
 func CPU() *domainAdapter {
-	return newDomainAdapter(health.CPU, erroredCPU, true)
+	return newDomainAdapter(health.CPU, erroredCPU)
 }
 
 // Node replaces toolkit.NodeSensor for the stock CLI's node domain. Its
 // gpu_count comes from the shared GPU inventory (gpuinventory.GPUCount).
 func Node() *domainAdapter {
-	return newDomainAdapter(health.Node, erroredNode, true)
+	return newDomainAdapter(health.Node, erroredNode)
 }
 
-// GPU prepares the cutover of toolkit.GPUSensor (toolkit.NewGPUSensor).
-// The app still registers that legacy sensor; only tests use this adapter.
-// Unmapped catalog signals remain failures until cutover coverage is complete.
+// GPU replaces toolkit.GPUSensor for the stock CLI's GPU domain.
 func GPU() *domainAdapter {
-	return newDomainAdapter(health.GPU, erroredGPU, false)
+	return newDomainAdapter(health.GPU, erroredGPU)
 }
 
 // NVLink prepares the cutover of toolkit.NVLinkSensor (toolkit.NewNVLinkSensor).
 // The app still registers that legacy sensor; only tests use this adapter.
-// Per-link catalog signals remain unmapped until cutover coverage is complete.
 func NVLink() *domainAdapter {
-	return newDomainAdapter(health.NVLink, erroredNVLink, false)
-}
-
-// InfiniBand feeds infiniband.PortMeasurement from the collect sysfs port
-// sensor; the journal link-flap sensor still supplies the category's other
-// type. Finding no ports is a collection failure like any other domain's:
-// a missing driver or the device-name filter can leave sysfs empty, so
-// absence cannot be read as "nothing to check". Deployments without
-// InfiniBand disable the port check instead.
-func InfiniBand() *domainAdapter {
-	return newDomainAdapter(health.InfiniBand, erroredInfiniBand, false)
+	return newDomainAdapter(health.NVLink, erroredNVLink)
 }
 
 // newDomainAdapter requests every signal the converter maps onto category,
 // so the adapter and the converter cannot disagree.
-func newDomainAdapter(category health.Category, errored func(error) []health.Measurement, nodeScoped bool) *domainAdapter {
+func newDomainAdapter(category health.Category, errored func(error) []health.Measurement) *domainAdapter {
 	return &domainAdapter{
-		category: category, errored: errored, nodeScoped: nodeScoped,
+		category: category, errored: errored,
 		feeds: observations.MappedFeeds(category),
 	}
 }
@@ -90,7 +72,10 @@ func (a *domainAdapter) Signals() map[string][]string { return maps.Clone(a.feed
 
 // Build consumes observations already validated by the bridge.
 func (a *domainAdapter) Build(obs []*observation.Observation) []health.Measurement {
-	measurements := adaptCategory(a.category, a.feeds, a.nodeScoped, obs)
+	measurements := adaptCategory(a.category, a.feeds, obs)
+	if a.complete != nil {
+		measurements = a.complete(measurements)
+	}
 	if len(measurements) == 0 {
 		return a.Errored(fmt.Errorf("no %s observations were collected", a.Name()))
 	}
@@ -118,88 +103,20 @@ func erroredGPU(err error) []health.Measurement {
 }
 
 func erroredNVLink(err error) []health.Measurement {
-	m := nvlink.ErroredNVLink(sourceLevelGPU, err, nvlink.MeasurementSignals()...)
+	// The legacy NVLink sensor names a whole-domain failure after its domain.
+	m := nvlink.ErroredNVLink(health.NVLink.String(), err, nvlink.MeasurementSignals()...)
 	m.SetEntityKey(health.SourceEntity(adapterSource(health.NVLink)))
 	return []health.Measurement{m}
 }
 
-func erroredInfiniBand(err error) []health.Measurement {
-	m := infiniband.ErroredPort("", 0, err, infiniband.PortMeasurementSignals...)
-	m.SetEntityKey(health.SourceEntity(adapterSource(health.InfiniBand)))
-	return []health.Measurement{m}
-}
-
-// adaptCategory groups observations per entity (GPU or InfiniBand port), or
-// into one group when nodeScoped, converts each group with
-// observations.ToMeasurements, and keeps measurements of category.
-func adaptCategory(category health.Category, feeds map[string][]string, nodeScoped bool, obs []*observation.Observation) []health.Measurement {
-	groups := make(map[adapterKey][]*observation.Observation)
-	for _, o := range obs {
-		if _, ok := feeds[o.GetSignalId()]; !ok {
-			continue
-		}
-		var key adapterKey
-		if !nodeScoped {
-			key = adapterGroup(o)
-		}
-		groups[key] = append(groups[key], o)
-	}
-	var out []health.Measurement
-	keys := make([]adapterKey, 0, len(groups))
-	for key := range groups {
-		keys = append(keys, key)
-	}
-	// Map iteration is random; sort so Build output order is stable for tests,
-	// logs, and run-to-run diffs.
-	slices.SortFunc(keys, func(a, b adapterKey) int { return strings.Compare(a.label(), b.label()) })
-	for _, key := range keys {
-		for _, m := range observations.ToMeasurements(groups[key]) {
-			if m.Category() != category {
-				continue
-			}
-			// UUID-less slots are meaningful only within their producing source.
-			if key.kind != "uuid" && key.namespace != "" {
-				switch value := m.(type) {
-				case gpu.GPUMeasurement:
-					value.GPUID = key.label()
-					m = value
-				case nvlink.NVLinkMeasurement:
-					value.GPUID = key.label()
-					m = value
-				}
-			}
-			out = append(out, m)
-		}
-	}
-	return out
-}
-
-// adapterKey identifies one entity group: a GPU by UUID or source-local
-// slot, an InfiniBand port or device by name, or the source for
-// source-scoped observations.
-type adapterKey struct {
-	namespace string
-	id        string
-	kind      string
-}
-
-// label renders k as a sortable, source-qualified entity ID.
-func (k adapterKey) label() string { return fmt.Sprintf("%s:%q/%q", k.kind, k.namespace, k.id) }
-
-// adapterGroup assigns o to its entity group. Slots are namespaced by source
-// so two producers' slot 0 are never merged without a UUID.
-func adapterGroup(o *observation.Observation) adapterKey {
-	target := o.GetTarget()
-	if ref := target.GetGpu(); ref.GetUuid() != "" {
-		return adapterKey{kind: "uuid", id: ref.GetUuid()}
-	} else if slot := ref.GetSourceLocalId(); slot != "" {
-		return adapterKey{kind: "slot", namespace: o.GetSource(), id: slot}
-	}
-	if ref := target.GetInfiniBandPort(); ref != nil {
-		return adapterKey{kind: "ibport", id: fmt.Sprintf("%s/%d", ref.GetDevice().GetName(), ref.GetPort())}
-	}
-	if ref := target.GetInfiniBandDevice(); ref != nil {
-		return adapterKey{kind: "ibdev", id: ref.GetName()}
-	}
-	return adapterKey{kind: "source", namespace: o.GetSource()}
+// adaptCategory converts the observations of signals feeds maps, together, so
+// a source-wide failure meets the GPUs other sources read, and keeps
+// measurements of category. The converter keys each GPU by UUID, or by source
+// and slot when a source could not read its UUID.
+func adaptCategory(category health.Category, feeds map[string][]string, obs []*observation.Observation) []health.Measurement {
+	obs = slices.DeleteFunc(slices.Clone(obs), func(o *observation.Observation) bool {
+		_, ok := feeds[o.GetSignalId()]
+		return !ok
+	})
+	return slices.DeleteFunc(observations.ToMeasurements(obs), func(m health.Measurement) bool { return m.Category() != category })
 }

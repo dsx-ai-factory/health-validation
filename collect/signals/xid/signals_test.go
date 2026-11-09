@@ -18,9 +18,13 @@ func TestSignals(t *testing.T) {
 	}{
 		{definition: ScanWindow, id: "xid.scan.window"},
 		{definition: Code, id: "xid.event.code", unit: "1"},
+		{definition: Message, id: "xid.event.message"},
 		{definition: PCIAddress, id: "xid.event.pci_address"},
 		{definition: PID, id: "xid.event.pid", unit: "1"},
 		{definition: ProcessName, id: "xid.event.process_name"},
+		{definition: GPC, id: "xid.event.gpc", unit: "1"},
+		{definition: TPC, id: "xid.event.tpc", unit: "1"},
+		{definition: SM, id: "xid.event.sm", unit: "1"},
 		{definition: NVLink5SubComponent, id: "xid.event.nvlink5.sub_component"},
 		{definition: NVLink5Fatal, id: "xid.event.nvlink5.fatal"},
 		{definition: NVLink5Link, id: "xid.event.nvlink5.link", unit: "1"},

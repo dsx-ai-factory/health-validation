@@ -308,7 +308,7 @@ func TestCollectRunnerFailureAndValidPartialResults(t *testing.T) {
 			if result, ok := results["cpu_count"]; !ok || result.Severity != health.Pass || result.ObservedValues[cpu.SignalOnlineCPUCount] != int64(4) {
 				t.Fatalf("healthy sensor did not reach evaluation: %+v", verdict)
 			}
-			if result, ok := results["gpu_count"]; !ok || result.Severity != health.Critical {
+			if result, ok := results["gpu_count"]; !ok || result.Severity != health.Unknown {
 				t.Fatalf("failed sensor did not degrade independently: %+v", verdict)
 			}
 			obs := r.Observe(healthy.ID(), runnerCount.ID())
@@ -399,6 +399,26 @@ func TestCollectRunnerCanonicalTargetRules(t *testing.T) {
 				t.Fatalf("canonical violation became success: %v", got)
 			}
 		})
+	}
+}
+
+// A reading for a GPU known only by a source-local ID fails that observation,
+// keeping its source and slot, without rejecting the rest of the batch.
+func TestCollectRunnerFailsOnlySourceLocalOutcomes(t *testing.T) {
+	verified := runnerObservation(gpusignals.PerformanceState, observation.GPUTarget("GPU-0"), 0)
+	slot := runnerObservation(gpusignals.PerformanceState, observation.GPUSourceLocalTarget("dcgm-index-1"), 0)
+	r := newCollectRunner(t, time.Second)
+	registerRunner(t, r, runnerSource{id: "gpu", signals: collect.Signals{gpusignals.PerformanceState}, measure: runnerBatch(verified, slot)})
+	r.Collect()
+
+	got := r.Observe(gpusignals.PerformanceState.ID())
+	if len(got) != 2 || !proto.Equal(got[0], verified) {
+		t.Fatalf("verified GPU reading changed: %v", got)
+	}
+	failure := got[1].GetCollectionError()
+	if failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || failure.GetOperation() != "identity" ||
+		got[1].GetSource() != "fake" || got[1].GetTarget().GetGpu().GetSourceLocalId() != "dcgm-index-1" {
+		t.Fatalf("source-local reading = %v, want an identity failure on its slot", got[1])
 	}
 }
 

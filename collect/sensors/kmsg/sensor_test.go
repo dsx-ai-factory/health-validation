@@ -5,8 +5,12 @@ package kmsg
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"maps"
+	"syscall"
 	"testing"
 	"time"
 
@@ -20,6 +24,66 @@ import (
 	kmsgxid "github.com/dsx-ai-factory/health-validation/collect/signals/kmsg/xid"
 	kmsgsource "github.com/dsx-ai-factory/health-validation/collect/source/kmsg"
 )
+
+func TestOverrunClassification(t *testing.T) {
+	for _, tc := range []struct {
+		err      error
+		name     string
+		code     string
+		category observation.CollectionErrorCategory
+	}{
+		{syscall.EPIPE, "overrun", "EPIPE", observation.CollectionErrorCategorySourceError},
+		{fmt.Errorf("read: %w", syscall.EPIPE), "wrapped overrun", "EPIPE", observation.CollectionErrorCategorySourceError},
+		{errors.Join(syscall.EPIPE, fmt.Errorf("read: %w", syscall.EPIPE)), "joined overruns", "EPIPE", observation.CollectionErrorCategorySourceError},
+		{errors.Join(syscall.EPIPE, syscall.EIO), "overrun then I/O failure", "", observation.CollectionErrorCategorySourceError},
+		{fmt.Errorf("read: %w", errors.Join(syscall.EPIPE, io.EOF)), "overrun then EOF", "", observation.CollectionErrorCategorySourceError},
+		{errors.Join(syscall.EPIPE, fs.ErrClosed), "overrun then close", "", observation.CollectionErrorCategoryUnavailable},
+		{errors.Join(syscall.EPIPE, context.Canceled), "overrun then cancel", "", observation.CollectionErrorCategoryUnavailable},
+		{errors.Join(syscall.EPIPE, context.DeadlineExceeded), "overrun then timeout", "", observation.CollectionErrorCategoryTimeout},
+		{errors.Join(syscall.EPIPE, kmsgsource.ErrMalformedRecord), "overrun then malformed record", "", observation.CollectionErrorCategoryParseError},
+		{errors.New("broken pipe"), "untyped error text", "", observation.CollectionErrorCategorySourceError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			cycle, err := collect.NewCycle("overrun", now)
+			require.NoError(t, err)
+			s := newRawSensor(t, func(context.Context) ([]kmsgsource.Message, error) {
+				return []kmsgsource.Message{{BootID: "boot", Timestamp: now, Sequence: 2, Body: "after overrun"}}, tc.err
+			})
+			batch, err := s.Measure(t.Context(), collect.WithCycle(cycle), collect.WithSignalID(kmsgsignals.Message.ID()))
+			require.NoError(t, err)
+			require.NoError(t, observation.ValidateBatch(batch))
+			require.Len(t, batch.Observations, 2)
+			failure := batch.Observations[0].GetCollectionError()
+			require.NotNil(t, failure)
+			assert.Equal(t, tc.code, failure.SourceError)
+			assert.Equal(t, tc.category, failure.Category)
+			assert.Equal(t, tc.err.Error(), failure.Detail)
+			assert.Equal(t, "after overrun", batch.Observations[1].GetValue().GetStringValue())
+		})
+	}
+}
+
+func TestOverrunDoesNotMaskInvalidRecord(t *testing.T) {
+	cycle, err := collect.NewCycle("invalid", time.Now())
+	require.NoError(t, err)
+	s := newRawSensor(t, func(context.Context) ([]kmsgsource.Message, error) {
+		return []kmsgsource.Message{{Timestamp: time.Now(), Body: "missing boot ID"}}, syscall.EPIPE
+	})
+	batch, err := s.Measure(t.Context(), collect.WithCycle(cycle), collect.WithSignalID(kmsgsignals.Message.ID(), kmsgsignals.Priority.ID()))
+	require.NoError(t, err)
+	require.NoError(t, observation.ValidateBatch(batch))
+	require.Len(t, batch.Observations, 4)
+	for _, reading := range batch.Observations[:2] {
+		assert.Equal(t, "EPIPE", reading.GetCollectionError().GetSourceError())
+	}
+	for _, reading := range batch.Observations[2:] {
+		failure := reading.GetCollectionError()
+		require.NotNil(t, failure)
+		assert.Equal(t, observation.CollectionErrorCategoryParseError, failure.Category)
+		assert.Empty(t, failure.SourceError)
+	}
+}
 
 func TestMeasure(t *testing.T) {
 	now := time.Now()
