@@ -58,9 +58,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   canonical GPU signals from whichever registered sensor produces them.
 - `App.WithCollect` requires the signal IDs the sensor supplies: a bare
   `WithCollect(sensor)` is a registration error. Pass the IDs, for example
-  `WithCollect(sensor, cpusignals.All().IDs()...)`. Claims are explicit so a
-  release that adds built-in collect sources never changes which sensor
-  supplies a signal. Related registration rules, all checked whatever checks
+  `WithCollect(sensor, cpusignals.OnlineCount.ID(), cpusignals.PossibleCount.ID())`.
+  Claims are explicit so a release that adds built-in collect sources never
+  changes which sensor supplies a signal. Related registration rules, all checked whatever checks
   are runnable: one signal claimed by two sensors is an error, every catalog
   category name (`cpu`, `nvlink`, …) is reserved for built-in adapters, and a
   caller adapter may not feed a catalog field that an active built-in adapter
@@ -86,7 +86,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. The built-in NVML sensor now offers every signal collect's
   NVML sensor reads except those taken from DCGM, so a signal such as ECC or
-  row remapping needs only the adapter. `docs/extending.md` describes the
+  row remapping needs only the adapter, unless `WithGPUBackend` is set. `docs/extending.md` describes the
   wiring. `WithGPUBackend`, `NVMLBackend.WithGPUProbe`, and `WithNodeBackend`
   are deprecated in its favor or in favor of `WithCollect`.
 

@@ -247,8 +247,9 @@ from `DefaultThreshold`.
 
 Your checks read a measurement type you define: a struct whose `json`-tagged
 fields are exactly your checks' `RequiredSignals`. A per-GPU type also carries
-a `gpu_id` field and embeds `observations.Entity`, which records the GPU's
-identity and any collection failures:
+a `gpu_id` field, an `EntityID` method returning it, and embeds
+`observations.Entity` by value, which records the GPU's identity and any
+collection failures:
 
 ```go
 type ECCMeasurement struct {
@@ -273,6 +274,8 @@ ecc, err := app.GPUAdapter[mygpu.ECCMeasurement]("ecc", map[string]string{
 The adapter groups observations by GPU and fails a field that could not be
 read, or that nothing reported, so a check never passes on a value that was
 not collected. It is registered alongside the built-ins, which keep running.
+It sees only the GPUs your signals report: a GPU that no source reports at all
+gets no measurement, so your checks have no result for it.
 
 Your measurement can also read a signal the built-in checks use, such as the
 GPU performance state, so one check can combine it with yours. Give it a field
@@ -287,7 +290,8 @@ Where the signal comes from depends on what reads it:
 - **A signal collect's NVML sensor reads** (ECC, row remapping, temperature,
   clocks, utilization, …): nothing more. The built-in NVML sensor supplies it
   from the session health-validation already holds, and only when a check that
-  will run needs it.
+  will run needs it. `WithGPUBackend` replaces the built-in GPU sensors with the
+  legacy one, so with it set the signal needs a sensor of your own.
 - **Any other signal:** register a collect sensor that produces it, claiming
   the signal IDs it supplies:
   `a.WithCollect(mysensor.New(), mysignals.All().IDs()...)`.
