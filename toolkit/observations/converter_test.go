@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
@@ -97,6 +98,30 @@ func TestGPUConverterErrored(t *testing.T) {
 	m := eccConverter(t).Errored("collect.ecc", errors.New("registration failed"))
 	if health.KeyOf(m) != health.SourceEntity("collect.ecc") || !slices.Equal(failedFieldsOf(m), []string{"ecc_double_bit", "row_remap_pending"}) {
 		t.Fatalf("errored = %+v keyed %v", m, health.KeyOf(m))
+	}
+}
+
+// A measurement constructed directly, as an extension's unit tests do, is
+// keyed by its gpu_id although nothing set its Entity key.
+func TestDirectlyConstructedMeasurementNamesItsGPU(t *testing.T) {
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
+	if err := cat.Register(health.CheckDefinition{
+		ID: "ecc_double_bit", Name: "ECC double-bit", Category: health.GPU,
+		RequiredSignals: []string{"ecc_double_bit"},
+		Rules:           []health.Rule{{Expression: "ecc_double_bit > 0", Severity: health.Critical}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	verdict, err := cat.EvaluateAll(eccMeasurement{GPUID: "GPU-0"}, eccMeasurement{GPUID: "GPU-1", DoubleBit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var affected []string
+	for _, v := range verdict.CheckResults {
+		affected = append(affected, v.AffectedEntities...)
+	}
+	if len(verdict.CheckResults) != 2 || !slices.Equal(affected, []string{"GPU-1"}) {
+		t.Fatalf("results = %+v, want two with GPU-1 affected", verdict.CheckResults)
 	}
 }
 
