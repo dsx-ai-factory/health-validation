@@ -588,8 +588,11 @@ Detects NVRM Xid 154 in the system journal within the collection window and repo
 - **CRITICAL** when `("0x2" in recovery_action_counts && recovery_action_counts["0x2"] >= occurrences) \|\| ("0x6" in recovery_action_counts && recovery_action_counts["0x6"] >= occurrences) \|\| ("0x7" in recovery_action_counts && recovery_action_counts["0x7"] >= occurrences)`
   - Message: GPU Xid 154: the driver requested an OS reboot for at least one GPU.
   - Action: operational state `drain`, then `restart_os` → `service_required`
-- **CRITICAL** when `("0x1" in recovery_action_counts && recovery_action_counts["0x1"] >= occurrences) \|\| ("0x4" in recovery_action_counts && recovery_action_counts["0x4"] >= occurrences)`
+- **CRITICAL** when `("0x1" in recovery_action_counts && recovery_action_counts["0x1"] >= occurrences)`
   - Message: GPU Xid 154: the driver requested a GPU reset for at least one GPU.
+  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+- **CRITICAL** when `("0x4" in recovery_action_counts && recovery_action_counts["0x4"] >= occurrences)`
+  - Message: GPU Xid 154: the driver requested a drain and reset for at least one GPU. Schedule no new work on the GPU; let unaffected jobs finish or reach a checkpoint, then reset the GPU to regain its full memory capacity.
   - Action: operational state `drain`, then `reset_gpu` → `service_required`
 - **WARNING** when `("0x3" in recovery_action_counts && recovery_action_counts["0x3"] >= occurrences)`
   - Message: GPU Xid 154: the driver requested that peer-to-peer traffic be stopped for at least one GPU. Disable new scheduling, quiesce P2P traffic and UVM persistence, then re-query the recovery action. Reset the GPU only if Drain P2P remains after quiescing.

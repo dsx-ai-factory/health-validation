@@ -6,7 +6,7 @@ package xid
 // TerminalRecoveryActions is the action each GPU's readable Xid 154
 // reports leave it in, as recovery_action_counts derives it.
 func TerminalRecoveryActions(events []XidEvent) map[string]RecoveryAction {
-	reports := readableRecoveryReports(events)
+	reports := readableRecoveryReports(events, "")
 	if len(reports) == 0 {
 		return nil
 	}

@@ -166,7 +166,8 @@ whichever Xid it accompanied:
 
 - **CRITICAL** with `["restart_os", "service_required"]` for a reboot or bus
   reset, and with `["reset_gpu", "service_required"]` for a GPU reset or
-  Drain and Reset.
+  Drain and Reset. For Drain and Reset, schedule no new work on the GPU and
+  let unaffected jobs finish or reach a checkpoint before the reset.
 - **WARNING** with `["xid_154"]` for Drain P2P: disable new scheduling,
   quiesce P2P traffic and UVM persistence, then re-query the recovery
   action, and reset the GPU only if Drain P2P remains. The driver often

@@ -9,12 +9,18 @@ import (
 )
 
 // readableRecoveryReports groups the Xid 154 events whose transition was
-// read by GPU.
-func readableRecoveryReports(events []XidEvent) map[string][]XidEvent {
+// read by GPU. gpu is the measurement's GPU, if it names one: its events
+// are all that GPU's, however each line spells the address. Only a
+// measurement naming no GPU is grouped by each event's address.
+func readableRecoveryReports(events []XidEvent, gpu string) map[string][]XidEvent {
 	reports := make(map[string][]XidEvent)
 	for _, ev := range events {
 		if ev.XidCode == 154 && ev.RecoveryAction != nil {
-			reports[ev.PCIAddress] = append(reports[ev.PCIAddress], ev)
+			key := gpu
+			if key == "" {
+				key = ev.PCIAddress
+			}
+			reports[key] = append(reports[key], ev)
 		}
 	}
 	return reports
@@ -116,9 +122,9 @@ func canonicalRecoveryActionCode(raw string) string {
 // Every Xid 154 whose transition could not be read counts under
 // [recoveryActionUnreadable], whether or not its GPU also logged a
 // readable one, so an unreadable line is never silently dropped.
-func recoveryActionCounts(events []XidEvent) map[string]int64 {
+func recoveryActionCounts(events []XidEvent, gpu string) map[string]int64 {
 	counts := make(map[string]int64)
-	for _, reports := range readableRecoveryReports(events) {
+	for _, reports := range readableRecoveryReports(events, gpu) {
 		current, ordered := latestRecoveryAction(reports)
 		currentCode := canonicalRecoveryActionCode(current.ToCode)
 		for _, ev := range reports {

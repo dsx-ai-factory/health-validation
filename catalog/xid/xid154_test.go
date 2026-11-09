@@ -5,6 +5,7 @@ package xid_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
@@ -72,12 +73,13 @@ func TestXid154Check_ReportsRequestedAction(t *testing.T) {
 
 	tests := []struct {
 		name         string
+		wantMessage  string
 		toCodes      []string
 		wantAction   health.RecommendedAction
 		wantSeverity health.Severity
 	}{
 		{name: "gpu reset", toCodes: []string{"0x1"}, wantSeverity: health.Critical, wantAction: reset},
-		{name: "drain and reset", toCodes: []string{"0x4"}, wantSeverity: health.Critical, wantAction: reset},
+		{name: "drain and reset", toCodes: []string{"0x4"}, wantSeverity: health.Critical, wantAction: reset, wantMessage: "let unaffected jobs finish or reach a checkpoint, then reset the GPU"},
 		{name: "os reboot", toCodes: []string{"0x2"}, wantSeverity: health.Critical, wantAction: restartOS},
 		{name: "system reboot", toCodes: []string{"0x7"}, wantSeverity: health.Critical, wantAction: restartOS},
 		{name: "bus reset", toCodes: []string{"0x6"}, wantSeverity: health.Critical, wantAction: restartOS},
@@ -108,6 +110,9 @@ func TestXid154Check_ReportsRequestedAction(t *testing.T) {
 			}
 			if !v.RecommendedAction.Equal(tc.wantAction) {
 				t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, tc.wantAction)
+			}
+			if tc.wantMessage != "" && !strings.Contains(strings.Join(v.Messages, " "), tc.wantMessage) {
+				t.Errorf("Messages = %q, want one containing %q", v.Messages, tc.wantMessage)
 			}
 		})
 	}
@@ -155,6 +160,30 @@ func TestXid154Check_FollowsJournalOrder(t *testing.T) {
 	// No journal order at all: the None cannot clear the request.
 	if v := xid154Verdict(t, reboot, none); v.Severity != health.Critical {
 		t.Errorf("unordered: severity = %v, want CRITICAL", v.Severity)
+	}
+}
+
+// A per-GPU measurement's events are all that GPU's, so a later None
+// clears an earlier request even when the two lines spell the address
+// differently.
+func TestXid154Check_OneGPUAnySpelling(t *testing.T) {
+	reset := recoveryEvent("0000:89:00", "0x0", "None", "0x1", "GPU Reset Required")
+	none := recoveryEvent("00000000:89:00", "0x1", "GPU Reset Required", "0x0", "None")
+	reset.Sequence, none.Sequence = 1, 2
+	m := xid.XidMeasurement{
+		Since: "boot", GPUID: "GPU-a", PCIAddress: "0000:89:00",
+		XidCounts: map[int64]int64{154: 2}, Events: []xid.XidEvent{reset, none}, EventCount: 2,
+	}
+	nv, err := hostCatalog(t, "575.51.03").EvaluateAll(m)
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	v, ok := checkResult(nv, "gpu_xid_154")
+	if !ok {
+		t.Fatalf("gpu_xid_154 verdict not found")
+	}
+	if v.Severity != health.Info {
+		t.Errorf("severity = %v %q, want INFO: the None came last", v.Severity, v.Messages)
 	}
 }
 

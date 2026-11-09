@@ -79,11 +79,18 @@ var recoverySteps = []recoveryStep{
 		severity:  health.Critical,
 		action:    health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired),
 	},
-	// Drain and Reset shares the reset's step: the step names the
-	// remediation, and a CRITICAL verdict already drains.
 	{
-		codes:     []uint32{0x1, 0x4}, // GPU Reset (PF FLR), Drain and Reset
+		codes:     []uint32{0x1}, // GPU Reset (PF FLR)
 		requested: "a GPU reset",
+		severity:  health.Critical,
+		action:    resetAndService(),
+	},
+	// Drain and Reset ends in the same reset, but unaffected work may run
+	// to completion first, so it ranks below an immediate reset.
+	{
+		codes:     []uint32{0x4}, // Drain and Reset
+		requested: "a drain and reset",
+		guidance:  "Schedule no new work on the GPU; let unaffected jobs finish or reach a checkpoint, then reset the GPU to regain its full memory capacity.",
 		severity:  health.Critical,
 		action:    resetAndService(),
 	},
