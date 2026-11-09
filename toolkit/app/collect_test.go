@@ -1642,3 +1642,19 @@ func TestAveragePowerDrawChecksStayOnAveragingArchitectures(t *testing.T) {
 		t.Fatal("no built-in check reads average_power_draw_w")
 	}
 }
+
+// A source that reports nothing fails the adapter's checks rather than
+// leaving them skipped and the run PASS.
+func TestGPUAdapterFailsWhenNothingCollected(t *testing.T) {
+	adapter, err := GPUAdapter[eccMeasurement]("ecc", map[string]string{
+		gpusignals.ECCDoubleBitVolatileTotal.ID(): "ecc_double_bit",
+		gpusignals.PerformanceState.ID():          "pstate",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := adapter.Build(nil)
+	if len(ms) != 1 || health.KeyOf(ms[0]) != health.SourceEntity("collect.ecc") || len(ms[0].Errors()) == 0 {
+		t.Fatalf("Build(nil) = %+v, want one errored source-level measurement", ms)
+	}
+}

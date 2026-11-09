@@ -104,11 +104,13 @@ func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 // added with [App.WithChecks]. signals maps each collect signal ID it reads to
 // the json-tagged field of M it sets; see [observations.NewGPUConverter] for
 // what M needs. Register it with [App.WithCollectAdapters]. A signal the
-// built-in NVML sensor reads, such as ECC or row remapping, needs no sensor;
-// any other needs a sensor registered with [App.WithCollect]. A signal the
-// built-in GPU adapter also reads, such as the performance state, may be read
-// too, but into a field of M's own name: a field the built-in GPU measurement
-// reports is rejected at registration.
+// built-in NVML sensor reads, such as ECC or row remapping, needs no sensor
+// unless [App.WithGPUBackend] replaces the built-in GPU sensors; any other
+// needs a sensor registered with [App.WithCollect]. It builds an M only for
+// the GPUs its signals report, so a GPU no source reports has no result. A
+// signal the built-in GPU adapter also reads, such as the performance state,
+// may be read too, but into a field of M's own name: a field the built-in GPU
+// measurement reports is rejected at registration.
 func GPUAdapter[M health.Measurement](name string, signals map[string]string) (CollectAdapter, error) {
 	converter, err := observations.NewGPUConverter[M](signals)
 	if err != nil {
@@ -125,8 +127,15 @@ type gpuAdapter struct {
 func (a gpuAdapter) Name() string                 { return a.name }
 func (a gpuAdapter) Category() health.Category    { return a.converter.Category() }
 func (a gpuAdapter) Signals() map[string][]string { return a.converter.Feeds() }
+
+// Build fails the adapter's fields when nothing was collected, as the built-in
+// adapters do, so a silent source cannot leave its checks skipped and the run
+// PASS.
 func (a gpuAdapter) Build(obs []*observation.Observation) []health.Measurement {
-	return a.converter.ToMeasurements(obs)
+	if ms := a.converter.ToMeasurements(obs); len(ms) > 0 {
+		return ms
+	}
+	return a.Errored(fmt.Errorf("no %s observations were collected", a.name))
 }
 
 func (a gpuAdapter) Errored(err error) []health.Measurement {

@@ -49,8 +49,10 @@ type GPUConverter struct {
 // NewGPUConverter returns a converter building M from the collect signals in
 // fields, which maps each signal ID to the json-tagged field of M it sets.
 // M must be a struct with a string field tagged `json:"gpu_id"`, whose other
-// json-tagged fields are the catalog signals its checks read, and *M must
-// have AddError and SetEntityKey, as embedding [Entity] provides.
+// json-tagged fields are the catalog signals its checks read, each fed by one
+// signal in fields. M must have an EntityID method returning its gpu_id, and
+// *M must have AddError and SetEntityKey, as embedding [Entity] by value
+// provides.
 func NewGPUConverter[M health.Measurement](fields map[string]string) (*GPUConverter, error) {
 	var zero M
 	typ := reflect.TypeOf(zero)
@@ -63,9 +65,20 @@ func NewGPUConverter[M health.Measurement](fields map[string]string) (*GPUConver
 	}); !ok {
 		return nil, fmt.Errorf("*%v needs AddError and SetEntityKey; embed observations.Entity", typ)
 	}
+	// A converter fills a zero M, so an embedded pointer is nil when its
+	// promoted AddError or SetEntityKey runs.
+	for i := range typ.NumField() {
+		if f := typ.Field(i); f.Anonymous && f.Type.Kind() == reflect.Pointer {
+			return nil, fmt.Errorf("%v embeds %v by pointer; embed it by value", typ, f.Type)
+		}
+	}
 	s := newSchema(zero)
 	if s.gpuID < 0 || typ.Field(s.gpuID).Type.Kind() != reflect.String {
 		return nil, fmt.Errorf("%v has no string field tagged json:%q", typ, gpuIDField)
+	}
+	// Without EntityID a failing check cannot name its GPU.
+	if _, ok := any(zero).(health.EntityIdentifier); !ok {
+		return nil, fmt.Errorf("%v needs an EntityID method returning its %s field", typ, gpuIDField)
 	}
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("no signals map to %v", typ)
@@ -82,6 +95,12 @@ func NewGPUConverter[M health.Measurement](fields map[string]string) (*GPUConver
 			return nil, fmt.Errorf("signals %q and %q both map to field %q of %v; map each field from one signal", other, signal, field, typ)
 		}
 		fedBy[field] = signal
+	}
+	// A field no signal feeds would fail its checks on every GPU, every run.
+	for _, field := range s.order {
+		if _, ok := fedBy[field]; !ok && field != gpuIDField {
+			return nil, fmt.Errorf("no signal maps to field %q of %v; map one or drop its json tag", field, typ)
+		}
 	}
 	return &GPUConverter{schema: s, fields: maps.Clone(fields)}, nil
 }

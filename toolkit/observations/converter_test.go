@@ -115,6 +115,23 @@ type noGPUIDMeasurement struct {
 
 func (noGPUIDMeasurement) Category() health.Category { return health.GPU }
 
+type pointerEntityMeasurement struct {
+	*Entity
+	GPUID string `json:"gpu_id"`
+	Value int64  `json:"value"`
+}
+
+func (pointerEntityMeasurement) Category() health.Category { return health.GPU }
+func (m pointerEntityMeasurement) EntityID() string        { return m.GPUID }
+
+type noEntityIDMeasurement struct {
+	GPUID string `json:"gpu_id"`
+	Entity
+	Value int64 `json:"value"`
+}
+
+func (noEntityIDMeasurement) Category() health.Category { return health.GPU }
+
 func TestNewGPUConverterRejectsUnusableTypes(t *testing.T) {
 	for _, test := range []struct {
 		build func() error
@@ -138,6 +155,18 @@ func TestNewGPUConverterRejectsUnusableTypes(t *testing.T) {
 		}},
 		{want: `signals "a" and "b" both map to field "ecc_double_bit"`, build: func() error {
 			_, err := NewGPUConverter[eccMeasurement](map[string]string{"b": "ecc_double_bit", "a": "ecc_double_bit"})
+			return err
+		}},
+		{want: "by pointer", build: func() error {
+			_, err := NewGPUConverter[pointerEntityMeasurement](map[string]string{"s": "value"})
+			return err
+		}},
+		{want: "needs an EntityID method", build: func() error {
+			_, err := NewGPUConverter[noEntityIDMeasurement](map[string]string{"s": "value"})
+			return err
+		}},
+		{want: `no signal maps to field "row_remap_pending"`, build: func() error {
+			_, err := NewGPUConverter[eccMeasurement](map[string]string{"s": "ecc_double_bit"})
 			return err
 		}},
 		{want: "no signals map", build: func() error {
