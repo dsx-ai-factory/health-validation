@@ -252,22 +252,22 @@ a `gpu_id` field, an `EntityID` method returning it, and embeds
 collection failures:
 
 ```go
-type ECCMeasurement struct {
+type ClockMeasurement struct {
 	GPUID string `json:"gpu_id"`
 	observations.Entity
-	DoubleBit int64 `json:"ecc_double_bit"`
+	SMClockMHz int64 `json:"sm_clock_mhz"`
 }
 
-func (ECCMeasurement) Category() health.Category { return health.GPU }
-func (m ECCMeasurement) EntityID() string        { return m.GPUID }
+func (ClockMeasurement) Category() health.Category { return health.GPU }
+func (m ClockMeasurement) EntityID() string        { return m.GPUID }
 ```
 
 `app.GPUAdapter` fills one per GPU from collect signals, given which signal
 sets which field:
 
 ```go
-ecc, err := app.GPUAdapter[mygpu.ECCMeasurement]("ecc", map[string]string{
-	gpusignals.ECCDoubleBitVolatileTotal.ID(): "ecc_double_bit",
+clock, err := app.GPUAdapter[mygpu.ClockMeasurement]("clock", map[string]string{
+	gpusignals.SMClock.ID(): "sm_clock_mhz",
 })
 ```
 
@@ -287,11 +287,14 @@ check on the performance state, apply only to the built-in field.
 
 Where the signal comes from depends on what reads it:
 
-- **A signal collect's NVML sensor reads** (ECC, row remapping, temperature,
-  clocks, utilization, …): nothing more. The built-in NVML sensor supplies it
-  from the session health-validation already holds, and only when a check that
-  will run needs it. `WithGPUBackend` replaces the built-in GPU sensors with the
-  legacy one, so with it set the signal needs a sensor of your own.
+- **A signal the built-in GPU sources read** (ECC, row remapping, temperature,
+  clocks, utilization, performance state, …): nothing more. The built-in GPU
+  sensors supply it from the sessions health-validation already holds, and only
+  when a check that will run needs it. Power draw and limits, performance state,
+  and the hardware slowdown signals come from DCGM, with no NVML fallback when
+  DCGM cannot read them; the rest come from NVML. `WithGPUBackend` replaces the
+  built-in GPU sensors with the legacy one, so with it set the signal needs a
+  sensor of your own.
 - **Any other signal:** register a collect sensor that produces it, claiming
   the signal IDs it supplies:
   `a.WithCollect(mysensor.New(), mysignals.All().IDs()...)`.
@@ -308,17 +311,20 @@ fails), and `WithCollectAdapters` registers the adapters that feed them:
 
 ```go
 func main() {
-	ecc, err := app.GPUAdapter[mygpu.ECCMeasurement]("ecc", mygpu.ECCSignals)
+	clock, err := app.GPUAdapter[mygpu.ClockMeasurement]("clock", mygpu.ClockSignals)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
 	}
-	a := app.New().WithChecks(mychecks.All()...).WithCollectAdapters(ecc)
+	a := app.New().WithChecks(mychecks.All()...).WithCollectAdapters(clock)
 	os.Exit(a.Run(os.Args[1:], os.Stdout, os.Stderr))
 }
 ```
 
 Registration errors, such as a field name the measurement does not have or a
-signal claimed by two sensors, exit `2` before anything is collected.
+signal claimed by two sensors, exit `2` before anything is collected. The
+first comes back from `GPUAdapter` before `Run` starts, so the example exits
+`2` on it too.
 
 If you do not want the node runner at all, use the catalog directly — the most
 stable path:
