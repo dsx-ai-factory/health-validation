@@ -116,18 +116,17 @@ var (
 // default, so a change in collect cannot move the check's window.
 const linkFlapLookback = time.Hour
 
-// The NVLink domain reads fabric registration and health from DCGM, and link
-// state, count, speed, capabilities, and P2P from NVML, which DCGM has no
-// fields for.
+// The NVLink domain reads fabric registration from DCGM and everything else
+// from NVML. Fabric health stays on NVML: older DCGM releases reject a field
+// group holding the health-mask field (174), and the GPU checks share that
+// group.
 var (
-	dcgmNVLinkSignals = collect.Signals{
-		gpusignals.FabricManagerStatus, gpusignals.NVLinkFabricBandwidthDegraded,
-		gpusignals.NVLinkFabricRouteRecoveryActive, gpusignals.NVLinkFabricRouteUnhealthy,
-		gpusignals.NVLinkFabricAccessTimeoutRecovery,
-	}
+	dcgmNVLinkSignals = collect.Signals{gpusignals.FabricManagerStatus}
 	nvmlNVLinkSignals = slices.Concat(collect.Signals{
 		gpusignals.NVLinkState, gpusignals.NVLinkLinkCount, gpusignals.NVLinkSpeedCommon,
 		gpusignals.NVLinkEndpointSpeed, gpusignals.NVLinkP2PStatus,
+		gpusignals.NVLinkFabricBandwidthDegraded, gpusignals.NVLinkFabricRouteRecoveryActive,
+		gpusignals.NVLinkFabricRouteUnhealthy, gpusignals.NVLinkFabricAccessTimeoutRecovery,
 	}, gpusignals.EndpointCapabilitySignals())
 )
 

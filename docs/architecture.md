@@ -192,7 +192,7 @@ Differences between domains:
 - `NO_TARGETS` on the compute-process cmdline signal means no compute processes; with a successfully collected process count of zero, `gpu_compute_apps` passes.
 - Every other unsupported value fails the checks that need it.
 - The library converter `observations.ToMeasurements` returns no measurement for an empty input, which evaluation reports as `SENSOR_MISSING`. The CLI's built-in adapters fail the whole domain instead, so treat an empty conversion as missing data.
-- In the stock CLI, GPU telemetry comes from DCGM through the collect GPU adapter, except compute processes, which come from NVML. The rules above apply; DCGM reports an unsupported slowdown bit as `NOT_SUPPORTED`. NVLink still comes from the NVML backend, which treats the four fabric-health bits as not asserted when unsupported. There a GPU with no NVLink reads zero inactive links, so `nvlink_active` passes. When both checks apply, `nvlink_bandwidth_count_speed` fails; on an architecture it does not cover, such as A100, it skips instead.
+- In the stock CLI, GPU telemetry comes from DCGM through the collect GPU adapter, except compute processes, which come from NVML. The rules above apply; DCGM reports an unsupported slowdown bit as `NOT_SUPPORTED`. NVLink comes through the collect NVLink adapter: the Fabric Manager status from DCGM, and links, P2P, and the four fabric-health bits from NVML, which reports an unsupported fabric-health bit as `NOT_SUPPORTED`. A GPU with no NVLink reads zero inactive links, so `nvlink_active` passes. When both checks apply, `nvlink_bandwidth_count_speed` fails; on an architecture it does not cover, such as A100, it skips instead.
 
 ## Adding a check
 

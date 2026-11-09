@@ -24,8 +24,8 @@ import (
 
 // nvmlHost is the production hostBackend: the collect GPU sensors and the
 // collect NVML GPU inventory that architecture discovery and the node GPU
-// count share, plus one [nvml.NVMLBackend] that only the legacy
-// WithNVLinkBackend override path ([App.NVMLBackend]) opens. That backend is
+// count share, plus one [nvml.NVMLBackend] that only explicit legacy
+// overrides ([App.NVMLBackend]) open. That backend is
 // wrapped in a [toolkit.LazyGPUBackend] so its NVML library open runs under
 // Collect's per-sensor watchdog, and close skips shutdown while a timed-out
 // Measure may still be parked inside the cgo call. The inventory and the NVML
@@ -34,7 +34,7 @@ import (
 //
 // The GPU domain reads DCGM through a hostengine already running on the node,
 // and NVML only for compute processes. The NVLink domain reads fabric
-// registration and health from DCGM, and links and P2P from NVML. Neither
+// registration from DCGM, and links, P2P, and fabric health from NVML. Neither
 // falls back to the other: an unreachable hostengine fails the DCGM-backed
 // checks.
 //

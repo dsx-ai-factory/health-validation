@@ -182,7 +182,7 @@ func (a *App) WithNodeBackend(b toolkit.NodeBackend) *App {
 }
 
 // WithNVLinkBackend replaces the NVLink domain's built-in collect sources
-// (NVML for links and P2P, DCGM for fabric registration and health) with a
+// (DCGM for fabric registration, NVML for links, P2P, and fabric health) with a
 // legacy NVLink sensor over b. See [App.WithGPUBackend] for attaching a probe.
 //
 // Deprecated: pass a collect sensor and the NVLink signal IDs it replaces to

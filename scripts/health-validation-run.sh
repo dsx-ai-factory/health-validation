@@ -64,9 +64,9 @@ if [[ -n "$libdcgm" ]]; then
 	mount_with_libs "$libdcgm"
 	dcgm_env=(-e LD_LIBRARY_PATH="$(dirname "$libdcgm")")
 else
-	# Run anyway: the DCGM-backed GPU checks report a collection failure and
-	# every other check still runs.
-	echo "warning: libdcgm.so.4 not found; the DCGM-backed GPU checks will report a collection failure (install DCGM 4)" >&2
+	# Run anyway: the DCGM-backed GPU and NVLink fabric checks report a
+	# collection failure and every other check still runs.
+	echo "warning: libdcgm.so.4 not found; the DCGM-backed GPU and nvlink_fabric checks will report a collection failure (install DCGM 4)" >&2
 fi
 
 # Needed only to record threshold overrides. Skip it when absent: docker -v
