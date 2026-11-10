@@ -25,6 +25,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
+	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/google/uuid"
 )
 
@@ -53,16 +54,16 @@ type CollectAdapter interface {
 // a disabled check, a cadence outside the window, or an architecture or
 // execution-context mismatch also narrows collection; a sensor left with
 // nothing to collect is not measured. Registrations are validated against
-// every declared signal regardless. Each signal has one producer, so
-// overlapping sensors are a registration error.
-// Without signalIDs the sensor supplies every requested signal it declares.
-// With signalIDs it supplies exactly those, replacing the built-in collect
-// source for them; this succeeds the With*Backend overrides for collect-backed
-// domains. Each claimed signal must be declared by the sensor and requested by
-// an adapter. The Xid signals, and the RDMA link-flap signals, are each
-// claimed all together or not at all. A
-// built-in source left with no requested signals never runs, and
-// built-in adapters read claimed signals from this sensor.
+// every declared signal regardless.
+// The sensor supplies exactly signalIDs, which must not be empty, replacing
+// the built-in collect source for them; this succeeds the With*Backend
+// overrides for collect-backed domains. Claims are explicit so that a later
+// release adding built-in sources never changes which sensor supplies a
+// signal. Each claimed signal must be declared by the sensor, requested by an
+// adapter, and claimed by only one sensor. The Xid signals, and the RDMA
+// link-flap signals, are each claimed all together or not at all. A built-in
+// source left with no requested signals never runs, and built-in adapters read
+// claimed signals from this sensor.
 // Each registered collect source has its own timeout budget.
 // Timeout blocking is keyed by sensor ID, not the underlying source. Shared
 // NVML/DCGM sources must prevent new calls while a timed-out call is running.
@@ -84,19 +85,63 @@ type collectSource struct {
 
 // WithCollectAdapters adds adapters that assemble domain measurements from
 // facts across all sensors registered with [App.WithCollect]. Calls append to
-// the adapter list; names must be unique across calls. Built-in domains use
-// adapters named after their catalog category (for example "cpu" or "xid"), and a
-// caller adapter cannot reuse the name of an active built-in adapter. A domain
-// whose built-in is replaced by a With*Backend override or still on its
-// legacy sensor has no built-in adapter, so its name is free. A built-in
-// adapter reads its mapped signals from whichever registered sensor
-// produces them. Sensor and adapter registration order does not matter; both
+// the adapter list; names must be unique across calls. Catalog category names
+// (for example "cpu" or "nvlink") are reserved for built-in adapters, whether
+// or not that domain's built-in is active yet. A caller adapter may not feed a
+// catalog field that an active built-in adapter of its category maps, since
+// both would report the same entity; claim the signals with [App.WithCollect]
+// instead. A built-in adapter reads its mapped signals from whichever
+// registered sensor produces them. Sensor and adapter registration order does not matter; both
 // lists are resolved for each run.
 // Requested signals without a producer are reported as missing at run time,
 // failing only dependent checks rather than causing a registration error.
 func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 	a.collectAdapters = append(a.collectAdapters, adapters...)
 	return a
+}
+
+// GPUAdapter returns a collect adapter that builds one M per GPU for checks
+// added with [App.WithChecks]. signals maps each collect signal ID it reads to
+// the json-tagged field of M it sets; see [observations.NewGPUConverter] for
+// what M needs. Register it with [App.WithCollectAdapters]. A signal the
+// built-in GPU sensors read, such as ECC or the performance state, needs no
+// sensor unless [App.WithGPUBackend] and [App.WithNVLinkBackend] together
+// replace them; any other needs a sensor registered with [App.WithCollect].
+// DCGM supplies power, performance state and hardware slowdown with no NVML
+// fallback; NVML supplies the rest. It
+// builds an M only for the GPUs its signals report, so a GPU no source reports
+// has no result. A signal the built-in GPU adapter also reads, such as the
+// performance state, may be read too, but into a field of M's own name: a
+// field the built-in GPU measurement reports is rejected at registration.
+func GPUAdapter[M health.Measurement](name string, signals map[string]string) (CollectAdapter, error) {
+	converter, err := observations.NewGPUConverter[M](signals)
+	if err != nil {
+		return nil, fmt.Errorf("GPU adapter %q: %w", name, err)
+	}
+	return gpuAdapter{name: name, converter: converter}, nil
+}
+
+type gpuAdapter struct {
+	converter *observations.GPUConverter
+	name      string
+}
+
+func (a gpuAdapter) Name() string                 { return a.name }
+func (a gpuAdapter) Category() health.Category    { return a.converter.Category() }
+func (a gpuAdapter) Signals() map[string][]string { return a.converter.Feeds() }
+
+// Build fails the adapter's fields when nothing was collected, as the built-in
+// adapters do, so a silent source cannot leave its checks skipped and the run
+// PASS.
+func (a gpuAdapter) Build(obs []*observation.Observation) []health.Measurement {
+	if ms := a.converter.ToMeasurements(obs); len(ms) > 0 {
+		return ms
+	}
+	return a.Errored(fmt.Errorf("no %s observations were collected", a.name))
+}
+
+func (a gpuAdapter) Errored(err error) []health.Measurement {
+	return []health.Measurement{a.converter.Errored("collect."+a.name, err)}
 }
 
 // dcgmGPUSignals are the GPU domain's signals the stock CLI reads from DCGM.
@@ -341,11 +386,12 @@ func (a *App) declareAdapters(adapters []CollectAdapter) ([]declaredAdapter, err
 		if strings.TrimSpace(d.name) == "" || len(d.feeds) == 0 {
 			return nil, fmt.Errorf("incomplete collect adapter")
 		}
+		// Built-ins come last, after every caller adapter.
+		var category health.Category
+		if i < len(a.collectAdapters) && category.UnmarshalText([]byte(d.name)) == nil {
+			return nil, fmt.Errorf("collect adapter name %q is reserved for a built-in domain", d.name)
+		}
 		if names[d.name] {
-			// Built-ins come last, so a clash at a built-in index is with a caller.
-			if i >= len(a.collectAdapters) {
-				return nil, fmt.Errorf("collect adapter name %q is reserved for a built-in domain", d.name)
-			}
 			return nil, fmt.Errorf("collect adapter %q is already registered", d.name)
 		}
 		names[d.name] = true
@@ -356,6 +402,27 @@ func (a *App) declareAdapters(adapters []CollectAdapter) ([]declaredAdapter, err
 			}
 		}
 		declared = append(declared, d)
+	}
+	callers, builtins := declared[:len(a.collectAdapters)], declared[len(a.collectAdapters):]
+	for _, builtin := range builtins {
+		fields := make(map[string]bool)
+		for _, feeds := range builtin.feeds {
+			for _, field := range feeds {
+				fields[field] = true
+			}
+		}
+		for _, caller := range callers {
+			if caller.category != builtin.category {
+				continue
+			}
+			for _, signal := range caller.signals {
+				for _, field := range caller.feeds[signal] {
+					if fields[field] {
+						return nil, fmt.Errorf("collect adapter %q feeds %s field %q, which the built-in %q adapter also reports; give the field another name in your measurement type to read the same signal, or drop the field and claim its signals with WithCollect so the built-in adapter reads them from your sensor", caller.name, caller.category, field, builtin.name)
+					}
+				}
+			}
+		}
 	}
 	return declared, nil
 }
@@ -389,44 +456,45 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 			Build: d.build, Errored: d.adapter.Errored,
 		})
 	}
-	// Caller sensors register first so a built-in that overlaps a bare caller
-	// sensor can name the fix.
-	claimed := make(map[string]bool)
-	for _, source := range a.collectSources {
+	// Every check here reads declared, not requested, signals, so the outcome
+	// does not depend on which checks are runnable.
+	claimedBy := make(map[string]int)
+	for i, source := range a.collectSources {
 		if isNilCollectInput(source.sensor) {
 			return nil, fmt.Errorf("registered collect sensor cannot be nil")
 		}
-		signals := requested
-		if len(source.claims) > 0 {
-			if err := checkWholeClaims(source); err != nil {
-				return nil, err
+		if len(source.claims) == 0 {
+			return nil, fmt.Errorf("collect sensor %q claims no signals; pass the signal IDs it supplies to WithCollect", source.sensor.ID())
+		}
+		if err := checkWholeClaims(source); err != nil {
+			return nil, err
+		}
+		var signals []string
+		sensorSignals := source.sensor.Signals()
+		for _, id := range source.claims {
+			if !slices.ContainsFunc(sensorSignals, func(s collect.Signal) bool { return s != nil && s.ID() == id }) {
+				return nil, fmt.Errorf("collect sensor %q does not declare claimed signal %q", source.sensor.ID(), id)
 			}
-			signals = nil
-			sensorSignals := source.sensor.Signals()
-			for _, id := range source.claims {
-				if !slices.ContainsFunc(sensorSignals, func(s collect.Signal) bool { return s != nil && s.ID() == id }) {
-					return nil, fmt.Errorf("collect sensor %q does not declare claimed signal %q", source.sensor.ID(), id)
-				}
-				if !slices.Contains(declared, id) {
-					return nil, fmt.Errorf("collect sensor %q claims signal %q, which no adapter requests", source.sensor.ID(), id)
-				}
-				claimed[id] = true
-				if slices.Contains(requested, id) {
-					signals = append(signals, id)
-				}
+			if !slices.Contains(declared, id) {
+				return nil, fmt.Errorf("collect sensor %q claims signal %q, which no adapter requests", source.sensor.ID(), id)
 			}
-			if len(signals) == 0 {
-				continue
+			// Repeating an ID within one call is idempotent.
+			if owner, ok := claimedBy[id]; ok && owner != i {
+				return nil, fmt.Errorf("signal %q is claimed by both %q and %q; claim each signal from one sensor", id, a.collectSources[owner].sensor.ID(), source.sensor.ID())
 			}
-		} else if required != nil && !suppliesAny(source.sensor, requested) {
-			// Every signal this sensor would supply belongs to checks that will not run.
+			claimedBy[id] = i
+			if slices.Contains(requested, id) && !slices.Contains(signals, id) {
+				signals = append(signals, id)
+			}
+		}
+		if len(signals) == 0 {
 			continue
 		}
 		if err := runner.Register(source.sensor, signals...); err != nil {
 			return nil, err
 		}
 	}
-	unclaimed := slices.DeleteFunc(slices.Clone(requested), func(id string) bool { return claimed[id] })
+	unclaimed := slices.DeleteFunc(slices.Clone(requested), func(id string) bool { _, ok := claimedBy[id]; return ok })
 	for _, source := range builtinSources {
 		owns := false
 		for _, s := range source.Signals() {
@@ -434,7 +502,7 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 				continue
 			}
 			if owner := runner.Owner(s.ID()); owner != "" {
-				return nil, fmt.Errorf("signal %q is produced by both %q and built-in %q; pass the signal IDs to WithCollect to replace the built-in source", s.ID(), owner, source.ID())
+				return nil, fmt.Errorf("signal %q is produced by both built-in %q and %q", s.ID(), owner, source.ID())
 			}
 			owns = true
 		}
@@ -476,11 +544,6 @@ func checkWholeClaims(source collectSource) error {
 		}
 	}
 	return nil
-}
-
-// suppliesAny reports whether sensor declares any of ids.
-func suppliesAny(sensor collect.Sensor, ids []string) bool {
-	return slices.ContainsFunc(sensor.Signals(), func(s collect.Signal) bool { return s != nil && slices.Contains(ids, s.ID()) })
 }
 
 // isNilCollectInput also rejects typed nils. Toolkit calls Errored outside any

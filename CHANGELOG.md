@@ -56,6 +56,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The collect adapter name `gpu` is reserved for the built-in GPU adapter.
   Drop a caller-registered adapter of that name: the built-in one reads the
   canonical GPU signals from whichever registered sensor produces them.
+- `App.WithCollect` requires the signal IDs the sensor supplies: a bare
+  `WithCollect(sensor)` is a registration error. Pass the IDs, for example
+  `WithCollect(sensor, cpusignals.OnlineCount.ID(), cpusignals.PossibleCount.ID())`.
+  Claims are explicit so a release that adds built-in collect sources never
+  changes which sensor supplies a signal. Related registration rules, all checked whatever checks
+  are runnable: one signal claimed by two sensors is an error, every catalog
+  category name (`cpu`, `nvlink`, …) is reserved for built-in adapters, and a
+  caller adapter may not feed a catalog field that an active built-in adapter
+  of its category also feeds. The stock CLI is unaffected.
 - `run` records every validated threshold override in the host's systemd
   journal before collecting and exits `2` if it cannot. Container deployments
   that pass overrides must mount `/run/systemd/journal/socket`; see
@@ -70,6 +79,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   with exit 2 once GPU architecture discovery succeeds, before the sensors
   are collected. If discovery fails, `run` still reports the
   `architecture_discovery` verdict and exits 1.
+
+### Features
+
+- `app.GPUAdapter` builds one measurement of your own type per GPU from
+  collect signals, for checks added with `WithChecks`, leaving the built-in GPU
+  domain in place. `docs/extending.md` describes the wiring. `WithGPUBackend`,
+  `NVMLBackend.WithGPUProbe`, and `WithNodeBackend` are deprecated in its
+  favor or in favor of `WithCollect`.
+- The built-in NVML source (`gpu.nvml`), which produced only the
+  compute-process signals, now produces every signal collect's NVML sensor
+  declares
+  ([list](https://github.com/dsx-ai-factory/health-validation/blob/cc26732a/collect/sensors/nvml/sensor.go#L63-L69):
+  temperature, power, ECC and row remapping, NVLink and fabric, memory,
+  utilization, clocks, and processes) except the seven read from DCGM:
+  `gpu.power.draw`, `gpu.power.limit.requested`, `gpu.power.limit.enforced`,
+  `gpu.performance.state`, `gpu.clock.hardware_slowdown.active`,
+  `gpu.clock.hardware_thermal_slowdown.active`, and
+  `gpu.clock.hardware_power_brake_slowdown.active`. A signal such as ECC or
+  row remapping therefore needs only a `GPUAdapter`, unless `WithGPUBackend`
+  and `WithNVLinkBackend` are both set. A `WithCollect` claim on any of these signals still takes
+  precedence over the built-in source.
+- `health.KeyOf` treats a zero `EntityKey` as unset and keys the measurement
+  by its `EntityID`, so a measurement embedding `observations.Entity` that a
+  test constructs directly names its GPU.
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 

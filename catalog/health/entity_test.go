@@ -39,6 +39,8 @@ func TestKeyOf(t *testing.T) {
 		{name: "entity ID", m: identified{id: "GPU-A"}, want: health.VerifiedEntity("GPU-A")},
 		{name: "empty entity ID", m: identified{}, want: health.EntityKey{}},
 		{name: "declared key wins", m: keyed{identified{"label"}, health.ProvisionalEntity("nvml", "3")}, want: health.ProvisionalEntity("nvml", "3")},
+		{name: "unset key falls back to entity ID", m: keyed{identified: identified{"GPU-A"}}, want: health.VerifiedEntity("GPU-A")},
+		{name: "unset key, no entity ID", m: keyed{}, want: health.EntityKey{}},
 	} {
 		if got := health.KeyOf(tc.m); got != tc.want {
 			t.Errorf("%s: KeyOf = %v, want %v", tc.name, got, tc.want)
