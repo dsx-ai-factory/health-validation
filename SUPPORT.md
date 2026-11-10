@@ -1,9 +1,8 @@
 # Support for NVIDIA Health Validation
 
 This document describes how to get help with NVIDIA Health Validation and what
-to expect from upstream support for the check catalog, toolkit, CLI, and
-container image. Support under an NVIDIA commercial agreement is governed by
-that agreement.
+to expect from upstream support for the check catalog, toolkit, and CLI.
+Support under an NVIDIA commercial agreement is governed by that agreement.
 
 ## Support channels
 
@@ -41,8 +40,8 @@ Bug reports must include:
 
 - **Version:** the affected component and installation method. For the CLI,
   include `health-validation version --output json`; for embedded use, list
-  the module versions involved. For source builds or containers, include the
-  commit SHA or image tag and digest, and describe any local changes.
+  the module versions involved. For source builds, include the source commit
+  SHA, local changes, and the build command.
 - **Reproduction:** the command or Go API call, steps, relevant inputs and
   configuration, and expected and actual results. Provide a minimal
   reproduction where possible.
@@ -51,8 +50,7 @@ Bug reports must include:
   `schema_version` and `catalog_version` when present. If no output was
   produced, say so.
 - **Environment:** relevant OS, kernel, CPU architecture, GPU model, driver,
-  and dependency versions. For containers, include relevant runtime, mount,
-  and permission details.
+  and dependency versions.
 
 Check whether the defect reproduces on current upstream `main` when feasible,
 and include the tested SHA. If you cannot test `main`, explain the limitation.
@@ -118,8 +116,8 @@ Follow the [Code of Conduct](./CODE_OF_CONDUCT.md) when participating. See
 
 The repository is one Go module with one version, using
 [Semantic Versioning](https://semver.org/). Releases are tagged `vX.Y.Z`. CLI
-and container release support follows that version, and the catalog compiled
-into a release carries the same version.
+support follows the source release version, and the catalog compiled into a
+release carries the same version.
 
 This lifecycle takes effect on adoption of this policy. It covers final
 releases available at adoption and subsequent final releases, including pre-1.0
@@ -171,9 +169,8 @@ behavior and flags require a major release. Breaking changes are announced
 in advance. A release deprecating a public API must document a migration path
 and retain the API until a later breaking release removes it.
 
-Pin a release version or container digest for reproducible deployments.
-Release candidates, `main`, and the `latest` image contain prerelease or
-development changes; `latest` follows `main`. Review the
+Pin the source release tag or commit used for a deployment. Release candidates
+and builds from `main` contain prerelease or development changes. Review the
 [changelog](./CHANGELOG.md),
 [release notes](https://github.com/dsx-ai-factory/health-validation/releases),
 and [release policy](./RELEASE.md) before upgrading. Development builds and

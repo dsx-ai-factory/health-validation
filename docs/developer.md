@@ -157,26 +157,51 @@ docker run --rm --platform=linux/amd64 --entrypoint sh -v "$PWD:/src" -w /src gc
 Copy `dist/health-validation-linux-amd64.tar` to a Linux host and load it with
 `docker load -i`; `dist/` is intentionally ignored by Git.
 
-## Pulling a Published Image
+## Building Container Images from Source
 
-CI publishes a multi-architecture image for Linux amd64 and arm64:
+Run these commands from the repository root on a Linux build host:
 
 ```shell
-docker pull ghcr.io/dsx-ai-factory/health-validation:<tag>
+bazel run --config=ci --platforms=//build/platforms:linux_amd64 \
+  //toolkit/cmd/health-validation:health-validation.image.local_load
 ```
 
-| Trigger | Image tags |
-|---|---|
-| Commit to `main` | `<pseudo-version>` and `latest` |
-| Git tag `vX.Y.Z` or `vX.Y.Z-rc.N` | `X.Y.Z` or `X.Y.Z-rc.N` |
+The target builds the image and loads it into Docker as
+`health-validation:latest`. For ARM64 nodes, replace `linux_amd64` with
+`linux_arm64`. Select the platform for your deployment nodes.
 
-The binary keeps the leading `v`, while the image tag omits it. For example,
-`v1.2.3` stamps the binary as `v1.2.3` and publishes the image as
-`ghcr.io/dsx-ai-factory/health-validation:1.2.3`. Package visibility controls
-whether pulling requires `docker login ghcr.io`; private packages require a
-token with package read access.
+To export a loadable tarball instead:
 
-Images use the release version on release tags and a pseudo-version on main.
-The embedded catalog version is the same value. Existing images remain unchanged; new tags apply to the
-next image build. Before publishing, CI runs both architectures and verifies the
-embedded version and catalog version.
+```shell
+bazel build --config=ci --platforms=//build/platforms:linux_amd64 \
+  //toolkit/cmd/health-validation:health-validation.image.tar
+docker load -i bazel-bin/toolkit/cmd/health-validation/health-validation.image.local_load/tarball.tar
+```
+
+You can copy that tarball to another Linux host and load it there. For a macOS
+build host, use the Docker recipe in [Build a Linux image from macOS](#build-a-linux-image-from-macos).
+
+Local builds are unstamped by default and report the package's `dev` version.
+To embed the selected source revision's version and commit metadata, use
+`--config=release-ci` in place of `--config=ci` from a checkout with the complete
+tag history. Inspect the result on a host matching the image architecture, or
+with emulation configured for that architecture:
+
+```shell
+docker run --rm health-validation:latest version
+```
+
+For deployment through a registry you control, set `image_repository` to your
+repository path and `image_tag` to a tag identifying your source revision, then
+tag and push your build:
+
+```shell
+image_repository='registry.example.com/your-team/health-validation'
+image_tag='your-source-revision'
+docker tag health-validation:latest "${image_repository}:${image_tag}"
+docker push "${image_repository}:${image_tag}"
+```
+
+Choose a tag that identifies your source revision and use the resulting image
+reference in your deployment manifests. The build target assigns the local
+`latest` tag.
