@@ -22,6 +22,7 @@ func builtinChecks() []health.CheckDefinition {
 		gpu.GPUAveragePowerDraw(),
 		gpu.GPUPowerLimit(),
 		gpu.GPUPowerState(),
+		gpu.GPUPCIeMaxLink(),
 		gpu.GPUSensorThrottle(),
 		gpu.GPUComputeApps(),
 		node.GPUCount(),

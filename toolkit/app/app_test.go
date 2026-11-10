@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -27,6 +28,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	pcisensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pci"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
@@ -477,7 +479,8 @@ func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapsho
 	inventory := &observation.GPUInventory{}
 	for i := range r.gpus {
 		uuid, model := fmt.Sprintf("GPU-%d", i), r.model
-		entry := &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}}
+		busID := fmt.Sprintf("0000:%02x:00.0", i+1)
+		entry := &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model, BusId: &busID}}
 		if r.driver != "" {
 			driver := r.driver
 			entry.Gpu.DriverVersion = &driver
@@ -542,6 +545,7 @@ func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 		return "  " + hostname + "  ", nil
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withTestPCI(a)
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
@@ -644,6 +648,7 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withTestPCI(a)
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
@@ -669,6 +674,7 @@ func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withTestPCI(a)
 	a.WithXidBackend(xidSpyBackend{called: new(bool)})
 	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
@@ -752,6 +758,7 @@ func TestWithCPUBackendOverridesSysfs(t *testing.T) {
 	var cpuCalled bool
 	a := New()
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withTestPCI(a)
 	a.WithCPUBackend(cpuBackendFunc(func(context.Context) (cpu.CPUMeasurement, error) {
 		cpuCalled = true
 		return cpu.CPUMeasurement{PossibleCPUCount: 8, OnlineCPUCount: 8, NUMANodeCount: 34}, nil
@@ -1395,4 +1402,21 @@ func TestXidTimeFlagsPreserveBackendOverride(t *testing.T) {
 			t.Fatalf("%s: code=%d, override called=%v, stderr=%s", command, code, called, stderr.String())
 		}
 	}
+}
+
+// withTestPCI replaces host PCI reads with the four GPUs in inventoryReader.
+func withTestPCI(a *App) {
+	files := make(fstest.MapFS)
+	for i := range 4 {
+		base := fmt.Sprintf("sys/bus/pci/devices/0000:%02x:00.0/", i+1)
+		for field, value := range map[string]string{
+			"class":          "0x030200\n",
+			"vendor":         "0x10de\n",
+			"max_link_width": "16\n",
+			"max_link_speed": "32.0 GT/s PCIe\n",
+		} {
+			files[base+field] = &fstest.MapFile{Data: []byte(value)}
+		}
+	}
+	a.WithCollect(pcisensor.NewGPUs(files), "pci.link.width.max", "pci.link.generation.max")
 }

@@ -22,6 +22,7 @@ import (
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
+	pcisignals "github.com/dsx-ai-factory/health-validation/collect/signals/pci"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -485,6 +486,8 @@ func noValueObservation(signalID string, reason observation.NoValueReason) *obse
 
 func TestMappedSignalsFor(t *testing.T) {
 	gpuIDs := []string{
+		pcisignals.MaxLinkWidth.ID(),
+		pcisignals.MaxLinkGeneration.ID(),
 		gpusignals.PowerDraw.ID(),
 		gpusignals.PowerLimitRequested.ID(),
 		gpusignals.PowerLimitEnforced.ID(),

@@ -31,6 +31,7 @@ import (
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
+	pcisignals "github.com/dsx-ai-factory/health-validation/collect/signals/pci"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -64,6 +65,8 @@ var mappings = []mapping{
 	{signal: cpusignals.OnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalOnlineCPUCount}, unit: "1"},
 	{signal: cpusignals.NUMANodeOnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalNUMANodeCount}, unit: "1"},
 	{signal: gpuinventory.GPUCount, measurement: node.NodeMeasurement{}, catalog: []string{node.SignalGPUCount}, unit: "1"},
+	{signal: pcisignals.MaxLinkWidth, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalPCIeMaxLinkWidth}, unit: "1"},
+	{signal: pcisignals.MaxLinkGeneration, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalPCIeMaxLinkGeneration}, unit: "1"},
 	// An average only on some architectures (instantaneous on GA100 and
 	// older); the CLI's GPU adapter turns other readings into NOT_SUPPORTED.
 	{signal: gpusignals.PowerDraw, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalAveragePowerDrawW}, unit: "watts"},

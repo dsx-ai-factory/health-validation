@@ -188,3 +188,24 @@ func TestACSAfterPlaceholder(t *testing.T) {
 		}
 	}
 }
+
+func TestReadGPUsFiltersDeviceTypes(t *testing.T) {
+	files := fstest.MapFS{
+		Root + "/0000:01:00.0/class":          {Data: []byte("0x030200")},
+		Root + "/0000:01:00.0/vendor":         {Data: []byte("0x10de")},
+		Root + "/0000:01:00.0/max_link_width": {Data: []byte("16")},
+		Root + "/0000:02:00.0/class":          {Data: []byte("0x020000")},
+		Root + "/0000:03:00.0/class":          {Data: []byte("0x030000")},
+		Root + "/0000:03:00.0/vendor":         {Data: []byte("0x1002")},
+	}
+	readings, err := New(files).ReadGPUs(context.Background(), collect.Signals{pcisignals.MaxLinkWidth})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(readings) != 1 {
+		t.Fatalf("got %d readings, want one NVIDIA GPU", len(readings))
+	}
+	if readings[0].Target.GetPci().GetAddress() != "0000:01:00.0" || readings[0].Failure != nil {
+		t.Fatalf("GPU reading = %+v", readings[0])
+	}
+}

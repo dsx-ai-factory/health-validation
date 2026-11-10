@@ -181,6 +181,7 @@ func TestRunCommandResolvesXidGPUUUIDs(t *testing.T) {
 func TestRunCommandXidCleanScanPasses(t *testing.T) {
 	calls := 0
 	a := cadenceRunApp()
+	withTestPCI(a)
 	a.xid = nil
 	a.WithCollect(xidAppSensor{calls: &calls, obs: []*observation.Observation{xidAppMarker()}}, xidsignals.All().IDs()...)
 	verdicts := runXidApp(t, a, exitOK)

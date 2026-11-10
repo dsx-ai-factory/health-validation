@@ -1261,11 +1261,13 @@ func TestEvaluateAll_DisablingRootKeepsDependents(t *testing.T) {
 // GB200, so a test can tell a real domain failure from a fixture artifact.
 func healthyGPU(id string) gpu.GPUMeasurement {
 	return gpu.GPUMeasurement{
-		GPUID:               id,
-		AveragePowerDrawW:   400,
-		PowerLimitW:         1200,
-		EnforcedPowerLimitW: 1200,
-		GPUPstate:           0,
+		GPUID:                 id,
+		PCIeMaxLinkWidth:      16,
+		PCIeMaxLinkGeneration: 5,
+		AveragePowerDrawW:     400,
+		PowerLimitW:           1200,
+		EnforcedPowerLimitW:   1200,
+		GPUPstate:             0,
 	}
 }
 

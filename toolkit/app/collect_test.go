@@ -66,12 +66,12 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband"}},
+		{name: "default", app: New(), sources: []string{"test.gpu", "pci.sysfs", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband"}},
 		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "node", "xid", "infiniband"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "infiniband"}},
-		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "infiniband"}},
-		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", "pci.sysfs", gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "node", "xid", "infiniband"}},
+		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", "pci.sysfs", cpusensor.ID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "infiniband"}},
+		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", "pci.sysfs", cpusensor.ID, gpuinventory.SensorID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "infiniband"}},
+		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", "pci.sysfs", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)
@@ -1503,5 +1503,29 @@ func TestAveragePowerDrawChecksStayOnAveragingArchitectures(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("no built-in check reads average_power_draw_w")
+	}
+}
+
+func TestPCIGPUAdapterJoinsOnlyInventoryGPUs(t *testing.T) {
+	var got []*observation.Observation
+	adapter := pciGPUAdapter{
+		CollectAdapter: collectAppAdapter{build: func(obs []*observation.Observation) []health.Measurement { got = obs; return nil }},
+		lookup:         func() map[string]string { return map[string]string{"0000:01:00": "GPU-0"} },
+	}
+	gpuProperty := &observation.Observation{SignalId: "pci.link.width.max", Target: observation.PCITarget("0000:01:00.0")}
+	nonGPU := &observation.Observation{SignalId: "pci.link.width.max", Target: observation.PCITarget("0000:02:00.0")}
+	sourceFailure := &observation.Observation{SignalId: "pci.link.width.max", Target: observation.NodeTarget("")}
+	adapter.Build([]*observation.Observation{gpuProperty, nonGPU, sourceFailure})
+	if len(got) != 2 {
+		t.Fatalf("got %d observations, want GPU and source failure", len(got))
+	}
+	if got[0].GetTarget().GetGpu().GetUuid() != "GPU-0" {
+		t.Fatalf("GPU target = %v", got[0].GetTarget())
+	}
+	if got[1].GetTarget() != nil {
+		t.Fatalf("source failure target = %v", got[1].GetTarget())
+	}
+	if gpuProperty.GetTarget().GetPci() == nil {
+		t.Fatal("input observation was mutated")
 	}
 }

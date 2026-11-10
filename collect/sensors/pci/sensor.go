@@ -18,9 +18,16 @@ import (
 
 const ID = pcisource.Name
 
-type sensor struct{ source *pcisource.Source }
+type sensor struct {
+	source  *pcisource.Source
+	gpuOnly bool
+}
 
-func New(files fs.FS) collect.Sensor     { return &sensor{source: pcisource.New(files)} }
+func New(files fs.FS) collect.Sensor { return &sensor{source: pcisource.New(files)} }
+
+// NewGPUs returns a sensor that reads only NVIDIA GPU-class PCI devices.
+func NewGPUs(files fs.FS) collect.Sensor { return &sensor{source: pcisource.New(files), gpuOnly: true} }
+
 func (*sensor) ID() string               { return ID }
 func (*sensor) Signals() collect.Signals { return pcisignals.All() }
 
@@ -46,11 +53,15 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		now = cycle.StartedAt()
 	}
 	observedAt := timestamppb.New(now)
+	read := s.source.Read
+	if s.gpuOnly {
+		read = s.source.ReadGPUs
+	}
 	var readings []pcisource.Reading
 	if cycle == nil {
-		readings, err = s.source.Read(ctx, selected)
+		readings, err = read(ctx, selected)
 	} else {
-		readings, err = collect.Run(ctx, cycle, ID, func(ctx context.Context) ([]pcisource.Reading, error) { return s.source.Read(ctx, selected) })
+		readings, err = collect.Run(ctx, cycle, ID, func(ctx context.Context) ([]pcisource.Reading, error) { return read(ctx, selected) })
 	}
 	if err != nil {
 		for _, signal := range selected {
