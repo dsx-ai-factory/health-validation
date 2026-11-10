@@ -29,7 +29,8 @@ type policyNativeWatchRecord struct {
 type policyNativeWatchTrace struct {
 	createError       error
 	watchError        error
-	cleanupError      error
+	unwatchError      error
+	destroyError      error
 	groups            map[uintptr][]godcgm.Short
 	unwatches         map[uintptr]int
 	destroys          map[uintptr]int
@@ -47,7 +48,8 @@ func newPolicyNativeWatchRunner(t *testing.T, policy *WatchPolicy) (func([]strin
 	trace := &policyNativeWatchTrace{
 		createError:  errors.New("field-group pool exhausted"),
 		watchError:   errors.New("watch failed"),
-		cleanupError: errors.New("cleanup failed"),
+		unwatchError: errors.New("unwatch failed"),
+		destroyError: errors.New("destroy failed"),
 		groups:       make(map[uintptr][]godcgm.Short),
 		unwatches:    make(map[uintptr]int),
 		destroys:     make(map[uintptr]int),
@@ -87,8 +89,8 @@ func newPolicyNativeWatchRunner(t *testing.T, policy *WatchPolicy) (func([]strin
 			}
 			handle := fieldGroup.GetHandle()
 			trace.unwatches[handle]++
-			if handle == trace.failUnwatchHandle && trace.unwatches[handle] == 1 {
-				return trace.cleanupError
+			if handle == trace.failUnwatchHandle {
+				return trace.unwatchError
 			}
 			return nil
 		},
@@ -98,8 +100,8 @@ func newPolicyNativeWatchRunner(t *testing.T, policy *WatchPolicy) (func([]strin
 				t.Fatalf("destroyed unowned field group %d", handle)
 			}
 			trace.destroys[handle]++
-			if handle == trace.failDestroyHandle && trace.destroys[handle] == 1 {
-				return trace.cleanupError
+			if handle == trace.failDestroyHandle {
+				return trace.destroyError
 			}
 			delete(trace.groups, handle)
 			return nil
@@ -177,39 +179,38 @@ func TestNativeWatchPolicyCanonicalAliasesAndCacheSettings(t *testing.T) {
 	}
 }
 
-func TestNativeWatchPolicyPoolFailureRetainsUnfinishedCleanup(t *testing.T) {
-	for _, failingStep := range []string{"unwatch", "destroy"} {
+func TestNativeWatchPolicyPoolFailureRollsBackEveryStep(t *testing.T) {
+	for _, failingStep := range []string{"unwatch", "destroy", "both"} {
 		t.Run(failingStep, func(t *testing.T) {
 			watchMetrics, trace := newPolicyNativeWatchRunner(t, &WatchPolicy{
 				DefaultInterval: time.Second, SignalIntervals: map[string]time.Duration{signalTemperature: 2 * time.Second},
 			})
 			trace.failCreateAt = 2
-			if failingStep == "unwatch" {
+			if failingStep != "destroy" {
 				trace.failUnwatchHandle = 1
-			} else {
+			}
+			if failingStep != "unwatch" {
 				trace.failDestroyHandle = 1
 			}
 			cleanup, err := watchMetrics([]string{signalPowerDraw, signalTemperature})
-			if err == nil || cleanup == nil || !strings.Contains(err.Error(), trace.createError.Error()) || !errors.Is(err, trace.cleanupError) {
+			if cleanup != nil || !errors.Is(err, trace.createError) {
 				t.Fatalf("partial setup cleanup present = %v, error = %v", cleanup != nil, err)
 			}
-			if trace.createCalls != 2 || len(trace.records) != 1 || len(trace.groups) != 1 {
-				t.Fatalf("partial setup lost owned resources: %+v", trace)
+			if trace.failUnwatchHandle != 0 && !errors.Is(err, trace.unwatchError) {
+				t.Fatalf("partial setup error lost unwatch failure: %v", err)
 			}
-			if failingStep == "unwatch" && trace.destroys[1] != 0 {
-				t.Fatal("destroy ran before failed unwatch was retried")
+			if trace.failDestroyHandle != 0 && !errors.Is(err, trace.destroyError) {
+				t.Fatalf("partial setup error lost destroy failure: %v", err)
 			}
-			for attempt := 0; attempt < 2; attempt++ {
-				if err := cleanup(); err != nil {
-					t.Fatalf("cleanup retry: %v", err)
-				}
+			wantRemaining := 0
+			if trace.failDestroyHandle != 0 {
+				wantRemaining = 1
 			}
-			wantUnwatch, wantDestroy := 1, 2
-			if failingStep == "unwatch" {
-				wantUnwatch, wantDestroy = 2, 1
+			if trace.createCalls != 2 || len(trace.records) != 1 || len(trace.groups) != wantRemaining {
+				t.Fatalf("partial setup rollback left unexpected resources: %+v", trace)
 			}
-			if len(trace.groups) != 0 || trace.unwatches[1] != wantUnwatch || trace.destroys[1] != wantDestroy {
-				t.Fatalf("unfinished cleanup retried wrong steps: %+v", trace)
+			if trace.unwatches[1] != 1 || trace.destroys[1] != 1 || len(trace.unwatches) != 1 || len(trace.destroys) != 1 {
+				t.Fatalf("partial setup rollback did not attempt each owned step once: %+v", trace)
 			}
 		})
 	}
@@ -229,26 +230,46 @@ func TestNativeWatchPolicyLaterWatchFailureCleansEveryGroup(t *testing.T) {
 	}
 }
 
-func TestNativeWatchPolicyRollbackRetriesOnlyUnfinishedGroup(t *testing.T) {
+func TestNativeWatchPolicyRollbackCleansEveryGroupAfterErrors(t *testing.T) {
 	watchMetrics, trace := newPolicyNativeWatchRunner(t, &WatchPolicy{
 		DefaultInterval: time.Second, SignalIntervals: map[string]time.Duration{signalTemperature: 2 * time.Second},
 	})
 	trace.failWatchAt = 2
 	trace.failUnwatchHandle = 1
+	trace.failDestroyHandle = 1
 	cleanup, err := watchMetrics([]string{signalPowerDraw, signalTemperature})
-	if err == nil || cleanup == nil || !errors.Is(err, trace.cleanupError) {
+	if cleanup != nil || !errors.Is(err, trace.watchError) || !errors.Is(err, trace.unwatchError) || !errors.Is(err, trace.destroyError) {
 		t.Fatalf("partial rollback cleanup present = %v, error = %v", cleanup != nil, err)
 	}
-	if len(trace.groups) != 1 || trace.destroys[1] != 0 || trace.unwatches[2] != 1 || trace.destroys[2] != 1 {
-		t.Fatalf("rollback stopped before cleaning the second owned group: %+v", trace)
+	if len(trace.groups) != 1 || trace.unwatches[1] != 1 || trace.destroys[1] != 1 || trace.unwatches[2] != 1 || trace.destroys[2] != 1 {
+		t.Fatalf("rollback did not attempt each step for every group once: %+v", trace)
 	}
-	for attempt := 0; attempt < 2; attempt++ {
-		if err := cleanup(); err != nil {
-			t.Fatalf("rollback retry: %v", err)
-		}
+	if _, owned := trace.groups[1]; !owned {
+		t.Fatal("rollback removed the group whose destruction failed")
 	}
-	if len(trace.groups) != 0 || trace.unwatches[1] != 2 || trace.destroys[1] != 1 || trace.unwatches[2] != 1 || trace.destroys[2] != 1 {
-		t.Fatalf("rollback retry repeated completed group cleanup: %+v", trace)
+}
+
+func TestNativeWatchPolicyCleanupAttemptsEveryStepOnce(t *testing.T) {
+	watchMetrics, trace := newPolicyNativeWatchRunner(t, &WatchPolicy{
+		DefaultInterval: time.Second, SignalIntervals: map[string]time.Duration{signalTemperature: 2 * time.Second},
+	})
+	trace.failUnwatchHandle = 1
+	trace.failDestroyHandle = 1
+	cleanup, err := watchMetrics([]string{signalPowerDraw, signalTemperature})
+	if err != nil || cleanup == nil {
+		t.Fatalf("WatchMetrics() = cleanup present %v, %v", cleanup != nil, err)
+	}
+	if err := cleanup(); !errors.Is(err, trace.unwatchError) || !errors.Is(err, trace.destroyError) {
+		t.Fatalf("cleanup did not preserve both failures: %v", err)
+	}
+	if err := cleanup(); err != nil {
+		t.Fatalf("repeated cleanup = %v, want nil", err)
+	}
+	if len(trace.groups) != 1 || trace.unwatches[1] != 1 || trace.destroys[1] != 1 || trace.unwatches[2] != 1 || trace.destroys[2] != 1 {
+		t.Fatalf("cleanup did not attempt each step for every group once: %+v", trace)
+	}
+	if _, owned := trace.groups[1]; !owned {
+		t.Fatal("cleanup removed the group whose destruction failed")
 	}
 }
 

@@ -16,7 +16,6 @@ go_library(
         "native_linux.go",
         "native_unsupported.go",
         "source.go",
-        "watch.go",
         "watch_policy.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/source/dcgm",
@@ -52,7 +51,6 @@ go_test(
         "watch_policy_linux_test.go",
         "watch_policy_source_test.go",
         "watch_policy_test.go",
-        "watch_test.go",
     ],
     embed = [":dcgm"],
     deps = [

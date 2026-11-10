@@ -15,8 +15,8 @@ type nativeAPI interface {
 	AllGPUIndices() ([]uint, error)
 	ReadGPUUUIDs([]uint) (map[uint]GPUIdentityEntry, error)
 	ReadGPUInventory([]uint) (map[uint]*observation.GPUInventoryEntry, error)
-	// WatchMetrics returns cleanup for every resource it still owns, including
-	// after failed setup. Cleanup retries only unfinished steps.
+	// WatchMetrics returns one-pass cleanup on success. On failure it attempts
+	// rollback, joins setup and cleanup errors, and returns no cleanup function.
 	WatchMetrics([]metricWatchGroup) (func() error, error)
 	ReadGPUMetrics(uint, []string) (map[string]FieldValue, error)
 }

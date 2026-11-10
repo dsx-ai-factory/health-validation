@@ -104,7 +104,6 @@ type Source struct {
 	metricWatchGroups []metricWatchGroup
 	metricWatchFrozen atomic.Bool
 	ready             bool
-	watchActive       bool
 	closed            atomic.Bool
 	mode              sessionMode
 }
@@ -246,35 +245,25 @@ func (source *Source) ensureMetricWatch() error {
 	if source.closed.Load() {
 		return errClosed
 	}
-	if source.watchActive {
+	if source.metricWatchCleanup != nil {
 		return nil
 	}
-	// Failed setup may still own resources. Finish rollback before creating
-	// another watch, and keep its handle if rollback fails again.
-	if source.metricWatchCleanup != nil {
-		if err := source.metricWatchCleanup(); err != nil {
-			return err
-		}
-		source.metricWatchCleanup = nil
-	}
-	if source.closed.Load() {
-		return errClosed
-	}
 	metricWatchCleanup, err := source.native.WatchMetrics(source.metricWatchGroups)
-	source.metricWatchCleanup = metricWatchCleanup
+	if err == nil && metricWatchCleanup == nil {
+		err = fmt.Errorf("DCGM metric watch returned no cleanup function")
+	}
 	if err != nil {
-		return err
+		// Native setup already attempted rollback. Close this source rather than
+		// allocate more groups after cleanup may have failed.
+		return errors.Join(err, source.closeLocked())
 	}
-	if metricWatchCleanup == nil {
-		return fmt.Errorf("DCGM metric watch returned no cleanup function")
-	}
-	source.watchActive = true
+	source.metricWatchCleanup = metricWatchCleanup
 	return nil
 }
 
-// Close stops new native work and releases owned watches and field groups
-// before the client reference. ErrInUse or a cleanup failure requires another
-// Close call to finish; successful cleanup steps do not repeat.
+// Close stops new native work and attempts all owned watch and field-group
+// cleanup before releasing the client reference. Cleanup errors are returned
+// without retry. ErrInUse requires another Close after the native call finishes.
 func (source *Source) Close() error {
 	// A busy close is still a close request. The in-flight call may finish,
 	// but subsequent operations must not enter DCGM.
@@ -283,17 +272,22 @@ func (source *Source) Close() error {
 		return ErrInUse
 	}
 	defer source.nativeCallMu.Unlock()
-	if source.metricWatchCleanup != nil {
-		if err := source.metricWatchCleanup(); err != nil {
-			return err
-		}
-		source.metricWatchCleanup = nil
-		source.watchActive = false
-	}
-	if source.clientCleanup != nil {
-		source.clientCleanup()
-		source.clientCleanup = nil
-	}
+	return source.closeLocked()
+}
+
+// closeLocked performs final cleanup while the native-call gate is held.
+func (source *Source) closeLocked() error {
+	source.closed.Store(true)
+	metricWatchCleanup := source.metricWatchCleanup
+	source.metricWatchCleanup = nil
+	clientCleanup := source.clientCleanup
+	source.clientCleanup = nil
 	source.ready = false
+	if clientCleanup != nil {
+		defer clientCleanup()
+	}
+	if metricWatchCleanup != nil {
+		return metricWatchCleanup()
+	}
 	return nil
 }

@@ -50,61 +50,73 @@ func TestNativeMetricFailuresPreserveSamplesAndStatuses(t *testing.T) {
 	}
 }
 
-func TestWatchRollbackPreservesPrimaryStatusAndBothCauses(t *testing.T) {
+func TestWatchRollbackPreservesPrimaryStatusAndAllCauses(t *testing.T) {
 	for _, nativeFailure := range []*godcgm.Error{
 		{Code: godcgm.DCGM_ST_CONNECTION_NOT_VALID}, {Code: godcgm.DCGM_ST_NOT_CONFIGURED}, {Code: godcgm.DCGM_ST_NOT_WATCHED},
 	} {
-		for _, statusStep := range []string{"setup", "rollback"} {
+		for _, statusStep := range []string{"setup", "unwatch", "destroy"} {
 			t.Run(dcgmStatusName(int(nativeFailure.Code))+"/"+statusStep, func(t *testing.T) {
-				ordinaryFailure := errors.New("ordinary failure")
-				setupErr, cleanupErr := error(ordinaryFailure), error(nativeFailure)
+				setupErr := errors.New("setup failure")
+				unwatchErr := errors.New("unwatch failure")
+				destroyErr := errors.New("destroy failure")
 				wantStatus := ""
-				if statusStep == "setup" {
-					setupErr, cleanupErr = nativeFailure, ordinaryFailure
+				switch statusStep {
+				case "setup":
+					setupErr = nativeFailure
 					wantStatus = dcgmStatusName(int(nativeFailure.Code))
+				case "unwatch":
+					unwatchErr = nativeFailure
+				case "destroy":
+					destroyErr = nativeFailure
 				}
-				destroys := 0
+				unwatches, destroys := 0, 0
 				cleanup, err := startMetricWatches("test-status", []metricWatchGroup{{fieldIDs: []uint16{100}}}, metricWatchOperations{
 					create: func(string, []godcgm.Short) (godcgm.FieldHandle, error) { return godcgm.FieldHandle{}, nil },
 					watchEx: func(godcgm.FieldHandle, godcgm.GroupHandle, int64, float64, int32) error {
 						return fmt.Errorf("watch: %w", setupErr)
 					},
-					unwatch: func(godcgm.FieldHandle, godcgm.GroupHandle) error { return nil },
+					unwatch: func(godcgm.FieldHandle, godcgm.GroupHandle) error {
+						unwatches++
+						return fmt.Errorf("rollback unwatch: %w", unwatchErr)
+					},
 					destroy: func(godcgm.FieldHandle) error {
 						destroys++
-						if destroys == 1 {
-							return fmt.Errorf("rollback: %w", cleanupErr)
-						}
-						return nil
+						return fmt.Errorf("rollback destroy: %w", destroyErr)
 					},
 				})
-				if cleanup == nil || err == nil || collectionError(err).SourceError != wantStatus || !errors.Is(err, nativeFailure) || !errors.Is(err, ordinaryFailure) {
+				if cleanup != nil || err == nil || collectionError(err).SourceError != wantStatus {
 					t.Fatalf("rollback changed primary status or lost a cause: cleanup present=%v, error=%v, want status=%q", cleanup != nil, err, wantStatus)
 				}
-				if err := cleanup(); err != nil || destroys != 2 {
-					t.Fatalf("rollback retry = %v, destroy calls = %d", err, destroys)
+				for _, cause := range []error{setupErr, unwatchErr, destroyErr} {
+					if !errors.Is(err, cause) {
+						t.Errorf("rollback lost original cause %v: %v", cause, err)
+					}
+				}
+				if unwatches != 1 || destroys != 1 {
+					t.Fatalf("rollback calls: unwatch = %d, destroy = %d; want one attempt each", unwatches, destroys)
 				}
 			})
 		}
 	}
 }
 
-func TestUnwatchNativeTextDoesNotAuthorizeDestruction(t *testing.T) {
+func TestUnwatchNativeTextPreservesStatusAndDestroysOnce(t *testing.T) {
 	nativeText := errors.New("Field is not being watched")
-	destroys := 0
+	unwatches, destroys := 0, 0
 	cleanup, err := startMetricWatches("test-text", []metricWatchGroup{{fieldIDs: []uint16{100}}}, metricWatchOperations{
 		create:  func(string, []godcgm.Short) (godcgm.FieldHandle, error) { return godcgm.FieldHandle{}, nil },
 		watchEx: func(godcgm.FieldHandle, godcgm.GroupHandle, int64, float64, int32) error { return nil },
-		unwatch: func(godcgm.FieldHandle, godcgm.GroupHandle) error { return nativeText },
+		unwatch: func(godcgm.FieldHandle, godcgm.GroupHandle) error { unwatches++; return nativeText },
 		destroy: func(godcgm.FieldHandle) error { destroys++; return nil },
 	})
 	if err != nil || cleanup == nil {
 		t.Fatalf("setup: cleanup present=%v, error=%v", cleanup != nil, err)
 	}
-	for attempt := 0; attempt < 2; attempt++ {
-		err = cleanup()
-		if err == nil || collectionError(err).SourceError != "DCGM_ST_NOT_WATCHED" || !errors.Is(err, nativeText) || destroys != 0 {
-			t.Fatalf("untyped absence lost ownership: error=%v, destroy calls=%d", err, destroys)
-		}
+	err = cleanup()
+	if err == nil || collectionError(err).SourceError != "DCGM_ST_NOT_WATCHED" || !errors.Is(err, nativeText) || destroys != 1 {
+		t.Fatalf("untyped unwatch failure lost status, cause, or destruction: error=%v, destroy calls=%d", err, destroys)
+	}
+	if err := cleanup(); err != nil || unwatches != 1 || destroys != 1 {
+		t.Fatalf("consumed cleanup = %v, unwatch calls = %d, destroy calls = %d", err, unwatches, destroys)
 	}
 }
