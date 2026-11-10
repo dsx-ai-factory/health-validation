@@ -20,6 +20,7 @@ go_library(
         "//catalog/nvlink",
         "//catalog/xid",
         "//collect/observation",
+        "//collect/signals/infiniband",
         "//collect/signals/xid",
         "//toolkit/observations",
     ],

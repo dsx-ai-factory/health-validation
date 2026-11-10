@@ -16,11 +16,13 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
+	ibsource "github.com/dsx-ai-factory/health-validation/collect/source/infiniband"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
@@ -67,10 +69,11 @@ type CollectAdapter interface {
 // Timeout blocking is keyed by sensor ID, not the underlying source. Shared
 // NVML/DCGM sources must prevent new calls while a timed-out call is running.
 // Late results never replace a cached timeout result.
-// Each built-in domain is collected by its legacy sensor or by its built-in
-// collect sensor, never both. For a domain still on a legacy sensor, override
-// its legacy backend with an empty provider when an adapter supplies that
-// domain's measurements instead.
+// Each built-in measurement type is collected by its legacy sensor or by its
+// built-in collect sensor, never both; a domain may mix the two across types
+// with disjoint signals, as InfiniBand does (journal link flaps, sysfs ports).
+// For a type still on a legacy sensor, override its legacy backend with an
+// empty provider when an adapter supplies those measurements instead.
 func (a *App) WithCollect(sensor collect.Sensor, signalIDs ...string) *App {
 	a.collectSources = append(a.collectSources, collectSource{sensor: sensor, claims: slices.Clone(signalIDs)})
 	return a
@@ -153,10 +156,22 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 			return gpuinventory.UUIDsByPCI(inventory.Cached(cycle))
 		}))
 	}
+	ib := collectadapters.InfiniBand()
 	if a.rdmaLinkFlap == nil {
 		sources = append(sources, linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)))
-		adapters = append(adapters, collectadapters.InfiniBand())
+	} else {
+		// The legacy sensor supplies the link-flap measurement; the adapter
+		// must not fail it a second time.
+		ib = collectadapters.InfiniBandPorts()
 	}
+	// Port state is checked on RoCE ports and on renamed devices too, so
+	// the stock CLI widens collect's GPUd-parity defaults (InfiniBand-only,
+	// mlx*-named): a DOWN port on rdma0 must not hide behind a healthy
+	// mlx5_0. Devices are selected by PCI vendor rather than name so other
+	// vendors' and software RDMA devices do not fail the check. Signal
+	// narrowing keeps sysfs untouched unless an InfiniBand port check will run.
+	sources = append(sources, ibsensor.New(ibsource.New(nil, ibsource.WithVendors(ibsource.VendorNVIDIA)), ibsensor.WithLinkLayers("InfiniBand", "Ethernet")))
+	adapters = append(adapters, ib)
 	return sources, adapters
 }
 

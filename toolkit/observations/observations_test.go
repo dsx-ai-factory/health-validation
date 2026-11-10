@@ -544,11 +544,24 @@ func TestMappedSignalsFor(t *testing.T) {
 			t.Fatalf("Xid feed %s = %v, want %v", id, catalog, xid.MeasurementSignals())
 		}
 	}
-	if got := MappedSignalsFor(health.InfiniBand); !slices.Equal(got, ibsignals.LinkFlapSignals().IDs()) {
-		t.Fatalf("InfiniBand signals = %v, want %v", got, ibsignals.LinkFlapSignals().IDs())
+	portIDs := []string{
+		ibsignals.StateName.ID(),
+		ibsignals.PhysicalStateName.ID(),
+		ibsignals.RateGbps.ID(),
+		ibsignals.LinkLayer.ID(),
 	}
-	// Link-flap fields likewise build one measurement together.
+	if got, want := MappedSignalsFor(health.InfiniBand), slices.Concat(portIDs, ibsignals.LinkFlapSignals().IDs()); !slices.Equal(got, want) {
+		t.Fatalf("InfiniBand signals = %v, want %v", got, want)
+	}
+	// Link-flap fields likewise build one measurement together; a port
+	// signal feeds its one field.
 	for id, catalog := range MappedFeeds(health.InfiniBand) {
+		if slices.Contains(portIDs, id) {
+			if len(catalog) != 1 {
+				t.Fatalf("InfiniBand feed %s = %v, want one port field", id, catalog)
+			}
+			continue
+		}
 		if !slices.Equal(catalog, infiniband.MeasurementSignals()) {
 			t.Fatalf("InfiniBand feed %s = %v, want %v", id, catalog, infiniband.MeasurementSignals())
 		}
@@ -556,8 +569,9 @@ func TestMappedSignalsFor(t *testing.T) {
 	// Every mapped signal belongs to exactly one domain.
 	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.Node), MappedSignalsFor(health.GPU),
 		MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid), MappedSignalsFor(health.InfiniBand))
-	if !slices.Equal(perDomain, MappedSignals()) {
-		t.Fatalf("per-domain signals %v do not partition %v", perDomain, MappedSignals())
+	slices.Sort(perDomain)
+	if all := slices.Sorted(slices.Values(MappedSignals())); !slices.Equal(perDomain, all) {
+		t.Fatalf("per-domain signals %v do not partition %v", perDomain, all)
 	}
 }
 

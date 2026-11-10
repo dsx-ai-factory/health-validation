@@ -150,16 +150,20 @@ func bridgedLinkFlap(ctx context.Context, t *testing.T, cycle *collect.Cycle, ru
 	return measurements
 }
 
+// onlyLinkFlap returns the one link-flap measurement; the adapter also
+// reports the port type, which these tests do not feed.
 func onlyLinkFlap(t *testing.T, measurements []health.Measurement) infiniband.LinkFlapMeasurement {
 	t.Helper()
-	if len(measurements) != 1 {
-		t.Fatalf("got %d measurements, want 1: %v", len(measurements), measurements)
+	var flaps []infiniband.LinkFlapMeasurement
+	for _, m := range measurements {
+		if flap, ok := m.(infiniband.LinkFlapMeasurement); ok {
+			flaps = append(flaps, flap)
+		}
 	}
-	m, ok := measurements[0].(infiniband.LinkFlapMeasurement)
-	if !ok {
-		t.Fatalf("got %T, want infiniband.LinkFlapMeasurement", measurements[0])
+	if len(flaps) != 1 {
+		t.Fatalf("got %d link-flap measurements, want 1: %v", len(flaps), measurements)
 	}
-	return m
+	return flaps[0]
 }
 
 func failedFlapSignals(m infiniband.LinkFlapMeasurement) []string {

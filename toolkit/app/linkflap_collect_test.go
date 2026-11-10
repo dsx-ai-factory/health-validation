@@ -186,7 +186,9 @@ func TestWithCollectRejectsPartialLinkFlapClaim(t *testing.T) {
 }
 
 // TestWithRDMALinkFlapBackendKeepsLegacySensor runs the override instead of
-// the built-in collect sensor and frees the infiniband adapter name.
+// the built-in collect sensor. The infiniband adapter name stays reserved:
+// the port measurements are still built in, and the adapter must not fail
+// the link-flap type the legacy sensor supplies.
 func TestWithRDMALinkFlapBackendKeepsLegacySensor(t *testing.T) {
 	a := cadenceRunApp().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap(
 		"Thu 2025-12-11 11:49:00 UTC host kernel: mlx5_core 0000:5a:00.0 enp90s0np0: Link down",
@@ -196,19 +198,16 @@ func TestWithRDMALinkFlapBackendKeepsLegacySensor(t *testing.T) {
 		t.Fatalf("rdma_linkflap_fatal = %v, want CRITICAL from the legacy backend", got.Severity)
 	}
 
-	adapter := customCountAdapter()
-	adapter.name = "infiniband"
-	a = cadenceRunApp().WithCollect(&collectAppSensor{}).WithCollectAdapters(adapter)
-	var stdout, stderr bytes.Buffer
-	if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code == exitError {
-		t.Fatalf("caller infiniband adapter rejected while WithRDMALinkFlapBackend is set: %q", stderr.String())
-	}
-	adapter = customCountAdapter()
-	adapter.name = "infiniband"
-	a = linkFlapApp(new(int), linkFlapAppMarker()).WithCollect(&collectAppSensor{}).WithCollectAdapters(adapter)
-	stdout.Reset()
-	stderr.Reset()
-	if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code != exitError || !strings.Contains(stderr.String(), "reserved for a built-in domain") {
-		t.Fatalf("caller infiniband adapter beside the built-in: exit=%d stderr=%q", code, stderr.String())
+	for name, a := range map[string]*App{
+		"legacy link-flap sensor": cadenceRunApp(),
+		"collect link-flap":       linkFlapApp(new(int), linkFlapAppMarker()),
+	} {
+		adapter := customCountAdapter()
+		adapter.name = "infiniband"
+		a.WithCollect(&collectAppSensor{}).WithCollectAdapters(adapter)
+		var stdout, stderr bytes.Buffer
+		if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code != exitError || !strings.Contains(stderr.String(), "reserved for a built-in domain") {
+			t.Fatalf("%s: caller infiniband adapter beside the built-in: exit=%d stderr=%q", name, code, stderr.String())
+		}
 	}
 }

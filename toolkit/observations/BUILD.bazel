@@ -39,6 +39,7 @@ go_test(
     srcs = [
         "entity_test.go",
         "export_test.go",
+        "infiniband_test.go",
         "linkflap_test.go",
         "nvlink_test.go",
         "observations_test.go",

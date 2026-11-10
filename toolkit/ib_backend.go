@@ -11,12 +11,11 @@ import (
 
 // IBBackend supplies the measurements consumed by the generic InfiniBand sensor.
 //
-// The catalog's only built-in InfiniBand check (rdma_linkflap_fatal) is fed by
-// the dedicated journal link-flap sensor, not this backend. This sensor is
-// opt-in: a consumer supplies a backend to contribute additional InfiniBand
-// measurements, owning their device enumeration, the measurement types it
-// emits, and — via Errored — the errored measurements those checks see when
-// collection fails.
+// The built-in InfiniBand checks are fed by the journal link-flap sensor and
+// the collect sysfs port sensor, not this backend. This sensor is opt-in: a
+// consumer supplies a backend to contribute additional InfiniBand measurement
+// types, owning their device enumeration, the types it emits, and — via
+// Errored — the errored measurements those checks see when collection fails.
 type IBBackend interface {
 	MeasureIB(ctx context.Context) ([]health.Measurement, error)
 

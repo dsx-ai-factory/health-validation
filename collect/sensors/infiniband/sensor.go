@@ -7,6 +7,7 @@ package infiniband
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,15 +20,47 @@ import (
 
 const ID = "infiniband.sysfs"
 
-type sensor struct{ source *ibsource.Source }
+type sensor struct {
+	source *ibsource.Source
+	op     Op
+}
+
+// Op holds the sensor options.
+type Op struct {
+	linkLayers []string
+}
+
+// OpOption configures the sensor.
+type OpOption func(*Op)
+
+func (op *Op) applyOpts(opts []OpOption) {
+	for _, opt := range opts {
+		opt(op)
+	}
+	if len(op.linkLayers) == 0 {
+		op.linkLayers = []string{"InfiniBand"}
+	}
+}
+
+// WithLinkLayers selects the port link layers to report, compared
+// case-insensitively against sysfs link_layer ("InfiniBand", "Ethernet").
+// The default is InfiniBand only, matching GPUd.
+func WithLinkLayers(layers ...string) OpOption {
+	return func(op *Op) {
+		op.linkLayers = append(op.linkLayers, layers...)
+	}
+}
 
 // New returns a sensor using the supplied source, or the host sysfs when nil.
-// Like GPUd, it excludes ports whose link layer is not InfiniBand.
-func New(source *ibsource.Source) collect.Sensor {
+// Like GPUd, it excludes ports whose link layer is not InfiniBand unless
+// [WithLinkLayers] admits more.
+func New(source *ibsource.Source, opts ...OpOption) collect.Sensor {
 	if source == nil {
 		source = ibsource.New(nil)
 	}
-	return &sensor{source: source}
+	s := &sensor{source: source}
+	s.op.applyOpts(opts)
+	return s
 }
 
 func (*sensor) ID() string               { return ID }
@@ -58,7 +91,7 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 	for _, reading := range readings {
 		// GPUd components/accelerator/nvidia/infiniband/types.IBPort.IsIBPort.
 		// Preserve failures when link_layer itself could not be read.
-		if reading.LinkLayer != nil && !strings.EqualFold(*reading.LinkLayer, "infiniband") {
+		if reading.LinkLayer != nil && !s.reports(*reading.LinkLayer) {
 			continue
 		}
 		if reading.Failure != nil {
@@ -79,4 +112,9 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		})
 	}
 	return batch, nil
+}
+
+// reports tells whether ports of linkLayer are selected.
+func (s *sensor) reports(linkLayer string) bool {
+	return slices.ContainsFunc(s.op.linkLayers, func(layer string) bool { return strings.EqualFold(layer, linkLayer) })
 }

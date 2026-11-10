@@ -28,6 +28,8 @@ const (
 	targetGPUPair        = "GPU pair"
 	targetGPUProcess     = "GPU process"
 	targetJournalEntry   = "journal entry"
+	targetIBDevice       = "InfiniBand device"
+	targetIBPort         = "InfiniBand port"
 )
 
 // canonicalTargets lists the target kind each canonical signal accepts.
@@ -53,6 +55,8 @@ var canonicalTargets = []canonicalTarget{
 	{kind: targetNode, signals: collect.Signals{xidsignals.ScanWindow}},
 	{kind: targetJournalEntry, signals: ibsignals.LinkTransitionSignals()},
 	{kind: targetNode, signals: collect.Signals{ibsignals.LinkFlapScanSince}},
+	{kind: targetIBDevice, signals: ibsignals.DeviceSignals()},
+	{kind: targetIBPort, signals: ibsignals.PortSignals()},
 }
 
 type canonicalTarget struct {
@@ -94,6 +98,10 @@ func targetKind(target *observation.ObservationTarget) string {
 		return targetGPUProcess
 	case *observation.ObservationTarget_JournalEntry:
 		return targetJournalEntry
+	case *observation.ObservationTarget_InfiniBandDevice:
+		return targetIBDevice
+	case *observation.ObservationTarget_InfiniBandPort:
+		return targetIBPort
 	default:
 		return ""
 	}
@@ -209,8 +217,8 @@ func validateCollectObservation(o *observation.Observation, s collect.Signal) er
 	case *observation.Observation_NoValue:
 		switch outcome.NoValue.GetReason() {
 		case observation.NoValueReasonNoTargets:
-			if o.GetTarget() != nil && !gpuParentOutcome(o, s) {
-				return fmt.Errorf("NO_TARGETS must be source-scoped or identify an entity family's parent GPU")
+			if o.GetTarget() != nil && !parentOutcome(o, s) {
+				return fmt.Errorf("NO_TARGETS must be source-scoped or identify an entity family's parent (a GPU, or an InfiniBand device)")
 			}
 		case observation.NoValueReasonNotSupported:
 			if o.GetTarget() == nil {
@@ -222,7 +230,7 @@ func validateCollectObservation(o *observation.Observation, s collect.Signal) er
 	default:
 		return fmt.Errorf("observation outcome is required")
 	}
-	if rule, ok := canonical[s.ID()]; ok && o.GetTarget() != nil && targetKind(o.GetTarget()) != rule.target && !gpuParentOutcome(o, s) {
+	if rule, ok := canonical[s.ID()]; ok && o.GetTarget() != nil && targetKind(o.GetTarget()) != rule.target && !parentOutcome(o, s) {
 		return fmt.Errorf("signal %q requires a %s target", s.ID(), rule.target)
 	}
 	return nil
@@ -267,12 +275,22 @@ func collectSourceLocal(target *observation.ObservationTarget) bool {
 	return slices.ContainsFunc(gpuRefs(target), func(ref *observation.GPURef) bool { return ref.GetSourceLocalId() != "" })
 }
 
-// A parent GPU scopes failed entity enumeration without inventing an
-// endpoint, pair or process.
-func gpuParentOutcome(o *observation.Observation, s collect.Signal) bool {
+// A parent scopes failed entity enumeration without inventing an endpoint,
+// pair, process, or port: a GPU for its NVLink endpoints, pairs, and
+// processes, an InfiniBand device for its ports.
+func parentOutcome(o *observation.Observation, s collect.Signal) bool {
 	rule, ok := canonical[s.ID()]
-	if !ok || (rule.target != targetNVLinkEndpoint && rule.target != targetGPUPair && rule.target != targetGPUProcess) || targetKind(o.GetTarget()) != targetGPU || o.GetValue() != nil {
+	if !ok || o.GetValue() != nil {
 		return false
 	}
-	return o.GetCollectionError() != nil || o.GetNoValue() != nil
+	var parent string
+	switch rule.target {
+	case targetNVLinkEndpoint, targetGPUPair, targetGPUProcess:
+		parent = targetGPU
+	case targetIBPort:
+		parent = targetIBDevice
+	default:
+		return false
+	}
+	return targetKind(o.GetTarget()) == parent && (o.GetCollectionError() != nil || o.GetNoValue() != nil)
 }
