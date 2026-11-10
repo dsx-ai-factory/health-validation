@@ -352,10 +352,12 @@ func TestEvaluatePassingNode(t *testing.T) {
 	sensors := []toolkit.Sensor{
 		toolkit.NewGPUSensor(toolkit.MockGPU(
 			gpu.GPUMeasurement{
-				GPUID:               "GPU-0",
-				AveragePowerDrawW:   220,
-				PowerLimitW:         1200,
-				EnforcedPowerLimitW: 1200,
+				GPUID:                 "GPU-0",
+				PCIeMaxLinkWidth:      16,
+				PCIeMaxLinkGeneration: 5,
+				AveragePowerDrawW:     220,
+				PowerLimitW:           1200,
+				EnforcedPowerLimitW:   1200,
 			},
 		)),
 		toolkit.NewNodeSensor(toolkit.MockNode(

@@ -6,7 +6,7 @@ Every check this build registers, grouped by hardware domain. Each page lists a 
 
 | Domain | Checks | Covers |
 |---|---|---|
-| [GPU](/health-validation/reference/checks/gpu) | 5 | GPU covers GPU device health: driver-reported events (XID), thermal state, driver status, power, and clock behavior. |
+| [GPU](/health-validation/reference/checks/gpu) | 6 | GPU covers GPU device health: driver-reported events (XID), thermal state, driver status, power, and clock behavior. |
 | [NVLink](/health-validation/reference/checks/nvlink) | 6 | NVLink covers NVLink interconnect health: replay counters, link errors, and fabric state. |
 | [InfiniBand](/health-validation/reference/checks/infiniband) | 1 | InfiniBand covers InfiniBand network health: port state, error rates, and link integrity. |
 | [Node](/health-validation/reference/checks/node) | 1 | Node covers host-wide GPU-system signals that are not bound to any single device — GPU count, driver version, and similar inventory checks. |

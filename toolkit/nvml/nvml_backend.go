@@ -320,6 +320,9 @@ type gpuProbe struct{}
 
 func (gpuProbe) Measure(pc ProbeContext) health.Measurement {
 	m := gpu.GPUMeasurement{GPUID: pc.Self.UUID}
+	// PCI sysfs is a separate collect source, unavailable on this legacy path.
+	m.AddError(fmt.Errorf("PCIe link properties are not collected by the legacy NVML GPU backend"),
+		gpu.SignalPCIeMaxLinkWidth, gpu.SignalPCIeMaxLinkGeneration)
 	measureDevicePstate(pc.Self.Device, &m)
 	measureDeviceAveragePowerDraw(pc.Self.Device, &m)
 	measureDevicePowerLimits(pc.Self.Device, &m)

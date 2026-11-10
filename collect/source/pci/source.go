@@ -113,6 +113,17 @@ func ParseACS(config []byte) (*ACS, error) {
 // enumeration are returned directly; later ones and per-device read or parse
 // errors are stored in Reading.Failure. Unsupported values use Reading.NoValue.
 func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading, error) {
+	return s.read(ctx, selected, false)
+}
+
+// ReadGPUs reads properties only for NVIDIA GPU-class PCI devices.
+// Classification failures are reported per device so other GPUs remain observable.
+func (s *Source) ReadGPUs(ctx context.Context, selected collect.Signals) ([]Reading, error) {
+	return s.read(ctx, selected, true)
+}
+
+// read shares enumeration and property decoding across inventory and GPU-only collection.
+func (s *Source) read(ctx context.Context, selected collect.Signals, gpuOnly bool) ([]Reading, error) {
 	selected, err := collect.NewOp(collect.WithSignalID(selected.IDs()...)).Signals(pcisignals.All())
 	if err != nil || len(selected) == 0 {
 		return nil, err
@@ -144,6 +155,20 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 		target := observation.PCITarget(address)
 		base := path.Join(root, device.Name())
 		cache := make(map[string]numericResult)
+		if gpuOnly {
+			gpu, err := s.isGPU(base, cache)
+			if err != nil {
+				for _, signal := range selected {
+					failure := Failure(fmt.Errorf("classify PCI device %s: %w", address, err))
+					failure.Operation = base
+					readings = append(readings, Reading{Signal: signal, Target: target, Path: base, Failure: failure})
+				}
+				continue
+			}
+			if !gpu {
+				continue
+			}
+		}
 		properties := make(map[string]propertyResult)
 		var acs *ACS
 		var acsErr error
@@ -193,15 +218,10 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 					err = nil
 				}
 			case pcisignals.GPUPresent.ID():
-				reading.Path = path.Join(base, "class")
-				var class, vendor uint64
-				class, err = s.number(reading.Path, 24, cache)
-				if err == nil && (class>>8 == 0x0300 || class>>8 == 0x0302 || class>>16 == 0x12) {
-					reading.Path = path.Join(base, "vendor")
-					vendor, err = s.number(reading.Path, 16, cache)
-				}
+				var gpu bool
+				gpu, err = s.isGPU(base, cache)
 				if err == nil {
-					reading.Value = &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: vendor == 0x10de && (class>>8 == 0x0300 || class>>8 == 0x0302 || class>>16 == 0x12)}}
+					reading.Value = &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: gpu}}
 				}
 			case pcisignals.LinkSpeed.ID(), pcisignals.MaxLinkSpeed.ID(), pcisignals.LinkWidth.ID(), pcisignals.MaxLinkWidth.ID(), pcisignals.LinkGeneration.ID(), pcisignals.MaxLinkGeneration.ID():
 				err = s.property(base, &reading, properties)
@@ -362,4 +382,17 @@ func Failure(err error) *observation.CollectionError {
 		category = observation.CollectionErrorCategoryUnavailable
 	}
 	return &observation.CollectionError{Category: category, Detail: err.Error()}
+}
+
+// isGPU applies the same NVIDIA vendor/class predicate to presence and GPU-only filtering.
+func (s *Source) isGPU(base string, cache map[string]numericResult) (bool, error) {
+	class, err := s.number(path.Join(base, "class"), 24, cache)
+	if err != nil {
+		return false, err
+	}
+	if class>>8 != 0x0300 && class>>8 != 0x0302 && class>>16 != 0x12 {
+		return false, nil
+	}
+	vendor, err := s.number(path.Join(base, "vendor"), 16, cache)
+	return vendor == 0x10de, err
 }

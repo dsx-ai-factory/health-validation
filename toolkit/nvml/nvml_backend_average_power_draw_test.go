@@ -29,6 +29,7 @@ func averagePowerFieldValues(powerMW uint32) func([]gonvml.FieldValue) gonvml.Re
 	}
 }
 
+// TestMeasureGPUs_AveragePowerDrawPreservesFractionalWatts guards against truncation during unit conversion.
 func TestMeasureGPUs_AveragePowerDrawPreservesFractionalWatts(t *testing.T) {
 	dev := powerLimitDevice(1_200_000, 1_200_000)
 	dev.GetFieldValuesFunc = averagePowerFieldValues(221_850)
@@ -43,11 +44,12 @@ func TestMeasureGPUs_AveragePowerDrawPreservesFractionalWatts(t *testing.T) {
 	if m.AveragePowerDrawW != 221.85 {
 		t.Errorf("AveragePowerDrawW = %g, want 221.85", m.AveragePowerDrawW)
 	}
-	if errs := m.Errors(); len(errs) != 0 {
+	if errs := gpuQueryErrors(t, m); len(errs) != 0 {
 		t.Errorf("Errors() = %v, want empty", errs)
 	}
 }
 
+// TestMeasureGPUs_AveragePowerDrawFailures isolates field and API failures to the power signal.
 func TestMeasureGPUs_AveragePowerDrawFailures(t *testing.T) {
 	tests := []struct {
 		fieldValues   func([]gonvml.FieldValue) gonvml.Return
@@ -93,7 +95,7 @@ func TestMeasureGPUs_AveragePowerDrawFailures(t *testing.T) {
 				t.Fatalf("MeasureGPUs: %v", err)
 			}
 			m := expectGPUMeasurement(t, ms, 0)
-			errs := m.Errors()
+			errs := gpuQueryErrors(t, m)
 			if len(errs) != 1 {
 				t.Fatalf("Errors() = %v, want 1 entry", errs)
 			}

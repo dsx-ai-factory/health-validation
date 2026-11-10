@@ -100,9 +100,12 @@ func TestRunCommandCollectsLinkFlapThroughBridge(t *testing.T) {
 	}
 }
 
+// TestRunCommandLinkFlapCleanScanPasses distinguishes an observed quiet journal from missing data.
 func TestRunCommandLinkFlapCleanScanPasses(t *testing.T) {
 	calls := 0
-	if got := runLinkFlapApp(t, linkFlapApp(&calls, linkFlapAppMarker()), exitOK); got.Severity != health.Pass {
+	a := linkFlapApp(&calls, linkFlapAppMarker())
+	withTestPCI(a)
+	if got := runLinkFlapApp(t, a, exitOK); got.Severity != health.Pass {
 		t.Fatalf("rdma_linkflap_fatal = %v on a clean scan, want PASS", got.Severity)
 	}
 }
@@ -133,6 +136,7 @@ func TestRunCommandLinkFlapReadsOneHourWindow(t *testing.T) {
 	}
 
 	a := cadenceRunApp()
+	withTestPCI(a)
 	a.rdmaLinkFlap = nil
 	before := time.Now()
 	got := runLinkFlapApp(t, a, exitOK)

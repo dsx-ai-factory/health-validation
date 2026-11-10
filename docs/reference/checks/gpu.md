@@ -61,6 +61,42 @@ Fails when any compute process still holds a GPU.
 
 **Recommended action:** operational state `drain`, then `restart_os` → `service_required`
 
+## GPU PCIe Maximum Link
+
+`gpu_pcie_max_link`
+
+Verifies each GPU's maximum PCIe link width and generation match the expected configuration.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr>, <nobr>`VR200`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pcie_max_link_width`</nobr>, <nobr>`pcie_max_link_generation`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`expected_pcie_max_link_generation`</nobr> | A100: 4, B200: 5, GB200: 5, GB300: 6, H100: 5, H200: 5, VR200: 6 | generation | <nobr>`DEFAULT`</nobr> | Expected maximum PCIe generation per GPU, expressed as an integer (5 means Gen5). Override for the deployed system configuration. |
+| <nobr>`expected_pcie_max_link_width`</nobr> | 16 | lanes | <nobr>`DEFAULT`</nobr> | Expected maximum PCIe link width per GPU. Override for the deployed system configuration. |
+
+**Rules**
+
+- **UNKNOWN** when `pcie_max_link_width <= 0 \|\| pcie_max_link_generation <= 0`
+  - Message: GPU $\{gpu_id\}: maximum PCIe link width or generation is unavailable.
+  - Action: operational state `drain`, then `check_collection`
+- **CRITICAL** when `pcie_max_link_width > 0 && pcie_max_link_generation > 0 && pcie_max_link_width != expected_pcie_max_link_width`
+  - Message: GPU $\{gpu_id\}: maximum PCIe link width x$\{pcie_max_link_width\}, expected x$\{expected_pcie_max_link_width\}.
+- **CRITICAL** when `pcie_max_link_width > 0 && pcie_max_link_generation > 0 && pcie_max_link_generation != expected_pcie_max_link_generation`
+  - Message: GPU $\{gpu_id\}: maximum PCIe generation $\{pcie_max_link_generation\}, expected $\{expected_pcie_max_link_generation\}.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+
 ## GPU Power Limit
 
 `gpu_power_limit`

@@ -13,6 +13,8 @@ import (
 // expressions and must match the RequiredSignals declared in GPU
 // check definitions.
 const (
+	SignalPCIeMaxLinkWidth       = "pcie_max_link_width"
+	SignalPCIeMaxLinkGeneration  = "pcie_max_link_generation"
 	SignalGPUID                  = "gpu_id"
 	SignalGPUPstate              = "gpu_pstate"
 	SignalAveragePowerDrawW      = "average_power_draw_w"
@@ -26,6 +28,8 @@ const (
 )
 
 var measurementSignals = []string{
+	SignalPCIeMaxLinkWidth,
+	SignalPCIeMaxLinkGeneration,
 	SignalGPUID,
 	SignalGPUPstate,
 	SignalAveragePowerDrawW,
@@ -73,6 +77,9 @@ type GPUMeasurement struct {
 	// ComputeProcessCount is the number of compute (CUDA) contexts NVML
 	// reports on this GPU. Graphics and other process classes are omitted.
 	ComputeProcessCount int64 `json:"compute_process_count"`
+	// Non-positive PCIe maxima indicate unavailable data, not a link fault.
+	PCIeMaxLinkWidth      int64 `json:"pcie_max_link_width"`
+	PCIeMaxLinkGeneration int64 `json:"pcie_max_link_generation"`
 	// GPUPstate is the GPU's current performance state as the numeric
 	// level N in P<N>: 0 is P0 (maximum performance) and higher values
 	// are progressively lower-power states.

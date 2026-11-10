@@ -317,6 +317,11 @@ func bridgedGPUSensor(t *testing.T, cycle *collect.Cycle, dcgm, processes collec
 	adapter := collectadapters.GPU()
 	isDCGM := func(id string) bool { return slices.Contains(dcgmSignals.IDs(), id) }
 	signals := slices.Sorted(maps.Keys(adapter.Signals()))
+	// This parity fixture supplies DCGM fields and, optionally, NVML processes.
+	// PCI properties have their own source and are outside this comparison.
+	signals = slices.DeleteFunc(signals, func(id string) bool {
+		return !isDCGM(id) && (processes == nil || !slices.Contains(processes.Signals().IDs(), id))
+	})
 	runner := collectbridge.NewRunner(cycle)
 	if err := runner.Register(dcgm, slices.DeleteFunc(slices.Clone(signals), func(id string) bool { return !isDCGM(id) })...); err != nil {
 		t.Fatal(err)
@@ -353,6 +358,7 @@ type gpuFact struct {
 // computeSignals are compared separately, by TestGPUComputeProcessParity.
 var computeSignals = []string{gpu.SignalComputeProcessCount, gpu.SignalComputeProcessCmdlines}
 
+// gpuFacts compares DCGM-backed fields, excluding process and PCI signals supplied by other sources.
 func gpuFacts(t *testing.T, measurements []health.Measurement) []gpuFact {
 	t.Helper()
 	var out []gpuFact
@@ -365,7 +371,9 @@ func gpuFacts(t *testing.T, measurements []health.Measurement) []gpuFact {
 		for _, e := range g.Errors() {
 			failed = append(failed, e.FailedSignals()...)
 		}
-		failed = slices.DeleteFunc(failed, func(s string) bool { return slices.Contains(computeSignals, s) })
+		failed = slices.DeleteFunc(failed, func(s string) bool {
+			return slices.Contains(computeSignals, s) || s == gpu.SignalPCIeMaxLinkWidth || s == gpu.SignalPCIeMaxLinkGeneration
+		})
 		slices.Sort(failed)
 		if failed = slices.Compact(failed); len(failed) == 0 {
 			failed = nil

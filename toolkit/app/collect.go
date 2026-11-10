@@ -17,6 +17,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
+	pcisensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pci"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
@@ -25,6 +26,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/pciaddr"
 	"github.com/google/uuid"
 )
 
@@ -127,8 +129,9 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 	if a.gpu == nil {
 		inventory := a.host.gpuInventory()
 		sources = append(sources, a.host.gpuSensors()...)
+		sources = append(sources, pcisensor.NewGPUs(nil))
 		adapters = append(adapters, powerDrawGate{
-			CollectAdapter: collectadapters.GPU(),
+			CollectAdapter: pciGPUAdapter{CollectAdapter: collectadapters.GPU(), lookup: func() map[string]string { return gpuinventory.UUIDsByPCI(inventory.Cached(cycle)) }},
 			architecture: func() (string, error) {
 				return gpuinventory.Architecture(inventory.Snapshot(context.Background(), cycle))
 			},
@@ -477,4 +480,35 @@ func isNilCollectInput(input any) bool {
 	default:
 		return false
 	}
+}
+
+// pciGPUAdapter joins PCI properties to GPU measurements using the cycle's
+// existing inventory. PCI devices outside that inventory are not GPU inputs.
+type pciGPUAdapter struct {
+	CollectAdapter
+	lookup func() map[string]string
+}
+
+// Build joins PCI readings to known GPU UUIDs without mutating inputs or losing source failures.
+func (a pciGPUAdapter) Build(obs []*observation.Observation) []health.Measurement {
+	ids := a.lookup()
+	normalized := make([]*observation.Observation, 0, len(obs))
+	for _, current := range obs {
+		pci := current.GetTarget().GetPci()
+		if pci == nil {
+			// Whole-source failures must fan out across the GPU measurements.
+			if current.GetTarget().GetNode() != nil && current.GetValue() == nil {
+				normalized = append(normalized, &observation.Observation{SignalId: current.SignalId, Source: current.Source, Unit: current.Unit, ObservedAt: current.ObservedAt, Outcome: current.Outcome})
+			} else {
+				normalized = append(normalized, current)
+			}
+			continue
+		}
+		uuid := ids[pciaddr.Normalize(pci.GetAddress())]
+		if uuid == "" {
+			continue
+		}
+		normalized = append(normalized, &observation.Observation{SignalId: current.SignalId, Source: current.Source, Unit: current.Unit, ObservedAt: current.ObservedAt, Outcome: current.Outcome, Target: observation.GPUTarget(uuid)})
+	}
+	return a.CollectAdapter.Build(normalized)
 }

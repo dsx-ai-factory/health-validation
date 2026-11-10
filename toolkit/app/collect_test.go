@@ -25,6 +25,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
+	pcisensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pci"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
@@ -47,6 +48,7 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 	return a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
 }
 
+// TestMigratedDomainsDefaultToCollectSensors checks built-in wiring and per-domain backend overrides.
 func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 	builtins := func(a *App) ([]string, []string) {
 		a.host = fakeHost{b: spyBackend{called: new(bool)}}
@@ -66,12 +68,12 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband"}},
+		{name: "default", app: New(), sources: []string{"test.gpu", "pci.sysfs", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband"}},
 		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "node", "xid", "infiniband"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "infiniband"}},
-		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "infiniband"}},
-		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", "pci.sysfs", gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "node", "xid", "infiniband"}},
+		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", "pci.sysfs", cpusensor.ID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "infiniband"}},
+		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", "pci.sysfs", cpusensor.ID, gpuinventory.SensorID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "infiniband"}},
+		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", "pci.sysfs", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)
@@ -1503,5 +1505,67 @@ func TestAveragePowerDrawChecksStayOnAveragingArchitectures(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("no built-in check reads average_power_draw_w")
+	}
+}
+
+// TestPCIGPUAdapterJoinsOnlyInventoryGPUs filters unmatched devices while retaining source failures.
+func TestPCIGPUAdapterJoinsOnlyInventoryGPUs(t *testing.T) {
+	var got []*observation.Observation
+	adapter := pciGPUAdapter{
+		CollectAdapter: collectAppAdapter{build: func(obs []*observation.Observation) []health.Measurement { got = obs; return nil }},
+		lookup:         func() map[string]string { return map[string]string{"0000:01:00": "GPU-0"} },
+	}
+	gpuProperty := &observation.Observation{SignalId: "pci.link.width.max", Target: observation.PCITarget("0000:01:00.0")}
+	nonGPU := &observation.Observation{SignalId: "pci.link.width.max", Target: observation.PCITarget("0000:02:00.0")}
+	sourceFailure := &observation.Observation{SignalId: "pci.link.width.max", Target: observation.NodeTarget("")}
+	adapter.Build([]*observation.Observation{gpuProperty, nonGPU, sourceFailure})
+	if len(got) != 2 {
+		t.Fatalf("got %d observations, want GPU and source failure", len(got))
+	}
+	if got[0].GetTarget().GetGpu().GetUuid() != "GPU-0" {
+		t.Fatalf("GPU target = %v", got[0].GetTarget())
+	}
+	if got[1].GetTarget() != nil {
+		t.Fatalf("source failure target = %v", got[1].GetTarget())
+	}
+	if gpuProperty.GetTarget().GetPci() == nil {
+		t.Fatal("input observation was mutated")
+	}
+}
+
+// TestPCIGPUAdapterKeepsClassificationFailureOnAffectedGPU prevents one bad device from hiding healthy GPUs.
+func TestPCIGPUAdapterKeepsClassificationFailureOnAffectedGPU(t *testing.T) {
+	files := fstest.MapFS{
+		"sys/bus/pci/devices/0000:01:00.0/class":          {Data: []byte("0x030200")},
+		"sys/bus/pci/devices/0000:01:00.0/vendor":         {Data: []byte("0x10de")},
+		"sys/bus/pci/devices/0000:01:00.0/max_link_width": {Data: []byte("16")},
+		"sys/bus/pci/devices/0000:01:00.0/max_link_speed": {Data: []byte("32.0 GT/s PCIe")},
+		"sys/bus/pci/devices/0000:02:00.0/class":          {Data: []byte("malformed")},
+	}
+	sensor := pcisensor.NewGPUs(files)
+	batch, err := sensor.Measure(context.Background(), collect.WithSignalID("pci.link.width.max", "pci.link.generation.max"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := pciGPUAdapter{CollectAdapter: collectadapters.GPU(), lookup: func() map[string]string {
+		return map[string]string{"0000:01:00": "GPU-0", "0000:02:00": "GPU-1"}
+	}}
+	measurements := adapter.Build(batch.Observations)
+	if len(measurements) != 2 {
+		t.Fatalf("got %d measurements, want two GPUs", len(measurements))
+	}
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	for _, m := range measurements {
+		v, err := cat.Evaluate("gpu_pcie_max_link", m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := health.Pass
+		if m.(gpu.GPUMeasurement).GPUID == "GPU-1" {
+			want = health.Unknown
+		}
+		if v.Severity != want || v.Skipped {
+			t.Fatalf("verdict = %+v, want %v", v, want)
+		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 	gonvml "github.com/NVIDIA/go-nvml/pkg/nvml"
 	"github.com/NVIDIA/go-nvml/pkg/nvml/mock"
 
+	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/toolkit/nvml"
@@ -79,7 +80,7 @@ func TestMeasureGPUs_Pstate(t *testing.T) {
 		if m.GPUPstate != want {
 			t.Errorf("ms[%d].GPUPstate = %d, want %d", i, m.GPUPstate, want)
 		}
-		if errs := m.Errors(); len(errs) != 0 {
+		if errs := gpuQueryErrors(t, m); len(errs) != 0 {
 			t.Errorf("ms[%d].Errors() = %v, want empty", i, errs)
 		}
 	}
@@ -100,7 +101,7 @@ func TestMeasureGPUs_PstateUnknownFlagsSignal(t *testing.T) {
 		t.Fatalf("MeasureGPUs: %v", err)
 	}
 	m := expectGPUMeasurement(t, ms, 0)
-	errs := m.Errors()
+	errs := gpuQueryErrors(t, m)
 	if len(errs) != 1 {
 		t.Fatalf("Errors() = %v, want 1 entry", errs)
 	}
@@ -133,7 +134,7 @@ func TestMeasureGPUs_PstateReadFailureFlagsSignal(t *testing.T) {
 			if m.GPUID != "GPU-0" {
 				t.Errorf("GPUID = %q, want GPU-0 (errored read must keep the entity id)", m.GPUID)
 			}
-			errs := m.Errors()
+			errs := gpuQueryErrors(t, m)
 			if len(errs) != 1 {
 				t.Fatalf("Errors() = %v, want 1 entry", errs)
 			}
@@ -148,5 +149,50 @@ func TestMeasureGPUs_PstateReadFailureFlagsSignal(t *testing.T) {
 				t.Errorf("Op = %q, want DeviceGetPerformanceState", nvmlErr.Op)
 			}
 		})
+	}
+}
+
+// gpuQueryErrors isolates query failures after verifying the legacy source's
+// PCI-unavailable entry, which every successfully identified GPU carries.
+func gpuQueryErrors(t *testing.T, m gpu.GPUMeasurement) []health.ErroredMeasurement {
+	t.Helper()
+	var queryErrors []health.ErroredMeasurement
+	pciErrors := 0
+	for _, failure := range m.Errors() {
+		signals := failure.FailedSignals()
+		if slices.Equal(signals, []string{gpu.SignalPCIeMaxLinkWidth, gpu.SignalPCIeMaxLinkGeneration}) {
+			pciErrors++
+		} else {
+			queryErrors = append(queryErrors, failure)
+		}
+	}
+	if pciErrors != 1 {
+		t.Fatalf("got %d PCI-unavailable entries, want 1", pciErrors)
+	}
+	return queryErrors
+}
+
+// TestMeasureGPUsPCIeUnavailable prevents uncollected PCI properties from becoming hardware faults.
+func TestMeasureGPUsPCIeUnavailable(t *testing.T) {
+	b := nvml.NewWithLibrary(pstateLib(pstateDevice("GPU-0", gonvml.PSTATE_0, gonvml.SUCCESS)))
+	t.Cleanup(func() { b.Close() })
+	ms, err := b.MeasureGPUs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := expectGPUMeasurement(t, ms, 0)
+	if errs := gpuQueryErrors(t, m); len(errs) != 0 {
+		t.Fatalf("unexpected query failures: %v", errs)
+	}
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	v, err := cat.Evaluate("gpu_pcie_max_link", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Severity != health.Unknown || v.Skipped {
+		t.Fatalf("verdict = %+v, want UNKNOWN", v)
+	}
+	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckCollection)) {
+		t.Fatalf("action = %+v, want check_collection", v.RecommendedAction)
 	}
 }
