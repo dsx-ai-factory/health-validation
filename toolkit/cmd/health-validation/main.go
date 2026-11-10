@@ -16,6 +16,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/dsx-ai-factory/health-validation/toolkit/app"
@@ -24,6 +25,8 @@ import (
 func main() {
 	a := app.New().WithStderrLogging()
 	code := a.Run(os.Args[1:], os.Stdout, os.Stderr)
-	_ = a.Close()
+	if err := a.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "health-validation: close: %v\n", err)
+	}
 	os.Exit(code)
 }
