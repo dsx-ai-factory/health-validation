@@ -159,7 +159,9 @@ single-tag lines.
 
 Every version of the per-module `catalog`, `collect`, and `toolkit` modules is
 retracted in favor of the root module. Builds that pin one keep working, but
-`go list -m -u` warns about it and `@latest` resolves to the root module. See
+`go list -m -u` warns about it and `@latest` resolves to the root module. This
+includes later `v0.3.x` patches, which are still tagged per module from
+`release/v0.3` and published as container images. See
 [RELEASE.md](./RELEASE.md#retired-per-module-tags).
 
 Maintainers update this table and the release notes when final releases change
