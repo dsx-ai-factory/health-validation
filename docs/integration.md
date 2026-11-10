@@ -523,7 +523,9 @@ pipeline above is unaffected by collector latency.
 `run` and `collect` log one warning to stderr for each distinct source,
 operation, and error category that times out or fails as a whole, such as an
 unreachable hostengine, an unreadable journal, or unreadable CPU sysfs. One
-source can log more than one line when different operations fail:
+source can log more than one line when different operations fail. A node-wide
+sensor reports every failure on the node, so one failed read there, such as the
+NUMA node count, also warns while the other CPU reads succeed:
 
 ```
 level=WARN msg="collect source failed; degrading to errored observations" sensor=gpu.dcgm source=dcgm operation=... category=... error=...

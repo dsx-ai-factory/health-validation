@@ -154,7 +154,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   whole, including failures a sensor reports inside its batch, as the legacy
   sensors did. Each line names the collect sensor (`sensor`) and the failing
   library or reader (`source`); the legacy lines named the toolkit sensor.
-  Errors on individual GPUs are not logged.
+  Any failed read of a node-wide sensor, such as the CPU NUMA count, also
+  warns. Errors on individual GPUs are not logged.
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
