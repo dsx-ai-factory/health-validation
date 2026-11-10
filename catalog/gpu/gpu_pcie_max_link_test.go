@@ -13,6 +13,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
 
+// TestGPUPCIeMaxLink checks architecture defaults and mismatches in either link property.
 func TestGPUPCIeMaxLink(t *testing.T) {
 	for _, tc := range []struct {
 		arch       string
@@ -50,6 +51,7 @@ func TestGPUPCIeMaxLink(t *testing.T) {
 	}
 }
 
+// TestGPUPCIeMaxLinkOverrideAndCollectionFailure separates operator expectations from read failures.
 func TestGPUPCIeMaxLinkOverrideAndCollectionFailure(t *testing.T) {
 	cat := catalog.New(catalog.WithArchitecture("H100"), catalog.WithOverrides(catalog.NewOverrideSet(
 		catalog.Override{CheckID: "gpu_pcie_max_link", ThresholdName: "expected_pcie_max_link_width", Value: int64(8)},
@@ -67,5 +69,35 @@ func TestGPUPCIeMaxLinkOverrideAndCollectionFailure(t *testing.T) {
 		if err != nil || v.Severity != health.Unknown {
 			t.Fatalf("collection failure: %+v, %v", v, err)
 		}
+	}
+}
+
+// TestGPUPCIeMaxLinkUnavailableValues keeps partial or invalid data from reporting a hardware fault.
+func TestGPUPCIeMaxLinkUnavailableValues(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	for _, tc := range []struct {
+		name              string
+		width, generation int64
+	}{
+		{"both omitted", 0, 0},
+		{"width omitted", 0, 5},
+		{"generation omitted", 16, 0},
+		{"width omitted with generation mismatch", 0, 4},
+		{"generation omitted with width mismatch", 8, 0},
+		{"negative width", -1, 5},
+		{"negative generation", 16, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := cat.Evaluate("gpu_pcie_max_link", gpu.GPUMeasurement{GPUID: "GPU-0", PCIeMaxLinkWidth: tc.width, PCIeMaxLinkGeneration: tc.generation})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Skipped || v.Severity != health.Unknown {
+				t.Fatalf("verdict = %+v, want UNKNOWN", v)
+			}
+			if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckCollection)) {
+				t.Fatalf("action = %+v, want check_collection", v.RecommendedAction)
+			}
+		})
 	}
 }

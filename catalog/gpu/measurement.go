@@ -76,7 +76,8 @@ type GPUMeasurement struct {
 	EnforcedPowerLimitW    float64 `json:"enforced_power_limit_w"`
 	// ComputeProcessCount is the number of compute (CUDA) contexts NVML
 	// reports on this GPU. Graphics and other process classes are omitted.
-	ComputeProcessCount   int64 `json:"compute_process_count"`
+	ComputeProcessCount int64 `json:"compute_process_count"`
+	// Non-positive PCIe maxima indicate unavailable data, not a link fault.
 	PCIeMaxLinkWidth      int64 `json:"pcie_max_link_width"`
 	PCIeMaxLinkGeneration int64 `json:"pcie_max_link_generation"`
 	// GPUPstate is the GPU's current performance state as the numeric

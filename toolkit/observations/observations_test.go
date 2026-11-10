@@ -484,6 +484,7 @@ func noValueObservation(signalID string, reason observation.NoValueReason) *obse
 	return o
 }
 
+// TestMappedSignalsFor verifies that domain feeds partition the canonical observation mappings.
 func TestMappedSignalsFor(t *testing.T) {
 	gpuIDs := []string{
 		pcisignals.MaxLinkWidth.ID(),

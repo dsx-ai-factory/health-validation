@@ -282,6 +282,7 @@ func gpuParentOutcome(o *observation.Observation, s collect.Signal) bool {
 	return o.GetCollectionError() != nil || o.GetNoValue() != nil
 }
 
+// pciSourceOutcome permits node-scoped PCI failures when enumeration cannot identify a device.
 func pciSourceOutcome(o *observation.Observation, rule canonicalRule) bool {
 	return rule.target == targetPCI && targetKind(o.GetTarget()) == targetNode && (o.GetCollectionError() != nil || o.GetNoValue() != nil)
 }

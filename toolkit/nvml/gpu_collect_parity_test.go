@@ -358,6 +358,7 @@ type gpuFact struct {
 // computeSignals are compared separately, by TestGPUComputeProcessParity.
 var computeSignals = []string{gpu.SignalComputeProcessCount, gpu.SignalComputeProcessCmdlines}
 
+// gpuFacts compares DCGM-backed fields, excluding process and PCI signals supplied by other sources.
 func gpuFacts(t *testing.T, measurements []health.Measurement) []gpuFact {
 	t.Helper()
 	var out []gpuFact

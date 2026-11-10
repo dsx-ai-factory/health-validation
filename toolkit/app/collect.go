@@ -489,6 +489,7 @@ type pciGPUAdapter struct {
 	lookup func() map[string]string
 }
 
+// Build joins PCI readings to known GPU UUIDs without mutating inputs or losing source failures.
 func (a pciGPUAdapter) Build(obs []*observation.Observation) []health.Measurement {
 	ids := a.lookup()
 	normalized := make([]*observation.Observation, 0, len(obs))

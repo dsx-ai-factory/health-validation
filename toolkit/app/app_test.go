@@ -475,6 +475,7 @@ type inventoryReader struct {
 
 func (inventoryReader) ID() string { return "fake" }
 
+// Read gives synthetic GPUs stable PCI addresses for joins across collection sources.
 func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapshot, error) {
 	inventory := &observation.GPUInventory{}
 	for i := range r.gpus {
@@ -536,6 +537,7 @@ func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
 	}
 }
 
+// TestRunCommandDefaultsNodeIDToHostname uses the normalized hostname when no node ID is supplied.
 func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 	const hostname = "nvl72d014-T02"
 	hostnameCalls := 0
@@ -642,6 +644,7 @@ func TestRunCommandRejectsUnexpectedArguments(t *testing.T) {
 	}
 }
 
+// TestRunCommandNodeIDFlagOverridesBuilder gives an explicit flag precedence without hostname lookup.
 func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 	a := New().WithProgramName("test").WithNodeID("builder-node")
 	a.hostname = func() (string, error) {
@@ -668,6 +671,7 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 	}
 }
 
+// TestRunNodeIDFlagOverridesHostname exercises flag precedence through the public CLI entry point.
 func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 	a := New().WithProgramName("test")
 	a.hostname = func() (string, error) {
@@ -754,6 +758,7 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 	}
 }
 
+// TestWithCPUBackendOverridesSysfs verifies the injected CPU backend supplies the node verdict.
 func TestWithCPUBackendOverridesSysfs(t *testing.T) {
 	var cpuCalled bool
 	a := New()

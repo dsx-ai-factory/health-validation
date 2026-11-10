@@ -142,7 +142,7 @@ func TestMeasureGPUs_DefaultProber(t *testing.T) {
 		key       health.EntityKey
 		hasErrors bool
 	}{
-		{"GPU-OK", health.VerifiedEntity("GPU-OK"), false},            // usable
+		{"GPU-OK", health.VerifiedEntity("GPU-OK"), true},             // PCI properties unavailable
 		{"nvml-index-1", health.ProvisionalEntity("nvml", "1"), true}, // handle load failed
 		{"nvml-index-2", health.ProvisionalEntity("nvml", "2"), true}, // UUID read failed
 	}

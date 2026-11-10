@@ -189,6 +189,7 @@ func TestACSAfterPlaceholder(t *testing.T) {
 	}
 }
 
+// TestReadGPUsFiltersDeviceTypes excludes NICs and other vendors before link reads.
 func TestReadGPUsFiltersDeviceTypes(t *testing.T) {
 	files := fstest.MapFS{
 		Root + "/0000:01:00.0/class":          {Data: []byte("0x030200")},
@@ -207,5 +208,55 @@ func TestReadGPUsFiltersDeviceTypes(t *testing.T) {
 	}
 	if readings[0].Target.GetPci().GetAddress() != "0000:01:00.0" || readings[0].Failure != nil {
 		t.Fatalf("GPU reading = %+v", readings[0])
+	}
+}
+
+// TestReadGPUsClassificationFailureIsPerDevice preserves readings before and after a malformed device.
+func TestReadGPUsClassificationFailureIsPerDevice(t *testing.T) {
+	for _, tc := range []struct{ name, field, value string }{
+		{"malformed class", "class", "invalid"},
+		{"missing class", "class", ""},
+		{"malformed vendor", "vendor", "invalid"},
+		{"missing vendor", "vendor", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := make(fstest.MapFS)
+			for _, address := range []string{"0000:01:00.0", "0000:02:00.0", "0000:03:00.0"} {
+				base := Root + "/" + address + "/"
+				for field, value := range map[string]string{"class": "0x030200", "vendor": "0x10de", "max_link_width": "16", "max_link_speed": "32.0 GT/s PCIe"} {
+					files[base+field] = &fstest.MapFile{Data: []byte(value)}
+				}
+			}
+			bad := Root + "/0000:02:00.0/" + tc.field
+			if tc.value == "" {
+				delete(files, bad)
+			} else {
+				files[bad] = &fstest.MapFile{Data: []byte(tc.value)}
+			}
+			readings, err := New(files).ReadGPUs(context.Background(), collect.Signals{pcisignals.MaxLinkWidth, pcisignals.MaxLinkGeneration})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(readings) != 6 {
+				t.Fatalf("got %d readings, want 6", len(readings))
+			}
+			failures, healthy := 0, 0
+			for _, reading := range readings {
+				if reading.Target.GetPci().GetAddress() == "0000:02:00.0" {
+					if reading.Failure == nil || reading.Value != nil {
+						t.Fatalf("unclassified device reading = %+v, want failure", reading)
+					}
+					failures++
+				} else {
+					if reading.Failure != nil || reading.Value == nil {
+						t.Fatalf("healthy device reading = %+v", reading)
+					}
+					healthy++
+				}
+			}
+			if failures != 2 || healthy != 4 {
+				t.Fatalf("got %d failures and %d healthy readings", failures, healthy)
+			}
+		})
 	}
 }

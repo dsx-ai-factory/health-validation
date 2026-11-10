@@ -25,6 +25,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
+	pcisensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pci"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
@@ -47,6 +48,7 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 	return a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
 }
 
+// TestMigratedDomainsDefaultToCollectSensors checks built-in wiring and per-domain backend overrides.
 func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 	builtins := func(a *App) ([]string, []string) {
 		a.host = fakeHost{b: spyBackend{called: new(bool)}}
@@ -1506,6 +1508,7 @@ func TestAveragePowerDrawChecksStayOnAveragingArchitectures(t *testing.T) {
 	}
 }
 
+// TestPCIGPUAdapterJoinsOnlyInventoryGPUs filters unmatched devices while retaining source failures.
 func TestPCIGPUAdapterJoinsOnlyInventoryGPUs(t *testing.T) {
 	var got []*observation.Observation
 	adapter := pciGPUAdapter{
@@ -1527,5 +1530,42 @@ func TestPCIGPUAdapterJoinsOnlyInventoryGPUs(t *testing.T) {
 	}
 	if gpuProperty.GetTarget().GetPci() == nil {
 		t.Fatal("input observation was mutated")
+	}
+}
+
+// TestPCIGPUAdapterKeepsClassificationFailureOnAffectedGPU prevents one bad device from hiding healthy GPUs.
+func TestPCIGPUAdapterKeepsClassificationFailureOnAffectedGPU(t *testing.T) {
+	files := fstest.MapFS{
+		"sys/bus/pci/devices/0000:01:00.0/class":          {Data: []byte("0x030200")},
+		"sys/bus/pci/devices/0000:01:00.0/vendor":         {Data: []byte("0x10de")},
+		"sys/bus/pci/devices/0000:01:00.0/max_link_width": {Data: []byte("16")},
+		"sys/bus/pci/devices/0000:01:00.0/max_link_speed": {Data: []byte("32.0 GT/s PCIe")},
+		"sys/bus/pci/devices/0000:02:00.0/class":          {Data: []byte("malformed")},
+	}
+	sensor := pcisensor.NewGPUs(files)
+	batch, err := sensor.Measure(context.Background(), collect.WithSignalID("pci.link.width.max", "pci.link.generation.max"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := pciGPUAdapter{CollectAdapter: collectadapters.GPU(), lookup: func() map[string]string {
+		return map[string]string{"0000:01:00": "GPU-0", "0000:02:00": "GPU-1"}
+	}}
+	measurements := adapter.Build(batch.Observations)
+	if len(measurements) != 2 {
+		t.Fatalf("got %d measurements, want two GPUs", len(measurements))
+	}
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	for _, m := range measurements {
+		v, err := cat.Evaluate("gpu_pcie_max_link", m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := health.Pass
+		if m.(gpu.GPUMeasurement).GPUID == "GPU-1" {
+			want = health.Unknown
+		}
+		if v.Severity != want || v.Skipped {
+			t.Fatalf("verdict = %+v, want %v", v, want)
+		}
 	}
 }

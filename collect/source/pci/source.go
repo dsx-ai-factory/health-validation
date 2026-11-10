@@ -117,10 +117,12 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 }
 
 // ReadGPUs reads properties only for NVIDIA GPU-class PCI devices.
+// Classification failures are reported per device so other GPUs remain observable.
 func (s *Source) ReadGPUs(ctx context.Context, selected collect.Signals) ([]Reading, error) {
 	return s.read(ctx, selected, true)
 }
 
+// read shares enumeration and property decoding across inventory and GPU-only collection.
 func (s *Source) read(ctx context.Context, selected collect.Signals, gpuOnly bool) ([]Reading, error) {
 	selected, err := collect.NewOp(collect.WithSignalID(selected.IDs()...)).Signals(pcisignals.All())
 	if err != nil || len(selected) == 0 {
@@ -156,7 +158,12 @@ func (s *Source) read(ctx context.Context, selected collect.Signals, gpuOnly boo
 		if gpuOnly {
 			gpu, err := s.isGPU(base, cache)
 			if err != nil {
-				return nil, fmt.Errorf("classify PCI device %s: %w", address, err)
+				for _, signal := range selected {
+					failure := Failure(fmt.Errorf("classify PCI device %s: %w", address, err))
+					failure.Operation = base
+					readings = append(readings, Reading{Signal: signal, Target: target, Path: base, Failure: failure})
+				}
+				continue
 			}
 			if !gpu {
 				continue
@@ -377,6 +384,7 @@ func Failure(err error) *observation.CollectionError {
 	return &observation.CollectionError{Category: category, Detail: err.Error()}
 }
 
+// isGPU applies the same NVIDIA vendor/class predicate to presence and GPU-only filtering.
 func (s *Source) isGPU(base string, cache map[string]numericResult) (bool, error) {
 	class, err := s.number(path.Join(base, "class"), 24, cache)
 	if err != nil {

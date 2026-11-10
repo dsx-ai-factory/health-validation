@@ -28,6 +28,7 @@ func computeAppsDevice(infos []gonvml.ProcessInfo, ret gonvml.Return) *mock.Devi
 	return dev
 }
 
+// TestMeasureGPUs_ComputeProcessesEmpty treats a successful empty process list as an observed zero.
 func TestMeasureGPUs_ComputeProcessesEmpty(t *testing.T) {
 	b := nvml.NewWithLibrary(pstateLib(computeAppsDevice(nil, gonvml.SUCCESS)))
 	t.Cleanup(func() { b.Close() })
@@ -43,7 +44,7 @@ func TestMeasureGPUs_ComputeProcessesEmpty(t *testing.T) {
 	if m.ComputeProcessCmdlines != "" {
 		t.Errorf("ComputeProcessCmdlines = %q, want empty", m.ComputeProcessCmdlines)
 	}
-	if errs := m.Errors(); len(errs) != 0 {
+	if errs := gpuQueryErrors(t, m); len(errs) != 0 {
 		t.Errorf("Errors() = %v, want empty", errs)
 	}
 }
@@ -112,6 +113,7 @@ func TestMeasureGPUs_ComputeProcessesReadsProcCmdline(t *testing.T) {
 	}
 }
 
+// TestMeasureGPUs_ComputeProcessQueryFailureFlagsSignals keeps failed queries distinct from an idle GPU.
 func TestMeasureGPUs_ComputeProcessQueryFailureFlagsSignals(t *testing.T) {
 	for _, ret := range []gonvml.Return{gonvml.ERROR_UNKNOWN, gonvml.ERROR_NOT_SUPPORTED} {
 		t.Run(ret.String(), func(t *testing.T) {
@@ -123,7 +125,7 @@ func TestMeasureGPUs_ComputeProcessQueryFailureFlagsSignals(t *testing.T) {
 				t.Fatalf("MeasureGPUs: %v", err)
 			}
 			m := expectGPUMeasurement(t, ms, 0)
-			errs := m.Errors()
+			errs := gpuQueryErrors(t, m)
 			if len(errs) != 1 {
 				t.Fatalf("Errors() = %v, want 1 entry", errs)
 			}

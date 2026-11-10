@@ -59,7 +59,7 @@ func TestMeasureGPUs_PowerLimitsPreserveFractionalWatts(t *testing.T) {
 	if m.EnforcedPowerLimitW != 1200 {
 		t.Errorf("EnforcedPowerLimitW = %g, want 1200", m.EnforcedPowerLimitW)
 	}
-	if errs := m.Errors(); len(errs) != 0 {
+	if errs := gpuQueryErrors(t, m); len(errs) != 0 {
 		t.Errorf("Errors() = %v, want empty", errs)
 	}
 }
@@ -86,7 +86,7 @@ func testPowerLimitFailure(
 	if m.GPUID != "GPU-0" {
 		t.Errorf("GPUID = %q, want GPU-0", m.GPUID)
 	}
-	errs := m.Errors()
+	errs := gpuQueryErrors(t, m)
 	if len(errs) != 1 {
 		t.Fatalf("Errors() = %v, want 1 entry", errs)
 	}

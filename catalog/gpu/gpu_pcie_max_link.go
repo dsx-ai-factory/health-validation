@@ -44,12 +44,18 @@ func GPUPCIeMaxLink() health.CheckDefinition {
 		},
 		Rules: []health.Rule{
 			{
-				Expression: "pcie_max_link_width != expected_pcie_max_link_width",
+				Expression:        "pcie_max_link_width <= 0 || pcie_max_link_generation <= 0",
+				Severity:          health.Unknown,
+				Message:           "GPU ${gpu_id}: maximum PCIe link width or generation is unavailable.",
+				RecommendedAction: health.Drain(health.RemediationActionCheckCollection),
+			},
+			{
+				Expression: "pcie_max_link_width > 0 && pcie_max_link_generation > 0 && pcie_max_link_width != expected_pcie_max_link_width",
 				Severity:   health.Critical,
 				Message:    "GPU ${gpu_id}: maximum PCIe link width x${pcie_max_link_width}, expected x${expected_pcie_max_link_width}.",
 			},
 			{
-				Expression: "pcie_max_link_generation != expected_pcie_max_link_generation",
+				Expression: "pcie_max_link_width > 0 && pcie_max_link_generation > 0 && pcie_max_link_generation != expected_pcie_max_link_generation",
 				Severity:   health.Critical,
 				Message:    "GPU ${gpu_id}: maximum PCIe generation ${pcie_max_link_generation}, expected ${expected_pcie_max_link_generation}.",
 			},

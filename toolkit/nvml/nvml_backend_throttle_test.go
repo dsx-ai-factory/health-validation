@@ -50,7 +50,7 @@ func TestMeasureGPUs_ThrottleHealthy(t *testing.T) {
 	if m.HWSlowdown || m.HWThermalSlowdown || m.HWPowerBrakeSlowdown {
 		t.Errorf("throttle signals = %v/%v/%v, want all false", m.HWSlowdown, m.HWThermalSlowdown, m.HWPowerBrakeSlowdown)
 	}
-	if errs := m.Errors(); len(errs) != 0 {
+	if errs := gpuQueryErrors(t, m); len(errs) != 0 {
 		t.Errorf("Errors() = %v, want empty", errs)
 	}
 }
@@ -105,7 +105,7 @@ func TestMeasureGPUs_ThrottleNotSupported(t *testing.T) {
 	if m.HWSlowdown || m.HWThermalSlowdown || m.HWPowerBrakeSlowdown {
 		t.Errorf("throttle signals = %v/%v/%v, want all false", m.HWSlowdown, m.HWThermalSlowdown, m.HWPowerBrakeSlowdown)
 	}
-	if errs := m.Errors(); len(errs) != 0 {
+	if errs := gpuQueryErrors(t, m); len(errs) != 0 {
 		t.Errorf("Errors() = %v, want empty on NOT_SUPPORTED", errs)
 	}
 }
@@ -121,7 +121,7 @@ func TestMeasureGPUs_ThrottleReadFailureFlagsSignals(t *testing.T) {
 		t.Fatalf("MeasureGPUs: %v", err)
 	}
 	m := expectGPUMeasurement(t, ms, 0)
-	errs := m.Errors()
+	errs := gpuQueryErrors(t, m)
 	if len(errs) != 1 {
 		t.Fatalf("Errors() = %v, want 1 entry", errs)
 	}

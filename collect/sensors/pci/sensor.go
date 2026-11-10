@@ -31,6 +31,7 @@ func NewGPUs(files fs.FS) collect.Sensor { return &sensor{source: pcisource.New(
 func (*sensor) ID() string               { return ID }
 func (*sensor) Signals() collect.Signals { return pcisignals.All() }
 
+// Measure emits selected PCI observations with per-device failures and the cycle timeout.
 func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("collection context is required")

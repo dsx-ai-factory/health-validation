@@ -87,9 +87,12 @@ Verifies each GPU's maximum PCIe link width and generation match the expected co
 
 **Rules**
 
-- **CRITICAL** when `pcie_max_link_width != expected_pcie_max_link_width`
+- **UNKNOWN** when `pcie_max_link_width <= 0 \|\| pcie_max_link_generation <= 0`
+  - Message: GPU $\{gpu_id\}: maximum PCIe link width or generation is unavailable.
+  - Action: operational state `drain`, then `check_collection`
+- **CRITICAL** when `pcie_max_link_width > 0 && pcie_max_link_generation > 0 && pcie_max_link_width != expected_pcie_max_link_width`
   - Message: GPU $\{gpu_id\}: maximum PCIe link width x$\{pcie_max_link_width\}, expected x$\{expected_pcie_max_link_width\}.
-- **CRITICAL** when `pcie_max_link_generation != expected_pcie_max_link_generation`
+- **CRITICAL** when `pcie_max_link_width > 0 && pcie_max_link_generation > 0 && pcie_max_link_generation != expected_pcie_max_link_generation`
   - Message: GPU $\{gpu_id\}: maximum PCIe generation $\{pcie_max_link_generation\}, expected $\{expected_pcie_max_link_generation\}.
 
 **Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
