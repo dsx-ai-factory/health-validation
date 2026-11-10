@@ -192,8 +192,8 @@ schema versions as untrusted output.
 
 Stock hardware collection through `health-validation run` requires Linux
 x86_64 or aarch64 with the NVIDIA driver and NVML. The app constructs
-NVML-backed GPU, node, and NVLink sensors, plus CPU, Xid, and RDMA link-flap
-sensors.
+GPU and NVLink sensors backed by DCGM and NVML, an NVML-backed node sensor,
+plus CPU, Xid, and RDMA link-flap sensors.
 
 For integrations using `toolkit.Collect`, prerequisites depend on the supplied
 sensors and backends. With the stock toolkit backends, CPU collection requires

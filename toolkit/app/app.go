@@ -20,9 +20,10 @@
 //	}
 //
 // Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
-// its own per-domain backend, defaulting to the shared host NVML backend for
-// GPU/NVLink, the host's collect NVML GPU inventory for node, sysfs for CPU,
-// and the journal (through collect sensors) for Xid and InfiniBand link flaps. A
+// its own per-domain backend, defaulting to the DCGM and NVML collect sensors
+// for GPU and NVLink, the host's collect NVML GPU inventory for node, sysfs for
+// CPU, and the journal (through collect sensors) for Xid and InfiniBand link
+// flaps. A
 // With*Backend setter overrides exactly one domain; the
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
@@ -84,9 +85,9 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 }
 
 // hostBackend is the platform-split source of the built-in GPU data sources.
-// On linux it is one [nvml.NVMLBackend] feeding the legacy NVLink sensor, the
-// collect GPU sensors (DCGM, plus NVML for compute processes), and the collect
-// NVML GPU inventory that architecture discovery and the node GPU count share;
+// On linux it is the collect GPU sensors (DCGM, plus NVML for compute processes
+// and NVLink), the collect NVML GPU inventory that architecture discovery and
+// the node GPU count share, and an [nvml.NVMLBackend] for legacy overrides;
 // off linux it is a stub that errors at Measure, keeping the command buildable
 // (and `version` runnable) while surfacing a clear runtime error if `run` is
 // invoked there.
@@ -180,8 +181,12 @@ func (a *App) WithNodeBackend(b toolkit.NodeBackend) *App {
 	return a
 }
 
-// WithNVLinkBackend overrides the NVLink sensor's backend (default: the shared
-// host NVML backend). See [App.WithGPUBackend] for attaching a probe.
+// WithNVLinkBackend replaces the NVLink domain's built-in collect sources
+// (DCGM for fabric registration, NVML for links, P2P, and fabric health) with a
+// legacy NVLink sensor over b. See [App.WithGPUBackend] for attaching a probe.
+//
+// Deprecated: pass a collect sensor and the NVLink signal IDs it replaces to
+// [App.WithCollect] instead.
 func (a *App) WithNVLinkBackend(b toolkit.NVLinkBackend) *App {
 	a.nvlink = b
 	return a
@@ -325,9 +330,9 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 // runCommand parses `run` flags, builds the catalog (applying any config
 // overrides and custom checks), and evaluates it against the six domain
 // sensors. Each sensor's backend is the caller's override if set, else the
-// default: the shared host NVML backend for gpu/nvlink, the host GPU inventory
-// for node, sysfs for cpu, and the system journal, through collect sensors,
-// for xid and the InfiniBand link-flap measurement.
+// default: the DCGM and NVML collect sensors for gpu and nvlink, the host GPU
+// inventory for node, sysfs for cpu, and the system journal, through collect
+// sensors, for xid and the InfiniBand link-flap measurement.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -467,16 +472,15 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 // sensors returns the legacy sensors and the collect-backed sensors, whose
 // sources are measured once now under cycle.
 func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
-	nvlink := a.nvlink
-	if nvlink == nil {
-		nvlink = a.host.nvlinkBackend()
-	}
 	var sensors []toolkit.Sensor
 	// Without an override, the GPU domain comes from builtinCollect.
 	if a.gpu != nil {
 		sensors = append(sensors, toolkit.NewGPUSensor(a.gpu))
 	}
-	sensors = append(sensors, toolkit.NewNVLinkSensor(nvlink))
+	// Without an override, the NVLink domain comes from builtinCollect.
+	if a.nvlink != nil {
+		sensors = append(sensors, toolkit.NewNVLinkSensor(a.nvlink))
+	}
 	// Without an override, the Xid domain comes from builtinCollect.
 	if a.xid != nil {
 		sensors = append(sensors, toolkit.NewXidSensor(a.xid))

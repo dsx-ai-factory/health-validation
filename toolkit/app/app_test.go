@@ -364,15 +364,25 @@ func (spyBackend) MeasureNVLink() ([]health.Measurement, error) { return nil, ni
 
 // gpuSpySensor stands in for the host's built-in GPU collect sensors. It
 // records whether it was measured and reports fakeHost's four GPUs as healthy
-// idle GB200s.
+// idle GB200s on a healthy NVLink fabric.
 type gpuSpySensor struct {
 	called *bool
 }
 
 func (gpuSpySensor) ID() string { return "test.gpu" }
 func (gpuSpySensor) Signals() collect.Signals {
-	return slices.Concat(dcgmGPUSignals, processGPUSignals)
+	return slices.Concat(dcgmGPUSignals, processGPUSignals, gpusignals.Interconnect(), collect.Signals{
+		gpusignals.FabricManagerStatus, gpusignals.NVLinkFabricBandwidthDegraded, gpusignals.NVLinkFabricRouteRecoveryActive,
+		gpusignals.NVLinkFabricRouteUnhealthy, gpusignals.NVLinkFabricAccessTimeoutRecovery,
+	})
 }
+
+// GB200 NVLink defaults the built-in checks expect.
+const (
+	spyGPUs      = 4
+	spyLinks     = 18
+	spyLinkSpeed = 53125
+)
 
 func (s gpuSpySensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	*s.called = true
@@ -383,9 +393,29 @@ func (s gpuSpySensor) Measure(_ context.Context, opts ...collect.OpOption) (*obs
 	}
 	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
 	now := timestamppb.Now()
-	for i := range 4 {
-		target := observation.GPUTarget(fmt.Sprintf("GPU-%d", i))
+	emit := func(signal collect.Signal, target *observation.ObservationTarget, value *observation.Value) {
+		batch.Observations = append(batch.Observations, &observation.Observation{
+			SignalId: signal.ID(), Source: s.ID(), Target: target, ObservedAt: now, Unit: signal.Unit(),
+			Outcome: &observation.Observation_Value{Value: value},
+		})
+	}
+	uintValue := func(v uint64) *observation.Value {
+		return &observation.Value{Kind: &observation.Value_UintValue{UintValue: v}}
+	}
+	perLink := map[collect.Signal]uint64{gpusignals.NVLinkState: 1, gpusignals.NVLinkEndpointSpeed: spyLinkSpeed}
+	for _, capability := range gpusignals.EndpointCapabilitySignals() {
+		perLink[capability] = 1
+	}
+	for i := range spyGPUs {
+		uuid := fmt.Sprintf("GPU-%d", i)
+		target := observation.GPUTarget(uuid)
 		for _, signal := range selected {
+			if v, ok := perLink[signal]; ok {
+				for link := range uint32(spyLinks) {
+					emit(signal, observation.NVLinkEndpointTarget(uuid, link), uintValue(v))
+				}
+				continue
+			}
 			value := &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: false}}
 			switch signal {
 			case gpusignals.PowerDraw:
@@ -396,15 +426,25 @@ func (s gpuSpySensor) Measure(_ context.Context, opts ...collect.OpOption) (*obs
 				value.Kind = &observation.Value_IntValue{IntValue: 0}
 			case gpusignals.ProcessCount:
 				value.Kind = &observation.Value_UintValue{UintValue: 0}
+			case gpusignals.FabricManagerStatus:
+				value.Kind = &observation.Value_IntValue{IntValue: gpusignals.FabricManagerStatusSuccess}
+			case gpusignals.NVLinkLinkCount:
+				value = uintValue(spyLinks)
+			case gpusignals.NVLinkSpeedCommon:
+				value = uintValue(spyLinkSpeed)
+			case gpusignals.NVLinkP2PStatus:
+				for peer := range spyGPUs {
+					if peer != i {
+						emit(signal, observation.GPUPairTarget(uuid, fmt.Sprintf("GPU-%d", peer)), uintValue(0))
+					}
+				}
+				continue
 			case gpusignals.ProcessCmdline:
 				batch.Observations = append(batch.Observations, observation.NewNoValueObservation(signal.ID(), signal.Unit(), s.ID(), target, now,
 					&observation.NoValue{Reason: observation.NoValueReasonNoTargets}))
 				continue
 			}
-			batch.Observations = append(batch.Observations, &observation.Observation{
-				SignalId: signal.ID(), Source: s.ID(), Target: target, ObservedAt: now, Unit: signal.Unit(),
-				Outcome: &observation.Observation_Value{Value: value},
-			})
+			emit(signal, target, value)
 		}
 	}
 	return batch, nil
@@ -697,6 +737,8 @@ func TestWithGPUBackendOverridesHost(t *testing.T) {
 	a := New()
 	a.host = fakeHost{b: spyBackend{called: &hostGPUCalled}}
 	a.WithGPUBackend(spyBackend{called: &overrideCalled})
+	// The host GPU sensors also feed NVLink, so keep NVLink off them too.
+	a.WithNVLinkBackend(spyBackend{called: new(bool)})
 	a.WithNodeID(testNodeID)
 	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
 

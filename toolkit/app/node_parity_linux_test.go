@@ -205,7 +205,8 @@ type discovery struct {
 func runCollect(t *testing.T, n parityNode) (discovery, health.NodeVerdict, int32) {
 	t.Helper()
 	inst := n.collectInstance()
-	a := New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})).WithGPUBackend(toolkit.MockGPU())
+	// The host GPU sensors also feed NVLink, so both domains stay off them.
+	a := New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})).WithGPUBackend(toolkit.MockGPU()).WithNVLinkBackend(spyBackend{called: new(bool)})
 	a.host = parityHost{inventory: gpuinventory.New(func() (gpuinventory.Reader, error) { return gpuinventory.NVML(inst), nil })}
 	cycle, err := newCycle(n.timeout())
 	if err != nil {

@@ -66,12 +66,14 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband"}},
-		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "node", "xid", "infiniband"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "infiniband"}},
-		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "infiniband"}},
-		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid"}},
+		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
+		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband", "nvlink"}},
+		{name: "GPU and NVLink overrides", app: New().WithGPUBackend(spyBackend{called: new(bool)}).WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband"}},
+		{name: "NVLink override", app: New().WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "node", "xid", "infiniband", "nvlink"}},
+		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "infiniband", "nvlink"}},
+		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "infiniband", "nvlink"}},
+		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)
@@ -85,7 +87,7 @@ func TestCollectSkipsUnselectedBridgeSources(t *testing.T) {
 	source := &collectAppSensor{}
 	a := New().WithCollect(source).WithCollectAdapters(customCountAdapter())
 	builtinSources, builtinAdapters := a.builtinCollect(nil)
-	sensors, err := a.collectSensors(time.Second, builtinSources, builtinAdapters, requiredSignals{health.NVLink: nil})
+	sensors, err := a.collectSensors(time.Second, builtinSources, builtinAdapters, requiredSignals{health.PCIe: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +545,7 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 					return collect.Signals{collect.NewSignal(customCountSignal, "1"), nil}
 				}}).WithCollectAdapters(customCountAdapter())
 			case "no adapter":
-				a.WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})).WithGPUBackend(spyBackend{called: new(bool)}).WithCollect(sensor)
+				a.WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})).WithGPUBackend(spyBackend{called: new(bool)}).WithNVLinkBackend(spyBackend{called: new(bool)}).WithCollect(sensor)
 			case "nil adapter":
 				a.WithCollect(sensor).WithCollectAdapters(nil)
 			case "typed nil adapter":

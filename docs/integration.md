@@ -99,7 +99,8 @@ docker run --rm \
 - `--network host`, the `libdcgm.so.4` mounts, and `LD_LIBRARY_PATH` let the
   CLI load the DCGM client and reach the host's DCGM hostengine on
   `localhost` — required for `gpu_average_power_draw`, `gpu_power_limit`,
-  `gpu_power_state`, and `gpu_sensor_throttle`. Without them those checks
+  `gpu_power_state`, `gpu_sensor_throttle`, and `nvlink_fabric`. Without them
+  those checks
   report a collection failure. The node must run `nv-hostengine`.
 - `--pid host` lets `gpu_compute_apps` see compute processes that other
   containers or the host run. NVML omits processes outside the caller's PID
@@ -136,8 +137,8 @@ link flags).
 
 The binary links NVML via cgo, so it is a Linux artifact and needs the NVIDIA
 driver and `libnvidia-ml` on the host at runtime (and `journalctl` on
-PATH for Xid checks). The GPU power, power-limit, pstate, and throttle checks
-read DCGM: the node must run the DCGM hostengine (`nv-hostengine`, listening on
+PATH for Xid checks). The GPU power, power-limit, pstate, and throttle checks,
+and `nvlink_fabric`, read DCGM: the node must run the DCGM hostengine (`nv-hostengine`, listening on
 `localhost`) and provide the DCGM 4 client library (`libdcgm.so.4`, from the
 DCGM package). If the hostengine is unreachable or the library is missing,
 those checks report a collection failure, never a PASS; the binary does not
@@ -258,7 +259,7 @@ An operator-approved namespace here means one allowed to use `hostPath`,
 | Kubernetes explicit mounts | The same read-only paths and `LD_LIBRARY_PATH` as the wrapper. `hostNetwork: true`, `hostPID: true`, `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities or `privileged`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
 | Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above, plus the `libdcgm.so.4` mounts and `LD_LIBRARY_PATH` of the explicit profile. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
 | GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | Checks outside the journal can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
-| GPU access but no DCGM | No host network, no `libdcgm.so.4`, or no `nv-hostengine` on the node. | Checks outside DCGM can run; `gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`, and `gpu_sensor_throttle` return collection-failure verdicts rather than PASS. |
+| GPU access but no DCGM | No host network, no `libdcgm.so.4`, or no `nv-hostengine` on the node. | Checks outside DCGM can run; `gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`, `gpu_sensor_throttle`, and `nvlink_fabric` return collection-failure verdicts rather than PASS. |
 
 The image runs as root by default. An explicitly non-root Docker user or pod
 may be viable only when its host-mapped UID/GID has journal-read permission;

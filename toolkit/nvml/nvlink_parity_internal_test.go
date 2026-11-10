@@ -37,8 +37,8 @@ import (
 
 // parityGPU is what NVML reports for one GPU. The legacy backend reads it
 // through a go-nvml mock; the collect path reads it through the collect NVML
-// sensor, plus a DCGM sensor that derives the fabric fields from the same
-// fabric info.
+// sensor, plus a DCGM sensor that derives the Fabric Manager status from the
+// same fabric info.
 type parityGPU struct {
 	inactive  map[int]bool
 	linkSpeed map[int]uint32
@@ -123,6 +123,10 @@ func (d *collectGPU) GetFieldValues(values []gonvml.FieldValue) gonvml.Return {
 	return d.gpu.fields(values)
 }
 
+func (d *collectGPU) GetFabricInfo() (gonvml.GpuFabricInfo_v3, gonvml.Return, gonvml.Return) {
+	return d.gpu.fabric, d.gpu.fabricRet, d.gpu.fabricRet
+}
+
 func (d *collectGPU) GetNvLinkState(link int) (gonvml.EnableState, gonvml.Return) {
 	return d.gpu.state(link)
 }
@@ -165,18 +169,14 @@ func (i *parityInstance) Read(read func(map[string]device.Device) error) error {
 	return read(i.devices)
 }
 
-var fabricSignals = collect.Signals{
-	gpusignals.FabricManagerStatus,
-	gpusignals.NVLinkFabricBandwidthDegraded,
-	gpusignals.NVLinkFabricRouteRecoveryActive,
-	gpusignals.NVLinkFabricRouteUnhealthy,
-	gpusignals.NVLinkFabricAccessTimeoutRecovery,
-}
+// fabricSignals are the NVLink signals the CLI reads from DCGM; the fabric
+// health bits come from the collect NVML sensor, as in toolkit/app.
+var fabricSignals = collect.Signals{gpusignals.FabricManagerStatus}
 
 // parityDCGM stands in for the DCGM sensor: field 170 is the Fabric Manager
-// status DCGM derives from the fabric info's state and status, field 174 its
-// health mask, a fabric call NVML reports unsupported is a NoValue, another
-// failed call a collection error, and an unknown health value a parse error.
+// status DCGM derives from the fabric info's state and status, a fabric call
+// NVML reports unsupported is a NoValue, and another failed call a collection
+// error.
 type parityDCGM struct {
 	block chan struct{}
 	gpus  []*parityGPU
@@ -244,18 +244,6 @@ func (d *parityDCGM) Measure(_ context.Context, opts ...collect.OpOption) (*obse
 			}
 		}
 		value(fabricSignals[0], target, &observation.Value{Kind: &observation.Value_IntValue{IntValue: status}})
-		for i, s := range fabricSignals[1:] {
-			switch bits := (g.fabric.HealthMask >> (2 * i)) & 0x3; bits {
-			case 0:
-				unsupported(s, target)
-			case 3:
-				if want[s.ID()] {
-					failure(s, target, observation.CollectionErrorCategoryParseError)
-				}
-			default:
-				value(s, target, &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: bits == 1}})
-			}
-		}
 	}
 	return batch, nil
 }
@@ -322,8 +310,9 @@ func legacyNVLink(t *testing.T, gpus []*parityGPU, failedSlots int, block chan s
 }
 
 // collectNVLink measures the same GPUs through the collect NVML sensor, the
-// DCGM fabric fields, the bridge, and the built-in NVLink adapter. Like the
-// app, it requests only the signals the runnable checks on arch require.
+// DCGM Fabric Manager status, the bridge, and the built-in NVLink adapter.
+// Like the app, it requests only the signals the runnable checks on arch
+// require.
 func collectNVLink(t *testing.T, arch string, gpus []*parityGPU, failedSlots int, timeout time.Duration, block chan struct{}) []health.Measurement {
 	t.Helper()
 	inst := &parityInstance{block: block, devices: make(map[string]device.Device)}
@@ -526,7 +515,7 @@ func TestNVLinkCollectParity(t *testing.T) {
 		{name: "disabled link past the reported count", shape: gb200, differs: []string{"nvlink_active"}, mutate: func(g []*parityGPU) {
 			g[0].links, g[0].answering, g[0].inactive = 17, 18, map[int]bool{17: true}
 		}},
-		// Legacy reads health value 3 as false; DCGM reports a parse error.
+		// Legacy reads health value 3 as false; the collect NVML sensor reports a parse error.
 		{name: "unknown fabric health value", shape: gb200, differs: []string{"nvlink_fabric_health"}, mutate: func(g []*parityGPU) {
 			g[0].fabric.HealthMask = 3 | 2<<2 | 2<<4 | 2<<6
 		}},

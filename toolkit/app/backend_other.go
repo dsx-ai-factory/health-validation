@@ -35,7 +35,7 @@ type unavailableGPUSensor struct{}
 
 func (unavailableGPUSensor) ID() string { return "gpu.unavailable" }
 func (unavailableGPUSensor) Signals() collect.Signals {
-	return slices.Concat(dcgmGPUSignals, processGPUSignals)
+	return slices.Concat(dcgmGPUSignals, processGPUSignals, dcgmNVLinkSignals, nvmlNVLinkSignals)
 }
 
 func (unavailableGPUSensor) Measure(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
