@@ -1415,10 +1415,11 @@ func TestRunCommandExecutionContextSelection(t *testing.T) {
 }
 
 func TestRunCommandCadenceAcceptsFoldedAndPaddedNames(t *testing.T) {
+	a := cadenceRunApp()
 	for _, name := range []string{"continuous", "  CONTINUOUS  "} {
 		t.Run(name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			if code := cadenceRunApp().runCommand([]string{"--node-id", testNodeID, "--cadence", name}, &stdout, &stderr); code == exitError {
+			if code := a.runCommand([]string{"--node-id", testNodeID, "--cadence", name}, &stdout, &stderr); code == exitError {
 				t.Fatalf("runCommand --cadence %q exit = %d; stderr = %q", name, code, stderr.String())
 			}
 			var v health.NodeVerdict

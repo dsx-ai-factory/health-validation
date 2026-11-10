@@ -16,6 +16,9 @@ const (
 	xid149Line = "NVRM: Xid (PCI:0018:01:00): 149, NETIR_LINK_EVT Fatal XC0 i0 Link 08 (0x004505c6 0x00000000)"
 	xid145Line = "NVRM: Xid (PCI:0000:5f:00): 145, RLW_REMAP Nonfatal XC0 i0 Link 02"
 	xid154Line = "NVRM: Xid (PCI:0000:01:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (GPU Reset Required)"
+
+	linkDown = "mlx5_core 0000:5a:00.0 enp90s0np0: Link down"
+	linkUp   = "mlx5_core 0000:5a:00.0 enp90s0np0: Link up"
 )
 
 type parityCase struct {
@@ -48,9 +51,15 @@ func parityCases() []parityCase {
 		{name: "Xid 145 nonfatal", node: xid(xid145Line), exit: exitOK},
 		{name: "Xid 154", node: xid(xid154Line), exit: exitOK},
 		{name: "unhealthy GPUs and CPUs", node: unhealthyGB200(), exit: exitUnhealthy},
-		{name: "missing GPU", node: healthyNode("NVIDIA GB200", 3, 1200, 34), exit: exitUnhealthy},
+		{name: "missing GPU", node: healthyNode("NVIDIA GB200", 3, 1200, 34, 53125), exit: exitUnhealthy},
 		{name: "one GPU's pstate unreadable", node: with(healthyGB200(), func(f *nodeFixture) { f.gpus[2].pstateFails = true }), exit: exitUnhealthy},
-		{name: "healthy H100", node: healthyNode("NVIDIA H100 80GB HBM3", 8, 700, 1), exit: exitOK},
+		{name: "inactive NVLink", node: with(healthyGB200(), func(f *nodeFixture) { f.gpus[1].inactive = 1 }), exit: exitUnhealthy},
+		{name: "fatal link flap", node: with(healthyGB200(), func(f *nodeFixture) { f.linkFlaps = []string{linkDown, linkUp} }), exit: exitUnhealthy},
+		{name: "link flap below the outage minimum", node: with(healthyGB200(), func(f *nodeFixture) {
+			f.linkFlaps = []string{linkDown, linkUp}
+			f.config = "checks:\n  rdma_linkflap_fatal:\n    min_outage_seconds: 120\n"
+		}), exit: exitOK},
+		{name: "healthy H100", node: healthyNode("NVIDIA H100 80GB HBM3", 8, 700, 1, 26562), exit: exitOK},
 	}
 }
 
@@ -64,10 +73,29 @@ func TestRunCollectParity(t *testing.T) {
 			if legacyExit != tc.exit || collectExit != tc.exit {
 				t.Errorf("exit = %d legacy, %d collect, want %d", legacyExit, collectExit, tc.exit)
 			}
+			unnameXidGPUs(&legacy)
+			unnameXidGPUs(&collected)
 			if diff := verdictDiff(legacy, collected); diff != "" {
 				t.Errorf("legacy (-) and collect (+) verdicts differ at %s", diff)
 			}
 		})
+	}
+}
+
+// unnameXidGPUs drops the GPU address that collect's Xid adapter names on
+// Xid results and the legacy Xid backend leaves empty; xid_collect_test.go
+// covers the naming.
+func unnameXidGPUs(v *health.NodeVerdict) {
+	for i, r := range v.CheckResults {
+		if r.Category == health.Xid {
+			v.CheckResults[i].AffectedEntities = nil
+			delete(v.CheckResults[i].ObservedValues, "pci_address")
+		}
+	}
+	for i, c := range v.AffectedComponents {
+		if c.Category == health.Xid {
+			v.AffectedComponents[i].Entities = nil
+		}
 	}
 }
 

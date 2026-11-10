@@ -1429,10 +1429,6 @@ func TestCollectSensorsRequestsOnlyRunnableCheckSignals(t *testing.T) {
 // its mapping cannot feed would silently skip. Every built-in check of a
 // collect-backed domain must therefore be fed by that domain's adapter, from
 // signals its built-in source declares.
-// legacyDefaultCategories are the built-in check domains the stock CLI still
-// collects with a legacy toolkit sensor by default.
-var legacyDefaultCategories = []health.Category{health.NVLink}
-
 func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 	sources, adapters := New().builtinCollect(nil)
 	adaptersByCategory := make(map[health.Category]int)
@@ -1440,12 +1436,8 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 		adaptersByCategory[adapter.Category()]++
 	}
 	for _, cd := range catalog.New().List(catalog.Filter{}) {
-		want := 1
-		if slices.Contains(legacyDefaultCategories, cd.Category) {
-			want = 0
-		}
-		if got := adaptersByCategory[cd.Category]; got != want {
-			t.Errorf("built-in check %s: category %s has %d built-in collect adapters, want %d", cd.ID, cd.Category, got, want)
+		if got := adaptersByCategory[cd.Category]; got != 1 {
+			t.Errorf("built-in check %s: category %s has %d built-in collect adapters, want 1", cd.ID, cd.Category, got)
 		}
 	}
 	var produced []string
@@ -1479,8 +1471,8 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 }
 
 // With no signals required, no collect source runs, so every sensor returned
-// is a legacy one.
-func TestDefaultRunHasNoUnlistedLegacySensors(t *testing.T) {
+// is a legacy one, and the stock CLI has none left.
+func TestDefaultRunHasNoLegacySensors(t *testing.T) {
 	a := New()
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	cycle, err := newCycle(time.Second)
@@ -1492,9 +1484,7 @@ func TestDefaultRunHasNoUnlistedLegacySensors(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, s := range sensors {
-		if !slices.Contains(legacyDefaultCategories, categoryBySensor[s.Name()]) {
-			t.Errorf("default run collects %q with a legacy sensor", s.Name())
-		}
+		t.Errorf("default run collects %q with a legacy sensor", s.Name())
 	}
 }
 
