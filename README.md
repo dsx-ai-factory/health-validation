@@ -7,7 +7,7 @@ NVIDIA Health Validation runs on a GPU node, evaluates hardware and driver state
 The repository is `github.com/dsx-ai-factory/health-validation`. It is a single Go module, released under one version tag, whose main packages are:
 
 - **`catalog`** (`…/health-validation/catalog`): Check definitions, threshold logic, severity classifications, and a CEL-based evaluation engine. No hardware dependency. Import this if you already collect GPU telemetry and want NVIDIA's operational judgment applied to your signal stream.
-- **`toolkit`** (`…/health-validation/toolkit`): Sensor implementations (including NVML-backed GPU collection and CPU collection from Linux sysfs), mock backends for testing, and a `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Import this if you want the full working sensor and evaluation stack.
+- **`toolkit`** (`…/health-validation/toolkit`): A `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Its `toolkit/app` package holds the CLI and the built-in collection wiring (DCGM and NVML for GPUs, sysfs for CPU, the kernel journal for Xid and RDMA link flap, all through `collect` sensors). Import these if you want the full working sensor and evaluation stack.
 
 `toolkit` depends on `catalog`; import `toolkit` to get both.
 
@@ -187,7 +187,7 @@ The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.j
 Sensor.Measure() --> []Measurement --> Catalog.EvaluateAll() --> NodeVerdict
 ```
 
-Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor reading Linux sysfs (the CLI collects CPU through `collect/sensors/cpu`), an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
+Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The CLI reads GPUs and NVLink through DCGM and NVML, CPU through Linux sysfs, and Xid and RDMA link flap through the kernel journal, all as `collect` sensors whose observations the toolkit adapts into measurements. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
 
 The CPU sensor counts the logical CPUs in `/sys/devices/system/cpu/possible` and `/sys/devices/system/cpu/online`, and the NUMA nodes in `/sys/devices/system/node/online`. The `cpu_count` check requires no operator configuration and reports CRITICAL when a kernel-possible CPU is not online. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM or machine-SKU count, process affinity, or cgroup CPU limits.
 

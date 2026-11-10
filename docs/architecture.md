@@ -12,7 +12,7 @@
 | <nobr>`catalog/nvlink`</nobr> | `nvlink.NVLinkMeasurement` struct and its NVLink check definitions (`NVLinkActive`, `NVLinkFabricHealth`, `NVLinkFabric`, `NVLinkBandwidthCountSpeed`, `NVLinkCapabilities`, `NVLinkP2P`). |
 | <nobr>`catalog/infiniband`</nobr> | `infiniband.LinkFlapMeasurement` struct and the `RDMALinkFlapFatal` check definition (category `infiniband`). |
 | <nobr>`catalog/xid`</nobr> | `xid.XidMeasurement` struct and the Xid check factory `xid.Checks()`, which returns one CRITICAL check per critical Xid code, architecture-scoped WARNING checks, the `gpu_xid_154` check, which reports the recovery action Xid 154 last requested for each GPU, `gpu_xid_informational`, which reports the Xid codes NVIDIA's catalog gives no resolution, and `gpu_xid_unknown`, which reports Xid codes no registered check covers. |
-| <nobr>`toolkit`</nobr> | The `Sensor` interface, `Collect()` / `CollectWithOptions()`, the bridge that runs collect sensors and adapts their observations into measurements, and the deprecated legacy RDMA link-flap backend. |
+| <nobr>`toolkit`</nobr> | The `Sensor` interface, `Collect()` / `CollectWithOptions()`, and the bridge that runs collect sensors and adapts their observations into measurements. |
 | <nobr>`catalog/internal/celeval`</nobr> | Evaluates CEL expressions from check `Rule` definitions against signal values and resolved thresholds. Not a public API. |
 | <nobr>`catalog/internal/evaluation`</nobr> | Orchestrates a single check evaluation: filters by architecture/context, resolves threshold overrides, calls CEL, returns `CheckVerdict`. Not a public API. |
 | <nobr>`toolkit/cmd/health-validation`</nobr> | Binary entry point. Subcommands: `run`, `collect`, `version`. |
@@ -20,10 +20,10 @@
 ## Data flow
 
 ```
-collect.Sensor.Measure()                  toolkit.Sensor.Measure()
-    --> ObservationBatch                      (legacy backends)
-        --> collect adapter                       |
-            --> []health.Measurement <------------+
+collect.Sensor.Measure()
+    --> ObservationBatch
+        --> collect adapter
+            --> []health.Measurement
         --> Catalog.EvaluateAll()
             --> per-category check routing
                 --> CEL evaluation per check
@@ -47,7 +47,7 @@ The `numa_node_count` check compares the online NUMA node count against `expecte
 
 `health-validation collect` runs the same sensors without evaluating any checks and prints the measurements as one `ObservationBatch` (protojson). An optional config's check IDs select which sensor domains run; without one, every built-in domain runs. Use it to retain node-local evidence and evaluate it separately from acquisition. See the README for the output shape.
 
-To add a sensor for a new hardware domain: define a measurement struct in `catalog/<domain>/`, declare a backend interface in `toolkit/`, implement a sensor wrapping it, and add a mock constructor.
+To add a sensor for a new hardware domain: define a measurement struct in `catalog/<domain>/`, a `collect.Sensor` that reports its signals, a signal mapping in `toolkit/observations`, and a built-in adapter registered in `builtinCollect` (`toolkit/app/collect.go`).
 
 ## Collect bridge
 
@@ -193,7 +193,7 @@ Skips never count toward `overall_severity`, so read `skipped_checks`. `SENSOR_M
 
 Differences between domains:
 
-- The Xid reader proves a clean scan with a scan marker and a kernel-scoped probe. An empty result alone is not a clean scan. The RDMA link-flap reader still uses the legacy `journalctl` backend, whose probe accepts any entry in the current boot's journal, not only kernel messages.
+- The Xid and RDMA link-flap readers prove a clean scan with a scan marker and a kernel-scoped probe. An empty result alone is not a clean scan, so a user who can read only their own journal gets a collection failure, not a PASS.
 - GPU count proves zero from the inventory read itself. `NO_TARGETS` on a per-GPU signal never proves a node has no GPUs.
 - When a source says `NOT_SUPPORTED`, seven signals read as not asserted: the three hardware-slowdown bits and the four NVLink fabric-health bits (`unsupportedIsNeutral` in `toolkit/observations/mapping.go`). The Fabric Manager status reads as registration incomplete (`unsupportedValue`).
 - The NVLink converter (`toolkit/observations/nvlink.go`) follows the legacy NVML reads. A link state NVML reports as `ERROR_NOT_SUPPORTED` is not counted as inactive, and reported for the whole GPU it means the GPU has no NVLink. An unsupported common speed falls back to the slowest per-link speed. `NO_TARGETS` on the P2P status means a GPU with no peers.

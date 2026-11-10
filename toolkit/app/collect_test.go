@@ -66,10 +66,9 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink", "infiniband"}},
+		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
 		// A claim replaces a built-in source's signals, not the source list.
-		{name: "CPU claimed", app: withCPU(New(), healthyCPU()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink", "infiniband"}},
-		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink"}},
+		{name: "CPU claimed", app: withCPU(New(), healthyCPU()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)
@@ -603,9 +602,9 @@ func TestWithCollectReservesEveryCategoryAdapterName(t *testing.T) {
 		configure func(*App)
 		name      string
 	}{
-		{name: "gpu"},    // built-in active
-		{name: "nvlink"}, // built-in active
-		{name: "infiniband", configure: func(a *App) { a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()) }},
+		{name: "gpu"},        // built-in active
+		{name: "nvlink"},     // built-in active
+		{name: "infiniband"}, // built-in active
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			sensor := &collectAppSensor{}

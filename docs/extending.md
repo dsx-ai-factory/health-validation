@@ -292,9 +292,7 @@ Where the signal comes from depends on what reads it:
   sensors supply it from the sessions health-validation already holds, and only
   when a check that will run needs it. Power draw and limits, performance state,
   and the hardware slowdown signals come from DCGM, with no NVML fallback when
-  DCGM cannot read them; the rest come from NVML. The built-in GPU sensors stop
-  only when `WithGPUBackend` and `WithNVLinkBackend` are both set; then the
-  signal needs a sensor of your own.
+  DCGM cannot read them; the rest come from NVML.
 - **Any other signal:** register a collect sensor that produces it, claiming
   the signal IDs it supplies:
   `a.WithCollect(mysensor.New(), mysignals.All().IDs()...)`.

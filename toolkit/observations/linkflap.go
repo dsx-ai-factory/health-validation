@@ -29,8 +29,7 @@ var linkFlapSignals = func() map[string]bool {
 }()
 
 // linkFlapSinceUnknown labels a failed measurement whose scan reported no
-// window. Every window lies within the current boot, and the legacy sensor
-// labels its failures the same way.
+// window. Every window lies within the current boot.
 const linkFlapSinceUnknown = "boot"
 
 // linkFlapTimeLayout renders journal times as the legacy reader's

@@ -67,10 +67,6 @@ type CollectAdapter interface {
 // Timeout blocking is keyed by sensor ID, not the underlying source. Shared
 // NVML/DCGM sources must prevent new calls while a timed-out call is running.
 // Late results never replace a cached timeout result.
-// Each built-in domain is collected by its legacy sensor or by its built-in
-// collect sensor, never both. For a domain still on a legacy sensor, override
-// its legacy backend with an empty provider when an adapter supplies that
-// domain's measurements instead.
 func (a *App) WithCollect(sensor collect.Sensor, signalIDs ...string) *App {
 	a.collectSources = append(a.collectSources, collectSource{sensor: sensor, claims: slices.Clone(signalIDs)})
 	return a
@@ -104,8 +100,7 @@ func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 // the json-tagged field of M it sets; see [observations.NewGPUConverter] for
 // what M needs. Register it with [App.WithCollectAdapters]. A signal the
 // built-in GPU sensors read, such as ECC or the performance state, needs no
-// sensor unless [App.WithGPUBackend] and [App.WithNVLinkBackend] together
-// replace them; any other needs a sensor registered with [App.WithCollect].
+// sensor; any other needs a sensor registered with [App.WithCollect].
 // DCGM supplies power, performance state and hardware slowdown with no NVML
 // fallback; NVML supplies the rest. It
 // builds an M only for the GPUs its signals report, so a GPU no source reports
@@ -174,15 +169,18 @@ var (
 	}, gpusignals.EndpointCapabilitySignals())
 )
 
-// builtinCollect returns the stock CLI's collect-backed domains. NVLink and
-// RDMA link flap still yield to a With*Backend override. The node domain and
-// the GPU power-draw gate read the host GPU inventory that architecture
-// discovery already read in cycle, so they do not enumerate GPUs again.
+// builtinCollect returns the stock CLI's collect-backed domains. The node
+// domain and the GPU power-draw gate read the host GPU inventory that
+// architecture discovery already read in cycle, so they do not enumerate GPUs
+// again.
 func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectAdapter) {
 	inventory := a.host.gpuInventory()
 	// The host GPU sensors also feed NVLink; a source left with no requested
 	// signals does not run.
-	sources := slices.Concat(a.host.gpuSensors(), []collect.Sensor{cpusensor.New(nil), inventory.Sensor(), xidsensor.New(nil)})
+	sources := slices.Concat(a.host.gpuSensors(), []collect.Sensor{
+		cpusensor.New(nil), inventory.Sensor(), xidsensor.New(nil),
+		linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)),
+	})
 	adapters := []CollectAdapter{
 		powerDrawGate{
 			CollectAdapter: collectadapters.GPU(),
@@ -199,11 +197,8 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 		collectadapters.XID(func() map[string]string {
 			return gpuinventory.UUIDsByPCI(inventory.Cached(cycle))
 		}),
+		collectadapters.InfiniBand(),
 		collectadapters.NVLink(),
-	}
-	if a.rdmaLinkFlap == nil {
-		sources = append(sources, linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)))
-		adapters = append(adapters, collectadapters.InfiniBand())
 	}
 	return sources, adapters
 }

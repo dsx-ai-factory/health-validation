@@ -26,8 +26,7 @@
 // The GPU, NVLink, node, CPU, Xid, and RDMA link-flap domains come from collect
 // sensors (DCGM and NVML, the host's NVML GPU inventory, sysfs, and the
 // journal); [App.WithCollect] replaces a built-in source by claiming its
-// signals. [App.WithRDMALinkFlapBackend] still swaps in a legacy toolkit
-// sensor. Custom checks register alongside the built-ins as a pure
+// signals. Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
 // honored verbatim. Registration fails only on the catalog's own validation
 // or a duplicate ID.
@@ -89,11 +88,10 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 
 // hostBackend is the platform-split source of the built-in GPU data sources.
 // On linux it is the collect GPU sensors (DCGM, plus NVML for compute processes
-// and NVLink), the collect NVML GPU inventory that architecture discovery and
-// the node GPU count share, and an [nvml.NVMLBackend] for legacy overrides;
-// off linux it is a stub that errors at Measure, keeping the command buildable
-// (and `version` runnable) while surfacing a clear runtime error if `run` is
-// invoked there.
+// and NVLink) and the collect NVML GPU inventory that architecture discovery
+// and the node GPU count share; off linux it is a stub that errors at Measure,
+// keeping the command buildable (and `version` runnable) while surfacing a
+// clear runtime error if `run` is invoked there.
 type hostBackend interface {
 	gpuSensors() []collect.Sensor
 	gpuInventory() *gpuinventory.Inventory
@@ -106,9 +104,6 @@ type App struct {
 	host        hostBackend
 	hostname    func() (string, error)
 	openJournal func() (io.WriteCloser, error)
-	// rdmaLinkFlap is the legacy link-flap override set by
-	// WithRDMALinkFlapBackend; nil uses the built-in collect sensor.
-	rdmaLinkFlap toolkit.RDMALinkFlapBackend
 	// prog is the program name used in usage and error-message prefixes. It
 	// defaults to filepath.Base(os.Args[0]); see WithProgramName.
 	prog            string
@@ -143,17 +138,6 @@ func (a *App) WithChecks(defs ...health.CheckDefinition) *App {
 	return a
 }
 
-// WithRDMALinkFlapBackend replaces the collect sensor that reads mlx5 RDMA
-// link transitions from the system journal, which feeds the built-in
-// rdma_linkflap_fatal check, with a legacy toolkit link-flap sensor over b.
-//
-// Deprecated: pass a collect sensor and the link-flap signal IDs it replaces
-// to [App.WithCollect] instead.
-func (a *App) WithRDMALinkFlapBackend(b toolkit.RDMALinkFlapBackend) *App {
-	a.rdmaLinkFlap = b
-	return a
-}
-
 // WithStderrLogging installs a text slog handler writing to Run's stderr, at
 // debug level under --verbose and info otherwise. It mutates the process-wide
 // slog default; it is how the stock binary keeps its stderr logging. Without
@@ -180,8 +164,8 @@ func (a *App) WithNodeID(id string) *App {
 
 // Close shuts down the App's host backend, the built-in DCGM and NVML
 // connections. Call it when you are done with the App; [App.Run] leaves them
-// open so one App can run more than once. Backends installed via the
-// With*Backend setters are the caller's to manage and are not closed here.
+// open so one App can run more than once. Collect sensors passed to
+// [App.WithCollect] are the caller's to manage and are not closed here.
 func (a *App) Close() error { return a.host.close() }
 
 // Run is the health-validation CLI entrypoint:
@@ -376,14 +360,9 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-// sensors returns the legacy sensors and the collect-backed sensors, whose
+// sensors returns the collect-backed sensors, whose
 // sources are measured once now under cycle.
 func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
-	var sensors []toolkit.Sensor
-	// Without an override, the link-flap measurement comes from builtinCollect.
-	if a.rdmaLinkFlap != nil {
-		sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(a.rdmaLinkFlap))
-	}
 	builtinSources, builtinAdapters := a.builtinCollect(cycle)
 	if xidJournal != nil {
 		for i, source := range builtinSources {
@@ -392,12 +371,7 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 			}
 		}
 	}
-	collectSensors, err := a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
-	if err != nil {
-		return nil, err
-	}
-	sensors = append(sensors, collectSensors...)
-	return sensors, nil
+	return a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
 }
 
 // publishMetrics pushes the verdict to the configured OTLP endpoint. It is a
@@ -537,10 +511,6 @@ func xidJournalFromFlags(fs *flag.FlagSet) (collect.Sensor, error) {
 	return sensor, nil
 }
 
-var categoryBySensor = map[string]health.Category{
-	"rdma_linkflap": health.InfiniBand,
-}
-
 // collectCommand runs only the sensors selected by checks listed in config.
 func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" collect", flag.ContinueOnError)
@@ -659,14 +629,11 @@ func collectionSensors(sensors []toolkit.Sensor, categories map[health.Category]
 	selected := make([]toolkit.Sensor, 0, len(categories))
 	covered := make(map[health.Category]bool)
 	for _, sensor := range sensors {
-		category, ok := categoryBySensor[sensor.Name()]
 		// Collect adapters declare their category; their names are arbitrary.
-		if bridged, isBridged := sensor.(*collectbridge.Sensor); isBridged {
-			category, ok = bridged.Category(), true
-		}
-		if ok && categories[category] {
+		bridged, ok := sensor.(*collectbridge.Sensor)
+		if ok && categories[bridged.Category()] {
 			selected = append(selected, sensor)
-			covered[category] = true
+			covered[bridged.Category()] = true
 		}
 	}
 	for category := range categories {

@@ -18,7 +18,6 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
 	"github.com/dsx-ai-factory/health-validation/collect/source/nvml/device"
-	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
@@ -111,7 +110,7 @@ func runDiscovery(t *testing.T, inst nvmlsource.Instance) (health.NodeVerdict, i
 		t.Fatal(err)
 	}
 	cpuCalls := 0
-	a := New().WithProgramName("test").WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	a := withCleanLinkFlap(New().WithProgramName("test"))
 	withCleanXid(withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 1, online: 1, numa: 34}))
 	a.host = inventoryHost{
 		fakeHost:  fakeHost{b: spyBackend{called: new(bool)}},

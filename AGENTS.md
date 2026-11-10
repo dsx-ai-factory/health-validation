@@ -150,7 +150,7 @@ This repo is a **hardware health check catalog and evaluation engine** for NVIDI
 The repo is **one Go module** (`github.com/dsx-ai-factory/health-validation`) with a single `go.mod`, a single `go.sum`, and one version: a `vX.Y.Z` tag releases everything. Import paths are the module path plus the directory, so every package below is imported as `github.com/dsx-ai-factory/health-validation/<dir>`. A dependency pin therefore changes the versions linked into every binary built from the repo.
 
 - **`catalog/`** — the check catalog and evaluation engine. Self-contained: `health/` (shared vocabulary), `internal/{celeval,evaluation}/`, the `catalog` package at the directory root, the per-domain check packages (`cpu/`, `gpu/`, `node/`, `nvlink/`, `xid/`), and the catalog-only codegen/dump binaries under `cmd/`. No dependency on the toolkit.
-- **`toolkit/`** — sensors, the NVML backend (`nvml/`), and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on `catalog/` and `collect/`.**
+- **`toolkit/`** — the collect bridge and adapters, and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on `catalog/` and `collect/`.**
 - **`collect/`** — raw collection library (sensors and sources); no dependency on the catalog or toolkit.
 - **`agentkit/`** — in-repo agent scaffolding and examples.
 
@@ -166,14 +166,13 @@ The dependency direction is strict: `catalog → (nothing)`, `collect → (nothi
 
 **`catalog/internal/evaluation/`** — orchestrates a single check evaluation: filters by architecture/context, resolves threshold overrides, calls CEL, returns `CheckVerdict`.
 
-**`toolkit/`** — integration layer for consumers. Defines `Sensor`, `Collect()` (runs sensors → evaluates catalog → node verdict), the collect bridge that turns collect sensors into toolkit sensors (`internal/collectbridge`, `internal/collectadapters`, `observations`), and the deprecated `JournalctlRDMALinkFlap` command backend (the CLI collects RDMA link flaps through `collect/sensors/linkflap`).
+**`toolkit/`** — integration layer for consumers. Defines `Sensor`, `Collect()` (runs sensors → evaluates catalog → node verdict), the collect bridge that turns collect sensors into toolkit sensors (`internal/collectbridge`, `internal/collectadapters`, `observations`).
 
 #### Data flow
 
 ```
 collect.Sensor.Measure() → ObservationBatch       (once per cycle, toolkit/internal/collectbridge)
   → collect adapter → []Measurement                (toolkit/internal/collectadapters, toolkit/observations)
-toolkit.Sensor.Measure() → []Measurement           (legacy backends: With*Backend overrides, domains not yet on collect)
   → Catalog.EvaluateAll()
     → For each Measurement, find matching checks by Category
       → evaluation.Engine: check prerequisites, resolve thresholds, run CEL rules
@@ -195,7 +194,7 @@ The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PAS
 - **Collect sensor** — implements `collect.Sensor` (in `collect/sensors/`) and reports raw observations for the signals it declares. It knows nothing about checks.
 - **Adapter** — a `CollectAdapter` that assembles one catalog domain's measurements from observations. Built-in adapters live in `toolkit/internal/collectadapters`, mapped by `toolkit/observations`. The bridge in `toolkit/internal/collectbridge` runs each source once per cycle and exposes each adapter as a `toolkit.Sensor` for `Collect`.
 
-`App.WithCollect(sensor, signalIDs...)` replaces a built-in source for the signals it claims; `App.WithCollectAdapters` adds caller adapters. The bridge (`toolkit/internal/collectbridge`) runs each source once per collection cycle and logs one warning per distinct source, operation, and error category that times out or fails as a whole, or for any failed read of a node-wide sensor such as CPU sysfs (not for errors on individual GPUs). Only the deprecated RDMA link-flap override still uses a legacy `toolkit.Sensor` backend.
+`App.WithCollect(sensor, signalIDs...)` replaces a built-in source for the signals it claims; `App.WithCollectAdapters` adds caller adapters. The bridge (`toolkit/internal/collectbridge`) runs each source once per collection cycle and logs one warning per distinct source, operation, and error category that times out or fails as a whole, or for any failed read of a node-wide sensor such as CPU sysfs (not for errors on individual GPUs).
 
 #### Adding a sensor for a new domain
 
@@ -245,8 +244,6 @@ If the dep ends up linked into the CLI, `toolkit/cmd/health-validation/SHIPPED_M
 **Check dependencies** — `Dependencies` declares that another check's observed Critical or Unknown rule result explains this one's inability to collect. It is not a prerequisite relation: checks never read each other's results, so a dependency that did not run has no effect, and a dependent whose signals are readable always evaluates. Its only effect is naming the cause on a verdict for an entity this check could not read at all, which requires the collection errors to cover every signal the measurement carries. A dependent may declare architectures its dependency lacks, so the built-in edges only take effect on GB200/GB300 where `gpu_count` applies.
 
 **BUILD files** — Gazelle manages `BUILD.bazel` files. After adding or removing `.go` files or changing imports, run `bazel run //tools/gazelle` to regenerate. Do not hand-edit dep lists that Gazelle owns.
-
-**Mock constructors** — test doubles use exported constructor functions that return the interface (e.g. `MockRDMALinkFlap(...)`, `MockCommandExecutor(...)`), not exported mock structs. The underlying type stays unexported.
 
 **Example tests** — every `agentkit/examples/*` program keeps a `main_test.go` that runs its wiring (signal selection, sensor and catalog construction) without hardware under `bazel test //...`. Examples only fail at runtime against real sources, so CI's compile check alone misses a signal or check the example's sensors reject.
 

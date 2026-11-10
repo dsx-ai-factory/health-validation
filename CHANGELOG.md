@@ -81,7 +81,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   as the legacy toolkit sensors, except as listed below. Collection-failure
   messages now name the collect source and operation, for example
   `cpu.sysfs operation "read /sys/devices/system/cpu/online" failed with …`.
-  Each domain's `With*Backend` setter still selects its legacy sensor.
   - CPU and NUMA: only the collection-failure wording changes. ([#135](https://github.com/dsx-ai-factory/health-validation/pull/135))
   - Xid: ([#179](https://github.com/dsx-ai-factory/health-validation/pull/179))
     - An Xid line with a device address that cannot be parsed fails every Xid
@@ -96,8 +95,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     - An Xid entry stamped in the future after a clock step fails the Xid
       checks until the clock passes it.
     - `WithCollect` must claim all Xid signals or none, and the collect adapter
-      name `xid` is reserved. `toolkit.Journalctl` and `App.WithXidBackend` are
-      deprecated.
+      name `xid` is reserved.
   - Xid per GPU: each Xid check gives one result per GPU and names it in
     `affected_entities`, and `occurrences` counts per GPU. The defaults are 1,
     so this matters only with an override. ([#231](https://github.com/dsx-ai-factory/health-validation/pull/231))
@@ -134,21 +132,49 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     - `App.Run` no longer closes the host's DCGM and NVML connections; call
       `App.Close` when done with the App.
 
-- The legacy toolkit sensors for the CPU, GPU, node, NVLink, and Xid domains
-  are removed with their backends and mocks: `CPUBackend`, `CPUSensor`,
-  `SysfsCPU`, `MockCPU`, `GPUBackend`, `GPUSensor`, `MockGPU`, `NodeBackend`,
-  `NodeSensor`, `MockNode`, `NVLinkBackend`, `NVLinkSensor`, `MockNVLink`,
-  `XidBackend`, `XidSensor`, `Journalctl`, `MockXid`, `LazyGPUBackend`,
-  `MultiBackend`, and the `toolkit/nvml` package. So are `App.WithGPUBackend`,
-  `WithNodeBackend`, `WithCPUBackend`, `WithXidBackend`, `WithNVLinkBackend`,
-  and `App.NVMLBackend` with its probe API, and the opt-in generic InfiniBand
-  sensor (`IBBackend`, `IBSensor`, `NewIBSensor`, `App.WithIBBackend`).
-  For your own InfiniBand measurements, register a collect sensor and adapter
-  with `WithCollect` and `WithCollectAdapters`. To replace a built-in source, pass
-  a collect sensor and the signal IDs it supplies to `WithCollect`; for per-GPU
-  signals of your own, register a `GPUAdapter`. To test without hardware, pass
-  any `toolkit.Sensor` to `toolkit.Collect`, or claim signals from an
-  in-memory collect sensor (see `docs/faq.md`). The stock CLI is unaffected.
+- The legacy toolkit sensors are removed. The CLI has collected every
+  built-in domain through `collect` sensors since the changes above, so the
+  stock CLI is unaffected. Library callers migrate as follows:
+  - `App.WithCPUBackend`, `WithGPUBackend`, `WithNodeBackend`,
+    `WithNVLinkBackend`, `WithXidBackend`, and `WithRDMALinkFlapBackend`:
+    pass a `collect.Sensor` and the signal IDs it supplies to
+    `App.WithCollect`, for example
+    `WithCollect(sensor, observations.MappedSignalsFor(health.CPU)...)`. Claim
+    only signals a registered adapter reads: `cpusignals.All()` also holds
+    activity signals no adapter reads, and claiming one fails registration.
+    The claimed signals replace the built-in source's; the built-in adapter
+    still builds the domain's measurements.
+  - `CPUBackend`, `CPUSensor`, `NewCPUSensor`, and `SysfsCPU`: use
+    `collect/sensors/cpu`.
+  - `GPUBackend`, `GPUSensor`, `NewGPUSensor`, `NodeBackend`, `NodeSensor`,
+    `NewNodeSensor`, `NVLinkBackend`, `NVLinkSensor`, `NewNVLinkSensor`,
+    `MultiBackend`, `LazyGPUBackend`, and the `toolkit/nvml` package
+    (`NVMLBackend`, `New`, `NewWithLibrary`, `DeviceProber`, `ProbeContext`,
+    `ProbeDevice`, `Error`): use `collect/sensors/nvml` and
+    `collect/sensors/dcgm`.
+  - `App.NVMLBackend` and its `WithGPUProbe` and `WithNVLinkProbe` probes:
+    for a per-GPU check of your own, read the signal through a `GPUAdapter`
+    (`docs/extending.md`); a signal the built-in GPU sources do not produce
+    needs a collect sensor registered with `WithCollect`. There is no
+    per-link replacement for `WithNVLinkProbe`: a per-link signal needs your
+    own collect sensor, adapter, and checks (`WithCollect`,
+    `WithCollectAdapters`, `WithChecks`).
+  - `toolkit.Collect` no longer skips a sensor whose `ResourceKey` matches one
+    that already timed out. Only the removed GPU, node, and NVLink sensors
+    shared a backend that way; each sensor now gets its own timeout.
+  - `XidBackend`, `XidSensor`, `NewXidSensor`, and `Journalctl`: use
+    `collect/sensors/xid`.
+  - `RDMALinkFlapBackend`, `RDMALinkFlapSensor`, `NewRDMALinkFlapSensor`,
+    `JournalctlRDMALinkFlap`, `RDMALinkFlapOption`, `WithLinkFlapLookback`, and
+    `WithLinkFlapBootOffset`: use `collect/sensors/linkflap` with its
+    `WithLookback` and `WithBootOffset` options.
+  - `IBBackend`, `IBSensor`, `NewIBSensor`, and `App.WithIBBackend`, the opt-in
+    generic InfiniBand sensor the CLI never wired: register your own collect
+    sensor with `WithCollect` and its adapter with `WithCollectAdapters`.
+  - `MockCPU`, `MockGPU`, `MockNode`, `MockNVLink`, `MockXid`, and
+    `MockRDMALinkFlap`: to test without hardware, pass any `toolkit.Sensor`
+    that returns fixed measurements to `toolkit.Collect`, or claim signals from
+    an in-memory collect sensor with `WithCollect` (`docs/faq.md`).
 
 ### Features
 

@@ -307,7 +307,7 @@ func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
 func TestRunCommandPassesDriverVersion(t *testing.T) {
 	a := New().WithProgramName("test").WithChecks(driverEchoCheck())
 	a.host = fakeHost{b: spyBackend{called: new(bool)}, driver: echoedDriverVersion}
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 	// A caller adapter carries the echo into an otherwise stock run.
 	withShadow(a, shadowAdapter{name: "driver-echo", category: health.Node, ms: []health.Measurement{driverEchoMeasurement{}}})
@@ -526,7 +526,7 @@ func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 		return "  " + hostname + "  ", nil
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 
 	var stdout, stderr bytes.Buffer
@@ -626,7 +626,7 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 
 	var stdout, stderr bytes.Buffer
@@ -649,7 +649,7 @@ func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 
 	var stdout, stderr bytes.Buffer
@@ -703,7 +703,7 @@ func TestWithCollectReplacesSysfsCPU(t *testing.T) {
 	a := New()
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanXid(withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 8, online: 8, numa: 34}))
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	withCleanLinkFlap(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitOK {
@@ -749,7 +749,7 @@ func TestNUMANodeCountReachesVerdict(t *testing.T) {
 	a := New()
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanXid(withCPU(a, cpuAppSensor{possible: 8, online: 8, numa: 33}))
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	withCleanLinkFlap(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitUnhealthy {

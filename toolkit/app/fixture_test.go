@@ -12,8 +12,8 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
-	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 )
 
@@ -71,16 +71,31 @@ func withCleanXid(a *App) *App {
 	return a.WithCollect(xidAppSensor{calls: &calls, obs: []*observation.Observation{xidAppMarker()}}, xidsignals.All().IDs()...)
 }
 
-// testApp runs off the host: fake GPUs and inventory, a healthy CPU, and an
-// empty link-flap journal. Xid still reads the journal; see cadenceRunApp.
+// withCleanLinkFlap replaces the built-in journal link-flap source with a
+// clean scan.
+func withCleanLinkFlap(a *App) *App {
+	calls := 0
+	return a.WithCollect(linkFlapAppSensor{calls: &calls, obs: []*observation.Observation{linkFlapAppMarker()}}, ibsignals.LinkFlapSignals().IDs()...)
+}
+
+// baseTestApp runs off the host on fake GPUs and inventory.
+func baseTestApp() *App {
+	a := New().WithProgramName("test")
+	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	return a
+}
+
+// testApp runs off the host: fake GPUs and inventory, a healthy CPU, and a
+// clean link-flap scan. Xid still reads the journal; see cadenceRunApp.
 func testApp() *App { return testAppWithCPU(healthyCPU()) }
 
 func testAppWithCPU(cpu cpuAppSensor) *App {
-	a := New().WithProgramName("test")
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	return withCPU(a, cpu)
+	return withCleanLinkFlap(withCPU(baseTestApp(), cpu))
 }
+
+// builtinLinkFlapApp is cadenceRunApp with the built-in journal link-flap
+// source.
+func builtinLinkFlapApp() *App { return withCleanXid(withCPU(baseTestApp(), healthyCPU())) }
 
 // cadenceRunApp is testApp with a clean Xid scan, so a run touches no host
 // source.
