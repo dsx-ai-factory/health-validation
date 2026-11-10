@@ -157,6 +157,11 @@ The `v0.1.x` lines are EOL. These lines predate the single-module layout and
 were tagged per module; the first `vX.Y.Z` release replaces this table with
 single-tag lines.
 
+Every version of the per-module `catalog`, `collect`, and `toolkit` modules is
+retracted in favor of the root module. Builds that pin one keep working, but
+`go list -m -u` warns about it and `@latest` resolves to the root module. See
+[RELEASE.md](./RELEASE.md#retired-per-module-tags).
+
 Maintainers update this table and the release notes when final releases change
 the supported lines. Backport requests should identify the affected supported
 line. Maintainers evaluate security and critical fixes for Maintenance lines

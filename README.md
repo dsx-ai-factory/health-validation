@@ -268,6 +268,17 @@ Import the module:
 go get github.com/dsx-ai-factory/health-validation@latest
 ```
 
+Install the CLI:
+
+```shell
+go install github.com/dsx-ai-factory/health-validation/toolkit/cmd/health-validation@latest
+```
+
+The CLI links NVML and DCGM through cgo, so this needs a C compiler. It also
+needs Go 1.21 or later, which downloads the Go 1.27.3 toolchain that `go.mod`
+requires. Older distribution packages, such as Ubuntu 22.04's `golang-go`
+(1.18), cannot.
+
 Build the binary from source:
 
 ```shell

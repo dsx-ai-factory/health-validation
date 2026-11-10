@@ -84,6 +84,39 @@ A minor release goes through QA as an RC, without freezing `main`:
 Because the module lives at the repository root, `go get
 github.com/dsx-ai-factory/health-validation@vX.Y.Z` resolves the tag directly.
 
+## Retired per-module tags
+
+`catalog/vX.Y.Z`, `collect/vX.Y.Z`, and `toolkit/vX.Y.Z` tags belong to the
+modules that were merged into the root module. They remain on the Go module
+proxy, and Go prefers the longest matching module path, so they would otherwise
+shadow the root module: `go install …/toolkit/cmd/health-validation@latest`
+picks `toolkit@v0.3.2`, whose `go.mod` has `replace` directives that
+`go install` rejects.
+
+One final version of each retired module retracts every earlier version:
+`catalog/v0.3.3`, `collect/v0.3.1`, and `toolkit/v0.3.3`. Each tag points at a
+commit outside `main` and every release branch, holding only that module's
+`go.mod`:
+
+```text
+// Deprecated: merged into github.com/dsx-ai-factory/health-validation; depend on that module instead.
+module github.com/dsx-ai-factory/health-validation/toolkit
+
+// No code here; 1.16 is the minimum that supports retract.
+go 1.16
+
+// Merged into github.com/dsx-ai-factory/health-validation.
+retract [v0.0.0-0, v0.3.3]
+```
+
+`catalog` uses `catalog` and `v0.3.3`; `collect` uses `collect` and `v0.3.1`.
+Do not add a `go.mod` under `catalog/`, `collect/`, or `toolkit/` on `main` or a
+release branch: it would split the root module again. These tags do not match
+`v*`, so they do not trigger a release.
+
+Retraction does not break builds that pin a retired version; it only flags it
+and stops `@latest` and `go get -u` from choosing it.
+
 ## Who can trigger a release
 
 Any [maintainer](MAINTAINERS.md) can cut a release by pushing a tag in the
