@@ -105,9 +105,10 @@ func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 // the json-tagged field of M it sets; see [observations.NewGPUConverter] for
 // what M needs. Register it with [App.WithCollectAdapters]. A signal the
 // built-in GPU sensors read, such as ECC or the performance state, needs no
-// sensor unless [App.WithGPUBackend] replaces them; any other needs a sensor
-// registered with [App.WithCollect]. DCGM supplies power, performance state
-// and hardware slowdown with no NVML fallback; NVML supplies the rest. It
+// sensor unless [App.WithGPUBackend] and [App.WithNVLinkBackend] together
+// replace them; any other needs a sensor registered with [App.WithCollect].
+// DCGM supplies power, performance state and hardware slowdown with no NVML
+// fallback; NVML supplies the rest. It
 // builds an M only for the GPUs its signals report, so a GPU no source reports
 // has no result. A signal the built-in GPU adapter also reads, such as the
 // performance state, may be read too, but into a field of M's own name: a

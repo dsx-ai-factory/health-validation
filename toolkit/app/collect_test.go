@@ -105,8 +105,8 @@ func TestDefaultLegacySensorsAreOnlyUnmigratedDomains(t *testing.T) {
 			legacy = append(legacy, typ.Elem().Name())
 		}
 	}
-	if want := []string{"NVLinkSensor"}; !slices.Equal(legacy, want) {
-		t.Fatalf("default legacy sensors = %v, want %v; new production domains must use collect sensors", legacy, want)
+	if len(legacy) != 0 {
+		t.Fatalf("default legacy sensors = %v, want none; production domains must use collect sensors", legacy)
 	}
 }
 
@@ -669,8 +669,8 @@ func TestWithCollectReservesEveryCategoryAdapterName(t *testing.T) {
 		configure func(*App)
 		name      string
 	}{
-		{name: "gpu"},    // built-in active
-		{name: "nvlink"}, // domain still on its legacy sensor
+		{name: "gpu"}, // built-in active
+		{name: "nvlink", configure: func(a *App) { a.WithNVLinkBackend(spyBackend{called: new(bool)}) }},
 		{name: "xid", configure: func(a *App) { a.WithXidBackend(xidSpyBackend{called: new(bool)}) }},
 		{name: "infiniband", configure: func(a *App) { a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()) }},
 	} {

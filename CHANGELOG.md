@@ -98,7 +98,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `gpu.clock.hardware_thermal_slowdown.active`, and
   `gpu.clock.hardware_power_brake_slowdown.active`. A signal such as ECC or
   row remapping therefore needs only a `GPUAdapter`, unless `WithGPUBackend`
-  is set. A `WithCollect` claim on any of these signals still takes
+  and `WithNVLinkBackend` are both set. A `WithCollect` claim on any of these signals still takes
   precedence over the built-in source.
 - `health.KeyOf` treats a zero `EntityKey` as unset and keys the measurement
   by its `EntityID`, so a measurement embedding `observations.Entity` that a
