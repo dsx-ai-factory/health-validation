@@ -66,6 +66,8 @@ type CheckDefinition struct {
 // Architectures must be a key. Value may be omitted only when that coverage
 // is complete; unrestricted checks (empty Architectures) still need a Value.
 //
+// Only UNKNOWN and CRITICAL rules may recommend [OperationalDrain].
+//
 // Every threshold must declare a ValueType, and each catalog-authored
 // value must be coercible to it and within any declared bounds. Validate
 // reports those problems without rewriting anything; [Catalog.Register]
@@ -85,6 +87,16 @@ func (cd CheckDefinition) Validate() error {
 	}
 	if slices.ContainsFunc(cd.RequiredSignals, func(s string) bool { return strings.TrimSpace(s) == "" }) {
 		return fmt.Errorf("check %q: RequiredSignals has a blank signal name", cd.ID)
+	}
+
+	for _, rule := range cd.Rules {
+		action := cd.RecommendedAction
+		if rule.HasRecommendedAction() {
+			action = rule.RecommendedAction
+		}
+		if err := validateRecommendedAction(cd.ID, rule.Severity, action); err != nil {
+			return err
+		}
 	}
 
 	for _, name := range names {

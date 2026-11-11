@@ -150,7 +150,7 @@ Prerequisite declares a minimum software requirement for a check.
 
 ### RecommendedAction
 
-RecommendedAction is the structured remediation a check carries. OperationalState is the high-level state change to apply; RemediationActions is the ordered sequence of remediation steps a cluster operator's remediation engine should work through, and is only meaningful (and only emitted in JSON) when OperationalState is [OperationalDrain]. Use [Drain] / [Monitor] / [NoAction] for readable call sites instead of constructing the struct directly.
+RecommendedAction is the structured remediation a check carries. OperationalState is the high-level state change to apply; RemediationActions is the ordered sequence of remediation steps a cluster operator's remediation engine should work through, and is only meaningful (and only emitted in JSON) when OperationalState is [OperationalDrain] or [OperationalMonitor]. Use [Drain] / [MonitorWith] / [Monitor] / [NoAction] for readable call sites instead of constructing the struct directly.
 
 | Field | JSON name | Type | Description |
 |---|---|---|---|
@@ -267,8 +267,8 @@ OperationalState names the node-level state change a verdict recommends. It is t
 | Name | JSON value | Description |
 |---|---|---|
 | <nobr>`OperationalReady`</nobr> | <nobr>`ready`</nobr> | OperationalReady is the zero value: the node stays ready for work and no node-level action is recommended. |
-| <nobr>`OperationalMonitor`</nobr> | <nobr>`monitor`</nobr> | OperationalMonitor keeps the node in service but flags the finding for trending; no action required right now. |
-| <nobr>`OperationalDrain`</nobr> | <nobr>`drain`</nobr> | OperationalDrain removes the node from scheduling so the finding can be remediated. The accompanying [RemediationAction] sequence names the specific remediation steps. |
+| <nobr>`OperationalMonitor`</nobr> | <nobr>`monitor`</nobr> | OperationalMonitor keeps the node in service but flags the finding for trending. The accompanying [RemediationAction] sequence names the recommended corrective steps. |
+| <nobr>`OperationalDrain`</nobr> | <nobr>`drain`</nobr> | OperationalDrain removes the node from scheduling so the finding can be remediated. The accompanying [RemediationAction] sequence names the specific remediation steps. Only CRITICAL and UNKNOWN results may recommend it; see [CheckDefinition.Validate]. |
 
 ### Provenance
 

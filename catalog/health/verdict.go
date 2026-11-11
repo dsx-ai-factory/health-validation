@@ -50,10 +50,10 @@ type CheckVerdict struct {
 // NodeVerdictSchemaVersion is the current JSON schema version for
 // [NodeVerdict], using MAJOR.MINOR versioning. Downstream consumers must
 // check this field before acting on a verdict; an unrecognised or missing
-// value must be treated as untrusted output. Increment MAJOR on any breaking
-// change to the NodeVerdict JSON shape (removed fields, renamed fields,
-// changed semantics); increment MINOR for additive fields, enum values, or
-// outcomes. When this changes, update catalog/health/node-verdict.schema.json to match.
+// value must be treated as untrusted output. Before 1.0, increment MINOR for
+// contract changes, including breaking changes. From 1.0, increment MAJOR for
+// breaking changes and MINOR for additive changes. When this changes, update
+// catalog/health/node-verdict.schema.json to match.
 const NodeVerdictSchemaVersion = "0.6"
 
 // NodeVerdict aggregates per-check verdicts into a node-level
@@ -157,13 +157,14 @@ func AggregateNodeVerdict(verdicts []CheckVerdict) NodeVerdict {
 }
 
 // nodeRecommendedAction selects one check's complete remediation sequence for
-// the node. Severity wins first, then remediation steps are compared by their
-// documented ranks in sequence order.
+// the node. Drain wins over monitor, then severity and the remediation steps'
+// documented ranks decide the sequence.
 func nodeRecommendedAction(verdicts []CheckVerdict) RecommendedAction {
 	var selected *CheckVerdict
 	for i := range verdicts {
 		candidate := &verdicts[i]
-		if candidate.RecommendedAction.OperationalState != OperationalDrain ||
+		state := candidate.RecommendedAction.OperationalState
+		if (state != OperationalDrain && state != OperationalMonitor) ||
 			len(candidate.RecommendedAction.RemediationActions) == 0 {
 			continue
 		}
@@ -181,10 +182,14 @@ func nodeRecommendedAction(verdicts []CheckVerdict) RecommendedAction {
 }
 
 // nodeRemediationOutranks reports whether candidate should replace selected.
-// The higher severity wins; at equal severity, the sequences are compared step
-// by step and the first higher-ranked step wins. Check ID breaks ties between
-// different checks; action names stabilize repeated check IDs.
+// Drain wins over monitor, then higher severity wins. At equal severity, the
+// sequences are compared step by step and the first higher-ranked step wins.
+// Check ID breaks ties between different checks; action names stabilize
+// repeated check IDs.
 func nodeRemediationOutranks(candidate, selected CheckVerdict) bool {
+	if candidate.RecommendedAction.OperationalState != selected.RecommendedAction.OperationalState {
+		return candidate.RecommendedAction.OperationalState == OperationalDrain
+	}
 	if candidate.Severity != selected.Severity {
 		return candidate.Severity > selected.Severity
 	}
