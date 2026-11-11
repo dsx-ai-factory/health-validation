@@ -3,24 +3,30 @@
 
 package xid
 
-import "github.com/dsx-ai-factory/health-validation/catalog/internal/scope"
+import (
+	"slices"
 
-// ScopeObservedValues implements [scope.Scoper]: a check from [Checks]
-// reports only its own events, grouped, and count entries. The catch-all
-// checks report the codes no other check covers.
-func (XidMeasurement) ScopeObservedValues(req scope.Request) map[string]any {
+	"github.com/dsx-ai-factory/health-validation/catalog/internal/scope"
+)
+
+// ScopeObservedValues implements [scope.Scoper]: a check from [Checks], or
+// a consumer's check with [Accumulator.CoveredCodes], reports only its own
+// events, grouped, and count entries. The catch-all checks report the codes
+// no other check covers. Any other check reports every code.
+func (m XidMeasurement) ScopeObservedValues(req scope.Request) map[string]any {
 	switch req.CheckID {
 	case unknownCheckID:
-		return checkScope{rest: isUnknown}.apply(req.Observed)
+		return checkScope{rest: m.coverage.isUnknown}.apply(req.Observed)
 	case informationalCheckID:
-		return checkScope{rest: isInformational}.apply(req.Observed)
+		return checkScope{rest: m.coverage.isInformational}.apply(req.Observed)
 	}
-	s, ok := checkScopes[req.CheckID]
-	if !ok {
-		// shortcut: a custom Xid check is not in checkScopes, so it reports every code; add a way to declare its code if users ask.
-		return req.Observed
+	if s, ok := checkScopes[req.CheckID]; ok {
+		return s.apply(req.Observed)
 	}
-	return s.apply(req.Observed)
+	if codes, ok := m.coverage[req.CheckID]; ok {
+		return checkScope{rest: func(code int64) bool { return slices.Contains(codes, code) }}.apply(req.Observed)
+	}
+	return req.Observed
 }
 
 // checkScope is what one check from [Checks] judges: an Xid code, an

@@ -5,6 +5,7 @@ package xid_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -141,5 +142,67 @@ func TestXidInformational_ReportsOnlyInfoEventsAndCounts(t *testing.T) {
 	unknown, _ := json.Marshal(u.ObservedValues[xid.SignalUnknownXidCounts])
 	if string(unknown) != `{"9999":1}` {
 		t.Errorf("unknown_xid_counts = %s, want only 9999", unknown)
+	}
+}
+
+// customXidCheck is a consumer's check on one Xid code.
+func customXidCheck(code int64) health.CheckDefinition {
+	return health.CheckDefinition{
+		ID:              fmt.Sprintf("custom_xid_%d", code),
+		Name:            "Custom Xid",
+		Category:        health.Xid,
+		RequiredSignals: []string{xid.SignalGPUID, xid.SignalPCIAddress, xid.SignalXidCounts, xid.SignalEvents},
+		Rules: []health.Rule{{
+			Expression: fmt.Sprintf("%d in xid_counts", code),
+			Severity:   health.Warning,
+			Message:    "custom Xid seen",
+		}},
+	}
+}
+
+// A consumer's check covers its codes once the accumulator is told so: the
+// catch-all checks stop reporting them, and the check's verdict lists only
+// its own events. Without that, both report the code and the custom check
+// lists every event.
+func TestCoveredCodes_CustomCheck(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		opts        []catalog.Option
+		wantUnknown health.Severity
+		wantInfo    health.Severity
+		wantEvents  int
+	}{
+		{name: "not declared", wantUnknown: health.Warning, wantInfo: health.Info, wantEvents: 3},
+		{
+			name: "declared",
+			opts: []catalog.Option{catalog.WithAccumulator(xid.Accumulator{
+				CoveredCodes: map[string][]int64{"custom_xid_9999": {9999, 63}},
+			})},
+			wantUnknown: health.Pass, wantInfo: health.Pass, wantEvents: 2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := append([]catalog.Option{catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra)}, tc.opts...)
+			cat := catalog.New(opts...)
+			cat.MustRegister(customXidCheck(9999))
+			// 13 has a built-in check, 63 is IGNORE in NVIDIA's catalog.
+			nv, err := cat.EvaluateAll(measurementFor(13, 9999, 63))
+			if err != nil {
+				t.Fatalf("EvaluateAll: %v", err)
+			}
+			if v := unknownVerdict(t, nv); v.Severity != tc.wantUnknown {
+				t.Errorf("%s = %v, want %v", unknownID, v.Severity, tc.wantUnknown)
+			}
+			if v, _ := checkResult(nv, informationalID); v.Severity != tc.wantInfo {
+				t.Errorf("%s = %v, want %v", informationalID, v.Severity, tc.wantInfo)
+			}
+			v, ok := checkResult(nv, "custom_xid_9999")
+			if !ok || v.Severity != health.Warning {
+				t.Fatalf("custom_xid_9999 = %+v, want WARNING", v)
+			}
+			if events, _ := v.ObservedValues[xid.SignalEvents].([]xid.XidEvent); len(events) != tc.wantEvents {
+				t.Errorf("custom_xid_9999 events = %+v, want %d", events, tc.wantEvents)
+			}
+		})
 	}
 }

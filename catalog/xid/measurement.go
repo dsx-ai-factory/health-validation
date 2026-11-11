@@ -159,6 +159,8 @@ type XidMeasurement struct {
 	RecoveryActionCounts   map[string]int64 `json:"recovery_action_counts,omitempty"`
 	UnknownXidCounts       map[int64]int64  `json:"unknown_xid_counts,omitempty"`
 	InformationalXidCounts map[int64]int64  `json:"informational_xid_counts,omitempty"`
+	// coverage is set by the [Accumulator] that refined the measurement.
+	coverage coverage
 	// GPUID is the GPU's UUID as NVML reports it, empty when the PCI
 	// address did not resolve to one.
 	GPUID string `json:"gpu_id"`

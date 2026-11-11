@@ -31,7 +31,14 @@ func (XidMeasurement) RefinedSignals() []string { return DerivedSignals() }
 // when one was collected too. The refined measurement replaces the
 // collected one, so a check reading a derived signal still sees the GPU's
 // identity and events.
-type Accumulator struct{}
+type Accumulator struct {
+	// CoveredCodes names, by check ID, the Xid codes a consumer's own
+	// checks cover, beyond the built-in checks. A covered code is not
+	// reported by gpu_xid_unknown or gpu_xid_informational, and a check
+	// listed here reports only its codes' events. Register the accumulator
+	// with [catalog.WithAccumulator] to replace the built-in one.
+	CoveredCodes map[string][]int64
+}
 
 var (
 	_ health.Accumulator = Accumulator{}
@@ -57,12 +64,12 @@ func (Accumulator) Derived() []string { return DerivedSignals() }
 
 // Accumulate implements [health.Accumulator]. It returns one refined
 // measurement per collected XidMeasurement, in order.
-func (Accumulator) Accumulate(measurements []health.Measurement) ([]health.Measurement, error) {
+func (a Accumulator) Accumulate(measurements []health.Measurement) ([]health.Measurement, error) {
 	driverVersion := collectedDriverVersion(measurements)
 	var out []health.Measurement
 	for _, m := range measurements {
 		if x, ok := m.(XidMeasurement); ok {
-			out = append(out, refine(x, driverVersion))
+			out = append(out, refine(x, coverage(a.CoveredCodes), driverVersion))
 		}
 	}
 	return out, nil
@@ -82,7 +89,7 @@ func collectedDriverVersion(measurements []health.Measurement) health.DriverVers
 
 // refine fills in x's derived fields. driverVersion is for derivations
 // whose meaning changed between driver releases; none here is one yet.
-func refine(x XidMeasurement, _ health.DriverVersion) XidMeasurement {
+func refine(x XidMeasurement, covered coverage, _ health.DriverVersion) XidMeasurement {
 	// Every derived signal is read from the events. If they could not be
 	// collected, the derived signals fail with them rather than reading
 	// empty: an empty count reads as "no fault" and the checks would PASS.
@@ -94,8 +101,9 @@ func refine(x XidMeasurement, _ health.DriverVersion) XidMeasurement {
 	}
 	x.SubXidCodeCounts = subXidCodeCounts(x.Events)
 	x.RecoveryActionCounts = recoveryActionCounts(x.Events, x.EntityID())
-	x.UnknownXidCounts = x.unknownCounts()
-	x.InformationalXidCounts = x.informationalCounts()
+	x.UnknownXidCounts = x.countsWhere(covered.isUnknown)
+	x.InformationalXidCounts = x.countsWhere(covered.isInformational)
+	x.coverage = covered
 	return x
 }
 
