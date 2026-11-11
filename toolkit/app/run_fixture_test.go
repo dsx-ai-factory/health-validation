@@ -272,12 +272,15 @@ func fixtureEntryTime(start time.Time, i int) time.Time {
 	return start.Add(time.Duration(i) * time.Minute)
 }
 
+const fixtureNoiseEntry = "usb 1-1: new high-speed USB device number 2"
+
 // fixtureJournal stands in for journalctl, printing lines as kernel entries of
 // the current boot. The leading unrelated entry keeps a clean fixture from
-// failing as an empty journal; the legacy mocks ignore it.
+// failing as an empty journal; the legacy Xid mock gets it too so sequence
+// numbers agree.
 func fixtureJournal(lines []string) journal.Runner {
 	start := time.Now().Add(-30 * time.Minute)
-	entries := append([]string{"usb 1-1: new high-speed USB device number 2"}, lines...)
+	entries := append([]string{fixtureNoiseEntry}, lines...)
 	return func(_ context.Context, _ []string, stdout, _ io.Writer) error {
 		for i, m := range entries {
 			message, err := json.Marshal(m)
@@ -350,7 +353,9 @@ func fixtureApp(f nodeFixture, fromCollect bool) *App {
 		a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{
 			PossibleCPUCount: int64(f.possibleCPUs), OnlineCPUCount: int64(f.onlineCPUs), NUMANodeCount: int64(f.numaNodes),
 		}))
-		a.WithXidBackend(toolkit.MockXid(f.xid...))
+		// Keep the unrelated leading entry so Xid sequence numbers match
+		// the collect path's journal positions.
+		a.WithXidBackend(toolkit.MockXid(append([]string{fixtureNoiseEntry}, f.xid...)...))
 	}
 	a.host = host
 	return a
