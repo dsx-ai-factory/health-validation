@@ -87,40 +87,6 @@ type UnsupportedSignaler interface {
 	UnsupportedSignals() []string
 }
 
-// DerivedSignaler is an optional interface a measurement may implement
-// to expose signals it computes rather than stores.
-//
-// Signals are ordinarily the measurement struct's own json-tagged
-// fields, which means a sensor has to compute anything a rule needs.
-// That is the right split for facts a sensor can read off the wire, but
-// not for values that require catalog knowledge — a vendor decode
-// table, or a correlation across events that only means something in
-// light of one. Implementing this interface keeps that reasoning in the
-// catalog while still presenting the result to CEL as an ordinary
-// signal.
-//
-// host is what the run knows about the node rather than about this
-// measurement (see [Host]), for a derivation whose meaning depends on
-// it. It is handed to the derivation rather than copied onto each
-// measurement, so a measurement carries only what was collected and a
-// node fact has one source.
-//
-// The returned map's *key set must depend on neither the measurement's
-// data nor the host*. Routing and the signal-uniqueness check ask a zero
-// value, with a zero Host, which signals a type carries (see the
-// evaluation package's SchemaKeys), so a key that appears only once some
-// field is populated or some host fact is known would be invisible to
-// them, and a check requiring it would never be routed a measurement.
-// Return every key every time, with an empty or nil value when there is
-// nothing to report.
-//
-// Keys must also not collide with the type's own json field names. A
-// derived signal takes precedence on collision, which silently shadows
-// the field rather than failing.
-type DerivedSignaler interface {
-	DerivedSignals(host Host) map[string]any
-}
-
 // EntityIdentifier is an optional interface a measurement may implement
 // to name the entity it describes — a GPU UUID, a device path.
 //

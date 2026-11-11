@@ -6,15 +6,12 @@ package evaluation
 import (
 	"reflect"
 	"strings"
-
-	"github.com/dsx-ai-factory/health-validation/catalog/health"
 )
 
 // ToSignals converts a typed measurement struct, or a pointer to one,
 // into the map[string]any that CEL evaluation expects. Keys are derived
-// from json struct tags, plus anything the measurement computes via
-// [health.DerivedSignaler], which is given host.
-func ToSignals(m any, host health.Host) map[string]any {
+// from json struct tags.
+func ToSignals(m any) map[string]any {
 	v := reflect.Indirect(reflect.ValueOf(m))
 	t := v.Type()
 
@@ -25,11 +22,6 @@ func ToSignals(m any, host health.Host) map[string]any {
 			continue
 		}
 		out[key] = v.Field(i).Interface()
-	}
-	if d, ok := m.(health.DerivedSignaler); ok {
-		for key, value := range d.DerivedSignals(host) {
-			out[key] = value
-		}
 	}
 	return out
 }
@@ -51,32 +43,12 @@ func fieldSignalKey(f reflect.StructField) (string, bool) {
 	return key, true
 }
 
-// FieldKeys returns only the signal names a measurement type's own
-// json-tagged fields declare, excluding anything [health.DerivedSignaler]
-// contributes. [SchemaKeys] folds the two together because routing does
-// not care where a signal came from; telling them apart is what lets a
-// caller detect a derived name shadowing a field.
-func FieldKeys(m any) []string {
-	t := reflect.TypeOf(m)
-	if t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	keys := make([]string, 0, t.NumField())
-	for i := range t.NumField() {
-		if key, ok := fieldSignalKey(t.Field(i)); ok {
-			keys = append(keys, key)
-		}
-	}
-	return keys
-}
-
 // SchemaKeys returns the signal names a measurement type's schema carries
 // — the json-tagged field names [ToSignals] would emit. Routing and the
 // signal-uniqueness check reason about a measurement type's schema
-// through it, from a zero value and a zero Host rather than a populated
-// instance — which is why a derived key set may depend on neither.
+// through it, from a zero value rather than a populated instance.
 func SchemaKeys(m any) []string {
-	signals := ToSignals(m, health.Host{})
+	signals := ToSignals(m)
 	keys := make([]string, 0, len(signals))
 	for k := range signals {
 		keys = append(keys, k)
