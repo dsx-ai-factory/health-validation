@@ -101,6 +101,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     - `WithCollect` must claim all Xid signals or none, and the collect adapter
       name `xid` is reserved. `toolkit.Journalctl` and `App.WithXidBackend` are
       deprecated.
+  - Xid per GPU: each Xid check gives one result per GPU and names it in
+    `affected_entities`, and `occurrences` counts per GPU. The defaults are 1,
+    so this matters only with an override. ([#231](https://github.com/dsx-ai-factory/health-validation/pull/231))
   - Node GPU count and architecture discovery: a driver that hangs during
     discovery ends in a discovery-failure verdict after the collection timeout
     instead of hanging the run. ([#195](https://github.com/dsx-ai-factory/health-validation/pull/195))
@@ -114,6 +117,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
       checks it feeds fail.
     - Power comes from DCGM in watts, so `observed_values` can differ from
       NVML's by a fraction of a watt.
+  - RDMA link flap: ([#236](https://github.com/dsx-ai-factory/health-validation/pull/236))
+    - A user who can read only their own journal entries, not the kernel's,
+      now gets UNKNOWN with `check_collection`. The legacy probe found the
+      user's entries and passed, so non-root runs, such as Slurm jobs, go from
+      exit 0 to exit 1.
+    - A line that looks like an mlx5 link transition but does not parse fails
+      `rdma_linkflap_fatal` with `check_collection`; the legacy sensor skipped
+      it.
+    - A transition counts only when the message starts with `mlx5_core`, so
+      another subsystem's line that mentions the driver no longer counts.
   - Across domains:
     - Per-GPU results are ordered by GPU identity rather than NVML index.
     - Architecture discovery that finds NVML busy with an earlier call in the
