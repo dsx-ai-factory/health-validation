@@ -25,11 +25,9 @@ const (
 	SignalSubXidCodeCounts       = "sub_xid_code_counts"
 	SignalUnknownXidCounts       = "unknown_xid_counts"
 	SignalInformationalXidCounts = "informational_xid_counts"
-	// SignalRecoveryActionCounts is derived rather than stored; see
-	// [XidMeasurement.DerivedSignals].
-	SignalRecoveryActionCounts = "recovery_action_counts"
-	SignalSince                = "since"
-	SignalEventCount           = "event_count"
+	SignalRecoveryActionCounts   = "recovery_action_counts"
+	SignalSince                  = "since"
+	SignalEventCount             = "event_count"
 )
 
 var measurementSignals = []string{
@@ -145,16 +143,22 @@ type NVLink5Detail struct {
 // FatalXidCounts is the same shape, but counts only occurrences NVRM
 // itself marked Fatal; today that is populated exclusively by the
 // NVLink5 family (Xid 144-150) since no other Xid code's log line
-// carries a fatal/nonfatal distinction. The sub_xid_code_counts signal
-// is derived from Events rather than stored (see [XidMeasurement.DerivedSignals]):
-// it is keyed by [XidEvent.SubXidCode] (e.g. "149.4") instead of the
-// bare Xid code, so a check can act on one documented fault subtype
-// rather than the whole code. Events preserves the full per-occurrence
-// detail — process name, PCI address, pid, and (for 144-150) NVLink5 —
-// for message interpolation and richer rules.
+// carries a fatal/nonfatal distinction. Events preserves the full
+// per-occurrence detail — process name, PCI address, pid, and (for
+// 144-150) NVLink5 — for message interpolation and richer rules.
+//
+// The derived fields say what the events mean, such as which fault
+// subtype each is. Sensors leave them empty; the catalog's [Accumulator]
+// fills them in before checks run, so every source of Xid events is
+// interpreted the same way.
 type XidMeasurement struct {
 	XidCounts      map[int64]int64 `json:"xid_counts"`
 	FatalXidCounts map[int64]int64 `json:"fatal_xid_counts"`
+	// Derived; see [Accumulator].
+	SubXidCodeCounts       map[string]int64 `json:"sub_xid_code_counts,omitempty"`
+	RecoveryActionCounts   map[string]int64 `json:"recovery_action_counts,omitempty"`
+	UnknownXidCounts       map[int64]int64  `json:"unknown_xid_counts,omitempty"`
+	InformationalXidCounts map[int64]int64  `json:"informational_xid_counts,omitempty"`
 	// GPUID is the GPU's UUID as NVML reports it, empty when the PCI
 	// address did not resolve to one.
 	GPUID string `json:"gpu_id"`

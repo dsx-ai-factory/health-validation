@@ -350,7 +350,7 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 			if err := json.Unmarshal(stdout.Bytes(), &actual); err != nil {
 				t.Fatal(err)
 			}
-			cat, _, err := buildCatalog(nil, mixedChecks(), "GB200", health.DriverVersion{}, health.OperatorInfra)
+			cat, _, err := buildCatalog(nil, mixedChecks(), "GB200", health.OperatorInfra)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1408,7 +1408,7 @@ func TestCollectSensorsRequestsOnlyRunnableCheckSignals(t *testing.T) {
 			for i := range test.runnable {
 				runnable = append(runnable, &test.runnable[i])
 			}
-			sensors, err := New().collectSensors(time.Second, []collect.Sensor{source}, []CollectAdapter{collectadapters.CPU()}, requiredFor(runnable))
+			sensors, err := New().collectSensors(time.Second, []collect.Sensor{source}, []CollectAdapter{collectadapters.CPU()}, requiredFor(catalog.NewEmpty(), runnable))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1441,14 +1441,14 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 				fed[s] = true
 			}
 		}
-		for _, cd := range catalog.New().List(catalog.Filter{}) {
-			if cd.Category != adapter.Category() {
-				continue
-			}
-			for _, s := range cd.RequiredSignals {
+		cat := catalog.New()
+		for _, cd := range cat.List(catalog.Filter{}) {
+			// A check reading a derived signal is fed through what the
+			// catalog derives it from.
+			for _, s := range cat.CollectedSignals(cd)[adapter.Category()] {
 				// gpu_id comes from each observation's GPU target.
 				if !fed[s] && s != gpu.SignalGPUID {
-					t.Errorf("built-in check %s requires %q, which adapter %q does not feed", cd.ID, s, adapter.Name())
+					t.Errorf("built-in check %s needs %q collected, which adapter %q does not feed", cd.ID, s, adapter.Name())
 				}
 			}
 		}
@@ -1459,7 +1459,7 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 // collected and the CPU measurement carries a failure for it. cpu_count must
 // still pass: a measurement error fails only checks requiring that signal.
 func TestCollectSensorsUncollectedSiblingSignalLeavesCheckPassing(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "H100", health.DriverVersion{}, health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, nil, "H100", health.OperatorInfra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1471,7 +1471,7 @@ func TestCollectSensorsUncollectedSiblingSignalLeavesCheckPassing(t *testing.T) 
 		"sys/devices/system/cpu/possible": {Data: []byte("0-143\n")},
 		"sys/devices/system/cpu/online":   {Data: []byte("0-143\n")},
 	}
-	sensors, err := New().collectSensors(time.Second, []collect.Sensor{cpusensor.New(sysfs)}, []CollectAdapter{collectadapters.CPU()}, requiredFor(runnable))
+	sensors, err := New().collectSensors(time.Second, []collect.Sensor{cpusensor.New(sysfs)}, []CollectAdapter{collectadapters.CPU()}, requiredFor(cat, runnable))
 	if err != nil {
 		t.Fatal(err)
 	}

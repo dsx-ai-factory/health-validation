@@ -6,14 +6,12 @@ go_library(
     name = "gpuinventory",
     srcs = [
         "architecture.go",
-        "driver_version.go",
         "inventory.go",
         "nvml_linux.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory",
     visibility = ["//toolkit:__subpackages__"],
     deps = [
-        "//catalog/health",
         "//collect",
         "//collect/observation",
         "//toolkit/internal/pciaddr",

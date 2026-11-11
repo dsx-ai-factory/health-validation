@@ -31,6 +31,10 @@ func xidCatalogFor(t *testing.T, architecture string, opts ...catalog.Option) *c
 	for _, cd := range xid.Checks() {
 		cat.MustRegister(cd)
 	}
+	// The derived Xid signals are filled in by the accumulator.
+	if err := cat.RegisterAccumulator(xid.Accumulator{}); err != nil {
+		t.Fatal(err)
+	}
 	return cat
 }
 
