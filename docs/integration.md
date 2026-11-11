@@ -441,7 +441,7 @@ validate against the published
     by higher severity, then by comparing each sequence step's documented
     action rank in order. Remaining ties use check ID, then action names as a
     stability fallback for repeated check IDs.
-    Actions absent from the ranking, including `hold`, `xid_154`, and custom
+    Actions absent from the ranking, including `hold`, `stop_p2p_traffic`, and custom
     actions, share the lowest rank. Walk `check_results` for the full
     remediation picture, and re-run the whole suite after every attempted
     step. See [Remediation Actions](/health-validation/operating/remediation)
