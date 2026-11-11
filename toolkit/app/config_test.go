@@ -6,12 +6,16 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -764,8 +768,95 @@ func TestPublishMetricsSurvivesRejectingCollector(t *testing.T) {
 // TestPublishMetricsDisabledIsNoop guards the default: an operator who never
 // configures metrics must not pay for a network attempt.
 func TestPublishMetricsDisabledIsNoop(t *testing.T) {
-	publishMetrics(MetricsConfig{Endpoint: closedCollectorURL(t)},
-		health.NodeVerdict{OverallSeverity: health.Pass}, "node-1")
+	url, posts := otlpCollector(t, http.StatusOK, nil)
+	publishMetrics(MetricsConfig{Endpoint: url}, health.NodeVerdict{OverallSeverity: health.Pass}, "node-1")
+	if n := posts.Load(); n != 0 {
+		t.Errorf("collector got %d exports, want none", n)
+	}
+}
+
+// otlpCollector counts OTLP/HTTP metric exports, answering each with status
+// and calling onPost first when it is set.
+func otlpCollector(t *testing.T, status int, onPost func()) (string, *atomic.Int32) {
+	t.Helper()
+	posts := new(atomic.Int32)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/metrics" || r.Header.Get("Content-Type") != "application/x-protobuf" {
+			t.Errorf("request %s %s (%s), want an OTLP/HTTP metrics export", r.Method, r.URL.Path, r.Header.Get("Content-Type"))
+		}
+		if onPost != nil {
+			onPost()
+		}
+		posts.Add(1)
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL, posts
+}
+
+func metricsConfig(endpoint string, enabled bool) string {
+	return fmt.Sprintf("metrics:\n  enabled: %t\n  endpoint: %s\n  timeout_seconds: 1\n", enabled, endpoint)
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("stdout closed") }
+
+// Every run that reaches a verdict publishes it once after writing it, and
+// publishing never changes the exit code.
+func TestRunPublishesVerdictMetrics(t *testing.T) {
+	healthy := func() *App { return fixtureApp(healthyGB200(), collectPath) }
+	unhealthy := func() *App { return fixtureApp(unhealthyGB200(), collectPath) }
+	withHost := func(h hostBackend) func() *App {
+		return func() *App {
+			a := New().WithProgramName("test")
+			a.host = h
+			return a
+		}
+	}
+	discoveryFails := withHost(erroringHost{b: spyBackend{called: new(bool)}})
+	for _, tc := range []struct {
+		app        func() *App
+		name       string
+		status     int
+		exit       int
+		posts      int32
+		disabled   bool
+		failStdout bool
+	}{
+		{name: "healthy", app: healthy, status: http.StatusOK, exit: exitOK, posts: 1},
+		{name: "unhealthy", app: unhealthy, status: http.StatusOK, exit: exitUnhealthy, posts: 1},
+		{name: "discovery failure", app: discoveryFails, status: http.StatusOK, exit: exitUnhealthy, posts: 1},
+		{name: "busy discovery", app: withHost(busyHost{erroringHost{b: spyBackend{called: new(bool)}}}), status: http.StatusOK, exit: exitUnhealthy, posts: 1},
+		{name: "disabled", app: healthy, status: http.StatusOK, exit: exitOK, disabled: true},
+		{name: "collector rejects", app: unhealthy, status: http.StatusInternalServerError, exit: exitUnhealthy, posts: 1},
+		{name: "collector unreachable", app: healthy, exit: exitOK},
+		{name: "stdout fails", app: healthy, status: http.StatusOK, exit: exitError, posts: 1, failStdout: true},
+		{name: "stdout fails on discovery failure", app: discoveryFails, status: http.StatusOK, exit: exitError, posts: 1, failStdout: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			url, posts := closedCollectorURL(t), new(atomic.Int32)
+			if tc.status != 0 {
+				url, posts = otlpCollector(t, tc.status, nil)
+			}
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(metricsConfig(url, !tc.disabled)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var stdout bytes.Buffer
+			var out io.Writer = &stdout
+			if tc.failStdout {
+				out = failingWriter{}
+			}
+			var stderr bytes.Buffer
+			if code := tc.app().Run([]string{"run", "--node-id", testNodeID, "--config", path}, out, &stderr); code != tc.exit {
+				t.Errorf("exit = %d, want %d; stderr = %q", code, tc.exit, stderr.String())
+			}
+			if n := posts.Load(); n != tc.posts {
+				t.Errorf("collector got %d exports, want %d", n, tc.posts)
+			}
+		})
+	}
 }
 
 // TestValidateStoresTrimmedEndpoint guards validating one value and publishing

@@ -20,8 +20,10 @@
 ## Data flow
 
 ```
-Sensor.Measure()
-    --> []health.Measurement
+collect.Sensor.Measure()                  toolkit.Sensor.Measure()
+    --> ObservationBatch                      (legacy backends)
+        --> collect adapter                       |
+            --> []health.Measurement <------------+
         --> Catalog.EvaluateAll()
             --> per-category check routing
                 --> CEL evaluation per check
@@ -46,6 +48,12 @@ The `numa_node_count` check compares the online NUMA node count against `expecte
 `health-validation collect` runs the same sensors without evaluating any checks and prints the measurements as one `ObservationBatch` (protojson). An optional config's check IDs select which sensor domains run; without one, every built-in domain runs. Use it to retain node-local evidence and evaluate it separately from acquisition. See the README for the output shape.
 
 To add a sensor for a new hardware domain: define a measurement struct in `catalog/<domain>/`, declare a backend interface in `toolkit/`, implement a sensor wrapping it, and add a mock constructor.
+
+## Collect bridge
+
+The CLI collects through `collect` sensors. `toolkit/internal/collectbridge` registers each source once per run, measures every source once under one collection cycle, and caches the observations; the adapters in `toolkit/internal/collectadapters` and `toolkit/observations` turn them into catalog measurements. Each source has its own timeout budget. A source that times out or fails as a whole is logged as a warning, once per distinct operation and error category, and reported in the verdict as a collection failure on the checks it feeds; checks fed by other sources still evaluate. Node-wide sensors report every failure on the node, so one failed read there, such as the NUMA node count, also warns while the other reads succeed. Errors on individual GPUs are not logged. The native NVML and DCGM sources refuse a new call while a timed-out call in the same process is still running.
+
+The bridge is the production adapter layer between `collect` and the catalog. Extracting its runner into a shared coordinator waits until a second caller, such as `agentkit/server`, runs the same runner.
 
 ## Catalog construction options
 

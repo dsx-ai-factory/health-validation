@@ -84,32 +84,6 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 	}
 }
 
-// Production collection goes through collect sensors. Only domains not yet
-// migrated may still run a legacy toolkit sensor by default; shrink this list
-// as each one moves, and do not grow it.
-func TestDefaultLegacySensorsAreOnlyUnmigratedDomains(t *testing.T) {
-	a := New()
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	cycle, err := newCycle(time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sensors, err := a.sensors(cycle, requiredSignals{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacyPkg := reflect.TypeFor[toolkit.NVLinkSensor]().PkgPath()
-	var legacy []string
-	for _, s := range sensors {
-		if typ := reflect.TypeOf(s); typ.Kind() == reflect.Pointer && typ.Elem().PkgPath() == legacyPkg {
-			legacy = append(legacy, typ.Elem().Name())
-		}
-	}
-	if len(legacy) != 0 {
-		t.Fatalf("default legacy sensors = %v, want none; production domains must use collect sensors", legacy)
-	}
-}
-
 func TestCollectSkipsUnselectedBridgeSources(t *testing.T) {
 	source := &collectAppSensor{}
 	a := New().WithCollect(source, claimAll(source)...).WithCollectAdapters(customCountAdapter())
@@ -374,9 +348,15 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 	}
 }
 
+// keepOpenHost fails a run that closes the host: the caller owns that close.
+type keepOpenHost struct{ hostBackend }
+
+func (keepOpenHost) close() error { panic("Run closed the host backend") }
+
 func TestWithCollectCreatesFreshCycleOnRepeatedRuns(t *testing.T) {
 	sensor := &collectAppSensor{}
 	a := cadenceRunApp().WithNodeID(testNodeID).WithChecks(mixedChecks()...).WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(customCountAdapter())
+	a.host = keepOpenHost{a.host}
 	for range 2 {
 		var stdout, stderr bytes.Buffer
 		if code := a.Run([]string{"run"}, &stdout, &stderr); code == exitError {
@@ -1425,6 +1405,15 @@ func TestCollectSensorsRequestsOnlyRunnableCheckSignals(t *testing.T) {
 // signals its built-in source declares.
 func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 	sources, adapters := New().builtinCollect(nil)
+	adaptersByCategory := make(map[health.Category]int)
+	for _, adapter := range adapters {
+		adaptersByCategory[adapter.Category()]++
+	}
+	for _, cd := range catalog.New().List(catalog.Filter{}) {
+		if got := adaptersByCategory[cd.Category]; got != 1 {
+			t.Errorf("built-in check %s: category %s has %d built-in collect adapters, want 1", cd.ID, cd.Category, got)
+		}
+	}
 	var produced []string
 	for _, source := range sources {
 		for _, signal := range source.Signals() {
@@ -1452,6 +1441,24 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// With no signals required, no collect source runs, so every sensor returned
+// is a legacy one, and the stock CLI has none left.
+func TestDefaultRunHasNoLegacySensors(t *testing.T) {
+	a := New()
+	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	cycle, err := newCycle(time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sensors, err := a.sensors(cycle, requiredSignals{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range sensors {
+		t.Errorf("default run collects %q with a legacy sensor", s.Name())
 	}
 }
 
@@ -1656,5 +1663,62 @@ func TestGPUAdapterFailsWhenNothingCollected(t *testing.T) {
 	ms := adapter.Build(nil)
 	if len(ms) != 1 || health.KeyOf(ms[0]) != health.SourceEntity("collect.ecc") || len(ms[0].Errors()) == 0 {
 		t.Fatalf("Build(nil) = %+v, want one errored source-level measurement", ms)
+	}
+}
+
+// lostSlotReader reports three GB200s and a fourth slot whose device handle
+// could not be read.
+type lostSlotReader struct{}
+
+func (lostSlotReader) ID() string { return "fake" }
+
+func (lostSlotReader) Read(ctx context.Context) (*observation.GPUInventorySnapshot, error) {
+	snapshot, err := inventoryReader{gpus: 3, model: "NVIDIA GB200"}.Read(ctx)
+	snapshot.GetInventory().Entries = append(snapshot.GetInventory().Entries, &observation.GPUInventoryEntry{
+		SourceIndex: 3, Gpu: &observation.GPUDevice{}, CollectionError: &observation.CollectionError{
+			Source: "nvml", Operation: "DeviceGetHandleByIndex", Category: observation.CollectionErrorCategoryUnavailable, SourceError: "ERROR_GPU_IS_LOST",
+		},
+	})
+	return snapshot, err
+}
+
+// A GPU no source can identify fails gpu_count, and the GPU checks that could
+// not read it name gpu_count as the cause.
+func TestRunNamesGPUCountForLostGPU(t *testing.T) {
+	f := healthyGB200()
+	a := fixtureApp(f, collectPath)
+	now := timestamppb.Now()
+	var dcgm, processes []*observation.Observation
+	for _, g := range f.gpus[:3] {
+		dcgm = append(dcgm, g.dcgm(now)...)
+		processes = append(processes, g.processes(now)...)
+	}
+	for _, o := range f.gpus[3].dcgm(now) {
+		o.Target = observation.GPUSourceLocalTarget("dcgm-index-3")
+		dcgm = append(dcgm, o)
+	}
+	host := a.host.(sharedInventoryHost)
+	host.inventory = gpuinventory.New(func() (gpuinventory.Reader, error) { return lostSlotReader{}, nil })
+	host.gpu = []collect.Sensor{
+		fixedSensor{id: "gpu.dcgm", signals: dcgmGPUSignals, obs: dcgm},
+		fixedSensor{id: "gpu.nvml", signals: processGPUSignals, obs: processes},
+	}
+	a.host = host
+
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code != exitUnhealthy {
+		t.Fatalf("exit = %d, want %d; stderr = %q", code, exitUnhealthy, stderr.String())
+	}
+	var v health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	countFailed, explained := false, false
+	for _, r := range v.CheckResults {
+		countFailed = countFailed || (r.CheckID == "gpu_count" && r.Severity == health.Critical)
+		explained = explained || strings.Contains(strings.Join(r.Messages, " "), `explained by dependency "gpu_count"`)
+	}
+	if !countFailed || !explained {
+		t.Errorf("gpu_count critical = %v, a GPU check names gpu_count = %v; verdict = %+v", countFailed, explained, v.CheckResults)
 	}
 }

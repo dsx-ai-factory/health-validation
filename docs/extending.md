@@ -319,7 +319,9 @@ func main() {
 		os.Exit(2)
 	}
 	a := app.New().WithChecks(mychecks.All()...).WithCollectAdapters(clock)
-	os.Exit(a.Run(os.Args[1:], os.Stdout, os.Stderr))
+	code := a.Run(os.Args[1:], os.Stdout, os.Stderr)
+	_ = a.Close() // Run leaves the GPU sources open for another run
+	os.Exit(code)
 }
 ```
 

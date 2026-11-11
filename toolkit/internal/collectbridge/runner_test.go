@@ -4,8 +4,10 @@
 package collectbridge_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -360,6 +362,70 @@ func TestCollectRunnerCacheOwnsClones(t *testing.T) {
 	obs[0].Source = "mutated"
 	if again := r.Observe(runnerCount.ID()); calls != 1 || again[0].GetSource() != "fake" {
 		t.Fatalf("cache reuse mutated: %v calls=%d", again, calls)
+	}
+}
+
+func TestCollectRunnerWarnsOncePerSourceFailure(t *testing.T) {
+	other := collect.NewSignal("private.other", "1")
+	reported := func(source string, category observation.CollectionErrorCategory, target *observation.ObservationTarget) func(context.Context, *collect.Op) (*observation.ObservationBatch, error) {
+		return func(_ context.Context, op *collect.Op) (*observation.ObservationBatch, error) {
+			batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
+			for _, s := range []collect.Signal{runnerCount, other} {
+				batch.Observations = append(batch.Observations, observation.NewCollectionErrorObservation(s.ID(), s.Unit(), source, "Connect", target, timestamppb.Now(),
+					&observation.CollectionError{Source: source, Operation: "Connect", Category: category, Detail: "unreachable"}))
+			}
+			return batch, nil
+		}
+	}
+	release := make(chan struct{})
+	defer close(release)
+	tests := []struct {
+		measure func(context.Context, *collect.Op) (*observation.ObservationBatch, error)
+		name    string
+		want    []string
+	}{
+		{name: "healthy", measure: runnerBatch(runnerObservation(runnerCount, observation.NodeTarget(""), 4), runnerObservation(other, observation.NodeTarget(""), 1))},
+		{name: "per-GPU error", measure: reported("fake", observation.CollectionErrorCategorySourceError, observation.GPUTarget("GPU-0"))},
+		{name: "node error", measure: reported("cpu.sysfs", observation.CollectionErrorCategoryUnavailable, observation.NodeTarget("")), want: []string{"collect source failed", "sensor=source", "source=cpu.sysfs"}},
+		{name: "top-level error", measure: func(context.Context, *collect.Op) (*observation.ObservationBatch, error) {
+			return nil, errors.New("failed")
+		}, want: []string{"collect source failed", "sensor=source", "source=source", "operation=Measure"}},
+		{name: "panic", measure: func(context.Context, *collect.Op) (*observation.ObservationBatch, error) { panic("broken") }, want: []string{"collect source failed", "sensor=source", "broken"}},
+		{name: "malformed batch", measure: func(context.Context, *collect.Op) (*observation.ObservationBatch, error) {
+			return &observation.ObservationBatch{CollectionId: "other-run"}, nil
+		}, want: []string{"collect source failed", "sensor=source"}},
+		{name: "reported failure", measure: reported("dcgm", observation.CollectionErrorCategorySourceError, nil), want: []string{"collect source failed", "sensor=source", "source=dcgm", "operation=Connect", "unreachable"}},
+		{name: "reported timeout", measure: reported("nvml", observation.CollectionErrorCategoryTimeout, nil), want: []string{"collect source timed out", "sensor=source", "source=nvml"}},
+		{name: "timeout", measure: func(context.Context, *collect.Op) (*observation.ObservationBatch, error) { <-release; return nil, nil }, want: []string{"collect source timed out", "sensor=source", "source=source"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logged bytes.Buffer
+			restore := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelWarn})))
+			t.Cleanup(func() { slog.SetDefault(restore) })
+
+			r := newCollectRunner(t, 50*time.Millisecond)
+			registerRunner(t, r, runnerSource{id: "source", signals: collect.Signals{runnerCount, other}, measure: tt.measure})
+			r.Collect()
+			r.Observe(runnerCount.ID(), other.ID())
+
+			lines := strings.Count(logged.String(), "level=WARN")
+			if tt.want == nil {
+				if lines != 0 {
+					t.Fatalf("logged %q, want nothing", logged.String())
+				}
+				return
+			}
+			if lines != 1 {
+				t.Fatalf("logged %d warnings, want 1: %q", lines, logged.String())
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(logged.String(), want) {
+					t.Errorf("warning %q lacks %q", logged.String(), want)
+				}
+			}
+		})
 	}
 }
 

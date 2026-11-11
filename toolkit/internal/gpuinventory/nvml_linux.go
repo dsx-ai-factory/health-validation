@@ -32,6 +32,26 @@ const nvmlSource = "nvml"
 // devices on request.
 func NVML(inst nvmlsource.Instance) Reader { return nvmlReader{inst: inst} }
 
+// OpenNVML returns an open func for [New] that reads with [NVML] over the
+// instance open returns.
+func OpenNVML(open func() (nvmlsource.Instance, error)) func() (Reader, error) {
+	return func() (Reader, error) {
+		inst, err := open()
+		if err != nil {
+			return nil, markBusy(err)
+		}
+		return NVML(inst), nil
+	}
+}
+
+// markBusy marks an NVML refusal caused by another in-flight native call.
+func markBusy(err error) error {
+	if errors.Is(err, nvmlsource.ErrInUse) {
+		return fmt.Errorf("%w: %w", ErrSourceBusy, err)
+	}
+	return err
+}
+
 type nvmlReader struct {
 	inst nvmlsource.Instance
 }
@@ -72,7 +92,7 @@ func (r nvmlReader) Read(ctx context.Context) (*observation.GPUInventorySnapshot
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, markBusy(err)
 	}
 	return &observation.GPUInventorySnapshot{Source: nvmlSource, Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: inventory}}, nil
 }

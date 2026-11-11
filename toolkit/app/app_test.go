@@ -1109,11 +1109,70 @@ func TestRunCommandArchDiscoveryFailureDrains(t *testing.T) {
 	if got := v.CheckResults[0]; got.CheckID != "architecture_discovery" || got.ConditionScope != health.NodeScope {
 		t.Errorf("check result = {id:%q scope:%v}, want {architecture_discovery NODE}", got.CheckID, got.ConditionScope)
 	}
+	if got := v.CheckResults[0].RecommendedAction; !got.Equal(health.GenericDrain()) {
+		t.Errorf("RecommendedAction = %+v, want the generic drain", got)
+	}
 	if collected {
 		t.Error("collected measurements despite discovery failure; must not evaluate against wrong thresholds")
 	}
 	if cpuCollected {
 		t.Error("collected CPU measurements despite discovery failure")
+	}
+}
+
+// busyHost is an erroringHost whose inventory source refuses discovery
+// because an earlier call in this process is still running.
+type busyHost struct{ erroringHost }
+
+func (busyHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) {
+		return nil, fmt.Errorf("open NVML: %w", gpuinventory.ErrSourceBusy)
+	})
+}
+
+// openFailedHost is an erroringHost whose inventory source fails to open for
+// a reason other than a busy source.
+type openFailedHost struct{ erroringHost }
+
+func (openFailedHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) {
+		return nil, errors.New("open NVML: driver not loaded")
+	})
+}
+
+// Only a busy source turns a discovery failure into an Unknown
+// retry_collection; any other open error stays a Critical generic drain.
+func TestRunCommandDiscoveryOpenFailureAction(t *testing.T) {
+	var collected bool
+	spy := erroringHost{b: spyBackend{called: &collected}}
+	for name, tc := range map[string]struct {
+		host     hostBackend
+		want     health.RecommendedAction
+		severity health.Severity
+	}{
+		"busy":  {host: busyHost{spy}, want: health.Drain(health.RemediationActionRetryCollection), severity: health.Unknown},
+		"other": {host: openFailedHost{spy}, want: health.GenericDrain(), severity: health.Critical},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := New()
+			a.host = tc.host
+			var stdout, stderr bytes.Buffer
+			if code := a.runCommand([]string{"--node-id", testNodeID}, &stdout, &stderr); code != exitUnhealthy {
+				t.Fatalf("runCommand exit = %d, want exitUnhealthy; stderr = %q", code, stderr.String())
+			}
+			var v health.NodeVerdict
+			if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+				t.Fatalf("unmarshal verdict: %v; stdout = %s", err, stdout.String())
+			}
+			if len(v.CheckResults) != 1 || v.CheckResults[0].CheckID != "architecture_discovery" ||
+				!v.CheckResults[0].RecommendedAction.Equal(tc.want) || !v.RecommendedAction.Equal(tc.want) ||
+				v.CheckResults[0].Severity != tc.severity || v.OverallSeverity != tc.severity {
+				t.Fatalf("verdict = %+v, want one %v architecture_discovery result recommending %+v", v, tc.severity, tc.want)
+			}
+		})
+	}
+	if collected {
+		t.Error("collected measurements despite discovery failure")
 	}
 }
 

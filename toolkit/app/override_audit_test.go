@@ -5,16 +5,23 @@ package app
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/collect"
+	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
 // datagramRecorder stands in for the journald socket: each Write is one
@@ -189,7 +196,8 @@ func TestRunCommandAuditFailureWritesNoVerdict(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a, gpuCollected, args := auditApp(t, twoOverrides)
+			url, posts := otlpCollector(t, http.StatusOK, nil)
+			a, gpuCollected, args := auditApp(t, twoOverrides+metricsConfig(url, true))
 			a.openJournal = tt.openJournal
 
 			var stdout, stderr bytes.Buffer
@@ -204,6 +212,9 @@ func TestRunCommandAuditFailureWritesNoVerdict(t *testing.T) {
 			}
 			if *gpuCollected {
 				t.Error("collected GPUs after the audit failed")
+			}
+			if n := posts.Load(); n != 0 {
+				t.Errorf("collector got %d exports, want none without a verdict", n)
 			}
 		})
 	}
@@ -225,7 +236,9 @@ func TestRunCommandWithoutOverridesSkipsJournal(t *testing.T) {
 // A run that cannot discover the architecture applies no overrides, so it
 // records none.
 func TestRunCommandDiscoveryFailureSkipsAudit(t *testing.T) {
-	a, _, args := auditApp(t, twoOverrides)
+	url, posts := otlpCollector(t, http.StatusOK, nil)
+	a, _, args := auditApp(t, twoOverrides+metricsConfig(url, true))
+	args = append(args, "--cadence", "CONTINUOUS")
 	a.host = erroringHost{b: spyBackend{called: new(bool)}}
 	a.openJournal = func() (io.WriteCloser, error) {
 		t.Error("journal opened on a discovery failure")
@@ -235,6 +248,99 @@ func TestRunCommandDiscoveryFailureSkipsAudit(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(args, &stdout, &stderr); code != exitUnhealthy {
 		t.Errorf("runCommand exit = %d, want %d; stderr = %q", code, exitUnhealthy, stderr.String())
+	}
+	if n := posts.Load(); n != 1 {
+		t.Errorf("collector got %d exports, want the discovery failure published once", n)
+	}
+}
+
+// eventLog records the order of a run's side effects.
+type eventLog struct {
+	events []string
+	mu     sync.Mutex
+}
+
+func (l *eventLog) add(event string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.events) == 0 || l.events[len(l.events)-1] != event {
+		l.events = append(l.events, event)
+	}
+}
+
+type loggedJournal struct {
+	*datagramRecorder
+	log *eventLog
+}
+
+func (j loggedJournal) Write(b []byte) (int, error) {
+	j.log.add("audit")
+	return j.datagramRecorder.Write(b)
+}
+
+type loggedSensor struct {
+	collect.Sensor
+	log *eventLog
+}
+
+func (s loggedSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	s.log.add("collect")
+	return s.Sensor.Measure(ctx, opts...)
+}
+
+type loggedWriter struct {
+	io.Writer
+	log *eventLog
+}
+
+func (w loggedWriter) Write(b []byte) (int, error) {
+	w.log.add("verdict")
+	return w.Writer.Write(b)
+}
+
+// A run records its overrides before collecting and publishes metrics only
+// after its verdict is written, with a cadence and canonical discovery.
+func TestRunAuditsBeforeCollectingAndPublishesAfterVerdict(t *testing.T) {
+	log := &eventLog{}
+	url, _ := otlpCollector(t, http.StatusOK, func() { log.add("metrics") })
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	config := "checks:\n  gpu_power_limit:\n    expected_power_limit_w: 1000\n" + metricsConfig(url, true)
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := fixtureApp(healthyGB200(), collectPath)
+	host := a.host.(sharedInventoryHost)
+	host.gpu = slices.Clone(host.gpu)
+	host.gpu[0] = loggedSensor{Sensor: host.gpu[0], log: log}
+	a.host = host
+	var rec datagramRecorder
+	a.openJournal = func() (io.WriteCloser, error) { return loggedJournal{datagramRecorder: &rec, log: log}, nil }
+
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"run", "--node-id", testNodeID, "--cadence", "CONTINUOUS", "--config", path}, loggedWriter{Writer: &stdout, log: log}, &stderr); code != exitOK {
+		t.Fatalf("exit = %d, want %d; stderr = %q", code, exitOK, stderr.String())
+	}
+	log.mu.Lock()
+	events := slices.Clone(log.events)
+	log.mu.Unlock()
+	if want := []string{"audit", "collect", "verdict", "metrics"}; !slices.Equal(events, want) {
+		t.Errorf("events = %v, want %v", events, want)
+	}
+	if len(rec.datagrams) != 1 {
+		t.Fatalf("wrote %d audit entries, want 1", len(rec.datagrams))
+	}
+	if got := parseDatagram(t, rec.datagrams[0]); got["CHECK_ID"] != "gpu_power_limit" || got["THRESHOLD_NAME"] != "expected_power_limit_w" ||
+		got["ORIGINAL_VALUE"] != "1200" || got["OVERRIDE_VALUE"] != "1000" {
+		t.Errorf("audit entry = %v, want gpu_power_limit.expected_power_limit_w 1200 -> 1000", got)
+	}
+	var v health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(v.SkippedChecks, func(c health.CheckVerdict) bool {
+		return c.CheckID == "gpu_power_limit" && c.SkipReason == health.CadenceMismatch
+	}) {
+		t.Error("gpu_power_limit was not skipped for its cadence")
 	}
 }
 
