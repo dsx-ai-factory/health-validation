@@ -122,6 +122,16 @@ current boot, `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure
 verdicts. Neither falls back to `/dev/kmsg`, whose ring buffer cannot show
 that nothing was logged in the window.
 
+The `rdma_topo` sensor runs `rdma_topo check` with automatic mode detection.
+It requires the tool on `PATH`, its Python runtime, and read access to host PCI
+sysfs. Confirmed findings are retained when collection fails; errors are
+reported separately. See the [upstream help](https://github.com/linux-rdma/rdma-core/blob/master/kernel-boot/rdma_topo)
+and [usage guide](https://docs.nvidia.com/multi-node-nvlink-systems/grace-blackwell-cx8-gpudirect-rdma-guide/gpudirect_rdma_testing.html#configuring-acs-using-rdma-topo-tool).
+
+The published image and wrapper do not include `rdma_topo` or its Python
+runtime. Supply both in the container; otherwise, the check reports a collection
+failure.
+
 ### Static binary (bare metal, Slurm)
 
 Build the binary from source. The NVML backend needs cgo and NVML, so build on
@@ -256,9 +266,9 @@ An operator-approved namespace here means one allowed to use `hostPath`,
 
 | Profile | Host access and security context | Checks with complete coverage |
 | --- | --- | --- |
-| Docker wrapper | Read-only journal, machine-id, `journalctl`, `libdcgm.so.4`, and their `ldd` dependencies; `LD_LIBRARY_PATH`; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; host network and PID namespaces; no `--privileged` or extra capabilities. | All stock CLI checks, provided the container sees all node GPUs and the node runs `nv-hostengine`. |
-| Kubernetes explicit mounts | The same read-only paths and `LD_LIBRARY_PATH` as the wrapper. `hostNetwork: true`, `hostPID: true`, `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities or `privileged`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
-| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above, plus the `libdcgm.so.4` mounts and `LD_LIBRARY_PATH` of the explicit profile. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
+| Docker wrapper | Read-only journal, machine-id, `journalctl`, `libdcgm.so.4`, and their `ldd` dependencies; `LD_LIBRARY_PATH`; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; host network and PID namespaces; no `--privileged` or extra capabilities. | All stock CLI checks except `rdma_topo`, provided the container sees all node GPUs and the node runs `nv-hostengine`. |
+| Kubernetes explicit mounts | The same read-only paths and `LD_LIBRARY_PATH` as the wrapper. `hostNetwork: true`, `hostPID: true`, `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities or `privileged`. | All stock CLI checks except `rdma_topo`, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
+| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above, plus the `libdcgm.so.4` mounts and `LD_LIBRARY_PATH` of the explicit profile. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks except `rdma_topo`, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
 | GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | Checks outside the journal can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
 | GPU access but no DCGM | No host network, no `libdcgm.so.4`, or no `nv-hostengine` on the node. | Checks outside DCGM can run; `gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`, `gpu_sensor_throttle`, and `nvlink_fabric` return collection-failure verdicts rather than PASS. |
 
@@ -678,6 +688,7 @@ Several families share the NVML sensor and its caller-owned instance.
 | Block devices and filesystems | Block identity, metadata, size and parents; mount metadata and eligible filesystem capacity | `sensors/disk.New(fsys, ...source/disk.Option)` |
 | FUSE | Connection waiting/background/congestion counts and mount correlation | `sensors/fuse.New(fsys, ...source/fuse.Option)` |
 | PCI | PCI address, vendor/device/class identity, driver, bound module, raw ACS, and current/maximum link speed, width, and generation | `sensors/pci.New(fsys)` |
+| `rdma_topo` | ACS and IOMMU group findings and invocation evidence | `sensors/rdmatopo.New(nil)` |
 | Persistent crash records | Live and archived pstore paths, text or base64 content, hashes, and root provenance | `sensors/pstore.New(fsys)` or `NewWithRoots(fsys, roots...)` |
 
 GPM profiling is a separate, opt-in NVML sensor:

@@ -23,12 +23,10 @@
 //		os.Exit(code)
 //	}
 //
-// Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
-// its own per-domain backend, defaulting to the DCGM and NVML collect sensors
-// for GPU and NVLink, the host's collect NVML GPU inventory for node, sysfs for
-// CPU, and the journal (through collect sensors) for Xid and InfiniBand link
-// flaps. A
-// With*Backend setter overrides exactly one domain; the
+// Built-in collection uses DCGM and NVML for GPU and NVLink, the host GPU
+// inventory for node, sysfs for CPU, the kernel journal for Xid and RDMA link
+// flaps, and rdma_topo check for ACS and IOMMU group findings. A With*Backend
+// setter overrides one domain; WithCollect replaces individual signals. The
 // node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
 // full backend swap. Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
@@ -104,10 +102,8 @@ type hostBackend interface {
 }
 
 // App is the health-validation CLI, assembled with the builder methods and
-// run with [App.Run]. It wires six sensors (GPU, node, NVLink, CPU, Xid,
-// InfiniBand), each from its own per-domain source — DCGM, the shared host
-// NVML backend, sysfs, or the journal by default, or a caller-supplied
-// override.
+// run with [App.Run]. It wires domain sensors to DCGM, NVML, sysfs, the kernel
+// journal, and rdma_topo, or to caller-supplied overrides.
 type App struct {
 	host        hostBackend
 	hostname    func() (string, error)
@@ -334,11 +330,11 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 }
 
 // runCommand parses `run` flags, builds the catalog (applying any config
-// overrides and custom checks), and evaluates it against the six domain
+// overrides and custom checks), and evaluates it against the domain
 // sensors. Each sensor's backend is the caller's override if set, else the
 // default: the DCGM and NVML collect sensors for gpu and nvlink, the host GPU
 // inventory for node, sysfs for cpu, and the system journal, through collect
-// sensors, for xid and the InfiniBand link-flap measurement.
+// sensors, for xid and RDMA link flaps, and rdma_topo for pcie.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)

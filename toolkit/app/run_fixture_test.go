@@ -272,12 +272,14 @@ func fixtureEntryTime(start time.Time, i int) time.Time {
 	return start.Add(time.Duration(i) * time.Minute)
 }
 
+const fixtureJournalPrelude = "usb 1-1: new high-speed USB device number 2"
+
 // fixtureJournal stands in for journalctl, printing lines as kernel entries of
 // the current boot. The leading unrelated entry keeps a clean fixture from
 // failing as an empty journal; the legacy mocks ignore it.
 func fixtureJournal(lines []string) journal.Runner {
 	start := time.Now().Add(-30 * time.Minute)
-	entries := append([]string{"usb 1-1: new high-speed USB device number 2"}, lines...)
+	entries := append([]string{fixtureJournalPrelude}, lines...)
 	return func(_ context.Context, _ []string, stdout, _ io.Writer) error {
 		for i, m := range entries {
 			message, err := json.Marshal(m)
@@ -311,7 +313,8 @@ const (
 // fixtureApp renders f into an App whose domains come from legacy backends
 // or, with fromCollect, from collect sources.
 func fixtureApp(f nodeFixture, fromCollect bool) *App {
-	a := New().WithProgramName("test")
+	source := healthyRDMATopoSensor()
+	a := New().WithProgramName("test").WithCollect(source, source.Signals().IDs()...)
 	// A config with overrides is audited to journald first; without a
 	// journal the run would fail closed.
 	var rec datagramRecorder
@@ -350,7 +353,7 @@ func fixtureApp(f nodeFixture, fromCollect bool) *App {
 		a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{
 			PossibleCPUCount: int64(f.possibleCPUs), OnlineCPUCount: int64(f.onlineCPUs), NUMANodeCount: int64(f.numaNodes),
 		}))
-		a.WithXidBackend(toolkit.MockXid(f.xid...))
+		a.WithXidBackend(toolkit.MockXid(append([]string{fixtureJournalPrelude}, f.xid...)...))
 	}
 	a.host = host
 	return a

@@ -139,6 +139,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Features
 
+- Add the `rdma_topo` check for GB200, GB300, B200, B300, and VR200, and the
+  `pcie.rdma_topo` collect sensor for `pcie.rdma_topo.acs_failures`,
+  `pcie.rdma_topo.iommu_group_failures`, and `pcie.rdma_topo.evidence`.
+  Requires `rdma_topo` and Python in the execution environment.
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring. `WithGPUBackend`,
