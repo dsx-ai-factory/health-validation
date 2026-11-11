@@ -33,7 +33,7 @@ checks that still fail:
       priority from highest to lowest: `service_required`, `update_swfw`,
       `restart_os`, `reset_gpu`, `restart_app`, `check_collection`, and
       `retry_collection` (actions not in this list, including `hold`,
-      `xid_154`, and custom actions, share the lowest rank);
+      `stop_p2p_traffic`, and custom actions, share the lowest rank);
    3. the check ID; and
    4. action names in sequence order, as a stability fallback when repeated
       check IDs remain tied.
@@ -71,7 +71,7 @@ suite after each step recalculates the recommendation as findings clear.
   recommendation uses an unranked action.
 - At equal severity, `check_collection` and `retry_collection` follow the ranked
   hardware actions because they represent collection failures. Unranked actions,
-  including `hold`, `xid_154`, and custom actions, follow the collection actions.
+  including `hold`, `stop_p2p_traffic`, and custom actions, follow the collection actions.
 
 ## Action catalog
 
@@ -168,11 +168,13 @@ whichever Xid it accompanied:
   reset, and with `["reset_gpu", "service_required"]` for a GPU reset or
   Drain and Reset. For Drain and Reset, schedule no new work on the GPU and
   let unaffected jobs finish or reach a checkpoint before the reset.
-- **WARNING** with `["xid_154"]` for Drain P2P: disable new scheduling,
-  quiesce P2P traffic and UVM persistence, then re-query the recovery
-  action, and reset the GPU only if Drain P2P remains. The driver often
-  clears this request without logging another Xid 154, so the journal
-  alone cannot show that it was cleared.
+- **WARNING** with `["stop_p2p_traffic", "reset_gpu", "service_required"]`
+  for Drain P2P. NVIDIA's guidance is to quiesce P2P traffic, query the
+  recovery action again, and reset the GPU only if Drain P2P remains. The
+  driver often clears this request without logging another Xid 154, so the
+  journal alone cannot show that it was cleared; the sequence resets after
+  quiescing, and a consumer that can query the live recovery action may
+  skip the reset when Drain P2P is gone.
 - **WARNING** with `monitor` for an action this catalog does not map, such
   as Recover IMEX Domain, and for a transition that could not be read.
 - **INFO** with no action for None.
@@ -190,7 +192,7 @@ toward the action it names, so an uncertain request still counts.
 |---|---|
 | <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for warning-class per-Xid checks. |
 | <nobr>`update_swfw`</nobr> | Bring the GPU driver/firmware and related software to compatible versions, or correct the vGPU configuration. Recommended for Xid 78 (vGPU start error), raised when the guest VM's driver is incompatible with the host vGPU Manager or the vGPU type is not supported for the guest OS or GPU. The guest driver is installed inside the VM; the host vGPU Manager and the vGPU type are managed by the infrastructure operator. |
-| <nobr>`xid_154`</nobr> | Follow the recovery action the accompanying Xid 154 (GPU recovery action changed) reports. Recommended for Drain P2P (0x3): quiesce peer-to-peer traffic, re-query the recovery action, and reset the GPU only if Drain P2P remains. |
+| <nobr>`stop_p2p_traffic`</nobr> | Quiesce peer-to-peer traffic on the GPU: schedule no new jobs, stop the processes doing P2P traffic, and disable UVM persistence mode. Recommended for the Drain P2P (0x3) recovery action Xid 154 reports, following the GPU recovery action guidance in NVIDIA's [`nvidia-smi` documentation](https://docs.nvidia.com/deploy/nvidia-smi/index.html); NVIDIA's Xid catalog has no bucket of its own for it. |
 
 `gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at
 WARNING when Xid 45 is the only Xid seen within the collection window. When

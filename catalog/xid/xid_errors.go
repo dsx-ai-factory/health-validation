@@ -94,17 +94,17 @@ var recoverySteps = []recoveryStep{
 		severity:  health.Critical,
 		action:    resetAndService(),
 	},
-	// Drain P2P is not a final verdict, and the driver often clears it
-	// itself once P2P traffic goes idle without logging another Xid 154,
-	// so a reset recommended from the log alone could outlive the request.
 	// NVIDIA's guidance is to quiesce P2P, query the action again, and
-	// reset only if Drain P2P is still requested.
+	// reset only if Drain P2P is still requested. The driver often clears
+	// it without logging another Xid 154, so the journal cannot show the
+	// re-query's answer; the sequence resets after quiescing, and the
+	// message says when the reset can be skipped.
 	{
 		codes:     []uint32{0x3}, // Drain P2P
 		requested: "that peer-to-peer traffic be stopped",
-		guidance:  "Disable new scheduling, quiesce P2P traffic and UVM persistence, then re-query the recovery action. Reset the GPU only if Drain P2P remains after quiescing.",
+		guidance:  "Disable new scheduling, stop the processes doing P2P traffic and disable UVM persistence mode, then reset the GPU. If a query of the GPU's recovery action no longer reports Drain P2P after quiescing, the reset can be skipped.",
 		severity:  health.Warning,
-		action:    health.Drain(health.RemediationActionXid154),
+		action:    health.Drain(health.RemediationActionStopP2PTraffic, health.RemediationActionResetGPU, health.RemediationActionServiceRequired),
 	},
 }
 

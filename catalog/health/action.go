@@ -78,7 +78,11 @@ const (
 	RemediationActionRestartApp RemediationAction = "restart_app"
 	RemediationActionRestartOS  RemediationAction = "restart_os"
 	RemediationActionUpdateSWFW RemediationAction = "update_swfw"
-	RemediationActionXid154     RemediationAction = "xid_154"
+
+	// RemediationActionStopP2PTraffic quiesces peer-to-peer traffic on the
+	// GPU: no new jobs, stop the processes doing P2P traffic, and disable
+	// UVM persistence mode.
+	RemediationActionStopP2PTraffic RemediationAction = "stop_p2p_traffic"
 
 	// RemediationActionHold marks a node as drained but not yet
 	// individually remediated: hold it out of scheduling until a

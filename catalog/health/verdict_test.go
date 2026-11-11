@@ -386,9 +386,9 @@ func TestAggregateNodeVerdict_RecommendedAction(t *testing.T) {
 		{
 			name: "unranked action remains eligible",
 			verdicts: []CheckVerdict{
-				{CheckID: "xid-154", Severity: Info, RecommendedAction: Drain(RemediationActionXid154)},
+				{CheckID: "xid-154", Severity: Info, RecommendedAction: Drain(RemediationActionStopP2PTraffic)},
 			},
-			want: Drain(RemediationActionXid154),
+			want: Drain(RemediationActionStopP2PTraffic),
 		},
 	}
 
@@ -471,7 +471,7 @@ func TestNodeActionRank(t *testing.T) {
 			t.Errorf("rank(%q) = %d, want less than rank(%q) = %d", actions[i-1], higher, actions[i], lower)
 		}
 	}
-	for _, action := range []RemediationAction{RemediationActionHold, RemediationActionXid154, "custom"} {
+	for _, action := range []RemediationAction{RemediationActionHold, RemediationActionStopP2PTraffic, "custom"} {
 		if got := nodeActionRank(action); got != len(nodeActionPriority) {
 			t.Errorf("rank(%q) = %d, want unranked value %d", action, got, len(nodeActionPriority))
 		}
