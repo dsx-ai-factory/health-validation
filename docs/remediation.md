@@ -1,11 +1,24 @@
 # Remediation Actions
 
-When a check fails with `operational_state: drain`, its `recommended_action`
-carries a `remediation_actions` array: an ordered sequence of steps a cluster
-operator (or their automated remediation engine) should work
-through to clear the fault. This document describes the contract for
+When a check fails with `operational_state: drain` or `monitor`, its
+`recommended_action` may carry a `remediation_actions` array: an ordered
+sequence of steps a cluster operator (or their automated remediation engine)
+should work through to clear the fault. This document describes the contract for
 consuming that sequence and catalogs every action this repo's own checks
 recommend.
+
+Registration restricts drain recommendations by severity:
+
+- **`drain`** — only CRITICAL and UNKNOWN results may recommend it.
+  The node leaves scheduling so the finding can be addressed.
+- **`monitor`** — permitted at any severity. The node remains schedulable
+  while the finding receives attention.
+
+`affected_entities` identifies the affected components; the consumer
+determines the repair scope. For example, `restart_app` targets the
+faulting application. Execution may require maintenance prerequisites.
+CRITICAL and UNKNOWN verdicts still exit `1`, including when they recommend
+`monitor`.
 
 See [`catalog/health/action.go`](https://github.com/dsx-ai-factory/health-validation/blob/main/catalog/health/action.go) for the Go type
 (`health.RemediationAction`) and [`catalog/health/node-verdict.schema.json`](https://github.com/dsx-ai-factory/health-validation/blob/main/catalog/health/node-verdict.schema.json)
@@ -17,25 +30,26 @@ for the JSON contract. For the field's place in the wider verdict shape, see
 `remediation_actions` is ordered from the most preferred (least disruptive) step to the least.
 Each failing check retains its own recommendation; drain recommendations carry
 an ordered sequence. `NodeVerdict.recommended_action` also surfaces one complete
-drain sequence as the node-level recommendation. Re-run the **whole suite**
+sequence as the node-level recommendation. Re-run the **whole suite**
 after every remediation step so the recommendation is recalculated from the
 checks that still fail:
 
 1. Run `health-validation` (the full suite).
 2. If everything passes, **stop** — the node is healthy.
 3. Otherwise, inspect the node-level `recommended_action`. If it is absent, no
-   automated drain remediation is available; inspect `check_results` for
+   node-level remediation sequence is available; inspect `check_results` for
    per-check monitor or no-action findings and stop this remediation flow. Do
    not treat the node as healthy. When present, it is selected from checks with
-   `operational_state: drain` and a nonempty sequence by, in order:
-   1. higher severity: CRITICAL, UNKNOWN, WARNING, INFO, PASS;
-   2. each remediation step's rank, compared in sequence order, using this
+   `operational_state: drain` or `monitor` and a nonempty sequence by, in order:
+   1. `drain` over `monitor`;
+   2. higher severity: CRITICAL, UNKNOWN, WARNING, INFO, PASS;
+   3. each remediation step's rank, compared in sequence order, using this
       priority from highest to lowest: `service_required`, `update_swfw`,
       `restart_os`, `reset_gpu`, `restart_app`, `check_collection`, and
       `retry_collection` (actions not in this list, including `hold`,
       `stop_p2p_traffic`, and custom actions, share the lowest rank);
-   3. the check ID; and
-   4. action names in sequence order, as a stability fallback when repeated
+   4. the check ID; and
+   5. action names in sequence order, as a stability fallback when repeated
       check IDs remain tied.
 4. Take the next **untried** action from that `remediation_actions` sequence
    based on the steps the consumer has already attempted.
@@ -168,7 +182,7 @@ whichever Xid it accompanied:
   reset, and with `["reset_gpu", "service_required"]` for a GPU reset or
   Drain and Reset. For Drain and Reset, schedule no new work on the GPU and
   let unaffected jobs finish or reach a checkpoint before the reset.
-- **WARNING** with `["stop_p2p_traffic", "reset_gpu", "service_required"]`
+- **CRITICAL** with `["stop_p2p_traffic", "reset_gpu", "service_required"]`
   for Drain P2P. NVIDIA's guidance is to quiesce P2P traffic, query the
   recovery action again, and reset the GPU only if Drain P2P remains. The
   driver often clears this request without logging another Xid 154, so the
@@ -190,12 +204,12 @@ toward the action it names, so an uncertain request still counts.
 
 | Action | Description |
 |---|---|
-| <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for warning-class per-Xid checks. |
+| <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted and other workloads are unaffected, so the node stays in service (`monitor`). The default for warning-class per-Xid checks. |
 | <nobr>`update_swfw`</nobr> | Bring the GPU driver/firmware and related software to compatible versions, or correct the vGPU configuration. Recommended for Xid 78 (vGPU start error), raised when the guest VM's driver is incompatible with the host vGPU Manager or the vGPU type is not supported for the guest OS or GPU. The guest driver is installed inside the VM; the host vGPU Manager and the vGPU type are managed by the infrastructure operator. |
 | <nobr>`stop_p2p_traffic`</nobr> | Quiesce peer-to-peer traffic on the GPU: schedule no new jobs, stop the processes doing P2P traffic, and disable UVM persistence mode. Recommended for the Drain P2P (0x3) recovery action Xid 154 reports, following the GPU recovery action guidance in NVIDIA's [`nvidia-smi` documentation](https://docs.nvidia.com/deploy/nvidia-smi/index.html); NVIDIA's Xid catalog has no bucket of its own for it. |
 
-`gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at
-WARNING when Xid 45 is the only Xid seen within the collection window. When
+`gpu_xid_45` (Xid 45, preemptive removal) recommends `monitor` with
+`["restart_app"]` at WARNING when Xid 45 is the only Xid seen within the collection window. When
 another Xid is present in that window, it is INFO with no action; follow the
 accompanying Xid's guidance.
 Xid 154 is not counted as another Xid, since it only annotates one.

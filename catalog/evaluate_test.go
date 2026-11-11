@@ -692,7 +692,7 @@ func TestEvaluate_RuleRecommendedActionOverridesCheckDefault(t *testing.T) {
 				Expression:        "second > 0",
 				Severity:          health.Warning,
 				Message:           "second nonzero",
-				RecommendedAction: health.Drain(health.RemediationActionRestartOS),
+				RecommendedAction: health.MonitorWith(health.RemediationActionRestartApp),
 			},
 			{
 				Expression: "first < 4",
@@ -708,13 +708,13 @@ func TestEvaluate_RuleRecommendedActionOverridesCheckDefault(t *testing.T) {
 	)
 	cat.MustRegister(check)
 
-	rebootCase := twoSignalMeasurement{First: 4, Second: 1}
-	v, err := cat.Evaluate("node_action_override", rebootCase)
+	appCase := twoSignalMeasurement{First: 4, Second: 1}
+	v, err := cat.Evaluate("node_action_override", appCase)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRestartOS)) {
-		t.Errorf("RecommendedAction = %v, want %v (rule override)", v.RecommendedAction, "restart_os")
+	if !v.RecommendedAction.Equal(health.MonitorWith(health.RemediationActionRestartApp)) {
+		t.Errorf("RecommendedAction = %v, want %v (rule override)", v.RecommendedAction, "restart_app")
 	}
 
 	drainCase := twoSignalMeasurement{First: 3}
@@ -743,7 +743,7 @@ func TestEvaluate_VerdictActionDoesNotAliasRegistry(t *testing.T) {
 				Expression:        "second > 0",
 				Severity:          health.Warning,
 				Message:           "second nonzero",
-				RecommendedAction: health.Drain(health.RemediationActionRestartOS),
+				RecommendedAction: health.MonitorWith(health.RemediationActionRestartApp),
 			},
 			{
 				Expression: "first < 4",
@@ -762,7 +762,7 @@ func TestEvaluate_VerdictActionDoesNotAliasRegistry(t *testing.T) {
 		want health.RemediationAction
 		m    twoSignalMeasurement
 	}{
-		"rule override": {health.RemediationActionRestartOS, twoSignalMeasurement{First: 4, Second: 1}},
+		"rule override": {health.RemediationActionRestartApp, twoSignalMeasurement{First: 4, Second: 1}},
 		"check default": {health.RemediationActionResetGPU, twoSignalMeasurement{First: 3}},
 	} {
 		v, err := cat.Evaluate("node_action_alias", tc.m)
@@ -798,7 +798,7 @@ func TestEvaluate_AllMatchingRulesAggregate(t *testing.T) {
 				Expression:        "second > 0",
 				Severity:          health.Warning,
 				Message:           "second nonzero",
-				RecommendedAction: health.Drain(health.RemediationActionRestartOS),
+				RecommendedAction: health.MonitorWith(health.RemediationActionRestartApp),
 			},
 			{
 				Expression: "first < 4",
@@ -869,13 +869,13 @@ func TestEvaluate_MultiMatchPicksTopPriorityOverride(t *testing.T) {
 				Expression:        "first == 4",
 				Severity:          health.Info,
 				Message:           "first is four (informational)",
-				RecommendedAction: health.Drain(health.RemediationActionServiceRequired),
+				RecommendedAction: health.Monitor,
 			},
 			{
 				Expression:        "second > 0",
 				Severity:          health.Warning,
 				Message:           "second nonzero",
-				RecommendedAction: health.Drain(health.RemediationActionRestartOS),
+				RecommendedAction: health.MonitorWith(health.RemediationActionRestartApp),
 			},
 		},
 	}
@@ -898,11 +898,11 @@ func TestEvaluate_MultiMatchPicksTopPriorityOverride(t *testing.T) {
 	if v.Severity != health.Warning {
 		t.Errorf("Severity = %v, want WARNING", v.Severity)
 	}
-	// Warning rule has higher severity than Info, so its "restart_os"
+	// Warning rule has higher severity than Info, so its "restart_app"
 	// override wins over Info's "monitor".
-	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRestartOS)) {
+	if !v.RecommendedAction.Equal(health.MonitorWith(health.RemediationActionRestartApp)) {
 		t.Errorf("RecommendedAction = %v, want %v (Warning rule outranks Info rule)",
-			v.RecommendedAction, "restart_os")
+			v.RecommendedAction, "restart_app")
 	}
 }
 
