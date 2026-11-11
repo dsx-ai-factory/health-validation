@@ -716,11 +716,27 @@ var builtinCovered = sync.OnceValue(func() codeSet {
 	return covered
 })
 
+// coverage is the Xid codes some check covers: the built-in checks', and
+// those a consumer's own checks cover (see [Accumulator.CoveredCodes]).
+type coverage map[string][]int64
+
+func (c coverage) covers(code int64) bool {
+	if builtinCovered()[code] {
+		return true
+	}
+	for _, codes := range c {
+		if slices.Contains(codes, code) {
+			return true
+		}
+	}
+	return false
+}
+
 // isUnknown reports whether no check covers code and the catalog does not list it.
-func isUnknown(code int64) bool { return !builtinCovered()[code] && !infoSet[code] }
+func (c coverage) isUnknown(code int64) bool { return !c.covers(code) && !infoSet[code] }
 
 // isInformational reports whether code is an infoXids code no check covers.
-func isInformational(code int64) bool { return infoSet[code] && !builtinCovered()[code] }
+func (c coverage) isInformational(code int64) bool { return infoSet[code] && !c.covers(code) }
 
 // countsWhere is xid_counts restricted to the codes keep accepts. It is never
 // nil, like the other derived signals.
@@ -732,12 +748,6 @@ func (m XidMeasurement) countsWhere(keep func(int64) bool) map[int64]int64 {
 		}
 	}
 	return out
-}
-
-func (m XidMeasurement) unknownCounts() map[int64]int64 { return m.countsWhere(isUnknown) }
-
-func (m XidMeasurement) informationalCounts() map[int64]int64 {
-	return m.countsWhere(isInformational)
 }
 
 // catchAllCheck builds a check that fires when any code in the derived

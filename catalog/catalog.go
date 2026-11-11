@@ -210,6 +210,22 @@ func accumulate(accumulators []health.Accumulator, measurements []health.Measure
 	return append(all, derived...), nil
 }
 
+// WithAccumulator registers a, replacing a registered accumulator of the
+// same name, such as a built-in one the caller configures differently. It
+// panics if a cannot be registered, as [Catalog.MustRegister] does.
+func WithAccumulator(a health.Accumulator) Option {
+	return func(c *Catalog) {
+		c.mu.Lock()
+		c.accumulators = slices.DeleteFunc(c.accumulators, func(existing health.Accumulator) bool {
+			return existing.Name() == a.Name()
+		})
+		c.mu.Unlock()
+		if err := c.RegisterAccumulator(a); err != nil {
+			panic(err)
+		}
+	}
+}
+
 // MustRegister is like Register but panics on error.
 func (c *Catalog) MustRegister(cd health.CheckDefinition) {
 	if err := c.Register(cd); err != nil {
