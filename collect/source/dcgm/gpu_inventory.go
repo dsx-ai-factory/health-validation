@@ -31,6 +31,9 @@ func (source *Source) GPUIdentities(ctx context.Context, currentCycle *collect.C
 		if initErr := source.ensureInitialized(); initErr != nil {
 			return nil, initErr
 		}
+		if source.closed.Load() {
+			return nil, errClosed
+		}
 		if contextErr := callContext.Err(); contextErr != nil {
 			return nil, contextErr
 		}
@@ -50,6 +53,9 @@ func (source *Source) GPUIdentities(ctx context.Context, currentCycle *collect.C
 		defer source.finishNativeCall()
 		if initErr := source.ensureInitialized(); initErr != nil {
 			return nil, initErr
+		}
+		if source.closed.Load() {
+			return nil, errClosed
 		}
 		if contextErr := callContext.Err(); contextErr != nil {
 			return nil, contextErr
@@ -86,6 +92,9 @@ func (source *Source) GPUInventory(ctx context.Context, currentCycle *collect.Cy
 			defer source.finishNativeCall()
 			if initErr := source.ensureInitialized(); initErr != nil {
 				return nil, initErr
+			}
+			if source.closed.Load() {
+				return nil, errClosed
 			}
 			if contextErr := callContext.Err(); contextErr != nil {
 				return nil, contextErr

@@ -25,6 +25,7 @@ type FieldValue struct {
 // ReadGPUMetrics reads the requested fields for one GPU in a single DCGM call.
 // It returns field-level failures alongside successful fields so the sensor
 // can emit every available observation from the GPU.
+// A native watch-setup failure closes the source; construct a new source to retry.
 func (source *Source) ReadGPUMetrics(
 	ctx context.Context,
 	currentCycle *collect.Cycle,
@@ -63,6 +64,9 @@ func (source *Source) ReadGPUMetrics(
 		}
 		if err := source.ensureMetricWatch(); err != nil {
 			return nil, err
+		}
+		if source.closed.Load() {
+			return nil, errClosed
 		}
 		if err := callContext.Err(); err != nil {
 			return nil, err

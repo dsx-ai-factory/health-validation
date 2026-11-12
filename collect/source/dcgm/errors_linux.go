@@ -107,16 +107,20 @@ func dcgmErrorCode(err error) (int, bool) {
 	if err == nil {
 		return 0, false
 	}
-	var dcgmFailure *godcgm.Error
-	if errors.As(err, &dcgmFailure) {
-		return int(dcgmFailure.Code), true
+	var failure *godcgm.Error
+	if errors.As(err, &failure) {
+		return int(failure.Code), true
 	}
 
-	// libdcgm's texts for DCGM_ST_CONNECTION_NOT_VALID and DCGM_ST_INIT_ERROR,
-	// the status of every failed dcgmInit and embedded start.
+	// Some pinned go-dcgm helpers discard the native error type. Recognize
+	// libdcgm's specific status text, never generic phrases such as "not watched".
 	switch message := err.Error(); {
 	case strings.Contains(message, "Host engine connection invalid/disconnected"):
 		return godcgm.DCGM_ST_CONNECTION_NOT_VALID, true
+	case strings.Contains(message, "Setting not configured"):
+		return godcgm.DCGM_ST_NOT_CONFIGURED, true
+	case strings.Contains(message, "Field is not being watched"):
+		return godcgm.DCGM_ST_NOT_WATCHED, true
 	case strings.Contains(message, "DCGM initialization error"):
 		return godcgm.DCGM_ST_INIT_ERROR, true
 	}
@@ -136,14 +140,23 @@ var dcgmErrorCodePattern = regexp.MustCompile(`(?i)error code (-?\d+)`)
 // dcgmErrorFromError preserves DCGM status information while an operation
 // error passes through collect.Run.
 func dcgmErrorFromError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var failure *dcgmError
+	if errors.As(err, &failure) {
+		return err
+	}
 	if code, ok := dcgmErrorCode(err); ok {
 		return &dcgmError{
+			cause:       err,
 			sourceError: dcgmStatusName(code),
 			category:    categoryFromCode(code),
 			detail:      err.Error(),
 		}
 	}
 	return &dcgmError{
+		cause:    err,
 		category: observation.CollectionErrorCategoryOther,
 		detail:   err.Error(),
 	}

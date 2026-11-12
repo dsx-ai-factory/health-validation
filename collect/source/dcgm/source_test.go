@@ -48,6 +48,13 @@ type fakeNative struct {
 	watchCleanedAfterClient atomic.Bool
 }
 
+func (*fakeNative) MetricWatchGroups(signalIDs []string) ([]metricWatchGroup, error) {
+	if len(signalIDs) == 0 {
+		return []metricWatchGroup{}, nil
+	}
+	return []metricWatchGroup{{fieldIDs: []uint16{1}}}, nil
+}
+
 func (native *fakeNative) Init() (func(), error) {
 	native.initCalls.Add(1)
 	if native.initErr != nil {
@@ -112,15 +119,15 @@ func (native *fakeNative) ReadGPUInventory(gpuIndices []uint) (map[uint]*observa
 	return gpus, nil
 }
 
-func (native *fakeNative) WatchMetrics([]string) (func() error, error) {
+func (native *fakeNative) WatchMetrics([]metricWatchGroup) (func() error, error) {
 	native.watchCalls.Add(1)
-	return func() error {
+	return sync.OnceValue(func() error {
 		native.watchCleanupCalls.Add(1)
 		if native.cleanupCalls.Load() != 0 {
 			native.watchCleanedAfterClient.Store(true)
 		}
 		return nil
-	}, nil
+	}), nil
 }
 
 func (native *fakeNative) ReadGPUMetrics(_ uint, signalIDs []string) (map[string]FieldValue, error) {
@@ -521,6 +528,43 @@ func TestReadGPUMetricsFreezesWatchAndCloseReleasesResources(t *testing.T) {
 	}
 	if got := native.cleanupCalls.Load(); got != 1 {
 		t.Errorf("client cleanup calls = %d, want 1", got)
+	}
+}
+
+func TestMetricReadRetriesInitBeforeWatchCreation(t *testing.T) {
+	native := &fakeNative{initErr: errNoHostengine}
+	source := newSource(native, &sync.Mutex{})
+	t.Cleanup(func() {
+		if err := source.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
+		t.Fatal(err)
+	}
+	values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "failed-init"), 0, []string{signalPowerDraw})
+	if failure := values[signalPowerDraw].CollectionError; failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || failure.GetDetail() != errNoHostengine.Error() {
+		t.Fatalf("failed Init result = %v", failure)
+	}
+	if native.initCalls.Load() != 1 || native.watchCalls.Load() != 0 || native.readCalls.Load() != 0 || native.cleanupCalls.Load() != 0 {
+		t.Fatal("failed Init created a watch, read metrics, or released an unowned client")
+	}
+
+	native.initErr = nil
+	for _, cycleID := range []string{"successful-init-retry", "reuse-initialized-client"} {
+		values = source.ReadGPUMetrics(context.Background(), newTestCycle(t, cycleID), 0, []string{signalPowerDraw})
+		if value := values[signalPowerDraw]; value.Value == nil || value.CollectionError != nil {
+			t.Fatalf("metric read after Init recovery = %+v", value)
+		}
+	}
+	if native.initCalls.Load() != 2 || native.watchCalls.Load() != 1 || native.readCalls.Load() != 2 {
+		t.Fatalf("recovery calls init=%d watch=%d read=%d", native.initCalls.Load(), native.watchCalls.Load(), native.readCalls.Load())
+	}
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if native.watchCleanupCalls.Load() != 1 || native.cleanupCalls.Load() != 1 {
+		t.Fatalf("recovered source cleanup calls watch=%d client=%d", native.watchCleanupCalls.Load(), native.cleanupCalls.Load())
 	}
 }
 

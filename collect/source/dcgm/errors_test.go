@@ -46,6 +46,35 @@ func TestCollectionError(t *testing.T) {
 			wantCategory: observation.CollectionErrorCategoryUnsupported,
 		},
 		{
+			name: "native session failure with timeout cause",
+			err: errors.Join(context.DeadlineExceeded, &dcgmError{
+				sourceError: "DCGM_ST_CONNECTION_NOT_VALID",
+				category:    observation.CollectionErrorCategoryUnavailable,
+				detail:      "connection failed during rollback",
+			}),
+			sourceError:  "DCGM_ST_CONNECTION_NOT_VALID",
+			wantCategory: observation.CollectionErrorCategoryTimeout,
+		},
+		{
+			name: "native watch failure with cancellation cause",
+			err: errors.Join(context.Canceled, &dcgmError{
+				sourceError: "DCGM_ST_NOT_WATCHED",
+				category:    observation.CollectionErrorCategoryNotConfigured,
+				detail:      "field watch disappeared",
+			}),
+			sourceError:  "DCGM_ST_NOT_WATCHED",
+			wantCategory: observation.CollectionErrorCategoryUnavailable,
+		},
+		{
+			name: "DCGM status without category",
+			err: &dcgmError{
+				sourceError: "DCGM_ST_NOT_SUPPORTED",
+				detail:      "category missing",
+			},
+			sourceError:  "DCGM_ST_NOT_SUPPORTED",
+			wantCategory: observation.CollectionErrorCategorySourceError,
+		},
+		{
 			name:         "unknown source error",
 			err:          errors.New("unknown DCGM failure"),
 			wantCategory: observation.CollectionErrorCategorySourceError,

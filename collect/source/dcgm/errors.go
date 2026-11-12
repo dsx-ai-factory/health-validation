@@ -14,9 +14,17 @@ import (
 // dcgmError carries source-specific details through collect.Run. It is used for
 // failures of an entire operation, not individual fields.
 type dcgmError struct {
+	cause       error
 	sourceError string
 	detail      string
 	category    observation.CollectionErrorCategory
+}
+
+func (failure *dcgmError) Unwrap() error {
+	if failure == nil {
+		return nil
+	}
+	return failure.cause
 }
 
 func (failure *dcgmError) Error() string {
@@ -31,6 +39,11 @@ func (failure *dcgmError) Error() string {
 func collectionError(err error) observation.CollectionError {
 	var sourceError string
 	var category observation.CollectionErrorCategory
+	var failure *dcgmError
+	errors.As(err, &failure)
+	if failure != nil {
+		sourceError = failure.sourceError
+	}
 	switch {
 	case errors.Is(err, collect.ErrCollectionTimeout), errors.Is(err, context.DeadlineExceeded):
 		category = observation.CollectionErrorCategoryTimeout
@@ -38,9 +51,7 @@ func collectionError(err error) observation.CollectionError {
 		errors.Is(err, errClosed):
 		category = observation.CollectionErrorCategoryUnavailable
 	default:
-		var failure *dcgmError
-		if errors.As(err, &failure) {
-			sourceError = failure.sourceError
+		if failure != nil {
 			category = failure.category
 		}
 		if category == observation.CollectionErrorCategoryUnspecified {
