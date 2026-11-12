@@ -274,10 +274,24 @@ Install the CLI:
 go install github.com/dsx-ai-factory/health-validation/toolkit/cmd/health-validation@latest
 ```
 
+The binary is written to `$(go env GOBIN)`, or `$(go env GOPATH)/bin` when
+`GOBIN` is unset. Put that directory on your `PATH`, then run
+`health-validation run`.
+
 The CLI links NVML and DCGM through cgo, so this needs a C compiler. It also
-needs Go 1.21 or later, which downloads the Go 1.27.3 toolchain that `go.mod`
-requires. Older distribution packages, such as Ubuntu 22.04's `golang-go`
-(1.18), cannot.
+needs Go 1.27.3 or later. Go 1.21 or later switches to a newer toolchain on its
+own when `GOTOOLCHAIN` is `auto` (the default), and may pick a release newer
+than 1.27.3. With `GOTOOLCHAIN=local`, or an older Go such as Ubuntu 22.04's
+`golang-go` (1.18), install Go 1.27.3 or later yourself.
+
+`@main` is not supported for `go install`: it still resolves to a pre-merge
+`toolkit` pseudo-version. To install the tip of `main`, pin the root module's
+version:
+
+```shell
+V=$(go list -m -f '{{.Version}}' github.com/dsx-ai-factory/health-validation@main)
+go install github.com/dsx-ai-factory/health-validation/toolkit/cmd/health-validation@$V
+```
 
 Build the binary from source:
 

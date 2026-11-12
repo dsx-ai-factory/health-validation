@@ -127,7 +127,15 @@ not contain `.github/`.
 
 Retraction does not break builds that pin a retired version, including patches
 of the `v0.3` line; it only flags them and stops `@latest` and `go get -u` from
-choosing them.
+choosing them. Consumers who stay on the `v0.3` line must request each patch by
+its explicit version (`go get …/toolkit@v0.3.4`) or move to the root module.
+Those patches carry the "Merged into …" retraction notice even though they are
+supported releases.
+
+Retraction does not affect explicit revision queries. `go install …@main` still
+resolves `…/toolkit` to a pre-merge pseudo-version, so it cannot be fixed this
+way, and tagging a root release does not change it. Install the tip by pinning
+the root module's version, as the README shows.
 
 ## Who can trigger a release
 

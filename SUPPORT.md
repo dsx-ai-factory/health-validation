@@ -159,9 +159,14 @@ single-tag lines.
 
 Every version of the per-module `catalog`, `collect`, and `toolkit` modules is
 retracted in favor of the root module. Builds that pin one keep working, but
-`go list -m -u` warns about it and `@latest` resolves to the root module. This
-includes later `v0.3.x` patches, which are still tagged per module from
-`release/v0.3` and published as container images. See
+`go list -m -u all` warns about it. Retraction excludes versions; it does not
+redirect a module path. `go install <package>@latest` falls through to the root
+module, but a `go.mod` that requires `…/catalog` or `…/toolkit` must be changed
+to require the root module instead. Import paths stay the same.
+
+This includes later `v0.3.x` patches, which are still tagged per module from
+`release/v0.3` and published as container images. `go get -u` skips them, so
+request one by its explicit version. See
 [RELEASE.md](./RELEASE.md#retired-per-module-tags).
 
 Maintainers update this table and the release notes when final releases change
