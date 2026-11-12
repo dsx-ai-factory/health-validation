@@ -8,11 +8,11 @@
 # files use the legacy go_default_library naming, and records only the
 # linux/amd64 half of the published multi-arch index.
 cel.dev/expr	v0.25.2
-github.com/NVIDIA/go-dcgm	v1.4701.2
+github.com/NVIDIA/go-dcgm	v1.4702.0
 github.com/NVIDIA/go-nvlib	v0.13.0
 github.com/NVIDIA/go-nvml	v0.13.4-1
 github.com/antlr4-go/antlr/v4	v4.13.1
-github.com/bits-and-blooms/bitset	v1.25.0
+github.com/bits-and-blooms/bitset	v1.26.0
 github.com/cenkalti/backoff/v5	v5.0.3
 github.com/cespare/xxhash/v2	v2.3.0
 github.com/go-logr/logr	v1.4.4
