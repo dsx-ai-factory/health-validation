@@ -193,8 +193,15 @@ func TestEvaluateAll_XidResultsNameTheirGPU(t *testing.T) {
 		t.Errorf("gpu_xid_48 entities = %v, want %v", named, want)
 	}
 	for _, c := range nv.AffectedComponents {
-		if c.Category == health.Xid && !slices.Equal(slices.Sorted(slices.Values(c.Entities)), []string{"0000:c1:00", "GPU-a"}) {
-			t.Errorf("xid affected component entities = %v", c.Entities)
+		if c.Category != health.Xid {
+			continue
+		}
+		var entities []string
+		for _, ch := range c.Checks {
+			entities = append(entities, ch.Entities...)
+		}
+		if !slices.Equal(slices.Sorted(slices.Values(entities)), []string{"0000:c1:00", "GPU-a"}) {
+			t.Errorf("xid affected component entities = %v", entities)
 		}
 	}
 }
