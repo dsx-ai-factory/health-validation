@@ -223,17 +223,17 @@ func TestRunKernelJournalUnreadable(t *testing.T) {
 	if code != exitUnhealthy {
 		t.Errorf("exit = %d, want %d", code, exitUnhealthy)
 	}
-	journalChecks := 0
+	results := map[health.Category]int{}
 	for _, r := range v.CheckResults {
 		if r.Category != health.Xid && r.Category != health.InfiniBand {
 			continue
 		}
-		journalChecks++
+		results[r.Category]++
 		if r.Severity != health.Unknown {
 			t.Errorf("%s = %s, want %s", r.CheckID, r.Severity, health.Unknown)
 		}
 	}
-	if journalChecks == 0 {
-		t.Error("no Xid or link-flap results")
+	if results[health.Xid] == 0 || results[health.InfiniBand] == 0 {
+		t.Errorf("results per domain = %v, want both Xid and link-flap results", results)
 	}
 }
