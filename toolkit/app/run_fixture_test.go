@@ -46,6 +46,9 @@ type nodeFixture struct {
 	possibleCPUs int
 	onlineCPUs   int
 	numaNodes    int
+	// userJournalOnly hides kernel entries, as for a user outside the
+	// journal groups who still reads their own user journal.
+	userJournalOnly bool
 }
 
 type fixtureGPU struct {
@@ -234,13 +237,19 @@ func fixtureEntryTime(start time.Time, i int) time.Time {
 	return start.Add(time.Duration(i) * time.Minute)
 }
 
-// fixtureJournal stands in for journalctl, printing lines as kernel entries of
+// journal stands in for journalctl, printing lines as kernel entries of
 // the current boot. The leading unrelated entry keeps a clean fixture from
 // failing as an empty journal.
-func fixtureJournal(lines []string) journal.Runner {
+func (f nodeFixture) journal(lines []string) journal.Runner {
 	start := time.Now().Add(-30 * time.Minute)
 	entries := append([]string{"usb 1-1: new high-speed USB device number 2"}, lines...)
-	return func(_ context.Context, _ []string, stdout, _ io.Writer) error {
+	return func(_ context.Context, args []string, stdout, _ io.Writer) error {
+		if f.userJournalOnly {
+			if slices.Contains(args, "--dmesg") {
+				return nil
+			}
+			entries = []string{"user session started"}
+		}
 		for i, m := range entries {
 			message, err := json.Marshal(m)
 			if err != nil {
@@ -276,8 +285,8 @@ func fixtureApp(f nodeFixture) *App {
 		fixedSensor{id: "gpu.nvml", signals: slices.Concat(processGPUSignals, nvmlNVLinkSignals), obs: nvml},
 	}
 	a.WithCollect(cpusensor.New(cpuFS(f.possibleCPUs, f.onlineCPUs, f.numaNodes)), observations.MappedSignalsFor(health.CPU)...)
-	a.WithCollect(xidsensor.New(journal.New(fixtureJournal(f.xid))), xidsignals.All().IDs()...)
-	a.WithCollect(linkflapsensor.New(journal.New(fixtureJournal(f.linkFlaps)), linkflapsensor.WithLookback(linkFlapLookback)),
+	a.WithCollect(xidsensor.New(journal.New(f.journal(f.xid))), xidsignals.All().IDs()...)
+	a.WithCollect(linkflapsensor.New(journal.New(f.journal(f.linkFlaps)), linkflapsensor.WithLookback(linkFlapLookback)),
 		ibsignals.LinkFlapSignals().IDs()...)
 	a.host = host
 	return a

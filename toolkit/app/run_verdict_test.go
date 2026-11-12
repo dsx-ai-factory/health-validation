@@ -128,3 +128,28 @@ func TestRunXidLinesLegacyDropped(t *testing.T) {
 		})
 	}
 }
+
+// A user who can read only their own journal sees no kernel entries. The Xid
+// and link-flap checks must report that as a collection failure, not a clean
+// boot (#204).
+func TestRunKernelJournalUnreadable(t *testing.T) {
+	f := healthyGB200()
+	f.userJournalOnly = true
+	v, code := runFixture(t, f)
+	if code != exitUnhealthy {
+		t.Errorf("exit = %d, want %d", code, exitUnhealthy)
+	}
+	journalChecks := 0
+	for _, r := range v.CheckResults {
+		if r.Category != health.Xid && r.Category != health.InfiniBand {
+			continue
+		}
+		journalChecks++
+		if r.Severity != health.Unknown {
+			t.Errorf("%s = %s, want %s", r.CheckID, r.Severity, health.Unknown)
+		}
+	}
+	if journalChecks == 0 {
+		t.Error("no Xid or link-flap results")
+	}
+}
