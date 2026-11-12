@@ -890,6 +890,31 @@ func TestNUMANodeCountReachesVerdict(t *testing.T) {
 
 // --- CLI exit-code policy -------------------------------------------------
 
+func TestWriteVerdict_MonitorPreservesUnhealthyExit(t *testing.T) {
+	for _, severity := range []health.Severity{health.Critical, health.Unknown} {
+		t.Run(severity.String(), func(t *testing.T) {
+			action := health.MonitorWith(health.RemediationActionUpdateSWFW)
+			verdict := health.AggregateNodeVerdict([]health.CheckVerdict{{
+				CheckID:           "custom_monitor",
+				Category:          health.GPU,
+				Severity:          severity,
+				RecommendedAction: action,
+			}})
+			var stdout, stderr bytes.Buffer
+			if code := writeVerdict(verdict, "test", "node-1", &stdout, &stderr); code != exitUnhealthy {
+				t.Fatalf("writeVerdict exit = %d, want %d; stderr = %q", code, exitUnhealthy, stderr.String())
+			}
+			var got health.NodeVerdict
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatalf("decode verdict: %v", err)
+			}
+			if got.OverallSeverity != severity || !got.RecommendedAction.Equal(action) {
+				t.Errorf("verdict severity/action = %v/%v, want %v/%v", got.OverallSeverity, got.RecommendedAction, severity, action)
+			}
+		})
+	}
+}
+
 // TestExitCodeForVerdict pins the verdict→exit-code policy. exitError (2) is
 // unreachable here by design — it belongs to the no-verdict path (TestEvaluate*).
 func TestExitCodeForVerdict(t *testing.T) {

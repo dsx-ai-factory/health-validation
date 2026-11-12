@@ -334,6 +334,29 @@ func TestAggregateNodeVerdict_RecommendedAction(t *testing.T) {
 		want     RecommendedAction
 	}{
 		{
+			name: "unknown drain before critical monitor",
+			verdicts: []CheckVerdict{
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+				{CheckID: "attention", Severity: Critical, RecommendedAction: MonitorWith(RemediationActionUpdateSWFW)},
+			},
+			want: Drain(RemediationActionCheckCollection),
+		},
+		{
+			name: "drain before monitor at equal severity",
+			verdicts: []CheckVerdict{
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionRetryCollection)},
+				{CheckID: "attention", Severity: Unknown, RecommendedAction: MonitorWith(RemediationActionUpdateSWFW)},
+			},
+			want: Drain(RemediationActionRetryCollection),
+		},
+		{
+			name: "critical monitor remains eligible alone",
+			verdicts: []CheckVerdict{
+				{CheckID: "attention", Severity: Critical, RecommendedAction: MonitorWith(RemediationActionUpdateSWFW)},
+			},
+			want: MonitorWith(RemediationActionUpdateSWFW),
+		},
+		{
 			name: "severity before action",
 			verdicts: []CheckVerdict{
 				{CheckID: "warning-service", Severity: Warning, RecommendedAction: Drain(RemediationActionServiceRequired)},

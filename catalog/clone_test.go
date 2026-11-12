@@ -33,6 +33,7 @@ func clonableCheck() health.CheckDefinition {
 		},
 		Rules: []health.Rule{{
 			Expression:        "true",
+			Severity:          health.Critical,
 			RecommendedAction: health.Drain(health.RemediationActionRestartOS),
 		}},
 	}

@@ -103,7 +103,7 @@ var recoverySteps = []recoveryStep{
 		codes:     []uint32{0x3}, // Drain P2P
 		requested: "that peer-to-peer traffic be stopped",
 		guidance:  "Disable new scheduling, stop the processes doing P2P traffic and disable UVM persistence mode, then reset the GPU. If a query of the GPU's recovery action no longer reports Drain P2P after quiescing, the reset can be skipped.",
-		severity:  health.Warning,
+		severity:  health.Critical,
 		action:    health.Drain(health.RemediationActionStopP2PTraffic, health.RemediationActionResetGPU, health.RemediationActionServiceRequired),
 	},
 }
@@ -320,7 +320,7 @@ type warningClass struct {
 
 var warningClasses = []warningClass{
 	{
-		action:        health.Drain(health.RemediationActionRestartApp),
+		action:        health.MonitorWith(health.RemediationActionRestartApp),
 		architectures: allArchitectures,
 		message:       "GPU Xid %d detected: application-level error. Restart the faulting application.",
 		codes: []int64{
@@ -329,25 +329,25 @@ var warningClasses = []warningClass{
 		},
 	},
 	{
-		action:        health.Drain(health.RemediationActionUpdateSWFW),
+		action:        health.MonitorWith(health.RemediationActionUpdateSWFW),
 		architectures: allArchitectures,
 		message:       "GPU Xid %d (vGPU start error) detected: the guest driver is incompatible with the host vGPU Manager, or the vGPU type is not supported for the guest OS or GPU. Install a compatible guest driver, update the host vGPU Manager, or assign a supported vGPU type.",
 		codes:         []int64{78},
 	},
 	{
-		action:        health.Drain(health.RemediationActionRestartApp),
+		action:        health.MonitorWith(health.RemediationActionRestartApp),
 		architectures: ampereHopperArchitectures,
 		message:       "GPU Xid %d detected: corrupted data sent to the GPU. Restart the faulting application.",
 		codes:         []int64{80},
 	},
 	{
-		action:        health.Drain(health.RemediationActionRestartApp),
+		action:        health.MonitorWith(health.RemediationActionRestartApp),
 		architectures: hopperBlackwellArchitectures,
 		message:       "GPU Xid %d detected: application-level error. Restart the faulting application.",
 		codes:         []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105},
 	},
 	{
-		action:        health.Drain(health.RemediationActionRestartApp),
+		action:        health.MonitorWith(health.RemediationActionRestartApp),
 		architectures: blackwellArchitectures,
 		message:       "GPU Xid %d detected: application-level error. Restart the faulting application.",
 		codes:         []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139},
@@ -572,7 +572,7 @@ func xid45Check() health.CheckDefinition {
 			Expression:        fmt.Sprintf("%s && !%s", present, companion),
 			Severity:          health.Warning,
 			Message:           "GPU Xid 45 occurred alone; restart the application. If Xid 45 recurs with no other Xid, report the issue.",
-			RecommendedAction: health.Drain(health.RemediationActionRestartApp),
+			RecommendedAction: health.MonitorWith(health.RemediationActionRestartApp),
 		},
 	}
 	return def

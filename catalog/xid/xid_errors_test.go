@@ -278,7 +278,7 @@ func TestXidErrors_NewArchitectureSpecificChecks(t *testing.T) {
 		wantSeverity health.Severity
 	}{
 		{name: "Xid 54 on A100", architecture: "A100", checkID: "gpu_xid_54", code: 54, wantSeverity: health.Critical, wantAction: health.Drain(health.RemediationActionServiceRequired)},
-		{name: "Xid 80 on H200", architecture: "H200", checkID: "gpu_xid_80", code: 80, wantSeverity: health.Warning, wantAction: health.Drain(health.RemediationActionRestartApp)},
+		{name: "Xid 80 on H200", architecture: "H200", checkID: "gpu_xid_80", code: 80, wantSeverity: health.Warning, wantAction: health.MonitorWith(health.RemediationActionRestartApp)},
 		{name: "Xid 136 on H100", architecture: "H100", checkID: "gpu_xid_136", code: 136, wantSeverity: health.Critical, wantAction: resetAndServiceForTest()},
 	}
 	for _, tt := range tests {
@@ -335,9 +335,9 @@ func TestXidErrors_WarningActionByBucket(t *testing.T) {
 		want health.RecommendedAction
 		code int64
 	}{
-		{"app fault (13)", health.Drain(health.RemediationActionRestartApp), 13},
-		{"memory page fault (31)", health.Drain(health.RemediationActionRestartApp), 31},
-		{"vgpu start (78)", health.Drain(health.RemediationActionUpdateSWFW), 78},
+		{"app fault (13)", health.MonitorWith(health.RemediationActionRestartApp), 13},
+		{"memory page fault (31)", health.MonitorWith(health.RemediationActionRestartApp), 31},
+		{"vgpu start (78)", health.MonitorWith(health.RemediationActionUpdateSWFW), 78},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -368,7 +368,7 @@ func TestXidErrors_Xid45Workflow(t *testing.T) {
 			name:         "alone",
 			codes:        []int64{45},
 			wantSeverity: health.Warning,
-			action:       health.Drain(health.RemediationActionRestartApp),
+			action:       health.MonitorWith(health.RemediationActionRestartApp),
 			message:      "GPU Xid 45 occurred alone; restart the application. If Xid 45 recurs with no other Xid, report the issue.",
 		},
 		{
@@ -389,7 +389,7 @@ func TestXidErrors_Xid45Workflow(t *testing.T) {
 			name:         "Xid 154 does not count as a companion",
 			codes:        []int64{45, 154},
 			wantSeverity: health.Warning,
-			action:       health.Drain(health.RemediationActionRestartApp),
+			action:       health.MonitorWith(health.RemediationActionRestartApp),
 			message:      "GPU Xid 45 occurred alone; restart the application. If Xid 45 recurs with no other Xid, report the issue.",
 		},
 	}
@@ -992,7 +992,7 @@ func TestXidErrors_Xid78VGPUStartError(t *testing.T) {
 	if v.Severity != health.Warning {
 		t.Errorf("Severity = %v, want WARNING", v.Severity)
 	}
-	if want := health.Drain(health.RemediationActionUpdateSWFW); !v.RecommendedAction.Equal(want) {
+	if want := health.MonitorWith(health.RemediationActionUpdateSWFW); !v.RecommendedAction.Equal(want) {
 		t.Errorf("RecommendedAction = %v, want %v", v.RecommendedAction, want)
 	}
 	want := "GPU Xid 78 (vGPU start error) detected: the guest driver is incompatible with the host vGPU Manager, or the vGPU type is not supported for the guest OS or GPU. Install a compatible guest driver, update the host vGPU Manager, or assign a supported vGPU type."
