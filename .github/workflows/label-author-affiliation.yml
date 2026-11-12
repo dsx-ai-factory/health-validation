@@ -1,0 +1,93 @@
+name: Label Author Affiliation
+
+# Labels each new issue and pull request `nvidia-member` or
+# `external-contributor` depending on whether its author belongs to the NVIDIA
+# GitHub organization.
+#
+# pull_request_target, not pull_request: a pull request from a fork gets a
+# read-only token under pull_request and could not be labeled. That trigger is
+# only safe because this job never checks out or executes pull request
+# content. Do not add a checkout here, and do not widen `permissions`.
+#
+# Membership comes from the org members API, which needs ORG_READ_TOKEN: a
+# token with organization "Members: read" (GitHub App or fine-grained PAT). The
+# default GITHUB_TOKEN cannot see private members, so it would label them
+# external. If the lookup fails for any reason other than a clean "not a
+# member", the job fails without labeling rather than guessing.
+on:
+  issues:
+    types:
+      - opened
+      - reopened
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+
+permissions:
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+env:
+  ORG: NVIDIA
+  MEMBER_LABEL: affiliation/nvidia
+  EXTERNAL_LABEL: affiliation/external
+
+jobs:
+
+  label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Event fields are untrusted input: pass them through the environment,
+      # never interpolate them into the run command.
+      - name: Label by organization membership
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORG_READ_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          AUTHOR: ${{ github.event.pull_request.user.login || github.event.issue.user.login }}
+          AUTHOR_TYPE: ${{ github.event.pull_request.user.type || github.event.issue.user.type }}
+        run: |
+          set -euo pipefail
+
+          # Bots are neither members nor external contributors.
+          if [ "$AUTHOR_TYPE" = "Bot" ]; then
+            echo "Skipping bot author $AUTHOR"
+            exit 0
+          fi
+
+          if [ -z "$ORG_READ_TOKEN" ]; then
+            echo "::error::ORG_READ_TOKEN is not set; cannot read $ORG membership"
+            exit 1
+          fi
+
+          # 204 = member, 404 = not a member. Anything else is a lookup failure.
+          status=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $ORG_READ_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/orgs/$ORG/members/$AUTHOR")
+
+          case "$status" in
+            204) add="$MEMBER_LABEL";   remove="$EXTERNAL_LABEL" ;;
+            404) add="$EXTERNAL_LABEL"; remove="$MEMBER_LABEL" ;;
+            *)
+              echo "::error::Unexpected HTTP $status checking $AUTHOR in $ORG"
+              exit 1
+              ;;
+          esac
+
+          # Create the labels on first use; an existing label is left as is.
+          gh label create "$MEMBER_LABEL" --color 76B900 \
+            --description "Author is a member of the $ORG organization" 2>/dev/null || true
+          gh label create "$EXTERNAL_LABEL" --color C5DEF5 \
+            --description "Author is not a member of the $ORG organization" 2>/dev/null || true
+
+          # `gh issue edit` also labels pull requests.
+          gh issue edit "$NUMBER" --add-label "$add" --remove-label "$remove"
