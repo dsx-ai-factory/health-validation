@@ -155,6 +155,18 @@ The `v0.1.x` lines are EOL. These lines predate the single-module layout and
 were tagged per module; the first `vX.Y.Z` release replaces this table with
 single-tag lines.
 
+Every version of the per-module `catalog`, `collect`, and `toolkit` modules is
+retracted in favor of the root module. Builds that pin one keep working, but
+`go list -m -u all` warns about it. Retraction excludes versions; it does not
+redirect a module path. `go install <package>@latest` falls through to the root
+module, but a `go.mod` that requires `…/catalog` or `…/toolkit` must be changed
+to require the root module instead. Import paths stay the same.
+
+This includes later `v0.3.x` patches, which are still tagged per module from
+`release/v0.3` and published as container images. `go get -u` skips them, so
+request one by its explicit version. See
+[RELEASE.md](./RELEASE.md#retired-per-module-tags).
+
 Maintainers update this table and the release notes when final releases change
 the supported lines. Backport requests should identify the affected supported
 line. Maintainers evaluate security and critical fixes for Maintenance lines
