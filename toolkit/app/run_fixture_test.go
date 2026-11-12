@@ -412,8 +412,13 @@ func normalizeVerdict(t *testing.T, raw []byte) health.NodeVerdict {
 		return strings.Compare(a.Category.String(), b.Category.String())
 	})
 	for i := range v.AffectedComponents {
-		slices.Sort(v.AffectedComponents[i].CheckIDs)
-		slices.Sort(v.AffectedComponents[i].Entities)
+		checks := v.AffectedComponents[i].Checks
+		slices.SortFunc(checks, func(a, b health.AffectedCheck) int {
+			return strings.Compare(a.CheckID, b.CheckID)
+		})
+		for j := range checks {
+			slices.Sort(checks[j].Entities)
+		}
 	}
 	return v
 }

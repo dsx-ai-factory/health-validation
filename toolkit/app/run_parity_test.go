@@ -94,7 +94,9 @@ func unnameXidGPUs(v *health.NodeVerdict) {
 	}
 	for i, c := range v.AffectedComponents {
 		if c.Category == health.Xid {
-			v.AffectedComponents[i].Entities = nil
+			for j := range v.AffectedComponents[i].Checks {
+				v.AffectedComponents[i].Checks[j].Entities = nil
+			}
 		}
 	}
 }
