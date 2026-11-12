@@ -12,7 +12,7 @@ Go module dependencies:
   License:  Apache-2.0
   URL:      https://cel.dev/expr
 
-  github.com/NVIDIA/go-dcgm  v1.4701.2
+  github.com/NVIDIA/go-dcgm  v1.4702.0
   License:  Apache-2.0
   URL:      https://github.com/NVIDIA/go-dcgm
 
@@ -28,7 +28,7 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://github.com/antlr4-go/antlr/v4
 
-  github.com/bits-and-blooms/bitset  v1.25.0
+  github.com/bits-and-blooms/bitset  v1.26.0
   License:  BSD-3-Clause
   URL:      https://github.com/bits-and-blooms/bitset
 
@@ -116,15 +116,15 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://golang.org/x/exp/typeparams
 
-  golang.org/x/mod  v0.41.0
+  golang.org/x/mod  v0.42.0
   License:  BSD-3-Clause
   URL:      https://golang.org/x/mod
 
-  golang.org/x/net  v0.60.0
+  golang.org/x/net  v0.61.0
   License:  BSD-3-Clause
   URL:      https://golang.org/x/net
 
-  golang.org/x/sync  v0.23.0
+  golang.org/x/sync  v0.24.0
   License:  BSD-3-Clause
   URL:      https://golang.org/x/sync
 
@@ -132,11 +132,11 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://golang.org/x/sys
 
-  golang.org/x/text  v0.42.0
+  golang.org/x/text  v0.43.0
   License:  BSD-3-Clause
   URL:      https://golang.org/x/text
 
-  golang.org/x/tools  v0.51.0
+  golang.org/x/tools  v0.52.0
   License:  BSD-3-Clause
   URL:      https://golang.org/x/tools
 
