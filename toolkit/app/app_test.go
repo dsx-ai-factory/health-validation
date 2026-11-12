@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1495,5 +1496,43 @@ func TestXidTimeFlagsPreserveBackendOverride(t *testing.T) {
 		if code == exitError || !called {
 			t.Fatalf("%s: code=%d, override called=%v, stderr=%s", command, code, called, stderr.String())
 		}
+	}
+}
+
+func TestWarnUnknownArchitectureNamesGPUModels(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	snapshot, err := inventoryReader{gpus: 2, model: "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"}.Read(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnUnknownArchitecture(gpuinventory.ArchitectureUnknown, snapshot)
+
+	got := logs.String()
+	if !strings.Contains(got, "level=WARN") || !strings.Contains(got, "architecture is unknown") {
+		t.Fatalf("expected an unknown-architecture warning, got %q", got)
+	}
+	if strings.Count(got, "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition") != 1 {
+		t.Fatalf("expected the GPU model named once, got %q", got)
+	}
+}
+
+func TestWarnUnknownArchitectureSilentForKnownArchitecture(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	snapshot, err := inventoryReader{gpus: 4, model: "NVIDIA GB200"}.Read(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnUnknownArchitecture("GB200", snapshot)
+
+	if logs.Len() != 0 {
+		t.Fatalf("expected no log for a recognized architecture, got %q", logs.String())
 	}
 }

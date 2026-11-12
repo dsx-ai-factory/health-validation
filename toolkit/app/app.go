@@ -47,6 +47,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -427,6 +428,7 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
 		return code
 	}
+	warnUnknownArchitecture(arch, snapshot)
 
 	// The driver version comes from the same snapshot. Unlike architecture
 	// an unknown version is not a node fault: whatever depends on it treats
@@ -944,6 +946,25 @@ func writeVerdict(verdict health.NodeVerdict, prog, nodeID string, stdout, stder
 
 	// The precise severity lives in the JSON; the exit code is the coarse signal.
 	return exitCodeForVerdict(verdict)
+}
+
+// warnUnknownArchitecture logs a warning naming the GPU models when discovery
+// resolves to gpuinventory.ArchitectureUnknown. Every architecture-scoped check
+// then skips and the verdict can still read healthy, so the log is the only
+// immediate hint that the node was barely checked.
+func warnUnknownArchitecture(arch string, snapshot *observation.GPUInventorySnapshot) {
+	if arch != gpuinventory.ArchitectureUnknown {
+		return
+	}
+	var models []string
+	for _, entry := range snapshot.GetInventory().GetEntries() {
+		model := entry.GetGpu().GetModel()
+		if model == "" || slices.Contains(models, model) {
+			continue
+		}
+		models = append(models, model)
+	}
+	slog.Warn("GPU architecture is unknown; architecture-scoped checks will be skipped", "models", models)
 }
 
 // discoveryFailureVerdict builds a Critical node verdict for a run that could
