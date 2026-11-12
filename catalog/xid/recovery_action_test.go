@@ -207,7 +207,7 @@ func TestTerminalRecoveryActions_UnknownOrderKeepsRequest(t *testing.T) {
 func TestDerivedSignals_KeySetIsDataIndependent(t *testing.T) {
 	m := xid.XidMeasurement{Events: []xid.XidEvent{
 		recoveryEvent("0019:01:00", "0x0", "None", "0x1", "GPU Reset Required"),
-		nvlink5Event("0019:01:00", 145, "RLW_SRC_TRACK", "0x00000020"),
+		srcTrackEvent("0019:01:00", resetOutright),
 	}}
 	version, ok := health.ParseDriverVersion("575.51.03")
 	if !ok {

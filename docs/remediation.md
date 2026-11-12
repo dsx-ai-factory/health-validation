@@ -153,13 +153,18 @@ followed by service if the problem persists. The verdict message preserves
 the conditional guidance for operators.
 
 Xid 144-150 (the NVLink5/NVSwitch fault family, `gpu_xid_144`..`gpu_xid_150`)
-are a special case: unlike other Xid codes, NVRM marks each occurrence Fatal
-or Nonfatal directly in the log line. Each of these checks fires CRITICAL
-with `["reset_gpu", "service_required"]` (the same two-step sequence as
-above) on a Fatal occurrence, and WARNING with **no recommended action** on
-a Nonfatal one. In NVIDIA's full Xid 144-150 decode table, about 95% of
-Fatal rows resolve to a GPU reset, then service if the reset doesn't clear
-it, and most Nonfatal rows need no remediation at all.
+are a special case: each occurrence is matched against NVIDIA's Xid 144-150
+decode table, and each check reports what its occurrences resolve to:
+
+- **CRITICAL** with `["reset_gpu", "service_required"]` for a GPU reset,
+  including a Fatal occurrence the table has no confirmed row for.
+- **WARNING** with `monitor` when the log line could not be decoded.
+- **INFO** with no action when the occurrence resolves to no action.
+
+Some Xid 145 rows defer to the recovery action an Xid 154 reports for the
+same GPU. Such an occurrence reports INFO pointing to `gpu_xid_154`, which
+carries the action, or WARNING with `["restart_app"]` when no Xid 154 was
+logged for that GPU.
 
 `gpu_xid_154` reports the recovery action the driver requested for each GPU,
 whichever Xid it accompanied:
