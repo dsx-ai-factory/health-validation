@@ -179,8 +179,8 @@ Skips never count toward `overall_severity`, so read `skipped_checks`. `SENSOR_M
 | GPU inventory read fails or times out | Inventory collection error | The same discovery verdict in the CLI; a library caller sees a `gpu_count` collection failure | 1 |
 | Some GPU handles cannot be opened | Inventory with failed slots | Those GPUs are not counted, so `gpu_count` judges the lower count. If no remaining GPU model can be read, the CLI stops at architecture discovery instead | 0 or 1 by severity |
 | The Xid journal scan succeeds with no Xid entries | Scan marker | Value: zero events, so the Xid checks pass | 0 or 1 by the other checks |
-| The kernel journal is unreadable or holds no kernel entries (Xid) | Read error, or an empty kernel-scoped probe | Collection failure for every Xid check | 1 |
-| The RDMA link-flap scan finds no link transitions | Any entry in the current boot's journal | Value: zero flaps, so `rdma_linkflap_fatal` passes | 0 or 1 by the other checks |
+| The kernel journal is unreadable or holds no kernel entries | Read error, or an empty kernel-scoped probe | Collection failure for every Xid check and for `rdma_linkflap_fatal` | 1 |
+| The RDMA link-flap scan succeeds with no link transitions | Scan marker | Value: zero flaps, so `rdma_linkflap_fatal` passes | 0 or 1 by the other checks |
 | An Xid line matches but does not parse | Parse error on the event | Collection failure for every Xid check | 1 |
 | A CPU sysfs file cannot be read | Collection error on that signal | Collection failure for the checks that read it | 1 |
 | A built-in domain adapter receives no observations | Empty batch from every sensor that feeds it | Collection failure for every signal of the domain | 1 |
@@ -196,7 +196,7 @@ Differences between domains:
 - The Xid and RDMA link-flap readers prove a clean scan with a scan marker and a kernel-scoped probe. An empty result alone is not a clean scan, so a user who can read only their own journal gets a collection failure, not a PASS.
 - GPU count proves zero from the inventory read itself. `NO_TARGETS` on a per-GPU signal never proves a node has no GPUs.
 - When a source says `NOT_SUPPORTED`, seven signals read as not asserted: the three hardware-slowdown bits and the four NVLink fabric-health bits (`unsupportedIsNeutral` in `toolkit/observations/mapping.go`). The Fabric Manager status reads as registration incomplete (`unsupportedValue`).
-- The NVLink converter (`toolkit/observations/nvlink.go`) follows the legacy NVML reads. A link state NVML reports as `ERROR_NOT_SUPPORTED` is not counted as inactive, and reported for the whole GPU it means the GPU has no NVLink. An unsupported common speed falls back to the slowest per-link speed. `NO_TARGETS` on the P2P status means a GPU with no peers.
+- The NVLink converter (`toolkit/observations/nvlink.go`) reads NVML's per-link outcomes as v0.3 did. A link state NVML reports as `ERROR_NOT_SUPPORTED` is not counted as inactive, and reported for the whole GPU it means the GPU has no NVLink. An unsupported common speed falls back to the slowest per-link speed. `NO_TARGETS` on the P2P status means a GPU with no peers.
 - `NO_TARGETS` on the compute-process cmdline signal means no compute processes; with a successfully collected process count of zero, `gpu_compute_apps` passes.
 - Every other unsupported value fails the checks that need it.
 - The library converter `observations.ToMeasurements` returns no measurement for an empty input, which evaluation reports as `SENSOR_MISSING`. The CLI's built-in adapters fail the whole domain instead, so treat an empty conversion as missing data.
