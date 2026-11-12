@@ -7,7 +7,7 @@
 # nothing about the image's base layer, can undercount a dependency whose BUILD
 # files use the legacy go_default_library naming, and records only the
 # linux/amd64 half of the published multi-arch index.
-cel.dev/expr	v0.25.2
+cel.dev/expr	v0.25.3
 github.com/NVIDIA/go-dcgm	v1.4702.0
 github.com/NVIDIA/go-nvlib	v0.13.0
 github.com/NVIDIA/go-nvml	v0.13.4-1
@@ -37,6 +37,6 @@ golang.org/x/sys	v0.49.0
 golang.org/x/text	v0.43.0
 google.golang.org/genproto/googleapis/api	v0.0.0-20260928230214-8a89bd6388cc
 google.golang.org/genproto/googleapis/rpc	v0.0.0-20260928230214-8a89bd6388cc
-google.golang.org/grpc	v1.84.0
+google.golang.org/grpc	v1.85.0
 google.golang.org/protobuf	v1.36.12
 gopkg.in/yaml.v3	v3.0.1

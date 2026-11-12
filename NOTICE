@@ -8,7 +8,7 @@ This product includes software developed by NVIDIA CORPORATION & AFFILIATES
 
 Go module dependencies:
 
-  cel.dev/expr  v0.25.2
+  cel.dev/expr  v0.25.3
   License:  Apache-2.0
   URL:      https://cel.dev/expr
 
@@ -148,7 +148,7 @@ Go module dependencies:
   License:  Apache-2.0
   URL:      https://google.golang.org/genproto/googleapis/rpc
 
-  google.golang.org/grpc  v1.84.0
+  google.golang.org/grpc  v1.85.0
   License:  Apache-2.0
   URL:      https://google.golang.org/grpc
 
