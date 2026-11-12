@@ -97,7 +97,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | RecommendedAction | RecommendedAction | `recommended_action` | Node-level drain sequence selected from the highest-severity eligible failing check; elided (`omitzero`) when no node-level drain sequence is available. |
 | CheckResults | []CheckVerdict | `check_results` | Per-check results for checks that ran. |
 | SkippedChecks | []CheckVerdict | `skipped_checks` | Per-check results for checks that were skipped. |
-| AffectedComponents | []AffectedComponent | `affected_components` | Non-PASS domains with their affected entities and check IDs. |
+| AffectedComponents | []AffectedComponent | `affected_components` | Non-PASS domains. Each check appears once with the entities that failed it. |
 
 Each `CheckVerdict` retains its own recommendation; drain recommendations carry
 an ordered remediation sequence. `NodeVerdict` also surfaces one complete drain

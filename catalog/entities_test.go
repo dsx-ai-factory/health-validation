@@ -67,9 +67,13 @@ func TestEvaluateAll_FailingCheckNamesItsEntity(t *testing.T) {
 	}
 
 	// The node-level rollup is built from the same field, so it names the
-	// GPU too.
-	if len(nv.AffectedComponents) != 1 || !slices.Equal(nv.AffectedComponents[0].Entities, []string{"GPU-1"}) {
-		t.Errorf("AffectedComponents = %+v, want one naming GPU-1", nv.AffectedComponents)
+	// GPU on that check.
+	if len(nv.AffectedComponents) != 1 {
+		t.Fatalf("AffectedComponents = %+v, want one", nv.AffectedComponents)
+	}
+	checks := nv.AffectedComponents[0].Checks
+	if len(checks) != 1 || checks[0].CheckID != "gpu_pstate_probe" || !slices.Equal(checks[0].Entities, []string{"GPU-1"}) {
+		t.Errorf("AffectedComponents = %+v, want gpu_pstate_probe naming GPU-1", nv.AffectedComponents)
 	}
 }
 
