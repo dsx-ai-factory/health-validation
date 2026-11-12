@@ -153,7 +153,7 @@ func TestRunCommandLinkFlapReadsOneHourWindow(t *testing.T) {
 		t.Fatalf("journalctl --since=@%d, want within [%d, %d] (one hour before the run); args = %q", since, lo, hi, data)
 	}
 	if linkFlapLookback != time.Hour {
-		t.Fatalf("linkFlapLookback = %v, want the legacy one hour", linkFlapLookback)
+		t.Fatalf("linkFlapLookback = %v, want v0.3's one hour", linkFlapLookback)
 	}
 }
 

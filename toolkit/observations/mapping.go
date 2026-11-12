@@ -198,8 +198,8 @@ func mappingsFor(category health.Category) []mapping {
 // DCGM report an undeterminable state as 32 (NVML_PSTATE_UNKNOWN).
 const maxPerformanceState = 15
 
-// applyPerformanceState fails a pstate outside P0-P15, as the legacy NVML
-// sensor does, rather than letting the unknown sentinel fail the threshold.
+// applyPerformanceState fails a pstate outside P0-P15 rather than letting the
+// unknown sentinel fail the threshold.
 func applyPerformanceState(measurement any, current *observation.Observation) error {
 	var state int64
 	if err := setField(reflect.ValueOf(&state).Elem(), current); err != nil {
@@ -216,7 +216,7 @@ func applyPerformanceState(measurement any, current *observation.Observation) er
 // registration signals the NVLink fabric check reads. A status reported
 // unsupported reads as FabricManagerStatusNotSupported: fabric registration
 // is mandatory where the fabric checks run, so a GPU that cannot report it is
-// unregistered, as the legacy NVML sensor treats it.
+// unregistered.
 func applyFabricManagerStatus(measurement any, current *observation.Observation) error {
 	m := measurement.(*nvlink.NVLinkMeasurement)
 	integer, ok := current.GetValue().GetKind().(*observation.Value_IntValue)

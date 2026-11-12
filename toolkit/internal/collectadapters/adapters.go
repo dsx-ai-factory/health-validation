@@ -102,7 +102,7 @@ func erroredGPU(err error) []health.Measurement {
 }
 
 func erroredNVLink(err error) []health.Measurement {
-	// The legacy NVLink sensor names a whole-domain failure after its domain.
+	// A whole-domain failure is named after its domain, as in v0.3.
 	m := nvlink.ErroredNVLink(health.NVLink.String(), err, nvlink.MeasurementSignals()...)
 	m.SetEntityKey(health.SourceEntity(adapterSource(health.NVLink)))
 	return []health.Measurement{m}

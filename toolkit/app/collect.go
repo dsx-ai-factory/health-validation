@@ -150,8 +150,7 @@ var (
 	processGPUSignals = collect.Signals{gpusignals.ProcessCount, gpusignals.ProcessCmdline}
 )
 
-// linkFlapLookback is the window rdma_linkflap_fatal judges, as the legacy
-// backend's default was. The CLI sets it rather than inheriting the sensor's
+// linkFlapLookback is the window rdma_linkflap_fatal judges, as in v0.3. The CLI sets it rather than inheriting the sensor's
 // default, so a change in collect cannot move the check's window.
 const linkFlapLookback = time.Hour
 

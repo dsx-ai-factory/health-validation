@@ -901,7 +901,7 @@ func TestWriteVerdictNodeID(t *testing.T) {
 }
 
 // erroringHost is a hostBackend whose architecture discovery fails while its
-// per-domain backends would still collect — the dangerous case where discovery
+// GPU sensors would still collect — the dangerous case where discovery
 // errors (e.g. transiently) but collection would otherwise succeed and be
 // evaluated against the wrong architecture's thresholds.
 type erroringHost struct {

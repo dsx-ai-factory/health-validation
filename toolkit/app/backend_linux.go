@@ -44,7 +44,7 @@ type nvmlHost struct {
 
 func newHostBackend() hostBackend {
 	h := &nvmlHost{
-		// Legacy NVML read the driver live, so read DCGM live too.
+		// v0.3's NVML sensor read the driver live; DCGM reads live to match.
 		dcgm: dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{LiveMetrics: true}),
 	}
 	// The signal set is fixed, so New fails only on a programming error that
