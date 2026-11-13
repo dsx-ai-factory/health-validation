@@ -144,7 +144,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     conversion yields no measurements, or the domain's checks are skipped
     instead of failed. Convert all of a domain's observations in one call: GPU
     and NVLink read both DCGM and NVML, and a measurement built from one
-    source reports the other source's signals as failed.
+    source reports the other source's signals as failed. Give each signal one
+    source: both sensors produce power draw and the power limits, and a signal
+    fed twice is also reported failed. Pass `collect.WithSignalID` to each
+    sensor's `Measure` with disjoint sets. The CLI reads power draw, power
+    limits, performance state, the hardware slowdown signals, and fabric
+    registration from DCGM, and the rest from NVML.
     `agentkit/examples/scan-one-off-evaluate` shows opening and closing a DCGM
     source for the DCGM sensor.
   - `App.WithCPUBackend`, `WithGPUBackend`, `WithNodeBackend`,
