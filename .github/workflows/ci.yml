@@ -109,7 +109,7 @@ jobs:
 
           if [[ "${base_version}" == "${head_version}" ]] && ! cmp -s "${RUNNER_TEMP}/base.json" "${RUNNER_TEMP}/head.json"; then
             diff -u "${RUNNER_TEMP}/base.json" "${RUNNER_TEMP}/head.json" || true
-            echo "::error file=${schema}::The schema changed but schema_version is still ${head_version}. Bump health.NodeVerdictSchemaVersion and properties.schema_version.const (MAJOR for breaking shape changes, MINOR for additive fields or enum values)."
+            echo "::error file=${schema}::The schema changed but schema_version is still ${head_version}. Bump health.NodeVerdictSchemaVersion and properties.schema_version.const (MINOR for breaking shape changes and for additive fields or enum values)."
             exit 1
           fi
           echo "schema_version ${base_version} -> ${head_version}; schema change is consistent with the version."
