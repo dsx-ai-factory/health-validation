@@ -1,0 +1,31 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//build/rules/go:defs.bzl", "go_binary")
+
+go_library(
+    name = "synthetic-health-gate_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/catalog/examples/synthetic-health-gate",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//catalog",
+        "//catalog/cpu",
+        "//catalog/health",
+    ],
+)
+
+go_binary(
+    name = "synthetic-health-gate",
+    embed = [":synthetic-health-gate_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "synthetic-health-gate_test",
+    srcs = ["main_test.go"],
+    embed = [":synthetic-health-gate_lib"],
+    deps = [
+        "//catalog",
+        "//catalog/cpu",
+        "//catalog/health",
+    ],
+)

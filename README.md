@@ -372,6 +372,8 @@ exit 0
 
 Direct evaluation (supply measurements from your own telemetry stack):
 
+See the [synthetic health gate](catalog/examples/synthetic-health-gate/) for a hardware-independent caller that requires two assessed PASS results before continuing.
+
 ```go
 import (
     "github.com/dsx-ai-factory/health-validation/catalog"
