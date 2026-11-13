@@ -21,6 +21,7 @@ go_library(
 go_test(
     name = "toolkit_test",
     srcs = [
+        "collect_sensor_example_test.go",
         "collect_test.go",
         "entity_test.go",
         "example_test.go",
@@ -30,9 +31,13 @@ go_test(
         ":toolkit",
         "//catalog",
         "//catalog/catalogtest",
+        "//catalog/cpu",
         "//catalog/gpu",
         "//catalog/health",
         "//catalog/node",
         "//catalog/nvlink",
+        "//collect",
+        "//collect/sensors/cpu",
+        "//toolkit/observations",
     ],
 )

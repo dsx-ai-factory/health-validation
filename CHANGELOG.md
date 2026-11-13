@@ -135,6 +135,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The legacy toolkit sensors are removed. The CLI has collected every
   built-in domain through `collect` sensors since the changes above, so the
   stock CLI is unaffected. Library callers migrate as follows:
+  - `toolkit.Collect` and `CollectWithOptions` still take `toolkit.Sensor`,
+    and a `collect.Sensor` does not satisfy it, so swapping constructors does
+    not compile. Wrap the collect sensor in a `toolkit.Sensor` whose `Measure`
+    converts its batch with `observations.ToMeasurements` and whose `Errored`
+    returns the domain's `ErroredXxx` measurement. `Example_collectSensor` in
+    `toolkit` does this for the CPU sensor. Return an error when the
+    conversion yields no measurements, or the domain's checks are skipped
+    instead of failed. Convert all of a domain's observations in one call: GPU
+    and NVLink read both DCGM and NVML, and a measurement built from one
+    source reports the other source's signals as failed.
+    `agentkit/examples/scan-one-off-evaluate` shows opening and closing a DCGM
+    source for the DCGM sensor.
   - `App.WithCPUBackend`, `WithGPUBackend`, `WithNodeBackend`,
     `WithNVLinkBackend`, `WithXidBackend`, and `WithRDMALinkFlapBackend`:
     pass a `collect.Sensor` and the signal IDs it supplies to
@@ -142,6 +154,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     `WithCollect(sensor, observations.MappedSignalsFor(health.CPU)...)`. Claim
     only signals a registered adapter reads: `cpusignals.All()` also holds
     activity signals no adapter reads, and claiming one fails registration.
+    GPU and NVLink map signals from both DCGM and NVML, so a sensor for one of
+    them claims only the mapped signals its own `Signals()` lists.
     The claimed signals replace the built-in source's; the built-in adapter
     still builds the domain's measurements.
   - `CPUBackend`, `CPUSensor`, `NewCPUSensor`, and `SysfsCPU`: use

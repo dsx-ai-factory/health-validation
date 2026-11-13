@@ -408,9 +408,10 @@ cat := catalog.New(
     catalog.WithExecutionContext(health.OperatorInfra),
 )
 
-// mySensor is any toolkit.Sensor. To reuse the stock CLI's collect sensors
-// instead, build a toolkit/app App and add sources with WithCollect and
-// adapters with WithCollectAdapters; see docs/extending.md.
+// mySensor is any toolkit.Sensor. To run a collect sensor here, wrap it as in
+// toolkit's Example_collectSensor. To reuse the stock CLI's wiring instead,
+// build a toolkit/app App and add sources with WithCollect and adapters with
+// WithCollectAdapters; see docs/extending.md.
 verdict, err := toolkit.Collect(cat, mySensor)
 ```
 
