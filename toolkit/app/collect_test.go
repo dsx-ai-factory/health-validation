@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -19,17 +20,20 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -67,20 +71,80 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
-		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband", "nvlink"}},
-		{name: "GPU and NVLink overrides", app: New().WithGPUBackend(spyBackend{called: new(bool)}).WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband"}},
-		{name: "NVLink override", app: New().WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "node", "xid", "infiniband", "nvlink"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "infiniband", "nvlink"}},
-		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "infiniband", "nvlink"}},
-		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink"}},
+		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID, ibsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
+		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID, ibsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband", "nvlink"}},
+		{name: "GPU and NVLink overrides", app: New().WithGPUBackend(spyBackend{called: new(bool)}).WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID, ibsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband"}},
+		{name: "NVLink override", app: New().WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID, ibsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband"}},
+		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID, ibsensor.ID}, adapters: []string{"gpu", "node", "xid", "infiniband", "nvlink"}},
+		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID, linkflapsensor.ID, ibsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "infiniband", "nvlink"}},
+		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, linkflapsensor.ID, ibsensor.ID}, adapters: []string{"gpu", "cpu", "node", "infiniband", "nvlink"}},
+		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, ibsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
+		{name: "link-flap and IB overrides", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()).WithIBBackend(ibSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink"}},
+		{name: "IB override", app: New().WithIBBackend(ibSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)
 		if !slices.Equal(sources, test.sources) || !slices.Equal(adapters, test.adapters) {
 			t.Errorf("%s: built-ins = %v %v, want %v %v", test.name, sources, adapters, test.sources, test.adapters)
 		}
+	}
+}
+
+// The built-in InfiniBand adapter joins the link-flap and RDMA port
+// measurements. A run that needs only one of them must neither build nor fail
+// the other.
+func TestBuiltinInfiniBandBuildsOnlyRequestedParts(t *testing.T) {
+	cycle, err := newCycle(time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		check        string
+		wantLinkFlap bool
+		wantPorts    bool
+	}{
+		{check: "rdma_linkflap_fatal", wantLinkFlap: true},
+		{check: "rdma_fabric_ports_active", wantPorts: true},
+	} {
+		t.Run(test.check, func(t *testing.T) {
+			def, err := catalog.New().Get(test.check)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := New()
+			a.host = fakeHost{b: spyBackend{called: new(bool)}}
+			sources, adapters := a.builtinCollect(nil)
+			declared, err := a.declareAdapters(adapters)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bindings, err := a.registerSources(collectbridge.NewRunner(cycle), declared, sources, requiredFor([]*health.CheckDefinition{def}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			i := slices.IndexFunc(bindings, func(b collectbridge.Binding) bool { return b.Name == health.InfiniBand.String() })
+			if i < 0 {
+				t.Fatal("no InfiniBand binding")
+			}
+			// Nothing was collected, so each built part reports a failure.
+			for name, measurements := range map[string][]health.Measurement{
+				"Build":   bindings[i].Build(nil),
+				"Errored": bindings[i].Errored(errors.New("boom")),
+			} {
+				var linkFlap, ports bool
+				for _, m := range measurements {
+					switch m.(type) {
+					case infiniband.LinkFlapMeasurement:
+						linkFlap = true
+					case infiniband.PortMeasurement:
+						ports = true
+					}
+				}
+				if linkFlap != test.wantLinkFlap || ports != test.wantPorts {
+					t.Errorf("%s: link-flap=%v ports=%v, want %v and %v", name, linkFlap, ports, test.wantLinkFlap, test.wantPorts)
+				}
+			}
+		})
 	}
 }
 
@@ -1432,6 +1496,13 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 		}
 		for _, cd := range catalog.New().List(catalog.Filter{}) {
 			if cd.Category != adapter.Category() {
+				continue
+			}
+			// A category can be split between a collect adapter and a legacy
+			// sensor (infiniband: fabric ports here, link flaps from the
+			// journal sensor). A check is this adapter's when it feeds any of
+			// its signals, and then it must feed all of them.
+			if !slices.ContainsFunc(cd.RequiredSignals, func(s string) bool { return fed[s] }) {
 				continue
 			}
 			for _, s := range cd.RequiredSignals {

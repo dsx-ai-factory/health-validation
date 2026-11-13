@@ -11,9 +11,9 @@ import (
 
 // IBBackend supplies the measurements consumed by the generic InfiniBand sensor.
 //
-// The catalog's only built-in InfiniBand check (rdma_linkflap_fatal) is fed by
-// the dedicated journal link-flap sensor, not this backend. This sensor is
-// opt-in: a consumer supplies a backend to contribute additional InfiniBand
+// The catalog's built-in InfiniBand checks are fed by the journal link-flap
+// sensor (rdma_linkflap_fatal) and the RDMA port collect sensor
+// (rdma_fabric_ports_active), not this backend. This sensor is opt-in: a consumer supplies a backend to contribute additional InfiniBand
 // measurements, owning their device enumeration, the measurement types it
 // emits, and — via Errored — the errored measurements those checks see when
 // collection fails.
