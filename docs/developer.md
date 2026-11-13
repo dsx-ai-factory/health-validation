@@ -52,7 +52,7 @@ The repo is a single Go module with one `go.mod` and one version. Its packages
 are grouped by directory:
 
 - **`catalog/`** — check catalog and CEL evaluation engine (no external deps)
-- **`toolkit/`** — sensors, collect adapters, the NVML backend, and the `health-validation` CLI
+- **`toolkit/`** — collect adapters and the `health-validation` CLI
 - **`collect/`** — telemetry collection emitting protobuf observations
 - **`agentkit/`** — gRPC/HTTP server exposing `collect`
 

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package toolkit provides the sensor and backend abstractions partners
-// use to feed measurements into the catalog and produce a node verdict.
+// Package toolkit provides the sensor abstraction partners use to feed
+// measurements into the catalog and produce a node verdict.
 //
 // A [Sensor] collects measurements from a hardware domain, either per observed
 // entity or host-wide. [Collect] runs one or more sensors, hands their
@@ -10,35 +10,18 @@
 // [health.NodeVerdict]. Use [CollectWithOptions] for a per-run cadence or
 // collection timeout; zero-value [CollectionOptions] uses the defaults.
 //
-// # Sensors and reference backends
+// # Sensors
 //
-// Sensors wrap narrow, pluggable backend interfaces. The toolkit ships with
-// production and test backends including:
-//
-//   - the toolkit/nvml backend, which collects GPU, node, and NVLink state;
-//   - [SysfsCPU], which reads the Linux possible and online CPU lists and the
-//     online NUMA node list, and emits one host-wide measurement;
-//   - [Journalctl] (deprecated; the CLI collects Xid through collect/sensors/xid),
-//     which reads Xid events from the system journal;
-//   - [JournalctlRDMALinkFlap] (deprecated; the CLI collects link flaps
-//     through collect/sensors/linkflap), which reads mlx5 RDMA link
-//     transitions from the system journal; and
-//   - [MockGPU], [MockCPU], and the other mock constructors used in tests.
-//
-// SysfsCPU reports the kernel's CPU availability and NUMA topology view, not
-// expected VM/SKU capacity, process affinity, or cgroup CPU limits. Other
-// backends (nvidia-smi, partner-specific) are implemented out of tree by
-// satisfying the relevant narrow interface, such as [GPUBackend] or [CPUBackend].
-//
-// # Wiring example
+// The stock CLI builds its sensors from collect sensors through the bridge in
+// toolkit/app; see that package's WithCollect and WithCollectAdapters. Any
+// type implementing [Sensor] can be passed to [Collect] directly; the
+// collectSensor example wraps a collect sensor that way:
 //
 //	cat := catalog.New(
 //	    catalog.WithArchitecture("GB200"),
 //	    catalog.WithExecutionContext(health.OperatorInfra),
 //	)
-//	gpu := toolkit.NewGPUSensor(nvml.New())
-//	cpu := toolkit.NewCPUSensor(toolkit.SysfsCPU())
-//	nv, err := toolkit.Collect(cat, gpu, cpu)
+//	nv, err := toolkit.Collect(cat, mySensor)
 //	if err != nil { /* handle */ }
 //	fmt.Println(nv.OverallSeverity)
 package toolkit

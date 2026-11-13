@@ -27,9 +27,7 @@ func TestCollectWithOptions_ZeroValueHealthyNode(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	sensor := nodeSensor(4)
 
 	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{}, sensor)
 	if err != nil {
@@ -41,9 +39,7 @@ func TestCollectWithOptions_ZeroValueHealthyNode(t *testing.T) {
 }
 
 func TestCollectMeasurementsWithTimeoutPreservesSensor(t *testing.T) {
-	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	sensor := nodeSensor(4)
 
 	groups := toolkit.CollectMeasurementsWithTimeout(time.Second, sensor)
 	if len(groups) != 1 || groups[0].Sensor != "node" || len(groups[0].Measurements) != 1 {
@@ -58,9 +54,7 @@ func TestCollect_FailingNode(t *testing.T) {
 	)
 
 	// Only 3 GPUs visible against the default expected count of 4.
-	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 3},
-	))
+	sensor := nodeSensor(3)
 
 	nv, err := toolkit.Collect(cat, sensor)
 	if err != nil {
@@ -76,9 +70,7 @@ func TestCollectWithOptions_ContinuousCadenceSkipsPrologChecks(t *testing.T) {
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
-	sensor := toolkit.NewGPUSensor(toolkit.MockGPU(
-		gpu.GPUMeasurement{GPUID: "GPU-0"},
-	))
+	sensor := staticSensor{name: "gpu", ms: []health.Measurement{gpu.GPUMeasurement{GPUID: "GPU-0"}}}
 	cadence := health.Continuous
 	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Cadence: &cadence}, sensor)
 	if err != nil {
@@ -256,9 +248,7 @@ func TestCollect_FailingSensorDoesNotMaskHealthy(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	healthy := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	healthy := nodeSensor(4)
 	failing := failingSensor{
 		name: "nvlink",
 		errored: func(err error) []health.Measurement {
@@ -287,26 +277,17 @@ func TestCollect_FailingSensorDoesNotMaskHealthy(t *testing.T) {
 // call) and returns only when release is closed, so the watchdog is the
 // only thing that can end the wait. errored builds the degraded
 // measurements, letting a test pick which domain's checks the failure
-// hits. key, when set, makes the sensor share a backend resource (see
-// resourceKeyed); measured, when set, is closed on Measure entry so a
-// test can detect a sensor that should instead have been skipped.
+// hits.
 type blockingSensor struct {
 	errored  func(err error) []health.Measurement
 	release  chan struct{}
-	measured chan struct{}
 	name     string
-	key      string
 	honorCtx bool
 }
 
 func (s *blockingSensor) Name() string { return s.name }
 
-func (s *blockingSensor) ResourceKey() string { return s.key }
-
 func (s *blockingSensor) Measure(ctx context.Context) ([]health.Measurement, error) {
-	if s.measured != nil {
-		close(s.measured)
-	}
 	if s.honorCtx {
 		select {
 		case <-ctx.Done():
@@ -409,9 +390,7 @@ func TestCollectWithOptions_TimeoutDoesNotMaskHealthy(t *testing.T) {
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
-	healthy := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	healthy := nodeSensor(4)
 	slow := &blockingSensor{
 		name:     "nvlink",
 		honorCtx: true,
@@ -431,144 +410,6 @@ func TestCollectWithOptions_TimeoutDoesNotMaskHealthy(t *testing.T) {
 	}
 	if got := nv.SeverityByDomain[health.NVLink]; got != health.Unknown {
 		t.Errorf("nvlink domain = %v, want UNKNOWN (timed out)", got)
-	}
-}
-
-// TestCollectWithOptions_CircuitBreakerSkipsWedgedResource verifies that
-// once a sensor times out, a later sensor sharing the same backend
-// resource is skipped — its Measure never runs — and degraded directly.
-func TestCollectWithOptions_CircuitBreakerSkipsWedgedResource(t *testing.T) {
-	cat := catalog.New(
-		catalog.WithArchitecture("GB200"),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-
-	// first shares resource "nvml" and wedges (ignores cancellation), so
-	// the watchdog must time it out.
-	first := &blockingSensor{
-		name:     "node",
-		key:      "nvml",
-		honorCtx: false,
-		release:  make(chan struct{}),
-		errored: func(err error) []health.Measurement {
-			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
-		},
-	}
-	defer close(first.release)
-
-	// second shares the same resource; once first wedges it must be
-	// skipped without its Measure ever running (which would close
-	// secondMeasured).
-	secondMeasured := make(chan struct{})
-	second := &blockingSensor{
-		name:     "nvlink",
-		key:      "nvml",
-		honorCtx: false,
-		release:  make(chan struct{}),
-		measured: secondMeasured,
-		errored: func(err error) []health.Measurement {
-			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals()...)}
-		},
-	}
-	defer close(second.release)
-
-	done := make(chan health.NodeVerdict, 1)
-	go func() {
-		nv, _ := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, first, second)
-		done <- nv
-	}()
-
-	select {
-	case nv := <-done:
-		select {
-		case <-secondMeasured:
-			t.Error("second sensor was measured; it should have been skipped after the shared resource timed out")
-		default:
-		}
-		if got := nv.SeverityByDomain[health.Node]; got != health.Unknown {
-			t.Errorf("node domain = %v, want UNKNOWN (first sensor timed out)", got)
-		}
-		if got := nv.SeverityByDomain[health.NVLink]; got != health.Unknown {
-			t.Errorf("nvlink domain = %v, want UNKNOWN (skipped via circuit breaker)", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("CollectWithOptions hung")
-	}
-}
-
-// TestCollectWithOptions_CircuitBreakerScopedToResource verifies the
-// breaker is per-resource: a wedged backend does not skip a sensor on a
-// different backend, which still collects normally.
-func TestCollectWithOptions_CircuitBreakerScopedToResource(t *testing.T) {
-	cat := catalog.New(
-		catalog.WithArchitecture("GB200"),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-
-	wedged := &blockingSensor{
-		name:     "nvlink",
-		key:      "nvml",
-		honorCtx: false,
-		release:  make(chan struct{}),
-		errored: func(err error) []health.Measurement {
-			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals()...)}
-		},
-	}
-	defer close(wedged.release)
-
-	// A healthy sensor on a different backend (its own resource key) must
-	// still be collected despite the wedge.
-	healthy := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
-
-	done := make(chan health.NodeVerdict, 1)
-	go func() {
-		nv, _ := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, wedged, healthy)
-		done <- nv
-	}()
-
-	select {
-	case nv := <-done:
-		if got := nv.SeverityByDomain[health.NVLink]; got != health.Unknown {
-			t.Errorf("nvlink domain = %v, want UNKNOWN (wedged)", got)
-		}
-		if got := nv.SeverityByDomain[health.Node]; got != health.Pass {
-			t.Errorf("node domain = %v, want PASS (different resource must still be collected)", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("CollectWithOptions hung")
-	}
-}
-
-// TestSensorsShareResourceKeyForSharedBackend verifies the wiring behind
-// the circuit breaker: the GPU, Node, and NVLink sensors report the same
-// resource key when they share a backend, and a different one otherwise.
-// The shared source is a [toolkit.LazyGPUBackend] (a single MultiBackend
-// installed under all three sensors), mirroring the production wiring where
-// one lazily-constructed NVML backend feeds every GPU-side sensor.
-func TestSensorsShareResourceKeyForSharedBackend(t *testing.T) {
-	backend := toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) {
-		return newNodeMultiBackend(node.NodeMeasurement{GPUCount: 4}), nil
-	})
-	gpuSensor := toolkit.NewGPUSensor(backend)
-	nodeSensor := toolkit.NewNodeSensor(backend)
-	nvlinkSensor := toolkit.NewNVLinkSensor(backend)
-
-	key := gpuSensor.ResourceKey()
-	if key == "" {
-		t.Fatal("GPU sensor reported an empty resource key")
-	}
-	if nodeSensor.ResourceKey() != key || nvlinkSensor.ResourceKey() != key {
-		t.Errorf("sensors sharing a backend differ: gpu=%q node=%q nvlink=%q",
-			key, nodeSensor.ResourceKey(), nvlinkSensor.ResourceKey())
-	}
-
-	other := toolkit.NewNodeSensor(toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) {
-		return newNodeMultiBackend(node.NodeMeasurement{GPUCount: 8}), nil
-	}))
-	if other.ResourceKey() == key {
-		t.Errorf("sensors on different backends share key %q", key)
 	}
 }
 

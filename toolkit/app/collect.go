@@ -56,8 +56,7 @@ type CollectAdapter interface {
 // nothing to collect is not measured. Registrations are validated against
 // every declared signal regardless.
 // The sensor supplies exactly signalIDs, which must not be empty, replacing
-// the built-in collect source for them; this succeeds the With*Backend
-// overrides for collect-backed domains. Claims are explicit so that a later
+// the built-in collect source for them. Claims are explicit so that a later
 // release adding built-in sources never changes which sensor supplies a
 // signal. Each claimed signal must be declared by the sensor, requested by an
 // adapter, and claimed by only one sensor. The Xid signals, and the RDMA
@@ -68,10 +67,6 @@ type CollectAdapter interface {
 // Timeout blocking is keyed by sensor ID, not the underlying source. Shared
 // NVML/DCGM sources must prevent new calls while a timed-out call is running.
 // Late results never replace a cached timeout result.
-// Each built-in domain is collected by its legacy sensor or by its built-in
-// collect sensor, never both. For a domain still on a legacy sensor, override
-// its legacy backend with an empty provider when an adapter supplies that
-// domain's measurements instead.
 func (a *App) WithCollect(sensor collect.Sensor, signalIDs ...string) *App {
 	a.collectSources = append(a.collectSources, collectSource{sensor: sensor, claims: slices.Clone(signalIDs)})
 	return a
@@ -105,8 +100,7 @@ func (a *App) WithCollectAdapters(adapters ...CollectAdapter) *App {
 // the json-tagged field of M it sets; see [observations.NewGPUConverter] for
 // what M needs. Register it with [App.WithCollectAdapters]. A signal the
 // built-in GPU sensors read, such as ECC or the performance state, needs no
-// sensor unless [App.WithGPUBackend] and [App.WithNVLinkBackend] together
-// replace them; any other needs a sensor registered with [App.WithCollect].
+// sensor; any other needs a sensor registered with [App.WithCollect].
 // DCGM supplies power, performance state and hardware slowdown with no NVML
 // fallback; NVML supplies the rest. It
 // builds an M only for the GPUs its signals report, so a GPU no source reports
@@ -156,8 +150,7 @@ var (
 	processGPUSignals = collect.Signals{gpusignals.ProcessCount, gpusignals.ProcessCmdline}
 )
 
-// linkFlapLookback is the window rdma_linkflap_fatal judges, as the legacy
-// backend's default was. The CLI sets it rather than inheriting the sensor's
+// linkFlapLookback is the window rdma_linkflap_fatal judges, as in v0.3. The CLI sets it rather than inheriting the sensor's
 // default, so a change in collect cannot move the check's window.
 const linkFlapLookback = time.Hour
 
@@ -175,53 +168,36 @@ var (
 	}, gpusignals.EndpointCapabilitySignals())
 )
 
-// builtinCollect returns the stock CLI's collect-backed domains. A domain
-// moves here from the legacy sensor list in runCommand when it migrates; its
-// With*Backend override keeps the legacy sensor instead. The node domain and
-// the GPU power-draw gate read the host GPU inventory that architecture
-// discovery already read in cycle, so they do not enumerate GPUs again.
+// builtinCollect returns the stock CLI's collect-backed domains. The node
+// domain and the GPU power-draw gate read the host GPU inventory that
+// architecture discovery already read in cycle, so they do not enumerate GPUs
+// again.
 func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectAdapter) {
-	var sources []collect.Sensor
-	var adapters []CollectAdapter
+	inventory := a.host.gpuInventory()
 	// The host GPU sensors also feed NVLink; a source left with no requested
 	// signals does not run.
-	if a.gpu == nil || a.nvlink == nil {
-		sources = append(sources, a.host.gpuSensors()...)
-	}
-	if a.gpu == nil {
-		inventory := a.host.gpuInventory()
-		adapters = append(adapters, powerDrawGate{
+	sources := slices.Concat(a.host.gpuSensors(), []collect.Sensor{
+		cpusensor.New(nil), inventory.Sensor(), xidsensor.New(nil),
+		linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)),
+	})
+	adapters := []CollectAdapter{
+		powerDrawGate{
 			CollectAdapter: collectadapters.GPU(),
 			architecture: func() (string, error) {
 				return gpuinventory.Architecture(inventory.Snapshot(context.Background(), cycle))
 			},
-		})
-	}
-	if a.cpu == nil {
-		sources = append(sources, cpusensor.New(nil))
-		adapters = append(adapters, collectadapters.CPU())
-	}
-	if a.node == nil {
-		sources = append(sources, a.host.gpuInventory().Sensor())
-		adapters = append(adapters, collectadapters.Node())
-	}
-	if a.xid == nil {
-		sources = append(sources, xidsensor.New(nil))
+		},
+		collectadapters.CPU(),
+		collectadapters.Node(),
 		// GPUs are named from the inventory discovery or the node domain
 		// already read this cycle. The lookup never reads NVML itself, so a
 		// wedged driver cannot hold up Xid collection; without a snapshot,
 		// each GPU is named by its PCI address.
-		inventory := a.host.gpuInventory()
-		adapters = append(adapters, collectadapters.XID(func() map[string]string {
+		collectadapters.XID(func() map[string]string {
 			return gpuinventory.UUIDsByPCI(inventory.Cached(cycle))
-		}))
-	}
-	if a.rdmaLinkFlap == nil {
-		sources = append(sources, linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)))
-		adapters = append(adapters, collectadapters.InfiniBand())
-	}
-	if a.nvlink == nil {
-		adapters = append(adapters, collectadapters.NVLink())
+		}),
+		collectadapters.InfiniBand(),
+		collectadapters.NVLink(),
 	}
 	return sources, adapters
 }

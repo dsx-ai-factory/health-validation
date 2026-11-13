@@ -247,8 +247,8 @@ func gpuRefs(target *observation.ObservationTarget) []*observation.GPURef {
 
 // failSourceLocalOutcomes fails each observation of a GPU known only by a
 // source-local ID. Its outcome cannot be joined to a verified GPU, so it fails
-// that GPU's checks, as an unreadable UUID does on the legacy path, instead of
-// rejecting the batch and every other GPU in it.
+// that GPU's checks, as an unreadable UUID does, instead of rejecting the
+// batch and every other GPU in it.
 func failSourceLocalOutcomes(batch *observation.ObservationBatch) {
 	for _, o := range batch.GetObservations() {
 		if o.GetCollectionError() == nil && collectSourceLocal(o.GetTarget()) {

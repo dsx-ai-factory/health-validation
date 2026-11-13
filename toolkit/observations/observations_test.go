@@ -41,7 +41,7 @@ func TestToMeasurementsGPU(t *testing.T) {
 
 // A source-wide timeout has no GPU identity. It must fail gpu_id with the same
 // timeout, not a missing-observation error, so checks still recommend retrying
-// collection as the legacy sensor's errored measurement does.
+// collection.
 func TestToMeasurementsSourceTimeoutRecommendsRetry(t *testing.T) {
 	var observations []*observation.Observation
 	for _, signal := range MappedSignalsFor(health.GPU) {
@@ -131,8 +131,7 @@ func TestToMeasurementsFailsNoValueOutsideNeutralSignals(t *testing.T) {
 	}
 }
 
-// The unknown-pstate sentinel (32) must fail the signal like the legacy
-// sensor, not reach the threshold as a real P32.
+// The unknown-pstate sentinel (32) must fail the signal, not reach the threshold as a real P32.
 func TestToMeasurementsFailsUnknownPerformanceState(t *testing.T) {
 	for _, state := range []int64{-1, 16, 32} {
 		observations := replace(healthyGPUObservations(), gpusignals.PerformanceState.ID(),
@@ -241,8 +240,7 @@ func TestToMeasurementsConvertsFabricManagerStatus(t *testing.T) {
 	}
 }
 
-// A GPU whose fabric status is reported unsupported is unregistered, as the
-// legacy NVML sensor treats it; failing to read the status is not.
+// A GPU whose fabric status is reported unsupported is unregistered; failing to read the status is not.
 func TestToMeasurementsUnsupportedFabricStatusIsIncomplete(t *testing.T) {
 	status := gpusignals.FabricManagerStatus.ID()
 	unsupported := replace(healthyNVLinkObservations(), status, noValueObservation(status, observation.NoValueReasonNotSupported))
@@ -281,7 +279,7 @@ func TestToMeasurementsFailsCatalogSignalsWithoutObservation(t *testing.T) {
 }
 
 // A failure that cannot name a GPU, from a whole source or a slot whose UUID
-// is unknown, also fails gpu_id, as the legacy sensors do. A timeout then
+// is unknown, also fails gpu_id. A timeout then
 // recommends a retry, and the gpu_count dependency explains the lost GPU.
 func TestToMeasurementsUnidentifiedGPUFailureFailsGPUID(t *testing.T) {
 	tests := []struct {

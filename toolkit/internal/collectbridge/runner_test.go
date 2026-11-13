@@ -91,7 +91,7 @@ func countAdapter(signals ...string) collectbridge.Binding {
 	}}
 }
 
-func TestCollectRunnerMixedLegacyAndSharedCycle(t *testing.T) {
+func TestCollectRunnerMixedPlainAndSharedCycle(t *testing.T) {
 	r := newCollectRunner(t, time.Second)
 	other := collect.NewSignal("private.other", "1")
 	var cycles []*collect.Cycle
@@ -116,8 +116,8 @@ func TestCollectRunnerMixedLegacyAndSharedCycle(t *testing.T) {
 	if err := cat.Register(cpu.CPUCount()); err != nil {
 		t.Fatal(err)
 	}
-	legacy := toolkit.NewCPUSensor(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 8, OnlineCPUCount: 8}))
-	verdict, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: time.Second}, r.Sensor(countAdapter(runnerCount.ID(), other.ID())), legacy)
+	plain := cpuSensor{cpu.CPUMeasurement{PossibleCPUCount: 8, OnlineCPUCount: 8}}
+	verdict, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: time.Second}, r.Sensor(countAdapter(runnerCount.ID(), other.ID())), plain)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,3 +627,12 @@ func TestCollectRunnerRejectsFutureJournalEntry(t *testing.T) {
 		}
 	}
 }
+
+// cpuSensor is a toolkit sensor reporting one fixed CPU measurement.
+type cpuSensor struct{ m cpu.CPUMeasurement }
+
+func (cpuSensor) Name() string { return "cpu" }
+func (s cpuSensor) Measure(context.Context) ([]health.Measurement, error) {
+	return []health.Measurement{s.m}, nil
+}
+func (cpuSensor) Errored(error) []health.Measurement { return nil }

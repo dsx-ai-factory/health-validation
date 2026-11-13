@@ -155,8 +155,8 @@ func run[T any](ctx context.Context, cycle *collect.Cycle, source string, call f
 
 // Count returns how many GPUs a successful snapshot enumerated, or false when
 // enumeration failed. Failed slots keep their source index in the snapshot,
-// but a slot whose handle could not be retrieved is not counted, matching the
-// legacy NVML backend; a GPU whose handle loaded counts even if its UUID or
+// but a slot whose handle could not be retrieved is not counted, as in v0.3;
+// a GPU whose handle loaded counts even if its UUID or
 // another attribute could not be read. A NO_TARGETS observation is not
 // consulted: only a successful snapshot proves a count, including zero.
 func Count(snapshot *observation.GPUInventorySnapshot) (int64, bool) {

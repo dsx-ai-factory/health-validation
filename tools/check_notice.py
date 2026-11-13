@@ -53,7 +53,7 @@ GO_MODULE_DIRS = (".",)
 FIRST_PARTY_PREFIX = "github.com/dsx-ai-factory/health-validation"
 
 # Matches what the released container ships, so Linux/cgo-gated files
-# (toolkit/nvml, collect/source/dcgm) aren't silently skipped by a host build.
+# (collect/source/nvml, collect/source/dcgm) aren't silently skipped by a host build.
 GO_TARGET_ENV = {"GOOS": "linux", "GOARCH": "amd64", "CGO_ENABLED": "1"}
 
 SECTION_HEADER = "Go module dependencies:"

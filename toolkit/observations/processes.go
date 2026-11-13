@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	// procCmdlineMax is the legacy NVML backend's cap on one cmdline.
+	// procCmdlineMax caps one cmdline, as in v0.3.
 	procCmdlineMax = 250
 	// opProcessIdentity is the collect NVML sensor's operation for a compute
 	// process it could not identify in procfs.
@@ -47,8 +47,8 @@ func (p gpuProcesses) feed(b *builder) {
 	}
 }
 
-// computeProcessCmdlines formats one line per compute process as the legacy
-// NVML backend does: pid=N, then the quoted cmdline when it was read. The
+// computeProcessCmdlines formats one line per compute process, as in v0.3:
+// pid=N, then the quoted cmdline when it was read. The
 // text is diagnostic, since gpu_compute_apps fails on the process count, so a
 // cmdline or process identity that could not be read only drops its text.
 // Any other GPU-level failure, such as NVML failing to list the processes,

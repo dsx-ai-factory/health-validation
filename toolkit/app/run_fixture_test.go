@@ -7,23 +7,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
-	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
-	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/catalog/node"
-	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
@@ -33,16 +27,15 @@ import (
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/collect/source/journal"
-	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // nodeFixture is one node's state plus the run's config and flags, rendered
-// either into legacy toolkit backends or into collect sources. xid and
-// linkFlaps are kernel messages, one minute apart. args must not carry Xid
-// window flags, which the collect rendering does not honor.
+// into collect sources. xid and linkFlaps are kernel messages, one minute
+// apart. args must not carry Xid window flags, which the rendering does not
+// honor.
 type nodeFixture struct {
 	model        string
 	config       string
@@ -53,6 +46,9 @@ type nodeFixture struct {
 	possibleCPUs int
 	onlineCPUs   int
 	numaNodes    int
+	// userJournalOnly hides kernel entries, as for a user outside the
+	// journal groups who still reads their own user journal.
+	userJournalOnly bool
 }
 
 type fixtureGPU struct {
@@ -98,24 +94,8 @@ func unhealthyGB200() nodeFixture {
 	return f
 }
 
-// fixturePID is the PID both renderings give a GPU's i-th compute process.
+// fixturePID is the PID of a GPU's i-th compute process.
 func fixturePID(i int) uint32 { return uint32(4242 + i) }
-
-func (g fixtureGPU) legacy() gpu.GPUMeasurement {
-	lines := make([]string, len(g.cmdlines))
-	for i, c := range g.cmdlines {
-		lines[i] = fmt.Sprintf("pid=%d %s", fixturePID(i), strconv.Quote(c))
-	}
-	m := gpu.GPUMeasurement{
-		GPUID: g.uuid, AveragePowerDrawW: g.powerW, PowerLimitW: g.limitW, EnforcedPowerLimitW: g.enforcedW,
-		GPUPstate: g.pstate, HWSlowdown: g.slowdown, HWThermalSlowdown: g.thermal, HWPowerBrakeSlowdown: g.powerBrake,
-		ComputeProcessCount: int64(len(g.cmdlines)), ComputeProcessCmdlines: strings.Join(lines, "\n"),
-	}
-	if g.pstateFails {
-		m.AddError(errors.New("pstate unreadable"), gpu.SignalGPUPstate)
-	}
-	return m
-}
 
 // dcgm is what collect's DCGM sensor reports for g.
 func (g fixtureGPU) dcgm(now *timestamppb.Timestamp) []*observation.Observation {
@@ -169,16 +149,6 @@ func (g fixtureGPU) processes(now *timestamppb.Timestamp) []*observation.Observa
 	return out
 }
 
-// legacyNVLink is what the legacy NVLink sensor reports for g among peers:
-// every link supports every capability and every P2P pair is OK.
-func (g fixtureGPU) legacyNVLink() nvlink.NVLinkMeasurement {
-	return nvlink.NVLinkMeasurement{
-		GPUID: g.uuid, LinkCount: fixtureLinks, SpeedMBytesPerSec: g.nvlinkMBps, InactiveCount: int64(g.inactive),
-		AllLinksSupportP2P: true, AllLinksSupportSysmemAccess: true, AllLinksSupportP2PAtomics: true,
-		AllLinksSupportSysmemAtomics: true, AllLinksSupportSLI: true, AllLinksSupportLink: true,
-	}
-}
-
 // nvlinkObservations is what collect's DCGM and NVML sensors report for g's
 // NVLink domain; its first g.inactive links are disabled.
 func (g fixtureGPU) nvlinkObservations(now *timestamppb.Timestamp, peers []fixtureGPU) (dcgm, nvml []*observation.Observation) {
@@ -225,11 +195,6 @@ func boolToUint(b bool) uint64 {
 	return 0
 }
 
-// fixedNVLink is a legacy NVLink backend that reports fixed measurements.
-type fixedNVLink []health.Measurement
-
-func (b fixedNVLink) MeasureNVLink() ([]health.Measurement, error) { return b, nil }
-
 // fixedSensor serves fixed observations for the signals the run requested.
 type fixedSensor struct {
 	id      string
@@ -272,16 +237,19 @@ func fixtureEntryTime(start time.Time, i int) time.Time {
 	return start.Add(time.Duration(i) * time.Minute)
 }
 
-const fixtureNoiseEntry = "usb 1-1: new high-speed USB device number 2"
-
-// fixtureJournal stands in for journalctl, printing lines as kernel entries of
+// journal stands in for journalctl, printing lines as kernel entries of
 // the current boot. The leading unrelated entry keeps a clean fixture from
-// failing as an empty journal; the legacy Xid mock gets it too so sequence
-// numbers agree.
-func fixtureJournal(lines []string) journal.Runner {
+// failing as an empty journal.
+func (f nodeFixture) journal(lines []string) journal.Runner {
 	start := time.Now().Add(-30 * time.Minute)
-	entries := append([]string{fixtureNoiseEntry}, lines...)
-	return func(_ context.Context, _ []string, stdout, _ io.Writer) error {
+	entries := append([]string{"usb 1-1: new high-speed USB device number 2"}, lines...)
+	return func(_ context.Context, args []string, stdout, _ io.Writer) error {
+		if f.userJournalOnly {
+			if slices.Contains(args, "--dmesg") {
+				return nil
+			}
+			entries = []string{"user session started"}
+		}
 		for i, m := range entries {
 			message, err := json.Marshal(m)
 			if err != nil {
@@ -294,26 +262,8 @@ func fixtureJournal(lines []string) journal.Runner {
 	}
 }
 
-// legacyLinkFlaps renders lines as the short-full journalctl output the
-// legacy link-flap backend parses, with fixtureJournal's spacing.
-func legacyLinkFlaps(lines []string) []string {
-	start := time.Now().Add(-30 * time.Minute)
-	out := make([]string, len(lines))
-	for i, m := range lines {
-		out[i] = fixtureEntryTime(start, i+1).Format("Mon 2006-01-02 15:04:05 MST") + " host kernel: " + m
-	}
-	return out
-}
-
-// Renderings for fixtureApp and runFixture.
-const (
-	legacyPath  = false
-	collectPath = true
-)
-
-// fixtureApp renders f into an App whose domains come from legacy backends
-// or, with fromCollect, from collect sources.
-func fixtureApp(f nodeFixture, fromCollect bool) *App {
+// fixtureApp renders f into an App whose domains come from collect sources.
+func fixtureApp(f nodeFixture) *App {
 	a := New().WithProgramName("test")
 	// A config with overrides is audited to journald first; without a
 	// journal the run would fail closed.
@@ -323,47 +273,28 @@ func fixtureApp(f nodeFixture, fromCollect bool) *App {
 		fakeHost:  fakeHost{b: spyBackend{called: new(bool)}},
 		inventory: gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: len(f.gpus), model: f.model}, nil }),
 	}
-	if fromCollect {
-		now := timestamppb.Now()
-		var dcgm, nvml []*observation.Observation
-		for _, g := range f.gpus {
-			linkDCGM, linkNVML := g.nvlinkObservations(now, f.gpus)
-			dcgm = append(append(dcgm, g.dcgm(now)...), linkDCGM...)
-			nvml = append(append(nvml, g.processes(now)...), linkNVML...)
-		}
-		host.gpu = []collect.Sensor{
-			fixedSensor{id: "gpu.dcgm", signals: slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals), obs: dcgm},
-			fixedSensor{id: "gpu.nvml", signals: slices.Concat(processGPUSignals, nvmlNVLinkSignals), obs: nvml},
-		}
-		a.WithCollect(cpusensor.New(cpuFS(f.possibleCPUs, f.onlineCPUs, f.numaNodes)), observations.MappedSignalsFor(health.CPU)...)
-		a.WithCollect(xidsensor.New(journal.New(fixtureJournal(f.xid))), xidsignals.All().IDs()...)
-		a.WithCollect(linkflapsensor.New(journal.New(fixtureJournal(f.linkFlaps)), linkflapsensor.WithLookback(linkFlapLookback)),
-			ibsignals.LinkFlapSignals().IDs()...)
-	} else {
-		gpus := make([]gpu.GPUMeasurement, len(f.gpus))
-		links := make(fixedNVLink, len(f.gpus))
-		for i, g := range f.gpus {
-			gpus[i] = g.legacy()
-			links[i] = g.legacyNVLink()
-		}
-		a.WithGPUBackend(toolkit.MockGPU(gpus...))
-		a.WithNVLinkBackend(links)
-		a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap(legacyLinkFlaps(f.linkFlaps)...))
-		a.WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: int64(len(f.gpus))}))
-		a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{
-			PossibleCPUCount: int64(f.possibleCPUs), OnlineCPUCount: int64(f.onlineCPUs), NUMANodeCount: int64(f.numaNodes),
-		}))
-		// Keep the unrelated leading entry so Xid sequence numbers match
-		// the collect path's journal positions.
-		a.WithXidBackend(toolkit.MockXid(append([]string{fixtureNoiseEntry}, f.xid...)...))
+	now := timestamppb.Now()
+	var dcgm, nvml []*observation.Observation
+	for _, g := range f.gpus {
+		linkDCGM, linkNVML := g.nvlinkObservations(now, f.gpus)
+		dcgm = append(append(dcgm, g.dcgm(now)...), linkDCGM...)
+		nvml = append(append(nvml, g.processes(now)...), linkNVML...)
 	}
+	host.gpu = []collect.Sensor{
+		fixedSensor{id: "gpu.dcgm", signals: slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals), obs: dcgm},
+		fixedSensor{id: "gpu.nvml", signals: slices.Concat(processGPUSignals, nvmlNVLinkSignals), obs: nvml},
+	}
+	a.WithCollect(cpusensor.New(cpuFS(f.possibleCPUs, f.onlineCPUs, f.numaNodes)), observations.MappedSignalsFor(health.CPU)...)
+	a.WithCollect(xidsensor.New(journal.New(f.journal(f.xid))), xidsignals.All().IDs()...)
+	a.WithCollect(linkflapsensor.New(journal.New(f.journal(f.linkFlaps)), linkflapsensor.WithLookback(linkFlapLookback)),
+		ibsignals.LinkFlapSignals().IDs()...)
 	a.host = host
 	return a
 }
 
 // runFixture runs the CLI over f and returns its normalized verdict and exit
 // code.
-func runFixture(t *testing.T, f nodeFixture, fromCollect bool) (health.NodeVerdict, int) {
+func runFixture(t *testing.T, f nodeFixture) (health.NodeVerdict, int) {
 	t.Helper()
 	args := append([]string{"run", "--node-id", testNodeID}, f.args...)
 	if f.config != "" {
@@ -374,7 +305,7 @@ func runFixture(t *testing.T, f nodeFixture, fromCollect bool) (health.NodeVerdi
 		args = append(args, "--config", path)
 	}
 	var stdout, stderr bytes.Buffer
-	code := fixtureApp(f, fromCollect).Run(args, &stdout, &stderr)
+	code := fixtureApp(f).Run(args, &stdout, &stderr)
 	if code == exitError {
 		t.Fatalf("Run exit = %d; stderr = %q", code, stderr.String())
 	}

@@ -107,11 +107,10 @@ func TestGPUCountFromInventory(t *testing.T) {
 		// A successful enumeration that found nothing proves zero GPUs.
 		{name: "zero GPUs", snapshot: inventory(), want: 0},
 		// A slot whose handle failed keeps its source index but is not
-		// counted, as the legacy backend excludes unreadable handles.
+		// counted.
 		{name: "failed handle", snapshot: inventory(gpuEntry(0, gb200), failedEntry(1, handleOperation), gpuEntry(2, gb200), gpuEntry(3, gb200)), want: 3},
 		{name: "every handle failed", snapshot: inventory(failedEntry(0, handleOperation), failedEntry(1, handleOperation)), want: 0},
-		// A GPU whose handle loaded still counts when a later read failed,
-		// as it does in the legacy backend.
+		// A GPU whose handle loaded still counts when a later read failed.
 		{name: "partial identity", snapshot: inventory(gpuEntry(0, gb200), failedEntry(1, "GetUUID"), failedEntry(2, "NewDevice"), failedEntry(3, "GetIndex")), want: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

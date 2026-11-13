@@ -12,7 +12,7 @@ import (
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 )
 
-// XID replaces toolkit.XidSensor for the stock CLI's Xid domain. gpuUUIDs is
+// XID builds the stock CLI's Xid domain. gpuUUIDs is
 // read each time the adapter builds; it maps PCI addresses in the kernel's
 // Xid form to GPU UUIDs. Nil leaves every GPU named by its address.
 func XID(gpuUUIDs func() map[string]string) *xidAdapter {

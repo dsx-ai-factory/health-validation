@@ -29,13 +29,11 @@ var linkFlapSignals = func() map[string]bool {
 }()
 
 // linkFlapSinceUnknown labels a failed measurement whose scan reported no
-// window. Every window lies within the current boot, and the legacy sensor
-// labels its failures the same way.
+// window. Every window lies within the current boot.
 const linkFlapSinceUnknown = "boot"
 
-// linkFlapTimeLayout renders journal times as the legacy reader's
-// journalctl --output=short-full timestamps and --since argument: local
-// time, second precision.
+// linkFlapTimeLayout renders journal times as journalctl --output=short-full
+// timestamps and --since arguments do: local time, second precision.
 const linkFlapTimeLayout = time.DateTime
 
 // canonicalLinkFlap builds one LinkFlapMeasurement from canonical link-flap
@@ -148,7 +146,7 @@ type linkTransition struct {
 //     before it and records nothing.
 //
 // Times compare at second precision, in report order within a second, as
-// the legacy reader's short-full timestamps did. A transition before the
+// v0.3's short-full timestamps did. A transition before the
 // window start is a producer fault, not an older event to drop: the source
 // claimed a window it did not keep.
 func buildLinkFlap(since string, scan linkFlapScan) (infiniband.LinkFlapMeasurement, error) {

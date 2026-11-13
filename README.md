@@ -7,7 +7,7 @@ NVIDIA Health Validation runs on a GPU node, evaluates hardware and driver state
 The repository is `github.com/dsx-ai-factory/health-validation`. It is a single Go module, released under one version tag, whose main packages are:
 
 - **`catalog`** (`…/health-validation/catalog`): Check definitions, threshold logic, severity classifications, and a CEL-based evaluation engine. No hardware dependency. Import this if you already collect GPU telemetry and want NVIDIA's operational judgment applied to your signal stream.
-- **`toolkit`** (`…/health-validation/toolkit`): Sensor implementations (including NVML-backed GPU collection and CPU collection from Linux sysfs), mock backends for testing, and a `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Import this if you want the full working sensor and evaluation stack.
+- **`toolkit`** (`…/health-validation/toolkit`): A `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Its `toolkit/app` package holds the CLI and the built-in collection wiring (DCGM and NVML for GPUs, sysfs for CPU, the kernel journal for Xid and RDMA link flap, all through `collect` sensors). Import these if you want the full working sensor and evaluation stack.
 
 `toolkit` depends on `catalog`; import `toolkit` to get both.
 
@@ -15,7 +15,7 @@ For raw observations without catalog evaluation, use the experimental `collect`
 package. See [Shared raw collection library](docs/integration.md#shared-raw-collection-library)
 for its ten collection families, typed targets, and custom sensor registration.
 
-> **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor/backend layer that feeds it is a reference implementation and is subject to change.
+> **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor and adapter layer that feeds it is a reference implementation and is subject to change.
 
 ## What it does
 
@@ -187,7 +187,7 @@ The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.j
 Sensor.Measure() --> []Measurement --> Catalog.EvaluateAll() --> NodeVerdict
 ```
 
-Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor reading Linux sysfs (the CLI collects CPU through `collect/sensors/cpu`), an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
+Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The CLI reads GPUs and NVLink through DCGM and NVML, CPU through Linux sysfs, and Xid and RDMA link flap through the kernel journal, all as `collect` sensors whose observations the toolkit adapts into measurements. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
 
 The CPU sensor counts the logical CPUs in `/sys/devices/system/cpu/possible` and `/sys/devices/system/cpu/online`, and the NUMA nodes in `/sys/devices/system/node/online`. The `cpu_count` check requires no operator configuration and reports CRITICAL when a kernel-possible CPU is not online. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM or machine-SKU count, process affinity, or cgroup CPU limits.
 
@@ -323,8 +323,8 @@ positive and later than every supplied start time. Either bound may be omitted.
 Duplicate GPU bounds or multiple node-wide start times will result in an error.
 
 These flags filter the default Xid journal sensor within the current boot.
-Other journal sensors, including RDMA link-flap detection, and backends supplied
-through `WithXidBackend` keep their own collection behavior.
+Other journal sensors, including RDMA link-flap detection, and sensors that
+claim the Xid signals through `WithCollect` keep their own collection behavior.
 
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 
@@ -408,16 +408,11 @@ cat := catalog.New(
     catalog.WithExecutionContext(health.OperatorInfra),
 )
 
-// backend implements toolkit.GPUBackend.
-// On Linux, use nvml.New() from toolkit/nvml (requires cgo + NVML).
-// For testing without hardware, use toolkit.MockGPU().
-gpuSensor := toolkit.NewGPUSensor(backend)
-nodeSensor := toolkit.NewNodeSensor(backend)
-cpuSensor := toolkit.NewCPUSensor(toolkit.SysfsCPU())
-// The Xid sensor reads the system journal, so it takes its own backend rather
-// than the GPU one: toolkit.Journalctl() in production, toolkit.MockXid(...) in tests.
-xidSensor := toolkit.NewXidSensor(toolkit.Journalctl())
-verdict, err := toolkit.Collect(cat, gpuSensor, nodeSensor, cpuSensor, xidSensor)
+// mySensor is any toolkit.Sensor. To run a collect sensor here, wrap it as in
+// toolkit's Example_collectSensor. To reuse the stock CLI's wiring instead,
+// build a toolkit/app App and add sources with WithCollect and adapters with
+// WithCollectAdapters; see docs/extending.md.
+verdict, err := toolkit.Collect(cat, mySensor)
 ```
 
 Disable a specific check:

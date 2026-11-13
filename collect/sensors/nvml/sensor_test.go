@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
@@ -214,4 +215,42 @@ func TestClosedInstanceUnavailable(t *testing.T) {
 	for _, obs := range batch.GetObservations() {
 		require.Equal(t, observation.CollectionErrorCategoryUnavailable, obs.GetCollectionError().GetCategory())
 	}
+}
+
+// A slot whose handle or UUID cannot be read is reported under its NVML index
+// without hiding the GPUs enumerated around it.
+func TestMeasureUnresolvedSlotAmongHealthyGPUs(t *testing.T) {
+	inst := &profilingInventoryInstance{
+		fakeInstance: fakeInstance{exists: true, devices: map[string]device.Device{"GPU-0": &fakeDevice{}, "GPU-3": &fakeDevice{}}},
+		records: []nvmlsource.InventoryDevice{
+			{SourceIndex: 0, Device: &fakeDevice{}},
+			{SourceIndex: 1, HandleReturn: nvml.ERROR_GPU_IS_LOST},
+			{SourceIndex: 2, Device: &fakeDevice{}, UUIDReturn: nvml.ERROR_NO_PERMISSION, Error: errors.New("UUID unavailable")},
+			{SourceIndex: 3, Device: &fakeDevice{}},
+		},
+	}
+	selected := powerSignals()
+	batch, err := New(inst).Measure(context.Background(), collect.WithSignalID(selected.IDs()...))
+	require.NoError(t, err)
+	require.NoError(t, observation.ValidateBatch(batch))
+
+	failed := map[string][]string{}
+	values := map[string][]string{}
+	for _, obs := range batch.GetObservations() {
+		gpu := obs.GetTarget().GetGpu()
+		if slot := gpu.GetSourceLocalId(); slot != "" {
+			require.Empty(t, gpu.GetUuid())
+			failure := obs.GetCollectionError()
+			require.NotNil(t, failure, "slot %s signal %s", slot, obs.GetSignalId())
+			require.Equal(t, "GetDevices", failure.GetOperation())
+			require.Equal(t, observation.CollectionErrorCategoryUnavailable, failure.GetCategory())
+			require.Equal(t, "nvml", failure.GetSource())
+			failed[slot] = append(failed[slot], obs.GetSignalId())
+			continue
+		}
+		require.NotNil(t, obs.GetValue(), "GPU %s signal %s", gpu.GetUuid(), obs.GetSignalId())
+		values[gpu.GetUuid()] = append(values[gpu.GetUuid()], obs.GetSignalId())
+	}
+	require.Equal(t, map[string][]string{"1": selected.IDs(), "2": selected.IDs()}, failed)
+	require.Equal(t, map[string][]string{"GPU-0": selected.IDs(), "GPU-3": selected.IDs()}, values)
 }

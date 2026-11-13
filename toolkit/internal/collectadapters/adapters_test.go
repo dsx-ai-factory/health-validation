@@ -133,6 +133,43 @@ func TestNVLinkAdapterSourceLevelFailuresCoverEachOther(t *testing.T) {
 	}
 }
 
+// With no GPUs, NVML and DCGM report NO_TARGETS for every NVLink signal. The
+// adapter must fail every NVLink check as a collection failure rather than
+// let the domain pass or drop out as a skip.
+func TestNVLinkAdapterWithoutGPUsFailsEveryCheck(t *testing.T) {
+	var noTargets []*observation.Observation
+	for id := range NVLink().Signals() {
+		o := noValueObservation(id, observation.NoValueReasonNoTargets)
+		o.Target = nil
+		noTargets = append(noTargets, o)
+	}
+	cat := catalog.New(catalog.WithArchitecture("GB200"))
+	category := health.NVLink
+	checks := cat.List(catalog.Filter{Category: &category, Architecture: "GB200"})
+	want := health.Drain(health.RemediationActionCheckCollection)
+	for name, obs := range map[string][]*observation.Observation{"no observations": nil, "no targets": noTargets} {
+		t.Run(name, func(t *testing.T) {
+			verdict, err := cat.EvaluateAll(NVLink().Build(obs)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := 0
+			for _, r := range verdict.CheckResults {
+				if r.Category != health.NVLink {
+					continue
+				}
+				got++
+				if r.Severity != health.Unknown || !r.RecommendedAction.Equal(want) {
+					t.Errorf("%s: %s %v, want UNKNOWN %v", r.CheckID, r.Severity, r.RecommendedAction, want)
+				}
+			}
+			if len(checks) == 0 || got != len(checks) {
+				t.Fatalf("evaluated %d NVLink checks, want all %d", got, len(checks))
+			}
+		})
+	}
+}
+
 func TestGPUAdapterPreservesAbsenceInterpretation(t *testing.T) {
 	baseline := only[gpu.GPUMeasurement](t, GPU().Build(healthyGPUObservations()))
 	neutral := replace(healthyGPUObservations(), gpusignals.HardwareSlowdownActive.ID(), noValueObservation(gpusignals.HardwareSlowdownActive.ID(), observation.NoValueReasonNotSupported))

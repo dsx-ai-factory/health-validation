@@ -8,6 +8,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 )
 
@@ -18,11 +19,11 @@ func Example() {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	// Create an Xid sensor with mock journal lines. Xid 79 ("GPU has
-	// fallen off the bus") is a critical-severity Xid code.
-	sensor := toolkit.NewXidSensor(toolkit.MockXid(
-		"NVRM: Xid (PCI:0000:01:00): 79, pid=1234, name=python3",
-	))
+	// Any toolkit.Sensor works. This one reports three GPUs on a GB200 node,
+	// which expects four.
+	sensor := staticSensor{name: "node", ms: []health.Measurement{
+		node.NodeMeasurement{GPUCount: 3},
+	}}
 
 	// Collect measurements and evaluate.
 	verdict, err := toolkit.Collect(cat, sensor)

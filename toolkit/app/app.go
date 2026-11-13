@@ -23,14 +23,10 @@
 //		os.Exit(code)
 //	}
 //
-// Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
-// its own per-domain backend, defaulting to the DCGM and NVML collect sensors
-// for GPU and NVLink, the host's collect NVML GPU inventory for node, sysfs for
-// CPU, and the journal (through collect sensors) for Xid and InfiniBand link
-// flaps. A
-// With*Backend setter overrides exactly one domain; the
-// node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
-// full backend swap. Custom checks register alongside the built-ins as a pure
+// The GPU, NVLink, node, CPU, Xid, and RDMA link-flap domains come from collect
+// sensors (DCGM and NVML, the host's NVML GPU inventory, sysfs, and the
+// journal); [App.WithCollect] replaces a built-in source by claiming its
+// signals. Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
 // honored verbatim. Registration fails only on the catalog's own validation
 // or a duplicate ID.
@@ -92,40 +88,22 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 
 // hostBackend is the platform-split source of the built-in GPU data sources.
 // On linux it is the collect GPU sensors (DCGM, plus NVML for compute processes
-// and NVLink), the collect NVML GPU inventory that architecture discovery and
-// the node GPU count share, and an [nvml.NVMLBackend] for legacy overrides;
-// off linux it is a stub that errors at Measure, keeping the command buildable
-// (and `version` runnable) while surfacing a clear runtime error if `run` is
-// invoked there.
+// and NVLink) and the collect NVML GPU inventory that architecture discovery
+// and the node GPU count share; off linux it is a stub that errors at Measure,
+// keeping the command buildable (and `version` runnable) while surfacing a
+// clear runtime error if `run` is invoked there.
 type hostBackend interface {
 	gpuSensors() []collect.Sensor
-	nvlinkBackend() toolkit.NVLinkBackend
 	gpuInventory() *gpuinventory.Inventory
 	close() error
 }
 
 // App is the health-validation CLI, assembled with the builder methods and
-// run with [App.Run]. It wires six sensors (GPU, node, NVLink, CPU, Xid,
-// InfiniBand), each from its own per-domain source — DCGM, the shared host
-// NVML backend, sysfs, or the journal by default, or a caller-supplied
-// override.
+// run with [App.Run].
 type App struct {
 	host        hostBackend
 	hostname    func() (string, error)
 	openJournal func() (io.WriteCloser, error)
-	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
-	// overrides set by the matching With*Backend setter. A nil override uses the
-	// default: the host's DCGM and NVML collect sensors for gpu, the shared host
-	// NVML backend for nvlink, the host GPU inventory for node, the sysfs
-	// collect sensor for cpu, and the journal collect sensors for xid and
-	// rdmaLinkFlap. The generic ib backend has no default and is opt-in.
-	gpu          toolkit.GPUBackend
-	node         toolkit.NodeBackend
-	nvlink       toolkit.NVLinkBackend
-	cpu          toolkit.CPUBackend
-	xid          toolkit.XidBackend
-	rdmaLinkFlap toolkit.RDMALinkFlapBackend
-	ib           toolkit.IBBackend
 	// prog is the program name used in usage and error-message prefixes. It
 	// defaults to filepath.Base(os.Args[0]); see WithProgramName.
 	prog            string
@@ -160,89 +138,6 @@ func (a *App) WithChecks(defs ...health.CheckDefinition) *App {
 	return a
 }
 
-// WithGPUBackend replaces the GPU domain's built-in DCGM and NVML collect
-// sensors with a legacy GPU sensor over b. Built-in GPU checks then read only
-// what b's measurements carry, and are skipped if they carry none of it. The
-// override is the caller's to manage; see [App.Close].
-//
-// Deprecated: to add per-GPU signals for your own checks, register a
-// [GPUAdapter] with [App.WithCollectAdapters], which leaves the built-in GPU
-// domain in place. To replace a built-in GPU source, pass a collect sensor and
-// the GPU signal IDs it replaces to [App.WithCollect].
-func (a *App) WithGPUBackend(b toolkit.GPUBackend) *App {
-	a.gpu = b
-	return a
-}
-
-// WithNodeBackend replaces the node domain's default — gpu_count from the
-// host's collect NVML GPU inventory, the read architecture discovery shares —
-// with a legacy Node sensor over b. The node domain has no probe seam —
-// gpu_count is a scalar aggregate — so this is a full backend swap.
-// Architecture discovery still reads the host inventory.
-//
-// Deprecated: pass a collect sensor and the node signal IDs it replaces to
-// [App.WithCollect] instead.
-func (a *App) WithNodeBackend(b toolkit.NodeBackend) *App {
-	a.node = b
-	return a
-}
-
-// WithNVLinkBackend replaces the NVLink domain's built-in collect sources
-// (DCGM for fabric registration, NVML for links, P2P, and fabric health) with a
-// legacy NVLink sensor over b. Attach a probe to [App.NVMLBackend] with
-// WithNVLinkProbe and install the result here.
-//
-// Deprecated: pass a collect sensor and the NVLink signal IDs it replaces to
-// [App.WithCollect] instead.
-func (a *App) WithNVLinkBackend(b toolkit.NVLinkBackend) *App {
-	a.nvlink = b
-	return a
-}
-
-// WithCPUBackend replaces the CPU domain's default collect sensor, which
-// reports the Linux kernel's possible and online logical CPU counts and its
-// online NUMA node count from sysfs, with a legacy toolkit backend. The
-// override is caller-owned.
-//
-// Deprecated: pass a collect sensor and the CPU signal IDs it replaces to
-// [App.WithCollect] instead.
-func (a *App) WithCPUBackend(b toolkit.CPUBackend) *App {
-	a.cpu = b
-	return a
-}
-
-// WithXidBackend replaces the collect sensor that reads NVRM Xid events from
-// the system journal with a legacy toolkit Xid sensor over b.
-//
-// Deprecated: pass a collect sensor and the Xid signal IDs it replaces to
-// [App.WithCollect] instead.
-func (a *App) WithXidBackend(b toolkit.XidBackend) *App {
-	a.xid = b
-	return a
-}
-
-// WithRDMALinkFlapBackend replaces the collect sensor that reads mlx5 RDMA
-// link transitions from the system journal, which feeds the built-in
-// rdma_linkflap_fatal check, with a legacy toolkit link-flap sensor over b.
-//
-// Deprecated: pass a collect sensor and the link-flap signal IDs it replaces
-// to [App.WithCollect] instead.
-func (a *App) WithRDMALinkFlapBackend(b toolkit.RDMALinkFlapBackend) *App {
-	a.rdmaLinkFlap = b
-	return a
-}
-
-// WithIBBackend sets the generic InfiniBand sensor's backend. It is opt-in: the
-// catalog's only built-in InfiniBand check (rdma_linkflap_fatal) is fed by the
-// link-flap sensor, not this one. Supply a backend here to contribute
-// additional InfiniBand measurements — the backend owns device enumeration, the
-// measurement types it emits, and (with the checks a consumer adds via
-// WithChecks) those extra checks.
-func (a *App) WithIBBackend(b toolkit.IBBackend) *App {
-	a.ib = b
-	return a
-}
-
 // WithStderrLogging installs a text slog handler writing to Run's stderr, at
 // debug level under --verbose and info otherwise. It mutates the process-wide
 // slog default; it is how the stock binary keeps its stderr logging. Without
@@ -269,12 +164,8 @@ func (a *App) WithNodeID(id string) *App {
 
 // Close shuts down the App's host backend, the built-in DCGM and NVML
 // connections. Call it when you are done with the App; [App.Run] leaves them
-// open so one App can run more than once.
-//
-// Backends installed via the With*Backend setters are the caller's to manage
-// and are not closed here: a foreign backend is owned by whoever built it, and
-// a probe-derived NVML backend (a.NVMLBackend().WithNVLinkProbe(…)) is a
-// lightweight view discarded when the process exits.
+// open so one App can run more than once. Collect sensors passed to
+// [App.WithCollect] are the caller's to manage and are not closed here.
 func (a *App) Close() error { return a.host.close() }
 
 // Run is the health-validation CLI entrypoint:
@@ -335,11 +226,8 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 }
 
 // runCommand parses `run` flags, builds the catalog (applying any config
-// overrides and custom checks), and evaluates it against the six domain
-// sensors. Each sensor's backend is the caller's override if set, else the
-// default: the DCGM and NVML collect sensors for gpu and nvlink, the host GPU
-// inventory for node, sysfs for cpu, and the system journal, through collect
-// sensors, for xid and the InfiniBand link-flap measurement.
+// overrides and custom checks), and evaluates it against the built-in and
+// caller-registered sensors.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -472,40 +360,9 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-// sensors returns the legacy sensors and the collect-backed sensors, whose
+// sensors returns the collect-backed sensors, whose
 // sources are measured once now under cycle.
 func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
-	var sensors []toolkit.Sensor
-	// Without an override, the GPU domain comes from builtinCollect.
-	if a.gpu != nil {
-		sensors = append(sensors, toolkit.NewGPUSensor(a.gpu))
-	}
-	// Without an override, the NVLink domain comes from builtinCollect.
-	if a.nvlink != nil {
-		sensors = append(sensors, toolkit.NewNVLinkSensor(a.nvlink))
-	}
-	// Without an override, the Xid domain comes from builtinCollect.
-	if a.xid != nil {
-		sensors = append(sensors, toolkit.NewXidSensor(a.xid))
-	}
-	// Without an override, the link-flap measurement comes from builtinCollect.
-	if a.rdmaLinkFlap != nil {
-		sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(a.rdmaLinkFlap))
-	}
-	// The generic InfiniBand sensor is opt-in: the catalog's built-in
-	// InfiniBand check (rdma_linkflap_fatal) is fed by the link-flap sensor,
-	// so this one runs only when a consumer supplies a backend (and its own
-	// checks) via WithIBBackend.
-	if a.ib != nil {
-		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
-	}
-	// Without an override, the CPU and node domains come from builtinCollect.
-	if a.cpu != nil {
-		sensors = append(sensors, toolkit.NewCPUSensor(a.cpu))
-	}
-	if a.node != nil {
-		sensors = append(sensors, toolkit.NewNodeSensor(a.node))
-	}
 	builtinSources, builtinAdapters := a.builtinCollect(cycle)
 	if xidJournal != nil {
 		for i, source := range builtinSources {
@@ -514,12 +371,7 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 			}
 		}
 	}
-	collectSensors, err := a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
-	if err != nil {
-		return nil, err
-	}
-	sensors = append(sensors, collectSensors...)
-	return sensors, nil
+	return a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
 }
 
 // publishMetrics pushes the verdict to the configured OTLP endpoint. It is a
@@ -659,16 +511,6 @@ func xidJournalFromFlags(fs *flag.FlagSet) (collect.Sensor, error) {
 	return sensor, nil
 }
 
-var categoryBySensor = map[string]health.Category{
-	"cpu":           health.CPU,
-	"gpu":           health.GPU,
-	"infiniband":    health.InfiniBand,
-	"node":          health.Node,
-	"nvlink":        health.NVLink,
-	"rdma_linkflap": health.InfiniBand,
-	"xid":           health.Xid,
-}
-
 // collectCommand runs only the sensors selected by checks listed in config.
 func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" collect", flag.ContinueOnError)
@@ -787,14 +629,11 @@ func collectionSensors(sensors []toolkit.Sensor, categories map[health.Category]
 	selected := make([]toolkit.Sensor, 0, len(categories))
 	covered := make(map[health.Category]bool)
 	for _, sensor := range sensors {
-		category, ok := categoryBySensor[sensor.Name()]
 		// Collect adapters declare their category; their names are arbitrary.
-		if bridged, isBridged := sensor.(*collectbridge.Sensor); isBridged {
-			category, ok = bridged.Category(), true
-		}
-		if ok && categories[category] {
+		bridged, ok := sensor.(*collectbridge.Sensor)
+		if ok && categories[bridged.Category()] {
 			selected = append(selected, sensor)
-			covered[category] = true
+			covered[bridged.Category()] = true
 		}
 	}
 	for category := range categories {

@@ -32,23 +32,23 @@ type domainAdapter struct {
 	category health.Category
 }
 
-// CPU replaces toolkit.CPUSensor for the stock CLI's CPU domain.
+// CPU builds the stock CLI's CPU domain.
 func CPU() *domainAdapter {
 	return newDomainAdapter(health.CPU, erroredCPU)
 }
 
-// Node replaces toolkit.NodeSensor for the stock CLI's node domain. Its
+// Node builds the stock CLI's node domain. Its
 // gpu_count comes from the shared GPU inventory (gpuinventory.GPUCount).
 func Node() *domainAdapter {
 	return newDomainAdapter(health.Node, erroredNode)
 }
 
-// GPU replaces toolkit.GPUSensor for the stock CLI's GPU domain.
+// GPU builds the stock CLI's GPU domain.
 func GPU() *domainAdapter {
 	return newDomainAdapter(health.GPU, erroredGPU)
 }
 
-// NVLink replaces toolkit.NVLinkSensor for the stock CLI's NVLink domain.
+// NVLink builds the stock CLI's NVLink domain.
 func NVLink() *domainAdapter {
 	return newDomainAdapter(health.NVLink, erroredNVLink)
 }
@@ -102,7 +102,7 @@ func erroredGPU(err error) []health.Measurement {
 }
 
 func erroredNVLink(err error) []health.Measurement {
-	// The legacy NVLink sensor names a whole-domain failure after its domain.
+	// A whole-domain failure is named after its domain, as in v0.3.
 	m := nvlink.ErroredNVLink(health.NVLink.String(), err, nvlink.MeasurementSignals()...)
 	m.SetEntityKey(health.SourceEntity(adapterSource(health.NVLink)))
 	return []health.Measurement{m}

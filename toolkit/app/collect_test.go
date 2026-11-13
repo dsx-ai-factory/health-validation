@@ -19,7 +19,6 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -68,13 +67,8 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		adapters []string
 	}{
 		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
-		{name: "GPU override", app: New().WithGPUBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband", "nvlink"}},
-		{name: "GPU and NVLink overrides", app: New().WithGPUBackend(spyBackend{called: new(bool)}).WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"cpu", "node", "xid", "infiniband"}},
-		{name: "NVLink override", app: New().WithNVLinkBackend(spyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{"test.gpu", gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "node", "xid", "infiniband", "nvlink"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{"test.gpu", cpusensor.ID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "xid", "infiniband", "nvlink"}},
-		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "infiniband", "nvlink"}},
-		{name: "link-flap override", app: New().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "nvlink"}},
+		// A claim replaces a built-in source's signals, not the source list.
+		{name: "CPU claimed", app: withCPU(New(), healthyCPU()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)
@@ -109,44 +103,13 @@ func TestCollectionSensorsSelectsBridgeSensorsByAdapterCategory(t *testing.T) {
 	}
 }
 
-func TestLegacyOnlyCollectionIsUnchangedByCollectPlumbing(t *testing.T) {
-	a := cadenceRunApp().WithNodeID(testNodeID).
-		WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}))
-	cpuCalls := 0
-	a.WithCPUBackend(cpuBackendFunc(func(context.Context) (cpu.CPUMeasurement, error) {
-		cpuCalls++
-		return cpu.CPUMeasurement{PossibleCPUCount: 4, OnlineCPUCount: 3, NUMANodeCount: 34}, nil
-	}))
-	bridged, err := a.collectSensors(time.Second, nil, nil, nil)
+func TestNoCallerRegistrationsAddNoBridges(t *testing.T) {
+	bridged, err := New().collectSensors(time.Second, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(bridged) != 0 {
 		t.Fatalf("unregistered collect sensors added %d bridges", len(bridged))
-	}
-	var stdout, stderr bytes.Buffer
-	if code := a.runCommand(nil, &stdout, &stderr); code != exitUnhealthy {
-		t.Fatalf("runCommand exit=%d, want %d; stderr=%q", code, exitUnhealthy, stderr.String())
-	}
-	if cpuCalls != 1 || !*a.host.(fakeHost).b.called {
-		t.Fatalf("legacy providers were not called: cpu=%d gpu=%v", cpuCalls, *a.host.(fakeHost).b.called)
-	}
-	var verdict health.NodeVerdict
-	if err = json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
-		t.Fatal(err)
-	}
-	results := make(map[string]health.CheckVerdict)
-	for _, result := range verdict.CheckResults {
-		results[result.CheckID] = result
-	}
-	if result, ok := results["cpu_count"]; !ok || result.Severity != health.Critical || result.ObservedValues[cpu.SignalOnlineCPUCount] != float64(3) {
-		t.Fatalf("legacy CPU failure did not reach the verdict: %+v", verdict)
-	}
-	if result, ok := results["gpu_count"]; !ok || result.Severity != health.Pass || result.ObservedValues[node.SignalGPUCount] != float64(4) {
-		t.Fatalf("legacy node measurement did not reach the verdict: %+v", verdict)
-	}
-	if verdict.NodeID != testNodeID {
-		t.Fatalf("node ID=%q, want %q", verdict.NodeID, testNodeID)
 	}
 }
 
@@ -299,13 +262,10 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 	for _, name := range []string{"", "CONTINUOUS", "PROLOG", "MAINTENANCE"} {
 		t.Run(name, func(t *testing.T) {
 			sensor := &collectAppSensor{}
-			legacyCalls := 0
+			cpuCalls := 0
 			measurement := cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}
-			a := cadenceRunApp().WithNodeID(testNodeID).WithChecks(mixedChecks()...).WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(customCountAdapter())
-			a.WithCPUBackend(cpuBackendFunc(func(context.Context) (cpu.CPUMeasurement, error) {
-				legacyCalls++
-				return measurement, nil
-			}))
+			a := withCleanXid(testAppWithCPU(cpuAppSensor{calls: &cpuCalls, possible: 1, online: 1, numa: 34}))
+			a.WithNodeID(testNodeID).WithChecks(mixedChecks()...).WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(customCountAdapter())
 			args := []string{"run"}
 			var cadence *health.SchedulingCadence
 			if name != "" {
@@ -341,8 +301,8 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 			if name == "CONTINUOUS" {
 				wantCollect = 0
 			}
-			if legacyCalls != 1 || len(sensor.cycles) != wantCollect {
-				t.Fatalf("legacy calls=%d collect calls=%d, want 1 and %d", legacyCalls, len(sensor.cycles), wantCollect)
+			if cpuCalls != 1 || len(sensor.cycles) != wantCollect {
+				t.Fatalf("CPU calls=%d custom calls=%d, want 1 and %d", cpuCalls, len(sensor.cycles), wantCollect)
 			}
 		})
 	}
@@ -551,7 +511,7 @@ func TestWithCollectReportsRegistrationPanics(t *testing.T) {
 }
 
 func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
-	for _, name := range []string{"nil sensor", "typed nil sensor", "nil signal", "no adapter", "nil adapter", "typed nil adapter", "lazy typed nil adapter", "incomplete adapter", "unowned signal", "duplicate producer", "duplicate adapter", "duplicate adapter across calls", "built-in adapter name", "built-in xid adapter name"} {
+	for _, name := range []string{"nil sensor", "typed nil sensor", "nil signal", "nil adapter", "typed nil adapter", "lazy typed nil adapter", "incomplete adapter", "unowned signal", "duplicate producer", "duplicate adapter", "duplicate adapter across calls", "built-in adapter name", "built-in xid adapter name"} {
 		t.Run(name, func(t *testing.T) {
 			sensor := &collectAppSensor{}
 			var otherCycles []*collect.Cycle
@@ -567,8 +527,6 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 				a.WithCollect(metadataCollectSensor{Sensor: sensor, signals: func() collect.Signals {
 					return collect.Signals{collect.NewSignal(customCountSignal, "1"), nil}
 				}}, customCountSignal).WithCollectAdapters(customCountAdapter())
-			case "no adapter":
-				a.WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})).WithGPUBackend(spyBackend{called: new(bool)}).WithNVLinkBackend(spyBackend{called: new(bool)}).WithCollect(sensor, claimAll(sensor)...)
 			case "nil adapter":
 				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(nil)
 			case "typed nil adapter":
@@ -590,12 +548,10 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 			case "duplicate adapter":
 				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(customCountAdapter(), customCountAdapter())
 			case "built-in adapter name":
-				a.cpu = nil
 				adapter := customCountAdapter()
 				adapter.name = "cpu"
 				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter)
 			case "built-in xid adapter name":
-				a.xid = nil
 				adapter := customCountAdapter()
 				adapter.name = "xid"
 				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter)
@@ -616,9 +572,6 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 			}
 			if name == "nil signal" && !strings.Contains(stderr.String(), "declares a nil signal") {
 				t.Fatalf("nil signal did not cause setup failure: %q", stderr.String())
-			}
-			if name == "no adapter" && !strings.Contains(stderr.String(), "collect sensors registered without adapters; register adapters with WithCollectAdapters") {
-				t.Fatalf("missing adapters were not explained: %q", stderr.String())
 			}
 			if name == "unowned signal" && !strings.Contains(stderr.String(), "which no adapter requests") {
 				t.Fatalf("sensor without requested signals did not cause setup failure: %q", stderr.String())
@@ -649,10 +602,9 @@ func TestWithCollectReservesEveryCategoryAdapterName(t *testing.T) {
 		configure func(*App)
 		name      string
 	}{
-		{name: "gpu"}, // built-in active
-		{name: "nvlink", configure: func(a *App) { a.WithNVLinkBackend(spyBackend{called: new(bool)}) }},
-		{name: "xid", configure: func(a *App) { a.WithXidBackend(xidSpyBackend{called: new(bool)}) }},
-		{name: "infiniband", configure: func(a *App) { a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap()) }},
+		{name: "gpu"},        // built-in active
+		{name: "nvlink"},     // built-in active
+		{name: "infiniband"}, // built-in active
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			sensor := &collectAppSensor{}
@@ -808,7 +760,7 @@ func TestWithCollectMissingProducerFailsOnlyDependentChecks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sensors = append(sensors, toolkit.NewCPUSensor(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1})))
+	sensors = append(sensors, measurementSensor{name: "cpu", ms: []health.Measurement{cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1}}})
 	verdict, err := toolkit.Collect(cat, sensors...)
 	if err != nil {
 		t.Fatal(err)
@@ -1686,7 +1638,7 @@ func (lostSlotReader) Read(ctx context.Context) (*observation.GPUInventorySnapsh
 // not read it name gpu_count as the cause.
 func TestRunNamesGPUCountForLostGPU(t *testing.T) {
 	f := healthyGB200()
-	a := fixtureApp(f, collectPath)
+	a := fixtureApp(f)
 	now := timestamppb.Now()
 	var dcgm, processes []*observation.Observation
 	for _, g := range f.gpus[:3] {
