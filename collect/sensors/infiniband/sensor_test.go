@@ -89,6 +89,28 @@ func TestLinkLayerFiltering(t *testing.T) {
 	require.Equal(t, "mlx5_1/ports/1/link_layer", batch.Observations[0].GetCollectionError().GetOperation())
 }
 
+// WithEthernetPorts admits RoCE ports as well, and still drops link layers
+// that are neither InfiniBand nor Ethernet.
+func TestWithEthernetPorts(t *testing.T) {
+	files := fstest.MapFS{}
+	for i, layer := range []string{"InfiniBand", "Ethernet", "ethernet", "Unknown", ""} {
+		base := fmt.Sprintf("mlx5_%d/ports/1/", i)
+		files[base+"link_layer"] = &fstest.MapFile{Data: []byte(layer)}
+		files[base+"state"] = &fstest.MapFile{Data: []byte("1: DOWN")}
+	}
+	cycle, err := collect.NewCycle("roce", time.Now())
+	require.NoError(t, err)
+	batch, err := New(ibsource.New(files), WithEthernetPorts()).Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(ibsignals.State.ID()))
+	require.NoError(t, err)
+	require.NoError(t, observation.ValidateBatch(batch))
+	var devices []string
+	for _, obs := range batch.Observations {
+		require.NotNil(t, obs.GetValue())
+		devices = append(devices, obs.GetTarget().GetInfiniBandPort().GetDevice().GetName())
+	}
+	require.ElementsMatch(t, []string{"mlx5_0", "mlx5_1", "mlx5_2"}, devices)
+}
+
 func TestMeasureNoValue(t *testing.T) {
 	files := fstest.MapFS{
 		"mlx5_0/fw_ver":                            {Data: []byte("28.41.1000\n")},

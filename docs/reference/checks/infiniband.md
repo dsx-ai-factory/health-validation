@@ -4,6 +4,37 @@
 
 InfiniBand covers InfiniBand network health: port state, error rates, and link integrity.
 
+## RDMA Fabric Ports Active
+
+`rdma_fabric_ports_active`
+
+Verifies that at least expected_active_fabric_ports RDMA ports (InfiniBand or RoCE) at a rate of at least fabric_port_rate_gbps are ACTIVE and LinkUp. Catches GPU fabric rails that are down or never came up, which link-flap detection cannot see.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`community`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`experimental`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`B200`</nobr> |
+| Required signals | <nobr>`port_states`</nobr>, <nobr>`port_physical_states`</nobr>, <nobr>`port_rates_gbps`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`expected_active_fabric_ports`</nobr> | 8 | count | <nobr>`DEFAULT`</nobr> | Fabric ports that must be ACTIVE and LinkUp: one per GPU on HGX B200 (8). Override per fleet for other rail layouts. |
+| <nobr>`fabric_port_rate_gbps`</nobr> | 400 | Gb/s | <nobr>`DEFAULT`</nobr> | Minimum port rate, in Gb/s, for a port to count as a fabric rail: 400 for NDR / 400GbE rails on HGX B200. Ports below it, such as front-end or storage NICs, are ignored. |
+
+**Rules**
+
+- **CRITICAL** when `size(port_rates_gbps.filter(p, port_rates_gbps[p] >= fabric_port_rate_gbps && p in port_states && port_states[p] == 4 && p in port_physical_states && port_physical_states[p] == 5)) < expected_active_fabric_ports`
+  - Message: Fewer than $\{expected_active_fabric_ports\} RDMA fabric ports (rate >= $\{fabric_port_rate_gbps\} Gb/s) are ACTIVE and LinkUp. See port_states, port_physical_states and port_rates_gbps for the ports that are not.
+
+**Recommended action:** operational state `drain`, then `restart_os` → `service_required`
+
 ## RDMA Link Flap (Fatal)
 
 `rdma_linkflap_fatal`

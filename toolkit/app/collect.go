@@ -16,6 +16,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
@@ -216,9 +217,19 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 			return gpuinventory.UUIDsByPCI(inventory.Cached(cycle))
 		}))
 	}
-	if a.rdmaLinkFlap == nil {
+	// One InfiniBand adapter joins the link-flap measurement and the RDMA
+	// fabric port measurement (InfiniBand and RoCE). A link-flap backend
+	// (WithRDMALinkFlapBackend) replaces the first part, and a caller IB
+	// backend (WithIBBackend) the second.
+	linkFlap, ports := a.rdmaLinkFlap == nil, a.ib == nil
+	if linkFlap {
 		sources = append(sources, linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)))
-		adapters = append(adapters, collectadapters.InfiniBand())
+	}
+	if ports {
+		sources = append(sources, ibsensor.New(nil, ibsensor.WithEthernetPorts()))
+	}
+	if linkFlap || ports {
+		adapters = append(adapters, collectadapters.InfiniBandDomain(linkFlap, ports))
 	}
 	if a.nvlink == nil {
 		adapters = append(adapters, collectadapters.NVLink())
@@ -365,13 +376,28 @@ func (a *App) collectSensorsIn(cycle *collect.Cycle, builtinSources []collect.Se
 // category: filtering requested only that category's signals, so a
 // measurement of another category would silently miss data its checks need.
 func (d declaredAdapter) build(obs []*observation.Observation) []health.Measurement {
-	measurements := d.adapter.Build(obs)
-	for _, m := range measurements {
-		if m != nil && m.Category() != d.category {
-			return d.adapter.Errored(fmt.Errorf("collect adapter %q built a %s measurement but declares category %s", d.name, m.Category(), d.category))
+	return d.checked(d.adapter.Build, d.adapter.Errored)(obs)
+}
+
+// checked wraps build with the category check of [declaredAdapter.build].
+func (d declaredAdapter) checked(build func([]*observation.Observation) []health.Measurement, errored func(error) []health.Measurement) func([]*observation.Observation) []health.Measurement {
+	return func(obs []*observation.Observation) []health.Measurement {
+		measurements := build(obs)
+		for _, m := range measurements {
+			if m != nil && m.Category() != d.category {
+				return errored(fmt.Errorf("collect adapter %q built a %s measurement but declares category %s", d.name, m.Category(), d.category))
+			}
 		}
+		return measurements
 	}
-	return measurements
+}
+
+// signalSelector is a built-in adapter that joins measurement types read from
+// different sources. Select narrows its Build and Errored to the parts that
+// read a requested signal, so a part no runnable check needs is neither built
+// nor failed, as a separate adapter left with nothing to request would not be.
+type signalSelector interface {
+	Select(requested []string) (build func([]*observation.Observation) []health.Measurement, errored func(error) []health.Measurement)
 }
 
 // declareAdapters captures and validates each adapter's metadata.
@@ -451,9 +477,14 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 			continue
 		}
 		requested = append(requested, signals...)
+		build, errored := d.build, d.adapter.Errored
+		if selector, ok := d.adapter.(signalSelector); ok {
+			partBuild, partErrored := selector.Select(signals)
+			build, errored = d.checked(partBuild, partErrored), partErrored
+		}
 		bindings = append(bindings, collectbridge.Binding{
 			Name: d.name, Signals: signals, Category: d.category,
-			Build: d.build, Errored: d.adapter.Errored,
+			Build: build, Errored: errored,
 		})
 	}
 	// Every check here reads declared, not requested, signals, so the outcome

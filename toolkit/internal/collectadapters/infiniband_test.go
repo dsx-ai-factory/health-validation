@@ -153,3 +153,67 @@ func TestInfiniBandAdapterErroredCoversLinkFlap(t *testing.T) {
 		t.Fatal("timeout not preserved")
 	}
 }
+
+// The two parts read different sensors' signals, so joining them loses none.
+func TestInfiniBandDomainParts(t *testing.T) {
+	linkFlap, ports := InfiniBand().Signals(), RDMAPorts().Signals()
+	for id := range ports {
+		if _, ok := linkFlap[id]; ok {
+			t.Fatalf("signal %q is read by both parts", id)
+		}
+	}
+	for _, test := range []struct {
+		name            string
+		linkFlap, ports bool
+		want            int
+	}{
+		{name: "both", linkFlap: true, ports: true, want: len(linkFlap) + len(ports)},
+		{name: "link flap", linkFlap: true, want: len(linkFlap)},
+		{name: "ports", ports: true, want: len(ports)},
+	} {
+		d := InfiniBandDomain(test.linkFlap, test.ports)
+		if d.Name() != "infiniband" || d.Category() != health.InfiniBand {
+			t.Fatalf("%s: name %q, category %s", test.name, d.Name(), d.Category())
+		}
+		if got := len(d.Signals()); got != test.want {
+			t.Errorf("%s: %d signals, want %d", test.name, got, test.want)
+		}
+		if got := len(d.Errored(errors.New("boom"))); got != len(d.parts) {
+			t.Errorf("%s: Errored returned %d measurements, want one per part (%d)", test.name, got, len(d.parts))
+		}
+	}
+}
+
+// Select keeps a part only when a requested signal is one it reads.
+func TestInfiniBandDomainSelect(t *testing.T) {
+	d := InfiniBandDomain(true, true)
+	for _, test := range []struct {
+		name                    string
+		requested               []string
+		wantLinkFlap, wantPorts bool
+	}{
+		{name: "link flap", requested: slices.Collect(maps.Keys(InfiniBand().Signals())), wantLinkFlap: true},
+		{name: "ports", requested: []string{ibsignals.State.ID()}, wantPorts: true},
+		{name: "both", requested: []string{ibsignals.State.ID(), ibsignals.LinkFlapScanSince.ID()}, wantLinkFlap: true, wantPorts: true},
+	} {
+		build, errored := d.Select(test.requested)
+		for name, measurements := range map[string][]health.Measurement{"Build": build(nil), "Errored": errored(errors.New("boom"))} {
+			var linkFlap, ports bool
+			for _, m := range measurements {
+				switch m.(type) {
+				case infiniband.LinkFlapMeasurement:
+					linkFlap = true
+				case infiniband.PortMeasurement:
+					ports = true
+				}
+				// Nothing was collected, so every part that is built fails.
+				if len(m.Errors()) == 0 {
+					t.Errorf("%s %s: %T has no error", test.name, name, m)
+				}
+			}
+			if linkFlap != test.wantLinkFlap || ports != test.wantPorts {
+				t.Errorf("%s %s: link-flap=%v ports=%v, want %v and %v", test.name, name, linkFlap, ports, test.wantLinkFlap, test.wantPorts)
+			}
+		}
+	}
+}
