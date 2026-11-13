@@ -64,7 +64,7 @@ func (l nvlinkLinks) feed(b *builder) {
 			e.setAggregate(s, nvlink.SignalLinkCount, links, linksErr)
 		}
 		if common := bySignal[gpusignals.NVLinkSpeedCommon.ID()]; len(common) > 0 {
-			speed, err := linkSpeed(common, bySignal[gpusignals.NVLinkEndpointSpeed.ID()], links, linksErr)
+			speed, err := linkSpeed(uuid, common, bySignal[gpusignals.NVLinkEndpointSpeed.ID()], links, linksErr, bySignal[gpusignals.NVLinkState.ID()])
 			e.setAggregate(s, nvlink.SignalSpeedMBytesPerSec, speed, err)
 		}
 		for _, capability := range gpusignals.EndpointCapabilitySignals() {
@@ -129,10 +129,46 @@ func inactiveCount(obs []*observation.Observation) (int64, error) {
 	return count, nil
 }
 
+// inactiveLinks is the set of links below the link count whose only state
+// observation reads disabled. A missing, duplicate, or failed state read
+// leaves the link out, so it never explains a speed failure.
+func inactiveLinks(states []*observation.Observation, links int64) map[int64]bool {
+	seen := make(map[int64]bool)
+	disabled := make(map[int64]bool)
+	for _, o := range states {
+		endpoint := o.GetTarget().GetNvLinkEndpoint()
+		if endpoint == nil || int64(endpoint.GetLinkIndex()) >= links {
+			continue
+		}
+		link := int64(endpoint.GetLinkIndex())
+		if seen[link] {
+			delete(disabled, link)
+			continue
+		}
+		seen[link] = true
+		if state, ok := uintValue(o); ok && state == linkDisabled {
+			disabled[link] = true
+		}
+	}
+	return disabled
+}
+
+// explainInactiveLink adds the observed state of the link whose speed failed.
+func explainInactiveLink(uuid string, link, links int64, inactive map[int64]bool, err error) error {
+	switch {
+	case !inactive[link]:
+		return err
+	case int64(len(inactive)) == links:
+		return fmt.Errorf("GPU %s: NVLink speed unavailable: all %d NVLinks are inactive: %w", uuid, links, err)
+	default:
+		return fmt.Errorf("GPU %s: NVLink speed unavailable: NVLink %d is inactive: %w", uuid, link, err)
+	}
+}
+
 // linkSpeed is the common NVLink speed. When the driver reports it
 // unsupported, it falls back to the slowest per-link speed below the link
 // count, and every one of those links must report a nonzero speed.
-func linkSpeed(common, perLink []*observation.Observation, links int64, linksErr error) (int64, error) {
+func linkSpeed(uuid string, common, perLink []*observation.Observation, links int64, linksErr error, states []*observation.Observation) (int64, error) {
 	speed, err := gpuValue(common)
 	if err == nil || len(common) != 1 || common[0].GetCollectionError().GetSourceError() != nvmlNotSupported {
 		return speed, err
@@ -140,6 +176,7 @@ func linkSpeed(common, perLink []*observation.Observation, links int64, linksErr
 	if linksErr != nil {
 		return 0, fmt.Errorf("per-link NVLink speed needs the link count: %w", linksErr)
 	}
+	inactive := inactiveLinks(states, links)
 	speeds := make(map[int64]int64)
 	for _, o := range perLink {
 		endpoint := o.GetTarget().GetNvLinkEndpoint()
@@ -155,7 +192,11 @@ func linkSpeed(common, perLink []*observation.Observation, links int64, linksErr
 		}
 		value, ok := uintValue(o)
 		if !ok {
-			return 0, outcomeFailure(o)
+			err := outcomeFailure(o)
+			if source := o.GetCollectionError().GetSourceError(); source == nvmlNotSupported || source == nvmlInvalidArgument {
+				err = explainInactiveLink(uuid, link, links, inactive, err)
+			}
+			return 0, err
 		}
 		speeds[link] = value
 	}
@@ -169,7 +210,7 @@ func linkSpeed(common, perLink []*observation.Observation, links int64, linksErr
 		case !observed:
 			return 0, fmt.Errorf("NVLink %d speed: %w", link, errNoObservation)
 		case value == 0:
-			return 0, fmt.Errorf("NVLink %d reported no speed", link)
+			return 0, explainInactiveLink(uuid, link, links, inactive, fmt.Errorf("NVLink %d reported no speed", link))
 		}
 		if link == 0 || value < slowest {
 			slowest = value

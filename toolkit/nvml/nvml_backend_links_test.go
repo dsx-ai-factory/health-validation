@@ -38,6 +38,12 @@ func linkFieldValues(speed, count uint32, speedRet, countRet gonvml.Return) func
 	}
 }
 
+func measureLinks(dev gonvml.Device, m *nvlink.NVLinkMeasurement) {
+	if err := measureDeviceLinks(dev, m); err != nil {
+		m.AddError(err, nvlink.SignalSpeedMBytesPerSec)
+	}
+}
+
 func TestMeasureDeviceLinks_Healthy(t *testing.T) {
 	dev := &mock.Device{GetFieldValuesFunc: linkFieldValues(50000, 18, gonvml.SUCCESS, gonvml.SUCCESS)}
 
@@ -206,7 +212,7 @@ func TestMeasureDeviceLinks_SpeedFallbackUnavailableFlagsSignal(t *testing.T) {
 	}}
 
 	var m nvlink.NVLinkMeasurement
-	measureDeviceLinks(dev, &m)
+	measureLinks(dev, &m)
 
 	if m.LinkCount != 18 {
 		t.Errorf("LinkCount = %d, want 18 (count still collects)", m.LinkCount)
@@ -237,7 +243,7 @@ func TestMeasureDeviceLinks_SpeedFallbackCallErrorFlagsSignal(t *testing.T) {
 	}}
 
 	var m nvlink.NVLinkMeasurement
-	measureDeviceLinks(dev, &m)
+	measureLinks(dev, &m)
 
 	errs := m.Errors()
 	if len(errs) != 1 || !slices.Equal(errs[0].FailedSignals(), []string{nvlink.SignalSpeedMBytesPerSec}) {
@@ -277,7 +283,7 @@ func TestMeasureDeviceLinks_SpeedFallbackScopeErrorFlagsSignal(t *testing.T) {
 	}}
 
 	var m nvlink.NVLinkMeasurement
-	measureDeviceLinks(dev, &m)
+	measureLinks(dev, &m)
 
 	errs := m.Errors()
 	if len(errs) != 1 || !slices.Equal(errs[0].FailedSignals(), []string{nvlink.SignalSpeedMBytesPerSec}) {
@@ -322,7 +328,7 @@ func TestMeasureDeviceLinks_SpeedFallbackBadValueTypeFlagsSignal(t *testing.T) {
 	}}
 
 	var m nvlink.NVLinkMeasurement
-	measureDeviceLinks(dev, &m)
+	measureLinks(dev, &m)
 
 	errs := m.Errors()
 	if len(errs) != 1 || !slices.Equal(errs[0].FailedSignals(), []string{nvlink.SignalSpeedMBytesPerSec}) {
@@ -432,7 +438,7 @@ func TestMeasureDeviceLinks_SpeedFallbackPartialNotSupportedFlagsSignal(t *testi
 	}}
 
 	var m nvlink.NVLinkMeasurement
-	measureDeviceLinks(dev, &m)
+	measureLinks(dev, &m)
 
 	errs := m.Errors()
 	if len(errs) != 1 || !slices.Equal(errs[0].FailedSignals(), []string{nvlink.SignalSpeedMBytesPerSec}) {
@@ -473,7 +479,7 @@ func TestMeasureDeviceLinks_SpeedFallbackZeroSpeedFlagsSignal(t *testing.T) {
 	}}
 
 	var m nvlink.NVLinkMeasurement
-	measureDeviceLinks(dev, &m)
+	measureLinks(dev, &m)
 
 	errs := m.Errors()
 	if len(errs) != 1 || !slices.Equal(errs[0].FailedSignals(), []string{nvlink.SignalSpeedMBytesPerSec}) {
@@ -551,5 +557,75 @@ func TestMeasureNVLink_CollectsLinks(t *testing.T) {
 	}
 	if m.LinkCount != 18 || m.SpeedMBytesPerSec != 50000 {
 		t.Errorf("LinkCount=%d SpeedMBytesPerSec=%d, want 18 / 50000", m.LinkCount, m.SpeedMBytesPerSec)
+	}
+}
+
+func TestNVLinkSpeedDiagnosisReusesStateReads(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		prefix string
+		state  gonvml.EnableState
+		ret    gonvml.Return
+		all    bool
+	}{
+		{name: "all inactive", all: true, prefix: "GPU GPU-0: NVLink speed unavailable: all 18 NVLinks are inactive: "},
+		{name: "one inactive", state: gonvml.FEATURE_DISABLED, ret: gonvml.SUCCESS, prefix: "GPU GPU-0: NVLink speed unavailable: NVLink 0 is inactive: "},
+		{name: "active", state: gonvml.FEATURE_ENABLED, ret: gonvml.SUCCESS},
+		{name: "unreadable", ret: gonvml.ERROR_TIMEOUT},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, speedRet := range []gonvml.Return{gonvml.ERROR_NOT_SUPPORTED, gonvml.ERROR_INVALID_ARGUMENT, gonvml.SUCCESS} {
+				dev := &mock.Device{
+					GetFieldValuesFunc: func(values []gonvml.FieldValue) gonvml.Return {
+						linkFieldValues(0, 18, gonvml.ERROR_NOT_SUPPORTED, gonvml.SUCCESS)(values)
+						for i := range values {
+							if values[i].FieldId == gonvml.FI_DEV_NVLINK_GET_SPEED {
+								values[i].NvmlReturn = uint32(speedRet)
+								values[i].ValueType = uint32(gonvml.VALUE_TYPE_UNSIGNED_INT)
+							}
+						}
+						return gonvml.SUCCESS
+					},
+					GetNvLinkStateFunc: func(link int) (gonvml.EnableState, gonvml.Return) {
+						if link >= 18 {
+							return 0, gonvml.ERROR_INVALID_ARGUMENT
+						}
+						if test.all {
+							return gonvml.FEATURE_DISABLED, gonvml.SUCCESS
+						}
+						if link == 0 {
+							return test.state, test.ret
+						}
+						return gonvml.FEATURE_ENABLED, gonvml.SUCCESS
+					},
+					GetNvLinkCapabilityFunc: func(int, gonvml.NvLinkCapability) (uint32, gonvml.Return) {
+						return 1, gonvml.SUCCESS
+					},
+				}
+				m := (nvlinkProbe{}).Measure(ProbeContext{Self: ProbeDevice{Device: dev, UUID: "GPU-0"}}).(nvlink.NVLinkMeasurement)
+				// Active-link and capability collection each read state once.
+				wantCalls := 2 * gonvml.NVLINK_MAX_LINKS
+				if test.ret == gonvml.ERROR_TIMEOUT {
+					wantCalls = 2
+				}
+				if got := len(dev.GetNvLinkStateCalls()); got != wantCalls {
+					t.Fatalf("%d state calls, want %d", got, wantCalls)
+				}
+				var speedError error
+				for _, failure := range m.Errors() {
+					if !slices.Contains(failure.FailedSignals(), nvlink.SignalSpeedMBytesPerSec) {
+						continue
+					}
+					speedError = failure.Err()
+				}
+				var original *linkSpeedError
+				if !errors.As(speedError, &original) {
+					t.Fatalf("lost original speed error: %v", speedError)
+				}
+				if want := test.prefix + original.Error(); speedError.Error() != want {
+					t.Fatalf("failure = %q, want %q", speedError, want)
+				}
+			}
+		})
 	}
 }

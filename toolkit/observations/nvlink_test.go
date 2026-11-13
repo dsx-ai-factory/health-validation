@@ -341,3 +341,60 @@ func errorFor(m health.Measurement, signal string) error {
 	}
 	return nil
 }
+
+func TestUnavailableSpeedExplainsOnlyVerifiedInactiveLinks(t *testing.T) {
+	state := gpusignals.NVLinkState
+	const (
+		all     = "GPU GPU-0: NVLink speed unavailable: all 2 NVLinks are inactive: "
+		partial = "GPU GPU-0: NVLink speed unavailable: NVLink 0 is inactive: "
+	)
+	for _, test := range []struct {
+		name   string
+		prefix string
+		states []*observation.Observation
+	}{
+		{name: "all inactive", prefix: all, states: []*observation.Observation{linkValue(state, "GPU-0", 0, 0), linkValue(state, "GPU-0", 1, 0)}},
+		{name: "other link active", prefix: partial, states: []*observation.Observation{linkValue(state, "GPU-0", 0, 0), linkValue(state, "GPU-0", 1, 1)}},
+		{name: "other state missing", prefix: partial, states: []*observation.Observation{linkValue(state, "GPU-0", 0, 0)}},
+		{name: "other state unreadable", prefix: partial, states: []*observation.Observation{linkValue(state, "GPU-0", 0, 0), linkFailure(state, observation.NVLinkEndpointTarget("GPU-0", 1), "ERROR_NOT_SUPPORTED", observation.CollectionErrorCategoryUnsupported)}},
+		{name: "failed link active", states: []*observation.Observation{linkValue(state, "GPU-0", 0, 1), linkValue(state, "GPU-0", 1, 0)}},
+		{name: "duplicate state", states: []*observation.Observation{linkValue(state, "GPU-0", 0, 0), linkValue(state, "GPU-0", 0, 0), linkValue(state, "GPU-0", 1, 0)}},
+		{name: "no states"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			obs := []*observation.Observation{
+				gpuUint(gpusignals.NVLinkLinkCount, 2),
+				linkFailure(gpusignals.NVLinkSpeedCommon, observation.GPUTarget("GPU-0"), "ERROR_NOT_SUPPORTED", observation.CollectionErrorCategoryUnsupported),
+				linkFailure(gpusignals.NVLinkEndpointSpeed, observation.NVLinkEndpointTarget("GPU-0", 0), "ERROR_NOT_SUPPORTED", observation.CollectionErrorCategoryUnsupported),
+			}
+			baseline := errorFor(only[nvlink.NVLinkMeasurement](t, ToMeasurements(obs)), nvlink.SignalSpeedMBytesPerSec)
+			m := only[nvlink.NVLinkMeasurement](t, ToMeasurements(append(obs, test.states...)))
+			failure := errorFor(m, nvlink.SignalSpeedMBytesPerSec)
+			if failure == nil {
+				t.Fatal("unavailable speed must still fail")
+			}
+			if want := test.prefix + baseline.Error(); failure.Error() != want {
+				t.Fatalf("failure = %q, want %q", failure, want)
+			}
+			severity := evaluate(t, "GB200", []health.Measurement{m}, nvlink.NVLinkBandwidthCountSpeed())["nvlink_bandwidth_count_speed"]
+			if severity != health.Unknown {
+				t.Fatalf("severity = %v, want UNKNOWN", severity)
+			}
+		})
+	}
+}
+
+func TestZeroSpeedExplainsInactiveLink(t *testing.T) {
+	m := only[nvlink.NVLinkMeasurement](t, ToMeasurements([]*observation.Observation{
+		gpuUint(gpusignals.NVLinkLinkCount, 2),
+		linkFailure(gpusignals.NVLinkSpeedCommon, observation.GPUTarget("GPU-0"), "ERROR_NOT_SUPPORTED", observation.CollectionErrorCategoryUnsupported),
+		linkValue(gpusignals.NVLinkEndpointSpeed, "GPU-0", 0, 50000),
+		linkValue(gpusignals.NVLinkEndpointSpeed, "GPU-0", 1, 0),
+		linkValue(gpusignals.NVLinkState, "GPU-0", 0, 1),
+		linkValue(gpusignals.NVLinkState, "GPU-0", 1, 0),
+	}))
+	want := "GPU GPU-0: NVLink speed unavailable: NVLink 1 is inactive: NVLink 1 reported no speed"
+	if failure := errorFor(m, nvlink.SignalSpeedMBytesPerSec); failure == nil || failure.Error() != want {
+		t.Fatalf("failure = %v, want %q", failure, want)
+	}
+}
