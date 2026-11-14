@@ -548,11 +548,8 @@ type nvlinkProbe struct{}
 func (nvlinkProbe) Measure(pc ProbeContext) health.Measurement {
 	m := nvlink.NVLinkMeasurement{GPUID: pc.Self.UUID}
 	measureDeviceFabric(pc.Self.Device, &m)
-	speedErr := measureDeviceLinks(pc.Self.Device, &m)
-	inactive := measureDeviceActiveLinks(pc.Self.Device, &m)
-	if speedErr != nil {
-		m.AddError(explainInactiveLinkSpeed(m.GPUID, m.LinkCount, inactive, speedErr), nvlink.SignalSpeedMBytesPerSec)
-	}
+	measureDeviceLinks(pc.Self.Device, &m)
+	measureDeviceActiveLinks(pc.Self.Device, &m)
 	measureDeviceLinkCapabilities(pc.Self.Device, &m)
 	measureDeviceP2P(pc, &m)
 	return m
@@ -702,8 +699,7 @@ func measureDeviceFabric(dev gonvml.Device, m *nvlink.NVLinkMeasurement) {
 // fully-trained NVLink — scoped NVLINK_GET_SPEED fields are tried as a
 // fallback; if those are also unavailable the speed is flagged as a
 // measurement failure, which reports the dependent check Unknown.
-// The fallback error is returned for diagnosis after collecting link states.
-func measureDeviceLinks(dev gonvml.Device, m *nvlink.NVLinkMeasurement) error {
+func measureDeviceLinks(dev gonvml.Device, m *nvlink.NVLinkMeasurement) {
 	values := []gonvml.FieldValue{
 		{FieldId: gonvml.FI_DEV_NVLINK_SPEED_MBPS_COMMON},
 		{FieldId: gonvml.FI_DEV_NVLINK_LINK_COUNT},
@@ -711,7 +707,7 @@ func measureDeviceLinks(dev gonvml.Device, m *nvlink.NVLinkMeasurement) error {
 	if ret := dev.GetFieldValues(values); ret != gonvml.SUCCESS {
 		m.AddError(&Error{Op: "DeviceGetFieldValues", Return: ret},
 			nvlink.SignalSpeedMBytesPerSec, nvlink.SignalLinkCount)
-		return nil
+		return
 	}
 
 	// Link count is decoded before the speed: the per-link speed fallback
@@ -742,7 +738,7 @@ func measureDeviceLinks(dev gonvml.Device, m *nvlink.NVLinkMeasurement) error {
 		// Supported even on healthy NVLink; fall back to the scoped per-link
 		// fields. If those are also unavailable it is a measurement failure.
 		if speed, err := deviceMinLinkSpeed(dev, m.LinkCount); err != nil {
-			return err
+			m.AddError(err, nvlink.SignalSpeedMBytesPerSec)
 		} else {
 			m.SpeedMBytesPerSec = speed
 		}
@@ -750,30 +746,6 @@ func measureDeviceLinks(dev gonvml.Device, m *nvlink.NVLinkMeasurement) error {
 		m.AddError(&Error{Op: "DeviceGetFieldValues(NVLINK_SPEED_MBPS_COMMON)", Return: speedRet},
 			nvlink.SignalSpeedMBytesPerSec)
 	}
-	return nil
-}
-
-// linkSpeedError retains the link index for later state diagnostics.
-type linkSpeedError struct {
-	err  error
-	link int
-}
-
-func (e *linkSpeedError) Error() string { return e.err.Error() }
-func (e *linkSpeedError) Unwrap() error { return e.err }
-
-// explainInactiveLinkSpeed adds the observed state without querying NVML again.
-func explainInactiveLinkSpeed(gpuID string, links int64, inactive [gonvml.NVLINK_MAX_LINKS]bool, cause error) error {
-	failed, ok := cause.(*linkSpeedError)
-	if !ok || links <= 0 || links > gonvml.NVLINK_MAX_LINKS || !inactive[failed.link] {
-		return cause
-	}
-	for _, disabled := range inactive[:links] {
-		if !disabled {
-			return fmt.Errorf("GPU %s: NVLink speed unavailable: NVLink %d is inactive: %w", gpuID, failed.link, cause)
-		}
-	}
-	return fmt.Errorf("GPU %s: NVLink speed unavailable: all %d NVLinks are inactive: %w", gpuID, links, cause)
 }
 
 // deviceMinLinkSpeed reads the per-link NVLink speed via FI_DEV_NVLINK_GET_SPEED
@@ -788,7 +760,7 @@ func explainInactiveLinkSpeed(gpuID string, links int64, inactive [gonvml.NVLINK
 // or unexpected value type there is a measurement failure (a non-nil error),
 // not something to skip past. Scopes at or above linkCount are beyond the GPU's
 // lane count and are ignored. A hard NVML failure on any scope is also an
-// error. The caller turns any error into an Unknown verdict.
+// error. The caller turns any error into a Critical verdict.
 func deviceMinLinkSpeed(dev gonvml.Device, linkCount int64) (int64, error) {
 	values := make([]gonvml.FieldValue, gonvml.NVLINK_MAX_LINKS)
 	for link := range values {
@@ -813,7 +785,7 @@ func deviceMinLinkSpeed(dev gonvml.Device, linkCount int64) (int64, error) {
 			}
 			v := int64(binary.LittleEndian.Uint32(values[i].Value[:4]))
 			if v <= 0 {
-				return 0, &linkSpeedError{link: i, err: fmt.Errorf("nvml DeviceGetFieldValues(NVLINK_GET_SPEED) link %d: reported no speed", i)}
+				return 0, fmt.Errorf("nvml DeviceGetFieldValues(NVLINK_GET_SPEED) link %d: reported no speed", i)
 			}
 			if seen == 0 || v < minSpeed {
 				minSpeed = v
@@ -821,7 +793,7 @@ func deviceMinLinkSpeed(dev gonvml.Device, linkCount int64) (int64, error) {
 			seen++
 		case gonvml.ERROR_NOT_SUPPORTED, gonvml.ERROR_INVALID_ARGUMENT:
 			if inRange {
-				return 0, &linkSpeedError{link: i, err: &Error{Op: fmt.Sprintf("DeviceGetFieldValues(NVLINK_GET_SPEED) link %d", i), Return: entryRet}}
+				return 0, &Error{Op: fmt.Sprintf("DeviceGetFieldValues(NVLINK_GET_SPEED) link %d", i), Return: entryRet}
 			}
 			// Scope beyond the GPU's lane count; ignore.
 		default:
@@ -845,7 +817,7 @@ func deviceMinLinkSpeed(dev gonvml.Device, linkCount int64) (int64, error) {
 // and probing stops so a single broken library does not stack identical
 // entries. On break the partial count is still recorded, but the errored
 // signal drives the verdict Unknown regardless.
-func measureDeviceActiveLinks(dev gonvml.Device, m *nvlink.NVLinkMeasurement) (disabled [gonvml.NVLINK_MAX_LINKS]bool) {
+func measureDeviceActiveLinks(dev gonvml.Device, m *nvlink.NVLinkMeasurement) {
 	var inactive int64
 linkLoop:
 	for link := 0; link < gonvml.NVLINK_MAX_LINKS; link++ {
@@ -854,7 +826,6 @@ linkLoop:
 		case gonvml.SUCCESS:
 			if state == gonvml.FEATURE_DISABLED {
 				inactive++
-				disabled[link] = true
 			}
 		case gonvml.ERROR_INVALID_ARGUMENT:
 			// Link index above this GPU's physical lane count.
@@ -868,7 +839,6 @@ linkLoop:
 		}
 	}
 	m.InactiveCount = inactive
-	return disabled
 }
 
 // measureDeviceLinkCapabilities sets the per-GPU NVLink capability
