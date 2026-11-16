@@ -437,8 +437,12 @@ func TestServeValidatesOverrideWirePrecisionBeforeListening(t *testing.T) {
 				address = "127.0.0.1:0"
 			}
 			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
+			defer cancel()
 			a := cadenceRunApp().WithChecks(customCheck())
+			a.openJournal = func() (io.WriteCloser, error) {
+				cancel()
+				return &datagramRecorder{}, nil
+			}
 			var stderr bytes.Buffer
 			code := a.serve(ctx, []string{"--address", address, "--config", path}, &stderr)
 			if tc.valid {

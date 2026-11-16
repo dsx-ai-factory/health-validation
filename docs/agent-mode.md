@@ -63,7 +63,12 @@ to load a changed configuration file.
 
 Configured threshold overrides are checked for wire compatibility before the
 listener starts. A numeric value that would be rounded by the verdict API is
-a configuration error (exit 2).
+a configuration error (exit 2). Overrides are recorded in the system journal once
+at startup, including overrides on disabled checks. Startup discovery resolves
+architecture-specific catalog defaults for those records. If discovery or the
+audit write fails, the listener does not start and the process exits 2. With no
+threshold overrides, startup skips discovery and the audit journal. Requests do
+not repeat the audit.
 
 GET accepts only the three request fields as query parameters, once each.
 POST accepts a JSON request body, without query overrides; `{}` and an empty

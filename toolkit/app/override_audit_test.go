@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -355,5 +357,145 @@ func TestCollectCommandSkipsJournal(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := a.collectCommand(args, &stdout, &stderr); code != exitOK {
 		t.Errorf("collectCommand exit = %d, want %d; stderr = %q", code, exitOK, stderr.String())
+	}
+}
+
+func TestServeAuditsOnceBeforeRequests(t *testing.T) {
+	a, _, args := auditApp(t, "checks:\n  gpu_count:\n    expected_gpu_count: 8\n  gpu_power_limit:\n    expected_power_limit_w: 1000\ndisabled_checks:\n  - gpu_count\n")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var rec datagramRecorder
+	opened := 0
+	a.openJournal = func() (io.WriteCloser, error) { opened++; return &rec, nil }
+	var stderr bytes.Buffer
+	done := make(chan int, 1)
+	go func() { done <- a.serve(ctx, append(args, "--address", address), &stderr) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case code := <-done:
+			if code != exitOK {
+				t.Errorf("serve exit=%d: %s", code, &stderr)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("serve did not stop")
+		}
+		if opened != 1 || len(rec.datagrams) != 2 {
+			t.Errorf("journal opened %d times, wrote %d entries; want once and 2 entries", opened, len(rec.datagrams))
+		}
+		if len(rec.datagrams) == 2 {
+			power := parseDatagram(t, rec.datagrams[1])
+			if power["CHECK_ID"] != "gpu_power_limit" || power["ORIGINAL_VALUE"] != "1200" || power["OVERRIDE_VALUE"] != "1000" {
+				t.Errorf("architecture-specific default audit = %v", power)
+			}
+			got := parseDatagram(t, rec.datagrams[0])
+			if got["CHECK_ID"] != "gpu_count" || got["ORIGINAL_VALUE"] != "4" || got["OVERRIDE_VALUE"] != "8" {
+				t.Errorf("disabled check audit = %v", got)
+			}
+		}
+	})
+	client := &http.Client{Timeout: time.Second}
+	for range 2 {
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			response, err := client.Get("http://" + address + "/verdict")
+			if err == nil {
+				io.Copy(io.Discard, response.Body)
+				response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Fatalf("HTTP status %d", response.StatusCode)
+				}
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal(err)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}
+
+func TestServeAuditFailurePreventsListening(t *testing.T) {
+	for _, failure := range []string{"open", "write", "discovery"} {
+		t.Run(failure, func(t *testing.T) {
+			a, collected, args := auditApp(t, twoOverrides)
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			a.openJournal = func() (io.WriteCloser, error) {
+				if failure == "discovery" {
+					t.Error("opened journal without architecture")
+				}
+				if failure == "open" {
+					return nil, errors.New("journal unavailable")
+				}
+				return &datagramRecorder{writeErr: errors.New("journal write failed")}, nil
+			}
+			if failure == "discovery" {
+				a.host = erroringHost{b: spyBackend{called: collected}}
+			}
+			var stderr bytes.Buffer
+			code := a.serve(context.Background(), append(args, "--address", listener.Addr().String()), &stderr)
+			if code != exitError || !strings.Contains(stderr.String(), "audit threshold overrides:") || strings.Contains(stderr.String(), "listen") {
+				t.Fatalf("want audit failure before binding; exit=%d: %s", code, &stderr)
+			}
+			if *collected {
+				t.Error("collected check signals after audit failure")
+			}
+		})
+	}
+}
+
+func TestServeWithoutOverridesSkipsJournal(t *testing.T) {
+	a, _, args := auditApp(t, "disabled_checks:\n  - gpu_power_state\n")
+	a.host = auditNoDiscoveryHost{}
+	a.openJournal = func() (io.WriteCloser, error) {
+		t.Error("opened journal without overrides")
+		return nil, errors.New("unexpected")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stderr bytes.Buffer
+	if code := a.serve(ctx, append(args, "--address", "127.0.0.1:0"), &stderr); code != exitOK {
+		t.Fatalf("exit=%d: %s", code, &stderr)
+	}
+}
+
+type auditNoDiscoveryHost struct{ panicHost }
+
+func (auditNoDiscoveryHost) close() error { return nil }
+
+func TestServeAuditTimeoutDefersCloseUntilDiscoveryFinishes(t *testing.T) {
+	a, _, args := auditApp(t, twoOverrides+"collection_timeout_seconds: 1\n")
+	release := make(chan struct{})
+	defer close(release)
+	closed := make(chan struct{})
+	a.host = closeObservedHost{hostBackend: stalledDiscoveryHost{hostBackend: a.host, release: release}, closed: closed}
+	a.openJournal = func() (io.WriteCloser, error) {
+		t.Error("journal opened after discovery timeout")
+		return nil, errors.New("unexpected")
+	}
+	var stderr bytes.Buffer
+	if code := a.serve(context.Background(), append(args, "--address", "127.0.0.1:0"), &stderr); code != exitError || !strings.Contains(stderr.String(), "audit threshold overrides:") {
+		t.Fatalf("exit=%d: %s", code, &stderr)
+	}
+	select {
+	case <-closed:
+		t.Fatal("closed host during unfinished startup discovery")
+	default:
+	}
+	release <- struct{}{}
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("host did not close after startup discovery finished")
 	}
 }
