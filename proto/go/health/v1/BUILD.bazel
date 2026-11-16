@@ -7,7 +7,7 @@ go_library(
         "verdict_grpc.pb.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/proto/go/health/v1",
-    visibility = ["//visibility:public"],
+    visibility = ["//build/visibility:toolkit_consumers"],
     deps = [
         "@org_golang_google_grpc//:grpc",
         "@org_golang_google_grpc//codes",

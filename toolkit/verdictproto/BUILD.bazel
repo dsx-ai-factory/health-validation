@@ -6,7 +6,6 @@ go_library(
     name = "verdictproto",
     srcs = ["verdict.go"],
     importpath = "github.com/dsx-ai-factory/health-validation/toolkit/verdictproto",
-    visibility = ["//visibility:public"],
     deps = [
         "//catalog/health",
         "//proto/go/health/v1:health",

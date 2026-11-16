@@ -3,5 +3,5 @@
 
 exports_files(
     ["verdict.proto"],
-    visibility = ["//visibility:public"],
+    visibility = ["//build/visibility:toolkit_consumers"],
 )
