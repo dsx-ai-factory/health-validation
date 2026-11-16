@@ -30,7 +30,7 @@ type Sensor interface {
 	// not collect at all — a hard backend error or a collection timeout.
 	// Each names every signal in the sensor's domain as failed (via the
 	// domain's ErroredXxx constructor) so the catalog fails exactly the
-	// checks that depend on this sensor Critical, while checks fed by
+	// checks that depend on this sensor Unknown, while checks fed by
 	// other sensors still evaluate. err is the cause and is surfaced in
 	// the resulting verdict's message.
 	Errored(err error) []health.Measurement

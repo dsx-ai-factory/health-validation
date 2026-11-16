@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "scope",
+    srcs = ["scope.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/catalog/internal/scope",
+    visibility = ["//:__subpackages__"],
+)

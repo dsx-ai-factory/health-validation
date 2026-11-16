@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -99,17 +100,30 @@ func (sentinel sentinelType) sourceError() string {
 	}
 }
 
-// dcgmErrorCode reads a typed go-dcgm status when available and falls back to
-// the status embedded in older error strings.
+// dcgmErrorCode reads a typed go-dcgm status when available. Otherwise it
+// falls back to libdcgm's status text, which go-dcgm returns without the code
+// for most calls, or to an "error code N" string.
 func dcgmErrorCode(err error) (int, bool) {
 	if err == nil {
 		return 0, false
 	}
-	var dcgmFailure *godcgm.Error
-	if errors.As(err, &dcgmFailure) {
-		return int(dcgmFailure.Code), true
+	var failure *godcgm.Error
+	if errors.As(err, &failure) {
+		return int(failure.Code), true
 	}
 
+	// Some pinned go-dcgm helpers discard the native error type. Recognize
+	// libdcgm's specific status text, never generic phrases such as "not watched".
+	switch message := err.Error(); {
+	case strings.Contains(message, "Host engine connection invalid/disconnected"):
+		return godcgm.DCGM_ST_CONNECTION_NOT_VALID, true
+	case strings.Contains(message, "Setting not configured"):
+		return godcgm.DCGM_ST_NOT_CONFIGURED, true
+	case strings.Contains(message, "Field is not being watched"):
+		return godcgm.DCGM_ST_NOT_WATCHED, true
+	case strings.Contains(message, "DCGM initialization error"):
+		return godcgm.DCGM_ST_INIT_ERROR, true
+	}
 	matches := dcgmErrorCodePattern.FindStringSubmatch(err.Error())
 	if len(matches) != 2 {
 		return 0, false
@@ -126,14 +140,23 @@ var dcgmErrorCodePattern = regexp.MustCompile(`(?i)error code (-?\d+)`)
 // dcgmErrorFromError preserves DCGM status information while an operation
 // error passes through collect.Run.
 func dcgmErrorFromError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var failure *dcgmError
+	if errors.As(err, &failure) {
+		return err
+	}
 	if code, ok := dcgmErrorCode(err); ok {
 		return &dcgmError{
+			cause:       err,
 			sourceError: dcgmStatusName(code),
 			category:    categoryFromCode(code),
 			detail:      err.Error(),
 		}
 	}
 	return &dcgmError{
+		cause:    err,
 		category: observation.CollectionErrorCategoryOther,
 		detail:   err.Error(),
 	}

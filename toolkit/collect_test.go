@@ -27,9 +27,7 @@ func TestCollectWithOptions_ZeroValueHealthyNode(t *testing.T) {
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	sensor := nodeSensor(4)
 
 	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{}, sensor)
 	if err != nil {
@@ -41,9 +39,7 @@ func TestCollectWithOptions_ZeroValueHealthyNode(t *testing.T) {
 }
 
 func TestCollectMeasurementsWithTimeoutPreservesSensor(t *testing.T) {
-	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	sensor := nodeSensor(4)
 
 	groups := toolkit.CollectMeasurementsWithTimeout(time.Second, sensor)
 	if len(groups) != 1 || groups[0].Sensor != "node" || len(groups[0].Measurements) != 1 {
@@ -58,9 +54,7 @@ func TestCollect_FailingNode(t *testing.T) {
 	)
 
 	// Only 3 GPUs visible against the default expected count of 4.
-	sensor := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 3},
-	))
+	sensor := nodeSensor(3)
 
 	nv, err := toolkit.Collect(cat, sensor)
 	if err != nil {
@@ -76,9 +70,7 @@ func TestCollectWithOptions_ContinuousCadenceSkipsPrologChecks(t *testing.T) {
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
-	sensor := toolkit.NewGPUSensor(toolkit.MockGPU(
-		gpu.GPUMeasurement{GPUID: "GPU-0"},
-	))
+	sensor := staticSensor{name: "gpu", ms: []health.Measurement{gpu.GPUMeasurement{GPUID: "GPU-0"}}}
 	cadence := health.Continuous
 	nv, err := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Cadence: &cadence}, sensor)
 	if err != nil {
@@ -203,11 +195,11 @@ func (s failingSensor) Measure(context.Context) ([]health.Measurement, error) {
 
 func (s failingSensor) Errored(err error) []health.Measurement { return s.errored(err) }
 
-// TestCollect_SensorErrorDegradesToCritical verifies a sensor that fails
-// to collect does not abort the verdict: its failure becomes a Critical
+// TestCollect_SensorErrorDegradesToUnknown verifies a sensor that fails
+// to collect does not abort the verdict: its failure becomes an Unknown
 // verdict for the dependent check, and the underlying error is surfaced
 // in the message.
-func TestCollect_SensorErrorDegradesToCritical(t *testing.T) {
+func TestCollect_SensorErrorDegradesToUnknown(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -224,8 +216,8 @@ func TestCollect_SensorErrorDegradesToCritical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect returned error, want graceful degrade: %v", err)
 	}
-	if nv.OverallSeverity != health.Critical {
-		t.Fatalf("overall = %v, want CRITICAL", nv.OverallSeverity)
+	if nv.OverallSeverity != health.Unknown {
+		t.Fatalf("overall = %v, want UNKNOWN", nv.OverallSeverity)
 	}
 
 	var found bool
@@ -234,8 +226,8 @@ func TestCollect_SensorErrorDegradesToCritical(t *testing.T) {
 			continue
 		}
 		found = true
-		if v.Severity != health.Critical {
-			t.Errorf("gpu_count severity = %v, want CRITICAL", v.Severity)
+		if v.Severity != health.Unknown {
+			t.Errorf("gpu_count severity = %v, want UNKNOWN", v.Severity)
 		}
 		if len(v.Messages) == 0 || !strings.Contains(v.Messages[0], "node backend unavailable") {
 			t.Errorf("gpu_count messages = %v, want the surfaced sensor error", v.Messages)
@@ -249,16 +241,14 @@ func TestCollect_SensorErrorDegradesToCritical(t *testing.T) {
 // TestCollect_FailingSensorDoesNotMaskHealthy verifies a failing sensor
 // in one domain does not suppress a healthy sensor in another: the
 // healthy domain still evaluates to PASS while the failing one is
-// Critical.
+// Unknown.
 func TestCollect_FailingSensorDoesNotMaskHealthy(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 
-	healthy := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	healthy := nodeSensor(4)
 	failing := failingSensor{
 		name: "nvlink",
 		errored: func(err error) []health.Measurement {
@@ -273,11 +263,11 @@ func TestCollect_FailingSensorDoesNotMaskHealthy(t *testing.T) {
 	if got := nv.SeverityByDomain[health.Node]; got != health.Pass {
 		t.Errorf("node domain = %v, want PASS (healthy sensor must not be masked)", got)
 	}
-	if got := nv.SeverityByDomain[health.NVLink]; got != health.Critical {
-		t.Errorf("nvlink domain = %v, want CRITICAL (degraded)", got)
+	if got := nv.SeverityByDomain[health.NVLink]; got != health.Unknown {
+		t.Errorf("nvlink domain = %v, want UNKNOWN (degraded)", got)
 	}
-	if nv.OverallSeverity != health.Critical {
-		t.Errorf("overall = %v, want CRITICAL", nv.OverallSeverity)
+	if nv.OverallSeverity != health.Unknown {
+		t.Errorf("overall = %v, want UNKNOWN", nv.OverallSeverity)
 	}
 }
 
@@ -287,26 +277,17 @@ func TestCollect_FailingSensorDoesNotMaskHealthy(t *testing.T) {
 // call) and returns only when release is closed, so the watchdog is the
 // only thing that can end the wait. errored builds the degraded
 // measurements, letting a test pick which domain's checks the failure
-// hits. key, when set, makes the sensor share a backend resource (see
-// resourceKeyed); measured, when set, is closed on Measure entry so a
-// test can detect a sensor that should instead have been skipped.
+// hits.
 type blockingSensor struct {
 	errored  func(err error) []health.Measurement
 	release  chan struct{}
-	measured chan struct{}
 	name     string
-	key      string
 	honorCtx bool
 }
 
 func (s *blockingSensor) Name() string { return s.name }
 
-func (s *blockingSensor) ResourceKey() string { return s.key }
-
 func (s *blockingSensor) Measure(ctx context.Context) ([]health.Measurement, error) {
-	if s.measured != nil {
-		close(s.measured)
-	}
 	if s.honorCtx {
 		select {
 		case <-ctx.Done():
@@ -324,7 +305,7 @@ func (s *blockingSensor) Errored(err error) []health.Measurement { return s.erro
 // TestCollectWithOptions_UninterruptibleSensorDoesNotHang is the core
 // safety property: a sensor whose Measure ignores cancellation (as a
 // wedged cgo call would) must not hang the run — the watchdog ends the
-// wait and degrades the sensor to Critical.
+// wait and degrades the sensor to Unknown.
 func TestCollectWithOptions_UninterruptibleSensorDoesNotHang(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
@@ -349,19 +330,19 @@ func TestCollectWithOptions_UninterruptibleSensorDoesNotHang(t *testing.T) {
 
 	select {
 	case nv := <-done:
-		if nv.OverallSeverity != health.Critical {
-			t.Errorf("overall = %v, want CRITICAL", nv.OverallSeverity)
+		if nv.OverallSeverity != health.Unknown {
+			t.Errorf("overall = %v, want UNKNOWN", nv.OverallSeverity)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("CollectWithOptions hung on a sensor that ignores cancellation")
 	}
 }
 
-// TestCollectWithOptions_TimeoutDegradesToCritical verifies a timed-out
-// sensor produces a Critical verdict whose message surfaces the deadline,
+// TestCollectWithOptions_TimeoutDegradesToUnknown verifies a timed-out
+// sensor produces an Unknown verdict whose message surfaces the deadline,
 // so a timeout is distinguishable from a healthy or otherwise-failed
 // check.
-func TestCollectWithOptions_TimeoutDegradesToCritical(t *testing.T) {
+func TestCollectWithOptions_TimeoutDegradesToUnknown(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -380,8 +361,8 @@ func TestCollectWithOptions_TimeoutDegradesToCritical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectWithOptions returned error, want graceful degrade: %v", err)
 	}
-	if nv.OverallSeverity != health.Critical {
-		t.Fatalf("overall = %v, want CRITICAL", nv.OverallSeverity)
+	if nv.OverallSeverity != health.Unknown {
+		t.Fatalf("overall = %v, want UNKNOWN", nv.OverallSeverity)
 	}
 
 	var found bool
@@ -390,8 +371,8 @@ func TestCollectWithOptions_TimeoutDegradesToCritical(t *testing.T) {
 			continue
 		}
 		found = true
-		if v.Severity != health.Critical {
-			t.Errorf("gpu_count severity = %v, want CRITICAL", v.Severity)
+		if v.Severity != health.Unknown {
+			t.Errorf("gpu_count severity = %v, want UNKNOWN", v.Severity)
 		}
 		if len(v.Messages) == 0 || !strings.Contains(v.Messages[0], health.ErrCollectionTimeout.Error()) {
 			t.Errorf("gpu_count messages = %v, want the surfaced collection timeout", v.Messages)
@@ -409,9 +390,7 @@ func TestCollectWithOptions_TimeoutDoesNotMaskHealthy(t *testing.T) {
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
-	healthy := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
+	healthy := nodeSensor(4)
 	slow := &blockingSensor{
 		name:     "nvlink",
 		honorCtx: true,
@@ -429,152 +408,14 @@ func TestCollectWithOptions_TimeoutDoesNotMaskHealthy(t *testing.T) {
 	if got := nv.SeverityByDomain[health.Node]; got != health.Pass {
 		t.Errorf("node domain = %v, want PASS (healthy sensor must not be masked)", got)
 	}
-	if got := nv.SeverityByDomain[health.NVLink]; got != health.Critical {
-		t.Errorf("nvlink domain = %v, want CRITICAL (timed out)", got)
-	}
-}
-
-// TestCollectWithOptions_CircuitBreakerSkipsWedgedResource verifies that
-// once a sensor times out, a later sensor sharing the same backend
-// resource is skipped — its Measure never runs — and degraded directly.
-func TestCollectWithOptions_CircuitBreakerSkipsWedgedResource(t *testing.T) {
-	cat := catalog.New(
-		catalog.WithArchitecture("GB200"),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-
-	// first shares resource "nvml" and wedges (ignores cancellation), so
-	// the watchdog must time it out.
-	first := &blockingSensor{
-		name:     "node",
-		key:      "nvml",
-		honorCtx: false,
-		release:  make(chan struct{}),
-		errored: func(err error) []health.Measurement {
-			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
-		},
-	}
-	defer close(first.release)
-
-	// second shares the same resource; once first wedges it must be
-	// skipped without its Measure ever running (which would close
-	// secondMeasured).
-	secondMeasured := make(chan struct{})
-	second := &blockingSensor{
-		name:     "nvlink",
-		key:      "nvml",
-		honorCtx: false,
-		release:  make(chan struct{}),
-		measured: secondMeasured,
-		errored: func(err error) []health.Measurement {
-			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals()...)}
-		},
-	}
-	defer close(second.release)
-
-	done := make(chan health.NodeVerdict, 1)
-	go func() {
-		nv, _ := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, first, second)
-		done <- nv
-	}()
-
-	select {
-	case nv := <-done:
-		select {
-		case <-secondMeasured:
-			t.Error("second sensor was measured; it should have been skipped after the shared resource timed out")
-		default:
-		}
-		if got := nv.SeverityByDomain[health.Node]; got != health.Critical {
-			t.Errorf("node domain = %v, want CRITICAL (first sensor timed out)", got)
-		}
-		if got := nv.SeverityByDomain[health.NVLink]; got != health.Critical {
-			t.Errorf("nvlink domain = %v, want CRITICAL (skipped via circuit breaker)", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("CollectWithOptions hung")
-	}
-}
-
-// TestCollectWithOptions_CircuitBreakerScopedToResource verifies the
-// breaker is per-resource: a wedged backend does not skip a sensor on a
-// different backend, which still collects normally.
-func TestCollectWithOptions_CircuitBreakerScopedToResource(t *testing.T) {
-	cat := catalog.New(
-		catalog.WithArchitecture("GB200"),
-		catalog.WithExecutionContext(health.OperatorInfra),
-	)
-
-	wedged := &blockingSensor{
-		name:     "nvlink",
-		key:      "nvml",
-		honorCtx: false,
-		release:  make(chan struct{}),
-		errored: func(err error) []health.Measurement {
-			return []health.Measurement{nvlink.ErroredNVLink("nvlink", err, nvlink.MeasurementSignals()...)}
-		},
-	}
-	defer close(wedged.release)
-
-	// A healthy sensor on a different backend (its own resource key) must
-	// still be collected despite the wedge.
-	healthy := toolkit.NewNodeSensor(toolkit.MockNode(
-		node.NodeMeasurement{GPUCount: 4},
-	))
-
-	done := make(chan health.NodeVerdict, 1)
-	go func() {
-		nv, _ := toolkit.CollectWithOptions(cat, toolkit.CollectionOptions{Timeout: 20 * time.Millisecond}, wedged, healthy)
-		done <- nv
-	}()
-
-	select {
-	case nv := <-done:
-		if got := nv.SeverityByDomain[health.NVLink]; got != health.Critical {
-			t.Errorf("nvlink domain = %v, want CRITICAL (wedged)", got)
-		}
-		if got := nv.SeverityByDomain[health.Node]; got != health.Pass {
-			t.Errorf("node domain = %v, want PASS (different resource must still be collected)", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("CollectWithOptions hung")
-	}
-}
-
-// TestSensorsShareResourceKeyForSharedBackend verifies the wiring behind
-// the circuit breaker: the GPU, Node, and NVLink sensors report the same
-// resource key when they share a backend, and a different one otherwise.
-// The shared source is a [toolkit.LazyGPUBackend] (a single MultiBackend
-// installed under all three sensors), mirroring the production wiring where
-// one lazily-constructed NVML backend feeds every GPU-side sensor.
-func TestSensorsShareResourceKeyForSharedBackend(t *testing.T) {
-	backend := toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) {
-		return newNodeMultiBackend(node.NodeMeasurement{GPUCount: 4}), nil
-	})
-	gpuSensor := toolkit.NewGPUSensor(backend)
-	nodeSensor := toolkit.NewNodeSensor(backend)
-	nvlinkSensor := toolkit.NewNVLinkSensor(backend)
-
-	key := gpuSensor.ResourceKey()
-	if key == "" {
-		t.Fatal("GPU sensor reported an empty resource key")
-	}
-	if nodeSensor.ResourceKey() != key || nvlinkSensor.ResourceKey() != key {
-		t.Errorf("sensors sharing a backend differ: gpu=%q node=%q nvlink=%q",
-			key, nodeSensor.ResourceKey(), nvlinkSensor.ResourceKey())
-	}
-
-	other := toolkit.NewNodeSensor(toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) {
-		return newNodeMultiBackend(node.NodeMeasurement{GPUCount: 8}), nil
-	}))
-	if other.ResourceKey() == key {
-		t.Errorf("sensors on different backends share key %q", key)
+	if got := nv.SeverityByDomain[health.NVLink]; got != health.Unknown {
+		t.Errorf("nvlink domain = %v, want UNKNOWN (timed out)", got)
 	}
 }
 
 // panicSensor's Measure panics, modeling a backend that faults in Go code
 // (e.g. an out-of-range parse or an explicit panic). Collect must degrade
-// it to a Critical verdict, not crash the whole run.
+// it to an Unknown verdict, not crash the whole run.
 type panicSensor struct {
 	errored func(err error) []health.Measurement
 	name    string
@@ -588,9 +429,9 @@ func (s panicSensor) Measure(context.Context) ([]health.Measurement, error) {
 
 func (s panicSensor) Errored(err error) []health.Measurement { return s.errored(err) }
 
-// TestCollectWithOptions_SensorPanicDegradesToCritical verifies a panicking
+// TestCollectWithOptions_SensorPanicDegradesToUnknown verifies a panicking
 // Measure is recovered and degraded, not allowed to crash the process.
-func TestCollectWithOptions_SensorPanicDegradesToCritical(t *testing.T) {
+func TestCollectWithOptions_SensorPanicDegradesToUnknown(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
@@ -606,8 +447,8 @@ func TestCollectWithOptions_SensorPanicDegradesToCritical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectWithOptions returned error, want graceful degrade: %v", err)
 	}
-	if nv.OverallSeverity != health.Critical {
-		t.Fatalf("overall = %v, want CRITICAL", nv.OverallSeverity)
+	if nv.OverallSeverity != health.Unknown {
+		t.Fatalf("overall = %v, want UNKNOWN", nv.OverallSeverity)
 	}
 	var found bool
 	for _, v := range nv.CheckResults {
@@ -615,8 +456,8 @@ func TestCollectWithOptions_SensorPanicDegradesToCritical(t *testing.T) {
 			continue
 		}
 		found = true
-		if v.Severity != health.Critical {
-			t.Errorf("gpu_count severity = %v, want CRITICAL", v.Severity)
+		if v.Severity != health.Unknown {
+			t.Errorf("gpu_count severity = %v, want UNKNOWN", v.Severity)
 		}
 		if len(v.Messages) == 0 || !strings.Contains(v.Messages[0], "panicked") {
 			t.Errorf("gpu_count messages = %v, want the recovered panic surfaced", v.Messages)

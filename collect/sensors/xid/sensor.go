@@ -130,7 +130,10 @@ func (s *scan) entry(e journal.Entry) error {
 		}
 	}
 	add(xidsignals.Code, intValue(event.Code))
+	add(xidsignals.Message, stringValue(event.Message))
 	add(xidsignals.PCIAddress, stringValue(event.PCIAddress))
+	// The reader delivers journal order; ObservedAt is the scan time.
+	add(xidsignals.Sequence, intValue(int64(s.entries)))
 	if event.HasPID {
 		add(xidsignals.PID, intValue(event.PID))
 	}

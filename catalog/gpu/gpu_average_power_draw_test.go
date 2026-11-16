@@ -154,8 +154,8 @@ func TestGPUAveragePowerDraw_ErroredSignal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if v.Severity != health.Critical {
-		t.Errorf("Severity = %v, want CRITICAL", v.Severity)
+	if v.Severity != health.Unknown {
+		t.Errorf("Severity = %v, want UNKNOWN", v.Severity)
 	}
 	if !v.RecommendedAction.Equal(health.Drain(health.RemediationActionCheckCollection)) {
 		t.Errorf("RecommendedAction = %v, want drain/check_collection", v.RecommendedAction)

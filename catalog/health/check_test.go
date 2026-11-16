@@ -95,9 +95,10 @@ func TestCheckDefinition_ValidateThresholdValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cd := CheckDefinition{
-				ID:            "test_check",
-				Architectures: tt.archs,
-				Thresholds:    map[string]ThresholdSpec{"expected_count": tt.spec},
+				ID:              "test_check",
+				Architectures:   tt.archs,
+				Thresholds:      map[string]ThresholdSpec{"expected_count": tt.spec},
+				RequiredSignals: []string{"signal"},
 			}
 			err := cd.Validate()
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -119,6 +120,7 @@ func TestCheckDefinition_ValidateAcceptsOneSidedBounds(t *testing.T) {
 				Category:  DefaultThreshold,
 			},
 		},
+		RequiredSignals: []string{"signal"},
 	}
 	if err := cd.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil", err)
@@ -134,8 +136,32 @@ func TestCheckDefinition_ValidateAcceptsBareLiterals(t *testing.T) {
 			"expected_count": {Value: 4, ValueType: ThresholdInt64, Category: DefaultThreshold},
 			"min_power_w":    {Value: 65, ValueType: ThresholdFloat64, Category: DefaultThreshold},
 		},
+		RequiredSignals: []string{"signal"},
 	}
 	if err := cd.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil", err)
+	}
+}
+
+// RequiredSignals selects the measurements a check reads and the collection
+// errors that fail it, so a check that names none has neither.
+func TestCheckDefinition_ValidateRequiresRequiredSignals(t *testing.T) {
+	const missing, blank = "RequiredSignals must name at least one signal", "RequiredSignals has a blank signal name"
+	for name, tc := range map[string]struct {
+		want    string
+		signals []string
+	}{
+		"nil":        {want: missing},
+		"empty":      {want: missing, signals: []string{}},
+		"blank":      {want: blank, signals: []string{"signal", ""}},
+		"whitespace": {want: blank, signals: []string{" "}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cd := CheckDefinition{ID: "no_signals", RequiredSignals: tc.signals, Thresholds: map[string]ThresholdSpec{}}
+			err := cd.Validate()
+			if err == nil || !strings.Contains(err.Error(), "no_signals") || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() = %v, want the check named and %q", err, tc.want)
+			}
+		})
 	}
 }

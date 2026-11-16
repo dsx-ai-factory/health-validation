@@ -12,10 +12,13 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	// want.Message is filled from message, or from input when message is
+	// empty, because the line has no prefix before its marker.
 	tests := []struct {
-		name  string
-		input string
-		want  Event
+		name    string
+		input   string
+		message string
+		want    Event
 	}{
 		{
 			name:  "ordinary full",
@@ -33,14 +36,16 @@ func TestParse(t *testing.T) {
 			want:  Event{PCIAddress: "0000:01:00", Code: 79},
 		},
 		{
-			name:  "journal prefix",
-			input: "Jun 09 12:00:00 node1 kernel: NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
-			want:  Event{PCIAddress: "0000:65:00", Code: 48, PID: 999, HasPID: true, ProcessName: "cuda-app"},
+			name:    "journal prefix",
+			input:   "Jun 09 12:00:00 node1 kernel: NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
+			message: "NVRM: Xid (PCI:0000:65:00): 48, pid=999, name=cuda-app",
+			want:    Event{PCIAddress: "0000:65:00", Code: 48, PID: 999, HasPID: true, ProcessName: "cuda-app"},
 		},
 		{
-			name:  "unknown attribution",
-			input: "[111111111.111] NVRM: Xid (PCI:0000:05:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus.",
-			want:  Event{PCIAddress: "0000:05:00", Code: 79},
+			name:    "unknown attribution",
+			input:   "[111111111.111] NVRM: Xid (PCI:0000:05:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus.",
+			message: "NVRM: Xid (PCI:0000:05:00): 79, pid='<unknown>', name=<unknown>, GPU has fallen off the bus.",
+			want:    Event{PCIAddress: "0000:05:00", Code: 79},
 		},
 		{
 			name:  "numeric pid unknown name",
@@ -195,6 +200,10 @@ func TestParse(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := Parse(test.input)
 			require.NoError(t, err)
+			test.want.Message = test.message
+			if test.want.Message == "" {
+				test.want.Message = test.input
+			}
 			require.Equal(t, test.want, got)
 		})
 	}

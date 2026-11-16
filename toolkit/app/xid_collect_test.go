@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -80,8 +82,7 @@ func architectureSkips(verdict health.NodeVerdict) int {
 func TestRunCommandCollectsXidThroughBridge(t *testing.T) {
 	calls := 0
 	entry := observation.JournalEntryTarget("b", "c1")
-	a := cadenceRunApp()
-	a.xid = nil
+	a := testApp()
 	a.WithCollect(xidAppSensor{calls: &calls, obs: []*observation.Observation{
 		xidAppValue(xidsignals.Code, entry, &observation.Value{Kind: &observation.Value_IntValue{IntValue: 79}}),
 		xidAppValue(xidsignals.PCIAddress, entry, &observation.Value{Kind: &observation.Value_StringValue{StringValue: "0000:01:00"}}),
@@ -106,14 +107,88 @@ func TestRunCommandCollectsXidThroughBridge(t *testing.T) {
 	}
 }
 
+const xidTestUUID = "GPU-1ca2785e-36e2-9732-d151-d6b1625701e9"
+
+// busReader reports one GB200 GPU with the bus ID form go-nvlib returns.
+type busReader struct {
+	reads *int
+}
+
+func (busReader) ID() string { return "fake" }
+
+func (r busReader) Read(context.Context) (*observation.GPUInventorySnapshot, error) {
+	*r.reads++
+	uuid, model, busID := xidTestUUID, "NVIDIA GB200", "0000:89:00.0"
+	entry := &observation.GPUInventoryEntry{Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model, BusId: &busID}}
+	inventory := &observation.GPUInventory{Entries: []*observation.GPUInventoryEntry{entry}}
+	return &observation.GPUInventorySnapshot{Source: "fake", Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: inventory}}, nil
+}
+
+// busHost is fakeHost with one shared inventory, as the NVML host has.
+type busHost struct {
+	inventory *gpuinventory.Inventory
+	fakeHost
+}
+
+func (h busHost) gpuInventory() *gpuinventory.Inventory { return h.inventory }
+
+// The Xid adapter names GPUs from the inventory discovery read, without a
+// second read; a GPU the inventory does not name keeps its PCI address.
+func TestRunCommandResolvesXidGPUUUIDs(t *testing.T) {
+	reads := 0
+	a := testApp() // registers its own Xid sensor below
+	a.host = busHost{
+		inventory: gpuinventory.New(func() (gpuinventory.Reader, error) { return busReader{reads: &reads}, nil }),
+		fakeHost:  a.host.(fakeHost),
+	}
+	var obs []*observation.Observation
+	for cursor, pci := range map[string]string{"c1": "0000:89:00", "c2": "0000:c1:00"} {
+		entry := observation.JournalEntryTarget("b", cursor)
+		obs = append(obs,
+			xidAppValue(xidsignals.Code, entry, &observation.Value{Kind: &observation.Value_IntValue{IntValue: 48}}),
+			xidAppValue(xidsignals.PCIAddress, entry, &observation.Value{Kind: &observation.Value_StringValue{StringValue: pci}}))
+	}
+	a.WithCollect(xidAppSensor{calls: new(int), obs: append(obs, xidAppMarker())}, xidsignals.All().IDs()...)
+
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code != exitUnhealthy {
+		t.Fatalf("exit = %d, want %d; stderr = %q", code, exitUnhealthy, stderr.String())
+	}
+	var verdict health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][2]any{}
+	for _, result := range verdict.CheckResults {
+		if result.CheckID == "gpu_xid_48" && result.Severity == health.Critical {
+			got[strings.Join(result.AffectedEntities, ",")] = [2]any{result.ObservedValues[xid.SignalGPUID], result.ObservedValues[xid.SignalPCIAddress]}
+		}
+	}
+	want := map[string][2]any{
+		xidTestUUID:  {xidTestUUID, "0000:89:00"},
+		"0000:c1:00": {"", "0000:c1:00"},
+	}
+	if !maps.Equal(got, want) {
+		t.Fatalf("CRITICAL gpu_xid_48 results (entities: gpu_id, pci_address) = %v, want %v", got, want)
+	}
+	if reads != 1 {
+		t.Fatalf("inventory read %d times, want 1 shared by discovery and the Xid adapter", reads)
+	}
+}
+
 func TestRunCommandXidCleanScanPasses(t *testing.T) {
 	calls := 0
-	a := cadenceRunApp()
-	a.xid = nil
+	a := testApp()
 	a.WithCollect(xidAppSensor{calls: &calls, obs: []*observation.Observation{xidAppMarker()}}, xidsignals.All().IDs()...)
-	for id, v := range runXidApp(t, a, exitOK) {
-		if v.Severity == health.Critical {
-			t.Fatalf("%s = CRITICAL on a clean scan", id)
+	verdicts := runXidApp(t, a, exitOK)
+	if len(verdicts) == 0 {
+		t.Fatal("no Xid check ran on a clean scan")
+	}
+	// Observed values show the rules ran on a zero-event scan rather than a
+	// collection failure, which carries none.
+	for id, v := range verdicts {
+		if v.Severity != health.Pass || v.ObservedValues == nil {
+			t.Fatalf("%s = %v with observed values %v, want PASS from a zero-event scan", id, v.Severity, v.ObservedValues)
 		}
 	}
 }
@@ -130,8 +205,7 @@ func TestWithCollectRejectsPartialXidClaim(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			calls := 0
-			a := cadenceRunApp()
-			a.xid = nil
+			a := testApp()
 			a.WithCollect(xidAppSensor{calls: &calls}, claims...)
 			var stdout, stderr bytes.Buffer
 			if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code != exitError || stdout.Len() != 0 {
@@ -141,15 +215,5 @@ func TestWithCollectRejectsPartialXidClaim(t *testing.T) {
 				t.Fatalf("stderr=%q calls=%d", stderr.String(), calls)
 			}
 		})
-	}
-}
-
-func TestWithXidBackendFreesXidAdapterName(t *testing.T) {
-	adapter := customCountAdapter()
-	adapter.name = "xid"
-	a := cadenceRunApp().WithCollect(&collectAppSensor{}).WithCollectAdapters(adapter)
-	var stdout, stderr bytes.Buffer
-	if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code == exitError {
-		t.Fatalf("caller xid adapter rejected while WithXidBackend is set: %q", stderr.String())
 	}
 }

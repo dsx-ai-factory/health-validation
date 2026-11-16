@@ -256,8 +256,8 @@ func TestNUMANodeCount_CollectionErrorsUseCollectionActions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if verdict.Skipped || verdict.Severity != health.Critical {
-				t.Fatalf("skipped=%v severity=%v, want evaluated CRITICAL", verdict.Skipped, verdict.Severity)
+			if verdict.Skipped || verdict.Severity != health.Unknown {
+				t.Fatalf("skipped=%v severity=%v, want evaluated UNKNOWN", verdict.Skipped, verdict.Severity)
 			}
 			if !verdict.RecommendedAction.Equal(tt.wantAction) {
 				t.Errorf("RecommendedAction = %v, want %v", verdict.RecommendedAction, tt.wantAction)

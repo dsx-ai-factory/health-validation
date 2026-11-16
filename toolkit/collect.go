@@ -45,13 +45,9 @@ func Collect(cat *catalog.Catalog, sensors ...Sensor) (health.NodeVerdict, error
 // if a sensor's Measure does not return within timeout, or returns an
 // error, the failure is degraded into errored measurements (via
 // [Sensor.Errored]) so the catalog fails exactly the dependent checks
-// Critical while every other sensor's checks still evaluate. A timed-out
+// Unknown while every other sensor's checks still evaluate. A timed-out
 // collection is tagged with [health.ErrCollectionTimeout] so evaluation
 // can recommend a retry rather than hardware remediation.
-//
-// Sensors that share a backend (see [resourceKeyed]) are short-circuited:
-// once one of them times out, the rest sharing that backend are skipped
-// and degraded without re-entering the presumed-wedged data source.
 // CollectWithOptions returns an error only when evaluation itself fails,
 // never for a sensor failure.
 func CollectWithOptions(cat *catalog.Catalog, opts CollectionOptions, sensors ...Sensor) (health.NodeVerdict, error) {
@@ -101,37 +97,17 @@ func CollectMeasurementsWithTimeout(timeout time.Duration, sensors ...Sensor) []
 }
 
 func collectMeasurementsContext(ctx context.Context, timeout time.Duration, sensors ...Sensor) []SensorMeasurements {
-	// Backend resource keys whose collection timed out; sensors sharing one
-	// are skipped rather than re-entering a presumed-wedged data source.
-	wedged := make(map[string]bool)
-
 	groups := make([]SensorMeasurements, 0, len(sensors))
 	for _, s := range sensors {
 		if ctx.Err() != nil {
 			break
 		}
 		group := SensorMeasurements{Sensor: s.Name()}
-		key := resourceKey(s)
-		if key != "" && wedged[key] {
-			// Degrade this sensor in its own name (not the wedging sensor's)
-			// so the verdict points at the right domain.
-			slog.Warn("skipping sensor; a sensor sharing its backend resource already timed out",
-				"sensor", s.Name(), "resource", key)
-			group.Measurements = s.Errored(fmt.Errorf("%s sensor: shared backend resource timed out: %w",
-				s.Name(), health.ErrCollectionTimeout))
-			group.CollectedAt = time.Now()
-			groups = append(groups, group)
-			continue
-		}
-
 		r := collectSensorContext(ctx, s, timeout)
 		switch {
 		case r.timedOut:
 			slog.Warn("sensor collection timed out; degrading to errored measurements",
 				"sensor", s.Name(), "timeout", timeout)
-			if key != "" {
-				wedged[key] = true
-			}
 			group.Measurements = s.Errored(fmt.Errorf("%s sensor: %w", s.Name(), health.ErrCollectionTimeout))
 		case r.err != nil:
 			slog.Warn("sensor collection failed; degrading to errored measurements",
@@ -154,7 +130,7 @@ func collectMeasurementsContext(ctx context.Context, timeout time.Duration, sens
 // entities without an error — produces no other console output at all. A
 // sensor that ran and failed is not this case: it is degraded above into
 // errored measurements, so its category is present and its checks fail
-// Critical with the cause attached.
+// Unknown with the cause attached.
 func warnMissingSensors(nv health.NodeVerdict) {
 	counts := make(map[health.Category]int)
 	for _, v := range nv.SkippedChecks {
@@ -166,23 +142,6 @@ func warnMissingSensors(nv health.NodeVerdict) {
 		slog.Warn("no measurement collected for domain; its checks were not assessed",
 			"category", cat.String(), "skipped_checks", counts[cat])
 	}
-}
-
-// resourceKeyed is implemented by sensors that share a data source with
-// other sensors. CollectWithOptions uses the key to short-circuit: once a
-// sensor with a given key times out, the rest sharing it are skipped
-// (their source is presumed wedged) and degraded immediately instead of
-// each waiting the full timeout. Sensors that don't implement it are
-// always collected independently.
-type resourceKeyed interface {
-	ResourceKey() string
-}
-
-func resourceKey(s Sensor) string {
-	if rk, ok := s.(resourceKeyed); ok {
-		return rk.ResourceKey()
-	}
-	return ""
 }
 
 // sensorResult carries a sensor's raw Measure outcome from the collection

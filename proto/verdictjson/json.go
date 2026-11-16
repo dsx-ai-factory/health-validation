@@ -16,7 +16,7 @@ import (
 
 // Marshal uses proto field names and restores required containers that
 // protojson omits when empty. Protobuf cannot preserve nil versus empty lists;
-// absent check results use null, while component check IDs use an empty array.
+// absent check results use null, while component checks use an empty array.
 func Marshal(verdict *healthv1.NodeVerdict) ([]byte, error) {
 	if verdict == nil {
 		return nil, fmt.Errorf("nil verdict")
@@ -41,8 +41,8 @@ func Marshal(verdict *healthv1.NodeVerdict) ([]byte, error) {
 			return nil, err
 		}
 		for _, component := range components {
-			if _, ok := component["check_ids"]; !ok {
-				component["check_ids"] = json.RawMessage(`[]`)
+			if _, ok := component["checks"]; !ok {
+				component["checks"] = json.RawMessage(`[]`)
 			}
 		}
 		encoded, err := json.Marshal(components)

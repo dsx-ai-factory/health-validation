@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -19,6 +20,7 @@ type evaluationRequest struct {
 	Cadence          *health.SchedulingCadence
 	NodeID           string
 	ExecutionContext health.ExecutionContext
+	audit            bool
 }
 
 // evaluateOnce owns only per-request state. Its caller owns backend and source
@@ -31,30 +33,35 @@ func (a *App) evaluateOnce(ctx context.Context, cfg *Config, request evaluationR
 	if err != nil {
 		return health.NodeVerdict{}, err
 	}
-	arch, discoveryErr := gpuinventory.Architecture(a.host.gpuInventory().Snapshot(ctx, cycle))
+	inventory := a.host.gpuInventory()
+	snapshot := inventory.Snapshot(ctx, cycle)
+	arch, discoveryErr := gpuinventory.Architecture(snapshot)
 	if contextErr := ctx.Err(); contextErr != nil {
 		return health.NodeVerdict{}, contextErr
 	}
 	if discoveryErr != nil {
 		slog.Warn("architecture discovery failed", "err", discoveryErr)
-		verdict := discoveryFailureVerdict(discoveryErr)
+		verdict := discoveryFailureVerdict(discoveryErr, errors.Is(inventory.Cause(cycle), gpuinventory.ErrSourceBusy))
 		verdict.NodeID = request.NodeID
 		return verdict, nil
 	}
-	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, request.ExecutionContext)
+	warnUnknownArchitecture(slog.Default(), arch, snapshot)
+	driverVersion, ok := gpuinventory.DriverVersion(snapshot)
+	if !ok {
+		slog.Warn("driver version unreadable; continuing without it")
+	}
+	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, driverVersion, request.ExecutionContext)
 	if err != nil {
 		return health.NodeVerdict{}, err
+	}
+	if request.audit {
+		if auditErr := a.auditOverrides(cat); auditErr != nil {
+			return health.NodeVerdict{}, fmt.Errorf("audit threshold overrides: %w", auditErr)
+		}
 	}
 	runnable, err := cat.RunnableChecks(catalog.EvaluationOptions{Cadence: request.Cadence})
 	if err != nil {
 		return health.NodeVerdict{}, fmt.Errorf("select runnable checks: %w", err)
-	}
-	// All views are reset before any measurements, including caller-provided
-	// probe backends that own a separate NVML connection.
-	for _, backend := range []any{a.host.gpuBackend(), a.host.nvlinkBackend(), a.gpu, a.node, a.nvlink} {
-		if backend, ok := backend.(interface{ BeginCycle() }); ok {
-			backend.BeginCycle()
-		}
 	}
 	sensors, err := a.sensorsContext(ctx, cycle, requiredFor(runnable), xidJournal)
 	if err != nil {

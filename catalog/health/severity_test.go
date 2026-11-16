@@ -27,7 +27,7 @@ func TestSeverity_String(t *testing.T) {
 }
 
 func TestSeverity_JSONRoundTrip(t *testing.T) {
-	for _, sev := range []Severity{Pass, Info, Warning, Critical, Unknown} {
+	for _, sev := range []Severity{Pass, Info, Warning, Unknown, Critical} {
 		data, err := json.Marshal(sev)
 		if err != nil {
 			t.Fatalf("Marshal(%v): %v", sev, err)
@@ -50,16 +50,9 @@ func TestSeverity_UnmarshalInvalid(t *testing.T) {
 	}
 }
 
-// TestSeverity_Ordering pins the numeric ordering of Severity
-// constants. Worse() and several aggregation paths (NodeVerdict
-// roll-up, multi-rule evaluation) compare severities with `>`, so the
-// non-Unknown levels must form a total order Pass < Info < Warning <
-// Critical. Unknown sits above Critical so a check that couldn't
-// complete is treated as worse than any concrete result during
-// aggregation. If you reorder these constants, audit Worse(),
-// NodeVerdict aggregation, and the evaluator's rule-priority logic.
+// Aggregation and rule/action selection compare Severity values directly.
 func TestSeverity_Ordering(t *testing.T) {
-	want := []Severity{Pass, Info, Warning, Critical, Unknown}
+	want := []Severity{Pass, Info, Warning, Unknown, Critical}
 	for i := 1; i < len(want); i++ {
 		if want[i-1] >= want[i] {
 			t.Errorf("severity %v (%d) should be less than %v (%d)",
@@ -76,7 +69,10 @@ func TestWorse(t *testing.T) {
 		{Pass, Pass, Pass},
 		{Pass, Warning, Warning},
 		{Critical, Warning, Critical},
-		{Unknown, Critical, Unknown},
+		{Unknown, Critical, Critical},
+		{Critical, Unknown, Critical},
+		{Unknown, Warning, Unknown},
+		{Warning, Unknown, Unknown},
 		{Info, Pass, Info},
 	}
 	for _, tt := range tests {

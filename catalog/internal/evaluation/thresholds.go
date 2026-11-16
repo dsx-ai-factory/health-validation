@@ -5,7 +5,7 @@ package evaluation
 
 import "github.com/dsx-ai-factory/health-validation/catalog/health"
 
-// resolveThresholds merges catalog-authored thresholds with operator
+// ResolveThresholds merges catalog-authored thresholds with operator
 // overrides for the given architecture. A threshold's PerArchitecture entry
 // for architecture becomes its base value (else Value); an operator override
 // then applies on top. Returns an error if an override targets a Fixed
@@ -13,7 +13,7 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 //
 // Overrides are coerced and bounds-checked here, the authoritative gate: a
 // programmatic override never passes through the CLI's config validation.
-func resolveThresholds(checkID string, specs map[string]health.ThresholdSpec, overrides map[string]any, architecture string) (map[string]health.ResolvedThreshold, error) {
+func ResolveThresholds(checkID string, specs map[string]health.ThresholdSpec, overrides map[string]any, architecture string) (map[string]health.ResolvedThreshold, error) {
 	resolved := make(map[string]health.ResolvedThreshold, len(specs))
 
 	for name, spec := range specs {

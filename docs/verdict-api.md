@@ -78,14 +78,20 @@ HTTP: `GET /verdict` accepts optional request fields as query parameters; `POST 
 | 3 | `category` | `ThresholdCategory` | explicit |
 | 4 | `overridden` | `bool` | explicit |
 
+### AffectedCheck
+
+| Number | Field | Type | Presence |
+| --- | --- | --- | --- |
+| 1 | `check_id` | `string` | explicit |
+| 2 | `entities` | `repeated string` | collection |
+
 ### AffectedComponent
 
 | Number | Field | Type | Presence |
 | --- | --- | --- | --- |
-| 1 | `check_ids` | `repeated string` | collection |
+| 5 | `checks` | `repeated health.verdict.v1.AffectedCheck` | collection |
 | 2 | `category` | `Category` | explicit |
 | 3 | `max_severity` | `Severity` | explicit |
-| 4 | `entities` | `repeated string` | collection |
 
 ## Enums
 
@@ -97,8 +103,8 @@ HTTP: `GET /verdict` accepts optional request fields as query parameters; `POST 
 | 1 | `PASS` |
 | 2 | `INFO` |
 | 3 | `WARNING` |
-| 4 | `CRITICAL` |
-| 5 | `UNKNOWN` |
+| 4 | `UNKNOWN` |
+| 5 | `CRITICAL` |
 
 ### Category
 

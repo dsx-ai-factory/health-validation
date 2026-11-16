@@ -59,14 +59,14 @@ func TestNVLinkCapabilities(t *testing.T) {
 		},
 		{
 			// A GPU whose capability state could not be collected propagates
-			// to Critical regardless of the rules, since the data the check
+			// to Unknown regardless of the rules, since the data the check
 			// needs is unavailable.
-			name: "errored GPU forces critical",
+			name: "errored GPU reports unknown",
 			cat:  func() *catalog.Catalog { return fabricCatalog() },
 			measurement: func() nvlink.NVLinkMeasurement {
 				return nvlink.ErroredNVLink("GPU-0", errors.New("nvml capability query failed"), nvlink.SignalAllLinksSupportP2P)
 			},
-			wantSeverity:     health.Critical,
+			wantSeverity:     health.Unknown,
 			wantAction:       health.Drain(health.RemediationActionCheckCollection),
 			wantMessageParts: []string{"measurement unavailable"},
 		},

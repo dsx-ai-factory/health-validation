@@ -16,7 +16,7 @@ import (
 
 func TestEvaluateOnceCreatesFreshCyclesAndAppliesRequestOptions(t *testing.T) {
 	source := &collectAppSensor{}
-	a := cadenceRunApp().WithChecks(mixedChecks()...).WithCollect(source).WithCollectAdapters(customCountAdapter())
+	a := cadenceRunApp().WithChecks(mixedChecks()...).WithCollect(source, source.Signals().IDs()...).WithCollectAdapters(customCountAdapter())
 	continuous, maintenance := health.Continuous, health.MaintenanceWindow
 	for i, cadence := range []*health.SchedulingCadence{&continuous, &maintenance} {
 		verdict, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{
@@ -80,7 +80,7 @@ func (s *canceledEvaluationSource) Measure(ctx context.Context, _ ...collect.OpO
 
 func TestEvaluateOnceCancellationReachesCollectSource(t *testing.T) {
 	source := &canceledEvaluationSource{started: make(chan struct{}), stopped: make(chan struct{})}
-	a := cadenceRunApp().WithChecks(mixedChecks()...).WithCollect(source).WithCollectAdapters(customCountAdapter())
+	a := cadenceRunApp().WithChecks(mixedChecks()...).WithCollect(source, source.Signals().IDs()...).WithCollectAdapters(customCountAdapter())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	completed := make(chan error, 1)

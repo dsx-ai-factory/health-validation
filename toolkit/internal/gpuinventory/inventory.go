@@ -14,6 +14,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/pciaddr"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -24,6 +25,11 @@ var GPUCount = collect.NewSignal("node.gpu.count", "1")
 
 // SensorID identifies the collect sensor that reports [GPUCount].
 const SensorID = "node.gpu_inventory"
+
+// ErrSourceBusy marks a source that refused a call because an earlier call in
+// this process is still inside the native library. It does not show the node
+// is faulty: the read can succeed once that call returns.
+var ErrSourceBusy = errors.New("GPU inventory source is busy with an earlier call")
 
 // handleOperation is the operation an NVML inventory reports for a slot
 // whose device handle could not be retrieved.
@@ -46,6 +52,7 @@ type Reader interface {
 type Inventory struct {
 	open     func() (Reader, error)
 	reader   Reader
+	cause    error
 	cycle    *collect.Cycle
 	snapshot *observation.GPUInventorySnapshot
 	mu       sync.Mutex
@@ -66,23 +73,46 @@ func (i *Inventory) Snapshot(ctx context.Context, cycle *collect.Cycle) *observa
 	if i.cycle == cycle && i.snapshot != nil {
 		return i.snapshot
 	}
-	i.cycle, i.snapshot = cycle, i.read(ctx, cycle)
+	i.cycle = cycle
+	i.snapshot, i.cause = i.read(ctx, cycle)
 	return i.snapshot
 }
 
-func (i *Inventory) read(ctx context.Context, cycle *collect.Cycle) *observation.GPUInventorySnapshot {
+// Cached returns cycle's snapshot if one was already read, and nil
+// otherwise. It never reads the inventory.
+func (i *Inventory) Cached(cycle *collect.Cycle) *observation.GPUInventorySnapshot {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.cycle != cycle {
+		return nil
+	}
+	return i.snapshot
+}
+
+// Cause returns the error behind cycle's failed snapshot, or nil when that
+// snapshot succeeded or belongs to another cycle.
+func (i *Inventory) Cause(cycle *collect.Cycle) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.cycle != cycle {
+		return nil
+	}
+	return i.cause
+}
+
+func (i *Inventory) read(ctx context.Context, cycle *collect.Cycle) (*observation.GPUInventorySnapshot, error) {
 	at := timestamppb.Now()
 	if cycle != nil {
 		at = timestamppb.New(cycle.StartedAt())
 	}
-	failed := func(operation string, err error) *observation.GPUInventorySnapshot {
+	failed := func(operation string, err error) (*observation.GPUInventorySnapshot, error) {
 		category := observation.CollectionErrorCategoryUnavailable
 		if errors.Is(err, collect.ErrCollectionTimeout) {
 			category = observation.CollectionErrorCategoryTimeout
 		}
 		return &observation.GPUInventorySnapshot{Source: SensorID, CollectedAt: at, Outcome: &observation.GPUInventorySnapshot_CollectionError{
 			CollectionError: &observation.CollectionError{Source: SensorID, Operation: operation, Category: category, Detail: err.Error()},
-		}}
+		}}, err
 	}
 	if reader, ok := i.reader.(interface{ NeedsReopen() bool }); ok && reader.NeedsReopen() {
 		i.reader = nil
@@ -121,7 +151,7 @@ func (i *Inventory) read(ctx context.Context, cycle *collect.Cycle) *observation
 	if snapshot.GetSource() == "" {
 		snapshot.Source = i.reader.ID()
 	}
-	return snapshot
+	return snapshot, nil
 }
 
 // run bounds call by cycle's timeout, so a hung library load or native read
@@ -135,8 +165,8 @@ func run[T any](ctx context.Context, cycle *collect.Cycle, source string, call f
 
 // Count returns how many GPUs a successful snapshot enumerated, or false when
 // enumeration failed. Failed slots keep their source index in the snapshot,
-// but a slot whose handle could not be retrieved is not counted, matching the
-// legacy NVML backend; a GPU whose handle loaded counts even if its UUID or
+// but a slot whose handle could not be retrieved is not counted, as in v0.3;
+// a GPU whose handle loaded counts even if its UUID or
 // another attribute could not be read. A NO_TARGETS observation is not
 // consulted: only a successful snapshot proves a count, including zero.
 func Count(snapshot *observation.GPUInventorySnapshot) (int64, bool) {
@@ -150,6 +180,19 @@ func Count(snapshot *observation.GPUInventorySnapshot) (int64, bool) {
 		}
 	}
 	return count, true
+}
+
+// UUIDsByPCI maps the PCI address of each GPU with a UUID and bus ID, in the
+// form the driver prints in Xid lines (0000:89:00), to its UUID.
+func UUIDsByPCI(snapshot *observation.GPUInventorySnapshot) map[string]string {
+	out := make(map[string]string)
+	for _, entry := range snapshot.GetInventory().GetEntries() {
+		uuid, busID := entry.GetGpu().GetUuid(), entry.GetGpu().GetBusId()
+		if uuid != "" && busID != "" {
+			out[pciaddr.Normalize(busID)] = uuid
+		}
+	}
+	return out
 }
 
 // Sensor reports [GPUCount] from the cycle's shared snapshot.

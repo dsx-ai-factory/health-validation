@@ -19,6 +19,7 @@ func TestCheckDefinition_ValidateRejectsRequiredFixedThreshold(t *testing.T) {
 				RequiredOverride: true,
 			},
 		},
+		RequiredSignals: []string{"signal"},
 	}
 
 	err := cd.Validate()
@@ -39,6 +40,7 @@ func TestCheckDefinition_ValidatePerArchitectureMustCoverArchitectures(t *testin
 				Category:        DefaultThreshold,
 			},
 		},
+		RequiredSignals: []string{"signal"},
 	}
 	err := cd.Validate()
 	if err == nil || !strings.Contains(err.Error(), "H100") {
@@ -60,6 +62,7 @@ func TestCheckDefinition_ValidateAllowsNilValueWhenPerArchitectureCovers(t *test
 				Category:  DefaultThreshold,
 			},
 		},
+		RequiredSignals: []string{"signal"},
 	}
 	if err := cd.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil", err)
@@ -72,6 +75,7 @@ func TestCheckDefinition_ValidateRequiresValueWithoutArchitectureCoverage(t *tes
 		Thresholds: map[string]ThresholdSpec{
 			"expected_count": {ValueType: ThresholdInt64, Category: DefaultThreshold},
 		},
+		RequiredSignals: []string{"signal"},
 	}
 	err := cd.Validate()
 	if err == nil || !strings.Contains(err.Error(), "Value is required") {
@@ -90,6 +94,7 @@ func TestCheckDefinition_ValidateAcceptsRequiredDefaultThreshold(t *testing.T) {
 				RequiredOverride: true,
 			},
 		},
+		RequiredSignals: []string{"signal"},
 	}
 
 	if err := cd.Validate(); err != nil {
@@ -100,9 +105,10 @@ func TestCheckDefinition_ValidateAcceptsRequiredDefaultThreshold(t *testing.T) {
 // A check naming itself as a dependency would cite itself as its own cause.
 func TestValidate_RejectsSelfDependency(t *testing.T) {
 	cd := CheckDefinition{
-		ID:           "selfie",
-		Dependencies: []string{"other", "selfie"},
-		Thresholds:   map[string]ThresholdSpec{},
+		ID:              "selfie",
+		Dependencies:    []string{"other", "selfie"},
+		Thresholds:      map[string]ThresholdSpec{},
+		RequiredSignals: []string{"signal"},
 	}
 	err := cd.Validate()
 	if err == nil {

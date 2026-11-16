@@ -44,7 +44,7 @@ func demonstrationHandler(ctx context.Context, request *healthv1.EvaluateRequest
 	traceID := uuid.NewString()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	return &healthv1.NodeVerdict{
-		SchemaVersion: proto.String("0.4"), CatalogVersion: proto.String("example"), Timestamp: &now,
+		SchemaVersion: proto.String("0.6"), CatalogVersion: proto.String("example"), Timestamp: &now,
 		NodeId: &nodeID, TraceId: &traceID, OverallSeverity: healthv1.Severity_UNKNOWN.Enum(),
 		SeverityByDomain: map[string]healthv1.Severity{"node": healthv1.Severity_UNKNOWN},
 		CheckResults: []*healthv1.CheckVerdict{{

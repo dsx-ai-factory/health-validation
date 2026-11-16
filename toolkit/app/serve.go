@@ -81,7 +81,7 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	if *requestTimeout <= collectionTimeout(cfg) {
 		return fail(fmt.Errorf("--request-timeout must exceed collection_timeout_seconds (%s)", collectionTimeout(cfg)))
 	}
-	cat, _, err := buildCatalog(cfg, a.customChecks, "", defaults.ExecutionContext)
+	cat, _, err := buildCatalog(cfg, a.customChecks, "", health.DriverVersion{}, defaults.ExecutionContext)
 	if err != nil {
 		return fail(err)
 	}

@@ -19,17 +19,19 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
+	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -48,7 +50,7 @@ func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sen
 func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 	builtins := func(a *App) ([]string, []string) {
 		a.host = fakeHost{b: spyBackend{called: new(bool)}}
-		sources, adapters := a.builtinCollect()
+		sources, adapters := a.builtinCollect(nil)
 		var sourceIDs, adapterNames []string
 		for _, s := range sources {
 			sourceIDs = append(sourceIDs, s.ID())
@@ -64,10 +66,9 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 		sources  []string
 		adapters []string
 	}{
-		{name: "default", app: New(), sources: []string{cpusensor.ID, gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"cpu", "node", "xid"}},
-		{name: "CPU override", app: New().WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{})), sources: []string{gpuinventory.SensorID, xidsensor.ID}, adapters: []string{"node", "xid"}},
-		{name: "node override", app: New().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})), sources: []string{cpusensor.ID, xidsensor.ID}, adapters: []string{"cpu", "xid"}},
-		{name: "Xid override", app: New().WithXidBackend(xidSpyBackend{called: new(bool)}), sources: []string{cpusensor.ID, gpuinventory.SensorID}, adapters: []string{"cpu", "node"}},
+		{name: "default", app: New(), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
+		// A claim replaces a built-in source's signals, not the source list.
+		{name: "CPU claimed", app: withCPU(New(), healthyCPU()), sources: []string{"test.gpu", cpusensor.ID, gpuinventory.SensorID, xidsensor.ID, linkflapsensor.ID}, adapters: []string{"gpu", "cpu", "node", "xid", "infiniband", "nvlink"}},
 	}
 	for _, test := range tests {
 		sources, adapters := builtins(test.app)
@@ -79,9 +80,9 @@ func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {
 
 func TestCollectSkipsUnselectedBridgeSources(t *testing.T) {
 	source := &collectAppSensor{}
-	a := New().WithCollect(source).WithCollectAdapters(customCountAdapter())
-	builtinSources, builtinAdapters := a.builtinCollect()
-	sensors, err := a.collectSensors(time.Second, builtinSources, builtinAdapters, requiredSignals{health.GPU: nil})
+	a := New().WithCollect(source, claimAll(source)...).WithCollectAdapters(customCountAdapter())
+	builtinSources, builtinAdapters := a.builtinCollect(nil)
+	sensors, err := a.collectSensors(time.Second, builtinSources, builtinAdapters, requiredSignals{health.PCIe: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +92,7 @@ func TestCollectSkipsUnselectedBridgeSources(t *testing.T) {
 }
 
 func TestCollectionSensorsSelectsBridgeSensorsByAdapterCategory(t *testing.T) {
-	a := New().WithCollect(&collectAppSensor{}).WithCollectAdapters(customCountAdapter())
+	a := New().WithCollect(&collectAppSensor{}, claimAll(&collectAppSensor{})...).WithCollectAdapters(customCountAdapter())
 	sensors, err := a.collectSensors(time.Second, nil, nil, requiredSignals{health.Node: nil})
 	if err != nil {
 		t.Fatal(err)
@@ -102,44 +103,13 @@ func TestCollectionSensorsSelectsBridgeSensorsByAdapterCategory(t *testing.T) {
 	}
 }
 
-func TestLegacyOnlyCollectionIsUnchangedByCollectPlumbing(t *testing.T) {
-	a := cadenceRunApp().WithNodeID(testNodeID).
-		WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}))
-	cpuCalls := 0
-	a.WithCPUBackend(cpuBackendFunc(func(context.Context) (cpu.CPUMeasurement, error) {
-		cpuCalls++
-		return cpu.CPUMeasurement{PossibleCPUCount: 4, OnlineCPUCount: 3, NUMANodeCount: 34}, nil
-	}))
-	bridged, err := a.collectSensors(time.Second, nil, nil, nil)
+func TestNoCallerRegistrationsAddNoBridges(t *testing.T) {
+	bridged, err := New().collectSensors(time.Second, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(bridged) != 0 {
 		t.Fatalf("unregistered collect sensors added %d bridges", len(bridged))
-	}
-	var stdout, stderr bytes.Buffer
-	if code := a.runCommand(nil, &stdout, &stderr); code != exitUnhealthy {
-		t.Fatalf("runCommand exit=%d, want %d; stderr=%q", code, exitUnhealthy, stderr.String())
-	}
-	if cpuCalls != 1 || !*a.host.(fakeHost).b.called {
-		t.Fatalf("legacy providers were not called: cpu=%d gpu=%v", cpuCalls, *a.host.(fakeHost).b.called)
-	}
-	var verdict health.NodeVerdict
-	if err = json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
-		t.Fatal(err)
-	}
-	results := make(map[string]health.CheckVerdict)
-	for _, result := range verdict.CheckResults {
-		results[result.CheckID] = result
-	}
-	if result, ok := results["cpu_count"]; !ok || result.Severity != health.Critical || result.ObservedValues[cpu.SignalOnlineCPUCount] != float64(3) {
-		t.Fatalf("legacy CPU failure did not reach the verdict: %+v", verdict)
-	}
-	if result, ok := results["gpu_count"]; !ok || result.Severity != health.Pass || result.ObservedValues[node.SignalGPUCount] != float64(4) {
-		t.Fatalf("legacy node measurement did not reach the verdict: %+v", verdict)
-	}
-	if verdict.NodeID != testNodeID {
-		t.Fatalf("node ID=%q, want %q", verdict.NodeID, testNodeID)
 	}
 }
 
@@ -212,6 +182,22 @@ func (a *lazyNilAdapter) Build([]*observation.Observation) []health.Measurement 
 }
 func (a *lazyNilAdapter) Errored(error) []health.Measurement { return a.measurements }
 
+// claimAll lists every signal s declares, for WithCollect.
+func claimAll(s collect.Sensor) []string {
+	var ids []string
+	for _, signal := range s.Signals() {
+		if signal != nil {
+			ids = append(ids, signal.ID())
+		}
+	}
+	return ids
+}
+
+// claimMapped lists the signals s declares that a built-in adapter maps.
+func claimMapped(s collect.Sensor) []string {
+	return slices.DeleteFunc(claimAll(s), func(id string) bool { return !slices.Contains(observations.MappedSignals(), id) })
+}
+
 // customCountAdapter maps the custom count signal to customCountMeasurement.
 func customCountAdapter() collectAppAdapter {
 	return collectAppAdapter{
@@ -276,13 +262,10 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 	for _, name := range []string{"", "CONTINUOUS", "PROLOG", "MAINTENANCE"} {
 		t.Run(name, func(t *testing.T) {
 			sensor := &collectAppSensor{}
-			legacyCalls := 0
+			cpuCalls := 0
 			measurement := cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}
-			a := cadenceRunApp().WithNodeID(testNodeID).WithChecks(mixedChecks()...).WithCollect(sensor).WithCollectAdapters(customCountAdapter())
-			a.WithCPUBackend(cpuBackendFunc(func(context.Context) (cpu.CPUMeasurement, error) {
-				legacyCalls++
-				return measurement, nil
-			}))
+			a := withCleanXid(testAppWithCPU(cpuAppSensor{calls: &cpuCalls, possible: 1, online: 1, numa: 34}))
+			a.WithNodeID(testNodeID).WithChecks(mixedChecks()...).WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(customCountAdapter())
 			args := []string{"run"}
 			var cadence *health.SchedulingCadence
 			if name != "" {
@@ -301,7 +284,7 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 			if err := json.Unmarshal(stdout.Bytes(), &actual); err != nil {
 				t.Fatal(err)
 			}
-			cat, _, err := buildCatalog(nil, mixedChecks(), "GB200", health.OperatorInfra)
+			cat, _, err := buildCatalog(nil, mixedChecks(), "GB200", health.DriverVersion{}, health.OperatorInfra)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -318,16 +301,22 @@ func TestWithCollectRetainsCadenceAndDependencyEvaluation(t *testing.T) {
 			if name == "CONTINUOUS" {
 				wantCollect = 0
 			}
-			if legacyCalls != 1 || len(sensor.cycles) != wantCollect {
-				t.Fatalf("legacy calls=%d collect calls=%d, want 1 and %d", legacyCalls, len(sensor.cycles), wantCollect)
+			if cpuCalls != 1 || len(sensor.cycles) != wantCollect {
+				t.Fatalf("CPU calls=%d custom calls=%d, want 1 and %d", cpuCalls, len(sensor.cycles), wantCollect)
 			}
 		})
 	}
 }
 
+// keepOpenHost fails a run that closes the host: the caller owns that close.
+type keepOpenHost struct{ hostBackend }
+
+func (keepOpenHost) close() error { panic("Run closed the host backend") }
+
 func TestWithCollectCreatesFreshCycleOnRepeatedRuns(t *testing.T) {
 	sensor := &collectAppSensor{}
-	a := cadenceRunApp().WithNodeID(testNodeID).WithChecks(mixedChecks()...).WithCollect(sensor).WithCollectAdapters(customCountAdapter())
+	a := cadenceRunApp().WithNodeID(testNodeID).WithChecks(mixedChecks()...).WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(customCountAdapter())
+	a.host = keepOpenHost{a.host}
 	for range 2 {
 		var stdout, stderr bytes.Buffer
 		if code := a.Run([]string{"run"}, &stdout, &stderr); code == exitError {
@@ -347,9 +336,9 @@ func TestWithCollectRegistrationOrderPreservesVerdict(t *testing.T) {
 				source := &collectAppSensor{}
 				a := cadenceRunApp().WithNodeID(testNodeID).WithChecks(mixedChecks()...)
 				if adaptersFirst {
-					a.WithCollectAdapters(customCountAdapter()).WithCollect(source)
+					a.WithCollectAdapters(customCountAdapter()).WithCollect(source, claimAll(source)...)
 				} else {
-					a.WithCollect(source).WithCollectAdapters(customCountAdapter())
+					a.WithCollect(source, claimAll(source)...).WithCollectAdapters(customCountAdapter())
 				}
 				args := []string{"run"}
 				if cadence != "" {
@@ -413,7 +402,7 @@ func TestWithCollectCapturesAdapterMetadataOncePerRun(t *testing.T) {
 	source := &collectAppSensor{}
 	adapter := customCountAdapter()
 	counted := &countedCollectAdapter{CollectAdapter: &adapter}
-	a := New().WithCollect(source).WithCollectAdapters(counted)
+	a := New().WithCollect(source, claimAll(source)...).WithCollectAdapters(counted)
 	bridged, err := a.collectSensors(time.Second, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -506,7 +495,7 @@ func TestWithCollectReportsRegistrationPanics(t *testing.T) {
 			case "sensor Signals":
 				sensor.signals = func() collect.Signals { panic(method) }
 			}
-			a := cadenceRunApp().WithNodeID(testNodeID).WithCollect(sensor).WithCollectAdapters(adapter)
+			a := cadenceRunApp().WithNodeID(testNodeID).WithCollect(sensor, customCountSignal).WithCollectAdapters(adapter)
 			var stdout, stderr bytes.Buffer
 			if code := a.Run([]string{"run"}, &stdout, &stderr); code != exitError || stdout.Len() != 0 {
 				t.Fatalf("exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -522,7 +511,7 @@ func TestWithCollectReportsRegistrationPanics(t *testing.T) {
 }
 
 func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
-	for _, name := range []string{"nil sensor", "typed nil sensor", "nil signal", "no adapter", "nil adapter", "typed nil adapter", "lazy typed nil adapter", "incomplete adapter", "unowned signal", "duplicate producer", "duplicate adapter", "duplicate adapter across calls", "built-in adapter name", "built-in xid adapter name"} {
+	for _, name := range []string{"nil sensor", "typed nil sensor", "nil signal", "nil adapter", "typed nil adapter", "lazy typed nil adapter", "incomplete adapter", "unowned signal", "duplicate producer", "duplicate adapter", "duplicate adapter across calls", "built-in adapter name", "built-in xid adapter name"} {
 		t.Run(name, func(t *testing.T) {
 			sensor := &collectAppSensor{}
 			var otherCycles []*collect.Cycle
@@ -533,47 +522,43 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 				a.WithCollect(nil).WithCollectAdapters(customCountAdapter())
 			case "typed nil sensor":
 				var source *collectAppSensor
-				a.WithCollect(source).WithCollectAdapters(customCountAdapter())
+				a.WithCollect(source, claimAll(source)...).WithCollectAdapters(customCountAdapter())
 			case "nil signal":
 				a.WithCollect(metadataCollectSensor{Sensor: sensor, signals: func() collect.Signals {
 					return collect.Signals{collect.NewSignal(customCountSignal, "1"), nil}
-				}}).WithCollectAdapters(customCountAdapter())
-			case "no adapter":
-				a.WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{})).WithCollect(sensor)
+				}}, customCountSignal).WithCollectAdapters(customCountAdapter())
 			case "nil adapter":
-				a.WithCollect(sensor).WithCollectAdapters(nil)
+				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(nil)
 			case "typed nil adapter":
 				var adapter *collectAppAdapter
-				a.WithCollect(sensor).WithCollectAdapters(adapter)
+				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter)
 			case "lazy typed nil adapter":
 				var adapter *lazyNilAdapter
-				a.WithCollect(sensor).WithCollectAdapters(adapter)
+				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter)
 			case "incomplete adapter":
-				a.WithCollect(sensor).WithCollectAdapters(collectAppAdapter{})
+				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(collectAppAdapter{})
 			case "unowned signal":
 				adapter := customCountAdapter()
 				adapter.signals = map[string][]string{"unknown": {"custom_count"}}
-				a.WithCollect(sensor).WithCollectAdapters(adapter)
+				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter)
 			case "duplicate producer":
-				a.WithCollect(sensor).WithCollectAdapters(customCountAdapter()).WithCollect(metadataCollectSensor{
+				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(customCountAdapter()).WithCollect(metadataCollectSensor{
 					Sensor: &collectAppSensor{}, id: func() string { return "test.node.other" },
-				})
+				}, customCountSignal)
 			case "duplicate adapter":
-				a.WithCollect(sensor).WithCollectAdapters(customCountAdapter(), customCountAdapter())
+				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(customCountAdapter(), customCountAdapter())
 			case "built-in adapter name":
-				a.cpu = nil
 				adapter := customCountAdapter()
 				adapter.name = "cpu"
-				a.WithCollect(sensor).WithCollectAdapters(adapter)
+				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter)
 			case "built-in xid adapter name":
-				a.xid = nil
 				adapter := customCountAdapter()
 				adapter.name = "xid"
-				a.WithCollect(sensor).WithCollectAdapters(adapter)
+				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter)
 			case "duplicate adapter across calls":
 				adapter := customCountAdapter()
 				adapter.signals["test.empty"] = []string{"custom_count"}
-				a.WithCollect(sensor).WithCollectAdapters(adapter).WithCollect(&emptyAppSensor{cycles: &otherCycles, selected: &selected}).WithCollectAdapters(adapter)
+				a.WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter).WithCollect(&emptyAppSensor{cycles: &otherCycles, selected: &selected}, claimAll(&emptyAppSensor{cycles: &otherCycles, selected: &selected})...).WithCollectAdapters(adapter)
 			}
 			var stdout, stderr bytes.Buffer
 			if code := a.Run([]string{"run"}, &stdout, &stderr); code != exitError || stdout.Len() != 0 || stderr.Len() == 0 {
@@ -588,13 +573,10 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 			if name == "nil signal" && !strings.Contains(stderr.String(), "declares a nil signal") {
 				t.Fatalf("nil signal did not cause setup failure: %q", stderr.String())
 			}
-			if name == "no adapter" && !strings.Contains(stderr.String(), "collect sensors registered without adapters; register adapters with WithCollectAdapters") {
-				t.Fatalf("missing adapters were not explained: %q", stderr.String())
-			}
-			if name == "unowned signal" && !strings.Contains(stderr.String(), "supplies no adapter-requested signals") {
+			if name == "unowned signal" && !strings.Contains(stderr.String(), "which no adapter requests") {
 				t.Fatalf("sensor without requested signals did not cause setup failure: %q", stderr.String())
 			}
-			if name == "duplicate producer" && !strings.Contains(stderr.String(), "select one source explicitly") {
+			if name == "duplicate producer" && !strings.Contains(stderr.String(), "claim each signal from one sensor") {
 				t.Fatalf("overlapping producers were not rejected: %q", stderr.String())
 			}
 			if strings.HasPrefix(name, "duplicate adapter") && !strings.Contains(stderr.String(), `collect adapter "custom-count" is already registered`) {
@@ -613,25 +595,34 @@ func TestWithCollectRejectsInvalidRegistrationsBeforeMeasuring(t *testing.T) {
 	}
 }
 
-func TestWithCollectRejectsDuplicateGPUAdapters(t *testing.T) {
-	for _, registration := range []string{"one call", "two calls"} {
-		t.Run(registration, func(t *testing.T) {
-			first, second := &collectHardwareSensor{}, &collectHardwareSensor{}
-			a := cadenceRunApp().WithNodeID(testNodeID)
-			if registration == "one call" {
-				a.WithCollect(first).WithCollectAdapters(collectadapters.GPU(), collectadapters.GPU())
-			} else {
-				a.WithCollect(first).WithCollectAdapters(collectadapters.GPU()).WithCollect(second).WithCollectAdapters(collectadapters.GPU())
+// Every category name is reserved, so a domain moving to a built-in adapter
+// later cannot collide with a caller adapter that took its name.
+func TestWithCollectReservesEveryCategoryAdapterName(t *testing.T) {
+	for _, test := range []struct {
+		configure func(*App)
+		name      string
+	}{
+		{name: "gpu"},        // built-in active
+		{name: "nvlink"},     // built-in active
+		{name: "infiniband"}, // built-in active
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sensor := &collectAppSensor{}
+			adapter := customCountAdapter()
+			adapter.name = test.name
+			a := cadenceRunApp().WithNodeID(testNodeID).WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter)
+			if test.configure != nil {
+				test.configure(a)
 			}
 			var stdout, stderr bytes.Buffer
 			if code := a.Run([]string{"run"}, &stdout, &stderr); code != exitError || stdout.Len() != 0 {
 				t.Fatalf("exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 			}
-			if !strings.Contains(stderr.String(), `collect adapter "gpu" is already registered`) {
-				t.Fatalf("duplicate GPU adapter was not rejected: %q", stderr.String())
+			if want := fmt.Sprintf("collect adapter name %q is reserved for a built-in domain", test.name); !strings.Contains(stderr.String(), want) {
+				t.Fatalf("stderr=%q, want %q", stderr.String(), want)
 			}
-			if first.calls != 0 || second.calls != 0 || *a.host.(fakeHost).b.called {
-				t.Fatal("duplicate GPU adapter allowed measurement")
+			if len(sensor.cycles) != 0 {
+				t.Fatal("invalid registration was measured")
 			}
 		})
 	}
@@ -666,7 +657,7 @@ func TestWithCollectJoinsProducersAndSelectsRequestedSignals(t *testing.T) {
 	adapter := customCountAdapter()
 	adapter.signals["test.empty"] = []string{"custom_count"}
 	a := cadenceRunApp().WithNodeID(testNodeID).WithChecks(mixedChecks()...).
-		WithCollect(sensor).WithCollectAdapters(adapter).WithCollect(&emptyAppSensor{cycles: &cycles, selected: &selected})
+		WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter).WithCollect(&emptyAppSensor{cycles: &cycles, selected: &selected}, "test.empty")
 	var stdout, stderr bytes.Buffer
 	if code := a.Run([]string{"run"}, &stdout, &stderr); code == exitError {
 		t.Fatalf("Run: %s", stderr.String())
@@ -704,7 +695,7 @@ func TestWithCollectReportsMissingProducer(t *testing.T) {
 		ID: "missing_count", Name: "Missing count", Category: health.Node, RequiredSignals: []string{"missing_count"},
 		Rules: []health.Rule{{Expression: "missing_count != 0", Severity: health.Critical}},
 	}
-	a := cadenceRunApp().WithNodeID(testNodeID).WithChecks(missingCheck).WithCollect(sensor).WithCollectAdapters(adapter)
+	a := cadenceRunApp().WithNodeID(testNodeID).WithChecks(missingCheck).WithCollect(sensor, claimAll(sensor)...).WithCollectAdapters(adapter)
 	var stdout, stderr bytes.Buffer
 	if code := a.Run([]string{"run"}, &stdout, &stderr); code == exitError {
 		t.Fatalf("Run: %s", stderr.String())
@@ -747,7 +738,7 @@ func TestWithCollectMissingProducerFailsOnlyDependentChecks(t *testing.T) {
 		}
 		return []health.Measurement{m}
 	}
-	a := New().WithCollectAdapters(adapter).WithCollect(source)
+	a := New().WithCollectAdapters(adapter).WithCollect(source, claimAll(source)...)
 	sensors, err := a.collectSensors(time.Second, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("missing producer became a registration error: %v", err)
@@ -769,7 +760,7 @@ func TestWithCollectMissingProducerFailsOnlyDependentChecks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sensors = append(sensors, toolkit.NewCPUSensor(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1})))
+	sensors = append(sensors, measurementSensor{name: "cpu", ms: []health.Measurement{cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1}}})
 	verdict, err := toolkit.Collect(cat, sensors...)
 	if err != nil {
 		t.Fatal(err)
@@ -780,7 +771,7 @@ func TestWithCollectMissingProducerFailsOnlyDependentChecks(t *testing.T) {
 	for _, check := range verdict.CheckResults {
 		want := health.Pass
 		if check.CheckID == "missing_count" {
-			want = health.Critical
+			want = health.Unknown
 		}
 		if check.Severity != want {
 			t.Fatalf("check %s severity=%v, want %v", check.CheckID, check.Severity, want)
@@ -801,7 +792,7 @@ func TestWithCollectAdaptersWithoutSensorsReportMissingInputs(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
 		t.Fatal(err)
 	}
-	if outcome, ok := mixedOutcomes(verdict)["mixed_prolog"]; !ok || outcome.skipped || outcome.severity != health.Critical {
+	if outcome, ok := mixedOutcomes(verdict)["mixed_prolog"]; !ok || outcome.skipped || outcome.severity != health.Unknown {
 		t.Fatalf("adapter without sources did not report missing inputs: %+v", verdict)
 	}
 }
@@ -814,9 +805,10 @@ func TestWithCollectCombinesGPUObservationsFromTwoSensors(t *testing.T) {
 	state := &collectHardwareSensor{id: "test.state", gpuIDs: ids, signals: collect.Signals{
 		gpusignals.PerformanceState, gpusignals.HardwareSlowdownActive,
 		gpusignals.HardwareThermalSlowdownActive, gpusignals.HardwarePowerBrakeSlowdownActive,
+		gpusignals.ProcessCount, gpusignals.ProcessCmdline,
 	}}
-	a := New().WithCollect(power).WithCollectAdapters(collectadapters.GPU()).WithCollect(state)
-	sensors, err := a.collectSensors(time.Second, nil, nil, nil)
+	a := New().WithCollect(power, claimAll(power)...).WithCollect(state, claimAll(state)...)
+	sensors, err := a.collectSensors(time.Second, nil, []CollectAdapter{collectadapters.GPU()}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -917,12 +909,35 @@ func (s *collectHardwareSensor) Measure(_ context.Context, opts ...collect.OpOpt
 				value.Kind = &observation.Value_IntValue{IntValue: 0}
 			case gpusignals.FabricManagerStatus.ID():
 				value.Kind = &observation.Value_IntValue{IntValue: gpusignals.FabricManagerStatusSuccess}
+			case gpusignals.NVLinkState.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 1}
+			case gpusignals.NVLinkLinkCount.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 18}
+			case gpusignals.NVLinkSpeedCommon.ID(), gpusignals.NVLinkEndpointSpeed.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 53125}
+			case gpusignals.NVLinkP2PStatus.ID(), gpusignals.ProcessCount.ID():
+				value.Kind = &observation.Value_UintValue{UintValue: 0}
+			case gpusignals.ProcessCmdline.ID():
+				// An idle GPU, as collect's NVML sensor reports one.
+				batch.Observations = append(batch.Observations, observation.NewNoValueObservation(signal.ID(), signal.Unit(), s.ID(),
+					observation.GPUTarget(gpuID), timestamppb.Now(), &observation.NoValue{Reason: observation.NoValueReasonNoTargets}))
+				continue
+			}
+			if slices.Contains(gpusignals.EndpointCapabilitySignals().IDs(), signal.ID()) {
+				value.Kind = &observation.Value_UintValue{UintValue: 1}
 			}
 			if override, ok := s.values[signal.ID()]; ok {
 				value = override
 			}
+			target := observation.GPUTarget(gpuID)
+			switch {
+			case slices.Contains(gpusignals.EndpointSignals().IDs(), signal.ID()):
+				target = observation.NVLinkEndpointTarget(gpuID, 0)
+			case slices.Contains(gpusignals.PairSignals().IDs(), signal.ID()):
+				target = observation.GPUPairTarget(gpuID, "GPU-peer")
+			}
 			batch.Observations = append(batch.Observations, &observation.Observation{
-				SignalId: signal.ID(), Source: s.ID(), Target: observation.GPUTarget(gpuID),
+				SignalId: signal.ID(), Source: s.ID(), Target: target,
 				ObservedAt: timestamppb.Now(), Unit: signal.Unit(),
 				Outcome: &observation.Observation_Value{Value: value},
 			})
@@ -940,7 +955,7 @@ func TestWithCollectWrongScalarFailsOnlyDependentChecks(t *testing.T) {
 		gpusignals.PowerLimitRequested.ID(): gb200Limit,
 		gpusignals.PowerLimitEnforced.ID():  gb200Limit,
 	}}
-	sensors, err := New().WithCollect(source).WithCollectAdapters(collectadapters.GPU(), collectadapters.NVLink()).collectSensors(time.Second, nil, nil, nil)
+	sensors, err := New().WithCollect(source, claimMapped(source)...).collectSensors(time.Second, nil, []CollectAdapter{collectadapters.GPU(), collectadapters.NVLink()}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1001,42 +1016,189 @@ func TestWithCollectWrongScalarFailsOnlyDependentChecks(t *testing.T) {
 	}
 }
 
+// slotSensor reports one of collectHardwareSensor's GPUs only by a
+// source-local ID, as DCGM does when that GPU's UUID read fails.
+type slotSensor struct {
+	*collectHardwareSensor
+	uuid string
+}
+
+func (s slotSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	batch, err := s.collectHardwareSensor.Measure(ctx, opts...)
+	for _, o := range batch.GetObservations() {
+		target := o.GetTarget()
+		for _, ref := range []*observation.GPURef{target.GetGpu(), target.GetNvLinkEndpoint().GetGpu(), target.GetGpuPair().GetSourceGpu()} {
+			if ref.GetUuid() == s.uuid {
+				ref.Uuid, ref.SourceLocalId = "", "slot-2"
+			}
+		}
+	}
+	return batch, err
+}
+
+// A GPU without a UUID fails its own GPU and NVLink checks; the GPU with one
+// still evaluates, rather than the whole batch failing.
+func TestWithCollectFailsOnlyTheGPUWithoutAUUID(t *testing.T) {
+	source := slotSensor{collectHardwareSensor: &collectHardwareSensor{gpuIDs: []string{"GPU-1", "GPU-2"}}, uuid: "GPU-2"}
+	sensors, err := New().WithCollect(source, claimMapped(source)...).collectSensors(time.Second, nil, []CollectAdapter{collectadapters.GPU(), collectadapters.NVLink()}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
+	for _, check := range []health.CheckDefinition{gpu.GPUPowerState(), nvlink.NVLinkFabric()} {
+		if err = cat.Register(check); err != nil {
+			t.Fatal(err)
+		}
+	}
+	verdict, err := toolkit.Collect(cat, sensors...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	severities := map[string][]health.Severity{}
+	for _, result := range verdict.CheckResults {
+		severities[result.CheckID] = append(severities[result.CheckID], result.Severity)
+	}
+	for _, check := range []string{"gpu_power_state", "nvlink_fabric"} {
+		got := severities[check]
+		slices.Sort(got)
+		if !slices.Equal(got, []health.Severity{health.Pass, health.Unknown}) {
+			t.Errorf("%s severities = %v, want one PASS and one UNKNOWN", check, got)
+		}
+	}
+}
+
+// eccMeasurement is a consumer's per-GPU measurement for GPUAdapter. It also
+// reads the performance state, which built-in checks read as gpu_pstate, under
+// its own field name.
+type eccMeasurement struct {
+	GPUID string `json:"gpu_id"`
+	observations.Entity
+	DoubleBit int64 `json:"ecc_double_bit"`
+	Pstate    int64 `json:"pstate"`
+}
+
+func (eccMeasurement) Category() health.Category { return health.GPU }
+func (m eccMeasurement) EntityID() string        { return m.GPUID }
+
+// eccHost adds a built-in source of the ECC signal, as the linux NVML sensor
+// declares, to fakeHost's DCGM-shaped GPU source.
+type eccHost struct {
+	ecc collect.Sensor
+	fakeHost
+}
+
+func (h eccHost) gpuSensors() []collect.Sensor { return append(h.fakeHost.gpuSensors(), h.ecc) }
+
+// A consumer check registered with only a GPUAdapter runs next to the stock GPU
+// checks: the built-in sources supply both through runnable-signal selection,
+// and the performance state feeds the built-in and the consumer adapter alike.
+func TestGPUAdapterRunsAlongsideBuiltinGPUChecks(t *testing.T) {
+	ecc := gpusignals.ECCDoubleBitVolatileTotal
+	gpus := []string{"GPU-0", "GPU-1", "GPU-2", "GPU-3"}
+	eccSource := &collectHardwareSensor{
+		id: "test.nvml", signals: collect.Signals{ecc}, gpuIDs: gpus,
+		values: map[string]*observation.Value{ecc.ID(): {Kind: &observation.Value_UintValue{UintValue: 0}}},
+	}
+	adapter, err := GPUAdapter[eccMeasurement]("ecc", map[string]string{
+		ecc.ID():                         "ecc_double_bit",
+		gpusignals.PerformanceState.ID(): "pstate",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := cadenceRunApp().WithNodeID(testNodeID).WithCollectAdapters(adapter).WithChecks(health.CheckDefinition{
+		ID: "ecc_at_full_performance", Name: "ECC at full performance", Category: health.GPU,
+		RequiredSignals: []string{"ecc_double_bit", "pstate"},
+		Rules:           []health.Rule{{Expression: "ecc_double_bit > 0 || pstate != 0", Severity: health.Critical}},
+	})
+	a.host = eccHost{fakeHost: a.host.(fakeHost), ecc: eccSource}
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"run"}, &stdout, &stderr); code == exitError {
+		t.Fatalf("Run: %s", stderr.String())
+	}
+	var verdict health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+		t.Fatal(err)
+	}
+	perGPU := map[string]int{}
+	for _, v := range verdict.CheckResults {
+		if v.CheckID == "ecc_at_full_performance" && v.Severity != health.Pass {
+			t.Errorf("consumer check %+v, want PASS", v)
+		}
+		perGPU[v.CheckID]++
+	}
+	skipped := map[string]health.SkipReason{}
+	for _, v := range verdict.SkippedChecks {
+		skipped[v.CheckID] = v.SkipReason
+	}
+	for _, check := range []string{"ecc_at_full_performance", "gpu_power_state", "gpu_sensor_throttle"} {
+		if perGPU[check] != len(gpus) {
+			t.Errorf("%s verdicts = %d, want one per GPU (skip reason %q)", check, perGPU[check], skipped[check])
+		}
+	}
+	if eccSource.calls != 1 || !*a.host.(eccHost).b.called {
+		t.Fatalf("ECC source calls=%d, DCGM-shaped source called=%v", eccSource.calls, *a.host.(eccHost).b.called)
+	}
+}
+
+// Reading a built-in signal into a field the built-in adapter reports is
+// rejected, and the error names the rename that works.
+func TestGPUAdapterRejectsBuiltinFieldName(t *testing.T) {
+	adapter, err := GPUAdapter[gpuPstateCopy]("pstate-copy", map[string]string{gpusignals.PerformanceState.ID(): gpu.SignalGPUPstate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := cadenceRunApp().WithNodeID(testNodeID).WithCollectAdapters(adapter).Run([]string{"run"}, &stdout, &stderr); code != exitError {
+		t.Fatalf("exit=%d stderr=%q", code, stderr.String())
+	}
+	if want := `give the field another name in your measurement type to read the same signal`; !strings.Contains(stderr.String(), want) {
+		t.Fatalf("stderr=%q, want %q", stderr.String(), want)
+	}
+}
+
+type gpuPstateCopy struct {
+	GPUID string `json:"gpu_id"`
+	observations.Entity
+	Pstate int64 `json:"gpu_pstate"`
+}
+
+func (gpuPstateCopy) Category() health.Category { return health.GPU }
+func (m gpuPstateCopy) EntityID() string        { return m.GPUID }
+
+func TestGPUAdapterRejectsUnusableType(t *testing.T) {
+	if _, err := GPUAdapter[eccMeasurement]("ecc", map[string]string{"s": "typo"}); err == nil || !strings.Contains(err.Error(), `GPU adapter "ecc"`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestWithCollectRegistersReusableDomainAdapters(t *testing.T) {
-	for _, separateCalls := range []bool{false, true} {
-		t.Run(fmt.Sprintf("separate adapter calls=%v", separateCalls), func(t *testing.T) {
-			source := &collectHardwareSensor{}
-			a := New().WithCollect(source)
-			if separateCalls {
-				a.WithCollectAdapters(collectadapters.GPU()).WithCollectAdapters(collectadapters.NVLink())
-			} else {
-				a.WithCollectAdapters(collectadapters.GPU(), collectadapters.NVLink())
-			}
-			sensors, err := a.collectSensors(time.Second, nil, nil, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(sensors) != 2 {
-				t.Fatalf("bridged sensors=%d, want 2", len(sensors))
-			}
-			cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
-			for _, check := range []health.CheckDefinition{gpu.GPUPowerState(), nvlink.NVLinkFabric()} {
-				if err = cat.Register(check); err != nil {
-					t.Fatal(err)
-				}
-			}
-			verdict, err := toolkit.Collect(cat, sensors...)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if source.calls != 1 || len(verdict.CheckResults) != 2 {
-				t.Fatalf("calls=%d, verdict=%+v", source.calls, verdict)
-			}
-			for _, check := range verdict.CheckResults {
-				if check.Severity != health.Pass {
-					t.Fatalf("check %s=%+v", check.CheckID, check)
-				}
-			}
-		})
+	source := &collectHardwareSensor{}
+	a := New().WithCollect(source, claimMapped(source)...)
+	sensors, err := a.collectSensors(time.Second, nil, []CollectAdapter{collectadapters.GPU(), collectadapters.NVLink()}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sensors) != 2 {
+		t.Fatalf("bridged sensors=%d, want 2", len(sensors))
+	}
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
+	for _, check := range []health.CheckDefinition{gpu.GPUPowerState(), nvlink.NVLinkFabric()} {
+		if err = cat.Register(check); err != nil {
+			t.Fatal(err)
+		}
+	}
+	verdict, err := toolkit.Collect(cat, sensors...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.calls != 1 || len(verdict.CheckResults) != 2 {
+		t.Fatalf("calls=%d, verdict=%+v", source.calls, verdict)
+	}
+	for _, check := range verdict.CheckResults {
+		if check.Severity != health.Pass {
+			t.Fatalf("check %s=%+v", check.CheckID, check)
+		}
 	}
 }
 
@@ -1095,18 +1257,17 @@ func TestWithCollectClaimsReplaceBuiltinSources(t *testing.T) {
 }
 
 func TestWithCollectRejectsInvalidClaims(t *testing.T) {
-	for _, name := range []string{"bare overlap", "undeclared claim", "unrequested claim", "duplicate claim", "claim overlaps bare sensor"} {
+	for _, name := range []string{"bare sensor", "undeclared claim", "unrequested claim", "duplicate claim"} {
 		t.Run(name, func(t *testing.T) {
 			builtin := &collectHardwareSensor{id: "test.builtin", signals: claimSignals()}
 			caller := &collectHardwareSensor{id: "test.caller", signals: claimSignals()}
 			other := &collectHardwareSensor{id: "test.other", signals: claimSignals()}
 			a := New()
-			conflict := `signal "test.a" is produced by both "test.caller" and "test.other"; select one source explicitly`
 			var want string
 			switch name {
-			case "bare overlap":
+			case "bare sensor":
 				a.WithCollect(caller)
-				want = `signal "test.a" is produced by both "test.caller" and built-in "test.builtin"; pass the signal IDs to WithCollect to replace the built-in source`
+				want = `collect sensor "test.caller" claims no signals; pass the signal IDs it supplies to WithCollect`
 			case "undeclared claim":
 				caller.signals = claimSignals()[:1]
 				a.WithCollect(caller, "test.b")
@@ -1116,11 +1277,8 @@ func TestWithCollectRejectsInvalidClaims(t *testing.T) {
 				a.WithCollect(caller, "test.c")
 				want = `collect sensor "test.caller" claims signal "test.c", which no adapter requests`
 			case "duplicate claim":
-				a.WithCollect(caller, "test.a").WithCollect(other, "test.a")
-				want = conflict
-			case "claim overlaps bare sensor":
-				a.WithCollect(caller).WithCollect(other, "test.a")
-				want = conflict
+				a.WithCollect(caller, "test.a", "test.a").WithCollect(other, "test.a")
+				want = `signal "test.a" is claimed by both "test.caller" and "test.other"; claim each signal from one sensor`
 			}
 			var produced []string
 			_, err := a.collectSensors(time.Second, []collect.Sensor{builtin}, []CollectAdapter{sourceAdapter(&produced)}, nil)
@@ -1169,9 +1327,6 @@ func TestCollectSensorsRequestsOnlyRunnableCheckSignals(t *testing.T) {
 			cpusignals.NUMANodeOnlineCount.ID(),
 		}}, bridged: 1},
 		{name: "no domain check runs", runnable: []health.CheckDefinition{gpu.GPUPowerState()}},
-		{name: "check reads any signal", runnable: []health.CheckDefinition{{ID: "custom", Category: health.CPU}}, want: [][]string{{
-			cpusignals.PossibleCount.ID(), cpusignals.OnlineCount.ID(), cpusignals.NUMANodeOnlineCount.ID(),
-		}}, bridged: 1},
 		{name: "check needs an unmapped signal", runnable: []health.CheckDefinition{
 			cpu.NUMANodeCount(), {ID: "custom", Category: health.CPU, RequiredSignals: []string{"unmapped"}},
 		}, want: [][]string{{cpusignals.NUMANodeOnlineCount.ID()}}, bridged: 1},
@@ -1201,7 +1356,16 @@ func TestCollectSensorsRequestsOnlyRunnableCheckSignals(t *testing.T) {
 // collect-backed domain must therefore be fed by that domain's adapter, from
 // signals its built-in source declares.
 func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
-	sources, adapters := New().builtinCollect()
+	sources, adapters := New().builtinCollect(nil)
+	adaptersByCategory := make(map[health.Category]int)
+	for _, adapter := range adapters {
+		adaptersByCategory[adapter.Category()]++
+	}
+	for _, cd := range catalog.New().List(catalog.Filter{}) {
+		if got := adaptersByCategory[cd.Category]; got != 1 {
+			t.Errorf("built-in check %s: category %s has %d built-in collect adapters, want 1", cd.ID, cd.Category, got)
+		}
+	}
 	var produced []string
 	for _, source := range sources {
 		for _, signal := range source.Signals() {
@@ -1223,7 +1387,8 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 				continue
 			}
 			for _, s := range cd.RequiredSignals {
-				if !fed[s] {
+				// gpu_id comes from each observation's GPU target.
+				if !fed[s] && s != gpu.SignalGPUID {
 					t.Errorf("built-in check %s requires %q, which adapter %q does not feed", cd.ID, s, adapter.Name())
 				}
 			}
@@ -1231,11 +1396,29 @@ func TestBuiltinCollectFeedsEveryBuiltinCheck(t *testing.T) {
 	}
 }
 
+// With no signals required, no collect source runs, so every sensor returned
+// is a legacy one, and the stock CLI has none left.
+func TestDefaultRunHasNoLegacySensors(t *testing.T) {
+	a := New()
+	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	cycle, err := newCycle(time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sensors, err := a.sensors(cycle, requiredSignals{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range sensors {
+		t.Errorf("default run collects %q with a legacy sensor", s.Name())
+	}
+}
+
 // Off GB200/GB300, numa_node_count is an architecture skip, so NUMA is not
 // collected and the CPU measurement carries a failure for it. cpu_count must
 // still pass: a measurement error fails only checks requiring that signal.
 func TestCollectSensorsUncollectedSiblingSignalLeavesCheckPassing(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "H100", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, nil, "H100", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1285,7 +1468,7 @@ func TestCollectAdapterOutsideCategoryFails(t *testing.T) {
 		errored: func(err error) []health.Measurement { got = err; return nil },
 	}
 	source := &recordingSensor{id: "test.source", signals: claimSignals()}
-	sensors, err := New().WithCollect(source).WithCollectAdapters(adapter).collectSensors(time.Second, nil, nil, nil)
+	sensors, err := New().WithCollect(source, "test.a").WithCollectAdapters(adapter).collectSensors(time.Second, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1295,25 +1478,15 @@ func TestCollectAdapterOutsideCategoryFails(t *testing.T) {
 }
 
 func TestCollectSensorsSkipsCallerSensorsNoRunnableCheckNeeds(t *testing.T) {
-	for _, claims := range [][]string{nil, {"test.a"}} {
-		t.Run(fmt.Sprintf("claims=%v", claims), func(t *testing.T) {
-			caller := &recordingSensor{id: "test.caller", signals: claimSignals()}
-			var produced []string
-			required := requiredSignals{health.Node: {"b": true}}
-			builtin := &recordingSensor{id: "test.builtin", signals: claimSignals()}
-			a := New().WithCollect(caller, claims...)
-			if claims == nil {
-				// A bare caller sensor owns every signal, so the built-in would overlap it.
-				builtin = &recordingSensor{id: "test.builtin", signals: collect.Signals{collect.NewSignal("test.other", "")}}
-				required = requiredSignals{health.Node: {}}
-			}
-			if _, err := a.collectSensors(time.Second, []collect.Sensor{builtin}, []CollectAdapter{sourceAdapter(&produced)}, required); err != nil {
-				t.Fatalf("an unneeded caller sensor became a registration error: %v", err)
-			}
-			if len(caller.selected) != 0 {
-				t.Fatalf("caller sensor was measured for unneeded signals: %v", caller.selected)
-			}
-		})
+	caller := &recordingSensor{id: "test.caller", signals: claimSignals()}
+	var produced []string
+	builtin := &recordingSensor{id: "test.builtin", signals: claimSignals()}
+	a := New().WithCollect(caller, "test.a")
+	if _, err := a.collectSensors(time.Second, []collect.Sensor{builtin}, []CollectAdapter{sourceAdapter(&produced)}, requiredSignals{health.Node: {"b": true}}); err != nil {
+		t.Fatalf("an unneeded caller sensor became a registration error: %v", err)
+	}
+	if len(caller.selected) != 0 {
+		t.Fatalf("caller sensor was measured for unneeded signals: %v", caller.selected)
 	}
 }
 
@@ -1323,10 +1496,10 @@ func TestCollectSensorsValidatesRegistrationsRegardlessOfNeeds(t *testing.T) {
 		want    string
 		sensors []*recordingSensor
 	}{
-		{name: "overlapping producers", want: "select one source explicitly", sensors: []*recordingSensor{
+		{name: "overlapping claims", want: "claim each signal from one sensor", sensors: []*recordingSensor{
 			{id: "test.caller", signals: claimSignals()}, {id: "test.other", signals: claimSignals()},
 		}},
-		{name: "sensor no adapter reads", want: "supplies no adapter-requested signals", sensors: []*recordingSensor{
+		{name: "sensor no adapter reads", want: "which no adapter requests", sensors: []*recordingSensor{
 			{id: "test.unrelated", signals: collect.Signals{collect.NewSignal("test.other", "")}},
 		}},
 	} {
@@ -1334,7 +1507,7 @@ func TestCollectSensorsValidatesRegistrationsRegardlessOfNeeds(t *testing.T) {
 			var produced []string
 			a := New()
 			for _, s := range test.sensors {
-				a.WithCollect(s)
+				a.WithCollect(s, claimAll(s)...)
 			}
 			_, err := a.collectSensors(time.Second, nil, []CollectAdapter{sourceAdapter(&produced)}, requiredSignals{})
 			if err == nil || !strings.Contains(err.Error(), test.want) {
@@ -1346,5 +1519,158 @@ func TestCollectSensorsValidatesRegistrationsRegardlessOfNeeds(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// modelHost is fakeHost with GPUs of one model; no GPUs fails discovery.
+type modelHost struct {
+	fakeHost
+	model string
+	gpus  int
+}
+
+func (h modelHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: h.gpus, model: h.model}, nil })
+}
+
+// gpu.power.draw is instantaneous on GA100 and older, so only architectures
+// that average it may export it as average_power_draw_w.
+func TestPowerDrawIsAverageOnlyOnAveragingArchitectures(t *testing.T) {
+	for _, tt := range []struct {
+		name, model string
+		want        string // "" for the 700 W value, else the error text
+		gpus        int
+	}{
+		{name: "H100", model: "NVIDIA H100 80GB HBM3", gpus: 4},
+		{name: "H200", model: "NVIDIA H200", gpus: 4},
+		{name: "GB200", model: "NVIDIA GB200", gpus: 4},
+		{name: "A100", model: "NVIDIA A100-SXM4-80GB", gpus: 4, want: `NOT_SUPPORTED): power draw is not a one-second average on architecture "A100"`},
+		{name: "unknown", model: "Tesla V100-SXM2-32GB", gpus: 4, want: `on architecture "unknown"`},
+		{name: "discovery failure", gpus: 0, want: `"GPUArchitecture" failed with COLLECTION_ERROR_CATEGORY_UNAVAILABLE: GPU architecture discovery: no GPUs enumerated`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			a := cadenceRunApp()
+			a.host = modelHost{fakeHost: fakeHost{b: spyBackend{called: new(bool)}}, model: tt.model, gpus: tt.gpus}
+			var stdout, stderr bytes.Buffer
+			if code := a.Run([]string{"collect", "--node-id", testNodeID}, &stdout, &stderr); code != exitOK {
+				t.Fatalf("collect exit = %d; stderr = %q", code, stderr.String())
+			}
+			var batch observation.ObservationBatch
+			if err := protojson.Unmarshal(stdout.Bytes(), &batch); err != nil {
+				t.Fatal(err)
+			}
+			var exported int
+			for _, o := range batch.GetObservations() {
+				if o.GetSignalId() != "gpu."+gpu.SignalAveragePowerDrawW {
+					continue
+				}
+				exported++
+				if tt.want == "" {
+					if o.GetValue().GetDoubleValue() != 700 {
+						t.Errorf("average power draw = %v, want 700 W", o)
+					}
+				} else if !strings.Contains(o.GetCollectionError().GetDetail(), tt.want) {
+					t.Errorf("average power draw = %v, want an error containing %q", o, tt.want)
+				}
+			}
+			if exported != 4 {
+				t.Fatalf("exported %d average power draws, want 4:\n%s", exported, stdout.String())
+			}
+		})
+	}
+}
+
+func TestAveragePowerDrawChecksStayOnAveragingArchitectures(t *testing.T) {
+	category := health.GPU
+	var found bool
+	for _, check := range catalog.New().List(catalog.Filter{Category: &category}) {
+		if !slices.Contains(check.RequiredSignals, gpu.SignalAveragePowerDrawW) {
+			continue
+		}
+		found = true
+		if len(check.Architectures) == 0 {
+			t.Errorf("%s reads %s on every architecture", check.ID, gpu.SignalAveragePowerDrawW)
+		}
+		for _, arch := range check.Architectures {
+			if !slices.Contains(averagedPowerDrawArchitectures, arch) {
+				t.Errorf("%s reads %s on %s, which does not average it", check.ID, gpu.SignalAveragePowerDrawW, arch)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no built-in check reads average_power_draw_w")
+	}
+}
+
+// A source that reports nothing fails the adapter's checks rather than
+// leaving them skipped and the run PASS.
+func TestGPUAdapterFailsWhenNothingCollected(t *testing.T) {
+	adapter, err := GPUAdapter[eccMeasurement]("ecc", map[string]string{
+		gpusignals.ECCDoubleBitVolatileTotal.ID(): "ecc_double_bit",
+		gpusignals.PerformanceState.ID():          "pstate",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := adapter.Build(nil)
+	if len(ms) != 1 || health.KeyOf(ms[0]) != health.SourceEntity("collect.ecc") || len(ms[0].Errors()) == 0 {
+		t.Fatalf("Build(nil) = %+v, want one errored source-level measurement", ms)
+	}
+}
+
+// lostSlotReader reports three GB200s and a fourth slot whose device handle
+// could not be read.
+type lostSlotReader struct{}
+
+func (lostSlotReader) ID() string { return "fake" }
+
+func (lostSlotReader) Read(ctx context.Context) (*observation.GPUInventorySnapshot, error) {
+	snapshot, err := inventoryReader{gpus: 3, model: "NVIDIA GB200"}.Read(ctx)
+	snapshot.GetInventory().Entries = append(snapshot.GetInventory().Entries, &observation.GPUInventoryEntry{
+		SourceIndex: 3, Gpu: &observation.GPUDevice{}, CollectionError: &observation.CollectionError{
+			Source: "nvml", Operation: "DeviceGetHandleByIndex", Category: observation.CollectionErrorCategoryUnavailable, SourceError: "ERROR_GPU_IS_LOST",
+		},
+	})
+	return snapshot, err
+}
+
+// A GPU no source can identify fails gpu_count, and the GPU checks that could
+// not read it name gpu_count as the cause.
+func TestRunNamesGPUCountForLostGPU(t *testing.T) {
+	f := healthyGB200()
+	a := fixtureApp(f)
+	now := timestamppb.Now()
+	var dcgm, processes []*observation.Observation
+	for _, g := range f.gpus[:3] {
+		dcgm = append(dcgm, g.dcgm(now)...)
+		processes = append(processes, g.processes(now)...)
+	}
+	for _, o := range f.gpus[3].dcgm(now) {
+		o.Target = observation.GPUSourceLocalTarget("dcgm-index-3")
+		dcgm = append(dcgm, o)
+	}
+	host := a.host.(sharedInventoryHost)
+	host.inventory = gpuinventory.New(func() (gpuinventory.Reader, error) { return lostSlotReader{}, nil })
+	host.gpu = []collect.Sensor{
+		fixedSensor{id: "gpu.dcgm", signals: dcgmGPUSignals, obs: dcgm},
+		fixedSensor{id: "gpu.nvml", signals: processGPUSignals, obs: processes},
+	}
+	a.host = host
+
+	var stdout, stderr bytes.Buffer
+	if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code != exitUnhealthy {
+		t.Fatalf("exit = %d, want %d; stderr = %q", code, exitUnhealthy, stderr.String())
+	}
+	var v health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	countFailed, explained := false, false
+	for _, r := range v.CheckResults {
+		countFailed = countFailed || (r.CheckID == "gpu_count" && r.Severity == health.Critical)
+		explained = explained || strings.Contains(strings.Join(r.Messages, " "), `explained by dependency "gpu_count"`)
+	}
+	if !countFailed || !explained {
+		t.Errorf("gpu_count critical = %v, a GPU check names gpu_count = %v; verdict = %+v", countFailed, explained, v.CheckResults)
 	}
 }

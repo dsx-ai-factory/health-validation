@@ -9,7 +9,11 @@ import "github.com/dsx-ai-factory/health-validation/collect/observation"
 
 type unsupportedNative struct{}
 
-func newNative(StandaloneOptions) nativeAPI { return unsupportedNative{} }
+func newNative(StandaloneOptions, sessionMode) nativeAPI { return unsupportedNative{} }
+
+func (unsupportedNative) MetricWatchGroups([]string) ([]metricWatchGroup, error) {
+	return []metricWatchGroup{}, nil
+}
 
 func (unsupportedNative) Init() (func(), error)          { return nil, unsupportedError() }
 func (unsupportedNative) AllGPUIndices() ([]uint, error) { return nil, unsupportedError() }
@@ -21,7 +25,7 @@ func (unsupportedNative) ReadGPUInventory([]uint) (map[uint]*observation.GPUInve
 	return nil, unsupportedError()
 }
 
-func (unsupportedNative) WatchMetrics([]string) (func() error, error) {
+func (unsupportedNative) WatchMetrics([]metricWatchGroup) (func() error, error) {
 	return nil, unsupportedError()
 }
 

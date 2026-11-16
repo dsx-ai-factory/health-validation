@@ -82,8 +82,8 @@ func TestToMeasurementsSlotsFromTwoSourcesEvaluateSeparately(t *testing.T) {
 	}
 	var entities []string
 	for _, v := range nv.CheckResults {
-		if v.Severity != health.Critical {
-			t.Errorf("%v severity = %v, want CRITICAL", v.AffectedEntities, v.Severity)
+		if v.Severity != health.Unknown {
+			t.Errorf("%v severity = %v, want UNKNOWN", v.AffectedEntities, v.Severity)
 		}
 		entities = append(entities, v.AffectedEntities...)
 	}
@@ -139,6 +139,122 @@ func TestToMeasurementsSourceLevelFailuresStayPerSource(t *testing.T) {
 	want := []health.EntityKey{health.SourceEntity("dcgm"), health.SourceEntity("nvml")}
 	if got := keysOf(ToMeasurements(observations)); !slices.Equal(got, want) {
 		t.Fatalf("keys = %v, want %v", got, want)
+	}
+}
+
+// sourceTimeout is a whole-source timeout of signal from source.
+func sourceTimeout(source string, signal string) *observation.Observation {
+	o := failedObservation(signal, &observation.CollectionError{Category: observation.CollectionErrorCategoryTimeout})
+	o.Source = source
+	o.Target = nil
+	return o
+}
+
+// timedOut reports whether every one of m's errors naming field is a timeout.
+func timedOut(m health.Measurement, field string) bool {
+	var found bool
+	for _, entry := range m.Errors() {
+		if slices.Contains(entry.FailedSignals(), field) {
+			if !errors.Is(entry.Err(), health.ErrCollectionTimeout) {
+				return false
+			}
+			found = true
+		}
+	}
+	return found
+}
+
+// When one source of a GPU fails as a whole, the GPUs another source read by
+// UUID carry its failure on the fields it feeds, and no separate source-level
+// measurement fails checks that source does not feed.
+func TestToMeasurementsFoldsSourceFailureIntoGPUs(t *testing.T) {
+	observations := []*observation.Observation{
+		sourceTimeout("dcgm", gpusignals.PowerDraw.ID()),
+		sourceTimeout("dcgm", gpusignals.PerformanceState.ID()),
+		valueObservation(gpusignals.ProcessCount.ID(), &observation.Value{Kind: &observation.Value_UintValue{UintValue: 0}}),
+		noValueObservation(gpusignals.ProcessCmdline.ID(), observation.NoValueReasonNoTargets),
+	}
+	ms := ToMeasurements(observations)
+	if got, want := keysOf(ms), []health.EntityKey{health.VerifiedEntity("GPU-0")}; !slices.Equal(got, want) {
+		t.Fatalf("keys = %v, want %v", got, want)
+	}
+	m := ms[0].(gpu.GPUMeasurement)
+	for _, field := range []string{gpu.SignalAveragePowerDrawW, gpu.SignalGPUPstate} {
+		if !timedOut(m, field) {
+			t.Errorf("%s did not carry the DCGM timeout: %v", field, m.Errors())
+		}
+	}
+	if failed := failedSignals(m); slices.Contains(failed, gpu.SignalComputeProcessCount) || slices.Contains(failed, gpu.SignalComputeProcessCmdlines) || slices.Contains(failed, gpu.SignalGPUID) {
+		t.Errorf("fields the failed source does not feed failed: %v", failed)
+	}
+}
+
+// With no GPU read by UUID, each source's measurement takes the other sources'
+// failures, so every field of a whole-domain timeout reads as a timeout.
+func TestToMeasurementsSourceFailuresCoverEachOther(t *testing.T) {
+	ms := ToMeasurements([]*observation.Observation{
+		sourceTimeout("dcgm", gpusignals.PerformanceState.ID()),
+		sourceTimeout("nvml", gpusignals.ProcessCount.ID()),
+	})
+	if got, want := keysOf(ms), []health.EntityKey{health.SourceEntity("dcgm"), health.SourceEntity("nvml")}; !slices.Equal(got, want) {
+		t.Fatalf("keys = %v, want %v", got, want)
+	}
+	for _, m := range ms {
+		for _, field := range []string{gpu.SignalGPUPstate, gpu.SignalComputeProcessCount} {
+			if !timedOut(m, field) {
+				t.Errorf("%v: %s is not a timeout: %v", health.KeyOf(m), field, m.Errors())
+			}
+		}
+	}
+}
+
+// When DCGM and NVML enumerate different GPUs, a GPU one source missed
+// reports that source's fields as never collected and keeps the other's
+// values; no GPU is dropped.
+func TestToMeasurementsPartialCrossSourceEnumeration(t *testing.T) {
+	on := func(source, uuid string, obs ...*observation.Observation) []*observation.Observation {
+		for _, o := range obs {
+			o.Source, o.Target = source, observation.GPUTarget(uuid)
+		}
+		return obs
+	}
+	dcgm := func(uuid string) []*observation.Observation { return on("dcgm", uuid, healthyGPUObservations()...) }
+	nvml := func(uuid string) []*observation.Observation {
+		return on("nvml", uuid,
+			valueObservation(gpusignals.ProcessCount.ID(), &observation.Value{Kind: &observation.Value_UintValue{UintValue: 0}}),
+			noValueObservation(gpusignals.ProcessCmdline.ID(), observation.NoValueReasonNoTargets))
+	}
+	dcgmFields := []string{gpu.SignalAveragePowerDrawW, gpu.SignalGPUPstate}
+	nvmlFields := []string{gpu.SignalComputeProcessCount, gpu.SignalComputeProcessCmdlines}
+	for _, test := range []struct {
+		name    string
+		obs     []*observation.Observation
+		missing []string // fields GPU-1 never collected
+		present []string // fields GPU-1 still has
+	}{
+		{name: "NVML missed GPU-1", obs: slices.Concat(dcgm("GPU-0"), dcgm("GPU-1"), nvml("GPU-0")), missing: nvmlFields, present: dcgmFields},
+		{name: "DCGM missed GPU-1", obs: slices.Concat(dcgm("GPU-0"), nvml("GPU-0"), nvml("GPU-1")), missing: dcgmFields, present: nvmlFields},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ms := ToMeasurements(test.obs)
+			if got, want := keysOf(ms), []health.EntityKey{health.VerifiedEntity("GPU-0"), health.VerifiedEntity("GPU-1")}; !slices.Equal(got, want) {
+				t.Fatalf("keys = %v, want %v", got, want)
+			}
+			if missing := missingSignals(ms[0].(gpu.GPUMeasurement)); len(missing) != 0 {
+				t.Errorf("GPU-0 missing %v, want none", missing)
+			}
+			missing := missingSignals(ms[1].(gpu.GPUMeasurement))
+			for _, field := range test.missing {
+				if !slices.Contains(missing, field) {
+					t.Errorf("GPU-1 %s not reported missing: %v", field, missing)
+				}
+			}
+			for _, field := range test.present {
+				if slices.Contains(failedSignals(ms[1].(gpu.GPUMeasurement)), field) {
+					t.Errorf("GPU-1 %s failed though its source read it", field)
+				}
+			}
+		})
 	}
 }
 
@@ -209,14 +325,14 @@ func TestRoundTripPreservesProvisionalAndSourceKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	critical := 0
+	unknown := 0
 	for _, v := range nv.CheckResults {
-		if v.Severity == health.Critical {
-			critical++
+		if v.Severity == health.Unknown {
+			unknown++
 		}
 	}
-	if critical != len(want) {
-		t.Fatalf("CRITICAL results = %d, want %d: %+v", critical, len(want), nv.CheckResults)
+	if unknown != len(want) {
+		t.Fatalf("UNKNOWN results = %d, want %d: %+v", unknown, len(want), nv.CheckResults)
 	}
 }
 

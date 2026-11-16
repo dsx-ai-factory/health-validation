@@ -32,6 +32,10 @@ func TestMetricSemantics(t *testing.T) {
 		{ReliabilityViolationDuration, "gpu.reliability.violation.duration", "nanoseconds"},
 		{BoardLimitViolationDuration, "gpu.board_limit.violation.duration", "nanoseconds"},
 		{NVLinkThroughputTotal, "gpu.nvlink.throughput.total", "megabytes_per_second"},
+		{NVLinkLinkCount, "gpu.nvlink.link.count", "1"},
+		{NVLinkSpeedCommon, "gpu.nvlink.speed.common", "megabytes_per_second"},
+		{NVLinkEndpointSpeed, "gpu.nvlink.endpoint.speed", "megabytes_per_second"},
+		{NVLinkP2PStatus, "gpu.nvlink.p2p.status", "1"},
 	}
 	for _, test := range tests {
 		if got := test.definition.ID(); got != test.id {

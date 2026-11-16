@@ -15,7 +15,7 @@ import (
 func TestOpenInventoryReusesLateCompletedInitialization(t *testing.T) {
 	inst := stalledInstance(make(chan struct{}), false)
 	host := &nvmlHost{inst: inst}
-	reader, err := host.openInventory()
+	reader, err := gpuinventory.OpenNVML(host.instance)()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -26,8 +26,8 @@ enum Severity {
   PASS = 1;
   INFO = 2;
   WARNING = 3;
-  CRITICAL = 4;
-  UNKNOWN = 5;
+  UNKNOWN = 4;
+  CRITICAL = 5;
 }
 
 enum Category {
@@ -89,7 +89,7 @@ enum ExecutionContext {
   OUT_OF_BAND = 2;
 }
 
-// The schema version follows catalog/health/node-verdict.schema.json, currently 0.4.
+// The schema version follows catalog/health/node-verdict.schema.json, currently 0.6.
 // Required catalog scalars use presence so protojson retains zero-valued fields.
 // Timestamps are RFC3339 strings to preserve the catalog's offset and precision.
 message NodeVerdict {
@@ -138,9 +138,15 @@ message ResolvedThreshold {
   optional bool overridden = 4;
 }
 
+message AffectedCheck {
+  optional string check_id = 1;
+  repeated string entities = 2;
+}
+
 message AffectedComponent {
-  repeated string check_ids = 1;
+  reserved 1, 4;
+  reserved "check_ids", "entities";
+  repeated AffectedCheck checks = 5;
   optional Category category = 2;
   optional Severity max_severity = 3;
-  repeated string entities = 4;
 }

@@ -44,15 +44,12 @@ func fixtures() map[string]health.NodeVerdict {
 	skipped.SkipReason = health.CadenceMismatch
 	skipped.SkipDetail = "outside requested cadence"
 	discovery := health.CheckVerdict{Timestamp: stamp, CheckID: "architecture_discovery", Category: health.Node, Severity: health.Critical, RecommendedAction: health.Drain(health.RemediationActionCheckCollection), Messages: []string{"discovery unavailable"}}
-	emptyCheckIDs := health.AggregateNodeVerdict(nil)
-	emptyCheckIDs.AffectedComponents = []health.AffectedComponent{{CheckIDs: []string{}, Category: health.GPU, MaxSeverity: health.Warning}}
 	return map[string]health.NodeVerdict{
-		"empty":           health.AggregateNodeVerdict(nil),
-		"pass":            health.AggregateNodeVerdict([]health.CheckVerdict{pass}),
-		"critical":        health.AggregateNodeVerdict([]health.CheckVerdict{critical}),
-		"skipped":         health.AggregateNodeVerdict([]health.CheckVerdict{skipped}),
-		"discovery":       health.AggregateNodeVerdict([]health.CheckVerdict{discovery}),
-		"empty_check_ids": emptyCheckIDs,
+		"empty":     health.AggregateNodeVerdict(nil),
+		"pass":      health.AggregateNodeVerdict([]health.CheckVerdict{pass}),
+		"critical":  health.AggregateNodeVerdict([]health.CheckVerdict{critical}),
+		"skipped":   health.AggregateNodeVerdict([]health.CheckVerdict{skipped}),
+		"discovery": health.AggregateNodeVerdict([]health.CheckVerdict{discovery}),
 	}
 }
 
@@ -208,6 +205,7 @@ func TestSchemaFieldsAndEnumsHaveProtoCounterparts(t *testing.T) {
 		"resolvedThreshold": (&healthv1.ResolvedThreshold{}).ProtoReflect().Descriptor(),
 		"recommendedAction": (&healthv1.RecommendedAction{}).ProtoReflect().Descriptor(),
 		"affectedComponent": (&healthv1.AffectedComponent{}).ProtoReflect().Descriptor(),
+		"affectedCheck":     (&healthv1.AffectedCheck{}).ProtoReflect().Descriptor(),
 	}
 	for name, message := range messages {
 		definition := schema
@@ -418,6 +416,9 @@ func validateSchema(t *testing.T, root, schema map[string]any, value any, path s
 			}
 		}
 	case []any:
+		if min, ok := schema["minItems"].(json.Number); ok && min == "1" && len(v) == 0 {
+			t.Errorf("%s must not be empty", path)
+		}
 		if items, ok := schema["items"].(map[string]any); ok {
 			for _, item := range v {
 				validateSchema(t, root, items, item, path+"[]")
@@ -469,8 +470,9 @@ func TestWireHealthEnumsHaveSafeDefaultsAndPreserveCatalogOrder(t *testing.T) {
 
 func TestRejectsUnspecifiedHealthEnums(t *testing.T) {
 	for name, mutate := range map[string]func(*healthv1.NodeVerdict){
-		"overall severity": func(v *healthv1.NodeVerdict) { v.OverallSeverity = healthv1.Severity_SEVERITY_UNSPECIFIED.Enum() },
-		"domain severity":  func(v *healthv1.NodeVerdict) { v.SeverityByDomain["gpu"] = healthv1.Severity_SEVERITY_UNSPECIFIED },
+		"affected check ID": func(v *healthv1.NodeVerdict) { v.AffectedComponents[0].Checks[0].CheckId = nil },
+		"overall severity":  func(v *healthv1.NodeVerdict) { v.OverallSeverity = healthv1.Severity_SEVERITY_UNSPECIFIED.Enum() },
+		"domain severity":   func(v *healthv1.NodeVerdict) { v.SeverityByDomain["gpu"] = healthv1.Severity_SEVERITY_UNSPECIFIED },
 		"check severity": func(v *healthv1.NodeVerdict) {
 			v.CheckResults[0].Severity = healthv1.Severity_SEVERITY_UNSPECIFIED.Enum()
 		},

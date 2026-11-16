@@ -8,15 +8,23 @@ The exit code is a coarse health signal:
 |---|---|
 | <nobr>`0`</nobr> | Verdict is PASS, INFO, or WARNING — the node may remain in service. (WARNING maps to 0 today; this may become configurable.) |
 | <nobr>`1`</nobr> | Verdict is CRITICAL or UNKNOWN — the node should be removed from service, or its health could not be assessed. |
-| <nobr>`2`</nobr> | The tool could not run to a verdict at all — a config error, backend/sensor initialization failure, collection failure, or output write error. No verdict was produced. |
+| <nobr>`2`</nobr> | The tool could not run to a verdict at all — a config error, backend/sensor initialization failure, collection failure, threshold-override audit failure (journald socket unavailable or a write failed), or output write error. No verdict was produced. |
 
 The exit code does not distinguish CRITICAL from UNKNOWN or INFO from WARNING. For the precise level, read `overall_severity` from the JSON — Slurm prolog scripts that need more than the coarse signal should do so.
 
+Severity is ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL for both
+aggregation and action selection. A confirmed critical fault takes precedence
+over incomplete assessment; inspect `check_results` for any UNKNOWN results
+alongside a CRITICAL summary. Without a critical fault, UNKNOWN takes precedence
+over WARNING so an incomplete assessment still exits 1.
+
 ## What happens if a sensor cannot read from a GPU?
 
-It depends on how the sensor reports the failure. If the sensor can identify the GPU but cannot read one or more fields, it calls `AddError()` on the measurement for those failing fields. The catalog evaluates each check against the partial measurement: checks that require only the available signals proceed normally; checks that require a failed signal produce a CRITICAL verdict rather than silently passing.
+It depends on how the sensor reports the failure. If the sensor can identify the GPU but cannot read one or more fields, it calls `AddError()` on the measurement for those failing fields. The catalog evaluates each check against the partial measurement: checks that require only the available signals proceed normally; checks that require a failed signal produce an UNKNOWN verdict rather than silently passing.
 
-If the sensor cannot identify the GPU at all (e.g. a device handle failure), it returns an `ErroredGPU` measurement. All checks for that GPU produce CRITICAL verdicts.
+If the sensor cannot identify the GPU at all (e.g. a device handle failure), it returns an `ErroredGPU` measurement. Applicable checks whose required signals failed produce UNKNOWN verdicts. Disabled or otherwise inapplicable checks still skip.
+
+In catalog evaluation, collection errors affecting a check's required signals produce UNKNOWN regardless of its rule severities, including for warning-only checks. Permission and other non-timeout failures retain `drain` with `check_collection`; timeouts retain `drain` with `retry_collection`. These are recommendations for downstream callers, and the CLI exits 1 when it produces an UNKNOWN verdict.
 
 ## What does `skipped: true` mean?
 
@@ -25,7 +33,7 @@ The check did not execute. The `skip_reason` field says why:
 | Reason | Meaning | Action |
 |---|---|---|
 | NO_APPLICABLE_MEASUREMENT | The check's domain was collected, but no measurement in it carries the check's required signals. | Confirm the sensor produces the measurement shape this check needs. |
-| SENSOR_MISSING | The check's whole domain supplied no measurement: the sensor is absent, unconfigured, or its backend was never constructed. | Confirm the domain's sensor ran. Note this is not a collection *failure* — a sensor that ran and failed yields a CRITICAL result, not a skip. |
+| SENSOR_MISSING | The check's whole domain supplied no measurement: the sensor is absent, unconfigured, or its backend was never constructed. | Confirm the domain's sensor ran. A sensor that ran and reported a collection failure produces UNKNOWN results for applicable checks requiring the failed signals. |
 | SIGNAL_UNAVAILABLE_ARCHITECTURE | The check does not apply to this GPU architecture. | None. The check will never run in this environment. |
 | SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL | The check requires a different execution context. | Check `skip_detail` for the required context, then set `--execution-context` to match. |
 | CHECK_DISABLED | An operator disabled this check, through `disabled_checks:` in the config or `catalog.WithDisabledChecks`. | Intentional, but the verdict does not record which config file disabled it. |
@@ -71,7 +79,7 @@ Two further constraints apply to any override the category permits. It must matc
 
 Not every threshold publishes bounds, and an absent `value_max` is deliberate rather than an omission. Where the threshold *is* the tolerance — the maximum inactive NVLinks you accept, say — raising it is how you ask not to be alerted, so capping it would remove a legitimate control.
 
-All active overrides appear in `thresholds[name].overridden: true` in the output, alongside the original NVIDIA value in `thresholds[name].original_value`.
+All active overrides appear in `thresholds[name].overridden: true` in the output, alongside the original NVIDIA value in `thresholds[name].original_value`. Each override is also recorded in the host's systemd journal; see [Audit trail for overrides](/health-validation/operating/integration#audit-trail-for-overrides).
 
 ## What Go version is required?
 
@@ -79,12 +87,12 @@ Go 1.27.3, as declared in `go.mod`. The repo is a single Go module; `catalog`, `
 
 ## What hardware is covered?
 
-The catalog currently centers on GB200 and GB300 GPU nodes, with some checks scoped to further NVIDIA architectures, plus host CPU availability and topology. Registered checks cover host CPU (possible-versus-online logical CPU count and online NUMA node count), GPU power (power limit, power state, average draw, hardware throttle), leftover GPU compute processes, GPU count, NVLink (active links, fabric health, fabric status, bandwidth/count/speed, capabilities, and peer-to-peer), fatal mlx5 RDMA link flaps, and Xid-driven GPU events (a CRITICAL check per critical Xid code, a consolidated Xid warning check, and an INFO check for Xid 154). See the README's GB300 support note — GB200 coverage has been validated, GB300 coverage has not yet completed the same validation pass.
+The catalog currently centers on GB200 and GB300 GPU nodes, with some checks scoped to further NVIDIA architectures, plus host CPU availability and topology. Registered checks cover host CPU (possible-versus-online logical CPU count and online NUMA node count), GPU power (power limit, power state, average draw, hardware throttle), leftover GPU compute processes, GPU count, NVLink (active links, fabric health, fabric status, bandwidth/count/speed, capabilities, and peer-to-peer), fatal mlx5 RDMA link flaps, and Xid-driven GPU events (a check per Xid code, CRITICAL for critical-class codes and WARNING for warning-class ones; per-subtype checks for Xid 149; and a check for the recovery action Xid 154 reports). See the README's GB300 support note — GB200 coverage has been validated, GB300 coverage has not yet completed the same validation pass.
 
-The sensor interface is extensible. Partners can implement `toolkit.GPUBackend` for other GPU types and supply measurements directly to `cat.EvaluateAll(m)` without modifying catalog source. NVIDIA does not author or validate checks for non-NVIDIA hardware.
+The sensor interface is extensible. Partners can implement a `collect.Sensor` for another data source and register it with `WithCollect`, or supply measurements directly to `cat.EvaluateAll(m)`, without modifying catalog source. NVIDIA does not author or validate checks for non-NVIDIA hardware.
 
 ## Can I test without a GPU?
 
-Yes. The toolkit ships mock constructors: `toolkit.MockGPU(measurements...)` returns a `GPUBackend`, and `toolkit.MockCPU(measurement)` returns a `CPUBackend`. Pass them to their matching sensor constructors and call `toolkit.Collect(cat, sensor)` normally.
+Yes. Any `toolkit.Sensor` whose `Measure` returns fixed measurements can be passed to `toolkit.Collect(cat, sensor)`. To exercise the CLI wiring through `toolkit/app`, implement a `collect.Sensor` that returns fixed observations and claim its signals with `WithCollect(sensor, signalIDs...)`; it replaces the built-in source for those signals.
 
 The catalog itself has no hardware dependency. Populate `gpu.GPUMeasurement` directly and call `cat.EvaluateAll(m)` for fully in-process testing.

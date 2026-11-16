@@ -6,6 +6,7 @@ package observations
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -13,11 +14,14 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
+	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -35,6 +39,34 @@ func TestToMeasurementsGPU(t *testing.T) {
 	}
 }
 
+// A source-wide timeout has no GPU identity. It must fail gpu_id with the same
+// timeout, not a missing-observation error, so checks still recommend retrying
+// collection.
+func TestToMeasurementsSourceTimeoutRecommendsRetry(t *testing.T) {
+	var observations []*observation.Observation
+	for _, signal := range MappedSignalsFor(health.GPU) {
+		o := failedObservation(signal, &observation.CollectionError{Category: observation.CollectionErrorCategoryTimeout})
+		o.Target = nil
+		observations = append(observations, o)
+	}
+
+	m := only[gpu.GPUMeasurement](t, ToMeasurements(observations))
+	if !slices.Contains(failedSignals(m), gpu.SignalGPUID) {
+		t.Fatalf("failed signals = %v, want gpu_id", failedSignals(m))
+	}
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"))
+	if err := cat.Register(gpu.GPUPowerState()); err != nil {
+		t.Fatal(err)
+	}
+	verdict, err := cat.EvaluateAll(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := verdict.CheckResults[0].RecommendedAction; !got.Equal(health.Drain(health.RemediationActionRetryCollection)) {
+		t.Fatalf("action = %+v, want retry collection", got)
+	}
+}
+
 func TestToMeasurementsKeepsPerSignalFailure(t *testing.T) {
 	observations := replace(healthyGPUObservations(), gpusignals.PerformanceState.ID(),
 		failedObservation(gpusignals.PerformanceState.ID(), &observation.CollectionError{
@@ -45,7 +77,7 @@ func TestToMeasurementsKeepsPerSignalFailure(t *testing.T) {
 		}))
 
 	byID := evaluate(t, "H100", ToMeasurements(observations), gpu.GPUPowerLimit(), gpu.GPUPowerState())
-	if byID["gpu_power_limit"] != health.Pass || byID["gpu_power_state"] != health.Critical {
+	if byID["gpu_power_limit"] != health.Pass || byID["gpu_power_state"] != health.Unknown {
 		t.Fatalf("unexpected severities %v", byID)
 	}
 	m := only[gpu.GPUMeasurement](t, ToMeasurements(observations))
@@ -84,7 +116,7 @@ func TestToMeasurementsFailsUnsupportedCollectionError(t *testing.T) {
 		}))
 
 	byID := evaluate(t, "GB200", ToMeasurements(observations), nvlink.NVLinkFabric(), nvlink.NVLinkFabricHealth())
-	if byID["nvlink_fabric"] != health.Pass || byID["nvlink_fabric_health"] != health.Critical {
+	if byID["nvlink_fabric"] != health.Pass || byID["nvlink_fabric_health"] != health.Unknown {
 		t.Fatalf("unexpected severities %v", byID)
 	}
 }
@@ -96,6 +128,24 @@ func TestToMeasurementsFailsNoValueOutsideNeutralSignals(t *testing.T) {
 	m := only[gpu.GPUMeasurement](t, ToMeasurements(observations))
 	if got := failedSignals(m); !slices.Equal(got, []string{gpu.SignalGPUPstate}) {
 		t.Fatalf("failed signals = %v", got)
+	}
+}
+
+// The unknown-pstate sentinel (32) must fail the signal, not reach the threshold as a real P32.
+func TestToMeasurementsFailsUnknownPerformanceState(t *testing.T) {
+	for _, state := range []int64{-1, 16, 32} {
+		observations := replace(healthyGPUObservations(), gpusignals.PerformanceState.ID(),
+			valueObservation(gpusignals.PerformanceState.ID(), intValue(state)))
+
+		m := only[gpu.GPUMeasurement](t, ToMeasurements(observations))
+		if got := failedSignals(m); !slices.Equal(got, []string{gpu.SignalGPUPstate}) {
+			t.Fatalf("pstate %d: failed signals = %v", state, got)
+		}
+	}
+	observations := replace(healthyGPUObservations(), gpusignals.PerformanceState.ID(),
+		valueObservation(gpusignals.PerformanceState.ID(), intValue(maxPerformanceState)))
+	if m := only[gpu.GPUMeasurement](t, ToMeasurements(observations)); m.GPUPstate != maxPerformanceState || len(failedSignals(m)) != 0 {
+		t.Fatalf("P15 = %+v, errors %v", m, m.Errors())
 	}
 }
 
@@ -190,18 +240,97 @@ func TestToMeasurementsConvertsFabricManagerStatus(t *testing.T) {
 	}
 }
 
+// A GPU whose fabric status is reported unsupported is unregistered; failing to read the status is not.
+func TestToMeasurementsUnsupportedFabricStatusIsIncomplete(t *testing.T) {
+	status := gpusignals.FabricManagerStatus.ID()
+	unsupported := replace(healthyNVLinkObservations(), status, noValueObservation(status, observation.NoValueReasonNotSupported))
+	m := only[nvlink.NVLinkMeasurement](t, ToMeasurements(unsupported))
+	if !m.FabricRegistrationIncomplete || m.FabricRegistrationFailed || len(failedSignals(m)) != 0 {
+		t.Fatalf("unexpected measurement %+v, errors %v", m, failedSignals(m))
+	}
+	if byID := evaluate(t, "GB200", ToMeasurements(unsupported), nvlink.NVLinkFabric()); byID["nvlink_fabric"] != health.Critical {
+		t.Fatalf("unexpected severities %v", byID)
+	}
+
+	for name, current := range map[string]*observation.Observation{
+		"unsupported collection error": failedObservation(status, &observation.CollectionError{Category: observation.CollectionErrorCategoryUnsupported, SourceError: "DCGM_FT_NOT_SUPPORTED"}),
+		"no targets":                   noValueObservation(status, observation.NoValueReasonNoTargets),
+	} {
+		m := only[nvlink.NVLinkMeasurement](t, ToMeasurements(replace(healthyNVLinkObservations(), status, current)))
+		if !slices.Contains(failedSignals(m), nvlink.SignalFabricRegistrationIncomplete) {
+			t.Errorf("%s: registration did not fail: %+v", name, m)
+		}
+	}
+}
+
 // Checks fed by signals with no mapped observation must not pass on the
 // zero values of fields nobody collected.
-func TestToMeasurementsFailsCatalogSignalsWithoutMappedFeed(t *testing.T) {
+func TestToMeasurementsFailsCatalogSignalsWithoutObservation(t *testing.T) {
 	byID := evaluate(t, "GB200", ToMeasurements(healthyNVLinkObservations()),
 		nvlink.NVLinkFabricHealth(), nvlink.NVLinkActive())
-	if byID["nvlink_fabric_health"] != health.Pass || byID["nvlink_active"] != health.Critical {
+	if byID["nvlink_fabric_health"] != health.Pass || byID["nvlink_active"] != health.Unknown {
 		t.Fatalf("unexpected severities %v", byID)
 	}
 
 	byID = evaluateIn(t, "H100", health.TenantGuest, ToMeasurements(healthyGPUObservations()), gpu.GPUComputeApps())
-	if byID["gpu_compute_apps"] != health.Critical {
+	if byID["gpu_compute_apps"] != health.Unknown {
 		t.Fatalf("unexpected severities %v", byID)
+	}
+}
+
+// A failure that cannot name a GPU, from a whole source or a slot whose UUID
+// is unknown, also fails gpu_id. A timeout then
+// recommends a retry, and the gpu_count dependency explains the lost GPU.
+func TestToMeasurementsUnidentifiedGPUFailureFailsGPUID(t *testing.T) {
+	tests := []struct {
+		target   *observation.ObservationTarget
+		name     string
+		action   health.RemediationAction
+		category observation.CollectionErrorCategory
+	}{
+		{name: "source timeout", category: observation.CollectionErrorCategoryTimeout, action: health.RemediationActionRetryCollection},
+		{name: "failed slot", target: observation.GPUSourceLocalTarget("0"), category: observation.CollectionErrorCategoryUnavailable, action: health.RemediationActionCheckCollection},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			failed := failedObservation(gpusignals.FabricManagerStatus.ID(), &observation.CollectionError{Source: "dcgm", Operation: "Measure", Category: test.category})
+			failed.Target = test.target
+			measurements := ToMeasurements([]*observation.Observation{failed})
+			if !slices.Contains(failedSignals(only[nvlink.NVLinkMeasurement](t, measurements)), nvlink.SignalGPUID) {
+				t.Fatalf("gpu_id did not fail: %v", failedSignals(measurements[0]))
+			}
+			verdict, err := catalog.New(catalog.WithArchitecture("GB200")).EvaluateAll(append(measurements, node.NodeMeasurement{GPUCount: 3})...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, v := range verdict.CheckResults {
+				if v.CheckID != "nvlink_fabric" {
+					continue
+				}
+				if v.Severity != health.Unknown || !v.RecommendedAction.Equal(health.Drain(test.action)) {
+					t.Errorf("nvlink_fabric = %s %v, want UNKNOWN %s", v.Severity, v.RecommendedAction, test.action)
+				}
+				if !strings.Contains(strings.Join(v.Messages, " "), `explained by dependency "gpu_count"`) {
+					t.Errorf("messages = %v, want the gpu_count dependency", v.Messages)
+				}
+				return
+			}
+			t.Fatal("nvlink_fabric did not run")
+		})
+	}
+}
+
+// A slot that reported values was read, so one failed field does not fail
+// gpu_id and every other check of that GPU.
+func TestToMeasurementsSlotWithValuesKeepsGPUID(t *testing.T) {
+	slot := observation.GPUSourceLocalTarget("dcgm-index-0")
+	status := valueObservation(gpusignals.FabricManagerStatus.ID(), intValue(gpusignals.FabricManagerStatusSuccess))
+	status.Target = slot
+	failed := failedObservation(gpusignals.NVLinkFabricRouteUnhealthy.ID(), &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable})
+	failed.Target = slot
+	m := only[nvlink.NVLinkMeasurement](t, ToMeasurements([]*observation.Observation{status, failed}))
+	if slices.Contains(failedSignals(m), nvlink.SignalGPUID) {
+		t.Fatalf("gpu_id failed: %v", failedSignals(m))
 	}
 }
 
@@ -262,7 +391,7 @@ func only[M health.Measurement](t *testing.T, measurements []health.Measurement)
 }
 
 // mappedErrors returns m's errors other than the entry naming catalog
-// signals no mapped signal feeds, which depends on the catalog schema
+// signals nothing in the batch fed, which depends on the catalog schema
 // rather than on the observations under test.
 func mappedErrors(m health.Measurement) []health.ErroredMeasurement {
 	var errs []health.ErroredMeasurement
@@ -361,6 +490,8 @@ func TestMappedSignalsFor(t *testing.T) {
 		gpusignals.HardwareSlowdownActive.ID(),
 		gpusignals.HardwareThermalSlowdownActive.ID(),
 		gpusignals.HardwarePowerBrakeSlowdownActive.ID(),
+		gpusignals.ProcessCount.ID(),
+		gpusignals.ProcessCmdline.ID(),
 	}
 	nvlinkIDs := []string{
 		gpusignals.NVLinkFabricBandwidthDegraded.ID(),
@@ -368,6 +499,17 @@ func TestMappedSignalsFor(t *testing.T) {
 		gpusignals.NVLinkFabricRouteUnhealthy.ID(),
 		gpusignals.NVLinkFabricAccessTimeoutRecovery.ID(),
 		gpusignals.FabricManagerStatus.ID(),
+		gpusignals.NVLinkState.ID(),
+		gpusignals.NVLinkLinkCount.ID(),
+		gpusignals.NVLinkSpeedCommon.ID(),
+		gpusignals.NVLinkEndpointSpeed.ID(),
+		gpusignals.NVLinkEndpointCapabilityP2PSupported.ID(),
+		gpusignals.NVLinkEndpointCapabilitySysmemAccess.ID(),
+		gpusignals.NVLinkEndpointCapabilityP2PAtomics.ID(),
+		gpusignals.NVLinkEndpointCapabilitySysmemAtomics.ID(),
+		gpusignals.NVLinkEndpointCapabilitySLIBridge.ID(),
+		gpusignals.NVLinkEndpointCapabilityValid.ID(),
+		gpusignals.NVLinkP2PStatus.ID(),
 	}
 	if got := MappedSignalsFor(health.GPU); !slices.Equal(got, gpuIDs) {
 		t.Fatalf("GPU signals = %v, want %v", got, gpuIDs)
@@ -400,8 +542,18 @@ func TestMappedSignalsFor(t *testing.T) {
 			t.Fatalf("Xid feed %s = %v, want %v", id, catalog, xid.MeasurementSignals())
 		}
 	}
+	if got := MappedSignalsFor(health.InfiniBand); !slices.Equal(got, ibsignals.LinkFlapSignals().IDs()) {
+		t.Fatalf("InfiniBand signals = %v, want %v", got, ibsignals.LinkFlapSignals().IDs())
+	}
+	// Link-flap fields likewise build one measurement together.
+	for id, catalog := range MappedFeeds(health.InfiniBand) {
+		if !slices.Equal(catalog, infiniband.MeasurementSignals()) {
+			t.Fatalf("InfiniBand feed %s = %v, want %v", id, catalog, infiniband.MeasurementSignals())
+		}
+	}
 	// Every mapped signal belongs to exactly one domain.
-	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.Node), MappedSignalsFor(health.GPU), MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid))
+	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.Node), MappedSignalsFor(health.GPU),
+		MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid), MappedSignalsFor(health.InfiniBand))
 	if !slices.Equal(perDomain, MappedSignals()) {
 		t.Fatalf("per-domain signals %v do not partition %v", perDomain, MappedSignals())
 	}

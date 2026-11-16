@@ -14,6 +14,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"google.golang.org/protobuf/proto"
@@ -46,9 +47,12 @@ var canonicalTargets = []canonicalTarget{
 	{kind: targetNode, signals: cpusignals.All()},
 	{kind: targetNode, signals: collect.Signals{gpuinventory.GPUCount}},
 	{kind: targetNVLinkEndpoint, signals: gpusignals.EndpointSignals()},
+	{kind: targetGPUPair, signals: gpusignals.PairSignals()},
 	{kind: targetGPUProcess, signals: gpusignals.ProcessEntitySignals()},
 	{kind: targetJournalEntry, signals: xidsignals.EventSignals()},
 	{kind: targetNode, signals: collect.Signals{xidsignals.ScanWindow}},
+	{kind: targetJournalEntry, signals: ibsignals.LinkTransitionSignals()},
+	{kind: targetNode, signals: collect.Signals{ibsignals.LinkFlapScanSince}},
 }
 
 type canonicalTarget struct {
@@ -180,8 +184,8 @@ func validateCollectObservation(o *observation.Observation, s collect.Signal) er
 			return fmt.Errorf("GPU target requires exactly one UUID or source-local ID")
 		}
 	}
-	if collectSourceLocal(o.GetTarget()) && o.GetCollectionError() == nil {
-		return fmt.Errorf("source-local GPU identity requires a collection error")
+	if pair := o.GetTarget().GetGpuPair(); pair != nil && pair.GetSourceGpu().GetUuid() != "" && pair.GetSourceGpu().GetUuid() == pair.GetPeerGpu().GetUuid() {
+		return fmt.Errorf("GPU pair target requires two distinct GPUs")
 	}
 	if entry := o.GetTarget().GetJournalEntry(); entry != nil && (strings.TrimSpace(entry.GetBootId()) == "" || strings.TrimSpace(entry.GetCursor()) == "") {
 		return fmt.Errorf("journal entry target requires a boot ID and cursor")
@@ -241,15 +245,33 @@ func gpuRefs(target *observation.ObservationTarget) []*observation.GPURef {
 	}
 }
 
+// failSourceLocalOutcomes fails each observation of a GPU known only by a
+// source-local ID. Its outcome cannot be joined to a verified GPU, so it fails
+// that GPU's checks, as an unreadable UUID does, instead of rejecting the
+// batch and every other GPU in it.
+func failSourceLocalOutcomes(batch *observation.ObservationBatch) {
+	for _, o := range batch.GetObservations() {
+		if o.GetCollectionError() == nil && collectSourceLocal(o.GetTarget()) {
+			o.Outcome = &observation.Observation_CollectionError{CollectionError: &observation.CollectionError{
+				Category:  observation.CollectionErrorCategoryUnavailable,
+				Source:    o.GetSource(),
+				Operation: "identity",
+				Detail:    "GPU UUID unavailable",
+			}}
+		}
+	}
+}
+
 // collectSourceLocal reports whether any GPU in target lacks a UUID.
 func collectSourceLocal(target *observation.ObservationTarget) bool {
 	return slices.ContainsFunc(gpuRefs(target), func(ref *observation.GPURef) bool { return ref.GetSourceLocalId() != "" })
 }
 
-// A parent GPU scopes failed entity enumeration without inventing an endpoint or process.
+// A parent GPU scopes failed entity enumeration without inventing an
+// endpoint, pair or process.
 func gpuParentOutcome(o *observation.Observation, s collect.Signal) bool {
 	rule, ok := canonical[s.ID()]
-	if !ok || (rule.target != targetNVLinkEndpoint && rule.target != targetGPUProcess) || targetKind(o.GetTarget()) != targetGPU || o.GetValue() != nil {
+	if !ok || (rule.target != targetNVLinkEndpoint && rule.target != targetGPUPair && rule.target != targetGPUProcess) || targetKind(o.GetTarget()) != targetGPU || o.GetValue() != nil {
 		return false
 	}
 	return o.GetCollectionError() != nil || o.GetNoValue() != nil

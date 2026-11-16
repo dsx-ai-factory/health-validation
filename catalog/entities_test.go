@@ -5,6 +5,7 @@ package catalog_test
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
 // gpuPstateCheck fails any GPU not in P0.
@@ -65,9 +67,13 @@ func TestEvaluateAll_FailingCheckNamesItsEntity(t *testing.T) {
 	}
 
 	// The node-level rollup is built from the same field, so it names the
-	// GPU too.
-	if len(nv.AffectedComponents) != 1 || !slices.Equal(nv.AffectedComponents[0].Entities, []string{"GPU-1"}) {
-		t.Errorf("AffectedComponents = %+v, want one naming GPU-1", nv.AffectedComponents)
+	// GPU on that check.
+	if len(nv.AffectedComponents) != 1 {
+		t.Fatalf("AffectedComponents = %+v, want one", nv.AffectedComponents)
+	}
+	checks := nv.AffectedComponents[0].Checks
+	if len(checks) != 1 || checks[0].CheckID != "gpu_pstate_probe" || !slices.Equal(checks[0].Entities, []string{"GPU-1"}) {
+		t.Errorf("AffectedComponents = %+v, want gpu_pstate_probe naming GPU-1", nv.AffectedComponents)
 	}
 }
 
@@ -89,7 +95,7 @@ func TestEvaluateAll_PassingCheckNamesNoEntity(t *testing.T) {
 	}
 }
 
-// An unobservable GPU is an affected entity: the verdict is Critical and the
+// An unobservable GPU is an affected entity: the verdict is Unknown and the
 // operator needs to know which device went dark.
 func TestEvaluateAll_ErroredMeasurementNamesItsEntity(t *testing.T) {
 	cat := catalog.NewEmpty(
@@ -138,5 +144,76 @@ func TestEvaluateAll_HostWideCheckNamesNoEntity(t *testing.T) {
 	}
 	if got := entitiesFor(t, nv, "cpu_probe"); len(got) != 0 {
 		t.Errorf("AffectedEntities = %v, want none for a host-wide check", got)
+	}
+}
+
+func xid48On(gpuID, pci string) xid.XidMeasurement {
+	return xid.XidMeasurement{
+		GPUID:      gpuID,
+		PCIAddress: pci,
+		Since:      "boot",
+		XidCounts:  map[int64]int64{48: 1},
+		Events:     []xid.XidEvent{{PCIAddress: pci, XidCode: 48}},
+		EventCount: 1,
+	}
+}
+
+// An Xid names the GPU that logged it: the UUID when one resolved, the PCI
+// address otherwise. PASS results show the GPU in observed_values only.
+func TestEvaluateAll_XidResultsNameTheirGPU(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.TenantGuest))
+	nv, err := cat.EvaluateAll(xid48On("GPU-a", "0000:89:00"), xid48On("", "0000:c1:00"))
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+
+	var named [][]string
+	for _, v := range nv.CheckResults {
+		if v.Category != health.Xid {
+			continue
+		}
+		if v.CheckID != "gpu_xid_48" {
+			if v.Severity != health.Pass || len(v.AffectedEntities) != 0 {
+				t.Errorf("%s = %v %v, want PASS naming nothing", v.CheckID, v.Severity, v.AffectedEntities)
+			}
+			if _, ok := v.ObservedValues[xid.SignalGPUID]; !ok {
+				t.Errorf("%s observed_values = %v, want gpu_id", v.CheckID, v.ObservedValues)
+			}
+			continue
+		}
+		if v.Severity != health.Critical {
+			t.Errorf("gpu_xid_48 = %v, want CRITICAL", v.Severity)
+		}
+		if keys := slices.Sorted(maps.Keys(v.ObservedValues)); !slices.Equal(keys, []string{"events", "gpu_id", "pci_address", "xid_counts"}) {
+			t.Errorf("gpu_xid_48 observed_values keys = %v", keys)
+		}
+		named = append(named, v.AffectedEntities)
+	}
+	if want := [][]string{{"GPU-a"}, {"0000:c1:00"}}; !slices.EqualFunc(named, want, slices.Equal) {
+		t.Errorf("gpu_xid_48 entities = %v, want %v", named, want)
+	}
+	for _, c := range nv.AffectedComponents {
+		if c.Category != health.Xid {
+			continue
+		}
+		var entities []string
+		for _, ch := range c.Checks {
+			entities = append(entities, ch.Entities...)
+		}
+		if !slices.Equal(slices.Sorted(slices.Values(entities)), []string{"0000:c1:00", "GPU-a"}) {
+			t.Errorf("xid affected component entities = %v", entities)
+		}
+	}
+}
+
+// A clean boot or failed scan has no GPU to name.
+func TestEvaluateAll_XidWithoutIdentityNamesNoEntity(t *testing.T) {
+	cat := catalog.New(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.TenantGuest))
+	nv, err := cat.EvaluateAll(xid.XidMeasurement{Since: "boot", XidCounts: map[int64]int64{79: 1}, EventCount: 1})
+	if err != nil {
+		t.Fatalf("EvaluateAll: %v", err)
+	}
+	if got := entitiesFor(t, nv, "gpu_xid_79"); len(got) != 0 {
+		t.Errorf("AffectedEntities = %v, want none", got)
 	}
 }

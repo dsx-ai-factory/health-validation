@@ -27,7 +27,7 @@ import (
 func testVerdict(t *testing.T) *healthv1.NodeVerdict {
 	t.Helper()
 	verdict := &healthv1.NodeVerdict{}
-	if err := protojson.Unmarshal([]byte(`{"schema_version":"0.4","catalog_version":"test","timestamp":"2026-11-02T00:00:00Z","trace_id":"trace","overall_severity":"CRITICAL","severity_by_domain":{"gpu":"CRITICAL"},"check_results":[]}`), verdict); err != nil {
+	if err := protojson.Unmarshal([]byte(`{"schema_version":"0.6","catalog_version":"test","timestamp":"2026-11-02T00:00:00Z","trace_id":"trace","overall_severity":"CRITICAL","severity_by_domain":{"gpu":"CRITICAL"},"check_results":[]}`), verdict); err != nil {
 		t.Fatal(err)
 	}
 	return verdict
@@ -425,7 +425,7 @@ func TestVerdictRejectsUnsupportedMethodsWithoutCollection(t *testing.T) {
 	}
 }
 
-func TestVerdictHTTPPreservesRequiredEmptyComponentCheckIDs(t *testing.T) {
+func TestVerdictHTTPPreservesRequiredEmptyComponentChecks(t *testing.T) {
 	verdict := testVerdict(t)
 	verdict.AffectedComponents = []*healthv1.AffectedComponent{{Category: healthv1.Category_gpu.Enum(), MaxSeverity: healthv1.Severity_CRITICAL.Enum()}}
 	handler := verdictHTTPHandler(&verdictService{handler: func(context.Context, *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) { return verdict, nil }}, nil)
@@ -434,8 +434,8 @@ func TestVerdictHTTPPreservesRequiredEmptyComponentCheckIDs(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	if !strings.Contains(response.Body.String(), `"check_ids":[]`) {
-		t.Fatalf("required empty check_ids omitted: %s", response.Body.String())
+	if !strings.Contains(response.Body.String(), `"checks":[]`) {
+		t.Fatalf("required empty checks omitted: %s", response.Body.String())
 	}
 	back := &healthv1.NodeVerdict{}
 	if err := protojson.Unmarshal(response.Body.Bytes(), back); err != nil {

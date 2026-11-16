@@ -24,11 +24,33 @@ import (
 const nvmlSource = "nvml"
 
 // NVML reads the basic inventory from inst's existing enumeration: every
-// slot with its handle and UUID outcome, which needs no further NVML call,
-// and GPU models in index order until one maps to an architecture, as legacy
-// discovery read them. Serial, VBIOS, PCI, platform, and fabric attributes are
-// not read; collect's NVML sensor can enrich the same devices on request.
+// slot with its handle, UUID and bus ID outcome, which needs no further NVML
+// call, GPU models in index order until one maps to an architecture, and
+// the system driver version, which the
+// catalog needs before it is built. Serial, VBIOS, other PCI, platform, and
+// fabric attributes are not read; collect's NVML sensor can enrich the same
+// devices on request.
 func NVML(inst nvmlsource.Instance) Reader { return nvmlReader{inst: inst} }
+
+// OpenNVML returns an open func for [New] that reads with [NVML] over the
+// instance open returns.
+func OpenNVML(open func() (nvmlsource.Instance, error)) func() (Reader, error) {
+	return func() (Reader, error) {
+		inst, err := open()
+		if err != nil {
+			return nil, markBusy(err)
+		}
+		return NVML(inst), nil
+	}
+}
+
+// markBusy marks an NVML refusal caused by another in-flight native call.
+func markBusy(err error) error {
+	if errors.Is(err, nvmlsource.ErrInUse) {
+		return fmt.Errorf("%w: %w", ErrSourceBusy, err)
+	}
+	return err
+}
 
 type nvmlReader struct {
 	inst nvmlsource.Instance
@@ -65,12 +87,14 @@ func (r nvmlReader) Read(ctx context.Context) (*observation.GPUInventorySnapshot
 	}
 	inventory := &observation.GPUInventory{}
 	err := r.inst.Read(func(map[string]device.Device) error {
+		setDriver := readDriverVersion(r.inst)
 		recognized := false
 		for _, record := range provider.InventoryDevices() {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			entry := basicEntry(record)
+			setDriver(entry)
 			if !recognized && record.Device != nil {
 				recognized = readModel(entry, record.Device)
 			}
@@ -79,7 +103,7 @@ func (r nvmlReader) Read(ctx context.Context) (*observation.GPUInventorySnapshot
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, markBusy(err)
 	}
 	return &observation.GPUInventorySnapshot{Source: nvmlSource, Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: inventory}}, nil
 }
@@ -104,6 +128,12 @@ func basicEntry(record nvmlsource.InventoryDevice) *observation.GPUInventoryEntr
 	default:
 		uuid := record.Device.UUID()
 		entry.Gpu.Uuid = &uuid
+		if busID := record.Device.PCIBusID(); busID != "" {
+			entry.Gpu.BusId = &busID
+		} else {
+			// The enumeration drops the read's return code, so the cause is unknown.
+			entry.FieldErrors = map[string]*observation.CollectionError{"bus_id": nvmlFailure("GetPciInfo", nvml.SUCCESS, "no bus ID; NVML return code not kept")}
+		}
 	}
 	return entry
 }
@@ -126,6 +156,32 @@ func readModel(entry *observation.GPUInventoryEntry, dev device.Device) bool {
 	}
 	entry.FieldErrors["model"] = failure
 	return false
+}
+
+// readDriverVersion reads the system driver version once and returns a
+// function recording it, or its failure, on each entry, as collect's full
+// inventory does. An instance without metadata records nothing.
+func readDriverVersion(inst nvmlsource.Instance) func(*observation.GPUInventoryEntry) {
+	provider, ok := inst.(interface{ Metadata() nvmlsource.Metadata })
+	if !ok {
+		return func(*observation.GPUInventoryEntry) {}
+	}
+	metadata := provider.Metadata()
+	return func(entry *observation.GPUInventoryEntry) {
+		if metadata.DriverReturn == nvml.SUCCESS && metadata.DriverVersion != "" {
+			version := metadata.DriverVersion
+			entry.Gpu.DriverVersion = &version
+			return
+		}
+		ret := metadata.DriverReturn
+		if ret == nvml.SUCCESS {
+			ret = nvml.ERROR_NO_DATA
+		}
+		if entry.FieldErrors == nil {
+			entry.FieldErrors = make(map[string]*observation.CollectionError)
+		}
+		entry.FieldErrors["driver_version"] = nvmlFailure("SystemGetDriverVersion", ret, "")
+	}
 }
 
 func nvmlFailure(operation string, ret nvml.Return, detail string) *observation.CollectionError {

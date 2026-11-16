@@ -5,8 +5,11 @@ package nvml
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -19,39 +22,78 @@ import (
 func interconnectSignals() collect.Signals { return gpusignals.Interconnect() }
 
 var (
-	linkSignals   = gpusignals.EndpointSignals()
+	gpuLinkSignals = collect.Signals{gpusignals.NVLinkLinkCount, gpusignals.NVLinkSpeedCommon}
+	linkSignals    = gpusignals.EndpointSignals()
+	// loopSignals are the endpoint signals read per link after its state. Link
+	// speed is read for all links at once, whatever their state, as legacy does.
+	loopSignals = slices.DeleteFunc(slices.Clone(linkSignals), func(s collect.Signal) bool {
+		return s.ID() == gpusignals.NVLinkEndpointSpeed.ID()
+	})
+	linkCounters = []struct {
+		definition collect.Signal
+		counter    nvml.NvLinkErrorCounter
+	}{
+		{gpusignals.NVLinkEndpointReplayErrorCount, nvml.NVLINK_ERROR_DL_REPLAY},
+		{gpusignals.NVLinkEndpointRecoveryErrorCount, nvml.NVLINK_ERROR_DL_RECOVERY},
+		{gpusignals.NVLinkEndpointCRCFlitErrorCount, nvml.NVLINK_ERROR_DL_CRC_FLIT},
+	}
+	linkCapabilities = []struct {
+		definition collect.Signal
+		capability nvml.NvLinkCapability
+	}{
+		{gpusignals.NVLinkEndpointCapabilityP2PSupported, nvml.NVLINK_CAP_P2P_SUPPORTED},
+		{gpusignals.NVLinkEndpointCapabilitySysmemAccess, nvml.NVLINK_CAP_SYSMEM_ACCESS},
+		{gpusignals.NVLinkEndpointCapabilityP2PAtomics, nvml.NVLINK_CAP_P2P_ATOMICS},
+		{gpusignals.NVLinkEndpointCapabilitySysmemAtomics, nvml.NVLINK_CAP_SYSMEM_ATOMICS},
+		{gpusignals.NVLinkEndpointCapabilitySLIBridge, nvml.NVLINK_CAP_SLI_BRIDGE},
+		{gpusignals.NVLinkEndpointCapabilityValid, nvml.NVLINK_CAP_VALID},
+	}
 	fabricSignals = collect.Signals{gpusignals.NVLinkFabricState, gpusignals.NVLinkFabricStatus, gpusignals.NVLinkFabricCliqueID, gpusignals.NVLinkFabricClusterUUID, gpusignals.NVLinkFabricHealthMask, gpusignals.NVLinkFabricHealthSummary, gpusignals.NVLinkFabricBandwidthDegraded, gpusignals.NVLinkFabricRouteRecoveryActive, gpusignals.NVLinkFabricRouteUnhealthy, gpusignals.NVLinkFabricAccessTimeoutRecovery}
 )
 
 func measureInterconnect(ctx context.Context, batch *observation.ObservationBatch, now *timestamppb.Timestamp, target *observation.ObservationTarget, dev device.Device, want map[string]bool) {
 	r := rawReads{ctx: ctx, batch: batch, now: now, target: target, want: want}
-	if r.selected(linkSignals) {
+	links, bounded := int(nvml.NVLINK_MAX_LINKS), false
+	if r.selected(gpuLinkSignals) || r.selected(linkSignals) {
+		values := []nvml.FieldValue{{FieldId: nvml.FI_DEV_NVLINK_LINK_COUNT}, {FieldId: nvml.FI_DEV_NVLINK_SPEED_MBPS_COMMON}}
+		ret := nvml.SUCCESS
+		if r.canRead() {
+			ret = dev.GetFieldValues(values)
+			r.note(ret)
+		}
+		count, countOK := r.recordField(gpusignals.NVLinkLinkCount, ret, values[0])
+		r.recordField(gpusignals.NVLinkSpeedCommon, ret, values[1])
+		// Past-the-end link returns differ by platform, so a known count bounds
+		// the loop. A count of 0 does not, so a GPU without NVLink still reports
+		// NOT_SUPPORTED at link 0.
+		if countOK && count > 0 && count <= uint64(links) {
+			links, bounded = int(count), true
+		}
+		if want[gpusignals.NVLinkEndpointSpeed.ID()] {
+			countRet := ret
+			if countRet == nvml.SUCCESS {
+				countRet = nvml.Return(values[0].NvmlReturn)
+			}
+			measureLinkSpeeds(&r, dev, links, bounded, countRet)
+		}
+	}
+	if r.selected(loopSignals) {
 		if !r.canRead() {
-			for _, definition := range linkSignals {
+			for _, definition := range loopSignals {
 				r.record(definition, "GetNvLinkState", nvml.SUCCESS, nil)
 			}
 		} else {
-			counters := []nvml.NvLinkErrorCounter{nvml.NVLINK_ERROR_DL_REPLAY, nvml.NVLINK_ERROR_DL_RECOVERY, nvml.NVLINK_ERROR_DL_CRC_FLIT}
-			for link := range int(nvml.NVLINK_MAX_LINKS) {
+			for link := range links {
 				state, ret := nvml.FEATURE_DISABLED, nvml.SUCCESS
 				if r.canRead() {
 					state, ret = dev.GetNvLinkState(link)
 				}
-				if ret == nvml.ERROR_FUNCTION_NOT_FOUND {
+				// FUNCTION_NOT_FOUND, or NOT_SUPPORTED at link 0, means the GPU
+				// reports no links at all.
+				if ret == nvml.ERROR_FUNCTION_NOT_FOUND || (ret == nvml.ERROR_NOT_SUPPORTED && link == 0) {
 					r.target = target
-					for _, definition := range linkSignals {
+					for _, definition := range loopSignals {
 						r.record(definition, "GetNvLinkState", ret, nil)
-					}
-					break
-				}
-				// A higher unsupported index terminates the contiguous link shape.
-				// Other failed state reads retain their endpoint and do not hide later links.
-				if ret == nvml.ERROR_NOT_SUPPORTED {
-					if link == 0 {
-						r.target = target
-						for _, definition := range linkSignals {
-							r.record(definition, "GetNvLinkState", nvml.ERROR_NOT_SUPPORTED, nil)
-						}
 					}
 					break
 				}
@@ -59,27 +101,48 @@ func measureInterconnect(ctx context.Context, batch *observation.ObservationBatc
 				r.record(gpusignals.NVLinkState, "GetNvLinkState", ret, rawUint(uint64(state)))
 				r.note(ret)
 				if ret != nvml.SUCCESS {
-					for _, definition := range linkSignals[1:] {
-						r.record(definition, "GetNvLinkState", ret, nil)
+					for _, definition := range loopSignals {
+						if definition.ID() != gpusignals.NVLinkState.ID() {
+							r.record(definition, "GetNvLinkState", ret, nil)
+						}
 					}
-					if !r.canRead() {
+					// A higher unsupported index ends the links. It is still
+					// recorded, so capabilities cannot pass on the links before it.
+					if ret == nvml.ERROR_NOT_SUPPORTED || !r.canRead() {
 						break
 					}
 					continue
 				}
-				for i, counter := range counters {
-					definition := linkSignals[i+1]
-					if !want[definition.ID()] {
+				for _, c := range linkCounters {
+					if !want[c.definition.ID()] {
 						continue
 					}
 					value, counterRet := uint64(0), nvml.SUCCESS
 					if r.canRead() {
-						value, counterRet = dev.GetNvLinkErrorCounter(link, counter)
+						value, counterRet = dev.GetNvLinkErrorCounter(link, c.counter)
 					}
-					r.record(definition, "GetNvLinkErrorCounter", counterRet, rawUint(value))
+					r.record(c.definition, "GetNvLinkErrorCounter", counterRet, rawUint(value))
+				}
+				for _, c := range linkCapabilities {
+					if !want[c.definition.ID()] {
+						continue
+					}
+					value, capabilityRet := uint32(0), nvml.SUCCESS
+					if r.canRead() {
+						value, capabilityRet = dev.GetNvLinkCapability(link, c.capability)
+					}
+					r.record(c.definition, "GetNvLinkCapability", capabilityRet, rawUint(uint64(value)))
 				}
 				if !r.canRead() {
 					break
+				}
+			}
+			// A GPU lost mid-loop leaves later links unread; fail them at the
+			// GPU so no link aggregate passes on the links read so far.
+			if !r.canRead() {
+				r.target = target
+				for _, definition := range loopSignals {
+					r.record(definition, "GetNvLinkState", nvml.SUCCESS, nil)
 				}
 			}
 		}
@@ -114,6 +177,11 @@ func measureInterconnect(ctx context.Context, batch *observation.ObservationBatc
 		if !want[definition.ID()] {
 			continue
 		}
+		// Unsupported fabric health reads as NoValue, as the DCGM source reports it.
+		if healthRet == nvml.ERROR_NOT_SUPPORTED && r.canRead() {
+			r.noValue(definition, "ERROR_NOT_SUPPORTED", "The driver does not support fabric health.")
+			continue
+		}
 		if healthRet != nvml.SUCCESS || !r.canRead() {
 			r.record(definition, "GetGpuFabricInfoV", healthRet, nil)
 			continue
@@ -128,6 +196,89 @@ func measureInterconnect(ctx context.Context, batch *observation.ObservationBatc
 			r.batch.Observations = append(r.batch.Observations, errorObservation(now, target, definition, "GetGpuFabricInfoV", observation.CollectionErrorCategoryParseError, fmt.Sprintf("FABRIC_HEALTH_%d", value), "Unknown fabric health mask encoding."))
 		}
 	}
+}
+
+// measureLinkSpeeds reads every link's speed in one call. Speeds are read
+// only below a known link count; otherwise the signal fails at the GPU with
+// the count's return.
+func measureLinkSpeeds(r *rawReads, dev device.Device, links int, bounded bool, countRet nvml.Return) {
+	if !bounded {
+		if countRet == nvml.SUCCESS {
+			countRet = nvml.ERROR_NOT_SUPPORTED
+		}
+		r.record(gpusignals.NVLinkEndpointSpeed, "GetFieldValues", countRet, nil)
+		return
+	}
+	values := make([]nvml.FieldValue, links)
+	for link := range values {
+		values[link] = nvml.FieldValue{FieldId: nvml.FI_DEV_NVLINK_GET_SPEED, ScopeId: uint32(link)}
+	}
+	ret := nvml.SUCCESS
+	if r.canRead() {
+		ret = dev.GetFieldValues(values)
+	}
+	gpu := r.target
+	for link := range values {
+		r.target = observation.NVLinkEndpointTarget(gpu.GetGpu().GetUuid(), uint32(link))
+		r.recordField(gpusignals.NVLinkEndpointSpeed, ret, values[link])
+	}
+	r.target = gpu
+}
+
+// measurePeers reads NVLink P2P status for every ordered pair of distinct
+// GPUs. A lost GPU is not a source: its selected signals already failed.
+func measurePeers(ctx context.Context, batch *observation.ObservationBatch, now *timestamppb.Timestamp, devices map[string]device.Device, lost, want map[string]bool) {
+	if !want[gpusignals.NVLinkP2PStatus.ID()] {
+		return
+	}
+	uuids := slices.Sorted(maps.Keys(devices))
+	for _, gpu := range uuids {
+		if lost[gpu] {
+			continue
+		}
+		if len(uuids) == 1 {
+			// Say a lone GPU has no peers, so its count is not read as uncollected.
+			definition := gpusignals.NVLinkP2PStatus
+			batch.Observations = append(batch.Observations, observation.NewNoValueObservation(definition.ID(), definition.Unit(), source, observation.GPUTarget(gpu), now,
+				&observation.NoValue{Reason: observation.NoValueReasonNoTargets, Detail: "No peer GPUs"}))
+			continue
+		}
+		for _, peer := range uuids {
+			if peer == gpu {
+				continue
+			}
+			// One reader per pair: a lost-GPU return may name the peer, so it
+			// must not stop this source's other pairs.
+			r := rawReads{ctx: ctx, batch: batch, now: now, target: observation.GPUPairTarget(gpu, peer), want: want}
+			status, ret := nvml.P2P_STATUS_OK, nvml.SUCCESS
+			if r.canRead() {
+				status, ret = devices[gpu].GetP2PStatus(devices[peer], nvml.P2P_CAPS_INDEX_NVLINK)
+			}
+			r.record(gpusignals.NVLinkP2PStatus, "GetP2PStatus", ret, rawUint(uint64(status)))
+		}
+	}
+}
+
+// recordField records one unsigned-int field value from GetFieldValues and
+// returns it when the read succeeded, whether or not the signal is wanted.
+func (r *rawReads) recordField(definition collect.Signal, callRet nvml.Return, value nvml.FieldValue) (uint64, bool) {
+	ret := callRet
+	if ret == nvml.SUCCESS {
+		ret = nvml.Return(value.NvmlReturn)
+	}
+	if ret != nvml.SUCCESS || !r.canRead() {
+		r.record(definition, "GetFieldValues", ret, nil)
+		return 0, false
+	}
+	if nvml.ValueType(value.ValueType) != nvml.VALUE_TYPE_UNSIGNED_INT {
+		if r.want[definition.ID()] {
+			r.batch.Observations = append(r.batch.Observations, errorObservation(r.now, r.target, definition, "GetFieldValues", observation.CollectionErrorCategoryParseError, fmt.Sprintf("VALUE_TYPE_%d", value.ValueType), "Unexpected NVML field value type."))
+		}
+		return 0, false
+	}
+	decoded := uint64(binary.LittleEndian.Uint32(value.Value[:4]))
+	r.record(definition, "GetFieldValues", nvml.SUCCESS, rawUint(decoded))
+	return decoded, true
 }
 
 func clusterUUID(raw [16]uint8) string {

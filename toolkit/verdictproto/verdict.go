@@ -78,6 +78,11 @@ func FromProto(verdict *healthv1.NodeVerdict) (health.NodeVerdict, error) {
 		if component == nil || component.Category == nil || component.MaxSeverity == nil {
 			return out, fmt.Errorf("affected component is missing a required scalar field")
 		}
+		for _, check := range component.GetChecks() {
+			if check == nil || check.CheckId == nil {
+				return out, fmt.Errorf("affected check is missing check_id")
+			}
+		}
 	}
 	data, err := verdictjson.Marshal(verdict)
 	if err != nil {

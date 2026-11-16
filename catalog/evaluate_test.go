@@ -374,7 +374,7 @@ func TestEvaluateAll_Dependencies(t *testing.T) {
 	}
 }
 
-// A measurement reporting Errors produces one Critical CheckVerdict
+// A measurement reporting Errors produces one Unknown CheckVerdict
 // per matching check, with the sensor's detail surfaced in the
 // message. The CEL rules must not run against the placeholder.
 func TestEvaluateAll_ErroredMeasurement(t *testing.T) {
@@ -390,7 +390,7 @@ func TestEvaluateAll_ErroredMeasurement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	// Every xid check the measurement feeds must fail Critical with the
+	// Every xid check the measurement feeds must report Unknown with the
 	// sensor error detail surfaced — XidMeasurement carries all xid signals.
 	// Checks in other categories the measurement does not feed are skips, not
 	// collateral failures.
@@ -398,8 +398,8 @@ func TestEvaluateAll_ErroredMeasurement(t *testing.T) {
 		t.Fatal("errored xid measurement produced no verdicts for the checks it feeds")
 	}
 	for _, v := range nv.CheckResults {
-		if v.Severity != health.Critical {
-			t.Errorf("CheckID %q: Severity = %v, want CRITICAL", v.CheckID, v.Severity)
+		if v.Severity != health.Unknown {
+			t.Errorf("CheckID %q: Severity = %v, want UNKNOWN", v.CheckID, v.Severity)
 		}
 		if !strings.Contains(strings.Join(v.Messages, " "), "ERROR_READ_FAILED") {
 			t.Errorf("CheckID %q: Messages = %q, want sensor detail surfaced", v.CheckID, v.Messages)
@@ -451,8 +451,8 @@ func TestEvaluateAll_ErroredMeasurement_GatesOnRequiredSignals(t *testing.T) {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
 
-	if len(nv.CheckResults) != 1 || nv.CheckResults[0].CheckID != "gpu_standard" || nv.CheckResults[0].Severity != health.Critical {
-		t.Errorf("check results = %+v, want one CRITICAL gpu_standard", nv.CheckResults)
+	if len(nv.CheckResults) != 1 || nv.CheckResults[0].CheckID != "gpu_standard" || nv.CheckResults[0].Severity != health.Unknown {
+		t.Errorf("check results = %+v, want one UNKNOWN gpu_standard", nv.CheckResults)
 	}
 	// gpu_thermal requires thermal_temp, outside the GPUMeasurement
 	// schema, so it skips exactly once.
@@ -462,27 +462,20 @@ func TestEvaluateAll_ErroredMeasurement_GatesOnRequiredSignals(t *testing.T) {
 }
 
 // ObservedValues carries only the check's required signals, so an unfed
-// sibling field's zero value cannot pass for a real reading. A check with no
-// required signals keeps every field.
+// sibling field's zero value cannot pass for a real reading.
 func TestEvaluateAll_ObservedValuesLimitedToRequiredSignals(t *testing.T) {
 	cat := catalog.NewEmpty(
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
-	for _, required := range [][]string{{"first"}, nil} {
-		id := "node_reads_first"
-		if required == nil {
-			id = "node_reads_any"
-		}
-		cat.MustRegister(health.CheckDefinition{
-			ID:                id,
-			Category:          health.Node,
-			RequiredSignals:   required,
-			ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
-			Thresholds:        map[string]health.ThresholdSpec{},
-			Rules:             []health.Rule{{Expression: "first < 1", Severity: health.Critical, Message: "first too low"}},
-		})
-	}
+	cat.MustRegister(health.CheckDefinition{
+		ID:                "node_reads_first",
+		Category:          health.Node,
+		RequiredSignals:   []string{"first"},
+		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
+		Thresholds:        map[string]health.ThresholdSpec{},
+		Rules:             []health.Rule{{Expression: "first < 1", Severity: health.Critical, Message: "first too low"}},
+	})
 
 	nv, err := cat.EvaluateAll(twoSignalMeasurement{First: 4})
 	if err != nil {
@@ -490,7 +483,6 @@ func TestEvaluateAll_ObservedValuesLimitedToRequiredSignals(t *testing.T) {
 	}
 	want := map[string]map[string]any{
 		"node_reads_first": {"first": int64(4)},
-		"node_reads_any":   {"first": int64(4), "second": int64(0)},
 	}
 	if len(nv.CheckResults) != len(want) {
 		t.Fatalf("CheckResults = %+v, want %d", nv.CheckResults, len(want))
@@ -571,9 +563,9 @@ func TestEvaluateAll_ErroredMeasurement_PartialFailureSparesUnaffectedChecks(t *
 		t.Errorf("node_first_only severity = %v, want PASS (first was collected)",
 			firstVerdict.Severity)
 	}
-	// second signal failed — Critical with the sensor's detail.
-	if secondVerdict.Severity != health.Critical {
-		t.Errorf("node_second_only severity = %v, want CRITICAL (second signal failed)",
+	// second signal failed — Unknown with the sensor's detail.
+	if secondVerdict.Severity != health.Unknown {
+		t.Errorf("node_second_only severity = %v, want UNKNOWN (second signal failed)",
 			secondVerdict.Severity)
 	}
 	if !strings.Contains(strings.Join(secondVerdict.Messages, " "), "second-signal query") {
@@ -583,7 +575,7 @@ func TestEvaluateAll_ErroredMeasurement_PartialFailureSparesUnaffectedChecks(t *
 
 // When a measurement carries multiple independent error entries and a
 // check's RequiredSignals overlap with more than one, the resulting
-// Critical verdict's message joins the matching entries' details so
+// Unknown verdict's message joins the matching entries' details so
 // consumers see every failure that affected the check.
 func TestEvaluateAll_ErroredMeasurement_JoinsMatchingErrorDetails(t *testing.T) {
 	// nodeBoth requires both signals; both error entries cover signals
@@ -624,8 +616,8 @@ func TestEvaluateAll_ErroredMeasurement_JoinsMatchingErrorDetails(t *testing.T) 
 	if v.CheckID == "" {
 		t.Fatalf("no node_both verdict in %d results", len(nv.CheckResults))
 	}
-	if v.Severity != health.Critical {
-		t.Fatalf("Severity = %v, want CRITICAL", v.Severity)
+	if v.Severity != health.Unknown {
+		t.Fatalf("Severity = %v, want UNKNOWN", v.Severity)
 	}
 	// Both error entries cover signals the check needs, so both
 	// details should appear in the verdict messages.
@@ -640,8 +632,8 @@ func TestEvaluateAll_ErroredMeasurement_JoinsMatchingErrorDetails(t *testing.T) 
 
 // An errored measurement and a healthy measurement in the same call
 // each route to their own verdicts: the healthy one runs through CEL
-// normally; the errored one short-circuits to a Critical verdict.
-// The aggregate severity is Critical because of the errored entity.
+// normally; the errored one short-circuits to an Unknown verdict.
+// The aggregate severity is Unknown because of the errored entity.
 func TestEvaluateAll_MixedErroredAndHealthy(t *testing.T) {
 	check := health.CheckDefinition{
 		ID:                "gpu_check",
@@ -671,16 +663,16 @@ func TestEvaluateAll_MixedErroredAndHealthy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	if nv.OverallSeverity != health.Critical {
-		t.Errorf("OverallSeverity = %v, want CRITICAL (errored GPU fails)",
+	if nv.OverallSeverity != health.Unknown {
+		t.Errorf("OverallSeverity = %v, want UNKNOWN (errored GPU fails)",
 			nv.OverallSeverity)
 	}
 	if len(nv.CheckResults) != 2 {
 		t.Errorf("CheckResults = %d, want 2 (1 check x 2 measurements)",
 			len(nv.CheckResults))
 	}
-	if nv.OverallSeverity != health.Critical {
-		t.Errorf("OverallSeverity = %v, want CRITICAL", nv.OverallSeverity)
+	if nv.OverallSeverity != health.Unknown {
+		t.Errorf("OverallSeverity = %v, want UNKNOWN", nv.OverallSeverity)
 	}
 }
 
@@ -1170,7 +1162,7 @@ func TestEvaluate_ConditionScope(t *testing.T) {
 				m.AddError(errors.New("sensor unavailable"), "first")
 				return m
 			},
-			wantSeverity:       health.Critical,
+			wantSeverity:       health.Unknown,
 			wantConditionScope: health.NodeScope,
 		},
 		{
@@ -1297,7 +1289,7 @@ func TestEvaluateAll_LostGPUNamesGPUCount(t *testing.T) {
 
 	named := map[string]int{}
 	for _, v := range verdict.CheckResults {
-		if v.Severity != health.Critical {
+		if v.Severity != health.Unknown {
 			continue
 		}
 		msg := strings.Join(v.Messages, " ")
@@ -1317,8 +1309,8 @@ func TestEvaluateAll_LostGPUNamesGPUCount(t *testing.T) {
 			t.Errorf("%s verdicts naming gpu_count = %d, want 1 for the one lost device", id, named[id])
 		}
 	}
-	if verdict.SeverityByDomain[health.GPU] != health.Critical {
-		t.Errorf("severity_by_domain[gpu] = %v, want CRITICAL", verdict.SeverityByDomain[health.GPU])
+	if verdict.SeverityByDomain[health.GPU] != health.Unknown {
+		t.Errorf("severity_by_domain[gpu] = %v, want UNKNOWN", verdict.SeverityByDomain[health.GPU])
 	}
 }
 
@@ -1346,7 +1338,7 @@ func TestEvaluateAll_PartialSignalFailureIsNotAttributedToDependency(t *testing.
 
 	var own, annotated int
 	for _, v := range verdict.CheckResults {
-		if v.CheckID != "gpu_power_limit" || v.Severity != health.Critical {
+		if v.CheckID != "gpu_power_limit" || v.Severity != health.Unknown {
 			continue
 		}
 		msg := strings.Join(v.Messages, " ")
@@ -1407,8 +1399,8 @@ func TestEvaluateAll_JointPartialFailuresAreNotAttributedToDependency(t *testing
 		if v.CheckID != "limits" {
 			continue
 		}
-		if v.Severity != health.Critical {
-			t.Errorf("severity = %v, want CRITICAL for the collection failure", v.Severity)
+		if v.Severity != health.Unknown {
+			t.Errorf("severity = %v, want UNKNOWN for the collection failure", v.Severity)
 		}
 		if strings.Contains(strings.Join(v.Messages, " "), "explained by dependency") {
 			t.Errorf("messages = %v, want no dependency named on a device that enumerated", v.Messages)
@@ -1437,7 +1429,7 @@ func TestEvaluateAll_CollectionFailureKeepsItsPrefixOnEveryMessage(t *testing.T)
 
 	var checked int
 	for _, v := range verdict.CheckResults {
-		if v.Severity != health.Critical {
+		if v.Severity != health.Unknown {
 			continue
 		}
 		if !strings.Contains(strings.Join(v.Messages, " "), "gpu_count") {
@@ -1455,14 +1447,14 @@ func TestEvaluateAll_CollectionFailureKeepsItsPrefixOnEveryMessage(t *testing.T)
 	}
 }
 
-// A dependency that reported Critical because its own measurement could not be
+// A dependency that reported Unknown because its own measurement could not be
 // collected explains nothing: it observed no fault. Only a rule match, which is
 // the path that records ObservedValues, licenses the claim.
 func TestEvaluateAll_UnobservedDependencyExplainsNothing(t *testing.T) {
 	cat := catalog.New(catalog.WithArchitecture("GB200"))
 	cause := errors.New("nvml init failed")
 
-	// The whole NVML source is wedged: gpu_count is Critical from its own
+	// The whole NVML source is wedged: gpu_count is Unknown from its own
 	// errored measurement rather than from a count it actually read.
 	verdict, err := cat.EvaluateAll(
 		node.ErroredNode(cause, node.MeasurementSignals()...),
@@ -1548,7 +1540,7 @@ func TestEvaluateAll_MultipleDependenciesNamesFirstDeclared(t *testing.T) {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
 	for _, v := range nv.CheckResults {
-		if v.CheckID != "two_deps" || v.Severity != health.Critical {
+		if v.CheckID != "two_deps" || v.Severity != health.Unknown {
 			continue
 		}
 		if !strings.Contains(strings.Join(v.Messages, " "), "first_root") {
@@ -1556,7 +1548,7 @@ func TestEvaluateAll_MultipleDependenciesNamesFirstDeclared(t *testing.T) {
 		}
 		return
 	}
-	t.Error("two_deps produced no Critical verdict")
+	t.Error("two_deps produced no Unknown verdict")
 }
 
 // Evaluate runs one check alone, so there is no sibling verdict to name and
@@ -1569,8 +1561,8 @@ func TestEvaluate_SingleCheckIgnoresDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if v.Severity != health.Critical {
-		t.Errorf("severity = %v, want CRITICAL", v.Severity)
+	if v.Severity != health.Unknown {
+		t.Errorf("severity = %v, want UNKNOWN", v.Severity)
 	}
 	if got := strings.Join(v.Messages, " "); strings.Contains(got, "gpu_count") {
 		t.Errorf("messages = %q, want no attribution on the single-check path", got)
@@ -1594,7 +1586,7 @@ func TestEvaluateAll_AnnotatedVerdictShape(t *testing.T) {
 	const want = `measurement unavailable: device handle unavailable; ` +
 		`explained by dependency "gpu_count", itself CRITICAL`
 	for _, v := range verdict.CheckResults {
-		if v.CheckID != "gpu_power_limit" || v.Severity != health.Critical {
+		if v.CheckID != "gpu_power_limit" || v.Severity != health.Unknown {
 			continue
 		}
 		if len(v.Messages) != 1 {
@@ -1613,8 +1605,47 @@ func TestEvaluateAll_AnnotatedVerdictShape(t *testing.T) {
 	t.Error("no annotated gpu_power_limit verdict")
 }
 
-// Unknown ranks above Critical and means the check could not complete, so a
-// dependency that reported it explains a dependent just as a Critical does.
+func TestEvaluateAll_DependencyKeepsWorstObservedSeverity(t *testing.T) {
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"))
+	cat.MustRegister(health.CheckDefinition{
+		ID: "root", Category: health.GPU,
+		RequiredSignals: []string{gpu.SignalGPUPstate},
+		Rules: []health.Rule{
+			{Expression: "gpu_pstate == 1", Severity: health.Critical},
+			{Expression: "gpu_pstate == 2", Severity: health.Unknown},
+		},
+	})
+	dependent := gpu.GPUPowerLimit()
+	dependent.Dependencies = []string{"root"}
+	cat.MustRegister(dependent)
+	critical, unknown := healthyGPU("GPU-critical"), healthyGPU("GPU-unknown")
+	critical.GPUPstate, unknown.GPUPstate = 1, 2
+	roots := []health.Measurement{critical, unknown}
+	for range 2 {
+		measurements := append(slices.Clone(roots), gpu.ErroredGPU("GPU-missing", errors.New("handle unavailable")))
+		verdict, err := cat.EvaluateAll(measurements...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, result := range verdict.CheckResults {
+			if result.CheckID != dependent.ID || result.Severity != health.Unknown {
+				continue
+			}
+			found = true
+			if !strings.Contains(strings.Join(result.Messages, " "), `explained by dependency "root", itself CRITICAL`) {
+				t.Errorf("messages = %v, want the dependency's CRITICAL result in either measurement order", result.Messages)
+			}
+		}
+		if !found {
+			t.Fatal("dependent collection failure was not evaluated")
+		}
+		slices.Reverse(roots)
+	}
+}
+
+// An observed Unknown rule result can explain a dependent's collection failure
+// even though Unknown ranks below Critical.
 func TestEvaluateAll_UnknownDependencyExplains(t *testing.T) {
 	root := health.CheckDefinition{
 		ID: "unknown_root", Category: health.Node,

@@ -18,7 +18,9 @@ func TestSignals(t *testing.T) {
 	}{
 		{definition: ScanWindow, id: "xid.scan.window"},
 		{definition: Code, id: "xid.event.code", unit: "1"},
+		{definition: Message, id: "xid.event.message"},
 		{definition: PCIAddress, id: "xid.event.pci_address"},
+		{definition: Sequence, id: "xid.event.sequence", unit: "1"},
 		{definition: PID, id: "xid.event.pid", unit: "1"},
 		{definition: ProcessName, id: "xid.event.process_name"},
 		{definition: GPC, id: "xid.event.gpc", unit: "1"},

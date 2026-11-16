@@ -28,12 +28,12 @@ checks that still fail:
    per-check monitor or no-action findings and stop this remediation flow. Do
    not treat the node as healthy. When present, it is selected from checks with
    `operational_state: drain` and a nonempty sequence by, in order:
-   1. higher severity;
+   1. higher severity: CRITICAL, UNKNOWN, WARNING, INFO, PASS;
    2. each remediation step's rank, compared in sequence order, using this
       priority from highest to lowest: `service_required`, `update_swfw`,
       `restart_os`, `reset_gpu`, `restart_app`, `check_collection`, and
       `retry_collection` (actions not in this list, including `hold`,
-      `xid_154`, and custom actions, share the lowest rank);
+      `stop_p2p_traffic`, and custom actions, share the lowest rank);
    3. the check ID; and
    4. action names in sequence order, as a stability fallback when repeated
       check IDs remain tied.
@@ -66,8 +66,12 @@ suite after each step recalculates the recommendation as findings clear.
 - `update_swfw` ranks above restarts because a restart alone does not correct a
   software or configuration incompatibility.
 - `restart_os`, `reset_gpu`, and `restart_app` follow in order of disruption.
-- At equal severity, `check_collection` and `retry_collection` rank last because
-  they represent collection failures rather than observed faults.
+- Severity is considered before action rank, so a CRITICAL recommendation
+  takes precedence over an UNKNOWN recommendation, including when the CRITICAL
+  recommendation uses an unranked action.
+- At equal severity, `check_collection` and `retry_collection` follow the ranked
+  hardware actions because they represent collection failures. Unranked actions,
+  including `hold`, `stop_p2p_traffic`, and custom actions, follow the collection actions.
 
 ## Action catalog
 
@@ -83,7 +87,7 @@ step (log it, surface it to a human) rather than an error.
 Most checks outside the Xid catalog recommend the same default sequence:
 CPU/NUMA topology, GPU count and power, most NVLink connectivity checks,
 InfiniBand link health, and the CLI's own architecture-discovery failure
-(`health.GenericDrain()`):
+unless NVML was busy (`health.GenericDrain()`):
 
 ```json
 "remediation_actions": ["reset_gpu", "restart_os", "service_required"]
@@ -157,11 +161,38 @@ a Nonfatal one. In NVIDIA's full Xid 144-150 decode table, about 95% of
 Fatal rows resolve to a GPU reset, then service if the reset doesn't clear
 it, and most Nonfatal rows need no remediation at all.
 
+`gpu_xid_154` reports the recovery action the driver requested for each GPU,
+whichever Xid it accompanied:
+
+- **CRITICAL** with `["restart_os", "service_required"]` for a reboot or bus
+  reset, and with `["reset_gpu", "service_required"]` for a GPU reset or
+  Drain and Reset. For Drain and Reset, schedule no new work on the GPU and
+  let unaffected jobs finish or reach a checkpoint before the reset.
+- **WARNING** with `["stop_p2p_traffic", "reset_gpu", "service_required"]`
+  for Drain P2P. NVIDIA's guidance is to quiesce P2P traffic, query the
+  recovery action again, and reset the GPU only if Drain P2P remains. The
+  driver often clears this request without logging another Xid 154, so the
+  journal alone cannot show that it was cleared; the sequence resets after
+  quiescing, and a consumer that can query the live recovery action may
+  skip the reset when Drain P2P is gone.
+- **WARNING** with `monitor` for an action this catalog does not map, such
+  as Recover IMEX Domain, and for a transition that could not be read.
+- **INFO** with no action for None.
+
+The action is the one Xid 154 last requested for each GPU. "Last" is by
+journal position; when the order of a GPU's Xid 154 lines is unknown, it
+keeps the most disruptive action they report, so a None cannot clear a
+request. An unreadable transition never replaces an action read for the
+same GPU. The `occurrences` threshold applies per action: each action's
+rule fires once that many Xid 154 reports ask for it as a GPU's current
+action. When a GPU's order is unknown, every one of its reports counts
+toward the action it names, so an uncertain request still counts.
+
 | Action | Description |
 |---|---|
 | <nobr>`restart_app`</nobr> | Restart the application using the GPU; the GPU itself is not considered faulted. The default for warning-class per-Xid checks. |
 | <nobr>`update_swfw`</nobr> | Bring the GPU driver/firmware and related software to compatible versions, or correct the vGPU configuration. Recommended for Xid 78 (vGPU start error), raised when the guest VM's driver is incompatible with the host vGPU Manager or the vGPU type is not supported for the guest OS or GPU. The guest driver is installed inside the VM; the host vGPU Manager and the vGPU type are managed by the infrastructure operator. |
-| <nobr>`xid_154`</nobr> | Informational: Xid 154 (GPU recovery action changed) always accompanies another Xid and has no remediation of its own — follow that other Xid's guidance. |
+| <nobr>`stop_p2p_traffic`</nobr> | Quiesce peer-to-peer traffic on the GPU: schedule no new jobs, stop the processes doing P2P traffic, and disable UVM persistence mode. Recommended for the Drain P2P (0x3) recovery action Xid 154 reports, following the GPU recovery action guidance in NVIDIA's [`nvidia-smi` documentation](https://docs.nvidia.com/deploy/nvidia-smi/index.html); NVIDIA's Xid catalog has no bucket of its own for it. |
 
 `gpu_xid_45` (Xid 45, preemptive removal) recommends `["restart_app"]` at
 WARNING when Xid 45 is the only Xid seen within the collection window. When
@@ -177,5 +208,5 @@ fault. They are not hardware remediation steps.
 
 | Action | Description |
 |---|---|
-| <nobr>`retry_collection`</nobr> | The measurement could not be collected in time (a sensor timeout). Retry collection — re-run `health-validation` — before assuming a hardware fault; investigate if it keeps timing out. |
+| <nobr>`retry_collection`</nobr> | The measurement could not be collected in time (a sensor timeout). Architecture discovery also recommends it, with an UNKNOWN verdict, when NVML was busy with an earlier call in the same process. Retry collection — re-run `health-validation` — before assuming a hardware fault; investigate if it keeps timing out. |
 | <nobr>`check_collection`</nobr> | The measurement could not be collected for a non-timeout reason (a driver, permission, or decode failure). Investigate the collection mechanism itself (driver, permissions, sensor) rather than the hardware, which was never actually observed. |

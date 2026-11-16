@@ -185,8 +185,8 @@ func TestEvaluateAll_ProvisionalSlotsAreSourceScoped(t *testing.T) {
 			t.Errorf("AffectedEntities = %v, want %v", got, want)
 		}
 		for _, v := range nv.CheckResults {
-			if v.CheckID == "gpu_pstate_probe" && v.Severity != health.Critical {
-				t.Errorf("%v severity = %v, want CRITICAL", v.AffectedEntities, v.Severity)
+			if v.CheckID == "gpu_pstate_probe" && v.Severity != health.Unknown {
+				t.Errorf("%v severity = %v, want UNKNOWN", v.AffectedEntities, v.Severity)
 			}
 		}
 	})
@@ -217,29 +217,6 @@ func TestEvaluateAll_ProvisionalIdentityCannotCarryValues(t *testing.T) {
 	wantAmbiguous(t, probeCatalog(), "gpu_pstate_probe", health.SourceEntity("nvml"), m)
 }
 
-// A check with no required signals reads every signal, so a provisional
-// measurement feeding it must have lost all of them. One failed field would
-// leave values under an identity nothing verifies.
-func TestEvaluateAll_ProvisionalIdentityFeedingAnySignalCheck(t *testing.T) {
-	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
-	cat.MustRegister(health.CheckDefinition{
-		ID:                "reads_any_gpu_signal",
-		Category:          health.GPU,
-		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
-		Thresholds:        map[string]health.ThresholdSpec{},
-		Rules:             []health.Rule{{Expression: "gpu_pstate != 0", Severity: health.Critical, Message: "pstate"}},
-	})
-
-	if _, err := cat.EvaluateAll(slotFailure("nvml", "0")); err != nil {
-		t.Fatalf("fully failed slot: EvaluateAll: %v", err)
-	}
-
-	partial := gpu.GPUMeasurement{GPUID: "nvml-index-0", GPUPstate: 8}
-	partial.AddError(errors.New("power read failed"), gpu.SignalAveragePowerDrawW)
-	partial.SetEntityKey(health.ProvisionalEntity("nvml", "0"))
-	wantAmbiguous(t, cat, "reads_any_gpu_signal", health.ProvisionalEntity("nvml", "0"), partial)
-}
-
 func TestEvaluateAll_MissingIdentityFailsClosed(t *testing.T) {
 	for _, key := range []health.EntityKey{
 		health.ProvisionalEntity("", "0"),
@@ -264,7 +241,7 @@ func TestEvaluateAll_UnidentifiedCollectionFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
-	// GPU-A passes; the unidentified failure is the one CRITICAL.
+	// GPU-A passes; the unidentified failure is the one UNKNOWN.
 	var severities []health.Severity
 	for _, v := range nv.CheckResults {
 		if v.CheckID == "gpu_pstate_probe" {
@@ -272,7 +249,7 @@ func TestEvaluateAll_UnidentifiedCollectionFailures(t *testing.T) {
 		}
 	}
 	slices.Sort(severities)
-	if want := []health.Severity{health.Pass, health.Critical}; !slices.Equal(severities, want) {
+	if want := []health.Severity{health.Pass, health.Unknown}; !slices.Equal(severities, want) {
 		t.Errorf("gpu_pstate_probe severities = %v, want %v", severities, want)
 	}
 	wantAmbiguous(t, probeCatalog(), "gpu_pstate_probe", health.EntityKey{}, lost, lost)

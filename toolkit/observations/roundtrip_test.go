@@ -65,6 +65,15 @@ func TestRoundTripPreservesMeasurementsAndVerdicts(t *testing.T) {
 		if !slices.Equal(got, want) {
 			t.Fatalf("%s/%s verdicts differ:\n got  %v\n want %v", scope.arch, scope.execution, got, want)
 		}
+		verdict, err := catalog.New(catalog.WithArchitecture(scope.arch), catalog.WithExecutionContext(scope.execution)).EvaluateAll(restored...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.ContainsFunc(verdict.CheckResults, func(r health.CheckVerdict) bool {
+			return r.CheckID == "gpu_xid_79" && r.Severity == health.Critical
+		}) {
+			t.Fatalf("%s/%s: missing CRITICAL gpu_xid_79 verdict:\n%s", scope.arch, scope.execution, strings.Join(got, "\n"))
+		}
 	}
 }
 
@@ -169,7 +178,7 @@ func roundTripFixture() []health.Measurement {
 	}
 }
 
-// byEntity summarizes measurements by type and GPU so the comparison ignores
+// byEntity summarizes measurements by type and entity so the comparison ignores
 // order: every json field, each error's message, timeout, and signals, and
 // the unsupported signals. An empty map or slice compares equal to nil.
 func byEntity(t *testing.T, measurements []health.Measurement) map[string]string {
@@ -211,6 +220,9 @@ func byEntity(t *testing.T, measurements []health.Measurement) map[string]string
 		}{fields, errs, unsupported})
 		if err != nil {
 			t.Fatal(err)
+		}
+		if entity, ok := m.(health.EntityIdentifier); ok {
+			id = entity.EntityID()
 		}
 		key := fmt.Sprintf("%T/%s", m, id)
 		if _, dup := out[key]; dup {
@@ -256,8 +268,8 @@ func verdictSummary(t *testing.T, arch string, execution health.ExecutionContext
 		}
 	}
 	slices.Sort(out)
-	if len(out) == 0 || !strings.Contains(strings.Join(out, ""), "CRITICAL") {
-		t.Fatalf("fixture should drive at least one CRITICAL verdict: %v", out)
+	if verdict.OverallSeverity != health.Critical && verdict.OverallSeverity != health.Unknown {
+		t.Fatalf("fixture should drive at least one CRITICAL or UNKNOWN verdict:\n%s", strings.Join(out, "\n"))
 	}
 	return out
 }
@@ -284,8 +296,8 @@ func TestToMeasurementsLimitsNeutralUnsupportedToToolkitSignals(t *testing.T) {
 	if got := m.UnsupportedSignals(); !slices.Equal(got, []string{gpu.SignalHWSlowdown}) {
 		t.Fatalf("unsupported signals = %v, want only %s", got, gpu.SignalHWSlowdown)
 	}
-	if got := evaluate(t, "H100", []health.Measurement{m}, gpu.GPUPowerState())["gpu_power_state"]; got != health.Critical {
-		t.Fatalf("gpu_power_state = %v, want CRITICAL", got)
+	if got := evaluate(t, "H100", []health.Measurement{m}, gpu.GPUPowerState())["gpu_power_state"]; got != health.Unknown {
+		t.Fatalf("gpu_power_state = %v, want UNKNOWN", got)
 	}
 
 	want := []string{
@@ -338,6 +350,40 @@ func TestRoundTripKeepsEveryErrorOnASignal(t *testing.T) {
 			restored := ToMeasurements(observations)
 			original := []health.Measurement{m}
 			if got, want := verdictSummary(t, "H100", health.OperatorInfra, restored), verdictSummary(t, "H100", health.OperatorInfra, original); !slices.Equal(got, want) {
+				t.Fatalf("verdicts differ:\n got  %v\n want %v", got, want)
+			}
+		})
+	}
+}
+
+// Per-GPU Xid measurements come back as the same GPUs, whether a GPU was
+// named by UUID, by PCI address, or not at all.
+func TestRoundTripKeepsXidIdentity(t *testing.T) {
+	xid48 := func(gpuID, pci string) xid.XidMeasurement {
+		return xid.XidMeasurement{
+			GPUID: gpuID, PCIAddress: pci, Since: "boot", EventCount: 1,
+			XidCounts: map[int64]int64{48: 1},
+			Events:    []xid.XidEvent{{XidCode: 48, PCIAddress: pci}},
+		}
+	}
+	for name, tc := range map[string]struct {
+		nodeID       string
+		measurements []health.Measurement
+	}{
+		"UUID, PCI address and none": {testNode, []health.Measurement{xid48("GPU-a", "0000:89:00"), xid48("", "0000:c1:00"), xid.XidMeasurement{Since: "boot"}}},
+		"no node ID":                 {"", []health.Measurement{xid48("", "")}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			observations, err := FromMeasurements("xid", tc.nodeID, time.Unix(1, 0), tc.measurements...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			restored := ToMeasurements(observations)
+			if got, want := byEntity(t, restored), byEntity(t, tc.measurements); !reflect.DeepEqual(got, want) {
+				t.Fatalf("restored measurements differ:\n got  %v\n want %v", got, want)
+			}
+			got, want := verdictSummary(t, "GB200", health.TenantGuest, restored), verdictSummary(t, "GB200", health.TenantGuest, tc.measurements)
+			if !slices.Equal(got, want) {
 				t.Fatalf("verdicts differ:\n got  %v\n want %v", got, want)
 			}
 		})

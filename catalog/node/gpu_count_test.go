@@ -99,14 +99,14 @@ func TestGPUCount(t *testing.T) {
 		},
 		{
 			// A NodeMeasurement whose errors cover gpu_count propagates to
-			// a Critical verdict regardless of the count rule, since the
+			// an Unknown verdict regardless of the count rule, since the
 			// data the check needed is unavailable.
-			name: "errored node forces critical",
+			name: "errored node reports unknown",
 			cat:  func() *catalog.Catalog { return newCatalog() },
 			measurement: func() node.NodeMeasurement {
 				return node.ErroredNode(errors.New("nvml init failed"), node.MeasurementSignals()...)
 			},
-			wantSeverity: health.Critical,
+			wantSeverity: health.Unknown,
 		},
 	}
 

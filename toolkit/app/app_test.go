@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,15 +17,18 @@ import (
 	"testing"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/catalogtest"
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
@@ -90,12 +94,7 @@ func TestCollectionOutputEmitsObservationBatch(t *testing.T) {
 }
 
 func TestCollectCommandWritesObservationBatch(t *testing.T) {
-	a := New().WithProgramName("test")
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithGPUBackend(toolkit.MockGPU(gpu.GPUMeasurement{GPUID: "GPU-0", PowerLimitW: 700, EnforcedPowerLimitW: 700}))
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 1}))
+	a := cadenceRunApp()
 
 	var stdout, stderr bytes.Buffer
 	if code := a.Run([]string{"collect", "--node-id", testNodeID}, &stdout, &stderr); code != exitOK {
@@ -113,7 +112,7 @@ func TestCollectCommandWritesObservationBatch(t *testing.T) {
 	}
 	for _, want := range []func(*observation.Observation) bool{
 		func(o *observation.Observation) bool {
-			return o.GetSignalId() == "gpu.power_limit_w" && o.GetValue().GetDoubleValue() == 700
+			return o.GetSignalId() == "gpu.power_limit_w" && o.GetValue().GetDoubleValue() == 1200
 		},
 		func(o *observation.Observation) bool {
 			return o.GetSignalId() == "cpu.numa_node_count" && o.GetTarget().GetNode().GetId() == testNodeID
@@ -127,11 +126,11 @@ func TestCollectCommandWritesObservationBatch(t *testing.T) {
 	// The written batch rebuilds the measurements an evaluate step needs.
 	var rebuilt *gpu.GPUMeasurement
 	for _, m := range observations.ToMeasurements(batch.GetObservations()) {
-		if g, ok := m.(gpu.GPUMeasurement); ok {
+		if g, ok := m.(gpu.GPUMeasurement); ok && g.GPUID == "GPU-0" {
 			rebuilt = &g
 		}
 	}
-	if rebuilt == nil || rebuilt.GPUID != "GPU-0" || rebuilt.PowerLimitW != 700 || len(rebuilt.Errors()) != 0 {
+	if rebuilt == nil || rebuilt.PowerLimitW != 1200 || len(rebuilt.Errors()) != 0 {
 		t.Fatalf("rebuilt GPU measurement = %+v", rebuilt)
 	}
 }
@@ -161,7 +160,7 @@ func customCheck() health.CheckDefinition {
 // TestWithChecksRegistersCustomCheck confirms a check supplied via the
 // WithChecks SPI is registered into the catalog alongside the built-ins.
 func TestWithChecksRegistersCustomCheck(t *testing.T) {
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, "", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{customCheck()}, "", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -177,7 +176,7 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	canonical := customCheck()
 	canonical.Provenance = health.NVIDIA
 
-	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, "", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, []health.CheckDefinition{canonical}, "", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -191,14 +190,14 @@ func TestWithChecksPreservesProvenance(t *testing.T) {
 	}
 }
 
-// TestWithChecksDuplicateIDFails confirms the only registration constraint:
+// TestWithChecksDuplicateIDFails confirms the duplicate-ID constraint:
 // a custom check whose ID collides with a built-in (here gpu_count) makes
 // catalog construction fail rather than silently shadowing.
 func TestWithChecksDuplicateIDFails(t *testing.T) {
 	collide := customCheck()
 	collide.ID = "gpu_count" // collides with a built-in
 
-	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, "", health.OperatorInfra)
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{collide}, "", health.DriverVersion{}, health.OperatorInfra)
 	if err == nil {
 		t.Fatal("expected duplicate-ID error, got nil")
 	}
@@ -207,11 +206,29 @@ func TestWithChecksDuplicateIDFails(t *testing.T) {
 	}
 }
 
+// TestWithChecksRejectsCheckWithoutRequiredSignals confirms a custom check that
+// names no signals stops catalog construction instead of reading every
+// measurement of its category.
+func TestWithChecksRejectsCheckWithoutRequiredSignals(t *testing.T) {
+	c := customCheck()
+	c.RequiredSignals = nil
+
+	_, _, err := buildCatalog(nil, []health.CheckDefinition{c}, "", health.DriverVersion{}, health.OperatorInfra)
+	if err == nil {
+		t.Fatal("expected a registration error, got nil")
+	}
+	for _, want := range []string{"registering custom check", "RequiredSignals must name at least one signal"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err.Error(), want)
+		}
+	}
+}
+
 // TestBuildCatalogAppliesArchitecture confirms a detected architecture is
 // wired into the catalog: a check skips on an architecture it does not cover
 // (A100 here) instead of running with the wrong thresholds.
 func TestBuildCatalogAppliesArchitecture(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "A100", health.OperatorInfra)
+	cat, _, err := buildCatalog(nil, nil, "A100", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatalf("buildCatalog: %v", err)
 	}
@@ -227,76 +244,215 @@ func TestBuildCatalogAppliesArchitecture(t *testing.T) {
 	}
 }
 
+// echoedDriverVersion is the version the driver-echo tests discover.
+const echoedDriverVersion = "575.51.03"
+
+func mustDriverVersion(t *testing.T) health.DriverVersion {
+	t.Helper()
+	v, ok := health.ParseDriverVersion(echoedDriverVersion)
+	if !ok {
+		t.Fatalf("ParseDriverVersion(%q) failed", echoedDriverVersion)
+	}
+	return v
+}
+
+// driverEchoCheck goes CRITICAL when a [driverEchoMeasurement] derives
+// [echoedDriverVersion].
+func driverEchoCheck() health.CheckDefinition {
+	return health.CheckDefinition{
+		ID:              "test_driver_echo",
+		Name:            "Test Driver Echo",
+		Category:        health.Node,
+		RequiredSignals: []string{"seen_driver"},
+		Rules: []health.Rule{{
+			Expression: fmt.Sprintf("seen_driver == %q", echoedDriverVersion),
+			Severity:   health.Critical,
+			Message:    "derivation saw the discovered driver version",
+		}},
+	}
+}
+
+// driverEchoMeasurement derives the driver version its catalog was built
+// with, so a rule can observe what buildCatalog handed the catalog.
+type driverEchoMeasurement struct {
+	Count int64 `json:"echo_count"`
+}
+
+func (driverEchoMeasurement) Category() health.Category           { return health.Node }
+func (driverEchoMeasurement) Errors() []health.ErroredMeasurement { return nil }
+func (driverEchoMeasurement) DerivedSignals(host health.Host) map[string]any {
+	return map[string]any{"seen_driver": host.DriverVersion.Raw}
+}
+
+// TestBuildCatalogAppliesDriverVersion confirms the discovered driver
+// version reaches the catalog, where derived signals read it, rather than
+// being dropped between discovery and evaluation.
+func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
+	cat, _, err := buildCatalog(&Config{}, []health.CheckDefinition{driverEchoCheck()}, "GB200", mustDriverVersion(t), health.OperatorInfra)
+	if err != nil {
+		t.Fatalf("buildCatalog: %v", err)
+	}
+	got, err := cat.Evaluate("test_driver_echo", driverEchoMeasurement{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Severity != health.Critical {
+		t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", got.Severity)
+	}
+}
+
+// TestRunCommandPassesDriverVersion confirms runCommand hands the version
+// the GPU inventory recorded to the catalog it evaluates with.
+func TestRunCommandPassesDriverVersion(t *testing.T) {
+	a := New().WithProgramName("test").WithChecks(driverEchoCheck())
+	a.host = fakeHost{b: spyBackend{called: new(bool)}, driver: echoedDriverVersion}
+	withCleanLinkFlap(a)
+	withCleanXid(withCPU(a, healthyCPU()))
+	// A caller adapter carries the echo into an otherwise stock run.
+	withShadow(a, shadowAdapter{name: "driver-echo", category: health.Node, ms: []health.Measurement{driverEchoMeasurement{}}})
+
+	var stdout, stderr bytes.Buffer
+	a.runCommand([]string{"--node-id", "n1"}, &stdout, &stderr)
+
+	var verdict health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+		t.Fatalf("unmarshal verdict: %v; stdout = %s; stderr = %s", err, stdout.String(), stderr.String())
+	}
+	for _, v := range verdict.CheckResults {
+		if v.CheckID == "test_driver_echo" {
+			if v.Severity != health.Critical {
+				t.Errorf("Severity = %v, want CRITICAL: the driver version did not reach the catalog", v.Severity)
+			}
+			return
+		}
+	}
+	t.Fatal("test_driver_echo verdict not found")
+}
+
 // --- Per-domain backend override locks ------------------------------------
 
-// spyBackend records whether its MeasureGPUs was called. It satisfies all
-// three narrow per-domain interfaces (so one value can stand in for the host
-// across gpu/node/nvlink), returning no measurements so a full runCommand
-// reaches a verdict without hardware. Only MeasureGPUs flips the flag, so it
-// pins which domain the GPU sensor actually read from.
+// spyBackend carries the flag the host's GPU spy sensor sets when measured.
 type spyBackend struct {
 	called *bool
 }
 
-func (s spyBackend) MeasureGPUs() ([]health.Measurement, error) {
+// gpuSpySensor stands in for the host's built-in GPU collect sensors. It
+// records whether it was measured and reports fakeHost's four GPUs as healthy
+// idle GB200s on a healthy NVLink fabric.
+type gpuSpySensor struct {
+	called *bool
+}
+
+func (gpuSpySensor) ID() string { return "test.gpu" }
+func (gpuSpySensor) Signals() collect.Signals {
+	return slices.Concat(dcgmGPUSignals, processGPUSignals, gpusignals.Interconnect(), collect.Signals{
+		gpusignals.FabricManagerStatus, gpusignals.NVLinkFabricBandwidthDegraded, gpusignals.NVLinkFabricRouteRecoveryActive,
+		gpusignals.NVLinkFabricRouteUnhealthy, gpusignals.NVLinkFabricAccessTimeoutRecovery,
+	})
+}
+
+// GB200 NVLink defaults the built-in checks expect.
+const (
+	spyGPUs      = 4
+	spyLinks     = 18
+	spyLinkSpeed = 53125
+)
+
+func (s gpuSpySensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	*s.called = true
-	return nil, nil
-}
-func (spyBackend) MeasureNode() ([]health.Measurement, error)   { return nil, nil }
-func (spyBackend) MeasureNVLink() ([]health.Measurement, error) { return nil, nil }
-
-type cpuBackendFunc func(context.Context) (cpu.CPUMeasurement, error)
-
-func (f cpuBackendFunc) MeasureCPU(ctx context.Context) (cpu.CPUMeasurement, error) {
-	return f(ctx)
-}
-
-// xidSpyBackend records whether its Measure was called; it satisfies
-// [toolkit.XidBackend].
-type xidSpyBackend struct {
-	called *bool
-}
-
-type ibSpyBackend struct {
-	called *bool
-}
-
-func (b ibSpyBackend) MeasureIB(context.Context) ([]health.Measurement, error) {
-	*b.called = true
-	return nil, nil
-}
-
-func (ibSpyBackend) Errored(error) []health.Measurement { return nil }
-
-func (x xidSpyBackend) Measure(context.Context) ([]health.Measurement, error) {
-	*x.called = true
-	return nil, nil
+	op := collect.NewOp(opts...)
+	selected, err := op.Signals(s.Signals())
+	if err != nil {
+		return nil, err
+	}
+	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
+	now := timestamppb.Now()
+	emit := func(signal collect.Signal, target *observation.ObservationTarget, value *observation.Value) {
+		batch.Observations = append(batch.Observations, &observation.Observation{
+			SignalId: signal.ID(), Source: s.ID(), Target: target, ObservedAt: now, Unit: signal.Unit(),
+			Outcome: &observation.Observation_Value{Value: value},
+		})
+	}
+	uintValue := func(v uint64) *observation.Value {
+		return &observation.Value{Kind: &observation.Value_UintValue{UintValue: v}}
+	}
+	perLink := map[collect.Signal]uint64{gpusignals.NVLinkState: 1, gpusignals.NVLinkEndpointSpeed: spyLinkSpeed}
+	for _, capability := range gpusignals.EndpointCapabilitySignals() {
+		perLink[capability] = 1
+	}
+	for i := range spyGPUs {
+		uuid := fmt.Sprintf("GPU-%d", i)
+		target := observation.GPUTarget(uuid)
+		for _, signal := range selected {
+			if v, ok := perLink[signal]; ok {
+				for link := range uint32(spyLinks) {
+					emit(signal, observation.NVLinkEndpointTarget(uuid, link), uintValue(v))
+				}
+				continue
+			}
+			value := &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: false}}
+			switch signal {
+			case gpusignals.PowerDraw:
+				value.Kind = &observation.Value_DoubleValue{DoubleValue: 700}
+			case gpusignals.PowerLimitRequested, gpusignals.PowerLimitEnforced:
+				value.Kind = &observation.Value_DoubleValue{DoubleValue: 1200}
+			case gpusignals.PerformanceState:
+				value.Kind = &observation.Value_IntValue{IntValue: 0}
+			case gpusignals.ProcessCount:
+				value.Kind = &observation.Value_UintValue{UintValue: 0}
+			case gpusignals.FabricManagerStatus:
+				value.Kind = &observation.Value_IntValue{IntValue: gpusignals.FabricManagerStatusSuccess}
+			case gpusignals.NVLinkLinkCount:
+				value = uintValue(spyLinks)
+			case gpusignals.NVLinkSpeedCommon:
+				value = uintValue(spyLinkSpeed)
+			case gpusignals.NVLinkP2PStatus:
+				for peer := range spyGPUs {
+					if peer != i {
+						emit(signal, observation.GPUPairTarget(uuid, fmt.Sprintf("GPU-%d", peer)), uintValue(0))
+					}
+				}
+				continue
+			case gpusignals.ProcessCmdline:
+				batch.Observations = append(batch.Observations, observation.NewNoValueObservation(signal.ID(), signal.Unit(), s.ID(), target, now,
+					&observation.NoValue{Reason: observation.NoValueReasonNoTargets}))
+				continue
+			}
+			emit(signal, target, value)
+		}
+	}
+	return batch, nil
 }
 
 // fakeHost stands in for the platform host backend so these tests run anywhere
-// (no NVML, no cgo). One spy backs both legacy per-domain accessors,
-// mirroring the real host where a single NVML backend does. Installed by
-// overwriting App.host.
+// (no NVML, no cgo). Installed by overwriting App.host.
 //
 // Its inventory is a healthy GB200 node: runCommand Evaluates the full builtin
 // catalog, so discovery must find a real generation.
 // catalogtest.DummyArchitecture would skip scoped checks (see
 // TestNUMANodeCountReachesVerdict).
 type fakeHost struct {
-	b spyBackend
+	b      spyBackend
+	driver string
 }
 
-func (h fakeHost) gpuBackend() toolkit.GPUBackend       { return h.b }
-func (h fakeHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
-func (fakeHost) gpuInventory() *gpuinventory.Inventory {
-	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{gpus: 4, model: "NVIDIA GB200"}, nil })
+func (h fakeHost) gpuSensors() []collect.Sensor {
+	return []collect.Sensor{gpuSpySensor{called: h.b.called}}
+}
+
+func (h fakeHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) {
+		return inventoryReader{gpus: 4, model: "NVIDIA GB200", driver: h.driver}, nil
+	})
 }
 func (fakeHost) close() error { return nil }
 
 // inventoryReader reports a basic inventory of identical GPUs without NVML.
+// An empty driver leaves the driver version unrecorded.
 type inventoryReader struct {
-	model string
-	gpus  int
+	model  string
+	driver string
+	gpus   int
 }
 
 func (inventoryReader) ID() string { return "fake" }
@@ -305,7 +461,12 @@ func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapsho
 	inventory := &observation.GPUInventory{}
 	for i := range r.gpus {
 		uuid, model := fmt.Sprintf("GPU-%d", i), r.model
-		inventory.Entries = append(inventory.Entries, &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}})
+		entry := &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}}
+		if r.driver != "" {
+			driver := r.driver
+			entry.Gpu.DriverVersion = &driver
+		}
+		inventory.Entries = append(inventory.Entries, entry)
 	}
 	return &observation.GPUInventorySnapshot{Source: "fake", Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: inventory}}, nil
 }
@@ -313,8 +474,7 @@ func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapsho
 // panicHost ensures invalid input returns before touching the host backend.
 type panicHost struct{}
 
-func (panicHost) gpuBackend() toolkit.GPUBackend        { panic("unexpected GPU backend access") }
-func (panicHost) nvlinkBackend() toolkit.NVLinkBackend  { panic("unexpected NVLink backend access") }
+func (panicHost) gpuSensors() []collect.Sensor          { panic("unexpected GPU sensor access") }
 func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
 func (panicHost) close() error                          { panic("unexpected host backend close") }
 
@@ -365,10 +525,8 @@ func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 		return "  " + hostname + "  ", nil
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
-	a.WithIBBackend(ibSpyBackend{called: new(bool)})
+	withCleanLinkFlap(a)
+	withCleanXid(withCPU(a, healthyCPU()))
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitOK {
@@ -467,10 +625,8 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
-	a.WithIBBackend(ibSpyBackend{called: new(bool)})
+	withCleanLinkFlap(a)
+	withCleanXid(withCPU(a, healthyCPU()))
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand([]string{"--node-id", "  cli-node  "}, &stdout, &stderr); code != exitOK {
@@ -492,10 +648,8 @@ func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
-	a.WithIBBackend(ibSpyBackend{called: new(bool)})
+	withCleanLinkFlap(a)
+	withCleanXid(withCPU(a, healthyCPU()))
 
 	var stdout, stderr bytes.Buffer
 	if code := a.Run([]string{"run", "--node-id", "cli-node"}, &stdout, &stderr); code != exitOK {
@@ -511,36 +665,8 @@ func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 	}
 }
 
-// TestWithGPUBackendOverridesHost confirms a backend supplied via
-// WithGPUBackend is the one the GPU sensor reads from, and the host's GPU
-// backend is bypassed. This is the consumer-facing pluggability hook.
-func TestWithGPUBackendOverridesHost(t *testing.T) {
-	var hostGPUCalled, overrideCalled bool
-
-	a := New()
-	a.host = fakeHost{b: spyBackend{called: &hostGPUCalled}}
-	a.WithGPUBackend(spyBackend{called: &overrideCalled})
-	a.WithNodeID(testNodeID)
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
-
-	var stdout, stderr bytes.Buffer
-	// This asserts which backend was read; the verdict severity is irrelevant, so
-	// guard only against a hard collection failure (exitError).
-	if code := a.runCommand(nil, &stdout, &stderr); code == exitError {
-		t.Fatalf("runCommand exit = %d (collection failed), stderr = %q", code, stderr.String())
-	}
-
-	if !overrideCalled {
-		t.Error("WithGPUBackend override was not collected from")
-	}
-	if hostGPUCalled {
-		t.Error("host GPU backend was used despite a WithGPUBackend override")
-	}
-}
-
-// TestDefaultUsesHostBackend is the contrast: with no override, the host's GPU
-// backend is the source. Together with the test above this pins the per-domain
-// override semantics (override one domain, others fall back to the host).
+// TestDefaultUsesHostBackend confirms the host's GPU sensors are the default
+// GPU source.
 func TestDefaultUsesHostBackend(t *testing.T) {
 	var hostGPUCalled bool
 
@@ -549,7 +675,7 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: &hostGPUCalled}}
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
+	withCPU(a, healthyCPU())
 
 	var stdout, stderr bytes.Buffer
 	// This asserts which backend was read; the verdict severity is irrelevant, so
@@ -571,24 +697,19 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 	}
 }
 
-func TestWithCPUBackendOverridesSysfs(t *testing.T) {
-	var cpuCalled bool
+func TestWithCollectReplacesSysfsCPU(t *testing.T) {
+	cpuCalls := 0
 	a := New()
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithCPUBackend(cpuBackendFunc(func(context.Context) (cpu.CPUMeasurement, error) {
-		cpuCalled = true
-		return cpu.CPUMeasurement{PossibleCPUCount: 8, OnlineCPUCount: 8, NUMANodeCount: 34}, nil
-	}))
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithIBBackend(ibSpyBackend{called: new(bool)})
+	withCleanXid(withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 8, online: 8, numa: 34}))
+	withCleanLinkFlap(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitOK {
 		t.Fatalf("runCommand exit = %d, want exitOK; stderr = %q", code, stderr.String())
 	}
-	if !cpuCalled {
-		t.Fatal("WithCPUBackend override was not collected from")
+	if cpuCalls != 1 {
+		t.Fatalf("claimed CPU sensor measured %d times, want 1", cpuCalls)
 	}
 
 	var verdict health.NodeVerdict
@@ -626,13 +747,8 @@ func TestWithCPUBackendOverridesSysfs(t *testing.T) {
 func TestNUMANodeCountReachesVerdict(t *testing.T) {
 	a := New()
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{
-		PossibleCPUCount: 8,
-		OnlineCPUCount:   8,
-		NUMANodeCount:    33,
-	}))
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
+	withCleanXid(withCPU(a, cpuAppSensor{possible: 8, online: 8, numa: 33}))
+	withCleanLinkFlap(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitUnhealthy {
@@ -691,47 +807,39 @@ func TestExitCodeForVerdict(t *testing.T) {
 	}
 }
 
-// failingNodeBackend errors at Measure, standing in for a backend that cannot
-// read the host at all (e.g. NVML failed to initialize).
-type failingNodeBackend struct{}
-
-func (failingNodeBackend) MeasureNode() ([]health.Measurement, error) {
-	return nil, errors.New("backend unavailable")
-}
-
-// TestEvaluateExitCodes covers healthy, unhealthy, and collection-failure
-// verdicts through the production evaluation and output paths.
+// TestEvaluateExitCodes drives evaluate end-to-end across its verdict exit
+// codes. The custom check is CRITICAL when gpu_count > 8, so the count picks
+// the verdict. A backend that fails to collect no longer aborts the run: the
+// failure is degraded to an errored measurement that fails the dependent
+// check Unknown, so it exits exitUnhealthy (a produced UNKNOWN verdict) with
+// the verdict still written — not exitError, which is reserved for the case
+// where no verdict is produced at all.
 func TestEvaluateExitCodes(t *testing.T) {
-	cases := []struct {
-		backend toolkit.NodeBackend
-		name    string
-		want    int
+	for _, tc := range []struct {
+		source collect.Sensor
+		name   string
+		want   int
 	}{
-		{toolkit.MockNode(node.NodeMeasurement{GPUCount: 16}), "critical verdict", exitUnhealthy},
-		{toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}), "healthy verdict", exitOK},
-		{failingNodeBackend{}, "collection failure degrades to critical", exitUnhealthy},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			var stdout, stderr bytes.Buffer
-			a := cadenceRunApp().WithNodeBackend(c.backend)
-			verdict, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{
-				NodeID: testNodeID, ExecutionContext: health.TenantGuest,
-			}, nil)
+		{agentNodeCountSource(16), "critical verdict", exitUnhealthy},
+		{agentNodeCountSource(4), "healthy verdict", exitOK},
+		{failingAgentNodeSource{}, "collection failure", exitUnhealthy},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := withAgentSource(cadenceRunApp(), tc.source)
+			verdict, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			code := writeVerdict(verdict, "test", testNodeID, &stdout, &stderr)
-			if code != c.want {
-				t.Fatalf("writeVerdict = %d, want %d; stderr=%q", code, c.want, stderr.String())
+			var stdout, stderr bytes.Buffer
+			if code := writeVerdict(verdict, "test", testNodeID, &stdout, &stderr); code != tc.want {
+				t.Fatalf("exit = %d, want %d: %s", code, tc.want, &stderr)
 			}
-
 			var output health.NodeVerdict
 			if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
-				t.Fatalf("unmarshal verdict: %v; stdout = %s", err, stdout.String())
+				t.Fatal(err)
 			}
 			if output.NodeID != testNodeID {
-				t.Errorf("NodeID = %q, want %q", output.NodeID, testNodeID)
+				t.Fatalf("NodeID = %q", output.NodeID)
 			}
 		})
 	}
@@ -778,61 +886,18 @@ func TestWriteVerdictNodeID(t *testing.T) {
 	})
 }
 
-// TestWithXidBackendOverridesJournalctl confirms a backend supplied via
-// WithXidBackend is the one the Xid sensor reads from, instead of the default
-// collect sensor. (runCommand uses the override or the collect sensor, never
-// both, so the override being read proves the journal was bypassed.)
-func TestWithXidBackendOverridesJournalctl(t *testing.T) {
-	var xidCalled bool
-
-	a := New()
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
-	a.WithXidBackend(xidSpyBackend{called: &xidCalled})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithNodeID(testNodeID)
-
-	var stdout, stderr bytes.Buffer
-	// This asserts which backend was read; the verdict severity is irrelevant, so
-	// guard only against a hard collection failure (exitError).
-	if code := a.runCommand(nil, &stdout, &stderr); code == exitError {
-		t.Fatalf("runCommand exit = %d (collection failed), stderr = %q", code, stderr.String())
-	}
-
-	if !xidCalled {
-		t.Error("WithXidBackend override was not collected from")
-	}
-}
-
-// The IB sensor is opt-in: supplied a backend via WithIBBackend, it collects
-// with no config needed. (Without a backend it does not run at all.)
-func TestIBSensorCollectsWithBackend(t *testing.T) {
-	var ibCalled bool
-	a := New().WithNodeID(testNodeID)
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithIBBackend(ibSpyBackend{called: &ibCalled})
-
-	var stdout, stderr bytes.Buffer
-	if code := a.runCommand(nil, &stdout, &stderr); code == exitError {
-		t.Fatalf("runCommand exit = %d; stderr = %q", code, stderr.String())
-	}
-	if !ibCalled {
-		t.Fatal("InfiniBand sensor did not collect")
-	}
-}
-
 // erroringHost is a hostBackend whose architecture discovery fails while its
-// per-domain backends would still collect — the dangerous case where discovery
+// GPU sensors would still collect — the dangerous case where discovery
 // errors (e.g. transiently) but collection would otherwise succeed and be
 // evaluated against the wrong architecture's thresholds.
 type erroringHost struct {
 	b spyBackend
 }
 
-func (h erroringHost) gpuBackend() toolkit.GPUBackend       { return h.b }
-func (h erroringHost) nvlinkBackend() toolkit.NVLinkBackend { return h.b }
+func (h erroringHost) gpuSensors() []collect.Sensor {
+	return []collect.Sensor{gpuSpySensor{called: h.b.called}}
+}
+
 func (erroringHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })
 }
@@ -843,16 +908,14 @@ func (erroringHost) close() error { return nil }
 // silently evaluated against the wrong thresholds, and a dead node does not
 // skip its way to PASS. The Critical verdict maps to exitUnhealthy.
 func TestRunCommandArchDiscoveryFailureDrains(t *testing.T) {
-	var collected, cpuCollected bool
+	var collected bool
+	cpuCalls := 0
 	a := New()
 	a.hostname = func() (string, error) {
 		return "  nvl72d014-T02  ", nil
 	}
 	a.host = erroringHost{b: spyBackend{called: &collected}}
-	a.WithCPUBackend(cpuBackendFunc(func(context.Context) (cpu.CPUMeasurement, error) {
-		cpuCollected = true
-		return cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1}, nil
-	}))
+	withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 1, online: 1})
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitUnhealthy {
@@ -877,11 +940,70 @@ func TestRunCommandArchDiscoveryFailureDrains(t *testing.T) {
 	if got := v.CheckResults[0]; got.CheckID != "architecture_discovery" || got.ConditionScope != health.NodeScope {
 		t.Errorf("check result = {id:%q scope:%v}, want {architecture_discovery NODE}", got.CheckID, got.ConditionScope)
 	}
+	if got := v.CheckResults[0].RecommendedAction; !got.Equal(health.GenericDrain()) {
+		t.Errorf("RecommendedAction = %+v, want the generic drain", got)
+	}
 	if collected {
 		t.Error("collected measurements despite discovery failure; must not evaluate against wrong thresholds")
 	}
-	if cpuCollected {
+	if cpuCalls != 0 {
 		t.Error("collected CPU measurements despite discovery failure")
+	}
+}
+
+// busyHost is an erroringHost whose inventory source refuses discovery
+// because an earlier call in this process is still running.
+type busyHost struct{ erroringHost }
+
+func (busyHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) {
+		return nil, fmt.Errorf("open NVML: %w", gpuinventory.ErrSourceBusy)
+	})
+}
+
+// openFailedHost is an erroringHost whose inventory source fails to open for
+// a reason other than a busy source.
+type openFailedHost struct{ erroringHost }
+
+func (openFailedHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) {
+		return nil, errors.New("open NVML: driver not loaded")
+	})
+}
+
+// Only a busy source turns a discovery failure into an Unknown
+// retry_collection; any other open error stays a Critical generic drain.
+func TestRunCommandDiscoveryOpenFailureAction(t *testing.T) {
+	var collected bool
+	spy := erroringHost{b: spyBackend{called: &collected}}
+	for name, tc := range map[string]struct {
+		host     hostBackend
+		want     health.RecommendedAction
+		severity health.Severity
+	}{
+		"busy":  {host: busyHost{spy}, want: health.Drain(health.RemediationActionRetryCollection), severity: health.Unknown},
+		"other": {host: openFailedHost{spy}, want: health.GenericDrain(), severity: health.Critical},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := New()
+			a.host = tc.host
+			var stdout, stderr bytes.Buffer
+			if code := a.runCommand([]string{"--node-id", testNodeID}, &stdout, &stderr); code != exitUnhealthy {
+				t.Fatalf("runCommand exit = %d, want exitUnhealthy; stderr = %q", code, stderr.String())
+			}
+			var v health.NodeVerdict
+			if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+				t.Fatalf("unmarshal verdict: %v; stdout = %s", err, stdout.String())
+			}
+			if len(v.CheckResults) != 1 || v.CheckResults[0].CheckID != "architecture_discovery" ||
+				!v.CheckResults[0].RecommendedAction.Equal(tc.want) || !v.RecommendedAction.Equal(tc.want) ||
+				v.CheckResults[0].Severity != tc.severity || v.OverallSeverity != tc.severity {
+				t.Fatalf("verdict = %+v, want one %v architecture_discovery result recommending %+v", v, tc.severity, tc.want)
+			}
+		})
+	}
+	if collected {
+		t.Error("collected measurements despite discovery failure")
 	}
 }
 
@@ -897,15 +1019,6 @@ func verdictHasCheck(nv health.NodeVerdict, id string) bool {
 		}
 	}
 	return false
-}
-
-func cadenceRunApp() *App {
-	a := New().WithProgramName("test")
-	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	a.WithXidBackend(xidSpyBackend{called: new(bool)})
-	a.WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap())
-	a.WithCPUBackend(toolkit.MockCPU(cpu.CPUMeasurement{PossibleCPUCount: 1, OnlineCPUCount: 1, NUMANodeCount: 34}))
-	return a
 }
 
 func TestXidTimeFlags(t *testing.T) {
@@ -938,8 +1051,7 @@ func TestXidTimeFlags(t *testing.T) {
 				{[]string{"--xid-from", "0008:06:00=1792600000", "--xid-from", "0009:06:00=1792599999"}, false, false},
 				{[]string{"--xid-from", "1792600000", "--xid-from", "0009:06:00=0"}, false, true},
 			} {
-				a := cadenceRunApp()
-				a.xid = nil
+				a := testApp()
 				var stdout, stderr bytes.Buffer
 				args := append([]string{command, "--node-id", testNodeID}, tt.flags...)
 				if code := a.Run(args, &stdout, &stderr); code == exitError {
@@ -1087,7 +1199,7 @@ func TestRunCommandExecutionContextSelection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := cadenceRunApp().WithChecks(check).WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}))
+			a := cadenceRunApp().WithChecks(check)
 			args := append([]string{"--node-id", testNodeID}, tt.args...)
 			var stdout, stderr bytes.Buffer
 			if code := a.runCommand(args, &stdout, &stderr); code == exitError {
@@ -1194,15 +1306,50 @@ func TestRunCommandCadenceContinuousSkipsPrologChecks(t *testing.T) {
 	}
 }
 
-func TestXidTimeFlagsPreserveBackendOverride(t *testing.T) {
+// The Xid time flags bound the built-in journal source; they must not
+// displace a sensor that claims the Xid signals.
+func TestXidTimeFlagsPreserveXidClaim(t *testing.T) {
 	for _, command := range []string{"run", "collect"} {
-		a := cadenceRunApp()
-		called := false
-		a.WithXidBackend(xidSpyBackend{called: &called})
+		calls := 0
+		a := testApp().WithCollect(xidAppSensor{calls: &calls, obs: []*observation.Observation{xidAppMarker()}}, xidsignals.All().IDs()...)
 		var stdout, stderr bytes.Buffer
 		code := a.Run([]string{command, "--node-id", testNodeID, "--xid-from", "0008:06:00=1792600000"}, &stdout, &stderr)
-		if code == exitError || !called {
-			t.Fatalf("%s: code=%d, override called=%v, stderr=%s", command, code, called, stderr.String())
+		if code == exitError || calls != 1 {
+			t.Fatalf("%s: code=%d, claimed sensor calls=%d, stderr=%s", command, code, calls, stderr.String())
 		}
+	}
+}
+
+func TestWarnUnknownArchitectureNamesGPUModels(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	snapshot, err := inventoryReader{gpus: 2, model: "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"}.Read(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnUnknownArchitecture(logger, gpuinventory.ArchitectureUnknown, snapshot)
+
+	got := logs.String()
+	if !strings.Contains(got, "level=WARN") || !strings.Contains(got, "architecture is unknown") {
+		t.Fatalf("expected an unknown-architecture warning, got %q", got)
+	}
+	if strings.Count(got, "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition") != 1 {
+		t.Fatalf("expected the GPU model named once, got %q", got)
+	}
+}
+
+func TestWarnUnknownArchitectureSilentForKnownArchitecture(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	snapshot, err := inventoryReader{gpus: 4, model: "NVIDIA GB200"}.Read(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnUnknownArchitecture(logger, "GB200", snapshot)
+
+	if logs.Len() != 0 {
+		t.Fatalf("expected no log for a recognized architecture, got %q", logs.String())
 	}
 }

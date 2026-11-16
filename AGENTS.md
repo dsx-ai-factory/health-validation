@@ -41,18 +41,19 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ### Common operator misreads
 
-- "Exit code reflects verdict severity." Only coarsely. The binary exits 0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, and 2 when it could not run to a verdict at all (config/backend/collection/output failure). It does not distinguish CRITICAL from UNKNOWN, or INFO from WARNING — `overall_severity` in the JSON is still what callers must read for the precise level.
+- "Exit code reflects verdict severity." Only coarsely. The binary exits 0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, and 2 when it could not run to a verdict at all (config/backend/collection/audit/output failure). It does not distinguish CRITICAL from UNKNOWN, or INFO from WARNING — `overall_severity` in the JSON is still what callers must read for the precise level.
 - "Zero skipped checks means full coverage." Skipped checks are excluded from `overall_severity`. Partial coverage from `SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL` skips does not surface in the top-level verdict. Inspect `skipped_checks`.
 - "PASS means the node is healthy until the next run." The verdict is a point-in-time snapshot. Hardware state can change. Run before every job dispatch.
 - "I can filter by scheduling cadence in the CLI." Optional `--cadence` (CONTINUOUS, PROLOG, MAINTENANCE) runs checks whose declared cadence covers that window and reports the others as cadence skips. Omit it and every **registered** check still runs.
 
 ### Known gaps and data accuracy notes
 
-- **Catalog is early.** Coverage is whatever is registered in `catalog/checks.go` (CPU (count, NUMA), GPU power/state/limit/throttle/compute-apps, NVLink (active, fabric, fabric-health, bandwidth/count/speed, capabilities, P2P), node GPU count, InfiniBand RDMA link flap, XID, …). Do not describe coverage beyond that file. The catalog ships one InfiniBand check (`rdma_linkflap_fatal`), fed by the journal link-flap sensor; the generic IB sensor remains opt-in scaffolding (`toolkit.IBBackend`/`WithIBBackend`) for a consumer that brings additional IB backends and checks.
+- **Catalog is early.** Coverage is whatever is registered in `catalog/checks.go` (CPU (count, NUMA), GPU power/state/limit/throttle/compute-apps, NVLink (active, fabric, fabric-health, bandwidth/count/speed, capabilities, P2P), node GPU count, InfiniBand RDMA link flap, XID, …). Do not describe coverage beyond that file. The catalog ships one InfiniBand check (`rdma_linkflap_fatal`), fed by the journal link-flap sensor. A consumer that brings additional InfiniBand measurements registers its own collect sensor and adapter with `WithCollect` and `WithCollectAdapters`.
 - **CLI cadence default is unfiltered.** Checks declare `SchedulingCadence`. Pass `--cadence` (or set cadence in `EvaluationOptions` / `CollectionOptions`) to apply the nested Continuous ⊂ Prolog ⊂ Maintenance window. Checks outside the window are reported as `CADENCE_MISMATCH` skips. Omit it and all registered checks run, including Prolog power/throttle/compute-apps checks. Cadence is per evaluation so one constructed catalog can serve Continuous and Prolog windows. Cluster YAML is thresholds/disables/timeout only — not the run window.
 - **The exit policy lives only in `toolkit/app`.** The catalog library has no exit-code method. `exitCodeForVerdict` plus the `exitOK`/`exitUnhealthy`/`exitError` constants map PASS/INFO/WARNING→0, CRITICAL/UNKNOWN→1, tool/runtime error→2. WARNING→0 is deliberate and noted as eventually-configurable.
 - **OUT_OF_BAND context is defined but not used** by any registered check. The enum value exists in the codebase; no current check declares it as a valid context.
-- **NVML backend is Linux-only.** The `toolkit/nvml/` package is gated on `//go:build linux` and requires cgo. The catalog and direct evaluation path work on any platform.
+- **The CLI's GPU checks and `nvlink_fabric` need DCGM.** Power, power-limit, pstate, throttle, and Fabric Manager status signals come from a DCGM hostengine already running on the node (`localhost`), through the DCGM 4 client library (`libdcgm.so.4`). With either missing, those checks fail closed with a collection error; there is no fallback to NVML. Compute processes and the rest of the NVLink domain come from NVML.
+- **NVML collection is Linux-only.** `collect/source/nvml` is gated on `//go:build linux` and requires cgo. The catalog and direct evaluation path work on any platform.
 
 ### Taxonomy: current checks by domain and severity
 
@@ -73,9 +74,11 @@ This file provides guidance to AI coding agents when working with code in this r
 | `nvlink_capabilities` | nvlink | A required NVLink capability (P2P, sysmem access/atomics, SLI, link) is unsupported | None |
 | `nvlink_p2p` | nvlink | Unhealthy P2P peer count exceeds `max_unhealthy_p2p_peers` | None |
 | `rdma_linkflap_fatal` | infiniband | Count of mlx5 RDMA link outages (down→up ≥ `min_outage_seconds`) reaches `fatal_flap_threshold` | None |
-| `gpu_xid_<code>` | xid | A critical-class Xid code is seen in the system journal within the collection window | A warning-class Xid code is seen in the system journal within the collection window |
-| `gpu_xid_149_<hex>` | xid | An Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype whose decode-table resolution is a GPU reset | The same, for a subtype the table resolves to IGNORE |
-| `gpu_xid_154` | xid | None | None (INFO only) |
+| `gpu_xid_<code>` | xid | A critical-class Xid code is seen on a GPU in the system journal within the collection window | A warning-class Xid code is seen on a GPU in the system journal within the collection window |
+| `gpu_xid_149_<hex>` | xid | An Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype on a GPU whose decode-table resolution is a GPU reset | The same, for a subtype the table resolves to IGNORE |
+| `gpu_xid_154` | xid | The driver requested a GPU reset or reboot for a GPU | The driver requested a P2P drain or an action the catalog does not map, or an Xid 154's transition could not be read |
+| `gpu_xid_informational` | xid | None | A logged Xid code NVIDIA's catalog marks Unused, IGNORE or gives no resolution, and no registered check covers (INFO, no action) |
+| `gpu_xid_unknown` | xid | None | A logged Xid code no registered check covers and NVIDIA's catalog does not list (monitor, no drain) |
 
 ---
 
@@ -112,7 +115,7 @@ bazel run //tools/go -- mod tidy -diff   # verify: exit 0 + no output = CI will 
 # Run from a Linux VM or container to catch linux-only build-tag failures
 # (nogo, PIE linking, etc.) that never execute on darwin.
 bazel test --config=ci --platforms=//build/platforms:linux_amd64 \
-  //toolkit/nvml:nvml_test
+  //collect/source/nvml:nvml_test
 
 # Build the operator CLI for every supported target platform. It links NVML
 # via cgo, so it is a linux-only artifact; CI builds both arches (build-only,
@@ -147,7 +150,7 @@ This repo is a **hardware health check catalog and evaluation engine** for NVIDI
 The repo is **one Go module** (`github.com/dsx-ai-factory/health-validation`) with a single `go.mod`, a single `go.sum`, and one version: a `vX.Y.Z` tag releases everything. Import paths are the module path plus the directory, so every package below is imported as `github.com/dsx-ai-factory/health-validation/<dir>`. A dependency pin therefore changes the versions linked into every binary built from the repo.
 
 - **`catalog/`** — the check catalog and evaluation engine. Self-contained: `health/` (shared vocabulary), `internal/{celeval,evaluation}/`, the `catalog` package at the directory root, the per-domain check packages (`cpu/`, `gpu/`, `node/`, `nvlink/`, `xid/`), and the catalog-only codegen/dump binaries under `cmd/`. No dependency on the toolkit.
-- **`toolkit/`** — sensors, the NVML backend (`nvml/`), and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on `catalog/`, `collect/`, and `agentkit/`.**
+- **`toolkit/`** — the collect bridge and adapters, and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on `catalog/`, `collect/`, and `agentkit/`.**
 - **`collect/`** — raw collection library (sensors and sources); no dependency on the catalog or toolkit.
 - **`agentkit/`** — experimental (v0) transports and examples. `server` serves the raw Check API; `verdictserver` serves the verdict proto API. Transport packages must remain independently usable and must not import catalog or toolkit.
 - **`proto/health/v1/`** — verdict wire contract (`health.verdict.v1`), with generated Go under `proto/go/health/v1/`. Raw observations retain their separate `collect/proto` contract.
@@ -164,12 +167,13 @@ The dependency direction is strict: `catalog → (nothing)`, `collect → (nothi
 
 **`catalog/internal/evaluation/`** — orchestrates a single check evaluation: filters by architecture/context, resolves threshold overrides, calls CEL, returns `CheckVerdict`.
 
-**`toolkit/`** — integration layer for consumers. Defines `Sensor`, the per-domain backend interfaces, `Collect()` (runs sensors → evaluates catalog → node verdict), the deprecated `SysfsCPU` file backend (the CLI collects CPU through `collect/sensors/cpu`), the deprecated `Journalctl` command backend (the CLI collects Xid through `collect/sensors/xid`), and mock helpers for testing.
+**`toolkit/`** — integration layer for consumers. Defines `Sensor`, `Collect()` (runs sensors → evaluates catalog → node verdict), the collect bridge that turns collect sensors into toolkit sensors (`internal/collectbridge`, `internal/collectadapters`, `observations`).
 
 #### Data flow
 
 ```
-Sensor.Measure() → []Measurement
+collect.Sensor.Measure() → ObservationBatch       (once per cycle, toolkit/internal/collectbridge)
+  → collect adapter → []Measurement                (toolkit/internal/collectadapters, toolkit/observations)
   → Catalog.EvaluateAll()
     → For each Measurement, find matching checks by Category
       → evaluation.Engine: check prerequisites, resolve thresholds, run CEL rules
@@ -177,46 +181,46 @@ Sensor.Measure() → []Measurement
   → AggregateNodeVerdict() → NodeVerdict
 ```
 
-The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, 2 when the tool could not run to a verdict (config/backend/collection/output failure). The precise level lives in `overall_severity` in the JSON. The catalog library has no exit-code method; the policy lives only in `toolkit/app`.
+The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, 2 when the tool could not run to a verdict (config/backend/collection/audit/output failure). The precise level lives in `overall_severity` in the JSON. The catalog library has no exit-code method; the policy lives only in `toolkit/app`.
 
 #### Adding a check
 
 1. Define signals on the relevant measurement struct in `catalog/<domain>/measurement.go` (e.g. add a field + `Signal*` constant to `gpu.GPUMeasurement`).
-2. Write a `CheckDefinition` factory in the same `catalog/<domain>/` package. Every threshold needs a `ValueType`, plus `ValueMin`/`ValueMax` where an out-of-range value is unambiguously a mistake (see "Threshold types and bounds"). Add `Dependencies` only when another check explains this one's collection failures.
+2. Write a `CheckDefinition` factory in the same `catalog/<domain>/` package. Name every signal its rules read in `RequiredSignals`; registration rejects an empty list. Every threshold needs a `ValueType`, plus `ValueMin`/`ValueMax` where an out-of-range value is unambiguously a mistake (see "Threshold types and bounds"). Add `Dependencies` only when another check explains this one's collection failures.
 3. Register it in `catalog/checks.go` via `builtinChecks()` so `catalog.New()` and the stock CLI run it. Declare `SchedulingCadence` on the check. Omit `--cadence` (or use a zero-value evaluation/collection context) to evaluate every registered check; set a cadence to run checks whose cadence covers that window (Continuous ⊂ Prolog ⊂ Maintenance) and report the others as skipped.
 4. Regenerate the reference docs with `bazel run //docs:reference_update`. The Check Catalog and Verdict Schema pages under `docs/reference/` are generated from `catalog/` and committed; `//docs:reference_update_test` fails when they are stale. A new check category also needs an entry in `docs/index.yml`.
 
 #### Sensors vs. backends
 
-Two distinct concepts in `toolkit/`:
+- **Collect sensor** — implements `collect.Sensor` (in `collect/sensors/`) and reports raw observations for the signals it declares. It knows nothing about checks.
+- **Adapter** — a `CollectAdapter` that assembles one catalog domain's measurements from observations. Built-in adapters live in `toolkit/internal/collectadapters`, mapped by `toolkit/observations`. The bridge in `toolkit/internal/collectbridge` runs each source once per cycle and exposes each adapter as a `toolkit.Sensor` for `Collect`.
 
-- **Sensor** — implements `toolkit.Sensor`, holds a backend, and produces `[]health.Measurement` for `Collect`. `GPUSensor` produces per-GPU measurements; `CPUSensor` produces one host-wide logical-CPU measurement.
-- **Backend** — a data source for one sensor. Defined as a sensor-facing interface in `toolkit/`. `SysfsCPU` is a deprecated context-aware file backend in `toolkit/`, superseded in the CLI by the `collect/sensors/cpu` collect sensor; `Journalctl` is a deprecated command backend, superseded in the CLI by the `collect/sensors/xid` collect sensor; `NVMLBackend` lives in `toolkit/nvml/` because it is gated on linux + cgo + libnvidia-ml.
+`App.WithCollect(sensor, signalIDs...)` replaces a built-in source for the signals it claims; `App.WithCollectAdapters` adds caller adapters. The bridge (`toolkit/internal/collectbridge`) runs each source once per collection cycle and logs one warning per distinct source, operation, and error category that times out or fails as a whole, or for any failed read of a node-wide sensor such as CPU sysfs (not for errors on individual GPUs).
 
 #### Adding a sensor for a new domain
 
 1. Define the typed measurement struct (with `Category()` returning the new `health.Category` value, signal constants, a `MeasurementSignals()` function that returns a copy of the signal list, and an `ErroredXxx` helper that defaults to every signal) in `catalog/<domain>/measurement.go`.
-   If the domain has several like entities rather than being host-wide, also implement `health.EntityIdentifier` (`EntityID() string`) on it. The evaluation engine copies that value into a non-PASS verdict's `AffectedEntities`, which is what feeds the JSON verdict's `affected_components[].entities` and the `health_validation.check.affected_entities` metric. Omit it and a failing per-entity check cannot say which entity failed. It also keys duplicate detection: evaluation rejects two measurements feeding one check for the same `health.EntityKey` (`ErrAmbiguousMeasurement`, CLI exit 2), a type without `EntityIdentifier` is keyed as the node, so two instances collide, and an empty `EntityID()` is accepted only on a collection failure (values without an identity are rejected). When the ID is not a verified hardware identity (a source-local slot, a whole-source failure), also implement `health.EntityKeyed` with `ProvisionalEntity(source, slot)` or `SourceEntity(source)`. GPU/NVLink measurements take one via `SetEntityKey`.
-2. Declare the sensor-facing backend interface in `toolkit/` (e.g. `NVLinkBackend` with `Measure() ([]health.Measurement, error)`).
-3. Implement `toolkit.Sensor` wrapping that interface (e.g. `NVLinkSensor`), forwarding `Measure()` from the backend.
-4. Add a `MockXxx(...)` constructor alongside the real one so consumers can test without hardware — see `gpu_backend.go` for the pattern.
+   If the domain has several like entities rather than being host-wide, also implement `health.EntityIdentifier` (`EntityID() string`) on it. The evaluation engine copies that value into a non-PASS verdict's `AffectedEntities`, which is what feeds the JSON verdict's `affected_components[].checks[].entities` and the `health_validation.check.affected_entities` metric. Omit it and a failing per-entity check cannot say which entity failed. It also keys duplicate detection: evaluation rejects two measurements feeding one check for the same `health.EntityKey` (`ErrAmbiguousMeasurement`, CLI exit 2), a type without `EntityIdentifier` is keyed as the node, so two instances collide, and an empty `EntityID()` is accepted only on a collection failure (values without an identity are rejected). When the ID is not a verified hardware identity (a source-local slot, a whole-source failure), also implement `health.EntityKeyed` with `ProvisionalEntity(source, slot)` or `SourceEntity(source)`. GPU/NVLink measurements take one via `SetEntityKey`.
+2. Define the collect signals in `collect/signals/<domain>` and a `collect.Sensor` that reports them in `collect/sensors/<domain>`.
+3. Map the signals to the measurement's fields in `toolkit/observations/mapping.go` and add a built-in adapter in `toolkit/internal/collectadapters`.
+4. Register the sensor and adapter in `builtinCollect` (`toolkit/app/collect.go`). App tests replace a built-in source with an in-memory `collect.Sensor` claimed through `WithCollect`; see `toolkit/app/fixture_test.go`.
 
-#### Adding a backend implementation
+#### Adding a data source for an existing domain
 
-To plug a new data source into an existing sensor (e.g. a DCGM-based GPU backend), implement the existing backend interface (`GPUBackend.Measure`) on a struct in whichever package its dependencies require. No registration needed — Go satisfies the interface structurally. Use `NVMLBackend` (`toolkit/nvml/`) as the template for backends that need a build-tagged subpackage.
+Implement `collect.Sensor` for the signals the source can report, in whichever package its dependencies require (a build-tagged subpackage for cgo sources, like `collect/source/nvml`). A consumer swaps it in with `WithCollect(sensor, signalIDs...)`; making it the stock CLI's default means registering it in `builtinCollect` instead of the source it replaces.
 
 #### The operator CLI (`toolkit/cmd/health-validation`)
 
-`toolkit/cmd/health-validation` is the operator-facing binary (`health-validation [--verbose] run [--node-id <id>] [--config <path>] [--cadence CONTINUOUS|PROLOG|MAINTENANCE]`); a `version` subcommand also exists). It loads an optional YAML config, builds the catalog, runs the GPU and NVLink sensors, plus the Node GPU inventory, CPU, and Xid collect sensors through the collect bridge, through `toolkit.CollectWithOptions`, and prints the `NodeVerdict` as JSON. The InfiniBand sensor is opt-in and is not wired by the stock CLI: it runs only when a consumer supplies an IB backend via `WithIBBackend`. `node_id` defaults to the hostname reported by the operating system without DNS canonicalization; `--node-id` overrides it. The config parameterizes and disables checks: each `checks.<id>.<param>` becomes a `catalog.Override` (config values are coerced to each `ThresholdSpec`'s declared Go type because CEL is type-sensitive), and each entry in the `disabled_checks` list becomes a `catalog.WithDisabledChecks` ID. Optional `--cadence CONTINUOUS|PROLOG|MAINTENANCE` is passed through `CollectionOptions` / `EvaluationOptions`; checks outside that window are cadence skips. Omit it and every registered check is evaluated. Cadence is not stored on the catalog and is not a YAML config field. Both check IDs and cadence names are validated, so a typo'd ID or cadence is an error rather than a silently-still-running check. It is the repo's first production binary and first cgo binary.
+`toolkit/cmd/health-validation` is the operator-facing binary (`health-validation [--verbose] run [--node-id <id>] [--config <path>] [--cadence CONTINUOUS|PROLOG|MAINTENANCE] [--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND] [--xid-from <unix-seconds>] [--xid-to <unix-seconds>]`); `collect` (measurements without evaluation) and `version` subcommands also exist. It loads an optional YAML config, builds the catalog, runs the GPU (DCGM, and NVML for compute processes), NVLink (DCGM for fabric registration, and NVML for links, P2P, and fabric health), Node GPU inventory, CPU, Xid, and RDMA link-flap collect sensors through the collect bridge, through `toolkit.CollectWithOptions`, and prints the `NodeVerdict` as JSON. `node_id` defaults to the hostname reported by the operating system without DNS canonicalization; `--node-id` overrides it. The config parameterizes and disables checks: each `checks.<id>.<param>` becomes a `catalog.Override` (config values are coerced to each `ThresholdSpec`'s declared Go type because CEL is type-sensitive), and each entry in the `disabled_checks` list becomes a `catalog.WithDisabledChecks` ID. Optional `--cadence CONTINUOUS|PROLOG|MAINTENANCE` is passed through `CollectionOptions` / `EvaluationOptions`; checks outside that window are cadence skips. Omit it and every registered check is evaluated. Cadence is not stored on the catalog and is not a YAML config field. Both check IDs and cadence names are validated, so a typo'd ID or cadence is an error rather than a silently-still-running check. `run` records every validated override in the systemd journal (`toolkit/app/override_audit.go`) before collecting, and exits 2 with empty stdout if it cannot; `collect` records none. Architecture discovery that finds NVML busy with an earlier call in the same process reports UNKNOWN with `retry_collection` instead of CRITICAL with reset/restart/escalate. `main` closes the host sources after `Run` returns, so one `App` can run more than once. It is the repo's first production binary and first cgo binary.
 
-The config's `metrics:` block optionally pushes the verdict to an OTLP/HTTP endpoint through `toolkit/otelmetrics` (see the README for the metric set). Three invariants hold that path together and should not be relaxed: publishing runs **after** the verdict is on stdout and every failure is logged and swallowed, so a collector outage cannot change a node's health or the exit code; the publisher uses a `ManualReader` and exports exactly once, because a `PeriodicReader` also flushes on `Shutdown` and would double-publish every run; and exporter retries are disabled, so `metrics.timeout_seconds` is the real ceiling rather than one attempt's. The config is loaded before architecture detection so the discovery-failure verdict — the outcome most worth alerting on — is published too.
+The config's `metrics:` block optionally pushes the verdict to an OTLP/HTTP endpoint through `toolkit/otelmetrics` (see the README for the metric set). Three invariants hold that path together and should not be relaxed: publishing runs **after** the verdict is written to stdout (even when that write fails) and every failure is logged and swallowed, so a collector outage cannot change a node's health or the exit code; the publisher uses a `ManualReader` and exports exactly once, because a `PeriodicReader` also flushes on `Shutdown` and would double-publish every run; and exporter retries are disabled, so `metrics.timeout_seconds` is the real ceiling rather than one attempt's. The config is loaded before architecture detection so the discovery-failure verdict — the outcome most worth alerting on — is published too.
 The logic lives in `toolkit/app/`; `toolkit/cmd/health-validation/main.go` is a thin shim over `app.New().Run(...)`. The backend is wired through a **platform split** so the command stays buildable and unit-testable everywhere:
 
-- `toolkit/app/backend_linux.go` (`//go:build linux`) — `newBackend()` returns the NVML (cgo) backend.
-- `toolkit/app/backend_other.go` (`//go:build !linux`) — `newBackend()` returns an "unavailable on this platform" error.
-- `toolkit/app/app.go` / `toolkit/app/config.go` stay platform-agnostic; `evaluateOnce` is shared by `run`, `serve`, and tests; tests replace the host backend and inject `toolkit.MockGPU`/`MockNode` without hardware or cgo.
+- `toolkit/app/backend_linux.go` (`//go:build linux && !android`) — `newHostBackend()` returns the cgo host backend: the collect NVML and DCGM sources and the shared GPU inventory.
+- `toolkit/app/backend_other.go` (`//go:build !linux || android`) — `newHostBackend()` returns a stub whose GPU inventory cannot open.
+- `toolkit/app/app.go` / `toolkit/app/config.go` stay platform-agnostic; tests replace `App.host` with a fake and claim the CPU and Xid signals from in-memory collect sensors, so they run without hardware or cgo.
 
-Consequence: on darwin `go build ./toolkit/cmd/health-validation` succeeds (stub backend) and `go test ./toolkit/cmd/health-validation` passes, but `health-validation run` exits `2` with the backend error — there is no data source off-linux. Follow this split for any future production binary that depends on a build-tagged backend.
+Consequence: on darwin `go build ./toolkit/cmd/health-validation` succeeds (stub backend) and `go test ./toolkit/app` passes, but `health-validation run` exits `1` with a CRITICAL `architecture_discovery` verdict — there is no data source off-linux. Follow this split for any future production binary that depends on a build-tagged backend.
 
 When adding a direct third-party dep here (this is how `gopkg.in/yaml.v3` arrived), run `bazel run //tools/gazelle` and `bazel run //tools/go -- mod tidy`. Both run natively on darwin now that the `-z,lazy` linkopt is scoped to linux builds (see PIE + lazy binding below). The new external repo must also be added to `use_repo(go_deps, …)` in `third_party/go.MODULE.bazel` (gazelle's repo name for `gopkg.in/yaml.v3` is `in_gopkg_yaml_v3`, target `:yaml_v3`).
 
@@ -253,7 +257,7 @@ startup/server failure, independently of per-request verdict severity. No
 health/readiness endpoint is promised in v1.
 
 The converter lives in `toolkit/verdictproto`; catalog must not import proto.
-The wire contract mirrors the current schema **0.4**, including ordered
+The wire contract mirrors the current schema **0.6**, including ordered
 remediation sequences. Use `proto/verdictjson` for canonical HTTP JSON so
 required empty containers and zero-valued enums/bools match one-shot JSON.
 Dynamic `google.protobuf.Value` numbers that change numeric meaning through
@@ -278,11 +282,11 @@ matrix. Keep agentkit experimental (v0); readiness remains a separate follow-up.
 
 **Enum handling** — all enums use the generic `marshalEnum[T]` / `unmarshalEnum[T]` helpers in `catalog/health/enum.go`. Follow the same pattern for new enums.
 
-**Check dependencies** — `Dependencies` declares that another check's Critical verdict explains this one's inability to collect. It is not a prerequisite relation: checks never read each other's results, so a dependency that did not run has no effect, and a dependent whose signals are readable always evaluates. Its only effect is naming the cause on a verdict for an entity this check could not read at all, which requires the collection errors to cover every signal the measurement carries. A dependent may declare architectures its dependency lacks, so the built-in edges only take effect on GB200/GB300 where `gpu_count` applies.
+**Built-in collect sources** — `WithCollect` callers claim signals explicitly, so adding a built-in collect source or a signal to one is not a breaking change. When a built-in source starts producing a signal it did not before, note it under CHANGELOG Features, naming the source and signal, so a caller that replaces that source with claims can add the new signal; otherwise the built-in supplies it and the domain is read from both.
+
+**Check dependencies** — `Dependencies` declares that another check's observed Critical or Unknown rule result explains this one's inability to collect. It is not a prerequisite relation: checks never read each other's results, so a dependency that did not run has no effect, and a dependent whose signals are readable always evaluates. Its only effect is naming the cause on a verdict for an entity this check could not read at all, which requires the collection errors to cover every signal the measurement carries. A dependent may declare architectures its dependency lacks, so the built-in edges only take effect on GB200/GB300 where `gpu_count` applies.
 
 **BUILD files** — Gazelle manages `BUILD.bazel` files. After adding or removing `.go` files or changing imports, run `bazel run //tools/gazelle` to regenerate. Do not hand-edit dep lists that Gazelle owns.
-
-**Mock constructors** — test doubles use exported constructor functions that return the interface (e.g. `MockGPU(...)`, `MockCommandExecutor(...)`), not exported mock structs. The underlying type stays unexported.
 
 **Example tests** — every `agentkit/examples/*` program keeps a `main_test.go` that runs its wiring (signal selection, sensor and catalog construction) without hardware under `bazel test //...`. Examples only fail at runtime against real sources, so CI's compile check alone misses a signal or check the example's sensors reject.
 
@@ -304,4 +308,4 @@ GOTOOLCHAIN=go1.27.3 go install golang.org/x/tools/go/analysis/passes/fieldalign
 
 The CI-equivalent check runs on Linux: `bazel test --config=ci --platforms=//build/platforms:linux_amd64 <target>` — run it on the **test** target holding the struct, since a struct in a `_test.go` file is only analyzed when its `go_test` builds (an image or library build won't catch it).
 
-For `//go:build linux`-tagged files that also pull in cgo (e.g. `toolkit/nvml/`), local checking on darwin is not reliable — darwin's clang can't cross-compile linux cgo, so nogo never runs against these files locally and the tool errors out. When CI's nogo step rejects a struct in such a file, it prints a unified-diff patch in the failure log; apply it verbatim with `patch -p1 <<'EOF' … EOF` or by hand.
+For `//go:build linux`-tagged files that also pull in cgo (e.g. `collect/source/nvml/`), local checking on darwin is not reliable — darwin's clang can't cross-compile linux cgo, so nogo never runs against these files locally and the tool errors out. When CI's nogo step rejects a struct in such a file, it prints a unified-diff patch in the failure log; apply it verbatim with `patch -p1 <<'EOF' … EOF` or by hand.

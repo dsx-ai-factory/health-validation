@@ -1,10 +1,20 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 package(default_visibility = ["//build/visibility:collect_consumers"])
 
 go_library(
     name = "infiniband",
-    srcs = ["signals.go"],
+    srcs = [
+        "linkflap.go",
+        "signals.go",
+    ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband",
     deps = ["//collect"],
+)
+
+go_test(
+    name = "infiniband_test",
+    srcs = ["linkflap_test.go"],
+    embed = [":infiniband"],
+    deps = ["@com_github_stretchr_testify//require"],
 )

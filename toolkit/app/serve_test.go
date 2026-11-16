@@ -28,12 +28,11 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dsx-ai-factory/health-validation/agentkit/verdictserver"
-	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/catalog/node"
+	"github.com/dsx-ai-factory/health-validation/collect"
+	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
 	"github.com/dsx-ai-factory/health-validation/proto/verdictjson"
-	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
@@ -150,24 +149,24 @@ func TestAgentRejectsInvalidOverridesBeforeHardware(t *testing.T) {
 	}
 }
 
-type blockingAgentGPU struct {
+type blockingAgentSource struct {
 	started chan struct{}
 	release chan struct{}
 	calls   atomic.Int32
 }
 
-func (backend *blockingAgentGPU) MeasureGPUs() ([]health.Measurement, error) {
+func (backend *blockingAgentSource) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	backend.calls.Add(1)
 	select {
 	case backend.started <- struct{}{}:
 	default:
 	}
 	<-backend.release
-	return nil, nil
+	return (gpuSpySensor{called: new(bool)}).Measure(ctx, opts...)
 }
 
 func TestAgentKeepsTimedOutNativeWorkSerialized(t *testing.T) {
-	backend := &blockingAgentGPU{started: make(chan struct{}, 2), release: make(chan struct{})}
+	backend := &blockingAgentSource{started: make(chan struct{}, 2), release: make(chan struct{})}
 	defer func() {
 		select {
 		case <-backend.release:
@@ -175,7 +174,7 @@ func TestAgentKeepsTimedOutNativeWorkSerialized(t *testing.T) {
 			close(backend.release)
 		}
 	}()
-	a := cadenceRunApp().WithGPUBackend(backend)
+	a := withAgentSource(cadenceRunApp(), backend)
 	agent := a.newVerdictAgent(&Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -216,10 +215,10 @@ func TestAgentKeepsTimedOutNativeWorkSerialized(t *testing.T) {
 }
 
 func TestAgentNoVerdictIsServerError(t *testing.T) {
-	a := cadenceRunApp().WithGPUBackend(toolkit.MockGPU(gpu.GPUMeasurement{GPUID: "GPU-duplicate"}, gpu.GPUMeasurement{GPUID: "GPU-duplicate"}))
+	a := cadenceRunApp().WithCollect(gpuSpySensor{called: new(bool)})
 	agent := a.newVerdictAgent(&Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
 	if _, err := agent.evaluate(context.Background(), &healthv1.EvaluateRequest{}); status.Code(err) != codes.Internal {
-		t.Fatalf("ambiguous measurement = %v", err)
+		t.Fatalf("invalid source registration = %v", err)
 	}
 }
 
@@ -266,9 +265,9 @@ func (host closeObservedHost) close() error {
 }
 
 func TestAgentDefersBackendCloseUntilNativeWorkFinishes(t *testing.T) {
-	backend := &blockingAgentGPU{started: make(chan struct{}, 1), release: make(chan struct{})}
+	backend := &blockingAgentSource{started: make(chan struct{}, 1), release: make(chan struct{})}
 	defer close(backend.release)
-	a := cadenceRunApp().WithGPUBackend(backend)
+	a := withAgentSource(cadenceRunApp(), backend)
 	closed := make(chan struct{})
 	a.host = closeObservedHost{hostBackend: a.host, closed: closed}
 	agent := a.newVerdictAgent(&Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
@@ -472,7 +471,7 @@ func TestAgentSourceTimeoutProducesVerdict(t *testing.T) {
 		checkID string
 	}{
 		{func(release chan struct{}) *App {
-			return cadenceRunApp().WithGPUBackend(&blockingAgentGPU{started: make(chan struct{}, 1), release: release})
+			return withAgentSource(cadenceRunApp(), &blockingAgentSource{started: make(chan struct{}, 1), release: release})
 		}, "GPU source", "gpu_average_power_draw"},
 		{func(release chan struct{}) *App {
 			a := cadenceRunApp()
@@ -505,20 +504,20 @@ func TestAgentSourceTimeoutProducesVerdict(t *testing.T) {
 
 type delayedAgentGPU struct{}
 
-func (delayedAgentGPU) MeasureGPUs() ([]health.Measurement, error) {
+func (delayedAgentGPU) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	time.Sleep(700 * time.Millisecond)
-	return []health.Measurement{gpu.GPUMeasurement{GPUID: "GPU-0", AveragePowerDrawW: 220, PowerLimitW: 1200, EnforcedPowerLimitW: 1200}}, nil
+	return (gpuSpySensor{called: new(bool)}).Measure(ctx, opts...)
 }
 
 type delayedAgentNode struct{}
 
-func (delayedAgentNode) MeasureNode() ([]health.Measurement, error) {
+func (delayedAgentNode) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	time.Sleep(700 * time.Millisecond)
-	return []health.Measurement{node.NodeMeasurement{GPUCount: 4}}, nil
+	return agentNodeCountSource(4).Measure(ctx, opts...)
 }
 
 func TestAgentSequentialSourcesHaveIndependentBudgets(t *testing.T) {
-	agent := cadenceRunApp().WithGPUBackend(delayedAgentGPU{}).WithNodeBackend(delayedAgentNode{}).newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+	agent := withAgentSource(withAgentSource(cadenceRunApp(), delayedAgentGPU{}), delayedAgentNode{}).newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	verdict, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{})
@@ -593,11 +592,11 @@ func TestAgentReportsStuckSourcesToQueuedAndLaterCallers(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer collector.Close()
-	backend := &blockingAgentGPU{started: make(chan struct{}, 2), release: make(chan struct{})}
+	backend := &blockingAgentSource{started: make(chan struct{}, 2), release: make(chan struct{})}
 	var release sync.Once
 	defer release.Do(func() { close(backend.release) })
 	cfg := &Config{CollectionTimeoutSeconds: 1, Metrics: MetricsConfig{Enabled: true, Endpoint: collector.URL, TimeoutSeconds: 1}}
-	agent := cadenceRunApp().WithGPUBackend(backend).newVerdictAgent(cfg, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+	agent := withAgentSource(cadenceRunApp(), backend).newVerdictAgent(cfg, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
 	firstDone := make(chan error, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -630,7 +629,7 @@ func TestAgentReportsStuckSourcesToQueuedAndLaterCallers(t *testing.T) {
 	}
 	values := busy.CheckResults[0].ObservedValues
 	since, ok := values["since"].(string)
-	if values["source"] != "gpu" || !ok {
+	if values["source"] != "test.blocking.gpu" || !ok {
 		t.Fatalf("source metadata = %v", values)
 	}
 	if _, parseErr := time.Parse(time.RFC3339Nano, since); parseErr != nil {
@@ -671,3 +670,10 @@ func TestAgentReportsStuckSourcesToQueuedAndLaterCallers(t *testing.T) {
 		}
 	}
 }
+
+func (*blockingAgentSource) ID() string               { return "test.blocking.gpu" }
+func (*blockingAgentSource) Signals() collect.Signals { return agentPowerSignals() }
+func (delayedAgentGPU) ID() string                    { return "test.delayed.gpu" }
+func (delayedAgentGPU) Signals() collect.Signals      { return agentPowerSignals() }
+func (delayedAgentNode) ID() string                   { return "test.delayed.node" }
+func (delayedAgentNode) Signals() collect.Signals     { return collect.Signals{gpuinventory.GPUCount} }

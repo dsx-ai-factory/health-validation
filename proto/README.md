@@ -14,7 +14,7 @@ optional query parameters or `POST /verdict` with an `EvaluateRequest` JSON body
 See [agent operation](../docs/agent-mode.md) for request examples and error codes.
 
 The fields follow the current catalog
-[`NodeVerdict` schema](../catalog/health/node-verdict.schema.json), version **0.4**.
+[`NodeVerdict` schema](../catalog/health/node-verdict.schema.json), version **0.6**.
 `schema_version` describes the verdict JSON contract; the `v1` protobuf namespace
 versions the RPC and field-number contract. Clients must check `schema_version`
 before acting. Preserve protobuf field numbers on additive changes; reserve
@@ -47,7 +47,7 @@ finite floating-point tolerances remain valid when they meet that exactness test
 Protobuf repeated fields cannot distinguish nil from empty slices. The HTTP JSON
 adapter uses proto field names and restores
 the required empty `severity_by_domain` object, null `check_results`, and empty
-component `check_ids` that standard protojson otherwise omits. Optional empty
+component `checks` that standard protojson otherwise omits. Optional empty
 collections stay omitted.
 
 With [Buf](https://buf.build/docs/cli/) and the repository's Go toolchain installed,

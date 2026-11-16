@@ -227,6 +227,82 @@ func TestCheckVerdictJSON_ConditionScope(t *testing.T) {
 	assertScope(CheckVerdict{}, "NODE")
 }
 
+func TestAggregateNodeVerdict_GroupsChecksWithEntities(t *testing.T) {
+	nv := AggregateNodeVerdict([]CheckVerdict{
+		{CheckID: "gpu_power_state", Severity: Warning, Category: GPU, AffectedEntities: []string{"GPU-2"}},
+		{CheckID: "gpu_power_limit", Severity: Critical, Category: GPU, AffectedEntities: []string{"GPU-2"}},
+		{CheckID: "gpu_count", Severity: Critical, Category: GPU},
+		{CheckID: "gpu_power_limit", Severity: Critical, Category: GPU, AffectedEntities: []string{"GPU-1", "GPU-2"}},
+		{CheckID: "nvlink_active", Severity: Critical, Category: NVLink, AffectedEntities: []string{"GPU-1"}},
+		{CheckID: "gpu_power_limit", Severity: Pass, Category: GPU, AffectedEntities: []string{"GPU-9"}},
+	})
+
+	gpu := componentFor(t, nv, GPU)
+	if gpu.MaxSeverity != Critical {
+		t.Errorf("gpu max severity = %v, want CRITICAL", gpu.MaxSeverity)
+	}
+	wantGPU := []AffectedCheck{
+		{CheckID: "gpu_count"},
+		{CheckID: "gpu_power_limit", Entities: []string{"GPU-1", "GPU-2"}},
+		{CheckID: "gpu_power_state", Entities: []string{"GPU-2"}},
+	}
+	if !equalChecks(gpu.Checks, wantGPU) {
+		t.Errorf("gpu checks = %+v, want %+v", gpu.Checks, wantGPU)
+	}
+
+	nvlink := componentFor(t, nv, NVLink)
+	wantNVLink := []AffectedCheck{{CheckID: "nvlink_active", Entities: []string{"GPU-1"}}}
+	if !equalChecks(nvlink.Checks, wantNVLink) {
+		t.Errorf("nvlink checks = %+v, want %+v", nvlink.Checks, wantNVLink)
+	}
+
+	data, err := json.Marshal(gpu)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	checks, _ := raw["checks"].([]any)
+	var noEntity map[string]any
+	for _, item := range checks {
+		check, _ := item.(map[string]any)
+		if check["check_id"] == "gpu_count" {
+			noEntity = check
+		}
+	}
+	if noEntity == nil {
+		t.Fatalf("gpu_count missing from %s", data)
+	}
+	if _, ok := noEntity["entities"]; ok {
+		t.Errorf("check with no entity included entities: %s", data)
+	}
+}
+
+func componentFor(t *testing.T, nv NodeVerdict, category Category) AffectedComponent {
+	t.Helper()
+	for _, component := range nv.AffectedComponents {
+		if component.Category == category {
+			return component
+		}
+	}
+	t.Fatalf("no affected component for %s", category)
+	return AffectedComponent{}
+}
+
+func equalChecks(got, want []AffectedCheck) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i].CheckID != want[i].CheckID || !slices.Equal(got[i].Entities, want[i].Entities) {
+			return false
+		}
+	}
+	return true
+}
+
 func TestAggregateNodeVerdict_Basic(t *testing.T) {
 	now := time.Now()
 	verdicts := []CheckVerdict{
@@ -264,6 +340,61 @@ func TestAggregateNodeVerdict_RecommendedAction(t *testing.T) {
 				{CheckID: "critical-reset", Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU, RemediationActionServiceRequired)},
 			},
 			want: Drain(RemediationActionResetGPU, RemediationActionServiceRequired),
+		},
+		{
+			name: "critical remediation before unknown collection failure",
+			verdicts: []CheckVerdict{
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+				{CheckID: "critical-reset", Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU)},
+			},
+			want: Drain(RemediationActionResetGPU),
+		},
+		{
+			name: "critical unranked action before unknown collection guidance",
+			verdicts: []CheckVerdict{
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+				{CheckID: "critical-hold", Severity: Critical, RecommendedAction: Drain(RemediationActionHold)},
+			},
+			want: Drain(RemediationActionHold),
+		},
+		{
+			name: "critical remediation before unknown timeout",
+			verdicts: []CheckVerdict{
+				{CheckID: "retry", Severity: Unknown, RecommendedAction: Drain(RemediationActionRetryCollection)},
+				{CheckID: "critical-service", Severity: Critical, RecommendedAction: Drain(RemediationActionServiceRequired)},
+			},
+			want: Drain(RemediationActionServiceRequired),
+		},
+		{
+			name: "unknown collection failures remain eligible",
+			verdicts: []CheckVerdict{
+				{CheckID: "retry", Severity: Unknown, RecommendedAction: Drain(RemediationActionRetryCollection)},
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+			},
+			want: Drain(RemediationActionCheckCollection),
+		},
+		{
+			name: "critical without eligible action does not suppress collection guidance",
+			verdicts: []CheckVerdict{
+				{CheckID: "critical", Severity: Critical},
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+			},
+			want: Drain(RemediationActionCheckCollection),
+		},
+		{
+			name: "unknown timeout remains eligible alone",
+			verdicts: []CheckVerdict{
+				{CheckID: "retry", Severity: Unknown, RecommendedAction: Drain(RemediationActionRetryCollection)},
+			},
+			want: Drain(RemediationActionRetryCollection),
+		},
+		{
+			name: "unknown retains priority over warning",
+			verdicts: []CheckVerdict{
+				{CheckID: "collection", Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+				{CheckID: "warning-service", Severity: Warning, RecommendedAction: Drain(RemediationActionServiceRequired)},
+			},
+			want: Drain(RemediationActionCheckCollection),
 		},
 		{
 			name: "first action priority",
@@ -331,9 +462,9 @@ func TestAggregateNodeVerdict_RecommendedAction(t *testing.T) {
 		{
 			name: "unranked action remains eligible",
 			verdicts: []CheckVerdict{
-				{CheckID: "xid-154", Severity: Info, RecommendedAction: Drain(RemediationActionXid154)},
+				{CheckID: "xid-154", Severity: Info, RecommendedAction: Drain(RemediationActionStopP2PTraffic)},
 			},
-			want: Drain(RemediationActionXid154),
+			want: Drain(RemediationActionStopP2PTraffic),
 		},
 	}
 
@@ -351,6 +482,40 @@ func TestAggregateNodeVerdict_RecommendedAction(t *testing.T) {
 				t.Errorf("RecommendedAction with reversed input = %v, want %v", gotReversed, tt.want)
 			}
 		})
+	}
+}
+
+func TestAggregateNodeVerdict_CriticalOutranksUnknown(t *testing.T) {
+	verdicts := []CheckVerdict{
+		{CheckID: "collection", Category: GPU, Severity: Unknown, RecommendedAction: Drain(RemediationActionCheckCollection)},
+		{CheckID: "fault", Category: GPU, Severity: Critical, RecommendedAction: Drain(RemediationActionResetGPU)},
+	}
+	nv := AggregateNodeVerdict(verdicts)
+	if nv.OverallSeverity != Critical || nv.SeverityByDomain[GPU] != Critical {
+		t.Fatalf("overall=%v GPU=%v, want CRITICAL for the confirmed fault", nv.OverallSeverity, nv.SeverityByDomain[GPU])
+	}
+	if len(nv.AffectedComponents) != 1 || nv.AffectedComponents[0].MaxSeverity != Critical {
+		t.Fatalf("affected components = %+v, want CRITICAL GPU summary", nv.AffectedComponents)
+	}
+	if !nv.RecommendedAction.Equal(Drain(RemediationActionResetGPU)) {
+		t.Errorf("action = %v, want the critical fault's GPU reset", nv.RecommendedAction)
+	}
+	if len(nv.CheckResults) != 2 || nv.CheckResults[0].Severity != Unknown || nv.CheckResults[1].Severity != Critical {
+		t.Errorf("check results = %+v, want both collection and critical findings preserved", nv.CheckResults)
+	}
+}
+
+func TestAggregateNodeVerdict_UnknownOutranksWarning(t *testing.T) {
+	verdicts := []CheckVerdict{
+		{CheckID: "warning", Category: GPU, Severity: Warning},
+		{CheckID: "unknown", Category: GPU, Severity: Unknown},
+	}
+	for range 2 {
+		nv := AggregateNodeVerdict(verdicts)
+		if nv.OverallSeverity != Unknown || nv.SeverityByDomain[GPU] != Unknown {
+			t.Fatalf("overall=%v GPU=%v, want UNKNOWN for incomplete assessment", nv.OverallSeverity, nv.SeverityByDomain[GPU])
+		}
+		slices.Reverse(verdicts)
 	}
 }
 
@@ -382,7 +547,7 @@ func TestNodeActionRank(t *testing.T) {
 			t.Errorf("rank(%q) = %d, want less than rank(%q) = %d", actions[i-1], higher, actions[i], lower)
 		}
 	}
-	for _, action := range []RemediationAction{RemediationActionHold, RemediationActionXid154, "custom"} {
+	for _, action := range []RemediationAction{RemediationActionHold, RemediationActionStopP2PTraffic, "custom"} {
 		if got := nodeActionRank(action); got != len(nodeActionPriority) {
 			t.Errorf("rank(%q) = %d, want unranked value %d", action, got, len(nodeActionPriority))
 		}

@@ -34,8 +34,8 @@ const (
 	Severity_PASS                 Severity = 1
 	Severity_INFO                 Severity = 2
 	Severity_WARNING              Severity = 3
-	Severity_CRITICAL             Severity = 4
-	Severity_UNKNOWN              Severity = 5
+	Severity_UNKNOWN              Severity = 4
+	Severity_CRITICAL             Severity = 5
 )
 
 // Enum value maps for Severity.
@@ -45,16 +45,16 @@ var (
 		1: "PASS",
 		2: "INFO",
 		3: "WARNING",
-		4: "CRITICAL",
-		5: "UNKNOWN",
+		4: "UNKNOWN",
+		5: "CRITICAL",
 	}
 	Severity_value = map[string]int32{
 		"SEVERITY_UNSPECIFIED": 0,
 		"PASS":                 1,
 		"INFO":                 2,
 		"WARNING":              3,
-		"CRITICAL":             4,
-		"UNKNOWN":              5,
+		"UNKNOWN":              4,
+		"CRITICAL":             5,
 	}
 )
 
@@ -570,7 +570,7 @@ func (x *EvaluateRequest) GetNodeId() string {
 	return ""
 }
 
-// The schema version follows catalog/health/node-verdict.schema.json, currently 0.4.
+// The schema version follows catalog/health/node-verdict.schema.json, currently 0.6.
 // Required catalog scalars use presence so protojson retains zero-valued fields.
 // Timestamps are RFC3339 strings to preserve the catalog's offset and precision.
 type NodeVerdict struct {
@@ -989,19 +989,70 @@ func (x *ResolvedThreshold) GetOverridden() bool {
 	return false
 }
 
+type AffectedCheck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CheckId       *string                `protobuf:"bytes,1,opt,name=check_id,json=checkId,proto3,oneof" json:"check_id,omitempty"`
+	Entities      []string               `protobuf:"bytes,2,rep,name=entities,proto3" json:"entities,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AffectedCheck) Reset() {
+	*x = AffectedCheck{}
+	mi := &file_health_v1_verdict_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AffectedCheck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AffectedCheck) ProtoMessage() {}
+
+func (x *AffectedCheck) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_verdict_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AffectedCheck.ProtoReflect.Descriptor instead.
+func (*AffectedCheck) Descriptor() ([]byte, []int) {
+	return file_health_v1_verdict_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *AffectedCheck) GetCheckId() string {
+	if x != nil && x.CheckId != nil {
+		return *x.CheckId
+	}
+	return ""
+}
+
+func (x *AffectedCheck) GetEntities() []string {
+	if x != nil {
+		return x.Entities
+	}
+	return nil
+}
+
 type AffectedComponent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckIds      []string               `protobuf:"bytes,1,rep,name=check_ids,json=checkIds,proto3" json:"check_ids,omitempty"`
+	Checks        []*AffectedCheck       `protobuf:"bytes,5,rep,name=checks,proto3" json:"checks,omitempty"`
 	Category      *Category              `protobuf:"varint,2,opt,name=category,proto3,enum=health.verdict.v1.Category,oneof" json:"category,omitempty"`
 	MaxSeverity   *Severity              `protobuf:"varint,3,opt,name=max_severity,json=maxSeverity,proto3,enum=health.verdict.v1.Severity,oneof" json:"max_severity,omitempty"`
-	Entities      []string               `protobuf:"bytes,4,rep,name=entities,proto3" json:"entities,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AffectedComponent) Reset() {
 	*x = AffectedComponent{}
-	mi := &file_health_v1_verdict_proto_msgTypes[5]
+	mi := &file_health_v1_verdict_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1013,7 +1064,7 @@ func (x *AffectedComponent) String() string {
 func (*AffectedComponent) ProtoMessage() {}
 
 func (x *AffectedComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_verdict_proto_msgTypes[5]
+	mi := &file_health_v1_verdict_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1026,12 +1077,12 @@ func (x *AffectedComponent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AffectedComponent.ProtoReflect.Descriptor instead.
 func (*AffectedComponent) Descriptor() ([]byte, []int) {
-	return file_health_v1_verdict_proto_rawDescGZIP(), []int{5}
+	return file_health_v1_verdict_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *AffectedComponent) GetCheckIds() []string {
+func (x *AffectedComponent) GetChecks() []*AffectedCheck {
 	if x != nil {
-		return x.CheckIds
+		return x.Checks
 	}
 	return nil
 }
@@ -1048,13 +1099,6 @@ func (x *AffectedComponent) GetMaxSeverity() Severity {
 		return *x.MaxSeverity
 	}
 	return Severity_SEVERITY_UNSPECIFIED
-}
-
-func (x *AffectedComponent) GetEntities() []string {
-	if x != nil {
-		return x.Entities
-	}
-	return nil
 }
 
 var File_health_v1_verdict_proto protoreflect.FileDescriptor
@@ -1153,21 +1197,24 @@ const file_health_v1_verdict_proto_rawDesc = "" +
 	"overridden\x18\x04 \x01(\bH\x01R\n" +
 	"overridden\x88\x01\x01B\v\n" +
 	"\t_categoryB\r\n" +
-	"\v_overridden\"\xed\x01\n" +
-	"\x11AffectedComponent\x12\x1b\n" +
-	"\tcheck_ids\x18\x01 \x03(\tR\bcheckIds\x12<\n" +
+	"\v_overridden\"X\n" +
+	"\rAffectedCheck\x12\x1e\n" +
+	"\bcheck_id\x18\x01 \x01(\tH\x00R\acheckId\x88\x01\x01\x12\x1a\n" +
+	"\bentities\x18\x02 \x03(\tR\bentitiesB\v\n" +
+	"\t_check_id\"\x8f\x02\n" +
+	"\x11AffectedComponent\x128\n" +
+	"\x06checks\x18\x05 \x03(\v2 .health.verdict.v1.AffectedCheckR\x06checks\x12<\n" +
 	"\bcategory\x18\x02 \x01(\x0e2\x1b.health.verdict.v1.CategoryH\x00R\bcategory\x88\x01\x01\x12C\n" +
-	"\fmax_severity\x18\x03 \x01(\x0e2\x1b.health.verdict.v1.SeverityH\x01R\vmaxSeverity\x88\x01\x01\x12\x1a\n" +
-	"\bentities\x18\x04 \x03(\tR\bentitiesB\v\n" +
+	"\fmax_severity\x18\x03 \x01(\x0e2\x1b.health.verdict.v1.SeverityH\x01R\vmaxSeverity\x88\x01\x01B\v\n" +
 	"\t_categoryB\x0f\n" +
-	"\r_max_severity*`\n" +
+	"\r_max_severityJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05R\tcheck_idsR\bentities*`\n" +
 	"\bSeverity\x12\x18\n" +
 	"\x14SEVERITY_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04PASS\x10\x01\x12\b\n" +
 	"\x04INFO\x10\x02\x12\v\n" +
-	"\aWARNING\x10\x03\x12\f\n" +
-	"\bCRITICAL\x10\x04\x12\v\n" +
-	"\aUNKNOWN\x10\x05*b\n" +
+	"\aWARNING\x10\x03\x12\v\n" +
+	"\aUNKNOWN\x10\x04\x12\f\n" +
+	"\bCRITICAL\x10\x05*b\n" +
 	"\bCategory\x12\a\n" +
 	"\x03gpu\x10\x00\x12\n" +
 	"\n" +
@@ -1236,7 +1283,7 @@ func file_health_v1_verdict_proto_rawDescGZIP() []byte {
 
 var (
 	file_health_v1_verdict_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-	file_health_v1_verdict_proto_msgTypes  = make([]protoimpl.MessageInfo, 9)
+	file_health_v1_verdict_proto_msgTypes  = make([]protoimpl.MessageInfo, 10)
 	file_health_v1_verdict_proto_goTypes   = []any{
 		(Severity)(0),             // 0: health.verdict.v1.Severity
 		(Category)(0),             // 1: health.verdict.v1.Category
@@ -1252,11 +1299,12 @@ var (
 		(*CheckVerdict)(nil),      // 11: health.verdict.v1.CheckVerdict
 		(*RecommendedAction)(nil), // 12: health.verdict.v1.RecommendedAction
 		(*ResolvedThreshold)(nil), // 13: health.verdict.v1.ResolvedThreshold
-		(*AffectedComponent)(nil), // 14: health.verdict.v1.AffectedComponent
-		nil,                       // 15: health.verdict.v1.NodeVerdict.SeverityByDomainEntry
-		nil,                       // 16: health.verdict.v1.CheckVerdict.ObservedValuesEntry
-		nil,                       // 17: health.verdict.v1.CheckVerdict.ThresholdsEntry
-		(*structpb.Value)(nil),    // 18: google.protobuf.Value
+		(*AffectedCheck)(nil),     // 14: health.verdict.v1.AffectedCheck
+		(*AffectedComponent)(nil), // 15: health.verdict.v1.AffectedComponent
+		nil,                       // 16: health.verdict.v1.NodeVerdict.SeverityByDomainEntry
+		nil,                       // 17: health.verdict.v1.CheckVerdict.ObservedValuesEntry
+		nil,                       // 18: health.verdict.v1.CheckVerdict.ThresholdsEntry
+		(*structpb.Value)(nil),    // 19: google.protobuf.Value
 	}
 )
 
@@ -1264,9 +1312,9 @@ var file_health_v1_verdict_proto_depIdxs = []int32{
 	7,  // 0: health.verdict.v1.EvaluateRequest.cadence:type_name -> health.verdict.v1.SchedulingCadence
 	8,  // 1: health.verdict.v1.EvaluateRequest.execution_context:type_name -> health.verdict.v1.ExecutionContext
 	0,  // 2: health.verdict.v1.NodeVerdict.overall_severity:type_name -> health.verdict.v1.Severity
-	15, // 3: health.verdict.v1.NodeVerdict.severity_by_domain:type_name -> health.verdict.v1.NodeVerdict.SeverityByDomainEntry
+	16, // 3: health.verdict.v1.NodeVerdict.severity_by_domain:type_name -> health.verdict.v1.NodeVerdict.SeverityByDomainEntry
 	12, // 4: health.verdict.v1.NodeVerdict.recommended_action:type_name -> health.verdict.v1.RecommendedAction
-	14, // 5: health.verdict.v1.NodeVerdict.affected_components:type_name -> health.verdict.v1.AffectedComponent
+	15, // 5: health.verdict.v1.NodeVerdict.affected_components:type_name -> health.verdict.v1.AffectedComponent
 	11, // 6: health.verdict.v1.NodeVerdict.check_results:type_name -> health.verdict.v1.CheckVerdict
 	11, // 7: health.verdict.v1.NodeVerdict.skipped_checks:type_name -> health.verdict.v1.CheckVerdict
 	0,  // 8: health.verdict.v1.CheckVerdict.severity:type_name -> health.verdict.v1.Severity
@@ -1275,24 +1323,25 @@ var file_health_v1_verdict_proto_depIdxs = []int32{
 	4,  // 11: health.verdict.v1.CheckVerdict.maturity_level:type_name -> health.verdict.v1.MaturityLevel
 	3,  // 12: health.verdict.v1.CheckVerdict.skip_reason:type_name -> health.verdict.v1.SkipReason
 	12, // 13: health.verdict.v1.CheckVerdict.recommended_action:type_name -> health.verdict.v1.RecommendedAction
-	16, // 14: health.verdict.v1.CheckVerdict.observed_values:type_name -> health.verdict.v1.CheckVerdict.ObservedValuesEntry
-	17, // 15: health.verdict.v1.CheckVerdict.thresholds:type_name -> health.verdict.v1.CheckVerdict.ThresholdsEntry
+	17, // 14: health.verdict.v1.CheckVerdict.observed_values:type_name -> health.verdict.v1.CheckVerdict.ObservedValuesEntry
+	18, // 15: health.verdict.v1.CheckVerdict.thresholds:type_name -> health.verdict.v1.CheckVerdict.ThresholdsEntry
 	6,  // 16: health.verdict.v1.RecommendedAction.operational_state:type_name -> health.verdict.v1.OperationalState
-	18, // 17: health.verdict.v1.ResolvedThreshold.value:type_name -> google.protobuf.Value
-	18, // 18: health.verdict.v1.ResolvedThreshold.original_value:type_name -> google.protobuf.Value
+	19, // 17: health.verdict.v1.ResolvedThreshold.value:type_name -> google.protobuf.Value
+	19, // 18: health.verdict.v1.ResolvedThreshold.original_value:type_name -> google.protobuf.Value
 	5,  // 19: health.verdict.v1.ResolvedThreshold.category:type_name -> health.verdict.v1.ThresholdCategory
-	1,  // 20: health.verdict.v1.AffectedComponent.category:type_name -> health.verdict.v1.Category
-	0,  // 21: health.verdict.v1.AffectedComponent.max_severity:type_name -> health.verdict.v1.Severity
-	0,  // 22: health.verdict.v1.NodeVerdict.SeverityByDomainEntry.value:type_name -> health.verdict.v1.Severity
-	18, // 23: health.verdict.v1.CheckVerdict.ObservedValuesEntry.value:type_name -> google.protobuf.Value
-	13, // 24: health.verdict.v1.CheckVerdict.ThresholdsEntry.value:type_name -> health.verdict.v1.ResolvedThreshold
-	9,  // 25: health.verdict.v1.VerdictService.Evaluate:input_type -> health.verdict.v1.EvaluateRequest
-	10, // 26: health.verdict.v1.VerdictService.Evaluate:output_type -> health.verdict.v1.NodeVerdict
-	26, // [26:27] is the sub-list for method output_type
-	25, // [25:26] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	14, // 20: health.verdict.v1.AffectedComponent.checks:type_name -> health.verdict.v1.AffectedCheck
+	1,  // 21: health.verdict.v1.AffectedComponent.category:type_name -> health.verdict.v1.Category
+	0,  // 22: health.verdict.v1.AffectedComponent.max_severity:type_name -> health.verdict.v1.Severity
+	0,  // 23: health.verdict.v1.NodeVerdict.SeverityByDomainEntry.value:type_name -> health.verdict.v1.Severity
+	19, // 24: health.verdict.v1.CheckVerdict.ObservedValuesEntry.value:type_name -> google.protobuf.Value
+	13, // 25: health.verdict.v1.CheckVerdict.ThresholdsEntry.value:type_name -> health.verdict.v1.ResolvedThreshold
+	9,  // 26: health.verdict.v1.VerdictService.Evaluate:input_type -> health.verdict.v1.EvaluateRequest
+	10, // 27: health.verdict.v1.VerdictService.Evaluate:output_type -> health.verdict.v1.NodeVerdict
+	27, // [27:28] is the sub-list for method output_type
+	26, // [26:27] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_health_v1_verdict_proto_init() }
@@ -1306,13 +1355,14 @@ func file_health_v1_verdict_proto_init() {
 	file_health_v1_verdict_proto_msgTypes[3].OneofWrappers = []any{}
 	file_health_v1_verdict_proto_msgTypes[4].OneofWrappers = []any{}
 	file_health_v1_verdict_proto_msgTypes[5].OneofWrappers = []any{}
+	file_health_v1_verdict_proto_msgTypes[6].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_health_v1_verdict_proto_rawDesc), len(file_health_v1_verdict_proto_rawDesc)),
 			NumEnums:      9,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

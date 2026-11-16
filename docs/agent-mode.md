@@ -229,7 +229,7 @@ a handler that returns proto messages, keeping `agentkit/verdictserver` independ
 catalog and toolkit. `toolkit/verdictproto` is the conversion boundary; the
 catalog and raw collection packages acquire no dependency on it.
 
-The source of truth is the current `NodeVerdict` JSON schema **0.4**, including
+The source of truth is the current `NodeVerdict` JSON schema **0.6**, including
 ordered remediation actions. The proto package is `health.verdict.v1`; its major
 version identifies the wire API, while `schema_version` identifies the verdict
 content. Keep additive fields compatible within the wire API and never reuse
