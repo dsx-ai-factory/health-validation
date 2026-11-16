@@ -48,6 +48,7 @@ Choose the listener and container networking accordingly.
 | --- | --- | --- |
 | `--address` | `127.0.0.1:8080` | One listener for HTTP/1 and gRPC |
 | `--allow-remote` | false | Allow a non-loopback listener; does not enable TLS or authentication |
+| `--request-timeout` | `2m` | Admission and evaluation budget; must exceed `collection_timeout_seconds` |
 | `--node-id` | App-configured identifier, otherwise system hostname | Optional `node_id` replaces it for one request; whitespace-only values fail |
 | `--cadence` | Omitted: all registered checks | Optional `cadence` selects `CONTINUOUS`, `PROLOG`, or `MAINTENANCE` |
 | `--execution-context` | `TENANT_GUEST` | Optional `execution_context` selects `OPERATOR_INFRA`, `TENANT_GUEST`, or `OUT_OF_BAND` |
@@ -100,12 +101,16 @@ changes the running process's exit policy.
 ## Concurrency, deadlines, and shutdown
 
 The service serializes evaluations because host NVML/DCGM sources are shared.
-It does not coalesce requests or reuse a previous verdict. The configured
-`collection_timeout_seconds` bounds admission and evaluation, including time
-spent waiting for another evaluation; the default is 60 seconds. HTTP request
-decoding and response writing are outside this budget, so the full HTTP call
-can take longer. A shorter client deadline also applies. Each source retains
-its own watchdog within that budget.
+It does not coalesce requests or reuse a previous verdict.
+`collection_timeout_seconds` bounds each source call independently (default
+60 seconds). `--request-timeout` separately bounds admission and evaluation,
+including time spent waiting for another evaluation (default 2 minutes, matching
+the raw Check API's HTTP write timeout).
+It must exceed the source timeout; allow enough time for sequential source
+calls and verdict production. This lets a source watchdog produce a failure
+verdict before the request expires. A shorter client deadline also applies.
+HTTP request decoding and response writing are outside the request budget,
+so the full HTTP call can take longer.
 
 Cancellation propagates to cooperative sensors. Native calls can outlive a
 watchdog because they cannot be interrupted. The service tracks that work and

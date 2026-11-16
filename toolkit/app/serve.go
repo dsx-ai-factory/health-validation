@@ -28,6 +28,9 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit/verdictproto"
 )
 
+// Match the raw Check API's HTTP write budget.
+const defaultRequestTimeout = 2 * time.Minute
+
 func (a *App) serveCommand(args []string, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -39,6 +42,7 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	address := fs.String("address", "127.0.0.1:8080", "TCP address for the local gRPC and HTTP verdict API")
 	allowRemote := fs.Bool("allow-remote", false, "allow a non-loopback plaintext listener")
+	requestTimeout := fs.Duration("request-timeout", defaultRequestTimeout, "admission and evaluation timeout; must exceed the source collection timeout")
 	configPath := fs.String("config", "", "path to a YAML configuration file")
 	nodeID := fs.String("node-id", a.nodeID, "default node identifier")
 	cadenceFlag := fs.String("cadence", "", "default cadence window (CONTINUOUS, PROLOG, MAINTENANCE)")
@@ -73,6 +77,9 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	if err != nil {
 		return fail(err)
 	}
+	if *requestTimeout <= collectionTimeout(cfg) {
+		return fail(fmt.Errorf("--request-timeout must exceed collection_timeout_seconds (%s)", collectionTimeout(cfg)))
+	}
 	cat, _, err := buildCatalog(cfg, a.customChecks, "", defaults.ExecutionContext)
 	if err != nil {
 		return fail(err)
@@ -81,6 +88,7 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 		return fail(err)
 	}
 	agent := a.newVerdictAgent(cfg, defaults, xidJournal)
+	agent.requestTimeout = *requestTimeout
 	defer agent.closeWhenIdle()
 	if err := verdictserver.ServeContext(ctx, *address, agent.evaluate, verdictserver.WithAfterResponse(agent.afterResponse)); err != nil {
 		return fail(err)
@@ -125,15 +133,16 @@ func validateListenAddress(address string, allowRemote bool) error {
 }
 
 type verdictAgent struct {
-	app      *App
-	cfg      *Config
-	journal  collect.Sensor
-	gate     chan struct{}
-	defaults evaluationRequest
+	app            *App
+	cfg            *Config
+	journal        collect.Sensor
+	gate           chan struct{}
+	defaults       evaluationRequest
+	requestTimeout time.Duration
 }
 
 func (a *App) newVerdictAgent(cfg *Config, defaults evaluationRequest, journal collect.Sensor) *verdictAgent {
-	return &verdictAgent{app: a, cfg: cfg, defaults: defaults, journal: journal, gate: make(chan struct{}, 1)}
+	return &verdictAgent{app: a, cfg: cfg, defaults: defaults, journal: journal, gate: make(chan struct{}, 1), requestTimeout: defaultRequestTimeout}
 }
 
 func (agent *verdictAgent) closeWhenIdle() {
@@ -201,7 +210,7 @@ func (agent *verdictAgent) evaluate(ctx context.Context, req *healthv1.EvaluateR
 	started := time.Now()
 	traceID := uuid.NewString()
 	// Admission time is included so queued callers have the same bounded budget.
-	ctx, cancel := context.WithTimeout(ctx, collectionTimeout(agent.cfg))
+	ctx, cancel := context.WithTimeout(ctx, agent.requestTimeout)
 	defer cancel()
 	select {
 	case agent.gate <- struct{}{}:

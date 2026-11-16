@@ -29,9 +29,11 @@ import (
 	"github.com/dsx-ai-factory/health-validation/agentkit/verdictserver"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
 	"github.com/dsx-ai-factory/health-validation/proto/verdictjson"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
 func startAppAgent(t *testing.T, agent *verdictAgent) string {
@@ -446,5 +448,122 @@ func TestServeValidatesOverrideWirePrecisionBeforeListening(t *testing.T) {
 				t.Fatalf("want precision error before binding the occupied address; exit=%d: %s", code, &stderr)
 			}
 		})
+	}
+}
+
+type stalledDiscoveryHost struct {
+	hostBackend
+	release <-chan struct{}
+}
+
+func (host stalledDiscoveryHost) gpuInventory() *gpuinventory.Inventory {
+	return gpuinventory.New(func() (gpuinventory.Reader, error) {
+		<-host.release
+		return inventoryReader{}, nil
+	})
+}
+
+func TestAgentSourceTimeoutProducesVerdict(t *testing.T) {
+	for _, tc := range []struct {
+		setup   func(chan struct{}) *App
+		name    string
+		checkID string
+	}{
+		{func(release chan struct{}) *App {
+			return cadenceRunApp().WithGPUBackend(&blockingAgentGPU{started: make(chan struct{}, 1), release: release})
+		}, "GPU source", "gpu_average_power_draw"},
+		{func(release chan struct{}) *App {
+			a := cadenceRunApp()
+			a.host = stalledDiscoveryHost{hostBackend: a.host, release: release}
+			return a
+		}, "discovery", "architecture_discovery"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			release := make(chan struct{})
+			defer close(release)
+			agent := tc.setup(release).newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			verdict, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{})
+			if err != nil {
+				t.Fatalf("source watchdog returned a transport error instead of a verdict: %v", err)
+			}
+			for _, check := range verdict.GetCheckResults() {
+				if check.GetCheckId() == tc.checkID {
+					if severity := check.GetSeverity(); severity != healthv1.Severity_CRITICAL && severity != healthv1.Severity_UNKNOWN {
+						t.Fatalf("collection failure severity = %v", severity)
+					}
+					return
+				}
+			}
+			t.Fatalf("no failure verdict for %s: %v", tc.checkID, verdict)
+		})
+	}
+}
+
+type delayedAgentGPU struct{}
+
+func (delayedAgentGPU) MeasureGPUs() ([]health.Measurement, error) {
+	time.Sleep(700 * time.Millisecond)
+	return []health.Measurement{gpu.GPUMeasurement{GPUID: "GPU-0", AveragePowerDrawW: 220, PowerLimitW: 1200, EnforcedPowerLimitW: 1200}}, nil
+}
+
+type delayedAgentNode struct{}
+
+func (delayedAgentNode) MeasureNode() ([]health.Measurement, error) {
+	time.Sleep(700 * time.Millisecond)
+	return []health.Measurement{node.NodeMeasurement{GPUCount: 4}}, nil
+}
+
+func TestAgentSequentialSourcesHaveIndependentBudgets(t *testing.T) {
+	agent := cadenceRunApp().WithGPUBackend(delayedAgentGPU{}).WithNodeBackend(delayedAgentNode{}).newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	verdict, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{})
+	if err != nil || verdict.GetOverallSeverity() != healthv1.Severity_PASS {
+		t.Fatalf("healthy sequential sources: %v, %v", verdict, err)
+	}
+}
+
+func TestServeValidatesRequestBudgetAgainstSourceTimeout(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("collection_timeout_seconds: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, timeout := range []string{"0s", "-1s", "1s", "3s"} {
+		t.Run(timeout, func(t *testing.T) {
+			a := cadenceRunApp()
+			valid := timeout == "3s"
+			if !valid {
+				a.host = panicHost{}
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			var stderr bytes.Buffer
+			code := a.serve(ctx, []string{"--address", "127.0.0.1:0", "--config", path, "--request-timeout", timeout}, &stderr)
+			if valid {
+				if code != exitOK {
+					t.Fatalf("valid request budget exit=%d: %s", code, &stderr)
+				}
+			} else if code != exitError || !strings.Contains(stderr.String(), "--request-timeout must exceed collection_timeout_seconds") {
+				t.Fatalf("invalid request budget exit=%d: %s", code, &stderr)
+			}
+		})
+	}
+}
+
+func TestAgentRequestBudgetIncludesAdmission(t *testing.T) {
+	a := New()
+	a.host = panicHost{}
+	agent := a.newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID}, nil)
+	agent.requestTimeout = 1100 * time.Millisecond
+	agent.gate <- struct{}{}
+	defer func() { <-agent.gate }()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started := time.Now()
+	_, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{})
+	if status.Code(err) != codes.DeadlineExceeded || time.Since(started) >= 3*time.Second {
+		t.Fatalf("queued request exceeded its service budget: %v, elapsed %s", err, time.Since(started))
 	}
 }
