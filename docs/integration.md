@@ -447,9 +447,9 @@ validate against the published
     remediation picture, and re-run the whole suite after every attempted
     step. See [Remediation Actions](/health-validation/operating/remediation)
     for the complete ordering and action catalog.
-- **`affected_components`** / **`severity_by_domain`** — which domain and which
-  `check_ids`/entities failed, so you route (GPU vs NVLink vs Xid) without
-  re-parsing every result.
+- **`affected_components`** / **`severity_by_domain`** — which domain failed, and
+  which checks failed in it. Each check is listed once with the entities that
+  failed it, so you route (GPU vs NVLink vs Xid) without re-parsing every result.
 - **`check_results`** — per-check `severity`, `messages`, `observed_values`, and
   the resolved `thresholds` (with `overridden`), for the human-readable why.
 - **`condition_scope`** (on each check result) — how far the detected condition

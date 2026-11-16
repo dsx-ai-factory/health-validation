@@ -227,6 +227,82 @@ func TestCheckVerdictJSON_ConditionScope(t *testing.T) {
 	assertScope(CheckVerdict{}, "NODE")
 }
 
+func TestAggregateNodeVerdict_GroupsChecksWithEntities(t *testing.T) {
+	nv := AggregateNodeVerdict([]CheckVerdict{
+		{CheckID: "gpu_power_state", Severity: Warning, Category: GPU, AffectedEntities: []string{"GPU-2"}},
+		{CheckID: "gpu_power_limit", Severity: Critical, Category: GPU, AffectedEntities: []string{"GPU-2"}},
+		{CheckID: "gpu_count", Severity: Critical, Category: GPU},
+		{CheckID: "gpu_power_limit", Severity: Critical, Category: GPU, AffectedEntities: []string{"GPU-1", "GPU-2"}},
+		{CheckID: "nvlink_active", Severity: Critical, Category: NVLink, AffectedEntities: []string{"GPU-1"}},
+		{CheckID: "gpu_power_limit", Severity: Pass, Category: GPU, AffectedEntities: []string{"GPU-9"}},
+	})
+
+	gpu := componentFor(t, nv, GPU)
+	if gpu.MaxSeverity != Critical {
+		t.Errorf("gpu max severity = %v, want CRITICAL", gpu.MaxSeverity)
+	}
+	wantGPU := []AffectedCheck{
+		{CheckID: "gpu_count"},
+		{CheckID: "gpu_power_limit", Entities: []string{"GPU-1", "GPU-2"}},
+		{CheckID: "gpu_power_state", Entities: []string{"GPU-2"}},
+	}
+	if !equalChecks(gpu.Checks, wantGPU) {
+		t.Errorf("gpu checks = %+v, want %+v", gpu.Checks, wantGPU)
+	}
+
+	nvlink := componentFor(t, nv, NVLink)
+	wantNVLink := []AffectedCheck{{CheckID: "nvlink_active", Entities: []string{"GPU-1"}}}
+	if !equalChecks(nvlink.Checks, wantNVLink) {
+		t.Errorf("nvlink checks = %+v, want %+v", nvlink.Checks, wantNVLink)
+	}
+
+	data, err := json.Marshal(gpu)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	checks, _ := raw["checks"].([]any)
+	var noEntity map[string]any
+	for _, item := range checks {
+		check, _ := item.(map[string]any)
+		if check["check_id"] == "gpu_count" {
+			noEntity = check
+		}
+	}
+	if noEntity == nil {
+		t.Fatalf("gpu_count missing from %s", data)
+	}
+	if _, ok := noEntity["entities"]; ok {
+		t.Errorf("check with no entity included entities: %s", data)
+	}
+}
+
+func componentFor(t *testing.T, nv NodeVerdict, category Category) AffectedComponent {
+	t.Helper()
+	for _, component := range nv.AffectedComponents {
+		if component.Category == category {
+			return component
+		}
+	}
+	t.Fatalf("no affected component for %s", category)
+	return AffectedComponent{}
+}
+
+func equalChecks(got, want []AffectedCheck) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i].CheckID != want[i].CheckID || !slices.Equal(got[i].Entities, want[i].Entities) {
+			return false
+		}
+	}
+	return true
+}
+
 func TestAggregateNodeVerdict_Basic(t *testing.T) {
 	now := time.Now()
 	verdicts := []CheckVerdict{

@@ -48,11 +48,15 @@ var defaultProcessMode sessionMode
 
 // StandaloneOptions configures a connection to an external DCGM hostengine.
 type StandaloneOptions struct {
+	// WatchPolicy optionally sets sampling intervals. Nil retains the native
+	// 30-second watch and its cache settings. The policy is copied now; invalid
+	// intervals fail metric registration or collection before native setup.
+	WatchPolicy *WatchPolicy
 	// Address is the hostengine endpoint. Empty defaults to localhost.
 	Address string
 	// GroupNamePrefix identifies this consumer in DCGM field-group listings.
-	// The source appends the process ID and a process-local sequence before the
-	// "-fields" suffix. Empty uses "shared-signal-collection".
+	// The source appends the process ID, a process-local sequence, and an
+	// optional policy group index before the "-fields" suffix. Empty uses "shared-signal-collection".
 	GroupNamePrefix string
 	// IsSocket indicates that Address is a Unix domain socket path.
 	IsSocket bool
@@ -66,6 +70,8 @@ type StandaloneOptions struct {
 
 // EmbeddedOptions configures DCGM started inside this process.
 type EmbeddedOptions struct {
+	// WatchPolicy optionally sets sampling intervals, as in StandaloneOptions.
+	WatchPolicy *WatchPolicy
 	// GroupNamePrefix names this source's DCGM field group. An embedded engine
 	// opens no listener, so no other process can list the group. The source
 	// appends the process ID and a process-local sequence before the "-fields"
@@ -85,18 +91,21 @@ func metricWatchName(prefix string, processID int, sequence uint64) string {
 // reference-counts Init/Shutdown process-wide; each successful Init returns
 // one balanced cleanup function retained here.
 type Source struct {
-	native nativeAPI
+	native             nativeAPI
+	configurationError error
 	// Production sources share this lock and fail fast when it is held. The lock
 	// protects native calls and the source state changed by those calls.
 	nativeCallMu       *sync.Mutex
-	cleanup            func()
-	watchCleanup       func() error
+	clientCleanup      func()
+	metricWatchCleanup func() error
 	processMode        *sessionMode
 	metricWatchSignals []string
-	metricWatchFrozen  atomic.Bool
-	ready              bool
-	closed             bool
-	mode               sessionMode
+	// Nil means groups have not been computed; empty means inventory-only.
+	metricWatchGroups []metricWatchGroup
+	metricWatchFrozen atomic.Bool
+	ready             bool
+	closed            atomic.Bool
+	mode              sessionMode
 }
 
 // NewStandaloneSource creates a source connected to an external DCGM
@@ -105,7 +114,10 @@ func NewStandaloneSource(options StandaloneOptions) *Source {
 	if options.Address == "" {
 		options.Address = "localhost"
 	}
+	policy, err := freezeWatchPolicy(options.WatchPolicy)
+	options.WatchPolicy = policy
 	source := newSource(newNative(options, standaloneMode), &defaultNativeCallMu)
+	source.configurationError = err
 	source.mode = standaloneMode
 	source.processMode = &defaultProcessMode
 	return source
@@ -117,7 +129,9 @@ func NewStandaloneSource(options StandaloneOptions) *Source {
 // processes; long-running agents should use NewStandaloneSource. A process runs
 // DCGM in one mode, so a source of the other mode reports NOT_CONFIGURED.
 func NewEmbeddedSource(options EmbeddedOptions) *Source {
-	source := newSource(newNative(StandaloneOptions{GroupNamePrefix: options.GroupNamePrefix}, embeddedMode), &defaultNativeCallMu)
+	policy, err := freezeWatchPolicy(options.WatchPolicy)
+	source := newSource(newNative(StandaloneOptions{GroupNamePrefix: options.GroupNamePrefix, WatchPolicy: policy}, embeddedMode), &defaultNativeCallMu)
+	source.configurationError = err
 	source.mode = embeddedMode
 	source.processMode = &defaultProcessMode
 	return source
@@ -136,10 +150,13 @@ func (*Source) ID() string { return Name }
 //
 // AddMetricsToWatch must not run concurrently with collection or Close.
 func (source *Source) AddMetricsToWatch(signalIDs []string) error {
-	if source.closed {
+	if source.closed.Load() {
 		return fmt.Errorf("DCGM source is closed")
 	}
-	if source.metricWatchFrozen.Load() || source.ready || source.watchCleanup != nil {
+	if source.configurationError != nil {
+		return source.configurationError
+	}
+	if source.metricWatchFrozen.Load() || source.ready || source.metricWatchCleanup != nil {
 		return fmt.Errorf("DCGM source collection already started")
 	}
 	if len(signalIDs) == 0 {
@@ -161,7 +178,10 @@ func (source *Source) AddMetricsToWatch(signalIDs []string) error {
 		seen[signalID] = struct{}{}
 		registered = append(registered, signalID)
 	}
-	source.metricWatchSignals = append(source.metricWatchSignals, registered...)
+	if len(registered) > 0 {
+		source.metricWatchSignals = append(source.metricWatchSignals, registered...)
+		source.metricWatchGroups = nil
+	}
 	return nil
 }
 
@@ -171,7 +191,7 @@ func (source *Source) startNativeCall() error {
 	if !source.nativeCallMu.TryLock() {
 		return ErrInUse
 	}
-	if source.closed {
+	if source.closed.Load() {
 		source.nativeCallMu.Unlock()
 		return errClosed
 	}
@@ -185,8 +205,14 @@ func (source *Source) finishNativeCall() {
 
 // ensureInitialized opens the DCGM client on the first native operation.
 func (source *Source) ensureInitialized() error {
+	if source.closed.Load() {
+		return errClosed
+	}
 	if source.ready {
 		return nil
+	}
+	if source.configurationError != nil {
+		return source.configurationError
 	}
 	if source.processMode != nil && *source.processMode != 0 && *source.processMode != source.mode {
 		return &dcgmError{
@@ -195,56 +221,73 @@ func (source *Source) ensureInitialized() error {
 				*source.processMode, source.mode),
 		}
 	}
-	cleanup, err := source.native.Init()
+	if source.metricWatchGroups == nil {
+		groups, err := source.native.MetricWatchGroups(source.metricWatchSignals)
+		if err != nil {
+			return err
+		}
+		source.metricWatchGroups = groups
+	}
+	clientCleanup, err := source.native.Init()
 	if err != nil {
 		return err
 	}
 	if source.processMode != nil && *source.processMode == 0 {
 		*source.processMode = source.mode
 	}
-	source.cleanup = cleanup
+	source.clientCleanup = clientCleanup
 	source.ready = true
 	return nil
 }
 
 // ensureMetricWatch creates the configured DCGM watch on its first call.
 func (source *Source) ensureMetricWatch() error {
-	if source.watchCleanup != nil {
+	if source.closed.Load() {
+		return errClosed
+	}
+	if source.metricWatchCleanup != nil {
 		return nil
 	}
-	cleanup, err := source.native.WatchMetrics(source.metricWatchSignals)
+	metricWatchCleanup, err := source.native.WatchMetrics(source.metricWatchGroups)
+	if err == nil && metricWatchCleanup == nil {
+		err = fmt.Errorf("DCGM metric watch returned no cleanup function")
+	}
 	if err != nil {
-		return err
+		// Native setup already attempted rollback. Close this source rather than
+		// allocate more groups after cleanup may have failed.
+		return errors.Join(err, source.closeLocked())
 	}
-	if cleanup == nil {
-		return fmt.Errorf("DCGM metric watch returned no cleanup function")
-	}
-	source.watchCleanup = cleanup
+	source.metricWatchCleanup = metricWatchCleanup
 	return nil
 }
 
-// Close releases the watch and DCGM client. It returns ErrInUse instead of
-// waiting when a native call may still be running.
+// Close stops new native work and attempts all owned watch and field-group
+// cleanup before releasing the client reference. Cleanup errors are returned
+// without retry. ErrInUse requires another Close after the native call finishes.
 func (source *Source) Close() error {
+	// A busy close is still a close request. The in-flight call may finish,
+	// but subsequent operations must not enter DCGM.
+	source.closed.Store(true)
 	if !source.nativeCallMu.TryLock() {
 		return ErrInUse
 	}
 	defer source.nativeCallMu.Unlock()
-	if source.closed {
-		return nil
-	}
-	source.closed = true
-	watchCleanup := source.watchCleanup
-	source.watchCleanup = nil
-	cleanup := source.cleanup
-	source.cleanup = nil
+	return source.closeLocked()
+}
+
+// closeLocked performs final cleanup while the native-call gate is held.
+func (source *Source) closeLocked() error {
+	source.closed.Store(true)
+	metricWatchCleanup := source.metricWatchCleanup
+	source.metricWatchCleanup = nil
+	clientCleanup := source.clientCleanup
+	source.clientCleanup = nil
 	source.ready = false
-	var err error
-	if watchCleanup != nil {
-		err = watchCleanup()
+	if clientCleanup != nil {
+		defer clientCleanup()
 	}
-	if cleanup != nil {
-		cleanup()
+	if metricWatchCleanup != nil {
+		return metricWatchCleanup()
 	}
-	return err
+	return nil
 }

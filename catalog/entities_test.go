@@ -67,9 +67,13 @@ func TestEvaluateAll_FailingCheckNamesItsEntity(t *testing.T) {
 	}
 
 	// The node-level rollup is built from the same field, so it names the
-	// GPU too.
-	if len(nv.AffectedComponents) != 1 || !slices.Equal(nv.AffectedComponents[0].Entities, []string{"GPU-1"}) {
-		t.Errorf("AffectedComponents = %+v, want one naming GPU-1", nv.AffectedComponents)
+	// GPU on that check.
+	if len(nv.AffectedComponents) != 1 {
+		t.Fatalf("AffectedComponents = %+v, want one", nv.AffectedComponents)
+	}
+	checks := nv.AffectedComponents[0].Checks
+	if len(checks) != 1 || checks[0].CheckID != "gpu_pstate_probe" || !slices.Equal(checks[0].Entities, []string{"GPU-1"}) {
+		t.Errorf("AffectedComponents = %+v, want gpu_pstate_probe naming GPU-1", nv.AffectedComponents)
 	}
 }
 
@@ -189,8 +193,15 @@ func TestEvaluateAll_XidResultsNameTheirGPU(t *testing.T) {
 		t.Errorf("gpu_xid_48 entities = %v, want %v", named, want)
 	}
 	for _, c := range nv.AffectedComponents {
-		if c.Category == health.Xid && !slices.Equal(slices.Sorted(slices.Values(c.Entities)), []string{"0000:c1:00", "GPU-a"}) {
-			t.Errorf("xid affected component entities = %v", c.Entities)
+		if c.Category != health.Xid {
+			continue
+		}
+		var entities []string
+		for _, ch := range c.Checks {
+			entities = append(entities, ch.Entities...)
+		}
+		if !slices.Equal(slices.Sorted(slices.Values(entities)), []string{"0000:c1:00", "GPU-a"}) {
+			t.Errorf("xid affected component entities = %v", entities)
 		}
 	}
 }
