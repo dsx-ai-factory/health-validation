@@ -93,9 +93,11 @@ changes the running process's exit policy.
 
 The service serializes evaluations because host NVML/DCGM sources are shared.
 It does not coalesce requests or reuse a previous verdict. The configured
-`collection_timeout_seconds` is the whole request budget, including time spent
-waiting for another evaluation; the default is 60 seconds. A shorter client
-deadline also applies. Each source retains its own watchdog within that budget.
+`collection_timeout_seconds` bounds admission and evaluation, including time
+spent waiting for another evaluation; the default is 60 seconds. HTTP request
+decoding and response writing are outside this budget, so the full HTTP call
+can take longer. A shorter client deadline also applies. Each source retains
+its own watchdog within that budget.
 
 Cancellation propagates to cooperative sensors. Native calls can outlive a
 watchdog because they cannot be interrupted. The service tracks that work and

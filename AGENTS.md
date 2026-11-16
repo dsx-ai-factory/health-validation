@@ -233,9 +233,10 @@ cadence, execution-context, config, and Xid journal flags as `run`; API request
 fields override node/cadence/context defaults for that request only. Config is
 loaded at startup; restart to reload it.
 
-Agent collection is serialized. The configured collection timeout bounds the
-whole request, including waiting for admission; client cancellation propagates
-through the collection bridge. `collect.WithCallTracking` tracks underlying
+Agent collection is serialized. The configured collection timeout bounds
+admission and evaluation, including waiting for admission, but excludes HTTP
+request decoding and response writing. Client cancellation propagates through
+the collection bridge. `collect.WithCallTracking` tracks underlying
 calls that outlive watchdogs; admission stays closed until those calls return,
 so a timed-out native call cannot overlap the next collection. Preserve that
 lifetime boundary when changing cancellation or shutdown handling.
