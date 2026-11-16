@@ -8,6 +8,69 @@ import (
 	"strings"
 )
 
+// validateDCGMHealthValue checks a health report's structure and availability masks.
+// Native codes remain unrestricted so newer DCGM results survive validation.
+func validateDCGMHealthValue(value *Value) error {
+	kind, ok := value.GetKind().(*Value_DCGMHealthReport)
+	if !ok {
+		return nil
+	}
+	if kind == nil || kind.DcgmHealthReport == nil {
+		return fmt.Errorf("value has an empty DCGM health report payload")
+	}
+	report := kind.DcgmHealthReport
+	requestedSystems := report.GetRequestedSystems()
+	systemsWithoutTargets := report.GetSystemsWithoutTargets()
+
+	// The missing-target mask describes only checks the caller requested.
+	if systemsWithoutTargets&requestedSystems != systemsWithoutTargets {
+		return fmt.Errorf("DCGM health report systems_without_targets includes unrequested systems")
+	}
+	if since := report.GetMonitoredSince(); since != nil {
+		if err := since.CheckValid(); err != nil {
+			return fmt.Errorf("DCGM health report monitored since: %w", err)
+		}
+	}
+	for index, entity := range report.GetEntities() {
+		if entity == nil {
+			return fmt.Errorf("DCGM health report entity %d is required", index)
+		}
+		if err := validateDCGMHealthTarget(entity); err != nil {
+			return fmt.Errorf("DCGM health report entity %d: %w", index, err)
+		}
+	}
+	for index, incident := range report.GetIncidents() {
+		if incident == nil {
+			return fmt.Errorf("DCGM health report incident %d is required", index)
+		}
+		if incident.GetEntity() == nil {
+			return fmt.Errorf("DCGM health report incident %d entity is required", index)
+		}
+		if err := validateDCGMHealthTarget(incident.GetEntity()); err != nil {
+			return fmt.Errorf("DCGM health report incident %d entity: %w", index, err)
+		}
+	}
+	return nil
+}
+
+// validateDCGMHealthTarget checks a report member or incident's entity reference.
+func validateDCGMHealthTarget(target *ObservationTarget) error {
+	switch target.GetKind().(type) {
+	case *ObservationTarget_GPU, *ObservationTarget_NVSwitch, *ObservationTarget_NativeEntity:
+		return validateTarget(target)
+	default:
+		return fmt.Errorf("health entity must identify a GPU, NVSwitch, or native entity")
+	}
+}
+
+// validateNativeEntityRef requires a source namespace when native metadata is present.
+func validateNativeEntityRef(native *NativeEntityRef) error {
+	if native != nil && strings.TrimSpace(native.Source) == "" {
+		return fmt.Errorf("native entity requires a source")
+	}
+	return nil
+}
+
 func validateProcessRef(process *ProcessRef) error {
 	if process == nil {
 		return fmt.Errorf("target has an empty process payload")
@@ -22,11 +85,15 @@ func validateProcessRef(process *ProcessRef) error {
 	return nil
 }
 
+// validateGPUProcessRef checks the GPU reference and process lifetime identity.
 func validateGPUProcessRef(process *GPUProcessRef) error {
 	if process == nil || process.Gpu == nil || process.Process == nil {
 		return fmt.Errorf("target has an incomplete GPU process payload")
 	}
-	if strings.TrimSpace(process.Gpu.Uuid) == "" && strings.TrimSpace(process.Gpu.SourceLocalId) == "" {
+	if err := validateNativeEntityRef(process.Gpu.GetNative()); err != nil {
+		return err
+	}
+	if strings.TrimSpace(process.Gpu.Uuid) == "" && strings.TrimSpace(process.Gpu.SourceLocalId) == "" && process.Gpu.GetNative() == nil {
 		return fmt.Errorf("GPU process target requires a GPU identity")
 	}
 	return validateProcessRef(process.Process)

@@ -11,6 +11,8 @@ go_library(
         "fields_linux.go",
         "gpu_inventory.go",
         "gpu_inventory_linux.go",
+        "health.go",
+        "health_linux.go",
         "metrics.go",
         "native.go",
         "native_linux.go",
@@ -22,6 +24,8 @@ go_library(
     deps = [
         "//collect",
         "//collect/observation",
+        "//collect/signals/dcgmhealth",
+        "@org_golang_google_protobuf//proto",
         "@org_golang_google_protobuf//types/known/timestamppb",
     ] + select({
         "@rules_go//go/platform:android": [
@@ -44,6 +48,8 @@ go_test(
         "errors_test.go",
         "fields_linux_test.go",
         "gpu_inventory_linux_test.go",
+        "health_native_linux_test.go",
+        "health_source_test.go",
         "native_failure_linux_test.go",
         "native_linux_test.go",
         "source_test.go",
@@ -56,7 +62,9 @@ go_test(
     deps = [
         "//collect",
         "//collect/observation",
+        "//collect/signals/dcgmhealth",
         "//collect/signals/gpu",
+        "@org_golang_google_protobuf//proto",
     ] + select({
         "@rules_go//go/platform:android": [
             "@com_github_nvidia_go_dcgm//pkg/dcgm",

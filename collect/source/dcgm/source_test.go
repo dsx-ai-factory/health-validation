@@ -29,8 +29,10 @@ type fakeNative struct {
 	enumerationErr    error
 	initErr           error
 	gpuUUIDs          map[uint]string
+	uuidEntries       map[uint]GPUIdentityEntry
 	readStarted       chan struct{}
 	uuidStarted       chan struct{}
+	uuidReadIndices   chan []uint
 	inventoryStarted  chan struct{}
 	inventory         map[uint]*observation.GPUDevice
 	inventoryEntries  map[uint]*observation.GPUInventoryEntry
@@ -80,8 +82,14 @@ func (native *fakeNative) ReadGPUUUIDs(gpuIndices []uint) (map[uint]GPUIdentityE
 		close(native.uuidStarted)
 		<-native.releaseRead
 	}
+	if native.uuidReadIndices != nil {
+		native.uuidReadIndices <- slices.Clone(gpuIndices)
+	}
 	if native.uuidErr != nil {
 		return nil, native.uuidErr
+	}
+	if native.uuidEntries != nil {
+		return native.uuidEntries, nil
 	}
 	gpuUUIDs := make(map[uint]GPUIdentityEntry, len(gpuIndices))
 	for _, gpuIndex := range gpuIndices {
@@ -145,6 +153,10 @@ func (native *fakeNative) ReadGPUMetrics(_ uint, signalIDs []string) (map[string
 		}}
 	}
 	return values, nil
+}
+
+func (native *fakeNative) WatchHealth(uint64) (healthWatch, error) {
+	return &fakeHealthWatch{native: native}, nil
 }
 
 func newSourceInMode(native nativeAPI, gate *sync.Mutex, processMode *sessionMode, mode sessionMode) *Source {
@@ -220,6 +232,128 @@ func TestInventoryUsesOneRead(t *testing.T) {
 		GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot},
 	}}); err != nil {
 		t.Fatalf("inventory snapshot is invalid: %v", err)
+	}
+}
+
+func TestGPUIndicesSkipsUUIDEnrichment(t *testing.T) {
+	native := &fakeNative{gpuIndices: []uint{7, 2}}
+	source := newSource(native, &sync.Mutex{})
+	t.Cleanup(func() { _ = source.Close() })
+	indices, failure := source.GPUIndices(context.Background(), newTestCycle(t, "indices-only"))
+	if failure != nil || !slices.Equal(indices, []uint{7, 2}) {
+		t.Fatalf("GPUIndices() = %v, %v", indices, failure)
+	}
+	if native.enumerationCalls.Load() != 1 || native.uuidCalls.Load() != 0 || native.inventoryCalls.Load() != 0 {
+		t.Fatalf("indices-only reads: enumeration=%d UUID=%d inventory=%d", native.enumerationCalls.Load(), native.uuidCalls.Load(), native.inventoryCalls.Load())
+	}
+}
+
+func TestGPUUUIDsPreservesRequestedIDsAndPartialResults(t *testing.T) {
+	fieldFailure := &observation.CollectionError{Source: Name, Operation: "identity", Category: observation.CollectionErrorCategoryUnavailable}
+	for _, test := range []struct {
+		err     error
+		entries map[uint]GPUIdentityEntry
+		name    string
+	}{
+		{
+			name: "partial lookup",
+			entries: map[uint]GPUIdentityEntry{
+				0: {UUID: "GPU-0", Index: 99},
+				7: {UUIDError: fieldFailure},
+			},
+		},
+		{name: "whole lookup fails", err: errors.New("UUID lookup failed")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			native := &fakeNative{uuidEntries: test.entries, uuidErr: test.err}
+			source := newSource(native, &sync.Mutex{})
+			t.Cleanup(func() { _ = source.Close() })
+			requested := []uint{7, 0, 2}
+			entries := source.GPUUUIDs(context.Background(), newTestCycle(t, "UUIDs-only"), requested)
+			if len(entries) != len(requested) {
+				t.Fatalf("GPUUUIDs() = %v", entries)
+			}
+			for i, entry := range entries {
+				if entry.Index != requested[i] {
+					t.Fatalf("GPUUUIDs() reordered IDs: %v", entries)
+				}
+				if test.err == nil && entry.Index == 0 {
+					if entry.UUID != "GPU-0" || entry.UUIDError != nil {
+						t.Fatalf("available UUID lost: %+v", entry)
+					}
+				} else if entry.UUID != "" || entry.UUIDError.GetOperation() != "identity" {
+					t.Fatalf("missing UUID has no attributed failure: %+v", entry)
+				}
+			}
+			if test.err == nil && entries[0].UUIDError != fieldFailure {
+				t.Fatalf("native per-GPU UUID failure replaced: %v", entries[0].UUIDError)
+			}
+			if native.enumerationCalls.Load() != 0 || native.uuidCalls.Load() != 1 || native.inventoryCalls.Load() != 0 {
+				t.Fatalf("UUID-only reads: enumeration=%d UUID=%d inventory=%d", native.enumerationCalls.Load(), native.uuidCalls.Load(), native.inventoryCalls.Load())
+			}
+		})
+	}
+}
+
+func TestGPUUUIDsEmptyRequestSkipsNativeWork(t *testing.T) {
+	native := &fakeNative{}
+	source := newSource(native, &sync.Mutex{})
+	if entries := source.GPUUUIDs(context.Background(), nil, nil); len(entries) != 0 {
+		t.Fatalf("GPUUUIDs(empty) = %v", entries)
+	}
+	if native.initCalls.Load() != 0 || native.enumerationCalls.Load() != 0 || native.uuidCalls.Load() != 0 {
+		t.Fatal("empty UUID request entered DCGM")
+	}
+}
+
+func TestGPUUUIDsTimeoutPreservesIDsAndNativeGate(t *testing.T) {
+	gate := &sync.Mutex{}
+	native := &fakeNative{}
+	source := newSource(native, gate)
+	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
+		t.Fatal(err)
+	}
+	cycle, err := collect.NewCycleWithTimeout("UUIDs-after-metrics", time.Now(), 100*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := source.ReadGPUMetrics(context.Background(), cycle, 2, []string{signalPowerDraw})
+	if values[signalPowerDraw].Value == nil {
+		t.Fatal("metric read failed before optional enrichment")
+	}
+	native.uuidStarted, native.releaseRead = make(chan struct{}), make(chan struct{})
+	native.uuidReadIndices = make(chan []uint, 1)
+	release := sync.OnceFunc(func() { close(native.releaseRead) })
+	t.Cleanup(release)
+	requested := []uint{2, 7}
+	entries := source.GPUUUIDs(context.Background(), cycle, requested)
+	if len(entries) != 2 || entries[0].Index != 2 || entries[1].Index != 7 {
+		t.Fatalf("UUID timeout lost IDs: %v", entries)
+	}
+	for _, entry := range entries {
+		if entry.UUIDError.GetOperation() != "identity" || entry.UUIDError.GetCategory() != observation.CollectionErrorCategoryTimeout {
+			t.Fatalf("UUID timeout failure = %v", entry.UUIDError)
+		}
+	}
+	for _, nextCycle := range []*collect.Cycle{cycle, newTestCycle(t, "after-UUID-timeout")} {
+		if result := source.ReadGPUMetrics(context.Background(), nextCycle, 2, []string{signalPowerDraw}); result[signalPowerDraw].CollectionError == nil {
+			t.Fatal("native work reentered during unfinished UUID lookup")
+		}
+	}
+	if native.readCalls.Load() != 1 || values[signalPowerDraw].Value == nil {
+		t.Fatal("optional enrichment discarded a value or allowed native reentry")
+	}
+	if err := source.Close(); !errors.Is(err, ErrInUse) {
+		t.Fatalf("Close() during UUID lookup = %v", err)
+	}
+	requested[0] = 99
+	release()
+	waitForNativeGate(t, gate)
+	if readIDs := <-native.uuidReadIndices; !slices.Equal(readIDs, []uint{2, 7}) {
+		t.Fatalf("native lookup retained caller-owned IDs after timeout: %v", readIDs)
+	}
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

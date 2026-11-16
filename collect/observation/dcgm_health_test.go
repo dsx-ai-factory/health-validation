@@ -1,0 +1,209 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package observation
+
+import (
+	"encoding/json"
+	"math"
+	"strings"
+	"testing"
+	"time"
+
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+func healthReportBatch(report *DCGMHealthReport) *ObservationBatch {
+	return &ObservationBatch{Observations: []*Observation{{
+		SignalId: "dcgm.health",
+		Target:   NodeTarget(""),
+		Outcome:  &Observation_Value{Value: &Value{Kind: &Value_DCGMHealthReport{DcgmHealthReport: report}}},
+	}}}
+}
+
+func TestDCGMHealthReportRoundTrip(t *testing.T) {
+	unknownEntity := &ObservationTarget{Kind: &ObservationTarget_NativeEntity{NativeEntity: &NativeEntityRef{Source: "dcgm", EntityKind: 9876, EntityId: math.MaxUint32}}}
+	gpuEntity := &ObservationTarget{Kind: &ObservationTarget_GPU{Gpu: &GPURef{Uuid: "GPU-enriched", Native: &NativeEntityRef{Source: "dcgm", EntityKind: 1}}}}
+	switchEntity := &ObservationTarget{Kind: &ObservationTarget_NVSwitch{NvSwitch: &NVSwitchRef{Native: &NativeEntityRef{Source: "dcgm", EntityKind: 3, EntityId: 17}}}}
+	batch := healthReportBatch(&DCGMHealthReport{
+		RequestedSystems:         math.MaxUint64,
+		GroupId:                  proto.Uint64(0),
+		Entities:                 []*ObservationTarget{gpuEntity, switchEntity, unknownEntity},
+		NativeGroupOverallHealth: DCGMHealthResult(-987).Enum(),
+		Incidents: []*DCGMHealthIncident{
+			{System: 16, NativeHealth: DCGMHealthResultWarn, ErrorCode: 1, Message: "memory finding", Entity: gpuEntity},
+			{System: 0xffffffff, NativeHealth: -123, ErrorCode: math.MaxUint64, Message: "unknown native status", Entity: unknownEntity},
+			{System: 1 << 63, NativeHealth: math.MaxInt32, ErrorCode: 0, Entity: switchEntity},
+		},
+		MonitoredSince:        timestamppb.New(time.Unix(1_790_000_000, 123)),
+		CheckId:               "shared-check",
+		SystemsWithoutTargets: 1 << 62,
+	})
+	if err := ValidateBatch(batch); err != nil {
+		t.Fatalf("ValidateBatch() error = %v", err)
+	}
+	jsonData, err := protojson.Marshal(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(jsonData), `"dcgmHealthReport"`) {
+		t.Fatalf("JSON has no typed report branch: %s", jsonData)
+	}
+	binaryData, err := proto.Marshal(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, unmarshal := range map[string]func(*ObservationBatch) error{
+		"binary": func(m *ObservationBatch) error { return proto.Unmarshal(binaryData, m) },
+		"JSON":   func(m *ObservationBatch) error { return protojson.Unmarshal(jsonData, m) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := &ObservationBatch{}
+			if err := unmarshal(got); err != nil {
+				t.Fatal(err)
+			}
+			if err := ValidateBatch(got); err != nil {
+				t.Fatalf("ValidateBatch() error = %v", err)
+			}
+			if !proto.Equal(batch, got) {
+				t.Fatalf("native values changed after round trip: got %v, want %v", got, batch)
+			}
+		})
+	}
+}
+
+func TestDCGMHealthAbsentAndZeroNativeResults(t *testing.T) {
+	for _, report := range []*DCGMHealthReport{
+		{},
+		{GroupId: proto.Uint64(0), NativeGroupOverallHealth: DCGMHealthResultPass.Enum()},
+	} {
+		batch := healthReportBatch(report)
+		if err := ValidateBatch(batch); err != nil {
+			t.Fatalf("empty incident list rejected: %v", err)
+		}
+		jsonData, err := protojson.Marshal(batch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(string(jsonData), `"nativeGroupOverallHealth"`); got != (report.NativeGroupOverallHealth != nil) {
+			t.Fatalf("JSON lost optional native status presence: %s", jsonData)
+		}
+		binaryData, err := proto.Marshal(batch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, unmarshal := range map[string]func(*ObservationBatch) error{
+			"binary": func(m *ObservationBatch) error { return proto.Unmarshal(binaryData, m) },
+			"JSON":   func(m *ObservationBatch) error { return protojson.Unmarshal(jsonData, m) },
+		} {
+			t.Run(name, func(t *testing.T) {
+				got := &ObservationBatch{}
+				if err := unmarshal(got); err != nil {
+					t.Fatal(err)
+				}
+				if !proto.Equal(batch, got) {
+					t.Fatalf("optional zero/absent result changed: got %v, want %v", got, batch)
+				}
+				if len(got.GetObservations()[0].GetValue().GetDcgmHealthReport().GetIncidents()) != 0 {
+					t.Fatal("empty report gained an incident")
+				}
+			})
+		}
+	}
+}
+
+func TestValidateDCGMHealthReportStructure(t *testing.T) {
+	tests := []struct {
+		name      string
+		kind      *Value_DCGMHealthReport
+		wantError string
+	}{
+		{name: "typed nil wrapper", wantError: "empty DCGM health report"},
+		{name: "missing report", kind: &Value_DCGMHealthReport{}, wantError: "empty DCGM health report"},
+		{name: "missing entity", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{Entities: []*ObservationTarget{nil}}}, wantError: "entity 0 is required"},
+		{name: "missing incident", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{Incidents: []*DCGMHealthIncident{nil}}}, wantError: "incident 0 is required"},
+		{name: "missing incident identity", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{Incidents: []*DCGMHealthIncident{{}}}}, wantError: "incident 0 entity is required"},
+		{name: "invalid setup timestamp", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{MonitoredSince: &timestamppb.Timestamp{Nanos: -1}}}, wantError: "monitored since"},
+		{name: "unrequested no-target system", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemsWithoutTargets: 1}}, wantError: "systems_without_targets includes unrequested systems"},
+		{name: "unknown requested system without targets", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 1 << 63, SystemsWithoutTargets: 1 << 63}}},
+		{name: "unknown and zero native identity", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{Incidents: []*DCGMHealthIncident{{Entity: &ObservationTarget{Kind: &ObservationTarget_NativeEntity{NativeEntity: &NativeEntityRef{Source: "dcgm"}}}}}}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			batch := healthReportBatch(nil)
+			batch.Observations[0].GetValue().Kind = test.kind
+			err := ValidateBatch(batch)
+			if test.wantError == "" {
+				if err != nil {
+					t.Fatalf("ValidateBatch() error = %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("ValidateBatch() error = %v, want %q", err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestDCGMHealthResultEncoding(t *testing.T) {
+	tests := []struct {
+		wantJSON string
+		result   DCGMHealthResult
+	}{
+		{result: DCGMHealthResultPass, wantJSON: `"PASS"`},
+		{result: DCGMHealthResultWarn, wantJSON: `"WARN"`},
+		{result: DCGMHealthResultFail, wantJSON: `"FAIL"`},
+		{result: DCGMHealthResult(987), wantJSON: `987`},
+		{result: DCGMHealthResult(-987), wantJSON: `-987`},
+	}
+	for _, test := range tests {
+		t.Run(test.result.String(), func(t *testing.T) {
+			report := &DCGMHealthReport{NativeGroupOverallHealth: test.result.Enum()}
+			if test.result != DCGMHealthResultPass {
+				report.Incidents = []*DCGMHealthIncident{{NativeHealth: test.result, Entity: GPUTarget("GPU-0")}}
+			}
+			jsonData, err := protojson.Marshal(report)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]json.RawMessage
+			if err = json.Unmarshal(jsonData, &fields); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(fields["nativeGroupOverallHealth"]); got != test.wantJSON {
+				t.Fatalf("native group JSON = %s, want %s", got, test.wantJSON)
+			}
+			if test.result != DCGMHealthResultPass {
+				var incidents []map[string]json.RawMessage
+				if err = json.Unmarshal(fields["incidents"], &incidents); err != nil {
+					t.Fatal(err)
+				}
+				if got := string(incidents[0]["nativeHealth"]); got != test.wantJSON {
+					t.Fatalf("incident JSON = %s, want %s", got, test.wantJSON)
+				}
+			}
+			binaryData, err := proto.Marshal(report)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for name, unmarshal := range map[string]func(*DCGMHealthReport) error{
+				"binary": func(m *DCGMHealthReport) error { return proto.Unmarshal(binaryData, m) },
+				"JSON":   func(m *DCGMHealthReport) error { return protojson.Unmarshal(jsonData, m) },
+			} {
+				t.Run(name, func(t *testing.T) {
+					got := &DCGMHealthReport{}
+					if err := unmarshal(got); err != nil {
+						t.Fatal(err)
+					}
+					if !proto.Equal(report, got) {
+						t.Fatalf("native result changed: got %v, want %v", got, report)
+					}
+					if err := ValidateBatch(healthReportBatch(got)); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+		})
+	}
+}

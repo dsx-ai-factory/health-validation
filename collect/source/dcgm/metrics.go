@@ -25,7 +25,8 @@ type FieldValue struct {
 // ReadGPUMetrics reads the requested fields for one GPU in a single DCGM call.
 // It returns field-level failures alongside successful fields so the sensor
 // can emit every available observation from the GPU.
-// A native watch-setup failure closes the source; construct a new source to retry.
+// A native watch-setup failure permanently disables metrics. If no health systems
+// were registered, it also closes the source.
 func (source *Source) ReadGPUMetrics(
 	ctx context.Context,
 	currentCycle *collect.Cycle,
@@ -34,7 +35,7 @@ func (source *Source) ReadGPUMetrics(
 ) map[string]FieldValue {
 	// The first read fixes the field watch. Report signals outside that watch
 	// individually instead of preventing collection of registered signals.
-	source.metricWatchFrozen.Store(true)
+	source.watchRegistrationFrozen.Store(true)
 	values := make(map[string]FieldValue, len(signalIDs))
 	watched := make([]string, 0, len(signalIDs))
 	for _, signalID := range signalIDs {

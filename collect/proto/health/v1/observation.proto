@@ -127,6 +127,8 @@ message ObservationTarget {
     FuseConnectionRef fuse_connection = 13;
     PstoreRecordRef pstore_record = 14;
     JournalEntryRef journal_entry = 15;
+    NvSwitchRef nv_switch = 16;
+    NativeEntityRef native_entity = 17;
   }
 }
 
@@ -139,6 +141,22 @@ message NodeRef {
 message GpuRef {
   string uuid = 1;
   string source_local_id = 2;
+  NativeEntityRef native = 3;
+}
+
+// NvSwitchRef retains native identity when a hardware UUID is unavailable.
+message NvSwitchRef {
+  string uuid = 1;
+  NativeEntityRef native = 2;
+}
+
+// NativeEntityRef names an entity within one node and source lifetime.
+// Kind and ID are interpreted within source, not as stable hardware identity.
+message NativeEntityRef {
+  // Required source namespace; numeric kinds and IDs may be zero or unknown.
+  string source = 1;
+  uint32 entity_kind = 2;
+  uint32 entity_id = 3;
 }
 
 // NvLinkEndpointRef identifies one local NVLink endpoint on a physical GPU.
@@ -224,7 +242,47 @@ message Value {
     string string_value = 3;
     bool bool_value = 4;
     uint64 uint_value = 5;
+    DcgmHealthReport dcgm_health_report = 6;
   }
+}
+
+// DcgmHealthReport preserves one complete Source health read.
+// An empty incident list means only that no incidents were reported.
+message DcgmHealthReport {
+  // Values match DCGM; unknown numeric results remain valid source data.
+  enum HealthResult {
+    PASS = 0;
+    WARN = 10;
+    FAIL = 20;
+  }
+
+  // Systems requested before target discovery; some may have no targets.
+  // This mask does not guarantee native support or sample coverage.
+  uint64 requested_systems = 2;
+  // Absent when no native group was created.
+  optional uint64 group_id = 3;
+  repeated ObservationTarget entities = 4;
+  // The result returned by the native group check.
+  // Absent when no native check was performed; unknown numbers are preserved.
+  optional HealthResult native_group_overall_health = 5;
+  repeated DcgmHealthIncident incidents = 6;
+  google.protobuf.Timestamp monitored_since = 7;
+  // Identifies this source read.
+  string check_id = 8;
+  // Requested systems with no relevant GPU or NVSwitch members.
+  // Unrequested systems are excluded. This does not describe native support
+  // or sample coverage.
+  uint64 systems_without_targets = 10;
+}
+
+// DcgmHealthIncident is source data, not a Health Validation verdict.
+// Native numeric values remain open to values added by newer DCGM versions.
+message DcgmHealthIncident {
+  uint64 system = 1;
+  DcgmHealthReport.HealthResult native_health = 2;
+  uint64 error_code = 3;
+  string message = 4;
+  ObservationTarget entity = 5;
 }
 
 // CollectionError records why a signal could not be collected. It keeps the
