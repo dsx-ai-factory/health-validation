@@ -49,7 +49,7 @@ func startVerdictServer(t *testing.T, handler Handler, options ...Option) (strin
 func TestVerdictServesHTTPAndGRPCOnOnePort(t *testing.T) {
 	want := testVerdict(t)
 	address, cancel, stopped := startVerdictServer(t, func(_ context.Context, request *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
-		if request.GetNodeId() != "node-a" {
+		if request.GetNodeId() != "node-a" || request.XidFrom == nil || request.GetXidFrom() != 0 || request.GetXidTo() != 200 {
 			return nil, status.Error(codes.InvalidArgument, "node_id must be node-a")
 		}
 		return want, nil
@@ -60,7 +60,7 @@ func TestVerdictServesHTTPAndGRPCOnOnePort(t *testing.T) {
 	}
 	defer connection.Close()
 	request := &healthv1.EvaluateRequest{}
-	if decodeErr := protojson.Unmarshal([]byte(`{"node_id":"node-a"}`), request); decodeErr != nil {
+	if decodeErr := protojson.Unmarshal([]byte(`{"node_id":"node-a","xid_from":"0","xid_to":"200"}`), request); decodeErr != nil {
 		t.Fatal(decodeErr)
 	}
 	ctx, stop := context.WithTimeout(context.Background(), 5*time.Second)
@@ -74,9 +74,9 @@ func TestVerdictServesHTTPAndGRPCOnOnePort(t *testing.T) {
 	}
 	client := &http.Client{Timeout: 5 * time.Second}
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		path, body := "/verdict?node_id=node-a", ""
+		path, body := "/verdict?node_id=node-a&xid_from=0&xid_to=200", ""
 		if method == http.MethodPost {
-			path, body = "/verdict", `{"node_id":"node-a"}`
+			path, body = "/verdict", `{"node_id":"node-a","xid_from":"0","xid_to":"200"}`
 		}
 		httpRequest, requestErr := http.NewRequestWithContext(ctx, method, "http://"+address+path, strings.NewReader(body))
 		if requestErr != nil {
@@ -121,6 +121,14 @@ func TestVerdictHTTPRejectsMalformedRequestsBeforeEvaluation(t *testing.T) {
 	}}, nil)
 	for _, test := range []struct{ method, path, body string }{
 		{http.MethodGet, "/verdict?unknown=x", ""},
+		{http.MethodGet, "/verdict?xid_from=1&xid_from=2", ""},
+		{http.MethodGet, "/verdict?xid_to=1&xid_to=2", ""},
+		{http.MethodGet, "/verdict?xid_from=", ""},
+		{http.MethodGet, "/verdict?xid_to=oops", ""},
+		{http.MethodGet, "/verdict?xid_from=1.5", ""},
+		{http.MethodGet, "/verdict?xid_to=9223372036854775808", ""},
+		{http.MethodPost, "/verdict", `{"xid_from":"abc"}`},
+		{http.MethodPost, "/verdict", `{"xid_to":1.5}`},
 		{http.MethodGet, "/verdict?node_id=a&node_id=b", ""},
 		{http.MethodGet, "/verdict?node_id=%zz", ""},
 		{http.MethodGet, "/verdict?cadence=TYPO", ""},

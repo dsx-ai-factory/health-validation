@@ -515,8 +515,11 @@ type EvaluateRequest struct {
 	Cadence          *SchedulingCadence     `protobuf:"varint,1,opt,name=cadence,proto3,enum=health.verdict.v1.SchedulingCadence,oneof" json:"cadence,omitempty"`
 	ExecutionContext *ExecutionContext      `protobuf:"varint,2,opt,name=execution_context,json=executionContext,proto3,enum=health.verdict.v1.ExecutionContext,oneof" json:"execution_context,omitempty"`
 	NodeId           *string                `protobuf:"bytes,3,opt,name=node_id,json=nodeId,proto3,oneof" json:"node_id,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Exclusive Unix-second bounds; omitted fields inherit the service defaults.
+	XidFrom       *int64 `protobuf:"varint,4,opt,name=xid_from,json=xidFrom,proto3,oneof" json:"xid_from,omitempty"`
+	XidTo         *int64 `protobuf:"varint,5,opt,name=xid_to,json=xidTo,proto3,oneof" json:"xid_to,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EvaluateRequest) Reset() {
@@ -568,6 +571,20 @@ func (x *EvaluateRequest) GetNodeId() string {
 		return *x.NodeId
 	}
 	return ""
+}
+
+func (x *EvaluateRequest) GetXidFrom() int64 {
+	if x != nil && x.XidFrom != nil {
+		return *x.XidFrom
+	}
+	return 0
+}
+
+func (x *EvaluateRequest) GetXidTo() int64 {
+	if x != nil && x.XidTo != nil {
+		return *x.XidTo
+	}
+	return 0
 }
 
 // The schema version follows catalog/health/node-verdict.schema.json, currently 0.6.
@@ -1105,16 +1122,20 @@ var File_health_v1_verdict_proto protoreflect.FileDescriptor
 
 const file_health_v1_verdict_proto_rawDesc = "" +
 	"\n" +
-	"\x17health/v1/verdict.proto\x12\x11health.verdict.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xf9\x01\n" +
+	"\x17health/v1/verdict.proto\x12\x11health.verdict.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xcd\x02\n" +
 	"\x0fEvaluateRequest\x12C\n" +
 	"\acadence\x18\x01 \x01(\x0e2$.health.verdict.v1.SchedulingCadenceH\x00R\acadence\x88\x01\x01\x12U\n" +
 	"\x11execution_context\x18\x02 \x01(\x0e2#.health.verdict.v1.ExecutionContextH\x01R\x10executionContext\x88\x01\x01\x12\x1c\n" +
-	"\anode_id\x18\x03 \x01(\tH\x02R\x06nodeId\x88\x01\x01B\n" +
+	"\anode_id\x18\x03 \x01(\tH\x02R\x06nodeId\x88\x01\x01\x12\x1e\n" +
+	"\bxid_from\x18\x04 \x01(\x03H\x03R\axidFrom\x88\x01\x01\x12\x1a\n" +
+	"\x06xid_to\x18\x05 \x01(\x03H\x04R\x05xidTo\x88\x01\x01B\n" +
 	"\n" +
 	"\b_cadenceB\x14\n" +
 	"\x12_execution_contextB\n" +
 	"\n" +
-	"\b_node_id\"\xf8\x06\n" +
+	"\b_node_idB\v\n" +
+	"\t_xid_fromB\t\n" +
+	"\a_xid_to\"\xf8\x06\n" +
 	"\vNodeVerdict\x12*\n" +
 	"\x0eschema_version\x18\x01 \x01(\tH\x00R\rschemaVersion\x88\x01\x01\x12,\n" +
 	"\x0fcatalog_version\x18\x02 \x01(\tH\x01R\x0ecatalogVersion\x88\x01\x01\x12!\n" +

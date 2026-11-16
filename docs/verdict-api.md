@@ -23,6 +23,8 @@ HTTP: `GET /verdict` accepts optional request fields as query parameters; `POST 
 | 1 | `cadence` | `SchedulingCadence` | explicit |
 | 2 | `execution_context` | `ExecutionContext` | explicit |
 | 3 | `node_id` | `string` | explicit |
+| 4 | `xid_from` | `int64` | explicit |
+| 5 | `xid_to` | `int64` | explicit |
 
 ### NodeVerdict
 

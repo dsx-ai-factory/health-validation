@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -25,12 +26,15 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dsx-ai-factory/health-validation/agentkit/verdictserver"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
+	"github.com/dsx-ai-factory/health-validation/collect/source/journal"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
 	"github.com/dsx-ai-factory/health-validation/proto/verdictjson"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
@@ -142,6 +146,11 @@ func TestAgentRejectsInvalidOverridesBeforeHardware(t *testing.T) {
 		{NodeId: proto.String(" ")},
 		{Cadence: healthv1.SchedulingCadence(99).Enum()},
 		{ExecutionContext: healthv1.ExecutionContext(99).Enum()},
+		{XidFrom: proto.Int64(-1)},
+		{XidTo: proto.Int64(0)},
+		{XidTo: proto.Int64(-1)},
+		{XidFrom: proto.Int64(200), XidTo: proto.Int64(100)},
+		{XidFrom: proto.Int64(100), XidTo: proto.Int64(100)},
 	} {
 		if _, err := agent.evaluate(context.Background(), request); status.Code(err) != codes.InvalidArgument {
 			t.Errorf("request %v: %v", request, err)
@@ -681,3 +690,127 @@ func (delayedAgentGPU) ID() string                    { return "test.delayed.gpu
 func (delayedAgentGPU) Signals() collect.Signals      { return agentPowerSignals() }
 func (delayedAgentNode) ID() string                   { return "test.delayed.node" }
 func (delayedAgentNode) Signals() collect.Signals     { return collect.Signals{gpuinventory.GPUCount} }
+
+func TestAgentXidWindowsOverHTTPAndGRPC(t *testing.T) {
+	reader := journal.New(func(_ context.Context, _ []string, out, _ io.Writer) error {
+		for _, seconds := range []int64{100, 150, 200, 250, 300} {
+			fmt.Fprintf(out, `{"__CURSOR":"c%d","__REALTIME_TIMESTAMP":"%d","_BOOT_ID":"0123456789abcdef0123456789abcdef","MESSAGE":"NVRM: Xid (PCI:0008:06:00): 79"}`+"\n", seconds, seconds*1000000)
+		}
+		return nil
+	})
+	source, err := xidsensor.NewWithTimeRanges(reader, proto.Int64(100), proto.Int64(300), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := testApp().newVerdictAgent(&Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, source)
+	address := startAppAgent(t, agent)
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	client := &http.Client{Timeout: 5 * time.Second}
+	for _, transport := range []string{"GET", "POST", "gRPC"} {
+		t.Run(transport, func(t *testing.T) {
+			for _, tc := range []struct {
+				request *healthv1.EvaluateRequest
+				count   float64
+				invalid bool
+			}{
+				{request: &healthv1.EvaluateRequest{}, count: 3},
+				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(200)}, count: 1},
+				{request: &healthv1.EvaluateRequest{XidTo: proto.Int64(200)}, count: 1},
+				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(250), XidTo: proto.Int64(300)}, count: 0},
+				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(0)}, count: 4},
+				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(300)}, invalid: true},
+				{request: &healthv1.EvaluateRequest{XidTo: proto.Int64(100)}, invalid: true},
+				{request: &healthv1.EvaluateRequest{}, count: 3},
+			} {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				var verdict *healthv1.NodeVerdict
+				if transport == "gRPC" {
+					verdict, err = healthv1.NewVerdictServiceClient(conn).Evaluate(ctx, tc.request)
+					cancel()
+					if tc.invalid {
+						if status.Code(err) != codes.InvalidArgument {
+							t.Fatalf("request %v: %v", tc.request, err)
+						}
+						continue
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					body, marshalErr := protojson.Marshal(tc.request)
+					if marshalErr != nil {
+						t.Fatal(marshalErr)
+					}
+					path := "http://" + address + "/verdict"
+					if transport == "GET" {
+						var query []string
+						if tc.request.XidFrom != nil {
+							query = append(query, fmt.Sprintf("xid_from=%d", tc.request.GetXidFrom()))
+						}
+						if tc.request.XidTo != nil {
+							query = append(query, fmt.Sprintf("xid_to=%d", tc.request.GetXidTo()))
+						}
+						if len(query) > 0 {
+							path += "?" + strings.Join(query, "&")
+						}
+						body = nil
+					}
+					req, requestErr := http.NewRequestWithContext(ctx, transport, path, bytes.NewReader(body))
+					if requestErr != nil {
+						cancel()
+						t.Fatal(requestErr)
+					}
+					resp, requestErr := client.Do(req)
+					if requestErr != nil {
+						cancel()
+						t.Fatal(requestErr)
+					}
+					data, readErr := io.ReadAll(resp.Body)
+					resp.Body.Close()
+					cancel()
+					if readErr != nil {
+						t.Fatal(readErr)
+					}
+					if tc.invalid {
+						if resp.StatusCode != http.StatusBadRequest {
+							t.Fatalf("request %v: HTTP %d: %s", tc.request, resp.StatusCode, data)
+						}
+						continue
+					}
+					if resp.StatusCode != http.StatusOK {
+						t.Fatalf("HTTP %d: %s", resp.StatusCode, data)
+					}
+					verdict = &healthv1.NodeVerdict{}
+					if decodeErr := protojson.Unmarshal(data, verdict); decodeErr != nil {
+						t.Fatal(decodeErr)
+					}
+				}
+				found := false
+				for _, check := range verdict.CheckResults {
+					if check.GetCheckId() != "gpu_xid_79" {
+						continue
+					}
+					found = true
+					counts := check.ObservedValues["xid_counts"].GetStructValue().GetFields()
+					if got := counts["79"].GetNumberValue(); got != tc.count {
+						t.Fatalf("request %v: count=%v, want %v (%v)", tc.request, got, tc.count, check)
+					}
+					want := healthv1.Severity_CRITICAL
+					if tc.count == 0 {
+						want = healthv1.Severity_PASS
+					}
+					if check.GetSeverity() != want {
+						t.Fatalf("request %v: severity=%v, want %v", tc.request, check.GetSeverity(), want)
+					}
+				}
+				if !found {
+					t.Fatal("missing gpu_xid_79 result")
+				}
+			}
+		})
+	}
+}

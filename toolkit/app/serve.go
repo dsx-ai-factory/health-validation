@@ -25,6 +25,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
+	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/verdictproto"
@@ -243,6 +244,25 @@ func (agent *verdictAgent) request(req *healthv1.EvaluateRequest) (evaluationReq
 		}
 		request.ExecutionContext = value
 	}
+
+	request.xidJournal = agent.journal
+	if req.XidFrom != nil || req.XidTo != nil {
+		source := agent.journal
+		if source == nil {
+			source = xidsensor.New(nil)
+		}
+		bounded, ok := source.(interface {
+			WithTimeBounds(*int64, *int64) (collect.Sensor, error)
+		})
+		if !ok {
+			return request, status.Error(codes.Internal, "configured Xid source does not support time bounds")
+		}
+		journal, err := bounded.WithTimeBounds(req.XidFrom, req.XidTo)
+		if err != nil {
+			return request, status.Errorf(codes.InvalidArgument, "invalid xid_from/xid_to bounds: %v", err)
+		}
+		request.xidJournal = journal
+	}
 	return request, nil
 }
 
@@ -285,7 +305,7 @@ func (agent *verdictAgent) evaluate(ctx context.Context, req *healthv1.EvaluateR
 			agent.setTracker(nil)
 			<-agent.gate
 		}()
-		verdict, err := agent.app.evaluateOnce(tracked, agent.cfg, request, agent.journal)
+		verdict, err := agent.app.evaluateOnce(tracked, agent.cfg, request, request.xidJournal)
 		completed <- result{verdict: verdict, err: err}
 	}()
 	select {

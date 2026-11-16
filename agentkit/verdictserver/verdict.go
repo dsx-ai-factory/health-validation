@@ -284,7 +284,7 @@ func urlQuery(request *http.Request) (map[string]string, error) {
 	}
 	values := make(map[string]string, len(query))
 	for name, entries := range query {
-		if name != "cadence" && name != "execution_context" && name != "node_id" {
+		if name != "cadence" && name != "execution_context" && name != "node_id" && name != "xid_from" && name != "xid_to" {
 			return nil, fmt.Errorf("unknown request parameter %q", name)
 		}
 		if len(entries) != 1 {

@@ -18,6 +18,9 @@ message EvaluateRequest {
   optional SchedulingCadence cadence = 1;
   optional ExecutionContext execution_context = 2;
   optional string node_id = 3;
+  // Exclusive Unix-second bounds; omitted fields inherit the service defaults.
+  optional int64 xid_from = 4;
+  optional int64 xid_to = 5;
 }
 
 // Valid enum spellings match the catalog JSON contract, including lowercase names.

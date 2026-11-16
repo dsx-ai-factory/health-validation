@@ -17,6 +17,7 @@ import (
 )
 
 type evaluationRequest struct {
+	xidJournal       collect.Sensor
 	Cadence          *health.SchedulingCadence
 	NodeID           string
 	ExecutionContext health.ExecutionContext

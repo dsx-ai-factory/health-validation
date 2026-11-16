@@ -53,7 +53,7 @@ Choose the listener and container networking accordingly.
 | `--cadence` | Omitted: all registered checks | Optional `cadence` selects `CONTINUOUS`, `PROLOG`, or `MAINTENANCE` |
 | `--execution-context` | `TENANT_GUEST` | Optional `execution_context` selects `OPERATOR_INFRA`, `TENANT_GUEST`, or `OUT_OF_BAND` |
 | `--config` | No overrides | Thresholds, disabled checks, collection timeout, and metrics are loaded once at startup |
-| `--xid-from`, `--xid-to` | Current boot's Xid history | Process-wide journal bounds, using the same syntax as `run`; no API override |
+| `--xid-from`, `--xid-to` | Current boot's Xid history | Optional `xid_from` / `xid_to` replace the node-wide Unix-second bounds for one request |
 
 Omitted request fields inherit the service defaults. Overrides do not change
 later requests. Cadence is a nested window, Continuous ⊂ Prolog ⊂ Maintenance;
@@ -70,11 +70,28 @@ audit write fails, the listener does not start and the process exits 2. With no
 threshold overrides, startup skips discovery and the audit journal. Requests do
 not repeat the audit.
 
-GET accepts only the three request fields as query parameters, once each.
+`xid_from` is non-negative; `xid_to` is positive. The effective start must be
+less than the effective end. Bounds are exclusive, matching the CLI, and each
+omitted field inherits its startup value. Per-GPU `--xid-from PCI_ADDRESS=SECONDS`
+settings retain precedence over the node-wide start. Zero is an explicit start
+at the Unix epoch, not omission. Requests cannot clear an inherited end bound.
+The scan still reads only the current boot.
+
+For example, move the Xid window for one evaluation:
+
+```shell
+curl 'http://127.0.0.1:8080/verdict?xid_from=1730000000&xid_to=1730003600'
+curl -X POST http://127.0.0.1:8080/verdict \
+  -H 'Content-Type: application/json' \
+  -d '{"xid_from":"1730000000","xid_to":"1730003600"}'
+```
+
+GET accepts all five request fields as query parameters, once each.
 POST accepts a JSON request body, without query overrides; `{}` and an empty
 body both use defaults. Unknown fields, malformed values, duplicate query
 parameters, and bodies larger than 1 MiB fail validation. Use the enum names
-shown above.
+shown above. JSON accepts quoted decimal strings for the 64-bit timestamp
+fields (the protobuf JSON convention), or exact integer numbers.
 
 ## Verdicts and transport errors
 
@@ -270,7 +287,7 @@ protoc plugins.
 | Contract | Schema field parity, exhaustive enum mapping, required scalar presence, nested value and number boundaries |
 | Converter | PASS, CRITICAL, skipped, and discovery verdict round trips; canonical JSON validated against the schema |
 | Transport | HTTP and gRPC success/error paths on one port, strict request parsing, size limits, graceful shutdown |
-| Evaluation | Fresh cycles and per-request cadence/context/node overrides; shared path parity with `run` |
+| Evaluation | Fresh cycles and per-request cadence/context/node/Xid-window overrides; shared path parity with `run` |
 | Cancellation | Queued deadlines, cooperative cancellation, and an abandoned native call blocking the next cycle |
 | Metrics | Publish only after delivery; collector outage cannot change verdict or response |
 | Platforms | Mock-backed tests on macOS; Linux builds/tests for cgo/NVML code and both supported CLI architectures |

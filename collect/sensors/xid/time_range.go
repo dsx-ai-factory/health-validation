@@ -69,6 +69,18 @@ func NewWithTimeRanges(reader *journal.Reader, from, to *int64, gpuFrom map[stri
 	return s, nil
 }
 
+// WithTimeBounds returns an independent sensor sharing the reader. Omitted bounds
+// inherit this sensor's settings; per-GPU lower bounds retain their precedence.
+func (s *sensor) WithTimeBounds(from, to *int64) (collect.Sensor, error) {
+	if from == nil {
+		from = s.ranges.from
+	}
+	if to == nil {
+		to = s.ranges.to
+	}
+	return NewWithTimeRanges(s.reader, from, to, s.ranges.gpuFrom)
+}
+
 func normalizePCIAddress(address string) string {
 	return strings.TrimSuffix(strings.ToLower(address), ".0")
 }
