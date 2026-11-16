@@ -176,6 +176,10 @@ create `/etc/health/overrides.yaml` first. For example:
 collection_timeout_seconds: 60
 ```
 
+The unit below requires `/etc/health/overrides.yaml` to exist. To use the
+built-in defaults without a config file, remove
+`--config /etc/health/overrides.yaml` from `ExecStart`.
+
 Install this unit as `/etc/systemd/system/health-validation.service`, then use
 the normal systemd daemon-reload and start commands:
 
