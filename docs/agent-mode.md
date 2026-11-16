@@ -60,6 +60,10 @@ checks outside it appear in `skipped_checks` with `CADENCE_MISMATCH`. The YAML
 configuration does not select cadence or execution context. Restart the service
 to load a changed configuration file.
 
+Configured threshold overrides are checked for wire compatibility before the
+listener starts. A numeric value that would be rounded by the verdict API is
+a configuration error (exit 2).
+
 GET accepts only the three request fields as query parameters, once each.
 POST accepts a JSON request body, without query overrides; `{}` and an empty
 body both use defaults. Unknown fields, malformed values, duplicate query

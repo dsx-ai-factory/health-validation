@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/dsx-ai-factory/health-validation/agentkit/server"
+	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
@@ -72,7 +73,11 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	if err != nil {
 		return fail(err)
 	}
-	if _, _, err := buildCatalog(cfg, a.customChecks, "", defaults.ExecutionContext); err != nil {
+	cat, _, err := buildCatalog(cfg, a.customChecks, "", defaults.ExecutionContext)
+	if err != nil {
+		return fail(err)
+	}
+	if err := validateWireOverrides(cfg, cat); err != nil {
 		return fail(err)
 	}
 	agent := a.newVerdictAgent(cfg, defaults, xidJournal)
@@ -81,6 +86,26 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 		return fail(err)
 	}
 	return exitOK
+}
+
+func validateWireOverrides(cfg *Config, cat *catalog.Catalog) error {
+	overrides, err := cfg.Overrides(cat)
+	if err != nil {
+		return err
+	}
+	for _, checkID := range sortedKeys(cfg.Checks) {
+		params := overrides.ForCheck(checkID)
+		for _, name := range sortedKeys(params) {
+			// Use the response converter so startup and request precision rules agree.
+			check := health.CheckVerdict{CheckID: checkID, Thresholds: map[string]health.ResolvedThreshold{
+				name: {Value: params[name]},
+			}}
+			if _, err := verdictproto.ToProto(health.AggregateNodeVerdict([]health.CheckVerdict{check})); err != nil {
+				return fmt.Errorf("config: check %q parameter %q cannot be served: %w", checkID, name, err)
+			}
+		}
+	}
+	return nil
 }
 
 func validateListenAddress(address string, allowRemote bool) error {

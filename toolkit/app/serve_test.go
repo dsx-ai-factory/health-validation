@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -398,5 +400,51 @@ func TestServeCleanShutdownAndListenerFailureExitCodes(t *testing.T) {
 	stderr.Reset()
 	if code := cadenceRunApp().serve(context.Background(), []string{"--address", listener.Addr().String(), "--node-id", testNodeID}, &stderr); code != exitError || !strings.Contains(stderr.String(), "listen") {
 		t.Fatalf("listener failure exit=%d: %s", code, stderr.String())
+	}
+}
+
+func TestServeValidatesOverrideWirePrecisionBeforeListening(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	for _, tc := range []struct {
+		name      string
+		checkID   string
+		parameter string
+		value     string
+		valid     bool
+	}{
+		{"ordinary integer", "test_custom_check", "max_count", "8", true},
+		{"exact integer boundary", "test_custom_check", "max_count", "9007199254740992", true},
+		{"lossy integer", "test_custom_check", "max_count", "9007199254740993", false},
+		{"exact integer above boundary", "test_custom_check", "max_count", "9007199254740994", true},
+		{"lossy maximum integer", "test_custom_check", "max_count", "9223372036854775807", false},
+		{"large floating tolerance", "gpu_average_power_draw", "max_power_w", "1.0e100", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			contents := "checks:\n  " + tc.checkID + ":\n    " + tc.parameter + ": " + tc.value + "\n"
+			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			address := listener.Addr().String()
+			if tc.valid {
+				address = "127.0.0.1:0"
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			a := cadenceRunApp().WithChecks(customCheck())
+			var stderr bytes.Buffer
+			code := a.serve(ctx, []string{"--address", address, "--config", path}, &stderr)
+			if tc.valid {
+				if code != exitOK {
+					t.Fatalf("valid override exit=%d: %s", code, &stderr)
+				}
+			} else if code != exitError || !strings.Contains(stderr.String(), tc.checkID) || !strings.Contains(stderr.String(), tc.parameter) || !strings.Contains(stderr.String(), "loses precision") {
+				t.Fatalf("want precision error before binding the occupied address; exit=%d: %s", code, &stderr)
+			}
+		})
 	}
 }
