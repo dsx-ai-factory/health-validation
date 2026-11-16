@@ -54,31 +54,11 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	if strings.TrimSpace(*address) == "" {
 		return fail(fmt.Errorf("--address must not be empty"))
 	}
-	nodeIDSet, cadenceSet := a.nodeIDSet, false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "node-id" {
-			nodeIDSet = true
-		}
-		if f.Name == "cadence" {
-			cadenceSet = true
-		}
-	})
-	resolvedNodeID, err := a.resolveNodeID(*nodeID, nodeIDSet)
+	defaults, err := a.evaluationFlags(fs, *nodeID, *cadenceFlag, *contextFlag)
 	if err != nil {
 		return fail(err)
 	}
-	defaults := evaluationRequest{NodeID: resolvedNodeID}
-	defaults.ExecutionContext, err = health.ExecutionContextFromName(strings.ToUpper(strings.TrimSpace(*contextFlag)))
-	if err != nil {
-		return fail(fmt.Errorf("--execution-context: %w", err))
-	}
-	if cadenceSet {
-		cadence, cadenceErr := health.SchedulingCadenceFromName(strings.ToUpper(strings.TrimSpace(*cadenceFlag)))
-		if cadenceErr != nil {
-			return fail(fmt.Errorf("--cadence: %w", cadenceErr))
-		}
-		defaults.Cadence = &cadence
-	}
+
 	xidJournal, err := xidJournalFromFlags(fs)
 	if err != nil {
 		return fail(err)

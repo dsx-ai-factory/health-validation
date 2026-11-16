@@ -350,33 +350,9 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	nodeIDSet := a.nodeIDSet
-	cadenceSet := false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "node-id" {
-			nodeIDSet = true
-		}
-		if f.Name == "cadence" {
-			cadenceSet = true
-		}
-	})
-	resolvedNodeID, err := a.resolveNodeID(*nodeID, nodeIDSet)
+	request, err := a.evaluationFlags(fs, *nodeID, *cadenceFlag, *executionContextFlag)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
-		return exitError
-	}
-	var cadence *health.SchedulingCadence
-	if cadenceSet {
-		sc, parseErr := health.SchedulingCadenceFromName(strings.ToUpper(strings.TrimSpace(*cadenceFlag)))
-		if parseErr != nil {
-			fmt.Fprintf(stderr, "%s: --cadence: %v\n", a.prog, parseErr)
-			return exitError
-		}
-		cadence = &sc
-	}
-	executionContext, err := health.ExecutionContextFromName(strings.ToUpper(strings.TrimSpace(*executionContextFlag)))
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: --execution-context: %v\n", a.prog, err)
 		return exitError
 	}
 
@@ -397,17 +373,13 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	verdict, err := a.evaluateOnce(context.Background(), cfg, evaluationRequest{
-		NodeID:           resolvedNodeID,
-		Cadence:          cadence,
-		ExecutionContext: executionContext,
-	}, xidJournal)
+	verdict, err := a.evaluateOnce(context.Background(), cfg, request, xidJournal)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
-	code := writeVerdict(verdict, a.prog, resolvedNodeID, stdout, stderr)
-	publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
+	code := writeVerdict(verdict, a.prog, request.NodeID, stdout, stderr)
+	publishMetrics(cfg.Metrics, verdict, request.NodeID)
 	return code
 }
 
@@ -523,6 +495,36 @@ func redactEndpoint(endpoint string) string {
 		redacted.User = url.User("redacted")
 	}
 	return redacted.String()
+}
+
+// evaluationFlags resolves the defaults shared by run and serve.
+func (a *App) evaluationFlags(fs *flag.FlagSet, nodeID, cadenceName, contextName string) (evaluationRequest, error) {
+	nodeIDSet, cadenceSet := a.nodeIDSet, false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "node-id" {
+			nodeIDSet = true
+		}
+		if f.Name == "cadence" {
+			cadenceSet = true
+		}
+	})
+	resolvedNodeID, err := a.resolveNodeID(nodeID, nodeIDSet)
+	if err != nil {
+		return evaluationRequest{}, err
+	}
+	request := evaluationRequest{NodeID: resolvedNodeID}
+	if cadenceSet {
+		cadence, cadenceErr := health.SchedulingCadenceFromName(strings.ToUpper(strings.TrimSpace(cadenceName)))
+		if cadenceErr != nil {
+			return request, fmt.Errorf("--cadence: %w", cadenceErr)
+		}
+		request.Cadence = &cadence
+	}
+	request.ExecutionContext, err = health.ExecutionContextFromName(strings.ToUpper(strings.TrimSpace(contextName)))
+	if err != nil {
+		return request, fmt.Errorf("--execution-context: %w", err)
+	}
+	return request, nil
 }
 
 func (a *App) resolveNodeID(value string, supplied bool) (string, error) {

@@ -328,8 +328,11 @@ func TestServeStartupRejectsBadConfigAndFlags(t *testing.T) {
 	for _, args := range [][]string{
 		{"--address", " "},
 		{"--cadence", "invalid"},
+		{"--cadence", ""},
 		{"--node-id", " "},
+		{"--node-id", ""},
 		{"--execution-context", "invalid"},
+		{"--execution-context", ""},
 		{"--config", "/missing/health-config.yml"},
 		{"unexpected"},
 	} {
