@@ -26,7 +26,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/dsx-ai-factory/health-validation/agentkit/server"
+	"github.com/dsx-ai-factory/health-validation/agentkit/verdictserver"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
@@ -43,7 +43,7 @@ func startAppAgent(t *testing.T, agent *verdictAgent) string {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- server.ServeListener(ctx, listener, agent.evaluate, server.WithAfterResponse(agent.afterResponse))
+		done <- verdictserver.ServeListener(ctx, listener, agent.evaluate, verdictserver.WithAfterResponse(agent.afterResponse))
 	}()
 	t.Cleanup(func() {
 		cancel()

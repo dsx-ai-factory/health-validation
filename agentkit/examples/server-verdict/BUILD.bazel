@@ -7,7 +7,7 @@ go_library(
     importpath = "github.com/dsx-ai-factory/health-validation/agentkit/examples/server-verdict",
     visibility = ["//visibility:private"],
     deps = [
-        "//agentkit/server",
+        "//agentkit/verdictserver",
         "//proto/go/health/v1:health",
         "@com_github_google_uuid//:uuid",
         "@org_golang_google_protobuf//proto",

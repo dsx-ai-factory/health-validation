@@ -1,0 +1,36 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# gazelle:default_visibility //build/visibility:toolkit_consumers
+
+package(default_visibility = ["//build/visibility:toolkit_consumers"])
+
+go_library(
+    name = "verdictserver",
+    srcs = ["verdict.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/agentkit/verdictserver",
+    deps = [
+        "//proto/go/health/v1:health",
+        "//proto/verdictjson",
+        "@com_github_soheilhy_cmux//:cmux",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//stats",
+        "@org_golang_google_grpc//status",
+        "@org_golang_google_protobuf//encoding/protojson",
+    ],
+)
+
+go_test(
+    name = "verdictserver_test",
+    srcs = ["verdict_test.go"],
+    embed = [":verdictserver"],
+    deps = [
+        "//proto/go/health/v1:health",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//status",
+        "@org_golang_google_protobuf//encoding/protojson",
+        "@org_golang_google_protobuf//proto",
+    ],
+)

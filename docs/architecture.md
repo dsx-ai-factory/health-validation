@@ -25,11 +25,12 @@ request constructs a fresh collection cycle, discovers architecture, selects
 runnable checks, collects measurements, and aggregates a verdict. `run` writes
 JSON and exits; `serve` returns the verdict over HTTP or gRPC.
 
-`agentkit/server` is an experimental (v0) transport that accepts a host-supplied
+`agentkit/verdictserver` is an experimental (v0) transport that accepts a host-supplied
 handler. It imports the verdict proto contract and does not import `catalog` or
 `toolkit`. `toolkit/verdictproto` converts between catalog types and that
 contract; the catalog has no protobuf dependency. The independent raw
-observation contract remains under `collect/proto`.
+observation contract remains under `collect/proto`, served by `agentkit/server`
+without a verdict-schema dependency.
 
 The server serializes evaluation on each node. Cancellation returns promptly,
 while admission remains closed until any native calls abandoned by watchdogs

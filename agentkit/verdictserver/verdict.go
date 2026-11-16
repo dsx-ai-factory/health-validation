@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-package server
+// Package verdictserver serves host-supplied node verdicts over HTTP and gRPC.
+package verdictserver
 
 import (
 	"context"
@@ -25,6 +26,12 @@ import (
 
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
 	"github.com/dsx-ai-factory/health-validation/proto/verdictjson"
+)
+
+const (
+	httpReadHeaderTimeout = 10 * time.Second
+	httpReadTimeout       = 30 * time.Second
+	httpIdleTimeout       = 2 * time.Minute
 )
 
 // Handler evaluates a request. Every produced verdict is a successful response,

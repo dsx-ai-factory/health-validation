@@ -18,7 +18,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/dsx-ai-factory/health-validation/agentkit/server"
+	"github.com/dsx-ai-factory/health-validation/agentkit/verdictserver"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
 )
 
@@ -27,7 +27,7 @@ func main() {
 	flag.Parse()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := server.ServeContext(ctx, *address, demonstrationHandler); err != nil {
+	if err := verdictserver.ServeContext(ctx, *address, demonstrationHandler); err != nil {
 		log.Print(err)
 		os.Exit(2)
 	}

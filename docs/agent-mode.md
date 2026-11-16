@@ -216,7 +216,7 @@ verdict alone does not restart the service.
 `toolkit/app` owns configuration and backend lifetime. Its shared evaluation
 core owns a fresh cycle, architecture discovery, runnable-check selection,
 sensor collection, and verdict aggregation for each call. The transport accepts
-a handler that returns proto messages, keeping `agentkit/server` independent of
+a handler that returns proto messages, keeping `agentkit/verdictserver` independent of
 catalog and toolkit. `toolkit/verdictproto` is the conversion boundary; the
 catalog and raw collection packages acquire no dependency on it.
 

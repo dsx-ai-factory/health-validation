@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/dsx-ai-factory/health-validation/agentkit/server"
+	"github.com/dsx-ai-factory/health-validation/agentkit/verdictserver"
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -82,7 +82,7 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	}
 	agent := a.newVerdictAgent(cfg, defaults, xidJournal)
 	defer agent.closeWhenIdle()
-	if err := server.ServeContext(ctx, *address, agent.evaluate, server.WithAfterResponse(agent.afterResponse)); err != nil {
+	if err := verdictserver.ServeContext(ctx, *address, agent.evaluate, verdictserver.WithAfterResponse(agent.afterResponse)); err != nil {
 		return fail(err)
 	}
 	return exitOK
