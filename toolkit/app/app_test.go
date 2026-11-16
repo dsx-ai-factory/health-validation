@@ -691,19 +691,6 @@ func TestExitCodeForVerdict(t *testing.T) {
 	}
 }
 
-// nodeCatalog isolates the exit-code tests from the built-in catalog so the
-// produced severity depends only on the test's input, not on built-in defaults
-// (e.g. the built-in gpu_count expects 4). It holds just the custom check,
-// which is CRITICAL when gpu_count > 8.
-func nodeCatalog(t *testing.T) *catalog.Catalog {
-	t.Helper()
-	cat := catalog.NewEmpty(catalog.WithArchitecture(catalogtest.DummyArchitecture))
-	if err := cat.Register(customCheck()); err != nil {
-		t.Fatalf("register custom check: %v", err)
-	}
-	return cat
-}
-
 // failingNodeBackend errors at Measure, standing in for a backend that cannot
 // read the host at all (e.g. NVML failed to initialize).
 type failingNodeBackend struct{}
@@ -712,37 +699,39 @@ func (failingNodeBackend) MeasureNode() ([]health.Measurement, error) {
 	return nil, errors.New("backend unavailable")
 }
 
-// TestEvaluateExitCodes drives evaluate end-to-end across its verdict exit
-// codes. The custom check is CRITICAL when gpu_count > 8, so the count picks
-// the verdict. A backend that fails to collect no longer aborts the run: the
-// failure is degraded to an errored measurement that fails the dependent
-// check Critical, so it exits exitUnhealthy (a produced CRITICAL verdict) with
-// the verdict still written — not exitError, which is reserved for the case
-// where no verdict is produced at all.
+// TestEvaluateExitCodes covers healthy, unhealthy, and collection-failure
+// verdicts through the production evaluation and output paths.
 func TestEvaluateExitCodes(t *testing.T) {
 	cases := []struct {
-		sensor toolkit.Sensor
-		name   string
-		want   int
+		backend toolkit.NodeBackend
+		name    string
+		want    int
 	}{
-		{toolkit.NewNodeSensor(toolkit.MockNode(node.NodeMeasurement{GPUCount: 16})), "critical verdict", exitUnhealthy},
-		{toolkit.NewNodeSensor(toolkit.MockNode(node.NodeMeasurement{GPUCount: 8})), "healthy verdict", exitOK},
-		{toolkit.NewNodeSensor(failingNodeBackend{}), "collection failure degrades to critical", exitUnhealthy},
+		{toolkit.MockNode(node.NodeMeasurement{GPUCount: 16}), "critical verdict", exitUnhealthy},
+		{toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}), "healthy verdict", exitOK},
+		{failingNodeBackend{}, "collection failure degrades to critical", exitUnhealthy},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			_, _, code := evaluate(nodeCatalog(t), toolkit.CollectionOptions{}, "test", testNodeID, &stdout, &stderr, c.sensor)
+			a := cadenceRunApp().WithNodeBackend(c.backend)
+			verdict, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{
+				NodeID: testNodeID, ExecutionContext: health.TenantGuest,
+			}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			code := writeVerdict(verdict, "test", testNodeID, &stdout, &stderr)
 			if code != c.want {
-				t.Fatalf("evaluate = %d, want %d; stderr=%q", code, c.want, stderr.String())
+				t.Fatalf("writeVerdict = %d, want %d; stderr=%q", code, c.want, stderr.String())
 			}
 
-			var verdict health.NodeVerdict
-			if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
+			var output health.NodeVerdict
+			if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
 				t.Fatalf("unmarshal verdict: %v; stdout = %s", err, stdout.String())
 			}
-			if verdict.NodeID != testNodeID {
-				t.Errorf("NodeID = %q, want %q", verdict.NodeID, testNodeID)
+			if output.NodeID != testNodeID {
+				t.Errorf("NodeID = %q, want %q", output.NodeID, testNodeID)
 			}
 		})
 	}

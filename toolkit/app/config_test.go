@@ -4,8 +4,7 @@
 package app
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -348,31 +347,19 @@ func TestLoadConfigEmptyFile(t *testing.T) {
 // exit code 0. The architecture is set as the CLI does, so
 // architecture-scoped thresholds resolve to real expectations.
 func TestEvaluatePassingNode(t *testing.T) {
-	cat := catalog.New(catalog.WithArchitecture("GB200"))
-	sensors := []toolkit.Sensor{
-		toolkit.NewGPUSensor(toolkit.MockGPU(
-			gpu.GPUMeasurement{
-				GPUID:               "GPU-0",
-				AveragePowerDrawW:   220,
-				PowerLimitW:         1200,
-				EnforcedPowerLimitW: 1200,
-			},
-		)),
-		toolkit.NewNodeSensor(toolkit.MockNode(
-			node.NodeMeasurement{GPUCount: 4},
-		)),
+	a := cadenceRunApp().WithGPUBackend(toolkit.MockGPU(gpu.GPUMeasurement{
+		GPUID: "GPU-0", AveragePowerDrawW: 220, PowerLimitW: 1200, EnforcedPowerLimitW: 1200,
+	})).WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}))
+	verdict, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{
+		NodeID: testNodeID, ExecutionContext: health.TenantGuest,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := exitCodeForVerdict(verdict); code != exitOK {
+		t.Fatalf("exit code = %d, want %d", code, exitOK)
 	}
 
-	var stdout, stderr bytes.Buffer
-	_, _, code := evaluate(cat, toolkit.CollectionOptions{}, "health-validation", testNodeID, &stdout, &stderr, sensors...)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
-	}
-
-	var verdict health.NodeVerdict
-	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
-		t.Fatalf("unmarshal stdout: %v\n%s", err, stdout.String())
-	}
 	if verdict.OverallSeverity != health.Pass {
 		t.Fatalf("overall severity = %v, want PASS", verdict.OverallSeverity)
 	}
@@ -436,27 +423,15 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, timeout, err := buildCatalog(mustLoadConfig(t, path), nil, "GB200", health.OperatorInfra)
+	a := cadenceRunApp().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 4}))
+	verdict, err := a.evaluateOnce(context.Background(), mustLoadConfig(t, path), evaluationRequest{
+		NodeID: testNodeID, ExecutionContext: health.TenantGuest,
+	}, nil)
 	if err != nil {
-		t.Fatalf("buildCatalog: %v", err)
+		t.Fatal(err)
 	}
-
-	sensors := []toolkit.Sensor{
-		toolkit.NewNodeSensor(toolkit.MockNode(
-			node.NodeMeasurement{GPUCount: 4},
-		)),
-	}
-
-	var stdout, stderr bytes.Buffer
-	_, _, code := evaluate(cat, toolkit.CollectionOptions{Timeout: timeout}, "health-validation", testNodeID, &stdout, &stderr, sensors...)
-	if code != exitOK {
-		t.Fatalf("exit code = %d, want %d (a disabled check must not reach the verdict); stderr=%q",
-			code, exitOK, stderr.String())
-	}
-
-	var verdict health.NodeVerdict
-	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
-		t.Fatalf("unmarshal stdout: %v\n%s", err, stdout.String())
+	if code := exitCodeForVerdict(verdict); code != exitOK {
+		t.Fatalf("exit code = %d, want %d", code, exitOK)
 	}
 
 	for _, v := range verdict.CheckResults {
@@ -489,23 +464,17 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 // a produced CRITICAL verdict is an out-of-service outcome. The full
 // severity still lives in the JSON verdict written to stdout.
 func TestEvaluateGPUCountMismatch(t *testing.T) {
-	cat := catalog.New(catalog.WithArchitecture("GB200"))
-	sensors := []toolkit.Sensor{
-		toolkit.NewNodeSensor(toolkit.MockNode(
-			node.NodeMeasurement{GPUCount: 3},
-		)),
+	a := cadenceRunApp().WithNodeBackend(toolkit.MockNode(node.NodeMeasurement{GPUCount: 3}))
+	verdict, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{
+		NodeID: testNodeID, ExecutionContext: health.TenantGuest,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := exitCodeForVerdict(verdict); code != exitUnhealthy {
+		t.Fatalf("exit code = %d, want %d", code, exitUnhealthy)
 	}
 
-	var stdout, stderr bytes.Buffer
-	_, _, code := evaluate(cat, toolkit.CollectionOptions{}, "health-validation", testNodeID, &stdout, &stderr, sensors...)
-	if code != exitUnhealthy {
-		t.Fatalf("exit code = %d, want %d (CRITICAL propagated); stderr=%q", code, exitUnhealthy, stderr.String())
-	}
-
-	var verdict health.NodeVerdict
-	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
-		t.Fatalf("unmarshal stdout: %v\n%s", err, stdout.String())
-	}
 	if verdict.OverallSeverity != health.Critical {
 		t.Fatalf("overall severity = %v, want CRITICAL", verdict.OverallSeverity)
 	}

@@ -856,21 +856,6 @@ func collectionTimeout(cfg *Config) time.Duration {
 	return cfg.CollectionTimeout()
 }
 
-// evaluate runs the sensors through the catalog, prints the node verdict as
-// indented JSON, and returns the exit code alongside the verdict. It takes the
-// collection options and sensors as arguments so tests can inject per-run
-// configuration and mock sensors without hardware. produced is false when
-// collection failed before any verdict existed, so the caller knows there is
-// nothing worth publishing.
-func evaluate(cat *catalog.Catalog, opts toolkit.CollectionOptions, prog, nodeID string, stdout, stderr io.Writer, sensors ...toolkit.Sensor) (verdict health.NodeVerdict, produced bool, code int) {
-	verdict, err := toolkit.CollectWithOptions(cat, opts, sensors...)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
-		return health.NodeVerdict{}, false, exitError
-	}
-	return verdict, true, writeVerdict(verdict, prog, nodeID, stdout, stderr)
-}
-
 // writeVerdict prints a node verdict as indented JSON and returns the process
 // exit code derived from the verdict severity via [exitCodeForVerdict]; a
 // missing node ID, marshal failure, or write failure returns [exitError]

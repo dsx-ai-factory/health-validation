@@ -214,7 +214,7 @@ The logic lives in `toolkit/app/`; `toolkit/cmd/health-validation/main.go` is a 
 
 - `toolkit/app/backend_linux.go` (`//go:build linux`) — `newBackend()` returns the NVML (cgo) backend.
 - `toolkit/app/backend_other.go` (`//go:build !linux`) — `newBackend()` returns an "unavailable on this platform" error.
-- `toolkit/app/app.go` / `toolkit/app/config.go` stay platform-agnostic; `evaluate(cat, …, sensors…)` takes sensors as arguments so tests inject `toolkit.MockGPU`/`MockNode` without hardware or cgo.
+- `toolkit/app/app.go` / `toolkit/app/config.go` stay platform-agnostic; `evaluateOnce` is shared by `run`, `serve`, and tests; tests replace the host backend and inject `toolkit.MockGPU`/`MockNode` without hardware or cgo.
 
 Consequence: on darwin `go build ./toolkit/cmd/health-validation` succeeds (stub backend) and `go test ./toolkit/cmd/health-validation` passes, but `health-validation run` exits `2` with the backend error — there is no data source off-linux. Follow this split for any future production binary that depends on a build-tagged backend.
 
