@@ -293,8 +293,8 @@ func (b *builder) add(current *observation.Observation, f feed) {
 		e.addError(targetErr, append([]string{gpuIDField}, f.catalog...)...)
 	case current.GetCollectionError() != nil:
 		fields := f.catalog
-		// A whole-source failure leaves every GPU unidentified, as the legacy
-		// sensors report it, so gpu_id carries the same failure.
+		// A whole-source failure leaves every GPU unidentified, so gpu_id
+		// carries the same failure.
 		if f.mapped && f.schema.gpuID >= 0 && current.GetTarget() == nil {
 			fields = append([]string{gpuIDField}, fields...)
 			e.fed[gpuIDField] = true

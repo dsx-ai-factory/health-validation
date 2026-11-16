@@ -211,3 +211,31 @@ func int64FieldValue(value int64) godcgm.FieldValue_v1 {
 func intField(value int64) *observation.Value {
 	return &observation.Value{Kind: &observation.Value_IntValue{IntValue: value}}
 }
+
+// A first sample with no timestamp, or a field DCGM omits, is NO_DATA rather
+// than a value.
+func TestReadGPUMetricsIncompleteFirstSample(t *testing.T) {
+	library := &nativeLibrary{
+		options: StandaloneOptions{LiveMetrics: true},
+		readFields: func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
+			untimed := int64FieldValue(0)
+			negative := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, FieldID: godcgm.DCGM_FI_DEV_BOARD_POWER_WATTS, FieldType: godcgm.DCGM_FT_DOUBLE, TS: -1}
+			binary.LittleEndian.PutUint64(negative.Value[:8], math.Float64bits(251.5))
+			return []godcgm.FieldValue_v2{negative, {
+				EntityGroupId: godcgm.FE_GPU, FieldID: godcgm.DCGM_FI_DEV_GPU_PSTATE,
+				FieldType: untimed.FieldType, Value: untimed.Value,
+			}}, nil
+		},
+	}
+	signals := []string{gpusignals.PowerDraw.ID(), gpusignals.PerformanceState.ID(), gpusignals.PowerLimitEnforced.ID()}
+	values, err := library.ReadGPUMetrics(0, signals)
+	if err != nil {
+		t.Fatalf("ReadGPUMetrics() error = %v", err)
+	}
+	for _, signalID := range signals {
+		got := values[signalID]
+		if got.Value != nil || got.CollectionError.GetSourceError() != "DCGM_ST_NO_DATA" {
+			t.Errorf("%s = %+v, want a DCGM_ST_NO_DATA collection error", signalID, got)
+		}
+	}
+}

@@ -38,12 +38,13 @@ reviews:
         its factory, measurement, rules, and tests in the appropriate domain.
     - path: "toolkit/**/*.go"
       instructions: >-
-        Toolkit depends on catalog and supplies sensors, backends, NVML
-        integration, and the operator CLI. Review backend error handling,
-        context propagation, resource cleanup, operator diagnostics, JSON
-        output compatibility, and mock-backed tests. Do not introduce a
+        Toolkit depends on catalog and collect and supplies the collect
+        bridge, adapters, and the operator CLI. Review collection error
+        handling, context propagation, resource cleanup, operator diagnostics,
+        JSON output compatibility, and tests that stand in for sources with
+        in-memory collect sensors. Do not introduce a
         catalog-to-toolkit dependency.
-    - path: "toolkit/nvml/**"
+    - path: "collect/source/nvml/**"
       instructions: >-
         NVML code is Linux-only and uses cgo. Review device-handle lifetimes,
         driver/API error translation, unsupported-hardware behavior, and Linux
