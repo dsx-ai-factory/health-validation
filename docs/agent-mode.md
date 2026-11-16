@@ -35,15 +35,19 @@ a `NodeVerdict`. Generate clients from
 Generated Go types are in
 `github.com/dsx-ai-factory/health-validation/proto/go/health/v1`.
 
-The default address is `127.0.0.1:8080`. The API is intended for callers local to
-the node or its container environment; this version has no TLS, authentication,
-or rate limiting. Choose the listener and container networking accordingly.
+The default address is `127.0.0.1:8080`. Without `--allow-remote`, the listener
+requires a numeric loopback IP such as `127.0.0.1` or `::1`. Wildcard addresses,
+remote IPs, and hostnames require this explicit opt-in. The API is intended for
+callers local to the node or its container environment; this version has no
+TLS, authentication, or rate limiting, including when `--allow-remote` is set.
+Choose the listener and container networking accordingly.
 
 ## Defaults and request overrides
 
 | Setting | CLI default | Per-request behavior |
 | --- | --- | --- |
 | `--address` | `127.0.0.1:8080` | One listener for HTTP/1 and gRPC |
+| `--allow-remote` | false | Allow a non-loopback listener; does not enable TLS or authentication |
 | `--node-id` | App-configured identifier, otherwise system hostname | Optional `node_id` replaces it for one request; whitespace-only values fail |
 | `--cadence` | Omitted: all registered checks | Optional `cadence` selects `CONTINUOUS`, `PROLOG`, or `MAINTENANCE` |
 | `--execution-context` | `TENANT_GUEST` | Optional `execution_context` selects `OPERATOR_INFRA`, `TENANT_GUEST`, or `OUT_OF_BAND` |

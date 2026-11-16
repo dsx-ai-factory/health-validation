@@ -327,6 +327,11 @@ func TestAgentCollectorFailureOccursAfterCompleteResponse(t *testing.T) {
 func TestServeStartupRejectsBadConfigAndFlags(t *testing.T) {
 	for _, args := range [][]string{
 		{"--address", " "},
+		{"--address", "0.0.0.0:0"},
+		{"--address", "[::]:0"},
+		{"--address", ":0"},
+		{"--address", "192.0.2.1:0"},
+		{"--address", "localhost:0"},
 		{"--cadence", "invalid"},
 		{"--cadence", ""},
 		{"--node-id", " "},
@@ -342,6 +347,39 @@ func TestServeStartupRejectsBadConfigAndFlags(t *testing.T) {
 		if got := a.serve(context.Background(), args, &stderr); got != exitError || strings.TrimSpace(stderr.String()) == "" {
 			t.Errorf("%v: exit=%d stderr=%q", args, got, stderr.String())
 		}
+	}
+}
+
+func TestServeListenerRequiresExplicitRemoteOptIn(t *testing.T) {
+	for _, tc := range []struct {
+		address     string
+		allowRemote bool
+		valid       bool
+	}{
+		{"127.0.0.1:0", false, true},
+		{"127.0.0.2:8080", false, true},
+		{"[::1]:8080", false, true},
+		{"[::ffff:127.0.0.1]:8080", false, true},
+		{"0.0.0.0:8080", false, false},
+		{"[::]:8080", false, false},
+		{":8080", false, false},
+		{"192.0.2.1:8080", false, false},
+		{"localhost:8080", false, false},
+		{"0.0.0.0:8080", true, true},
+		{"[::]:8080", true, true},
+		{"192.0.2.1:8080", true, true},
+		{"localhost:8080", true, true},
+		{"bad-address", true, false},
+	} {
+		if err := validateListenAddress(tc.address, tc.allowRemote); (err == nil) != tc.valid {
+			t.Errorf("address=%q allowRemote=%v: %v", tc.address, tc.allowRemote, err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stderr bytes.Buffer
+	if code := cadenceRunApp().serve(ctx, []string{"--address", "0.0.0.0:0", "--allow-remote"}, &stderr); code != exitOK {
+		t.Fatalf("explicit remote opt-in exit=%d: %s", code, &stderr)
 	}
 }
 
