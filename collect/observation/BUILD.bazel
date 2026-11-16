@@ -20,7 +20,9 @@ go_library(
 go_test(
     name = "observation_test",
     srcs = [
+        "dcgm_health_test.go",
         "extended_test.go",
+        "native_identity_test.go",
         "observation_test.go",
     ],
     data = ["testdata/gpu_inventory.json"],

@@ -21,6 +21,8 @@ type (
 	ObservationTarget       = healthv1.ObservationTarget
 	NodeRef                 = healthv1.NodeRef
 	GPURef                  = healthv1.GpuRef
+	NVSwitchRef             = healthv1.NvSwitchRef
+	NativeEntityRef         = healthv1.NativeEntityRef
 	NVLinkEndpointRef       = healthv1.NvLinkEndpointRef
 	GPUPairRef              = healthv1.GpuPairRef
 	HardwareInventory       = healthv1.HardwareInventory
@@ -40,6 +42,9 @@ type (
 	PstoreRecordRef         = healthv1.PstoreRecordRef
 	JournalEntryRef         = healthv1.JournalEntryRef
 	Value                   = healthv1.Value
+	DCGMHealthReport        = healthv1.DcgmHealthReport
+	DCGMHealthIncident      = healthv1.DcgmHealthIncident
+	DCGMHealthResult        = healthv1.DcgmHealthReport_HealthResult
 	CollectionError         = healthv1.CollectionError
 	CollectionErrorCategory = healthv1.CollectionErrorCategory
 	NoValue                 = healthv1.NoValue
@@ -50,6 +55,8 @@ type (
 type (
 	ObservationTarget_Node               = healthv1.ObservationTarget_Node
 	ObservationTarget_GPU                = healthv1.ObservationTarget_Gpu
+	ObservationTarget_NVSwitch           = healthv1.ObservationTarget_NvSwitch
+	ObservationTarget_NativeEntity       = healthv1.ObservationTarget_NativeEntity
 	ObservationTarget_NVLinkEndpoint     = healthv1.ObservationTarget_NvLinkEndpoint
 	ObservationTarget_GPUPair            = healthv1.ObservationTarget_GpuPair
 	Observation_Value                    = healthv1.Observation_Value
@@ -72,10 +79,15 @@ type (
 	ObservationTarget_FUSEConnection     = healthv1.ObservationTarget_FuseConnection
 	ObservationTarget_PstoreRecord       = healthv1.ObservationTarget_PstoreRecord
 	Value_UintValue                      = healthv1.Value_UintValue
+	Value_DCGMHealthReport               = healthv1.Value_DcgmHealthReport
 	ObservationTarget_JournalEntry       = healthv1.ObservationTarget_JournalEntry
 )
 
 const (
+	DCGMHealthResultPass = healthv1.DcgmHealthReport_PASS
+	DCGMHealthResultWarn = healthv1.DcgmHealthReport_WARN
+	DCGMHealthResultFail = healthv1.DcgmHealthReport_FAIL
+
 	CollectionErrorCategoryUnspecified      = healthv1.CollectionErrorCategory_COLLECTION_ERROR_CATEGORY_UNSPECIFIED
 	CollectionErrorCategoryTimeout          = healthv1.CollectionErrorCategory_COLLECTION_ERROR_CATEGORY_TIMEOUT
 	CollectionErrorCategoryUnsupported      = healthv1.CollectionErrorCategory_COLLECTION_ERROR_CATEGORY_UNSUPPORTED
@@ -258,9 +270,8 @@ func validateGPUInventoryEntry(entry *GPUInventoryEntry) error {
 	return nil
 }
 
-// validate verifies that an observation contains exactly one
-// non-nil outcome. Protobuf oneofs prevent two outcomes from being selected,
-// but they do not require either outcome to be present.
+// validate checks target, sample interval, and outcome structure. Protobuf oneofs
+// allow an absent outcome, so presence and typed payloads need explicit validation.
 func validate(current *Observation) error {
 	if current == nil {
 		return fmt.Errorf("observation is required")
@@ -288,6 +299,9 @@ func validate(current *Observation) error {
 		if outcome == nil || outcome.Value == nil {
 			return fmt.Errorf("observation %q has an empty value outcome", current.GetSignalId())
 		}
+		if err := validateDCGMHealthValue(outcome.Value); err != nil {
+			return fmt.Errorf("observation %q: %w", current.GetSignalId(), err)
+		}
 	case *Observation_CollectionError:
 		if outcome == nil || outcome.CollectionError == nil {
 			return fmt.Errorf("observation %q has an empty collection-error outcome", current.GetSignalId())
@@ -302,6 +316,8 @@ func validate(current *Observation) error {
 	return nil
 }
 
+// validateTarget checks a selected target payload and any native identity metadata.
+// A nil target is allowed for observations that cannot identify an entity.
 func validateTarget(target *ObservationTarget) error {
 	if target == nil {
 		return nil
@@ -315,14 +331,30 @@ func validateTarget(target *ObservationTarget) error {
 		if kind == nil || kind.Gpu == nil {
 			return fmt.Errorf("target has an empty GPU payload")
 		}
+		return validateNativeEntityRef(kind.Gpu.GetNative())
+	case *ObservationTarget_NVSwitch:
+		if kind == nil || kind.NvSwitch == nil {
+			return fmt.Errorf("target has an empty NVSwitch payload")
+		}
+		return validateNativeEntityRef(kind.NvSwitch.GetNative())
+	case *ObservationTarget_NativeEntity:
+		if kind == nil || kind.NativeEntity == nil {
+			return fmt.Errorf("target has an empty native entity payload")
+		}
+		return validateNativeEntityRef(kind.NativeEntity)
 	case *ObservationTarget_NVLinkEndpoint:
 		if kind == nil || kind.NvLinkEndpoint == nil || kind.NvLinkEndpoint.Gpu == nil {
 			return fmt.Errorf("target has an incomplete NVLink endpoint payload")
 		}
+		return validateNativeEntityRef(kind.NvLinkEndpoint.Gpu.GetNative())
 	case *ObservationTarget_GPUPair:
 		if kind == nil || kind.GpuPair == nil || kind.GpuPair.SourceGpu == nil || kind.GpuPair.PeerGpu == nil {
 			return fmt.Errorf("target has an incomplete GPU pair payload")
 		}
+		if err := validateNativeEntityRef(kind.GpuPair.SourceGpu.GetNative()); err != nil {
+			return fmt.Errorf("GPU pair source: %w", err)
+		}
+		return validateNativeEntityRef(kind.GpuPair.PeerGpu.GetNative())
 	case *ObservationTarget_InfiniBandDevice:
 		if kind == nil || kind.InfiniBandDevice == nil {
 			return fmt.Errorf("target has an empty InfiniBand device payload")

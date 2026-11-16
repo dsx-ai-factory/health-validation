@@ -6,6 +6,7 @@ package dcgm
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -23,6 +24,15 @@ type GPUIdentityEntry struct {
 // GPUIdentities enumerates GPUs and enriches their indices with UUIDs.
 // A UUID lookup failure preserves the indices for subsequent collection.
 func (source *Source) GPUIdentities(ctx context.Context, currentCycle *collect.Cycle) ([]GPUIdentityEntry, *observation.CollectionError) {
+	gpuIndices, failure := source.GPUIndices(ctx, currentCycle)
+	if failure != nil {
+		return nil, failure
+	}
+	return source.GPUUUIDs(ctx, currentCycle, gpuIndices), nil
+}
+
+// GPUIndices enumerates source-local GPU IDs without looking up UUIDs.
+func (source *Source) GPUIndices(ctx context.Context, currentCycle *collect.Cycle) ([]uint, *observation.CollectionError) {
 	gpuIndices, err := collect.Run(ctx, currentCycle, Name, func(callContext context.Context) ([]uint, error) {
 		if startErr := source.startNativeCall(); startErr != nil {
 			return nil, startErr
@@ -42,10 +52,18 @@ func (source *Source) GPUIdentities(ctx context.Context, currentCycle *collect.C
 	if err != nil {
 		return nil, source.gpuCollectionError("identity", err)
 	}
+	return gpuIndices, nil
+}
+
+// GPUUUIDs enriches the supplied GPU IDs without enumerating devices.
+// It preserves request order and IDs, recording lookup failures per entry.
+// An empty request performs no native work.
+func (source *Source) GPUUUIDs(ctx context.Context, currentCycle *collect.Cycle, gpuIndices []uint) []GPUIdentityEntry {
 	if len(gpuIndices) == 0 {
-		return nil, nil
+		return nil
 	}
-	// Keep membership outside this call so a UUID timeout cannot discard it.
+	// Native work can outlive a timeout, so it must not retain caller-owned IDs.
+	gpuIndices = slices.Clone(gpuIndices)
 	identities, readErr := collect.Run(ctx, currentCycle, Name, func(callContext context.Context) (map[uint]GPUIdentityEntry, error) {
 		if startErr := source.startNativeCall(); startErr != nil {
 			return nil, startErr
@@ -73,7 +91,7 @@ func (source *Source) GPUIdentities(ctx context.Context, currentCycle *collect.C
 		}
 		entries = append(entries, entry)
 	}
-	return entries, nil
+	return entries
 }
 
 // GPUInventory enriches the supplied identities without re-enumerating GPUs or reading UUIDs again.

@@ -22,69 +22,68 @@ var _ collect.Sensor = (*sensor)(nil)
 // ID identifies the DCGM-backed GPU sensor.
 const ID = sensorids.DCGM
 
-// sensor turns a configured set of DCGM GPU fields into observations.
+// dcgmGPUEntityKind is DCGM's FE_GPU entity kind.
+const dcgmGPUEntityKind = 1
+
+// sensor turns configured DCGM metrics and health systems into observations.
 type sensor struct {
 	source  gpuSource
+	health  healthSource
 	signals collect.Signals
 }
 
 type gpuSource interface {
 	ID() string
-	GPUIdentities(context.Context, *collect.Cycle) ([]dcgmsource.GPUIdentityEntry, *observation.CollectionError)
+	GPUIndices(context.Context, *collect.Cycle) ([]uint, *observation.CollectionError)
+	GPUUUIDs(context.Context, *collect.Cycle, []uint) []dcgmsource.GPUIdentityEntry
 	GPUInventory(context.Context, *collect.Cycle, []dcgmsource.GPUIdentityEntry) *observation.GPUInventorySnapshot
 	ReadGPUMetrics(context.Context, *collect.Cycle, uint, []string) map[string]dcgmsource.FieldValue
 }
 
+type metricSource interface {
+	gpuSource
+	AddMetricsToWatch([]string) error
+}
+
 // New creates a DCGM sensor and registers its metrics with the source. An empty
 // signal list enables every metric supported by this sensor. The registered
-// set cannot change after metric collection starts.
+// set cannot change after source collection starts. Health collection requires
+// NewWithHealth.
 func New(source *dcgmsource.Source, signalIDs ...string) (collect.Sensor, error) {
 	if source == nil {
 		return nil, fmt.Errorf("DCGM source is required")
 	}
 
-	signalsToWatch, err := resolveSignalsToWatch(signalIDs)
+	metrics, err := resolveMetricSignals(signalIDs)
 	if err != nil {
 		return nil, err
 	}
-	if err := source.AddMetricsToWatch(signalsToWatch.IDs()); err != nil {
-		return nil, fmt.Errorf("configure DCGM metric watch: %w", err)
-	}
-	return &sensor{source: source, signals: signalsToWatch}, nil
+	return newSensor(source, metrics)
 }
 
-// resolveSignalsToWatch validates the configured signals, removes duplicates,
-// and preserves their order.
-func resolveSignalsToWatch(requested []string) (collect.Signals, error) {
-	if len(requested) == 0 {
-		return slices.Clone(supportedSignals), nil
-	}
-	signalsToWatch := make(collect.Signals, 0, len(requested))
-	seen := make(map[string]struct{}, len(requested))
-	for _, signalID := range requested {
-		if _, duplicate := seen[signalID]; duplicate {
-			continue
+// newSensor registers resolved metrics and creates a metric-only sensor.
+func newSensor(source metricSource, metrics collect.Signals) (*sensor, error) {
+	if len(metrics) > 0 {
+		if err := source.AddMetricsToWatch(metrics.IDs()); err != nil {
+			return nil, fmt.Errorf("configure DCGM metric watch: %w", err)
 		}
-		definition, supported := supportedByID[signalID]
-		if !supported {
-			return nil, fmt.Errorf("DCGM sensor does not collect signal %q", signalID)
-		}
-		seen[signalID] = struct{}{}
-		signalsToWatch = append(signalsToWatch, definition)
 	}
-	return signalsToWatch, nil
+	return &sensor{source: source, signals: metrics}, nil
 }
 
+// ID returns the sensor's stable identifier.
 func (sensor *sensor) ID() string { return ID }
 
+// Signals returns a copy of the configured output definitions.
 func (sensor *sensor) Signals() collect.Signals {
 	return slices.Clone(sensor.signals)
 }
 
-// Measure enumerates GPUs once and reads all selected fields for each GPU.
+// Measure collects selected metrics and, when selected, one aggregate health
+// report before optional GPU inventory. It requires a collection cycle and
+// returns source failures as observations while preserving collected values.
+// Optional UUID enrichment runs after collection and preserves native identities.
 // WithSignalID() and WithGPUInventory() together request inventory only.
-// GPU and field failures become observations without hiding successful
-// results.
 func (sensor *sensor) Measure(
 	ctx context.Context,
 	options ...collect.OpOption,
@@ -103,26 +102,24 @@ func (sensor *sensor) Measure(
 	if len(selected) == 0 && !op.GPUInventory() {
 		return batch, nil
 	}
-	identities, failure := sensor.source.GPUIdentities(ctx, currentCycle)
-	if failure != nil {
-		if op.GPUInventory() {
-			batch.Inventory = &observation.HardwareInventory{GpuSnapshots: []*observation.GPUInventorySnapshot{{
-				Source: sensor.source.ID(), CollectedAt: timestamppb.Now(),
-				Outcome: &observation.GPUInventorySnapshot_CollectionError{CollectionError: failure},
-			}}}
+	metrics, health := splitSignals(selected)
+	var gpuIndices []uint
+	var enumerationFailure *observation.CollectionError
+	if len(metrics) > 0 {
+		gpuIndices, enumerationFailure = sensor.source.GPUIndices(ctx, currentCycle)
+	}
+	metricTargets := make(map[uint]*observation.ObservationTarget, len(gpuIndices))
+	if enumerationFailure != nil {
+		sensor.appendErrors(batch, metrics, nil, startedAt, enumerationFailure.Operation, enumerationFailure)
+	} else if len(metrics) > 0 {
+		if len(gpuIndices) == 0 {
+			sensor.appendNoTargetObservations(batch, metrics, startedAt)
 		}
-		sensor.appendErrors(batch, selected, nil, startedAt, failure.Operation, failure)
-		return batch, nil
-	}
-	if len(identities) == 0 {
-		sensor.appendNoTargetObservations(batch, selected, startedAt)
-	}
-
-	if len(selected) > 0 {
-		for _, entry := range identities {
-			target := identityEntryTarget(entry)
-			values := sensor.source.ReadGPUMetrics(ctx, currentCycle, entry.Index, selected.IDs())
-			for _, definition := range selected {
+		for _, gpuIndex := range gpuIndices {
+			target := identityEntryTarget(dcgmsource.GPUIdentityEntry{Index: gpuIndex})
+			metricTargets[gpuIndex] = target
+			values := sensor.source.ReadGPUMetrics(ctx, currentCycle, gpuIndex, metrics.IDs())
+			for _, definition := range metrics {
 				signalID := definition.ID()
 				field, exists := values[signalID]
 				if !exists {
@@ -137,20 +134,51 @@ func (sensor *sensor) Measure(
 			}
 		}
 	}
-	// Collect metrics before optional enrichment so an inventory timeout cannot suppress them.
+	if health {
+		sensor.appendHealth(ctx, currentCycle, batch, startedAt)
+	}
+	// Inventory-only discovery must not prevent a selected health read.
+	if op.GPUInventory() && len(metrics) == 0 {
+		gpuIndices, enumerationFailure = sensor.source.GPUIndices(ctx, currentCycle)
+	}
+	var identities []dcgmsource.GPUIdentityEntry
+	if enumerationFailure == nil && len(gpuIndices) > 0 {
+		identities = sensor.source.GPUUUIDs(ctx, currentCycle, gpuIndices)
+		for _, entry := range identities {
+			if target := metricTargets[entry.Index]; target != nil {
+				target.Kind = identityEntryTarget(entry).Kind
+			}
+		}
+	}
+	// Values remain in the batch if UUID or inventory enrichment times out.
 	if op.GPUInventory() {
-		snapshot := sensor.source.GPUInventory(ctx, currentCycle, identities)
+		var snapshot *observation.GPUInventorySnapshot
+		if enumerationFailure != nil {
+			snapshot = &observation.GPUInventorySnapshot{
+				Source: sensor.source.ID(), CollectedAt: timestamppb.Now(),
+				Outcome: &observation.GPUInventorySnapshot_CollectionError{CollectionError: enumerationFailure},
+			}
+		} else {
+			snapshot = sensor.source.GPUInventory(ctx, currentCycle, identities)
+		}
 		batch.Inventory = &observation.HardwareInventory{GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot}}
 	}
 	return batch, nil
 }
 
-// identityEntryTarget falls back to the source-local index when UUID is unavailable.
+// identityEntryTarget retains the native GPU ID and an optional UUID.
+// Missing UUIDs retain the existing source-local fallback for compatibility.
 func identityEntryTarget(entry dcgmsource.GPUIdentityEntry) *observation.ObservationTarget {
-	if entry.UUID == "" {
-		return observation.GPUSourceLocalTarget(fmt.Sprintf("dcgm-index-%d", entry.Index))
+	gpu := &observation.GPURef{
+		Uuid: entry.UUID,
+		Native: &observation.NativeEntityRef{
+			Source: dcgmsource.Name, EntityKind: dcgmGPUEntityKind, EntityId: uint32(entry.Index),
+		},
 	}
-	return observation.GPUTarget(entry.UUID)
+	if entry.UUID == "" {
+		gpu.SourceLocalId = fmt.Sprintf("dcgm-index-%d", entry.Index)
+	}
+	return &observation.ObservationTarget{Kind: &observation.ObservationTarget_GPU{Gpu: gpu}}
 }
 
 func (sensor *sensor) appendNoTargetObservations(

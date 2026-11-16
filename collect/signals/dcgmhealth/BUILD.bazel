@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
+go_library(
+    name = "dcgmhealth",
+    srcs = ["signals.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/dcgmhealth",
+    visibility = ["//visibility:public"],
+    deps = ["//collect"],
+)
+
+go_test(
+    name = "dcgmhealth_test",
+    srcs = ["signals_test.go"],
+    embed = [":dcgmhealth"],
+    deps = ["//collect"],
+)

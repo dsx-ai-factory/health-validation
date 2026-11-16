@@ -4,6 +4,9 @@
 package dcgm
 
 import (
+	"fmt"
+	"slices"
+
 	"github.com/dsx-ai-factory/health-validation/collect"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 )
@@ -79,10 +82,28 @@ var supportedSignals = collect.Signals{
 	gpusignals.InforomConfigurationValid,
 }
 
-var supportedByID = func() map[string]collect.Signal {
-	indexed := make(map[string]collect.Signal, len(supportedSignals))
-	for _, current := range supportedSignals {
-		indexed[current.ID()] = current
+// resolveMetricSignals returns canonical metrics in request order without duplicates.
+// Empty requests select every supported metric; health report IDs are rejected.
+func resolveMetricSignals(requested []string) (collect.Signals, error) {
+	if len(requested) == 0 {
+		return slices.Clone(supportedSignals), nil
 	}
-	return indexed
-}()
+	byID := make(map[string]collect.Signal, len(supportedSignals))
+	for _, definition := range supportedSignals {
+		byID[definition.ID()] = definition
+	}
+	definitions := make(collect.Signals, 0, len(requested))
+	seen := make(map[string]struct{}, len(requested))
+	for _, signalID := range requested {
+		if _, duplicate := seen[signalID]; duplicate {
+			continue
+		}
+		definition, supported := byID[signalID]
+		if !supported {
+			return nil, fmt.Errorf("DCGM sensor does not collect metric signal %q", signalID)
+		}
+		seen[signalID] = struct{}{}
+		definitions = append(definitions, definition)
+	}
+	return definitions, nil
+}

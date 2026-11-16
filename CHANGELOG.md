@@ -303,6 +303,23 @@ Changes to behavior and APIs outside the
   `--stuck-call-deadline` (default `10m`, must exceed `--request-timeout`), so a
   supervisor can restart the process. Probes bypass the in-flight request limit.
   This is liveness only; readiness is still not provided. ([#326](https://github.com/dsx-ai-factory/health-validation/pull/326), [#319](https://github.com/dsx-ai-factory/health-validation/issues/319))
+- Add opt-in passive DCGM health collection through `dcgm.NewWithHealth`, with
+  an explicit selection of eight health systems, optional metric signals,
+  and one `dcgm.health` report. A zero systems mask skips health collection;
+  omit metric signals to request only health when the mask is nonzero.
+  Reports preserve all native incidents, group metadata, readable health statuses,
+  monitoring start time, and missing-target facts. Entities reuse shared GPU
+  and NVSwitch references with optional source-native identity metadata;
+  unknown native entity kinds are preserved. Existing metric-only constructors
+  and defaults are unchanged.
+  Successful native reports are available immediately, including empty incident
+  lists; absent incidents do not establish healthy status or complete coverage.
+  Consumers choose any startup grace period.
+  Cleanup destroys the owned group and releases the client on a best-effort
+  basis; native health sampling may persist in an external hostengine.
+  Native health watches share field sampling with metric watches and can
+  request faster updates than a slower metric interval policy.
+
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.
