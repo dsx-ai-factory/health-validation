@@ -75,12 +75,14 @@ that fails without exhausting the request budget produces the same CRITICAL
 | Verdict produced, including a discovery-failure verdict | OK | 200 |
 | Invalid request override or JSON | INVALID_ARGUMENT | 400 |
 | Caller canceled | CANCELED | 408, if the client can still receive it |
-| Client or service request deadline expired | DEADLINE_EXCEEDED | 504 |
+| Service reports a request deadline expired | DEADLINE_EXCEEDED | 504 |
 | Handler reports temporarily unavailable | UNAVAILABLE | 503 |
 | Evaluation/conversion failed before a verdict could be delivered | INTERNAL | 500 |
 
 HTTP error bodies use `{"error":"message"}`. The HTTP status and gRPC status
 report whether a verdict was delivered; they do not encode its health severity.
+HTTP clients must also handle their own timeout errors: a client deadline may
+cancel the request without receiving an HTTP 504 response.
 
 One-shot mode retains its severity exit policy: PASS/INFO/WARNING → 0,
 CRITICAL/UNKNOWN → 1, and runtime/output failure → 2. Agent mode exits 0 on
