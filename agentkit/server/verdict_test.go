@@ -200,6 +200,68 @@ func TestVerdictHTTPFlushesBeforeTelemetry(t *testing.T) {
 	}
 }
 
+type readNotifyingListener struct {
+	net.Listener
+	reading chan struct{}
+}
+
+func (listener readNotifyingListener) Accept() (net.Conn, error) {
+	connection, err := listener.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return readNotifyingConn{Conn: connection, reading: listener.reading}, nil
+}
+
+type readNotifyingConn struct {
+	net.Conn
+	reading chan struct{}
+}
+
+func (connection readNotifyingConn) Read(buffer []byte) (int, error) {
+	select {
+	case connection.reading <- struct{}{}:
+	default:
+	}
+	return connection.Conn.Read(buffer)
+}
+
+func TestVerdictShutdownBoundsIdleUnclassifiedConnection(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	reading := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stopped := make(chan error, 1)
+	go func() {
+		stopped <- ServeListener(ctx, readNotifyingListener{Listener: listener, reading: reading}, func(context.Context, *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
+			return nil, nil
+		}, WithShutdownTimeout(50*time.Millisecond))
+	}()
+	connection, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	select {
+	case <-reading:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not start reading the idle connection")
+	}
+	cancel()
+	select {
+	case shutdownErr := <-stopped:
+		if shutdownErr != nil {
+			t.Fatal(shutdownErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("idle connection kept shutdown running past its deadline")
+	}
+}
+
 func TestVerdictShutdownBoundsUncooperativeHandler(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	address, cancel, stopped := startVerdictServer(t, func(context.Context, *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {

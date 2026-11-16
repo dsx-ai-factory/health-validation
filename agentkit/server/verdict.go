@@ -124,13 +124,15 @@ func ServeListener(ctx context.Context, listener net.Listener, handler Handler, 
 	// cmux may still be blocked accepting a new connection after both child
 	// servers stopped, so close its listener before draining their results.
 	_ = listener.Close()
-	if shutdownCtx.Err() == nil {
-		for consumed < 3 {
-			<-serveErrors
+drain:
+	for consumed < 3 {
+		select {
+		case <-serveErrors:
 			consumed++
+		case <-shutdownCtx.Done():
+			_ = httpServer.Close()
+			break drain
 		}
-	} else {
-		_ = httpServer.Close()
 	}
 	if ctx.Err() != nil || errors.Is(firstErr, net.ErrClosed) || errors.Is(firstErr, http.ErrServerClosed) || errors.Is(firstErr, grpc.ErrServerStopped) {
 		return nil
