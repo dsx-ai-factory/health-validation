@@ -93,11 +93,12 @@ HTTP: `GET /verdict` accepts optional request fields as query parameters; `POST 
 
 | Number | JSON name |
 | --- | --- |
-| 0 | `PASS` |
-| 1 | `INFO` |
-| 2 | `WARNING` |
-| 3 | `CRITICAL` |
-| 4 | `UNKNOWN` |
+| 0 | `SEVERITY_UNSPECIFIED` |
+| 1 | `PASS` |
+| 2 | `INFO` |
+| 3 | `WARNING` |
+| 4 | `CRITICAL` |
+| 5 | `UNKNOWN` |
 
 ### Category
 
@@ -153,9 +154,10 @@ HTTP: `GET /verdict` accepts optional request fields as query parameters; `POST 
 
 | Number | JSON name |
 | --- | --- |
-| 0 | `ready` |
-| 1 | `monitor` |
-| 2 | `drain` |
+| 0 | `OPERATIONAL_STATE_UNSPECIFIED` |
+| 1 | `ready` |
+| 2 | `monitor` |
+| 3 | `drain` |
 
 ### SchedulingCadence
 

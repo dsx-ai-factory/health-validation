@@ -20,13 +20,14 @@ message EvaluateRequest {
   optional string node_id = 3;
 }
 
-// Enum spellings match the catalog JSON contract, including its lowercase names.
+// Valid enum spellings match the catalog JSON contract, including lowercase names.
 enum Severity {
-  PASS = 0;
-  INFO = 1;
-  WARNING = 2;
-  CRITICAL = 3;
-  UNKNOWN = 4;
+  SEVERITY_UNSPECIFIED = 0;
+  PASS = 1;
+  INFO = 2;
+  WARNING = 3;
+  CRITICAL = 4;
+  UNKNOWN = 5;
 }
 
 enum Category {
@@ -70,9 +71,10 @@ enum ThresholdCategory {
 }
 
 enum OperationalState {
-  ready = 0;
-  monitor = 1;
-  drain = 2;
+  OPERATIONAL_STATE_UNSPECIFIED = 0;
+  ready = 1;
+  monitor = 2;
+  drain = 3;
 }
 
 enum SchedulingCadence {

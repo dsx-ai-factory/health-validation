@@ -235,7 +235,7 @@ func TestSchemaFieldsAndEnumsHaveProtoCounterparts(t *testing.T) {
 	}
 	for name, enum := range enums {
 		names := defs[name].(map[string]any)["enum"].([]any)
-		if len(names) != enum.Values().Len() {
+		if len(names) != catalogEnumCount(enum) {
 			t.Errorf("%s enum count drift", name)
 		}
 		for _, value := range names {
@@ -277,7 +277,7 @@ func TestEveryCatalogEnumMapsByWireName(t *testing.T) {
 				t.Errorf("%s has no wire mapping for %s", enum.wire.FullName(), name)
 			}
 		}
-		if count != enum.wire.Values().Len() {
+		if count != catalogEnumCount(enum.wire) {
 			t.Errorf("%s count mismatch: catalog %d wire %d", enum.wire.FullName(), count, enum.wire.Values().Len())
 		}
 	}
@@ -438,4 +438,61 @@ func validateSchema(t *testing.T, root, schema map[string]any, value any, path s
 func asList(value any) []any {
 	list, _ := value.([]any)
 	return list
+}
+
+func catalogEnumCount(enum protoreflect.EnumDescriptor) int {
+	count := enum.Values().Len()
+	if strings.HasSuffix(string(enum.Values().Get(0).Name()), "_UNSPECIFIED") {
+		count--
+	}
+	return count
+}
+
+func TestWireHealthEnumsHaveSafeDefaultsAndPreserveCatalogOrder(t *testing.T) {
+	if got := (&healthv1.NodeVerdict{}).GetOverallSeverity(); got != healthv1.Severity_SEVERITY_UNSPECIFIED {
+		t.Fatalf("empty verdict severity = %v, want UNSPECIFIED", got)
+	}
+	if got := (&healthv1.RecommendedAction{}).GetOperationalState(); got != healthv1.OperationalState_OPERATIONAL_STATE_UNSPECIFIED {
+		t.Fatalf("empty action state = %v, want UNSPECIFIED", got)
+	}
+	for _, severity := range []health.Severity{health.Pass, health.Info, health.Warning, health.Critical, health.Unknown} {
+		if got := healthv1.Severity_value[severity.String()]; got != int32(severity)+1 {
+			t.Errorf("wire %s = %d, want catalog value + 1", severity, got)
+		}
+	}
+	for _, state := range []health.OperationalState{health.OperationalReady, health.OperationalMonitor, health.OperationalDrain} {
+		if got := healthv1.OperationalState_value[state.String()]; got != int32(state)+1 {
+			t.Errorf("wire %s = %d, want catalog value + 1", state, got)
+		}
+	}
+}
+
+func TestRejectsUnspecifiedHealthEnums(t *testing.T) {
+	for name, mutate := range map[string]func(*healthv1.NodeVerdict){
+		"overall severity": func(v *healthv1.NodeVerdict) { v.OverallSeverity = healthv1.Severity_SEVERITY_UNSPECIFIED.Enum() },
+		"domain severity":  func(v *healthv1.NodeVerdict) { v.SeverityByDomain["gpu"] = healthv1.Severity_SEVERITY_UNSPECIFIED },
+		"check severity": func(v *healthv1.NodeVerdict) {
+			v.CheckResults[0].Severity = healthv1.Severity_SEVERITY_UNSPECIFIED.Enum()
+		},
+		"component severity": func(v *healthv1.NodeVerdict) {
+			v.AffectedComponents[0].MaxSeverity = healthv1.Severity_SEVERITY_UNSPECIFIED.Enum()
+		},
+		"node action": func(v *healthv1.NodeVerdict) {
+			v.RecommendedAction.OperationalState = healthv1.OperationalState_OPERATIONAL_STATE_UNSPECIFIED.Enum()
+		},
+		"check action": func(v *healthv1.NodeVerdict) {
+			v.CheckResults[0].RecommendedAction.OperationalState = healthv1.OperationalState_OPERATIONAL_STATE_UNSPECIFIED.Enum()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			wire, err := verdictproto.ToProto(fixtures()["critical"])
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(wire)
+			if _, err := verdictproto.FromProto(wire); err == nil {
+				t.Fatal("accepted an unspecified health enum")
+			}
+		})
+	}
 }
