@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -133,16 +134,19 @@ func validateListenAddress(address string, allowRemote bool) error {
 }
 
 type verdictAgent struct {
+	journal        collect.Sensor
 	app            *App
 	cfg            *Config
-	journal        collect.Sensor
 	gate           chan struct{}
+	tracker        *collect.CallTracker
+	changed        chan struct{}
 	defaults       evaluationRequest
 	requestTimeout time.Duration
+	stateMu        sync.Mutex
 }
 
 func (a *App) newVerdictAgent(cfg *Config, defaults evaluationRequest, journal collect.Sensor) *verdictAgent {
-	return &verdictAgent{app: a, cfg: cfg, defaults: defaults, journal: journal, gate: make(chan struct{}, 1), requestTimeout: defaultRequestTimeout}
+	return &verdictAgent{app: a, cfg: cfg, defaults: defaults, journal: journal, gate: make(chan struct{}, 1), changed: make(chan struct{}), requestTimeout: defaultRequestTimeout}
 }
 
 func (agent *verdictAgent) closeWhenIdle() {
@@ -212,12 +216,13 @@ func (agent *verdictAgent) evaluate(ctx context.Context, req *healthv1.EvaluateR
 	// Admission time is included so queued callers have the same bounded budget.
 	ctx, cancel := context.WithTimeout(ctx, agent.requestTimeout)
 	defer cancel()
-	select {
-	case agent.gate <- struct{}{}:
-	case <-ctx.Done():
-		slog.Info("verdict request canceled while queued", "request_id", traceID, "node_id", request.NodeID, "duration", time.Since(started), "error", ctx.Err())
-		return nil, status.FromContextError(ctx.Err()).Err()
+	if stuck, err := agent.admit(ctx, request.NodeID); stuck != nil || err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, status.FromContextError(contextErr).Err()
+		}
+		return stuck, err
 	}
+
 	if err := ctx.Err(); err != nil {
 		<-agent.gate
 		return nil, status.FromContextError(err).Err()
@@ -228,6 +233,7 @@ func (agent *verdictAgent) evaluate(ctx context.Context, req *healthv1.EvaluateR
 	}
 	completed := make(chan result, 1)
 	tracked, tracker := collect.WithCallTracking(ctx)
+	agent.setTracker(tracker)
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -236,6 +242,7 @@ func (agent *verdictAgent) evaluate(ctx context.Context, req *healthv1.EvaluateR
 			// Native calls can outlive their watchdog. Admission and shutdown
 			// wait for completion before touching the same backend again.
 			tracker.Wait()
+			agent.setTracker(nil)
 			<-agent.gate
 		}()
 		verdict, err := agent.app.evaluateOnce(tracked, agent.cfg, request, agent.journal)
@@ -276,4 +283,59 @@ func (agent *verdictAgent) afterResponse(_ context.Context, _ *healthv1.Evaluate
 		return
 	}
 	publishMetrics(agent.cfg.Metrics, verdict, verdict.NodeID)
+}
+
+func (agent *verdictAgent) setTracker(tracker *collect.CallTracker) {
+	agent.stateMu.Lock()
+	defer agent.stateMu.Unlock()
+	agent.tracker = tracker
+	close(agent.changed)
+	agent.changed = make(chan struct{})
+}
+
+func (agent *verdictAgent) admit(ctx context.Context, nodeID string) (*healthv1.NodeVerdict, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
+		select {
+		case agent.gate <- struct{}{}:
+			return nil, nil
+		default:
+		}
+		agent.stateMu.Lock()
+		tracker, changed := agent.tracker, agent.changed
+		agent.stateMu.Unlock()
+		var sourceChanged <-chan struct{}
+		if tracker != nil {
+			stuck, next := tracker.StuckCalls()
+			sourceChanged = next
+			if len(stuck) > 0 {
+				var checks []health.CheckVerdict
+				for _, call := range stuck {
+					checks = append(checks, health.CheckVerdict{
+						Timestamp: time.Now(), CheckID: "collection_source_busy", Category: health.Node, Severity: health.Unknown,
+						RecommendedAction: health.Drain(health.RemediationActionRetryCollection),
+						Messages:          []string{fmt.Sprintf("source %q has an unfinished call started at %s", call.Source, call.Since.Format(time.RFC3339Nano))},
+						ObservedValues:    map[string]any{"source": call.Source, "since": call.Since.Format(time.RFC3339Nano)},
+					})
+				}
+				verdict := health.AggregateNodeVerdict(checks)
+				verdict.NodeID = nodeID
+				response, err := verdictproto.ToProto(verdict)
+				if err != nil {
+					return nil, status.Errorf(codes.Internal, "convert blocked-source verdict: %v", err)
+				}
+				return response, nil
+			}
+		}
+		select {
+		case agent.gate <- struct{}{}:
+			return nil, nil
+		case <-changed:
+		case <-sourceChanged:
+		case <-ctx.Done():
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+	}
 }

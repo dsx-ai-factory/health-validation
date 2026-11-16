@@ -222,7 +222,7 @@ func collectSensorContext(parent context.Context, s Sensor, timeout time.Duratio
 	}
 
 	ch := make(chan sensorResult, 1)
-	finished := collect.TrackCall(ctx)
+	finished, abandoned := collect.TrackSourceCall(ctx, s.Name())
 	go func() {
 		defer finished()
 		defer func() {
@@ -241,10 +241,12 @@ func collectSensorContext(parent context.Context, s Sensor, timeout time.Duratio
 		// what the sensor reported (a killed command shows "signal: killed",
 		// not a deadline error).
 		if ctx.Err() != nil {
+			abandoned()
 			r.timedOut = true
 		}
 		return r
 	case <-ctx.Done():
+		abandoned()
 		return sensorResult{timedOut: true}
 	}
 }

@@ -240,7 +240,9 @@ response writing. It must exceed the source timeout; allow time for sequential
 sources and verdict production. Client cancellation propagates through
 the collection bridge. `collect.WithCallTracking` tracks underlying
 calls that outlive watchdogs; admission stays closed until those calls return,
-so a timed-out native call cannot overlap the next collection. Preserve that
+so a timed-out native call cannot overlap the next collection. Queued and new
+callers receive an UNKNOWN `collection_source_busy` verdict naming unfinished
+sources and their call start times, with `retry_collection`. Preserve that
 lifetime boundary when changing cancellation or shutdown handling.
 
 Every produced verdict, including a CRITICAL discovery-failure verdict, is a

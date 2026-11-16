@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -194,15 +195,16 @@ func TestAgentKeepsTimedOutNativeWorkSerialized(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("canceled request did not return")
 	}
-	queued, stop := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	queued, stop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stop()
-	if _, err := agent.evaluate(queued, &healthv1.EvaluateRequest{}); status.Code(err) != codes.DeadlineExceeded {
+	if verdict, err := agent.evaluate(queued, &healthv1.EvaluateRequest{}); err != nil || verdict.GetOverallSeverity() != healthv1.Severity_UNKNOWN {
 		t.Fatalf("queued request = %v", err)
 	}
 	if got := backend.calls.Load(); got != 1 {
 		t.Fatalf("overlapping native collection: %d calls", got)
 	}
 	close(backend.release)
+	waitForAgentIdle(t, agent)
 	resumed, stopResumed := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stopResumed()
 	if _, err := agent.evaluate(resumed, &healthv1.EvaluateRequest{}); err != nil {
@@ -565,5 +567,107 @@ func TestAgentRequestBudgetIncludesAdmission(t *testing.T) {
 	_, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{})
 	if status.Code(err) != codes.DeadlineExceeded || time.Since(started) >= 3*time.Second {
 		t.Fatalf("queued request exceeded its service budget: %v, elapsed %s", err, time.Since(started))
+	}
+}
+
+func waitForAgentIdle(t *testing.T, agent *verdictAgent) {
+	t.Helper()
+	select {
+	case agent.gate <- struct{}{}:
+		<-agent.gate
+	case <-time.After(5 * time.Second):
+		t.Fatal("admission did not reopen after the source returned")
+	}
+}
+
+func TestAgentReportsStuckSourcesToQueuedAndLaterCallers(t *testing.T) {
+	exported := make(chan []byte, 1)
+	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		payload, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		exported <- payload
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer collector.Close()
+	backend := &blockingAgentGPU{started: make(chan struct{}, 2), release: make(chan struct{})}
+	var release sync.Once
+	defer release.Do(func() { close(backend.release) })
+	cfg := &Config{CollectionTimeoutSeconds: 1, Metrics: MetricsConfig{Enabled: true, Endpoint: collector.URL, TimeoutSeconds: 1}}
+	agent := cadenceRunApp().WithGPUBackend(backend).newVerdictAgent(cfg, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+	firstDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	go func() { _, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{}); firstDone <- err }()
+	select {
+	case <-backend.started:
+	case <-ctx.Done():
+		t.Fatal("source did not start")
+	}
+	address := startAppAgent(t, agent)
+	client := &http.Client{Timeout: 5 * time.Second}
+	response, err := client.Get("http://" + address + "/verdict")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("queued request status=%d body=%s err=%v", response.StatusCode, body, err)
+	}
+	var busy health.NodeVerdict
+	if decodeErr := json.Unmarshal(body, &busy); decodeErr != nil {
+		t.Fatal(decodeErr)
+	}
+	if busy.NodeID != testNodeID || busy.OverallSeverity != health.Unknown || len(busy.CheckResults) != 1 || busy.CheckResults[0].CheckID != "collection_source_busy" {
+		t.Fatalf("stuck-source verdict = %+v", busy)
+	}
+	if action := busy.RecommendedAction; len(action.RemediationActions) != 1 || action.RemediationActions[0] != health.RemediationActionRetryCollection {
+		t.Fatalf("stuck-source action = %+v", action)
+	}
+	values := busy.CheckResults[0].ObservedValues
+	since, ok := values["since"].(string)
+	if values["source"] != "gpu" || !ok {
+		t.Fatalf("source metadata = %v", values)
+	}
+	if _, parseErr := time.Parse(time.RFC3339Nano, since); parseErr != nil {
+		t.Fatal(parseErr)
+	}
+	select {
+	case payload := <-exported:
+		if !bytes.Contains(payload, []byte("collection_source_busy")) {
+			t.Fatal("metrics omitted the stuck-source check")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("stuck-source verdict was not published to metrics")
+	}
+	select {
+	case firstErr := <-firstDone:
+		if firstErr != nil {
+			t.Fatalf("first watchdog returned a transport error: %v", firstErr)
+		}
+	case <-ctx.Done():
+		t.Fatal("first request did not finish after its watchdog")
+	}
+	later, err := agent.evaluate(context.Background(), &healthv1.EvaluateRequest{})
+	if err != nil || later.GetOverallSeverity() != healthv1.Severity_UNKNOWN || later.GetCheckResults()[0].GetObservedValues()["since"].GetStringValue() != since || later.GetTraceId() == busy.TraceID {
+		t.Fatalf("later request did not produce a fresh verdict for the same unfinished call: %v, %v", later, err)
+	}
+	if backend.calls.Load() != 1 {
+		t.Fatal("a later request overlapped the unfinished call")
+	}
+	release.Do(func() { close(backend.release) })
+	waitForAgentIdle(t, agent)
+	resumed, err := agent.evaluate(context.Background(), &healthv1.EvaluateRequest{})
+	if err != nil || backend.calls.Load() != 2 {
+		t.Fatalf("fresh collection did not resume: %v, %v", resumed, err)
+	}
+	for _, check := range resumed.GetCheckResults() {
+		if check.GetCheckId() == "collection_source_busy" {
+			t.Fatal("stuck-source verdict remained after recovery")
+		}
 	}
 }

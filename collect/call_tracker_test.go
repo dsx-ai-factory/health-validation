@@ -129,6 +129,59 @@ func TestCallTrackerCanceledBeforeCollectionStarts(t *testing.T) {
 	}
 }
 
-func TestTrackCallWithoutTrackingIsNoOp(t *testing.T) {
-	TrackCall(context.Background())()
+func TestTrackSourceCallWithoutTrackingIsNoOp(t *testing.T) {
+	finish, abandon := TrackSourceCall(context.Background(), "source")
+	abandon()
+	finish()
+}
+
+func TestCallTrackerReportsAbandonedSourcesAndClearsThem(t *testing.T) {
+	ctx, tracker := WithCallTracking(context.Background())
+	finishZ, abandonZ := TrackSourceCall(ctx, "source-z")
+	finishA, abandonA := TrackSourceCall(ctx, "source-a")
+	var closeZ, closeA sync.Once
+	defer closeZ.Do(finishZ)
+	defer closeA.Do(finishA)
+	live, changed := tracker.StuckCalls()
+	if len(live) != 0 {
+		t.Fatalf("healthy in-flight calls reported as stuck: %v", live)
+	}
+	select {
+	case <-changed:
+		t.Fatal("notification closed before a change")
+	default:
+	}
+	abandonZ()
+	abandonA()
+	select {
+	case <-changed:
+	default:
+		t.Fatal("abandonment did not notify observers")
+	}
+	stuck, changed := tracker.StuckCalls()
+	if len(stuck) != 2 || stuck[0].Source != "source-a" || stuck[1].Source != "source-z" || stuck[0].Since.IsZero() || stuck[1].Since.IsZero() {
+		t.Fatalf("source metadata = %v", stuck)
+	}
+	stuck[0].Source = "mutated"
+	unchanged, _ := tracker.StuckCalls()
+	if unchanged[0].Source != "source-a" {
+		t.Fatal("caller changed tracker metadata through its snapshot")
+	}
+	closeA.Do(finishA)
+	select {
+	case <-changed:
+	default:
+		t.Fatal("call completion did not notify observers")
+	}
+	remaining, _ := tracker.StuckCalls()
+	if len(remaining) != 1 || remaining[0].Source != "source-z" {
+		t.Fatalf("remaining calls = %v", remaining)
+	}
+	closeZ.Do(finishZ)
+	abandonZ()
+	remaining, _ = tracker.StuckCalls()
+	if len(remaining) != 0 {
+		t.Fatalf("completed source remained stuck: %v", remaining)
+	}
+	tracker.Wait()
 }

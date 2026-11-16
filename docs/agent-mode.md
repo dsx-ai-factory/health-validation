@@ -115,8 +115,12 @@ so the full HTTP call can take longer.
 Cancellation propagates to cooperative sensors. Native calls can outlive a
 watchdog because they cannot be interrupted. The service tracks that work and
 keeps admission closed until it returns, even after the canceled request has
-received an error. Later callers can time out in the queue. This prevents an
-unresponsive source from accumulating overlapping collections.
+received an error. While an abandoned call remains unfinished, queued and new
+callers receive an UNKNOWN `collection_source_busy` verdict naming its source
+and call start time, with `retry_collection`. These verdicts use the normal
+post-response metrics path. Fresh collection resumes when all underlying calls
+return. This prevents an unresponsive source from accumulating overlapping
+collections.
 
 SIGINT or SIGTERM stops accepting requests and initiates shutdown. The transport
 allows up to five seconds for active handlers before force-closing connections.
