@@ -28,8 +28,8 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
+	"github.com/dsx-ai-factory/health-validation/proto/verdictjson"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
-	"github.com/dsx-ai-factory/health-validation/toolkit/verdictproto"
 )
 
 func startAppAgent(t *testing.T, agent *verdictAgent) string {
@@ -86,7 +86,7 @@ func TestServeMatchesOneShotOverHTTPAndGRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err = verdictproto.MarshalJSON(verdict)
+	body, err = verdictjson.Marshal(verdict)
 	if err != nil {
 		t.Fatal(err)
 	}

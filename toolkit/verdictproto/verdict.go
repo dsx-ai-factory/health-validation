@@ -79,7 +79,7 @@ func FromProto(verdict *healthv1.NodeVerdict) (health.NodeVerdict, error) {
 			return out, fmt.Errorf("affected component is missing a required scalar field")
 		}
 	}
-	data, err := MarshalJSON(verdict)
+	data, err := verdictjson.Marshal(verdict)
 	if err != nil {
 		return out, err
 	}
@@ -97,13 +97,6 @@ func validateAction(action *healthv1.RecommendedAction) error {
 		return fmt.Errorf("recommended action is missing operational_state")
 	}
 	return nil
-}
-
-// MarshalJSON uses proto field names and restores required containers that
-// protojson omits when empty. Protobuf does not distinguish a nil repeated
-// field from an empty one; absent check results use the catalog's null spelling.
-func MarshalJSON(verdict *healthv1.NodeVerdict) ([]byte, error) {
-	return verdictjson.Marshal(verdict)
 }
 
 func checkNumbers(data []byte) error {

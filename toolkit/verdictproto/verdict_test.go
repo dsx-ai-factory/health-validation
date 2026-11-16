@@ -24,6 +24,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
+	"github.com/dsx-ai-factory/health-validation/proto/verdictjson"
 	"github.com/dsx-ai-factory/health-validation/toolkit/verdictproto"
 )
 
@@ -63,7 +64,7 @@ func TestRoundTripAndSchema(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			actual, err := verdictproto.MarshalJSON(wire)
+			actual, err := verdictjson.Marshal(wire)
 			if err != nil {
 				t.Fatal(err)
 			}

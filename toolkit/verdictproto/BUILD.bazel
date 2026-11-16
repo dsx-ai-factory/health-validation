@@ -25,6 +25,7 @@ go_test(
         "//catalog/gpu",
         "//catalog/health",
         "//proto/go/health/v1:health",
+        "//proto/verdictjson",
         "@org_golang_google_protobuf//proto",
         "@org_golang_google_protobuf//reflect/protoreflect",
     ],
