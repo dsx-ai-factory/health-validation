@@ -21,45 +21,36 @@ import (
 const ID = "infiniband.sysfs"
 
 type sensor struct {
-	source *ibsource.Source
-	op     Op
-}
-
-// Op holds the sensor options.
-type Op struct {
+	source     *ibsource.Source
 	linkLayers []string
 }
 
-// OpOption configures the sensor.
-type OpOption func(*Op)
-
-func (op *Op) applyOpts(opts []OpOption) {
-	for _, opt := range opts {
-		opt(op)
-	}
-	if len(op.linkLayers) == 0 {
-		op.linkLayers = []string{"InfiniBand"}
-	}
-}
+// Option configures the sensor.
+type Option func(*sensor)
 
 // WithLinkLayers selects the port link layers to report, compared
 // case-insensitively against sysfs link_layer ("InfiniBand", "Ethernet").
 // The default is InfiniBand only, matching GPUd.
-func WithLinkLayers(layers ...string) OpOption {
-	return func(op *Op) {
-		op.linkLayers = append(op.linkLayers, layers...)
+func WithLinkLayers(layers ...string) Option {
+	return func(s *sensor) {
+		s.linkLayers = append(s.linkLayers, layers...)
 	}
 }
 
 // New returns a sensor using the supplied source, or the host sysfs when nil.
 // Like GPUd, it excludes ports whose link layer is not InfiniBand unless
 // [WithLinkLayers] admits more.
-func New(source *ibsource.Source, opts ...OpOption) collect.Sensor {
+func New(source *ibsource.Source, opts ...Option) collect.Sensor {
 	if source == nil {
 		source = ibsource.New(nil)
 	}
 	s := &sensor{source: source}
-	s.op.applyOpts(opts)
+	for _, opt := range opts {
+		opt(s)
+	}
+	if len(s.linkLayers) == 0 {
+		s.linkLayers = []string{"InfiniBand"}
+	}
 	return s
 }
 
@@ -116,5 +107,5 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 
 // reports tells whether ports of linkLayer are selected.
 func (s *sensor) reports(linkLayer string) bool {
-	return slices.ContainsFunc(s.op.linkLayers, func(layer string) bool { return strings.EqualFold(layer, linkLayer) })
+	return slices.ContainsFunc(s.linkLayers, func(layer string) bool { return strings.EqualFold(layer, linkLayer) })
 }
