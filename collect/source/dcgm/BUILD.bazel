@@ -16,6 +16,7 @@ go_library(
         "native_linux.go",
         "native_unsupported.go",
         "source.go",
+        "watch_policy.go",
     ],
     importpath = "github.com/dsx-ai-factory/health-validation/collect/source/dcgm",
     deps = [
@@ -38,12 +39,18 @@ go_library(
 go_test(
     name = "dcgm_test",
     srcs = [
+        "cleanup_source_test.go",
         "errors_linux_test.go",
         "errors_test.go",
         "fields_linux_test.go",
         "gpu_inventory_linux_test.go",
+        "native_failure_linux_test.go",
         "native_linux_test.go",
         "source_test.go",
+        "watch_linux_test.go",
+        "watch_policy_linux_test.go",
+        "watch_policy_source_test.go",
+        "watch_policy_test.go",
     ],
     embed = [":dcgm"],
     deps = [

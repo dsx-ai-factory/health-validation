@@ -148,6 +148,10 @@ func TestToMeasurementsMapsLinkCountAndSpeed(t *testing.T) {
 		{name: "fallback failed link", count: 1, speedFailed: true, obs: []*observation.Observation{
 			gpuUint(count, 1), unsupported, linkFailure(perLink, observation.NVLinkEndpointTarget("GPU-0", 0), "ERROR_UNKNOWN", observation.CollectionErrorCategorySourceError),
 		}},
+		{name: "fallback unsupported link", count: 2, speedFailed: true, obs: []*observation.Observation{
+			gpuUint(count, 2), unsupported, linkValue(perLink, "GPU-0", 0, 25000),
+			linkFailure(perLink, observation.NVLinkEndpointTarget("GPU-0", 1), "ERROR_NOT_SUPPORTED", observation.CollectionErrorCategoryUnsupported),
+		}},
 		{name: "fallback without a link count", countFailed: true, speedFailed: true, obs: []*observation.Observation{
 			linkFailure(count, observation.GPUTarget("GPU-0"), "ERROR_NOT_SUPPORTED", observation.CollectionErrorCategoryUnsupported), unsupported, linkValue(perLink, "GPU-0", 0, 25000),
 		}},
@@ -212,6 +216,8 @@ func TestToMeasurementsANDsLinkCapabilities(t *testing.T) {
 	capabilityFailed.GetCollectionError().Operation = "GetNvLinkCapability"
 	capabilityInvalid := linkFailure(signals[p2p], observation.NVLinkEndpointTarget("GPU-0", 0), "ERROR_INVALID_ARGUMENT", observation.CollectionErrorCategorySourceError)
 	capabilityInvalid.GetCollectionError().Operation = "GetNvLinkCapability"
+	capabilityUnsupported := linkFailure(signals[sli], observation.NVLinkEndpointTarget("GPU-0", 0), "ERROR_NOT_SUPPORTED", observation.CollectionErrorCategoryUnsupported)
+	capabilityUnsupported.GetCollectionError().Operation = "GetNvLinkCapability"
 	tests := []struct {
 		name        string
 		obs         []*observation.Observation
@@ -231,6 +237,8 @@ func TestToMeasurementsANDsLinkCapabilities(t *testing.T) {
 		// Only a state read skips INVALID_ARGUMENT; a capability read failing
 		// with it is a failure.
 		{name: "invalid capability read", obs: slices.Concat([]*observation.Observation{capabilityInvalid}, link(0)[1:]), failed: []int{p2p}},
+		// An unsupported capability query is unresolved, not "unsupported".
+		{name: "unsupported capability read", obs: slices.Concat(link(0)[:sli], []*observation.Observation{capabilityUnsupported}, link(0)[sli+1:]), failed: []int{sli}},
 		{name: "unsupported link above 0", obs: slices.Concat(link(0), stateFailed(observation.NVLinkEndpointTarget("GPU-0", 1), "ERROR_NOT_SUPPORTED")), failed: []int{0, 1, 2, 3, 4, 5}},
 	}
 	for _, test := range tests {

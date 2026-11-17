@@ -32,23 +32,27 @@ events or link degradation, periodically as well).
 
 ## 1. Deploy it to nodes
 
-Two forms ship; pick by how your nodes run workloads.
+Build from source as a container image or a binary, depending on how your
+nodes run workloads.
 
 ### Container image (Kubernetes, containerized runners)
 
-Pull the published multi-arch image; the registry selects the host architecture:
+Build the image from a source revision you have reviewed and selected for your
+deployment. On a Linux build host, run these commands from the repository root:
 
 ```shell
-docker pull ghcr.io/dsx-ai-factory/health-validation:<tag>
+bazel run --config=ci --platforms=//build/platforms:linux_amd64 \
+  //toolkit/cmd/health-validation:health-validation.image.local_load
 ```
 
-The image publishes to GitHub Container Registry (GHCR). Image tags drop the
-release tag's leading `v` (release git tag `v1.2.3` → image `:1.2.3`); `latest` floats to the newest `main`. See
-[Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md#pulling-a-published-image) for auth and how to
-pull a specific tag or architecture.
+This builds and loads `health-validation:latest` into Docker. For ARM64 nodes,
+use `//build/platforms:linux_arm64`. Build for the architecture of the nodes
+where the image will run. The local `latest` tag refers to your own build.
 
-For a local Linux/amd64 build that produces a loadable tarball, see
-[Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md#build-a-linux-image-from-macos).
+For tarball export, version stamping, and builds from macOS, see the
+[Developer Guide](developer.md#building-container-images-from-source).
+For Kubernetes, tag and push your build to a registry you control, then use that
+image reference in your manifests.
 
 The image carries the CLI on an Ubuntu base — **not** the NVIDIA driver,
 `journalctl`, or DCGM. Different check domains need different host resources mounted in;
@@ -61,7 +65,7 @@ DCGM client library (`libdcgm.so.4`), with their shared-library dependencies,
 as well as the journal resources, and runs on the host network:
 
 ```shell
-scripts/health-validation-run.sh ghcr.io/dsx-ai-factory/health-validation:<tag> \
+scripts/health-validation-run.sh health-validation:latest \
   --node-id "$NODE_NAME"
 ```
 
@@ -84,18 +88,20 @@ docker run --rm \
   -v <journalctl ldd dependencies, one -v per .so, excluding libc/libpthread/libm> \
   -v <host libdcgm.so.4 path>:<same path>:ro \
   -v <libdcgm.so.4 ldd dependencies, as for journalctl> \
-  ghcr.io/dsx-ai-factory/health-validation:<tag> \
+  health-validation:latest \
   run --node-id "$NODE_NAME"
 ```
 
 - `--gpus all -e NVIDIA_DRIVER_CAPABILITIES=utility` gives NVML the GPUs and the
   `libnvidia-ml.so.1` it needs — required for `gpu_count` and `nvlink_*`. Keep
-  it `all` (a scoped subset makes `gpu_count` fire CRITICAL on visibility, not
-  health).
+  it `all`: a scoped subset makes `gpu_count` fire CRITICAL on visibility, not
+  health, and the hostengine, which sees every GPU on the node, would report
+  GPUs that NVML in the container cannot.
 - `--network host`, the `libdcgm.so.4` mounts, and `LD_LIBRARY_PATH` let the
   CLI load the DCGM client and reach the host's DCGM hostengine on
   `localhost` — required for `gpu_average_power_draw`, `gpu_power_limit`,
-  `gpu_power_state`, and `gpu_sensor_throttle`. Without them those checks
+  `gpu_power_state`, `gpu_sensor_throttle`, and `nvlink_fabric`. Without them
+  those checks
   report a collection failure. The node must run `nv-hostengine`.
 - `--pid host` lets `gpu_compute_apps` see compute processes that other
   containers or the host run. NVML omits processes outside the caller's PID
@@ -138,14 +144,14 @@ go build -o health-validation ./toolkit/cmd/health-validation
 ./health-validation run
 ```
 
-See [Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md) for the canonical Bazel build (the
+See [Developer Guide](developer.md) for the canonical Bazel build (the
 production artifact is built with `bazel build`, which pins the toolchain and
 link flags).
 
 The binary links NVML via cgo, so it is a Linux artifact and needs the NVIDIA
 driver and `libnvidia-ml` on the host at runtime (and `journalctl` on
-PATH for Xid checks). The GPU power, power-limit, pstate, and throttle checks
-read DCGM: the node must run the DCGM hostengine (`nv-hostengine`, listening on
+PATH for Xid checks). The GPU power, power-limit, pstate, and throttle checks,
+and `nvlink_fabric`, read DCGM: the node must run the DCGM hostengine (`nv-hostengine`, listening on
 `localhost`) and provide the DCGM 4 client library (`libdcgm.so.4`, from the
 DCGM package). If the hostengine is unreachable or the library is missing,
 those checks report a collection failure, never a PASS; the binary does not
@@ -266,7 +272,7 @@ An operator-approved namespace here means one allowed to use `hostPath`,
 | Kubernetes explicit mounts | The same read-only paths and `LD_LIBRARY_PATH` as the wrapper. `hostNetwork: true`, `hostPID: true`, `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities or `privileged`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
 | Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above, plus the `libdcgm.so.4` mounts and `LD_LIBRARY_PATH` of the explicit profile. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
 | GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | Checks outside the journal can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
-| GPU access but no DCGM | No host network, no `libdcgm.so.4`, or no `nv-hostengine` on the node. | Checks outside DCGM can run; `gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`, and `gpu_sensor_throttle` return collection-failure verdicts rather than PASS. |
+| GPU access but no DCGM | No host network, no `libdcgm.so.4`, or no `nv-hostengine` on the node. | Checks outside DCGM can run; `gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`, `gpu_sensor_throttle`, and `nvlink_fabric` return collection-failure verdicts rather than PASS. |
 
 The image runs as root by default. An explicitly non-root Docker user or pod
 may be viable only when its host-mapped UID/GID has journal-read permission;
@@ -448,14 +454,14 @@ validate against the published
     by higher severity, then by comparing each sequence step's documented
     action rank in order. Remaining ties use check ID, then action names as a
     stability fallback for repeated check IDs.
-    Actions absent from the ranking, including `hold`, `xid_154`, and custom
+    Actions absent from the ranking, including `hold`, `stop_p2p_traffic`, and custom
     actions, share the lowest rank. Walk `check_results` for the full
     remediation picture, and re-run the whole suite after every attempted
     step. See [Remediation Actions](/health-validation/operating/remediation)
     for the complete ordering and action catalog.
-- **`affected_components`** / **`severity_by_domain`** — which domain and which
-  `check_ids`/entities failed, so you route (GPU vs NVLink vs Xid) without
-  re-parsing every result.
+- **`affected_components`** / **`severity_by_domain`** — which domain failed, and
+  which checks failed in it. Each check is listed once with the entities that
+  failed it, so you route (GPU vs NVLink vs Xid) without re-parsing every result.
 - **`check_results`** — per-check `severity`, `messages`, `observed_values`, and
   the resolved `thresholds` (with `overridden`), for the human-readable why.
 - **`condition_scope`** (on each check result) — how far the detected condition
@@ -523,6 +529,26 @@ matter for integration: publishing never changes the verdict or the exit code �
 a dead collector is a logged warning, not a failed health check — and the JSON
 verdict is written to stdout before the push, so your capture step in the
 pipeline above is unaffected by collector latency.
+
+### Warnings on stderr
+
+`run` and `collect` log one warning to stderr for each distinct source,
+operation, and error category that times out or fails as a whole, such as an
+unreachable hostengine, an unreadable journal, or unreadable CPU sysfs. One
+source can log more than one line when different operations fail. A node-wide
+sensor reports every failure on the node, so one failed read there, such as the
+NUMA node count, also warns while the other CPU reads succeed:
+
+```
+level=WARN msg="collect source failed; degrading to errored observations" sensor=gpu.dcgm source=dcgm operation=... category=... error=...
+```
+
+A timeout logs `collect source timed out; degrading to errored observations`.
+`sensor` is the collect sensor and `source` the library or reader that failed.
+The verdict carries the same failure on every check that source feeds, so the
+warning is for diagnosis; alert on the verdict. Errors on individual GPUs are
+not logged, even when one error repeats on every GPU, such as a failed DCGM
+field watch; only the verdict reports them.
 
 #### Publishing metrics from a container
 
@@ -909,5 +935,5 @@ and path/hash identity without inventing a crash timestamp.
 
 For the JSON contract, see
 [`catalog/health/node-verdict.schema.json`](https://github.com/dsx-ai-factory/health-validation/blob/main/catalog/health/node-verdict.schema.json);
-for build/publish mechanics, [Developer Guide on GitHub](https://github.com/dsx-ai-factory/health-validation/blob/main/docs/developer.md); for the design,
+for build/publish mechanics, [Developer Guide](developer.md); for the design,
 [Architecture](/health-validation/getting-started/architecture).

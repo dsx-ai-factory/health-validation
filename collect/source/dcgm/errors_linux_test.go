@@ -7,6 +7,7 @@ package dcgm
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
@@ -103,6 +104,83 @@ func TestDCGMErrorFromStatusText(t *testing.T) {
 		if failure.sourceError != test.wantSource || failure.category != test.wantCategory || failure.detail != test.err {
 			t.Errorf("dcgmErrorFromError(%q) = %q %v %q, want %q %v", test.err,
 				failure.sourceError, failure.category, failure.detail, test.wantSource, test.wantCategory)
+		}
+	}
+}
+
+func TestDCGMFailureStatusesRetainOriginalCauses(t *testing.T) {
+	for _, status := range []struct {
+		failure *godcgm.Error
+		text    string
+	}{
+		{failure: &godcgm.Error{Code: godcgm.DCGM_ST_CONNECTION_NOT_VALID}, text: "Host engine connection invalid/disconnected"},
+		{failure: &godcgm.Error{Code: godcgm.DCGM_ST_NOT_CONFIGURED}, text: "Setting not configured"},
+		{failure: &godcgm.Error{Code: godcgm.DCGM_ST_NOT_WATCHED}, text: "Field is not being watched"},
+	} {
+		want := dcgmStatusName(int(status.failure.Code))
+		t.Run(want, func(t *testing.T) {
+			ordinary := &godcgm.Error{Code: godcgm.DCGM_ST_NO_DATA}
+			for _, variant := range []struct {
+				err         error
+				cause       error
+				name        string
+				sourceError string
+				category    observation.CollectionErrorCategory
+			}{
+				{name: "typed", err: status.failure, cause: status.failure},
+				{name: "wrapped typed", err: fmt.Errorf("read: %w", status.failure), cause: status.failure},
+				{name: "wrapper text", err: fmt.Errorf("error watching fields: %s", status.text)},
+				{
+					name: "joined typed", err: errors.Join(ordinary, fmt.Errorf("rollback: %w", status.failure)), cause: status.failure,
+					sourceError: "DCGM_ST_NO_DATA", category: observation.CollectionErrorCategoryUnavailable,
+				},
+				{
+					name: "joined uninitialized", err: errors.Join(&godcgm.Error{Code: godcgm.DCGM_ST_UNINITIALIZED}, status.failure), cause: status.failure,
+					sourceError: "DCGM_ST_UNINITIALIZED", category: observation.CollectionErrorCategoryUnavailable,
+				},
+				{
+					name: "joined normalized", err: errors.Join(dcgmErrorFromError(ordinary), dcgmErrorFromError(status.failure)), cause: status.failure,
+					sourceError: "DCGM_ST_NO_DATA", category: observation.CollectionErrorCategoryUnavailable,
+				},
+				{
+					name: "joined text", err: errors.Join(dcgmErrorFromError(ordinary), errors.New("error watching fields: "+status.text)),
+					sourceError: "DCGM_ST_NO_DATA", category: observation.CollectionErrorCategoryUnavailable,
+				},
+			} {
+				t.Run(variant.name, func(t *testing.T) {
+					wantSource, wantCategory := want, categoryFromCode(int(status.failure.Code))
+					if variant.sourceError != "" {
+						wantSource, wantCategory = variant.sourceError, variant.category
+					}
+					err := dcgmErrorFromError(variant.err)
+					failure := collectionError(err)
+					if failure.SourceError != wantSource || failure.Category != wantCategory || failure.Detail != variant.err.Error() {
+						t.Fatalf("normalized failure = %v, want primary status %s with original detail", &failure, wantSource)
+					}
+					if !errors.Is(err, variant.err) || (variant.cause != nil && !errors.Is(err, variant.cause)) {
+						t.Fatalf("normalization lost original error: %v", err)
+					}
+					if variant.cause != nil {
+						var typed *godcgm.Error
+						if !errors.As(err, &typed) {
+							t.Fatal("normalization lost typed native error")
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestDCGMStatusNormalizationDoesNotGuessFromOrdinaryErrors(t *testing.T) {
+	ordinary := &godcgm.Error{Code: godcgm.DCGM_ST_NO_DATA}
+	misleading := fmt.Errorf("Field is not being watched: %w", ordinary)
+	if failure := collectionError(dcgmErrorFromError(misleading)); failure.SourceError != "DCGM_ST_NO_DATA" {
+		t.Fatalf("typed native status was overridden by text: %v", &failure)
+	}
+	for _, err := range []error{errors.New("not watched"), errors.New("not configured"), errors.New("connection failed")} {
+		if failure := collectionError(dcgmErrorFromError(err)); failure.SourceError != "" {
+			t.Fatalf("generic text was treated as native status: %v", &failure)
 		}
 	}
 }

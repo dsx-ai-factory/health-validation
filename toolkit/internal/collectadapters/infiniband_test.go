@@ -311,30 +311,6 @@ func TestInfiniBandAdapterDistinguishesPortsFromEnumerationFailure(t *testing.T)
 // With the legacy link-flap sensor in place, the ports-only adapter neither
 // requests link-flap signals nor fails that type, which would duplicate the
 // legacy measurement.
-func TestInfiniBandPortsAdapterLeavesLinkFlapToLegacySensor(t *testing.T) {
-	a := InfiniBandPorts()
-	linkFlap := ibsignals.LinkFlapSignals().IDs()
-	want := slices.DeleteFunc(observations.MappedSignalsFor(health.InfiniBand), func(id string) bool { return slices.Contains(linkFlap, id) })
-	if got := slices.Sorted(maps.Keys(a.Signals())); !slices.Equal(got, slices.Sorted(slices.Values(want))) {
-		t.Fatalf("signals = %v, want the port signals %v", got, want)
-	}
-	for name, ms := range map[string][]health.Measurement{
-		"no observations": a.Build(nil),
-		"errored":         a.Errored(errors.New("timeout")),
-	} {
-		if len(ms) != 1 {
-			t.Fatalf("%s: got %d measurements, want one port failure: %v", name, len(ms), ms)
-		}
-		if key := health.KeyOf(oneOf[infiniband.PortMeasurement](t, ms)); key != health.SourceEntity("collect.infiniband") {
-			t.Errorf("%s: key = %v, want the adapter", name, key)
-		}
-	}
-	if got := a.Build(portObservations("mlx5_0", 1, "InfiniBand", 400)); len(got) != 1 || oneOf[infiniband.PortMeasurement](t, got).EntityID() != "mlx5_0/1" {
-		t.Fatalf("Build = %v, want the one port", got)
-	}
-}
-
-// sourceFailure is a target-less collection failure: no port was enumerated.
 func sourceFailure() *observation.Observation {
 	o := portObservation(ibsignals.StateName, "", 0, nil)
 	o.Target = nil

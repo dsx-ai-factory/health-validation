@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Breaking Changes
 
+- Verdict `schema_version` is now `0.6`. `affected_components` lists each
+  failing check once, under `checks`, with that check's `entities`. The
+  parallel `check_ids` and `entities` arrays are removed.
+  ([#210](https://github.com/dsx-ai-factory/health-validation/issues/210))
 - Verdict `schema_version` is now `0.5`. Collection failures report `UNKNOWN`
   instead of `CRITICAL`. Update alerts that match collection failures as
   `CRITICAL` to handle `UNKNOWN`. `CRITICAL` now ranks above `UNKNOWN`, and the
@@ -25,11 +29,39 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   node, and from NVML only for compute processes. Nodes need `nv-hostengine`
   and the DCGM 4 client library (`libdcgm.so.4`); without them the GPU power,
   power-limit, pstate, and throttle checks report a collection failure. There
-  is no fallback to NVML. `WithGPUBackend` still selects the legacy NVML GPU
-  sensor.
+  is no fallback to NVML.
+- The CLI reads the NVLink domain through collect sensors: fabric
+  registration from DCGM, and link state, count, speed, capabilities, P2P,
+  and fabric health from NVML. Without a reachable hostengine, `nvlink_fabric`
+  reports a collection failure. Other differences from the legacy NVLink
+  sensor, from the conversion added in
+  [#237](https://github.com/dsx-ai-factory/health-validation/pull/237):
+  - A driver reporting `NOT_SUPPORTED` past a GPU's last link no longer fails
+    `nvlink_capabilities`, and a disabled link past the reported count no
+    longer fails `nvlink_active`: links past the count are not read.
+  - An unknown fabric health value fails `nvlink_fabric_health` with
+    `check_collection` instead of passing.
+  - Through the library, a node with no GPUs fails every NVLink check with
+    `check_collection` instead of skipping it. The CLI is unchanged: it stops
+    at `architecture_discovery` before running any check.
+
+  Library callers migrating:
+  - The collect adapter name `nvlink` is reserved for the built-in NVLink
+    adapter.
+  - A caller sensor passed to `WithCollect` that produces NVLink signals must
+    name them, or the run fails because the built-in sources produce them too.
 - The collect adapter name `gpu` is reserved for the built-in GPU adapter.
   Drop a caller-registered adapter of that name: the built-in one reads the
   canonical GPU signals from whichever registered sensor produces them.
+- `App.WithCollect` requires the signal IDs the sensor supplies: a bare
+  `WithCollect(sensor)` is a registration error. Pass the IDs, for example
+  `WithCollect(sensor, cpusignals.OnlineCount.ID(), cpusignals.PossibleCount.ID())`.
+  Claims are explicit so a release that adds built-in collect sources never
+  changes which sensor supplies a signal. Related registration rules, all checked whatever checks
+  are runnable: one signal claimed by two sensors is an error, every catalog
+  category name (`cpu`, `nvlink`, …) is reserved for built-in adapters, and a
+  caller adapter may not feed a catalog field that an active built-in adapter
+  of its category also feeds. The stock CLI is unaffected.
 - `run` records every validated threshold override in the host's systemd
   journal before collecting and exits `2` if it cannot. Container deployments
   that pass overrides must mount `/run/systemd/journal/socket`; see
@@ -50,9 +82,145 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   options no longer compiles. `WithVendors` selects devices by the PCI vendor
   ID in `<device>/device/vendor` (`VendorNVIDIA` is `0x15b3`) instead of by
   name. The defaults are unchanged: mlx-named devices, matching GPUd.
+- Domains the CLI collects through `collect` sensors and the toolkit's collect
+  bridge report the same severities, failed signals, and recommended actions
+  as the legacy toolkit sensors, except as listed below. Collection-failure
+  messages now name the collect source and operation, for example
+  `cpu.sysfs operation "read /sys/devices/system/cpu/online" failed with …`.
+  - CPU and NUMA: only the collection-failure wording changes. ([#135](https://github.com/dsx-ai-factory/health-validation/pull/135))
+  - Xid: ([#179](https://github.com/dsx-ai-factory/health-validation/pull/179))
+    - An Xid line with a device address that cannot be parsed fails every Xid
+      check with `check_collection`; the legacy sensor dropped it and passed.
+    - A boot with no readable kernel entries fails the Xid checks.
+    - MIG-attributed lines (`GPU-I:`/`GPU-CI:`) and addresses without the
+      `PCI:` token now count, so their checks can fail where they passed.
+    - Kernel lines that contain `NVRM: Xid ` without a device address are
+      ignored.
+    - `name=<unknown>` with a numeric pid gives an empty process name, an
+      overflowing pid is absent, and NVLink5 process names are trimmed.
+    - An Xid entry stamped in the future after a clock step fails the Xid
+      checks until the clock passes it.
+    - `WithCollect` must claim all Xid signals or none, and the collect adapter
+      name `xid` is reserved.
+  - Xid per GPU: each Xid check gives one result per GPU and names it in
+    `affected_entities`, and `occurrences` counts per GPU. The defaults are 1,
+    so this matters only with an override. ([#231](https://github.com/dsx-ai-factory/health-validation/pull/231))
+  - Node GPU count and architecture discovery: a driver that hangs during
+    discovery ends in a discovery-failure verdict after the collection timeout
+    instead of hanging the run. ([#195](https://github.com/dsx-ai-factory/health-validation/pull/195))
+  - GPU, beyond the DCGM entry above: ([#262](https://github.com/dsx-ai-factory/health-validation/pull/262))
+    - A GPU whose UUID cannot be read is named by its source-local slot in
+      `affected_entities`.
+    - A process that exits between the NVML and procfs reads is left out of
+      `compute_process_cmdlines`.
+    - When every GPU source times out, each source gives its own
+      `retry_collection` result per check. When one source stalls, only the
+      checks it feeds fail.
+    - Power comes from DCGM in watts, so `observed_values` can differ from
+      NVML's by a fraction of a watt.
+  - RDMA link flap: ([#236](https://github.com/dsx-ai-factory/health-validation/pull/236))
+    - A user who can read only their own journal entries, not the kernel's,
+      now gets UNKNOWN with `check_collection`. The legacy probe found the
+      user's entries and passed, so non-root runs, such as Slurm jobs, go from
+      exit 0 to exit 1.
+    - A line that looks like an mlx5 link transition but does not parse fails
+      `rdma_linkflap_fatal` with `check_collection`; the legacy sensor skipped
+      it.
+    - A transition counts only when the message starts with `mlx5_core`, so
+      another subsystem's line that mentions the driver no longer counts.
+  - Across domains:
+    - Per-GPU results are ordered by GPU identity rather than NVML index.
+    - Architecture discovery that finds NVML busy with an earlier call in the
+      same process reports UNKNOWN with `retry_collection` instead of CRITICAL
+      with the reset, restart, and escalate sequence.
+    - The CLI needs access to every GPU on the node, so that DCGM and NVML
+      report the same GPUs.
+    - `App.Run` no longer closes the host's DCGM and NVML connections; call
+      `App.Close` when done with the App.
+
+- The legacy toolkit sensors are removed. The CLI has collected every
+  built-in domain through `collect` sensors since the changes above, so the
+  stock CLI is unaffected. Library callers migrate as follows:
+  - `toolkit.Collect` and `CollectWithOptions` still take `toolkit.Sensor`,
+    and a `collect.Sensor` does not satisfy it, so swapping constructors does
+    not compile. Wrap the collect sensor in a `toolkit.Sensor` whose `Measure`
+    converts its batch with `observations.ToMeasurements` and whose `Errored`
+    returns the domain's `ErroredXxx` measurement. `Example_collectSensor` in
+    `toolkit` does this for the CPU sensor. Return an error when the
+    conversion yields no measurements, or the domain's checks are skipped
+    instead of failed. Convert all of a domain's observations in one call: GPU
+    and NVLink read both DCGM and NVML, and a measurement built from one
+    source reports the other source's signals as failed. Give each signal one
+    source: both sensors produce power draw and the power limits, and a signal
+    fed twice is also reported failed. Pass `collect.WithSignalID` to each
+    sensor's `Measure` with disjoint sets. The CLI reads power draw, power
+    limits, performance state, the hardware slowdown signals, and fabric
+    registration from DCGM, and the rest from NVML.
+    `agentkit/examples/scan-one-off-evaluate` shows opening and closing a DCGM
+    source for the DCGM sensor.
+  - `App.WithCPUBackend`, `WithGPUBackend`, `WithNodeBackend`,
+    `WithNVLinkBackend`, `WithXidBackend`, and `WithRDMALinkFlapBackend`:
+    pass a `collect.Sensor` and the signal IDs it supplies to
+    `App.WithCollect`, for example
+    `WithCollect(sensor, observations.MappedSignalsFor(health.CPU)...)`. Claim
+    only signals a registered adapter reads: `cpusignals.All()` also holds
+    activity signals no adapter reads, and claiming one fails registration.
+    GPU and NVLink map signals from both DCGM and NVML, so a sensor for one of
+    them claims only the mapped signals its own `Signals()` lists.
+    The claimed signals replace the built-in source's; the built-in adapter
+    still builds the domain's measurements.
+  - `CPUBackend`, `CPUSensor`, `NewCPUSensor`, and `SysfsCPU`: use
+    `collect/sensors/cpu`.
+  - `GPUBackend`, `GPUSensor`, `NewGPUSensor`, `NodeBackend`, `NodeSensor`,
+    `NewNodeSensor`, `NVLinkBackend`, `NVLinkSensor`, `NewNVLinkSensor`,
+    `MultiBackend`, `LazyGPUBackend`, and the `toolkit/nvml` package
+    (`NVMLBackend`, `New`, `NewWithLibrary`, `DeviceProber`, `ProbeContext`,
+    `ProbeDevice`, `Error`): use `collect/sensors/nvml` and
+    `collect/sensors/dcgm`.
+  - `App.NVMLBackend` and its `WithGPUProbe` and `WithNVLinkProbe` probes:
+    for a per-GPU check of your own, read the signal through a `GPUAdapter`
+    (`docs/extending.md`); a signal the built-in GPU sources do not produce
+    needs a collect sensor registered with `WithCollect`. There is no
+    per-link replacement for `WithNVLinkProbe`: a per-link signal needs your
+    own collect sensor, adapter, and checks (`WithCollect`,
+    `WithCollectAdapters`, `WithChecks`).
+  - `toolkit.Collect` no longer skips a sensor whose `ResourceKey` matches one
+    that already timed out. Only the removed GPU, node, and NVLink sensors
+    shared a backend that way; each sensor now gets its own timeout.
+  - `XidBackend`, `XidSensor`, `NewXidSensor`, and `Journalctl`: use
+    `collect/sensors/xid`.
+  - `RDMALinkFlapBackend`, `RDMALinkFlapSensor`, `NewRDMALinkFlapSensor`,
+    `JournalctlRDMALinkFlap`, `RDMALinkFlapOption`, `WithLinkFlapLookback`, and
+    `WithLinkFlapBootOffset`: use `collect/sensors/linkflap` with its
+    `WithLookback` and `WithBootOffset` options.
+  - `IBBackend`, `IBSensor`, `NewIBSensor`, and `App.WithIBBackend`, the opt-in
+    generic InfiniBand sensor the CLI never wired: register your own collect
+    sensor with `WithCollect` and its adapter with `WithCollectAdapters`.
+  - `MockCPU`, `MockGPU`, `MockNode`, `MockNVLink`, `MockXid`, and
+    `MockRDMALinkFlap`: to test without hardware, pass any `toolkit.Sensor`
+    that returns fixed measurements to `toolkit.Collect`, or claim signals from
+    an in-memory collect sensor with `WithCollect` (`docs/faq.md`).
 
 ### Features
 
+- `app.GPUAdapter` builds one measurement of your own type per GPU from
+  collect signals, for checks added with `WithChecks`, leaving the built-in GPU
+  domain in place. `docs/extending.md` describes the wiring.
+- The built-in NVML source (`gpu.nvml`), which produced only the
+  compute-process signals, now produces every signal collect's NVML sensor
+  declares
+  ([list](https://github.com/dsx-ai-factory/health-validation/blob/cc26732a/collect/sensors/nvml/sensor.go#L63-L69):
+  temperature, power, ECC and row remapping, NVLink and fabric, memory,
+  utilization, clocks, and processes) except the seven read from DCGM:
+  `gpu.power.draw`, `gpu.power.limit.requested`, `gpu.power.limit.enforced`,
+  `gpu.performance.state`, `gpu.clock.hardware_slowdown.active`,
+  `gpu.clock.hardware_thermal_slowdown.active`, and
+  `gpu.clock.hardware_power_brake_slowdown.active`. A signal such as ECC or
+  row remapping therefore needs only a `GPUAdapter`. A `WithCollect` claim on any of these signals still takes
+  precedence over the built-in source.
+- `health.KeyOf` treats a zero `EntityKey` as unset and keys the measurement
+  by its `EntityID`, so a measurement embedding `observations.Entity` that a
+  test constructs directly names its GPU.
 - `ib_port_state`, an InfiniBand port check evaluating the new
   `infiniband.PortMeasurement` (one per sysfs port, RoCE included): every port
   must be ACTIVE with its physical link up. Verdicts name the port (`mlx5_0/1`)
@@ -81,11 +249,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   is verified under `<device>/<port>`, and a failure before any port was
   enumerated is keyed by its source (`collect.infiniband` for the bridge
   adapter) via `SetEntityKey`.
-- The built-in `infiniband` collect adapter carries both the link-flap and
-  the port measurement types, so its name stays reserved when
-  `WithRDMALinkFlapBackend` keeps the legacy link-flap sensor; the adapter
-  then builds only ports (`collectadapters.InfiniBandPorts`), leaving the
-  link-flap measurement to that sensor.
+
+### Fixes
+
+- Collect sources log a warning to stderr when they time out or fail as a
+  whole, including failures a sensor reports inside its batch, as the legacy
+  sensors did. Each line names the collect sensor (`sensor`) and the failing
+  library or reader (`source`); the legacy lines named the toolkit sensor.
+  Any failed read of a node-wide sensor, such as the CPU NUMA count, also
+  warns. Errors on individual GPUs are not logged.
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 

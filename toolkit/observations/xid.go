@@ -123,6 +123,7 @@ func buildXidEvent(f xidFields) (xid.XidEvent, error) {
 		GPC:         f.optionalInt(xidsignals.GPC),
 		TPC:         f.optionalInt(xidsignals.TPC),
 		SM:          f.optionalInt(xidsignals.SM),
+		Sequence:    f.int(xidsignals.Sequence),
 	}
 	nvlink5 := []collect.Signal{xidsignals.NVLink5SubComponent, xidsignals.NVLink5Fatal, xidsignals.NVLink5Link}
 	present := slices.IndexFunc(nvlink5, func(s collect.Signal) bool { return f.values[s.ID()] == nil }) < 0

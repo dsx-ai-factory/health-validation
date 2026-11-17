@@ -127,20 +127,28 @@ func (k EntityKey) String() string {
 // implement EntityIdentifier at all. An empty EntityID is accepted only on a
 // measurement reporting a collection failure; one carrying values must name
 // its entity. Implement EntityKeyed when an ID is not a stable hardware
-// identity, such as a source-local slot.
+// identity, such as a source-local slot. A zero EntityKey means the key was
+// never set, so a measurement that also implements EntityIdentifier is then
+// keyed by its EntityID as above.
 type EntityKeyed interface {
 	EntityKey() EntityKey
 }
 
 // KeyOf returns the [EntityKey] evaluation uses for m.
 func KeyOf(m Measurement) EntityKey {
-	if keyed, ok := m.(EntityKeyed); ok {
-		return keyed.EntityKey()
+	keyed, isKeyed := m.(EntityKeyed)
+	if isKeyed {
+		if key := keyed.EntityKey(); key != (EntityKey{}) {
+			return key
+		}
 	}
 	if identified, ok := m.(EntityIdentifier); ok {
 		if id := identified.EntityID(); id != "" {
 			return VerifiedEntity(id)
 		}
+		return EntityKey{}
+	}
+	if isKeyed {
 		return EntityKey{}
 	}
 	return NodeEntity()

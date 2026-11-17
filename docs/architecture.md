@@ -11,8 +11,8 @@
 | <nobr>`catalog/node`</nobr> | `node.NodeMeasurement` struct and the node-level `GPUCount` check definition. |
 | <nobr>`catalog/nvlink`</nobr> | `nvlink.NVLinkMeasurement` struct and its NVLink check definitions (`NVLinkActive`, `NVLinkFabricHealth`, `NVLinkFabric`, `NVLinkBandwidthCountSpeed`, `NVLinkCapabilities`, `NVLinkP2P`). |
 | <nobr>`catalog/infiniband`</nobr> | `infiniband.LinkFlapMeasurement` (journal link flaps) with the `RDMALinkFlapFatal` check, and `infiniband.PortMeasurement` (one sysfs port) with the `PortState` check; the two types share category `infiniband` with disjoint signals. |
-| <nobr>`catalog/xid`</nobr> | `xid.XidMeasurement` struct and the Xid check factory `xid.Checks()`, which returns one CRITICAL check per critical Xid code, architecture-scoped WARNING checks, the INFO `gpu_xid_154` check, `gpu_xid_informational`, which reports the Xid codes NVIDIA's catalog gives no resolution, and `gpu_xid_unknown`, which reports Xid codes no registered check covers. |
-| <nobr>`toolkit`</nobr> | Sensor and per-domain backend interfaces, `Collect()` / `CollectWithOptions()`, production backends including `SysfsCPU`, and mock helpers. |
+| <nobr>`catalog/xid`</nobr> | `xid.XidMeasurement` struct and the Xid check factory `xid.Checks()`, which returns one CRITICAL check per critical Xid code, architecture-scoped WARNING checks, the `gpu_xid_154` check, which reports the recovery action Xid 154 last requested for each GPU, `gpu_xid_informational`, which reports the Xid codes NVIDIA's catalog gives no resolution, and `gpu_xid_unknown`, which reports Xid codes no registered check covers. |
+| <nobr>`toolkit`</nobr> | The `Sensor` interface, `Collect()` / `CollectWithOptions()`, and the bridge that runs collect sensors and adapts their observations into measurements. |
 | <nobr>`catalog/internal/celeval`</nobr> | Evaluates CEL expressions from check `Rule` definitions against signal values and resolved thresholds. Not a public API. |
 | <nobr>`catalog/internal/evaluation`</nobr> | Orchestrates a single check evaluation: filters by architecture/context, resolves threshold overrides, calls CEL, returns `CheckVerdict`. Not a public API. |
 | <nobr>`toolkit/cmd/health-validation`</nobr> | Binary entry point. Subcommands: `run`, `collect`, `version`. |
@@ -20,8 +20,10 @@
 ## Data flow
 
 ```
-Sensor.Measure()
-    --> []health.Measurement
+collect.Sensor.Measure()
+    --> ObservationBatch
+        --> collect adapter
+            --> []health.Measurement
         --> Catalog.EvaluateAll()
             --> per-category check routing
                 --> CEL evaluation per check
@@ -36,16 +38,22 @@ Each sensor produces one or more measurements. Device sensors normally emit one 
 
 Two distinct concepts:
 
-- **Sensor** implements `toolkit.Sensor`. It holds a backend and produces `[]health.Measurement` for `Collect`. For example, `GPUSensor` wraps a `GPUBackend`, and `CPUSensor` wraps a `CPUBackend`.
-- **Backend** is a data source defined as an interface in `toolkit`. The NVML-backed implementation lives in `toolkit/nvml/` (Linux only, requires cgo). `SysfsCPU` (deprecated; the CLI uses the `collect/sensors/cpu` collect sensor through the toolkit bridge) and its replacement read `/sys/devices/system/cpu/possible`, `/sys/devices/system/cpu/online`, and `/sys/devices/system/node/online` without sudo or an external executable. `Journalctl` and `JournalctlRDMALinkFlap` (deprecated; the CLI uses the `collect/sensors/xid` and `collect/sensors/linkflap` collect sensors through the toolkit bridge) and their replacements read the current boot's kernel journal through `journalctl`. The link-flap sensor reads only the lookback window (default one hour) and reports each mlx5 link transition keyed by its journal entry. It reads a line as a transition only when the `mlx5_core` driver prefix starts the message, and checks the interface it names against the kernel's naming rules rather than assuming it is valid. The shared `infiniband` adapter pairs each interface's downs with their next ups into one node-wide `infiniband.LinkFlapMeasurement`. Only outages whose down and up both fall in the window count: a link still down at scan time, or one that went down before the window, records nothing, and a transition logged under an interface's pre-rename name does not pair with its later name. A transition line the parser cannot read fails `rdma_linkflap_fatal` closed rather than being skipped. Mock backends are available for testing without hardware.
+- **Collect sensor** implements `collect.Sensor` and reports raw observations, with no knowledge of checks. The CLI's sources are DCGM and NVML (`collect/sensors/dcgm`, `collect/sensors/nvml`, Linux only, cgo), sysfs for CPU (`collect/sensors/cpu`, which reads `/sys/devices/system/cpu/possible`, `/sys/devices/system/cpu/online`, and `/sys/devices/system/node/online` without sudo or an external executable), and the current boot's kernel journal for Xid and RDMA link flaps (`collect/sensors/xid` and `collect/sensors/linkflap`, through `journalctl`). The link-flap sensor reads only the lookback window (default one hour) and reports each mlx5 link transition keyed by its journal entry. It reads a line as a transition only when the `mlx5_core` driver prefix starts the message, and checks the interface it names against the kernel's naming rules rather than assuming it is valid. The shared `infiniband` adapter pairs each interface's downs with their next ups into one node-wide `infiniband.LinkFlapMeasurement`. Only outages whose down and up both fall in the window count: a link still down at scan time, or one that went down before the window, records nothing, and a transition logged under an interface's pre-rename name does not pair with its later name. A transition line the parser cannot read fails `rdma_linkflap_fatal` closed rather than being skipped.
+- **Adapter** assembles one catalog domain's measurements from those observations. The bridge runs each source once per collection cycle and hands each adapter's output to `Collect` as a `toolkit.Sensor`.
 
-`SysfsCPU` observes the kernel CPU topology exposed in its execution environment. The `cpu_count` check compares the possible and online logical CPU counts, requires no operator value, and reports CRITICAL when they differ. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM/SKU count, process affinity, or cgroup CPU limits; inside a container, it evaluates the sysfs view exposed by the runtime.
+The CPU collect sensor observes the kernel CPU topology exposed in its execution environment. The `cpu_count` check compares the possible and online logical CPU counts, requires no operator value, and reports CRITICAL when they differ. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM/SKU count, process affinity, or cgroup CPU limits; inside a container, it evaluates the sysfs view exposed by the runtime.
 
 The `numa_node_count` check compares the online NUMA node count against `expected_numa_node_count` and reports CRITICAL when they differ. The expected value resolves from the detected architecture, and an operator override replaces whatever the architecture resolved to. Each read is attributed to its own signal, so an unreadable NUMA node list fails `numa_node_count` while `cpu_count` still evaluates, and vice versa. The check applies only to the architectures it lists and skips on any other, including a node whose architecture cannot be identified.
 
 `health-validation collect` runs the same sensors without evaluating any checks and prints the measurements as one `ObservationBatch` (protojson). An optional config's check IDs select which sensor domains run; without one, every built-in domain runs. Use it to retain node-local evidence and evaluate it separately from acquisition. See the README for the output shape.
 
-To add a sensor for a new hardware domain: define a measurement struct in `catalog/<domain>/`, declare a backend interface in `toolkit/`, implement a sensor wrapping it, and add a mock constructor.
+To add a sensor for a new hardware domain: define a measurement struct in `catalog/<domain>/`, a `collect.Sensor` that reports its signals, a signal mapping in `toolkit/observations`, and a built-in adapter registered in `builtinCollect` (`toolkit/app/collect.go`).
+
+## Collect bridge
+
+The CLI collects through `collect` sensors. `toolkit/internal/collectbridge` registers each source once per run, measures every source once under one collection cycle, and caches the observations; the adapters in `toolkit/internal/collectadapters` and `toolkit/observations` turn them into catalog measurements. Each source has its own timeout budget. A source that times out or fails as a whole is logged as a warning, once per distinct operation and error category, and reported in the verdict as a collection failure on the checks it feeds; checks fed by other sources still evaluate. Node-wide sensors report every failure on the node, so one failed read there, such as the NUMA node count, also warns while the other reads succeed. Errors on individual GPUs are not logged. The native NVML and DCGM sources refuse a new call while a timed-out call in the same process is still running.
+
+The bridge is the production adapter layer between `collect` and the catalog. Extracting its runner into a shared coordinator waits until a second caller, such as `agentkit/server`, runs the same runner.
 
 ## Catalog construction options
 
@@ -89,7 +97,7 @@ The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses 
 | RecommendedAction | RecommendedAction | `recommended_action` | Node-level drain sequence selected from the highest-severity eligible failing check; elided (`omitzero`) when no node-level drain sequence is available. |
 | CheckResults | []CheckVerdict | `check_results` | Per-check results for checks that ran. |
 | SkippedChecks | []CheckVerdict | `skipped_checks` | Per-check results for checks that were skipped. |
-| AffectedComponents | []AffectedComponent | `affected_components` | Non-PASS domains with their affected entities and check IDs. |
+| AffectedComponents | []AffectedComponent | `affected_components` | Non-PASS domains. Each check appears once with the entities that failed it. |
 
 Each `CheckVerdict` retains its own recommendation; drain recommendations carry
 an ordered remediation sequence. `NodeVerdict` also surfaces one complete drain
@@ -171,8 +179,8 @@ Skips never count toward `overall_severity`, so read `skipped_checks`. `SENSOR_M
 | GPU inventory read fails or times out | Inventory collection error | The same discovery verdict in the CLI; a library caller sees a `gpu_count` collection failure | 1 |
 | Some GPU handles cannot be opened | Inventory with failed slots | Those GPUs are not counted, so `gpu_count` judges the lower count. If no remaining GPU model can be read, the CLI stops at architecture discovery instead | 0 or 1 by severity |
 | The Xid journal scan succeeds with no Xid entries | Scan marker | Value: zero events, so the Xid checks pass | 0 or 1 by the other checks |
-| The kernel journal is unreadable or holds no kernel entries (Xid) | Read error, or an empty kernel-scoped probe | Collection failure for every Xid check | 1 |
-| The RDMA link-flap scan finds no link transitions | Any entry in the current boot's journal | Value: zero flaps, so `rdma_linkflap_fatal` passes | 0 or 1 by the other checks |
+| The kernel journal is unreadable or holds no kernel entries | Read error, or an empty kernel-scoped probe | Collection failure for every Xid check and for `rdma_linkflap_fatal` | 1 |
+| The RDMA link-flap scan succeeds with no link transitions | Scan marker | Value: zero flaps, so `rdma_linkflap_fatal` passes | 0 or 1 by the other checks |
 | An Xid line matches but does not parse | Parse error on the event | Collection failure for every Xid check | 1 |
 | A CPU sysfs file cannot be read | Collection error on that signal | Collection failure for the checks that read it | 1 |
 | A built-in domain adapter receives no observations | Empty batch from every sensor that feeds it | Collection failure for every signal of the domain | 1 |
@@ -185,14 +193,14 @@ Skips never count toward `overall_severity`, so read `skipped_checks`. `SENSOR_M
 
 Differences between domains:
 
-- The Xid reader proves a clean scan with a scan marker and a kernel-scoped probe. An empty result alone is not a clean scan. The RDMA link-flap reader still uses the legacy `journalctl` backend, whose probe accepts any entry in the current boot's journal, not only kernel messages.
+- The Xid and RDMA link-flap readers prove a clean scan with a scan marker and a kernel-scoped probe. An empty result alone is not a clean scan, so a user who can read only their own journal gets a collection failure, not a PASS.
 - GPU count proves zero from the inventory read itself. `NO_TARGETS` on a per-GPU signal never proves a node has no GPUs.
 - When a source says `NOT_SUPPORTED`, seven signals read as not asserted: the three hardware-slowdown bits and the four NVLink fabric-health bits (`unsupportedIsNeutral` in `toolkit/observations/mapping.go`). The Fabric Manager status reads as registration incomplete (`unsupportedValue`).
-- The NVLink converter (`toolkit/observations/nvlink.go`) follows the legacy NVML reads. A link state NVML reports as `ERROR_NOT_SUPPORTED` is not counted as inactive, and reported for the whole GPU it means the GPU has no NVLink. An unsupported common speed falls back to the slowest per-link speed. `NO_TARGETS` on the P2P status means a GPU with no peers.
+- The NVLink converter (`toolkit/observations/nvlink.go`) reads NVML's per-link outcomes as v0.3 did. A link state NVML reports as `ERROR_NOT_SUPPORTED` is not counted as inactive, and reported for the whole GPU it means the GPU has no NVLink. An unsupported common speed falls back to the slowest per-link speed. `NO_TARGETS` on the P2P status means a GPU with no peers.
 - `NO_TARGETS` on the compute-process cmdline signal means no compute processes; with a successfully collected process count of zero, `gpu_compute_apps` passes.
 - Every other unsupported value fails the checks that need it.
 - The library converter `observations.ToMeasurements` returns no measurement for an empty input, which evaluation reports as `SENSOR_MISSING`. The CLI's built-in adapters fail the whole domain instead, so treat an empty conversion as missing data.
-- In the stock CLI, GPU telemetry comes from DCGM through the collect GPU adapter, except compute processes, which come from NVML. The rules above apply; DCGM reports an unsupported slowdown bit as `NOT_SUPPORTED`. NVLink still comes from the NVML backend, which treats the four fabric-health bits as not asserted when unsupported. There a GPU with no NVLink reads zero inactive links, so `nvlink_active` passes. When both checks apply, `nvlink_bandwidth_count_speed` fails; on an architecture it does not cover, such as A100, it skips instead.
+- In the stock CLI, GPU telemetry comes from DCGM through the collect GPU adapter, except compute processes, which come from NVML. The rules above apply; DCGM reports an unsupported slowdown bit as `NOT_SUPPORTED`. NVLink comes through the collect NVLink adapter: the Fabric Manager status from DCGM, and links, P2P, and the four fabric-health bits from NVML, which reports an unsupported fabric-health bit as `NOT_SUPPORTED`. A GPU with no NVLink reads zero inactive links, so `nvlink_active` passes. When both checks apply, `nvlink_bandwidth_count_speed` fails; on an architecture it does not cover, such as A100, it skips instead.
 
 ## Adding a check
 

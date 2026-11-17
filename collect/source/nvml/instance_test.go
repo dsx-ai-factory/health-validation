@@ -27,6 +27,8 @@ func TestNativeLifecycleGate(t *testing.T) {
 	other := &instance{}
 	err := inst.Read(func(map[string]device.Device) error {
 		assert.ErrorIs(t, other.Read(func(map[string]device.Device) error { require.FailNow(t, "entered native read twice"); return nil }), ErrInUse)
+		_, newErr := New()
+		assert.ErrorIs(t, newErr, ErrInUse)
 		assert.ErrorIs(t, inst.Refresh(), ErrInUse)
 		assert.ErrorIs(t, inst.Shutdown(), ErrInUse)
 		return nil

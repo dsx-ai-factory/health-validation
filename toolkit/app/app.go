@@ -8,24 +8,25 @@
 // same builder lets a downstream consumer build their own single binary that
 // inherits all of go-health's behavior — config loading, the built-in NVIDIA
 // check catalog, the host sensors, and the JSON verdict — while contributing
-// their own checks and per-GPU probes:
+// their own checks and the per-GPU measurements those checks read:
 //
 //	func main() {
-//		a := app.New().WithStderrLogging().WithChecks(mychecks.All()...)
-//		// attach domain-scoped probes to the built-in NVML backend, then
-//		// install it for the GPU and NVLink sensors:
-//		b := a.NVMLBackend().WithGPUProbe(myGPUProbe{}).WithNVLinkProbe(myNVLinkProbe{})
-//		a.WithGPUBackend(b).WithNVLinkBackend(b)
-//		os.Exit(a.Run(os.Args[1:], os.Stdout, os.Stderr))
+//		ecc, err := app.GPUAdapter[mygpu.ECCMeasurement]("ecc", map[string]string{
+//			gpusignals.ECCDoubleBitVolatileTotal.ID(): "ecc_double_bit",
+//		})
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//		a := app.New().WithStderrLogging().WithChecks(mychecks.All()...).WithCollectAdapters(ecc)
+//		code := a.Run(os.Args[1:], os.Stdout, os.Stderr)
+//		_ = a.Close()
+//		os.Exit(code)
 //	}
 //
-// Each of the six sensors (GPU, node, NVLink, CPU, Xid, InfiniBand) draws from
-// its own per-domain backend, defaulting to the shared host NVML backend for
-// GPU/NVLink, the host's collect NVML GPU inventory for node, sysfs for CPU,
-// and the journal (through collect sensors) for Xid and InfiniBand link flaps. A
-// With*Backend setter overrides exactly one domain; the
-// node domain has no probe seam (gpu_count is a scalar aggregate), so it is a
-// full backend swap. Custom checks register alongside the built-ins as a pure
+// The GPU, NVLink, node, CPU, Xid, and RDMA link-flap domains come from collect
+// sensors (DCGM and NVML, the host's NVML GPU inventory, sysfs, and the
+// journal); [App.WithCollect] replaces a built-in source by claiming its
+// signals. Custom checks register alongside the built-ins as a pure
 // pass-through: their author-declared classification (Provenance, …) is
 // honored verbatim. Registration fails only on the catalog's own validation
 // or a duplicate ID.
@@ -34,6 +35,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -41,6 +43,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -84,41 +87,23 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 }
 
 // hostBackend is the platform-split source of the built-in GPU data sources.
-// On linux it is one [nvml.NVMLBackend] feeding the legacy NVLink sensor, the
-// collect GPU sensors (DCGM, plus NVML for compute processes), and the collect
-// NVML GPU inventory that architecture discovery and the node GPU count share;
-// off linux it is a stub that errors at Measure, keeping the command buildable
-// (and `version` runnable) while surfacing a clear runtime error if `run` is
-// invoked there.
+// On linux it is the collect GPU sensors (DCGM, plus NVML for compute processes
+// and NVLink) and the collect NVML GPU inventory that architecture discovery
+// and the node GPU count share; off linux it is a stub that errors at Measure,
+// keeping the command buildable (and `version` runnable) while surfacing a
+// clear runtime error if `run` is invoked there.
 type hostBackend interface {
 	gpuSensors() []collect.Sensor
-	nvlinkBackend() toolkit.NVLinkBackend
 	gpuInventory() *gpuinventory.Inventory
 	close() error
 }
 
 // App is the health-validation CLI, assembled with the builder methods and
-// run with [App.Run]. It wires six sensors (GPU, node, NVLink, CPU, Xid,
-// InfiniBand), each from its own per-domain source — DCGM, the shared host
-// NVML backend, sysfs, or the journal by default, or a caller-supplied
-// override.
+// run with [App.Run].
 type App struct {
 	host        hostBackend
 	hostname    func() (string, error)
 	openJournal func() (io.WriteCloser, error)
-	// gpu, node, nvlink, cpu, xid, rdmaLinkFlap, and ib are per-domain backend
-	// overrides set by the matching With*Backend setter. A nil override uses the
-	// default: the host's DCGM and NVML collect sensors for gpu, the shared host
-	// NVML backend for nvlink, the host GPU inventory for node, the sysfs
-	// collect sensor for cpu, and the journal collect sensors for xid and
-	// rdmaLinkFlap. The generic ib backend has no default and is opt-in.
-	gpu          toolkit.GPUBackend
-	node         toolkit.NodeBackend
-	nvlink       toolkit.NVLinkBackend
-	cpu          toolkit.CPUBackend
-	xid          toolkit.XidBackend
-	rdmaLinkFlap toolkit.RDMALinkFlapBackend
-	ib           toolkit.IBBackend
 	// prog is the program name used in usage and error-message prefixes. It
 	// defaults to filepath.Base(os.Args[0]); see WithProgramName.
 	prog            string
@@ -132,9 +117,10 @@ type App struct {
 	nodeIDSet     bool
 }
 
-// New returns an App wired to the production host backend (an NVML backend on
-// linux). Construction is side-effect free — NVML init is lazy — so building
-// an App is safe on a host without a GPU/driver, and `version` runs there.
+// New returns an App wired to the production host backend (NVML and DCGM on
+// linux). Construction is side-effect free — NVML and DCGM init is lazy — so
+// building an App is safe on a host without a GPU/driver, and `version` runs
+// there.
 func New() *App {
 	return &App{
 		host:        newHostBackend(),
@@ -149,85 +135,6 @@ func New() *App {
 // overrides like built-ins. A duplicate ID makes [App.Run] fail.
 func (a *App) WithChecks(defs ...health.CheckDefinition) *App {
 	a.customChecks = append(a.customChecks, defs...)
-	return a
-}
-
-// WithGPUBackend overrides the GPU sensor's backend (default: the shared host
-// NVML backend). The canonical use attaches a probe to the built-in NVML
-// backend before installing it:
-//
-//	a.WithGPUBackend(a.NVMLBackend().WithGPUProbe(eccProbe{}))
-//
-// To drive both per-GPU domains from one probed NVML backend, install it under
-// both setters (it satisfies [toolkit.GPUBackend] and [toolkit.NVLinkBackend]):
-//
-//	b := a.NVMLBackend().WithGPUProbe(myGPU{}).WithNVLinkProbe(myNVLink{})
-//	a.WithGPUBackend(b).WithNVLinkBackend(b)
-//
-// The override is the caller's to manage; see [App.Close].
-func (a *App) WithGPUBackend(b toolkit.GPUBackend) *App {
-	a.gpu = b
-	return a
-}
-
-// WithNodeBackend replaces the node domain's default — gpu_count from the
-// host's collect NVML GPU inventory, the read architecture discovery shares —
-// with a legacy Node sensor over b. The node domain has no probe seam —
-// gpu_count is a scalar aggregate — so this is a full backend swap.
-// Architecture discovery still reads the host inventory.
-func (a *App) WithNodeBackend(b toolkit.NodeBackend) *App {
-	a.node = b
-	return a
-}
-
-// WithNVLinkBackend overrides the NVLink sensor's backend (default: the shared
-// host NVML backend). See [App.WithGPUBackend] for attaching a probe.
-func (a *App) WithNVLinkBackend(b toolkit.NVLinkBackend) *App {
-	a.nvlink = b
-	return a
-}
-
-// WithCPUBackend replaces the CPU domain's default collect sensor, which
-// reports the Linux kernel's possible and online logical CPU counts and its
-// online NUMA node count from sysfs, with a legacy toolkit backend. The
-// override is caller-owned.
-//
-// Deprecated: pass a collect sensor and the CPU signal IDs it replaces to
-// [App.WithCollect] instead.
-func (a *App) WithCPUBackend(b toolkit.CPUBackend) *App {
-	a.cpu = b
-	return a
-}
-
-// WithXidBackend replaces the collect sensor that reads NVRM Xid events from
-// the system journal with a legacy toolkit Xid sensor over b.
-//
-// Deprecated: pass a collect sensor and the Xid signal IDs it replaces to
-// [App.WithCollect] instead.
-func (a *App) WithXidBackend(b toolkit.XidBackend) *App {
-	a.xid = b
-	return a
-}
-
-// WithRDMALinkFlapBackend replaces the collect sensor that reads mlx5 RDMA
-// link transitions from the system journal, which feeds the built-in
-// rdma_linkflap_fatal check, with a legacy toolkit link-flap sensor over b.
-//
-// Deprecated: pass a collect sensor and the link-flap signal IDs it replaces
-// to [App.WithCollect] instead.
-func (a *App) WithRDMALinkFlapBackend(b toolkit.RDMALinkFlapBackend) *App {
-	a.rdmaLinkFlap = b
-	return a
-}
-
-// WithIBBackend sets the generic InfiniBand sensor's backend. It is opt-in: the
-// built-in InfiniBand checks are fed by the link-flap sensor and the collect
-// port sensor, not this one. Supply a backend here to contribute additional
-// InfiniBand measurement types — the backend owns device enumeration, the
-// types it emits, and (with the checks a consumer adds via WithChecks) those
-// extra checks.
-func (a *App) WithIBBackend(b toolkit.IBBackend) *App {
-	a.ib = b
 	return a
 }
 
@@ -255,14 +162,10 @@ func (a *App) WithNodeID(id string) *App {
 	return a
 }
 
-// Close shuts down the App's host backend — the built-in NVML connection.
-// [App.Run] calls it for the caller, so it is needed only if you assemble an
-// App without running it.
-//
-// Backends installed via the With*Backend setters are the caller's to manage
-// and are not closed here: a foreign backend is owned by whoever built it, and
-// a probe-derived NVML backend (a.NVMLBackend().WithGPUProbe(…)) is a
-// lightweight view the one-shot run discards on exit.
+// Close shuts down the App's host backend, the built-in DCGM and NVML
+// connections. Call it when you are done with the App; [App.Run] leaves them
+// open so one App can run more than once. Collect sensors passed to
+// [App.WithCollect] are the caller's to manage and are not closed here.
 func (a *App) Close() error { return a.host.close() }
 
 // Run is the health-validation CLI entrypoint:
@@ -323,11 +226,8 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 }
 
 // runCommand parses `run` flags, builds the catalog (applying any config
-// overrides and custom checks), and evaluates it against the six domain
-// sensors. Each sensor's backend is the caller's override if set, else the
-// default: the shared host NVML backend for gpu/nvlink, the host GPU inventory
-// for node, sysfs for cpu, and the system journal, through collect sensors,
-// for xid and the InfiniBand link-flap measurement.
+// overrides and custom checks), and evaluates it against the built-in and
+// caller-registered sensors.
 func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -383,13 +283,6 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	// Close only the host backend: per-domain overrides are caller-owned (see
-	// [App.Close]). gpu/nvlink default to the one shared host backend, and
-	// architecture discovery and node share one GPU inventory read per cycle.
-	// Deferred before architecture detection so the NVML handle that detection
-	// opens is always released.
-	defer a.host.close()
-
 	// Load the config before touching the hardware so a typo is reported as a
 	// config error rather than surfacing after a full collection — and so the
 	// metrics settings are in hand even on the discovery-failure path below,
@@ -412,15 +305,18 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	// where they apply. A discovery failure is a node fault — the GPUs are
 	// unenumerable or unreadable — so drain for that explicit reason instead
 	// of evaluating with no architecture (Evaluate requires WithArchitecture).
-	snapshot := a.host.gpuInventory().Snapshot(context.Background(), cycle)
+	inventory := a.host.gpuInventory()
+	snapshot := inventory.Snapshot(context.Background(), cycle)
 	arch, err := gpuinventory.Architecture(snapshot)
 	if err != nil {
-		slog.Warn("architecture discovery failed", "err", err)
-		verdict := discoveryFailureVerdict(err)
+		busy := errors.Is(inventory.Cause(cycle), gpuinventory.ErrSourceBusy)
+		slog.Warn("architecture discovery failed", "err", err, "busy", busy)
+		verdict := discoveryFailureVerdict(err, busy)
 		code := writeVerdict(verdict, a.prog, resolvedNodeID, stdout, stderr)
 		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
 		return code
 	}
+	warnUnknownArchitecture(slog.Default(), arch, snapshot)
 
 	// The driver version comes from the same snapshot. Unlike architecture
 	// an unknown version is not a node fault: whatever depends on it treats
@@ -464,41 +360,9 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-// sensors returns the legacy sensors and the collect-backed sensors, whose
+// sensors returns the collect-backed sensors, whose
 // sources are measured once now under cycle.
 func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
-	nvlink := a.nvlink
-	if nvlink == nil {
-		nvlink = a.host.nvlinkBackend()
-	}
-	var sensors []toolkit.Sensor
-	// Without an override, the GPU domain comes from builtinCollect.
-	if a.gpu != nil {
-		sensors = append(sensors, toolkit.NewGPUSensor(a.gpu))
-	}
-	sensors = append(sensors, toolkit.NewNVLinkSensor(nvlink))
-	// Without an override, the Xid domain comes from builtinCollect.
-	if a.xid != nil {
-		sensors = append(sensors, toolkit.NewXidSensor(a.xid))
-	}
-	// Without an override, the link-flap measurement comes from builtinCollect.
-	if a.rdmaLinkFlap != nil {
-		sensors = append(sensors, toolkit.NewRDMALinkFlapSensor(a.rdmaLinkFlap))
-	}
-	// The generic InfiniBand sensor is opt-in: the built-in InfiniBand checks
-	// are fed by the link-flap and port collect sensors from builtinCollect,
-	// so this one runs only when a consumer supplies a backend (and its own
-	// checks) via WithIBBackend.
-	if a.ib != nil {
-		sensors = append(sensors, toolkit.NewIBSensor(a.ib))
-	}
-	// Without an override, the CPU and node domains come from builtinCollect.
-	if a.cpu != nil {
-		sensors = append(sensors, toolkit.NewCPUSensor(a.cpu))
-	}
-	if a.node != nil {
-		sensors = append(sensors, toolkit.NewNodeSensor(a.node))
-	}
 	builtinSources, builtinAdapters := a.builtinCollect(cycle)
 	if xidJournal != nil {
 		for i, source := range builtinSources {
@@ -507,12 +371,7 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 			}
 		}
 	}
-	collectSensors, err := a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
-	if err != nil {
-		return nil, err
-	}
-	sensors = append(sensors, collectSensors...)
-	return sensors, nil
+	return a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
 }
 
 // publishMetrics pushes the verdict to the configured OTLP endpoint. It is a
@@ -652,16 +511,6 @@ func xidJournalFromFlags(fs *flag.FlagSet) (collect.Sensor, error) {
 	return sensor, nil
 }
 
-var categoryBySensor = map[string]health.Category{
-	"cpu":           health.CPU,
-	"gpu":           health.GPU,
-	"infiniband":    health.InfiniBand,
-	"node":          health.Node,
-	"nvlink":        health.NVLink,
-	"rdma_linkflap": health.InfiniBand,
-	"xid":           health.Xid,
-}
-
 // collectCommand runs only the sensors selected by checks listed in config.
 func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" collect", flag.ContinueOnError)
@@ -708,7 +557,6 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
-	defer a.host.close()
 	// Whole categories, not runnable signals: a batch may be evaluated later
 	// under a different cadence or config.
 	required := make(requiredSignals, len(categories))
@@ -781,14 +629,11 @@ func collectionSensors(sensors []toolkit.Sensor, categories map[health.Category]
 	selected := make([]toolkit.Sensor, 0, len(categories))
 	covered := make(map[health.Category]bool)
 	for _, sensor := range sensors {
-		category, ok := categoryBySensor[sensor.Name()]
 		// Collect adapters declare their category; their names are arbitrary.
-		if bridged, isBridged := sensor.(*collectbridge.Sensor); isBridged {
-			category, ok = bridged.Category(), true
-		}
-		if ok && categories[category] {
+		bridged, ok := sensor.(*collectbridge.Sensor)
+		if ok && categories[bridged.Category()] {
 			selected = append(selected, sensor)
-			covered[category] = true
+			covered[bridged.Category()] = true
 		}
 	}
 	for category := range categories {
@@ -942,22 +787,48 @@ func writeVerdict(verdict health.NodeVerdict, prog, nodeID string, stdout, stder
 	return exitCodeForVerdict(verdict)
 }
 
+// warnUnknownArchitecture logs a warning naming the GPU models when discovery
+// resolves to gpuinventory.ArchitectureUnknown. Every architecture-scoped check
+// then skips and the verdict can still read healthy, so the log is the only
+// immediate hint that the node was barely checked. The warning goes to logger,
+// which callers pass explicitly so tests never touch the process-wide default.
+func warnUnknownArchitecture(logger *slog.Logger, arch string, snapshot *observation.GPUInventorySnapshot) {
+	if arch != gpuinventory.ArchitectureUnknown {
+		return
+	}
+	var models []string
+	for _, entry := range snapshot.GetInventory().GetEntries() {
+		model := entry.GetGpu().GetModel()
+		if model == "" || slices.Contains(models, model) {
+			continue
+		}
+		models = append(models, model)
+	}
+	logger.Warn("GPU architecture is unknown; architecture-scoped checks will be skipped", "models", models)
+}
+
 // discoveryFailureVerdict builds a Critical node verdict for a run that could
 // not determine the GPU architecture — the node's GPUs are unenumerable or
 // unreadable. Draining for this explicit reason is safer than the alternatives
 // the CLI would otherwise fall into: continuing with an empty architecture
 // disables filtering and evaluates every check against the wrong thresholds,
 // and letting architecture-scoped checks skip would aggregate an all-GPUs-lost
-// node to PASS.
-func discoveryFailureVerdict(cause error) health.NodeVerdict {
+// node to PASS. A busy source is a collection failure, not evidence of a
+// fault: another call in this process holds it, so the verdict is Unknown and
+// the action is to retry the collection.
+func discoveryFailureVerdict(cause error, busy bool) health.NodeVerdict {
+	severity, action := health.Critical, health.GenericDrain()
+	if busy {
+		severity, action = health.Unknown, health.Drain(health.RemediationActionRetryCollection)
+	}
 	cv := health.CheckVerdict{
 		Timestamp:         time.Now(),
 		CheckID:           "architecture_discovery",
 		Category:          health.Node,
 		ConditionScope:    health.NodeScope,
-		Severity:          health.Critical,
+		Severity:          severity,
 		Messages:          []string{fmt.Sprintf("could not determine GPU architecture: %v", cause)},
-		RecommendedAction: health.GenericDrain(),
+		RecommendedAction: action,
 		MaturityLevel:     health.Stable,
 		NVIDIAEndorsed:    true,
 	}

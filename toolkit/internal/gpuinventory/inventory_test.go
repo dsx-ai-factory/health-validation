@@ -6,6 +6,7 @@ package gpuinventory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"strings"
 	"testing"
@@ -106,11 +107,10 @@ func TestGPUCountFromInventory(t *testing.T) {
 		// A successful enumeration that found nothing proves zero GPUs.
 		{name: "zero GPUs", snapshot: inventory(), want: 0},
 		// A slot whose handle failed keeps its source index but is not
-		// counted, as the legacy backend excludes unreadable handles.
+		// counted.
 		{name: "failed handle", snapshot: inventory(gpuEntry(0, gb200), failedEntry(1, handleOperation), gpuEntry(2, gb200), gpuEntry(3, gb200)), want: 3},
 		{name: "every handle failed", snapshot: inventory(failedEntry(0, handleOperation), failedEntry(1, handleOperation)), want: 0},
-		// A GPU whose handle loaded still counts when a later read failed,
-		// as it does in the legacy backend.
+		// A GPU whose handle loaded still counts when a later read failed.
 		{name: "partial identity", snapshot: inventory(gpuEntry(0, gb200), failedEntry(1, "GetUUID"), failedEntry(2, "NewDevice"), failedEntry(3, "GetIndex")), want: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -177,6 +177,32 @@ func TestOpenAndReadAreBoundedByCycleTimeout(t *testing.T) {
 	}
 }
 
+func TestCauseKeepsTheFailureError(t *testing.T) {
+	busy := fmt.Errorf("%w: test", ErrSourceBusy)
+	for name, tc := range map[string]struct {
+		inv  *Inventory
+		busy bool
+	}{
+		"open":    {inv: New(func() (Reader, error) { return nil, busy }), busy: true},
+		"read":    {inv: New(opened(&fakeReader{err: busy})), busy: true},
+		"success": {inv: New(opened(&fakeReader{snapshot: inventory(gpuEntry(0, "NVIDIA GB200"))}))},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cycle := testCycle(t, "cycle")
+			snapshot := tc.inv.Snapshot(context.Background(), cycle)
+			if got := errors.Is(tc.inv.Cause(cycle), ErrSourceBusy); got != tc.busy {
+				t.Fatalf("Cause = %v, busy = %v, want %v", tc.inv.Cause(cycle), got, tc.busy)
+			}
+			if tc.busy && snapshot.GetCollectionError().GetCategory() != observation.CollectionErrorCategoryUnavailable {
+				t.Fatalf("snapshot = %v, want an UNAVAILABLE collection error", snapshot)
+			}
+			if err := tc.inv.Cause(testCycle(t, "other")); err != nil {
+				t.Fatalf("Cause for another cycle = %v, want nil", err)
+			}
+		})
+	}
+}
+
 // Architecture discovery and the count read one snapshot per cycle, so the
 // count needs no second enumeration.
 func TestInventoryReadsOncePerCycle(t *testing.T) {
@@ -229,6 +255,7 @@ func TestArchitecture(t *testing.T) {
 		{name: "first recognized wins", snapshot: inventory(gpuEntry(0, "NVIDIA A10"), gpuEntry(1, "NVIDIA GB300")), want: "GB300"},
 		{name: "failed slot skipped", snapshot: inventory(failedEntry(0, handleOperation), gpuEntry(1, "NVIDIA H100 80GB HBM3")), want: "H100"},
 		{name: "VR200 by name", snapshot: inventory(gpuEntry(0, "NVIDIA VR200")), want: "VR200"},
+		{name: "other VR name", snapshot: inventory(gpuEntry(0, "NVIDIA VR Test")), want: "VR200"},
 		{name: "unrecognized", snapshot: inventory(gpuEntry(0, "NVIDIA A10")), want: ArchitectureUnknown},
 		{name: "generic name", snapshot: inventory(gpuEntry(0, "NVIDIA Graphics Device")), want: ArchitectureUnknown},
 		{name: "enumeration failure", snapshot: enumerationFailure(), err: "Driver Not Loaded"},

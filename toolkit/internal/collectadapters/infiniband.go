@@ -5,37 +5,24 @@ package collectadapters
 
 import (
 	"errors"
-	"maps"
 	"slices"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
-	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 )
 
 // linkFlapSinceUnknown labels a link-flap failure whose window is unknown,
 // as observations does.
 const linkFlapSinceUnknown = "boot"
 
-// InfiniBand is the category's one built-in adapter. It replaces
-// toolkit.RDMALinkFlapSensor for the stock CLI's link-flap measurement and
-// feeds infiniband.PortMeasurement from the collect sysfs port sensor.
+// InfiniBand is the category's one built-in adapter. It builds the stock
+// CLI's link-flap measurement and the port measurements from the collect
+// sysfs port sensor.
 func InfiniBand() *domainAdapter {
 	a := newDomainAdapter(health.InfiniBand, erroredInfiniBand)
 	a.complete = func(measurements []health.Measurement) []health.Measurement {
 		return completePorts(completeLinkFlap(measurements))
 	}
-	return a
-}
-
-// InfiniBandPorts adapts only the port measurements, for an App whose
-// link-flap measurement still comes from the legacy toolkit sensor: failing
-// the link-flap type here as well would give its check two measurements.
-func InfiniBandPorts() *domainAdapter {
-	a := newDomainAdapter(health.InfiniBand, erroredPorts)
-	linkFlap := ibsignals.LinkFlapSignals().IDs()
-	maps.DeleteFunc(a.feeds, func(id string, _ []string) bool { return slices.Contains(linkFlap, id) })
-	a.complete = completePorts
 	return a
 }
 

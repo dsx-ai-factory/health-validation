@@ -17,7 +17,7 @@
   "properties": {
     "schema_version": {
       "description": "MAJOR.MINOR contract version. Consumers must check this before acting on a verdict; an unrecognised or missing value is untrusted output.",
-      "const": "0.5"
+      "const": "0.6"
     },
     "catalog_version": {
       "description": "Catalog module version that produced this verdict: a release or pseudo-version on stamped builds, or on unstamped local builds the module version Go embeds, dev+<commit>, or dev. Overrides and custom checks do not change it.",
@@ -175,21 +175,31 @@
         }
       }
     },
-    "affectedComponent": {
+    "affectedCheck": {
       "type": "object",
-      "description": "Summary of one domain with non-PASS results.",
-      "required": ["check_ids", "category", "max_severity"],
+      "description": "One non-PASS check in a domain and the entities that failed it. entities is omitted when the check names none.",
+      "required": ["check_id"],
       "properties": {
-        "check_ids": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "category": { "$ref": "#/$defs/category" },
-        "max_severity": { "$ref": "#/$defs/severity" },
+        "check_id": { "type": "string" },
         "entities": {
+          "description": "Entities this check failed on, sorted and without duplicates.",
           "type": "array",
           "items": { "type": "string" }
         }
+      }
+    },
+    "affectedComponent": {
+      "type": "object",
+      "description": "Summary of one domain with non-PASS results. Each check appears once.",
+      "required": ["checks", "category", "max_severity"],
+      "properties": {
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/affectedCheck" }
+        },
+        "category": { "$ref": "#/$defs/category" },
+        "max_severity": { "$ref": "#/$defs/severity" }
       }
     },
     "severity": {

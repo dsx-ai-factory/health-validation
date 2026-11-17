@@ -208,6 +208,56 @@ func TestToMeasurementsSourceFailuresCoverEachOther(t *testing.T) {
 	}
 }
 
+// When DCGM and NVML enumerate different GPUs, a GPU one source missed
+// reports that source's fields as never collected and keeps the other's
+// values; no GPU is dropped.
+func TestToMeasurementsPartialCrossSourceEnumeration(t *testing.T) {
+	on := func(source, uuid string, obs ...*observation.Observation) []*observation.Observation {
+		for _, o := range obs {
+			o.Source, o.Target = source, observation.GPUTarget(uuid)
+		}
+		return obs
+	}
+	dcgm := func(uuid string) []*observation.Observation { return on("dcgm", uuid, healthyGPUObservations()...) }
+	nvml := func(uuid string) []*observation.Observation {
+		return on("nvml", uuid,
+			valueObservation(gpusignals.ProcessCount.ID(), &observation.Value{Kind: &observation.Value_UintValue{UintValue: 0}}),
+			noValueObservation(gpusignals.ProcessCmdline.ID(), observation.NoValueReasonNoTargets))
+	}
+	dcgmFields := []string{gpu.SignalAveragePowerDrawW, gpu.SignalGPUPstate}
+	nvmlFields := []string{gpu.SignalComputeProcessCount, gpu.SignalComputeProcessCmdlines}
+	for _, test := range []struct {
+		name    string
+		obs     []*observation.Observation
+		missing []string // fields GPU-1 never collected
+		present []string // fields GPU-1 still has
+	}{
+		{name: "NVML missed GPU-1", obs: slices.Concat(dcgm("GPU-0"), dcgm("GPU-1"), nvml("GPU-0")), missing: nvmlFields, present: dcgmFields},
+		{name: "DCGM missed GPU-1", obs: slices.Concat(dcgm("GPU-0"), nvml("GPU-0"), nvml("GPU-1")), missing: dcgmFields, present: nvmlFields},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ms := ToMeasurements(test.obs)
+			if got, want := keysOf(ms), []health.EntityKey{health.VerifiedEntity("GPU-0"), health.VerifiedEntity("GPU-1")}; !slices.Equal(got, want) {
+				t.Fatalf("keys = %v, want %v", got, want)
+			}
+			if missing := missingSignals(ms[0].(gpu.GPUMeasurement)); len(missing) != 0 {
+				t.Errorf("GPU-0 missing %v, want none", missing)
+			}
+			missing := missingSignals(ms[1].(gpu.GPUMeasurement))
+			for _, field := range test.missing {
+				if !slices.Contains(missing, field) {
+					t.Errorf("GPU-1 %s not reported missing: %v", field, missing)
+				}
+			}
+			for _, field := range test.present {
+				if slices.Contains(failedSignals(ms[1].(gpu.GPUMeasurement)), field) {
+					t.Errorf("GPU-1 %s failed though its source read it", field)
+				}
+			}
+		})
+	}
+}
+
 // A run evaluates one node, so host-wide observations form one measurement
 // whatever node ID each target carries.
 func TestToMeasurementsHostWideIgnoresNodeID(t *testing.T) {

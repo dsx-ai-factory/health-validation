@@ -119,7 +119,7 @@ func TestNVMLReaderReadsBasicInventory(t *testing.T) {
 	if entries[0].GetGpu().GetUuid() != "GPU-0" || entries[0].GetGpu().GetModel() != "NVIDIA GB200" || entries[0].GetGpu().GetBusId() != "0000:01:00.0" {
 		t.Errorf("healthy entry = %v", entries[0].GetGpu())
 	}
-	// Legacy counts every slot whose handle loaded.
+	// Every slot whose handle loaded counts.
 	if count, ok := Count(snapshot); !ok || count != 3 {
 		t.Errorf("Count = %d, %v; want 3", count, ok)
 	}
@@ -202,10 +202,22 @@ func TestNVMLReaderFailures(t *testing.T) {
 	t.Run("read error", func(t *testing.T) {
 		inst := withRecords(gpu(0, "NVIDIA GB200"))
 		inst.readErr = nvmlsource.ErrInUse
-		if _, err := NVML(inst).Read(context.Background()); !errors.Is(err, nvmlsource.ErrInUse) {
-			t.Fatalf("err = %v, want ErrInUse", err)
+		if _, err := NVML(inst).Read(context.Background()); !errors.Is(err, nvmlsource.ErrInUse) || !errors.Is(err, ErrSourceBusy) {
+			t.Fatalf("err = %v, want ErrInUse marked ErrSourceBusy", err)
 		}
 	})
+}
+
+func TestOpenNVMLMarksBusyOpen(t *testing.T) {
+	open := OpenNVML(func() (nvmlsource.Instance, error) { return nil, nvmlsource.ErrInUse })
+	if _, err := open(); !errors.Is(err, nvmlsource.ErrInUse) || !errors.Is(err, ErrSourceBusy) {
+		t.Fatalf("err = %v, want ErrInUse marked ErrSourceBusy", err)
+	}
+	failed := errors.New("load NVML")
+	open = OpenNVML(func() (nvmlsource.Instance, error) { return nil, failed })
+	if _, err := open(); !errors.Is(err, failed) || errors.Is(err, ErrSourceBusy) {
+		t.Fatalf("err = %v, want only the open error", err)
+	}
 }
 
 // The driver version is recorded on every slot, failed ones included, so it

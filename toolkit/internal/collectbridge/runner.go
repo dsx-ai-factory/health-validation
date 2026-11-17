@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+// Package collectbridge runs collect sensors once per collection cycle and
+// hands their observations to catalog adapters. It is the CLI's production
+// adapter layer between collect and the catalog.
 package collectbridge
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -113,6 +117,35 @@ func (r *Runner) Owner(signalID string) string {
 func (r *Runner) Collect() {
 	for _, e := range r.entries {
 		e.batch = r.measure(e)
+		warnSourceFailures(e.id, e.batch)
+	}
+}
+
+// warnSourceFailures logs each distinct source-scoped collection error in
+// batch once. Node-wide sensors put every failure on the node target, so those
+// count as source-scoped; errors on any other target are entity faults the
+// verdict already names.
+func warnSourceFailures(sensor string, batch *observation.ObservationBatch) {
+	type failure struct {
+		source, operation string
+		category          observation.CollectionErrorCategory
+	}
+	seen := make(map[failure]bool)
+	for _, o := range batch.GetObservations() {
+		ce := o.GetCollectionError()
+		if ce == nil || (o.GetTarget() != nil && o.GetTarget().GetNode() == nil) {
+			continue
+		}
+		f := failure{source: ce.GetSource(), operation: ce.GetOperation(), category: ce.GetCategory()}
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		msg := "collect source failed; degrading to errored observations"
+		if f.category == observation.CollectionErrorCategoryTimeout {
+			msg = "collect source timed out; degrading to errored observations"
+		}
+		slog.Warn(msg, "sensor", sensor, "source", f.source, "operation", f.operation, "category", f.category, "error", ce.GetDetail())
 	}
 }
 

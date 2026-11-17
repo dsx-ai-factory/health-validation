@@ -6,14 +6,22 @@ Type definitions behind the verdict JSON. Enums serialize as strings, and struct
 
 ## Structs
 
-### AffectedComponent
+### AffectedCheck
 
-AffectedComponent summarizes a category with non-Pass results.
+AffectedCheck is one non-PASS check in a domain. Entities names the devices that failed it, sorted and without duplicates. A check that identifies no device leaves Entities empty.
 
 | Field | JSON name | Type | Description |
 |---|---|---|---|
-| <nobr>`CheckIDs`</nobr> | <nobr>`check_ids`</nobr> | <nobr>`[]string`</nobr> |  |
+| <nobr>`CheckID`</nobr> | <nobr>`check_id`</nobr> | <nobr>`string`</nobr> |  |
 | <nobr>`Entities`</nobr> | <nobr>`entities`</nobr> | <nobr>`[]string`</nobr> |  |
+
+### AffectedComponent
+
+AffectedComponent summarizes one category with non-PASS results. Each check appears once, with the entities that failed it.
+
+| Field | JSON name | Type | Description |
+|---|---|---|---|
+| <nobr>`Checks`</nobr> | <nobr>`checks`</nobr> | [<nobr>`[]AffectedCheck`</nobr>](#affectedcheck) |  |
 | <nobr>`Category`</nobr> | <nobr>`category`</nobr> | [<nobr>`Category`</nobr>](#category) |  |
 | <nobr>`MaxSeverity`</nobr> | <nobr>`max_severity`</nobr> | [<nobr>`Severity`</nobr>](#severity) |  |
 
