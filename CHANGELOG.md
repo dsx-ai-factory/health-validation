@@ -7,15 +7,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Breaking Changes
 
-- Verdict `schema_version` is now `0.6`. `affected_components` lists each
-  failing check once, under `checks`, with that check's `entities`. The
-  parallel `check_ids` and `entities` arrays are removed.
-  ([#210](https://github.com/dsx-ai-factory/health-validation/issues/210))
-- Collection failures report `UNKNOWN`
-  instead of `CRITICAL`. Update alerts that match collection failures as
-  `CRITICAL` to handle `UNKNOWN`. `CRITICAL` now ranks above `UNKNOWN`, and the
-  Go `Critical` and `Unknown` constants swap numeric values. ([#267](https://github.com/dsx-ai-factory/health-validation/pull/267))
-- Monitor recommendations can carry
+- Verdict `schema_version` is now `0.7`. Monitor recommendations can carry
   remediation steps and appear in the node-level summary. Consumers must inspect
   `operational_state` before treating a sequence as a drain workflow; application
   actions still require context from `check_results`.
@@ -34,6 +26,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Consumers determine repair scope from the check results and affected
   entities. The new `health.MonitorWith`
   builds a `monitor` recommendation with steps. ([#209](https://github.com/dsx-ai-factory/health-validation/issues/209), [#227](https://github.com/dsx-ai-factory/health-validation/issues/227))
+- Schema `0.6` changed `affected_components` to list each
+  failing check once, under `checks`, with that check's `entities`. The
+  parallel `check_ids` and `entities` arrays are removed.
+  ([#210](https://github.com/dsx-ai-factory/health-validation/issues/210))
+- Collection failures report `UNKNOWN`
+  instead of `CRITICAL`. Update alerts that match collection failures as
+  `CRITICAL` to handle `UNKNOWN`. `CRITICAL` now ranks above `UNKNOWN`, and the
+  Go `Critical` and `Unknown` constants swap numeric values. ([#267](https://github.com/dsx-ai-factory/health-validation/pull/267))
 - The `catalog`, `toolkit`, `collect`, and `agentkit` modules are merged into
   the single root module `github.com/dsx-ai-factory/health-validation`, with one
   `go.mod` and one version. Import paths are unchanged. Replace requires on

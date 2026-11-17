@@ -81,7 +81,7 @@ selects another context. The CLI applies the selected context through
 
 ## Output schema
 
-The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (`health.NodeVerdictSchemaVersion` in `catalog/health/verdict.go`, mirrored by `catalog/health/node-verdict.schema.json`); MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
+The `NodeVerdict` JSON is a versioned contract. Its `schema_version` field uses MAJOR.MINOR versioning (`health.NodeVerdictSchemaVersion` in `catalog/health/verdict.go`, mirrored by `catalog/health/node-verdict.schema.json`). Before 1.0, MINOR increments on contract changes, including breaking changes. From 1.0, MAJOR increments on breaking changes and MINOR on additive ones. Consumers must check this field before acting on a verdict and treat an unrecognized or missing value as untrusted.
 
 ### NodeVerdict
 

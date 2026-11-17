@@ -54,7 +54,7 @@ type CheckVerdict struct {
 // contract changes, including breaking changes. From 1.0, increment MAJOR for
 // breaking changes and MINOR for additive changes. When this changes, update
 // catalog/health/node-verdict.schema.json to match.
-const NodeVerdictSchemaVersion = "0.6"
+const NodeVerdictSchemaVersion = "0.7"
 
 // NodeVerdict aggregates per-check verdicts into a node-level
 // health assessment.
