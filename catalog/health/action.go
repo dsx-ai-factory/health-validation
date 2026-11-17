@@ -20,13 +20,15 @@ const (
 	// and no node-level action is recommended.
 	OperationalReady OperationalState = iota
 
-	// OperationalMonitor keeps the node in service but flags the
-	// finding for trending; no action required right now.
+	// OperationalMonitor keeps the node in service but flags the finding
+	// for trending. The accompanying [RemediationAction] sequence
+	// names the recommended corrective steps.
 	OperationalMonitor
 
 	// OperationalDrain removes the node from scheduling so the
 	// finding can be remediated. The accompanying [RemediationAction]
-	// sequence names the specific remediation steps.
+	// sequence names the specific remediation steps. Only CRITICAL and
+	// UNKNOWN results may recommend it; see [CheckDefinition.Validate].
 	OperationalDrain
 )
 
@@ -58,9 +60,8 @@ func (s *OperationalState) UnmarshalJSON(data []byte) error {
 }
 
 // RemediationAction is a single step in the remediation sequence carried
-// alongside [OperationalDrain]. It is meaningful only when the companion
-// [OperationalState] is [OperationalDrain]; verdicts elide the sequence
-// from JSON otherwise.
+// alongside [OperationalDrain] or [OperationalMonitor]. Verdicts elide the
+// sequence from JSON for [OperationalReady].
 //
 // Unlike the enum types in this package, RemediationAction is an open
 // string type: the constants below name the steps NVIDIA's own catalog
@@ -111,10 +112,11 @@ const (
 // OperationalState is the high-level state change to apply; RemediationActions
 // is the ordered sequence of remediation steps a cluster operator's
 // remediation engine should work through, and is only meaningful (and only
-// emitted in JSON) when OperationalState is [OperationalDrain].
+// emitted in JSON) when OperationalState is [OperationalDrain] or
+// [OperationalMonitor].
 //
-// Use [Drain] / [Monitor] / [NoAction] for readable call sites instead
-// of constructing the struct directly.
+// Use [Drain] / [MonitorWith] / [Monitor] / [NoAction] for readable call
+// sites instead of constructing the struct directly.
 type RecommendedAction struct {
 	RemediationActions []RemediationAction `json:"remediation_actions,omitempty"`
 	OperationalState   OperationalState    `json:"operational_state"`
@@ -138,11 +140,11 @@ func (r RecommendedAction) IsZero() bool {
 }
 
 // MarshalJSON enforces the invariant that RemediationActions is emitted
-// only when OperationalState is [OperationalDrain]. A non-Drain state
-// always serializes without a remediation_actions key, even if the
-// in-memory value carries one.
+// only when OperationalState is [OperationalDrain] or [OperationalMonitor].
+// Any other state serializes without a remediation_actions key, even if
+// the in-memory value carries one.
 func (r RecommendedAction) MarshalJSON() ([]byte, error) {
-	if r.OperationalState != OperationalDrain {
+	if r.OperationalState != OperationalDrain && r.OperationalState != OperationalMonitor {
 		r.RemediationActions = nil
 	}
 	type alias RecommendedAction
@@ -167,9 +169,23 @@ func GenericDrain() RecommendedAction {
 	return Drain(RemediationActionResetGPU, RemediationActionRestartOS, RemediationActionServiceRequired)
 }
 
+// MonitorWith returns an [OperationalMonitor] recommendation with the given
+// remediation steps.
+func MonitorWith(actions ...RemediationAction) RecommendedAction {
+	return RecommendedAction{OperationalState: OperationalMonitor, RemediationActions: actions}
+}
+
 // Monitor is the canonical "keep in service, watch the trend"
-// recommendation.
+// recommendation, with no remediation steps.
 var Monitor = RecommendedAction{OperationalState: OperationalMonitor}
+
+// validateRecommendedAction rejects a drain on a result below UNKNOWN.
+func validateRecommendedAction(checkID string, severity Severity, action RecommendedAction) error {
+	if action.OperationalState == OperationalDrain && severity < Unknown {
+		return fmt.Errorf("check %q: a %s result cannot recommend drain; use MonitorWith", checkID, severity)
+	}
+	return nil
+}
 
 // NoAction is the zero RecommendedAction.
 var NoAction = RecommendedAction{}

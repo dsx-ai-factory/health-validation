@@ -7,11 +7,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Breaking Changes
 
-- Verdict `schema_version` is now `0.6`. `affected_components` lists each
+- Verdict `schema_version` is now `0.7`. Monitor recommendations can carry
+  remediation steps and appear in the node-level summary. Consumers must inspect
+  `operational_state` before treating a sequence as a drain workflow; application
+  actions still require context from `check_results`.
+  `WARNING` and `INFO` results no longer recommend `drain`. The warning-class
+  Xid checks (including `gpu_xid_45` alone) now recommend `monitor` with
+  `["restart_app"]`, and `gpu_xid_78` recommends `monitor` with `["update_swfw"]`.
+  Xid 154 Drain P2P is now CRITICAL and retains its drain sequence because it
+  requires disabling scheduling and stopping P2P traffic.
+  `remediation_actions` is now emitted with `monitor` as well as `drain`, and
+  the node-level `recommended_action` can be a `monitor` sequence when no eligible
+  drain sequence exists. Drain sequences outrank monitor sequences, then severity
+  and action rank decide. Consumers that drain on `operational_state: drain` stop
+  draining for these findings. `CheckDefinition.Validate`, and so `Register`,
+  rejects rules below `UNKNOWN` that recommend `drain`. Any severity may
+  recommend `monitor`; CRITICAL and UNKNOWN still exit `1`.
+  Consumers determine repair scope from the check results and affected
+  entities. The new `health.MonitorWith`
+  builds a `monitor` recommendation with steps. ([#209](https://github.com/dsx-ai-factory/health-validation/issues/209), [#227](https://github.com/dsx-ai-factory/health-validation/issues/227))
+- Schema `0.6` changed `affected_components` to list each
   failing check once, under `checks`, with that check's `entities`. The
   parallel `check_ids` and `entities` arrays are removed.
   ([#210](https://github.com/dsx-ai-factory/health-validation/issues/210))
-- Verdict `schema_version` is now `0.5`. Collection failures report `UNKNOWN`
+- Collection failures report `UNKNOWN`
   instead of `CRITICAL`. Update alerts that match collection failures as
   `CRITICAL` to handle `UNKNOWN`. `CRITICAL` now ranks above `UNKNOWN`, and the
   Go `Critical` and `Unknown` constants swap numeric values. ([#267](https://github.com/dsx-ai-factory/health-validation/pull/267))
