@@ -82,8 +82,7 @@ func architectureSkips(verdict health.NodeVerdict) int {
 func TestRunCommandCollectsXidThroughBridge(t *testing.T) {
 	calls := 0
 	entry := observation.JournalEntryTarget("b", "c1")
-	a := cadenceRunApp()
-	a.xid = nil
+	a := testApp()
 	a.WithCollect(xidAppSensor{calls: &calls, obs: []*observation.Observation{
 		xidAppValue(xidsignals.Code, entry, &observation.Value{Kind: &observation.Value_IntValue{IntValue: 79}}),
 		xidAppValue(xidsignals.PCIAddress, entry, &observation.Value{Kind: &observation.Value_StringValue{StringValue: "0000:01:00"}}),
@@ -137,12 +136,11 @@ func (h busHost) gpuInventory() *gpuinventory.Inventory { return h.inventory }
 // second read; a GPU the inventory does not name keeps its PCI address.
 func TestRunCommandResolvesXidGPUUUIDs(t *testing.T) {
 	reads := 0
-	a := cadenceRunApp()
+	a := testApp() // registers its own Xid sensor below
 	a.host = busHost{
 		inventory: gpuinventory.New(func() (gpuinventory.Reader, error) { return busReader{reads: &reads}, nil }),
 		fakeHost:  a.host.(fakeHost),
 	}
-	a.xid = nil
 	var obs []*observation.Observation
 	for cursor, pci := range map[string]string{"c1": "0000:89:00", "c2": "0000:c1:00"} {
 		entry := observation.JournalEntryTarget("b", cursor)
@@ -180,8 +178,7 @@ func TestRunCommandResolvesXidGPUUUIDs(t *testing.T) {
 
 func TestRunCommandXidCleanScanPasses(t *testing.T) {
 	calls := 0
-	a := cadenceRunApp()
-	a.xid = nil
+	a := testApp()
 	a.WithCollect(xidAppSensor{calls: &calls, obs: []*observation.Observation{xidAppMarker()}}, xidsignals.All().IDs()...)
 	verdicts := runXidApp(t, a, exitOK)
 	if len(verdicts) == 0 {
@@ -208,8 +205,7 @@ func TestWithCollectRejectsPartialXidClaim(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			calls := 0
-			a := cadenceRunApp()
-			a.xid = nil
+			a := testApp()
 			a.WithCollect(xidAppSensor{calls: &calls}, claims...)
 			var stdout, stderr bytes.Buffer
 			if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code != exitError || stdout.Len() != 0 {

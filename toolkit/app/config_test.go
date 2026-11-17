@@ -354,17 +354,15 @@ func TestLoadConfigEmptyFile(t *testing.T) {
 func TestEvaluatePassingNode(t *testing.T) {
 	cat := catalog.New(catalog.WithArchitecture("GB200"))
 	sensors := []toolkit.Sensor{
-		toolkit.NewGPUSensor(toolkit.MockGPU(
+		measurementSensor{name: "gpu", ms: []health.Measurement{
 			gpu.GPUMeasurement{
 				GPUID:               "GPU-0",
 				AveragePowerDrawW:   220,
 				PowerLimitW:         1200,
 				EnforcedPowerLimitW: 1200,
 			},
-		)),
-		toolkit.NewNodeSensor(toolkit.MockNode(
-			node.NodeMeasurement{GPUCount: 4},
-		)),
+		}},
+		measurementSensor{name: "node", ms: []health.Measurement{node.NodeMeasurement{GPUCount: 4}}},
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -446,9 +444,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 	}
 
 	sensors := []toolkit.Sensor{
-		toolkit.NewNodeSensor(toolkit.MockNode(
-			node.NodeMeasurement{GPUCount: 4},
-		)),
+		measurementSensor{name: "node", ms: []health.Measurement{node.NodeMeasurement{GPUCount: 4}}},
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -495,9 +491,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 func TestEvaluateGPUCountMismatch(t *testing.T) {
 	cat := catalog.New(catalog.WithArchitecture("GB200"))
 	sensors := []toolkit.Sensor{
-		toolkit.NewNodeSensor(toolkit.MockNode(
-			node.NodeMeasurement{GPUCount: 3},
-		)),
+		measurementSensor{name: "node", ms: []health.Measurement{node.NodeMeasurement{GPUCount: 3}}},
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -805,8 +799,8 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("stdout c
 // Every run that reaches a verdict publishes it once after writing it, and
 // publishing never changes the exit code.
 func TestRunPublishesVerdictMetrics(t *testing.T) {
-	healthy := func() *App { return fixtureApp(healthyGB200(), collectPath) }
-	unhealthy := func() *App { return fixtureApp(unhealthyGB200(), collectPath) }
+	healthy := func() *App { return fixtureApp(healthyGB200()) }
+	unhealthy := func() *App { return fixtureApp(unhealthyGB200()) }
 	withHost := func(h hostBackend) func() *App {
 		return func() *App {
 			a := New().WithProgramName("test")

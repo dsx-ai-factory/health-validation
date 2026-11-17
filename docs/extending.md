@@ -20,9 +20,9 @@ health-validation itself.
 >   `Rule`, `ThresholdSpec`, the `Measurement` interface, the enums) and the
 >   `catalog` registry/evaluation engine — is the extension surface. Your check
 >   definitions are data written against it.
-> - The **toolkit** sensor and backend implementations (the NVML/sysfs/journal
->   sensors, the `toolkit.Collect` pipeline, the `app.App` builder, and the
->   probe seams shown below) are **reference implementations for demonstration
+> - The **toolkit** collection wiring (the collect bridge and adapters, the
+>   `toolkit.Collect` pipeline, the `app.App` builder, and the `GPUAdapter` and
+>   `WithCollect` seams shown below) are **reference implementations for demonstration
 >   and are subject to change.** They are functional today, but do not treat
 >   their API as stable; expect the collection wiring to churn.
 
@@ -292,9 +292,7 @@ Where the signal comes from depends on what reads it:
   sensors supply it from the sessions health-validation already holds, and only
   when a check that will run needs it. Power draw and limits, performance state,
   and the hardware slowdown signals come from DCGM, with no NVML fallback when
-  DCGM cannot read them; the rest come from NVML. The built-in GPU sensors stop
-  only when `WithGPUBackend` and `WithNVLinkBackend` are both set; then the
-  signal needs a sensor of your own.
+  DCGM cannot read them; the rest come from NVML.
 - **Any other signal:** register a collect sensor that produces it, claiming
   the signal IDs it supplies:
   `a.WithCollect(mysensor.New(), mysignals.All().IDs()...)`.
