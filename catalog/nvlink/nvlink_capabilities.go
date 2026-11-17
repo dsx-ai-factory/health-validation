@@ -24,6 +24,10 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // It declares a dependency on gpu_count so that a device missing from the
 // enumeration gpu_count measures is named as the cause here rather than
 // reported as an unexplained collection failure. Dependencies gate nothing.
+//
+// B300 is listed on a reading of all six per-link capabilities on two HGX
+// B300 nodes (nvidia-smi nvlink -c, driver 595): 8 GPUs x 18 links x 6
+// capabilities, every one supported.
 func NVLinkCapabilities() health.CheckDefinition {
 	return health.CheckDefinition{
 		ID:          "nvlink_capabilities",
@@ -46,7 +50,7 @@ func NVLinkCapabilities() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300", "B200"},
+		Architectures:     []string{"GB200", "GB300", "B200", "B300"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,

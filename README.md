@@ -246,9 +246,13 @@ Each check definition carries:
 
 > **GB300 support.** Most checks in the catalog declare support for both GB200 and GB300 in their `Architectures` field. GB200 support has been validated; GB300 support has not yet completed the same validation pass. Treat GB300 results as directionally correct but experimental and subject to change until this note is removed.
 
+> **B300 support.** HGX B300 (8 GPUs per x86_64 node, NVLink within the node only) is listed next to B200 on the checks that apply to a single HGX baseboard, with its per-architecture defaults (8 GPUs, 18 NVLink 5 links at 53125 MB/s) taken from operator measurements on B300 nodes. As for B200, the multi-node NVLink fabric checks, the GPU power limit and the NUMA node count are not listed. B300 has not completed the GB200 validation pass; treat its results like GB300's.
+
 Xid checks use the public NVIDIA Xid catalog's per-code applicability. H200
 uses the H100 applicability matrix because both products use the Hopper
 architecture; Xid 144-150 and their subtype checks remain Blackwell-only.
+B300 uses the B200 applicability matrix because both are Blackwell GPUs on an
+HGX baseboard, so it runs Xid 144-150 but not the Grace Blackwell-only Xid 142.
 Warning-class Xids are individual `gpu_xid_<code>` checks.
 
 ## Prerequisites

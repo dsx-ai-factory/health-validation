@@ -27,15 +27,15 @@ type criticalXid struct {
 }
 
 var (
-	allArchitectures             = []string{"GB200", "GB300", "B200", "H100", "H200", "A100"}
-	blackwellArchitectures       = []string{"GB200", "GB300", "B200"}
-	hopperBlackwellArchitectures = []string{"GB200", "GB300", "B200", "H100", "H200"}
+	allArchitectures             = []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "A100"}
+	blackwellArchitectures       = []string{"GB200", "GB300", "B200", "B300"}
+	hopperBlackwellArchitectures = []string{"GB200", "GB300", "B200", "B300", "H100", "H200"}
 	ampereHopperArchitectures    = []string{"H100", "H200", "A100"}
 	hopperArchitectures          = []string{"H100", "H200"}
 	// graceBlackwellArchitectures covers Xids NVIDIA's catalog marks
-	// GraceBlackwell and do not occur on an HGX B200 baseboard.
+	// GraceBlackwell and do not occur on an HGX B200 or B300 baseboard.
 	graceBlackwellArchitectures = []string{"GB200", "GB300"}
-	hgxArchitectures            = []string{"B200", "H100", "H200", "A100"}
+	hgxArchitectures            = []string{"B200", "B300", "H100", "H200", "A100"}
 )
 
 // resetAndService is the remediation sequence for a Xid code
@@ -155,7 +155,8 @@ var criticalXids = []criticalXid{
 }
 
 // nvlink5Xid is one Xid code in the NVLink5/NVSwitch fault family
-// (144-150, Blackwell-only). Unlike other Xid codes, NVRM itself marks
+// (144-150, Blackwell-only; on B300 the NVLink 5 links run to the HGX
+// baseboard's NVSwitches). Unlike other Xid codes, NVRM itself marks
 // each occurrence Fatal or Nonfatal in the log line, so the check
 // differentiates severity and action on that basis instead of firing
 // CRITICAL uniformly — see [nvlink5Check].
