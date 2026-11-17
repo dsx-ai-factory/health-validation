@@ -19,8 +19,8 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 //
 // The check is scoped to architectures with a known canonical GPU
 // count: 4 per node on GB200 and GB300 (one Grace Blackwell compute
-// tray) and on VR200 (one Vera Rubin compute tray), 8 per node on H100,
-// H200, B200 and B300 (HGX/DGX baseboards). A fleet
+// tray) and on VR200 (one Vera Rubin compute tray), 8 per node on B200
+// and B300 (HGX/DGX baseboards). A fleet
 // with a different SKU overrides expected_gpu_count via
 // [catalog.WithOverrides]; other architectures need an entry here
 // before the check runs on them.
