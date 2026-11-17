@@ -15,8 +15,10 @@ Registration restricts drain recommendations by severity:
   while the finding receives attention.
 
 `affected_entities` identifies the affected components; the consumer
-determines the repair scope. For example, `restart_app` targets the
-faulting application. Execution may require maintenance prerequisites.
+determines the repair scope. A collection failure that cannot be attributed
+to one device names the domain (`gpu`, `nvlink`) instead. For example, `gpu`
+covers the GPU domain; `restart_app` targets the faulting application, which
+the consumer identifies. Execution may require maintenance prerequisites.
 CRITICAL and UNKNOWN verdicts still exit `1`, including when they recommend
 `monitor`.
 
