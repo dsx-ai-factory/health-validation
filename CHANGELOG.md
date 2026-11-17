@@ -44,6 +44,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   with exit 2 once GPU architecture discovery succeeds, before the sensors
   are collected. If discovery fails, `run` still reports the
   `architecture_discovery` verdict and exits 1.
+- `collect/source/infiniband.New(files, excludedDevices ...string)` is now
+  `New(files, opts ...Option)`. Replace `New(files, names...)` with
+  `New(files, WithExcludedDevices(names...))`; a `[]string` spread into the
+  options no longer compiles. `WithVendors` selects devices by the PCI vendor
+  ID in `<device>/device/vendor` (`VendorNVIDIA` is `0x15b3`) instead of by
+  name. The defaults are unchanged: mlx-named devices, matching GPUd.
 
 ### Features
 
@@ -65,10 +71,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   skip.
 - `collect/sensors/infiniband.New` takes options; `WithLinkLayers` admits
   non-InfiniBand (RoCE) ports. The default stays InfiniBand-only.
-- `collect/source/infiniband.New` takes options: `WithExcludedDevices`
-  replaces the variadic exclusion list, and `WithVendors` selects devices by
-  the PCI vendor ID in `<device>/device/vendor` (`VendorNVIDIA` is `0x15b3`)
-  instead of by name. The default stays mlx-only, matching GPUd.
 
 ### Changed
 
