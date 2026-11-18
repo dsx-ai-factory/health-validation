@@ -18,7 +18,7 @@ Verifies each GPU has no inactive NVLinks.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr>, <nobr>`VR200`</nobr> |
+| Architectures | <nobr>`A100`</nobr>, <nobr>`H100`</nobr>, <nobr>`B200`</nobr>, <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`VR200`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`inactive_count`</nobr> |
 
 **Thresholds**
@@ -48,7 +48,7 @@ Verifies each GPU's NVLink link count and per-link speed match expected values.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`VR200`</nobr> |
+| Architectures | <nobr>`H100`</nobr>, <nobr>`B200`</nobr>, <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`VR200`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`link_count`</nobr>, <nobr>`speed_mbytes_per_sec`</nobr> |
 
 **Thresholds**
@@ -81,7 +81,7 @@ Verifies every NVLink on each GPU reports the capabilities required for multi-GP
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr> |
+| Architectures | <nobr>`B200`</nobr>, <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`all_links_support_p2p`</nobr>, <nobr>`all_links_support_sysmem_access`</nobr>, <nobr>`all_links_support_p2p_atomics`</nobr>, <nobr>`all_links_support_sysmem_atomics`</nobr>, <nobr>`all_links_support_sli`</nobr>, <nobr>`all_links_support_link`</nobr> |
 
 **Rules**
@@ -171,7 +171,7 @@ Verifies each GPU has healthy peer-to-peer NVLink connectivity to every other GP
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr> |
+| Architectures | <nobr>`A100`</nobr>, <nobr>`H100`</nobr>, <nobr>`B200`</nobr>, <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`unhealthy_p2p_peer_count`</nobr> |
 
 **Thresholds**

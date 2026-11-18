@@ -27,15 +27,15 @@ type criticalXid struct {
 }
 
 var (
-	allArchitectures             = []string{"GB200", "GB300", "B200", "H100", "H200", "A100"}
-	blackwellArchitectures       = []string{"GB200", "GB300", "B200"}
-	hopperBlackwellArchitectures = []string{"GB200", "GB300", "B200", "H100", "H200"}
-	ampereHopperArchitectures    = []string{"H100", "H200", "A100"}
+	allArchitectures             = []string{"A100", "H100", "H200", "B200", "GB200", "GB300"}
+	blackwellArchitectures       = []string{"B200", "GB200", "GB300"}
+	hopperBlackwellArchitectures = []string{"H100", "H200", "B200", "GB200", "GB300"}
+	ampereHopperArchitectures    = []string{"A100", "H100", "H200"}
 	hopperArchitectures          = []string{"H100", "H200"}
 	// graceBlackwellArchitectures covers Xids NVIDIA's catalog marks
 	// GraceBlackwell and do not occur on an HGX B200 baseboard.
 	graceBlackwellArchitectures = []string{"GB200", "GB300"}
-	hgxArchitectures            = []string{"B200", "H100", "H200", "A100"}
+	hgxArchitectures            = []string{"A100", "H100", "H200", "B200"}
 )
 
 // resetAndService is the remediation sequence for a Xid code

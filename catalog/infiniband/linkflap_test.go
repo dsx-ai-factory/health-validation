@@ -46,7 +46,7 @@ func TestRDMALinkFlapFatalDefinition(t *testing.T) {
 	if got, want := def.RequiredSignals, []string{infiniband.SignalOutageDurations}; !slices.Equal(got, want) {
 		t.Errorf("RequiredSignals = %v, want %v", got, want)
 	}
-	if got, want := def.Architectures, []string{"GB200", "GB300", "B200", "VR200"}; !slices.Equal(got, want) {
+	if got, want := def.Architectures, []string{"B200", "GB200", "GB300", "VR200"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
 	if !def.RecommendedAction.Equal(health.GenericDrain()) {

@@ -18,7 +18,7 @@ Verifies a node enumerated the expected number of GPUs for its architecture.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`VR200`</nobr> |
+| Architectures | <nobr>`B200`</nobr>, <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`VR200`</nobr> |
 | Required signals | <nobr>`gpu_count`</nobr> |
 
 **Thresholds**
