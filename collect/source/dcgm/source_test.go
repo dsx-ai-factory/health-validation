@@ -306,17 +306,14 @@ func TestGPUUUIDsEmptyRequestSkipsNativeWork(t *testing.T) {
 	}
 }
 
-func TestGPUUUIDsTimeoutPreservesIDsAndNativeGate(t *testing.T) {
+func TestGPUUUIDsCancellationPreservesIDsAndNativeGate(t *testing.T) {
 	gate := &sync.Mutex{}
 	native := &fakeNative{}
 	source := newSource(native, gate)
 	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
 		t.Fatal(err)
 	}
-	cycle, err := collect.NewCycleWithTimeout("UUIDs-after-metrics", time.Now(), 100*time.Millisecond)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cycle := newTestCycle(t, "UUIDs-after-metrics")
 	values := source.ReadGPUMetrics(context.Background(), cycle, 2, []string{signalPowerDraw})
 	if values[signalPowerDraw].Value == nil {
 		t.Fatal("metric read failed before optional enrichment")
@@ -326,16 +323,31 @@ func TestGPUUUIDsTimeoutPreservesIDsAndNativeGate(t *testing.T) {
 	release := sync.OnceFunc(func() { close(native.releaseRead) })
 	t.Cleanup(release)
 	requested := []uint{2, 7}
-	entries := source.GPUUUIDs(context.Background(), cycle, requested)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	uuidResult := make(chan []GPUIdentityEntry, 1)
+	go func() { uuidResult <- source.GPUUUIDs(ctx, cycle, requested) }()
+	select {
+	case <-native.uuidStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("UUID read did not start")
+	}
+	cancel()
+	var entries []GPUIdentityEntry
+	select {
+	case entries = <-uuidResult:
+	case <-time.After(5 * time.Second):
+		t.Fatal("UUID read did not return after cancellation")
+	}
 	if len(entries) != 2 || entries[0].Index != 2 || entries[1].Index != 7 {
-		t.Fatalf("UUID timeout lost IDs: %v", entries)
+		t.Fatalf("UUID cancellation lost IDs: %v", entries)
 	}
 	for _, entry := range entries {
-		if entry.UUIDError.GetOperation() != "identity" || entry.UUIDError.GetCategory() != observation.CollectionErrorCategoryTimeout {
-			t.Fatalf("UUID timeout failure = %v", entry.UUIDError)
+		if entry.UUIDError.GetOperation() != "identity" || entry.UUIDError.GetCategory() != observation.CollectionErrorCategoryUnavailable {
+			t.Fatalf("UUID cancellation failure = %v", entry.UUIDError)
 		}
 	}
-	for _, nextCycle := range []*collect.Cycle{cycle, newTestCycle(t, "after-UUID-timeout")} {
+	for _, nextCycle := range []*collect.Cycle{cycle, newTestCycle(t, "after-UUID-cancellation")} {
 		if result := source.ReadGPUMetrics(context.Background(), nextCycle, 2, []string{signalPowerDraw}); result[signalPowerDraw].CollectionError == nil {
 			t.Fatal("native work reentered during unfinished UUID lookup")
 		}
@@ -350,7 +362,7 @@ func TestGPUUUIDsTimeoutPreservesIDsAndNativeGate(t *testing.T) {
 	release()
 	waitForNativeGate(t, gate)
 	if readIDs := <-native.uuidReadIndices; !slices.Equal(readIDs, []uint{2, 7}) {
-		t.Fatalf("native lookup retained caller-owned IDs after timeout: %v", readIDs)
+		t.Fatalf("native lookup retained caller-owned IDs after cancellation: %v", readIDs)
 	}
 	if err := source.Close(); err != nil {
 		t.Fatal(err)

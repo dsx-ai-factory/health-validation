@@ -618,7 +618,7 @@ func TestHealthUUIDEnrichmentRequiresTypedDCGMGPUIdentity(t *testing.T) {
 	}
 }
 
-func TestHealthUUIDTimeoutPreservesIncidentsAndNativeGate(t *testing.T) {
+func TestHealthUUIDCancellationPreservesIncidentsAndNativeGate(t *testing.T) {
 	gate := &sync.Mutex{}
 	native := &healthLifecycleNative{
 		health: &fakeHealthWatch{report: &observation.DCGMHealthReport{
@@ -634,19 +634,35 @@ func TestHealthUUIDTimeoutPreservesIncidentsAndNativeGate(t *testing.T) {
 	t.Cleanup(release)
 	source := newSource(native, gate)
 	registerMetricAndHealth(t, source)
-	cycle, err := collect.NewCycleWithTimeout("health-uuid-timeout", time.Now(), 100*time.Millisecond)
-	if err != nil {
-		t.Fatal(err)
+	cycle := newTestCycle(t, "health-uuid-cancellation")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var result *observation.DCGMHealthReport
+	var failure *observation.CollectionError
+	finished := make(chan struct{})
+	go func() {
+		result, failure = source.ReadHealth(ctx, cycle)
+		close(finished)
+	}()
+	select {
+	case <-native.uuidStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("native UUID enrichment did not start")
 	}
-	result, failure := source.ReadHealth(context.Background(), cycle)
+	cancel()
+	select {
+	case <-finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("health read did not return after UUID enrichment cancellation")
+	}
 	if failure != nil || len(result.GetIncidents()) != 1 || result.Incidents[0].GetMessage() != "memory incident" ||
 		result.Incidents[0].Entity.GetGpu().GetNative().GetEntityId() != 2 || result.Incidents[0].Entity.GetGpu().GetUuid() != "" {
-		t.Fatalf("optional timeout lost native report: %v, %v", result, failure)
+		t.Fatalf("optional cancellation lost native report: %v, %v", result, failure)
 	}
 	if native.uuidCalls.Load() != 1 || native.health.readCalls.Load() != 1 {
 		t.Fatal("test did not reach optional UUID enrichment")
 	}
-	for _, laterCycle := range []*collect.Cycle{cycle, newTestCycle(t, "after-uuid-timeout")} {
+	for _, laterCycle := range []*collect.Cycle{cycle, newTestCycle(t, "after-uuid-cancellation")} {
 		values := source.ReadGPUMetrics(context.Background(), laterCycle, 2, []string{signalPowerDraw})
 		if values[signalPowerDraw].CollectionError == nil || native.readCalls.Load() != 0 {
 			t.Fatal("metric read entered DCGM during unfinished UUID enrichment")
