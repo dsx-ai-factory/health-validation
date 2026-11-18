@@ -261,6 +261,9 @@ func (agent *verdictAgent) evaluate(ctx context.Context, req *healthv1.EvaluateR
 			// Native calls can outlive their watchdog. Admission and shutdown
 			// wait for completion before touching the same backend again.
 			tracker.Wait()
+			if err := agent.app.host.releaseCycle(); err != nil {
+				slog.Warn("releasing idle GPU resources failed", "error", err)
+			}
 			agent.setTracker(nil)
 			<-agent.gate
 		}()

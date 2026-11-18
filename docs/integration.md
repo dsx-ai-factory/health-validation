@@ -14,8 +14,9 @@ the check catalog, and produces one `NodeVerdict`. Choose either operating mode:
 
 - `health-validation run` writes the verdict as JSON to stdout and exits.
 - `health-validation serve` waits for HTTP or gRPC requests and returns a fresh
-  verdict to each caller. It reuses process-level backend handles and serializes
-  collection; it does not cache verdicts or schedule evaluations.
+  verdict to each caller. It reuses backend objects and serializes
+  collection, releasing its NVML instance between requests; it does not cache
+  verdicts or schedule evaluations.
 
 Neither mode streams measurements or performs cross-node correlation. See [Architecture](/health-validation/getting-started/architecture)
 for the data flow. Two consequences shape everything below:

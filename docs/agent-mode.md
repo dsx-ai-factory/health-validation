@@ -125,6 +125,13 @@ changes the running process's exit policy.
 ## Concurrency, deadlines, and shutdown
 
 The service serializes evaluations because host NVML/DCGM sources are shared.
+After each evaluation, it waits for all underlying native calls to finish, then
+shuts down its NVML instance before admitting another collection. Successful
+cleanup releases the service's GPU device handles while idle; the next request
+opens a fresh instance, inventory reader, and sensor. A cleanup failure is
+logged and ownership is retained for a later retry. Other GPU clients, including
+nv-hostengine, still need to release their own handles before a GPU reset.
+
 A DCGM `DCGM_ST_CONNECTION_NOT_VALID` collection failure marks that client
 session stale. The failure remains in the current verdict; the next collection
 closes the old session and creates a new client and field watches. Recovery

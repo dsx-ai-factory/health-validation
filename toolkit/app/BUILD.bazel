@@ -74,6 +74,7 @@ go_test(
         "recovering_dcgm_sensor_test.go",
         "run_fixture_test.go",
         "run_verdict_test.go",
+        "serve_lifecycle_test.go",
         "serve_test.go",
         "version_test.go",
         "xid_collect_test.go",

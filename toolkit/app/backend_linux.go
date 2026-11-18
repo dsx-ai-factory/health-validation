@@ -100,8 +100,33 @@ func (h *nvmlHost) sharedNVMLSensor() (collect.Sensor, error) {
 	return h.nvmlSensor, nil
 }
 
-func (h *nvmlHost) gpuSensors() []collect.Sensor          { return h.gpu }
-func (h *nvmlHost) gpuInventory() *gpuinventory.Inventory { return h.inventory }
+func (h *nvmlHost) gpuSensors() []collect.Sensor { return h.gpu }
+func (h *nvmlHost) gpuInventory() *gpuinventory.Inventory {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.inventory
+}
+
+// releaseCycle lets reset tooling use idle GPUs without stopping the agent.
+func (h *nvmlHost) releaseCycle() error {
+	h.mu.Lock()
+	inst := h.inst
+	h.mu.Unlock()
+	if inst == nil {
+		return nil
+	}
+	// Shutdown can enter native code; keep mu available to process shutdown.
+	if err := inst.Shutdown(); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.inst == inst {
+		h.inst, h.nvmlSensor, h.nvmlSensorInst = nil, nil, nil
+		h.inventory = gpuinventory.New(gpuinventory.OpenNVML(h.instance))
+	}
+	return nil
+}
 
 // close leaves the collect NVML instance and the DCGM client open while a
 // timed-out native call still holds them; the process exits shortly after.

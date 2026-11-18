@@ -94,6 +94,8 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 type hostBackend interface {
 	gpuSensors() []collect.Sensor
 	gpuInventory() *gpuinventory.Inventory
+	// releaseCycle runs after all agent collection calls finish.
+	releaseCycle() error
 	close() error
 }
 

@@ -445,7 +445,8 @@ func (h fakeHost) gpuInventory() *gpuinventory.Inventory {
 		return inventoryReader{gpus: 4, model: "NVIDIA GB200", driver: h.driver}, nil
 	})
 }
-func (fakeHost) close() error { return nil }
+func (fakeHost) releaseCycle() error { return nil }
+func (fakeHost) close() error        { return nil }
 
 // inventoryReader reports a basic inventory of identical GPUs without NVML.
 // An empty driver leaves the driver version unrecorded.
@@ -476,6 +477,7 @@ type panicHost struct{}
 
 func (panicHost) gpuSensors() []collect.Sensor          { panic("unexpected GPU sensor access") }
 func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
+func (panicHost) releaseCycle() error                   { panic("unexpected host cycle release") }
 func (panicHost) close() error                          { panic("unexpected host backend close") }
 
 func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
@@ -926,7 +928,8 @@ func (h erroringHost) gpuSensors() []collect.Sensor {
 func (erroringHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })
 }
-func (erroringHost) close() error { return nil }
+func (erroringHost) releaseCycle() error { return nil }
+func (erroringHost) close() error        { return nil }
 
 // TestRunCommandArchDiscoveryFailureDrains confirms an architecture-discovery
 // error yields a Critical verdict and does NOT collect: a healthy node is not

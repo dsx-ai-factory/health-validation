@@ -36,7 +36,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 - Health Validation emits verdicts. It does not take action. `run` exits after writing JSON; `serve` returns one verdict per request over local HTTP/gRPC. What happens to the node is the downstream system's decision.
 - Health Validation is node-local. Each run evaluates one node's measurements. There is no cross-node analysis, fleet correlation, or pattern detection.
-- Health Validation is not a monitoring system. It evaluates on demand: once per `run` invocation or once per `serve` request. Agent mode retains backend/source handles but starts a fresh collection cycle for each request; it does not cache verdicts, poll automatically, or stream signals continuously.
+- Health Validation is not a monitoring system. It evaluates on demand: once per `run` invocation or once per `serve` request. Agent mode retains backend/source objects but starts a fresh collection cycle for each request and releases its NVML instance after native calls finish; it does not cache verdicts, poll automatically, or stream signals continuously.
 - Health Validation is not a host security boundary. It does not authenticate workload submitters, enforce tenant isolation, or attest to host compliance.
 
 ### Common operator misreads
@@ -248,7 +248,10 @@ response writing. It must exceed the source timeout; allow time for sequential
 sources and verdict production. Client cancellation propagates through
 the collection bridge. `collect.WithCallTracking` tracks underlying
 calls that outlive watchdogs; admission stays closed until those calls return,
-so a timed-out native call cannot overlap the next collection. Queued and new
+so a timed-out native call cannot overlap the next collection. After tracking
+finishes, agent mode releases NVML before reopening admission. Successful
+release clears the cached instance, sensor, and inventory reader; the next
+request opens fresh handles so idle serve does not block GPU resets. Queued and new
 callers receive an UNKNOWN `collection_source_busy` verdict naming unfinished
 sources and their call start times, with `retry_collection`. Preserve that
 lifetime boundary when changing cancellation or shutdown handling.

@@ -45,4 +45,5 @@ var stubInventory = gpuinventory.New(func() (gpuinventory.Reader, error) {
 })
 
 func (stubHost) gpuInventory() *gpuinventory.Inventory { return stubInventory }
+func (stubHost) releaseCycle() error                   { return nil }
 func (stubHost) close() error                          { return nil }
