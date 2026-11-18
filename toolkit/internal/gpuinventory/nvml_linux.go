@@ -66,7 +66,7 @@ func (r nvmlReader) Refresh(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return r.inst.Refresh()
+	return markBusy(r.inst.Refresh())
 }
 
 func (r nvmlReader) Read(ctx context.Context) (*observation.GPUInventorySnapshot, error) {
