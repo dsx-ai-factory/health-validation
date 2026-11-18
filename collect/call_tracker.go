@@ -32,13 +32,13 @@ func WithCallTracking(ctx context.Context) (context.Context, *CallTracker) {
 // Wait waits for the underlying calls, including calls abandoned by watchdogs.
 func (tracker *CallTracker) Wait() { tracker.calls.Wait() }
 
-// StuckCall identifies a source call still running after its caller stopped waiting.
+// StuckCall identifies an unfinished source call whose watchdog expired.
 type StuckCall struct {
 	Since  time.Time
 	Source string
 }
 
-// StuckCalls returns unfinished abandoned calls and a notification for the next
+// StuckCalls returns calls whose watchdogs expired and a notification for the next
 // tracking change. The returned values are independent of the tracker.
 func (tracker *CallTracker) StuckCalls() ([]StuckCall, <-chan struct{}) {
 	tracker.mu.Lock()
@@ -69,7 +69,7 @@ func (tracker *CallTracker) notify() {
 }
 
 // TrackSourceCall registers a named source call. finish clears the live call;
-// abandon records that a watchdog or cancellation stopped waiting for it.
+// abandon marks the unfinished call after its source watchdog expires.
 func TrackSourceCall(ctx context.Context, source string) (finish, abandon func()) {
 	tracker, _ := ctx.Value(callTrackerKey{}).(*CallTracker)
 	if tracker == nil {
@@ -98,4 +98,15 @@ func TrackSourceCall(ctx context.Context, source string) (finish, abandon func()
 			}
 			tracker.mu.Unlock()
 		}
+}
+
+// TrackSourceCallWithTimeout tracks work until it returns. The source watchdog
+// keeps running after client cancellation, which alone does not mark work stuck.
+func TrackSourceCallWithTimeout(ctx context.Context, source string, timeout time.Duration) func() {
+	if _, ok := ctx.Value(callTrackerKey{}).(*CallTracker); !ok {
+		return func() {}
+	}
+	finish, abandon := TrackSourceCall(ctx, source)
+	timer := time.AfterFunc(timeout, abandon)
+	return func() { timer.Stop(); finish() }
 }

@@ -23,6 +23,7 @@ go_test(
     name = "collect_test",
     srcs = [
         "call_tracker_test.go",
+        "call_tracker_timeout_test.go",
         "collect_test.go",
         "cycle_test.go",
     ],

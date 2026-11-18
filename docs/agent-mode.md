@@ -165,8 +165,12 @@ the full RPC, including response delivery.
 Cancellation propagates to cooperative sensors. Native calls can outlive a
 watchdog because they cannot be interrupted. The service tracks that work and
 keeps admission closed until it returns, even after the canceled request has
-received an error. While an abandoned call remains unfinished, queued and new
-callers receive an UNKNOWN `collection_source_busy` verdict naming its source
+received an error. Client cancellation or a client deadline alone does not
+produce a busy-source verdict: subsequent callers keep waiting within their own
+request budgets. The source's original watchdog continues independently. If
+the call finishes before that watchdog expires, collection resumes normally.
+If the source watchdog expires while work is unfinished, queued and new callers
+receive an UNKNOWN `collection_source_busy` verdict naming its source
 and call start time, with `retry_collection`. These verdicts use the normal
 post-response metrics path. Fresh collection resumes when all underlying calls
 return. This prevents an unresponsive source from accumulating overlapping

@@ -251,8 +251,10 @@ calls that outlive watchdogs; admission stays closed until those calls return,
 so a timed-out native call cannot overlap the next collection. After tracking
 finishes, agent mode releases NVML before reopening admission. Successful
 release clears the cached instance, sensor, and inventory reader; the next
-request opens fresh handles so idle serve does not block GPU resets. Queued and new
-callers receive an UNKNOWN `collection_source_busy` verdict naming unfinished
+request opens fresh handles so idle serve does not block GPU resets. Client
+cancellation alone keeps later callers waiting; each source's watchdog continues
+independently until its callback returns. Once a source watchdog expires,
+queued and new callers receive an UNKNOWN `collection_source_busy` verdict naming unfinished
 sources and their call start times, with `retry_collection`. Preserve that
 lifetime boundary when changing cancellation or shutdown handling.
 

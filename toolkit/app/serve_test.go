@@ -175,7 +175,7 @@ func (backend *blockingAgentSource) Measure(ctx context.Context, opts ...collect
 	return (gpuSpySensor{called: new(bool)}).Measure(ctx, opts...)
 }
 
-func TestAgentKeepsTimedOutNativeWorkSerialized(t *testing.T) {
+func TestAgentKeepsCanceledNativeWorkSerialized(t *testing.T) {
 	backend := &blockingAgentSource{started: make(chan struct{}, 2), release: make(chan struct{})}
 	defer func() {
 		select {
@@ -204,9 +204,9 @@ func TestAgentKeepsTimedOutNativeWorkSerialized(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("canceled request did not return")
 	}
-	queued, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	queued, stop := context.WithTimeout(context.Background(), 25*time.Millisecond)
 	defer stop()
-	if verdict, err := agent.evaluate(queued, &healthv1.EvaluateRequest{}); err != nil || verdict.GetOverallSeverity() != healthv1.Severity_UNKNOWN {
+	if _, err := agent.evaluate(queued, &healthv1.EvaluateRequest{}); status.Code(err) != codes.DeadlineExceeded {
 		t.Fatalf("queued request = %v", err)
 	}
 	if got := backend.calls.Load(); got != 1 {

@@ -108,7 +108,7 @@ func Run[T any](
 		err   error
 	}
 	completed := make(chan result, 1)
-	finished, abandoned := TrackSourceCall(ctx, source)
+	finished := TrackSourceCallWithTimeout(ctx, source, cycle.timeout)
 	go func() {
 		defer finished()
 		current := result{}
@@ -124,12 +124,10 @@ func Run[T any](
 	select {
 	case current := <-completed:
 		if err := callContext.Err(); err != nil {
-			abandoned()
 			return zero, cycle.markSourceWedged(source, sourceContextError(source, err))
 		}
 		return current.value, current.err
 	case <-callContext.Done():
-		abandoned()
 		return zero, cycle.markSourceWedged(
 			source,
 			sourceContextError(source, callContext.Err()),
