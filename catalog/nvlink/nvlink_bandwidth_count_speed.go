@@ -15,10 +15,10 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // link that silently halves multi-GPU collective throughput without
 // raising an error.
 //
-// Covers GB200, GB300, B200 and H100 with per-architecture expected speeds
-// (53125 / 53125 / 53125 / 26562 MB/s), all at 18 links, and VR200 at 36
-// links of 41000 MB/s. A100 (12 links) and H200 are not yet covered; they
-// need their own PerArchitecture entries before being added.
+// Covers GB200, GB300, B200, B300 and H100 with per-architecture expected
+// speeds (53125 / 53125 / 53125 / 53125 / 26562 MB/s), all at 18 links, and
+// VR200 at 36 links of 41000 MB/s. A100 (12 links) and H200 are not yet
+// covered; they need their own PerArchitecture entries before being added.
 //
 // Speed values are MegaBytes per second, matching NVML's
 // FI_DEV_NVLINK_SPEED_MBPS_COMMON field. NVML's "MBPS" suffix is a
@@ -43,7 +43,7 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300", "B200", "H100", "VR200"},
+		Architectures:     []string{"GB200", "GB300", "B200", "B300", "H100", "VR200"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
@@ -57,13 +57,14 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 					"GB200": int64(18),
 					"GB300": int64(18),
 					"B200":  int64(18),
+					"B300":  int64(18),
 					"H100":  int64(18),
 					"VR200": int64(36),
 				},
 				ValueType:   health.ThresholdInt64,
 				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
-				Description: "Expected NVLinks per GPU. GB200, GB300 and B200 expose 18 NVLink 5 links; H100 exposes 18 NVLink 4 links; VR200 exposes 36 links.",
+				Description: "Expected NVLinks per GPU. GB200, GB300, B200 and B300 expose 18 NVLink 5 links; H100 exposes 18 NVLink 4 links; VR200 exposes 36 links.",
 				Unit:        "count",
 			},
 			"expected_speed_mbytes_per_sec": {
@@ -72,13 +73,14 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 					"GB200": int64(53125),
 					"GB300": int64(53125),
 					"B200":  int64(53125),
+					"B300":  int64(53125),
 					"H100":  int64(26562),
 					"VR200": int64(41000),
 				},
 				ValueType:   health.ThresholdInt64,
 				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
-				Description: "Expected per-link NVLink speed in MegaBytes per second. GB200, GB300 and B200 NVLink 5 at 53125, H100 NVLink 4 at 26562, VR200 at 41000.",
+				Description: "Expected per-link NVLink speed in MegaBytes per second. GB200, GB300, B200 and B300 NVLink 5 at 53125, H100 NVLink 4 at 26562, VR200 at 41000.",
 				Unit:        "MB/s",
 			},
 		},

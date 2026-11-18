@@ -110,6 +110,43 @@ func TestCatalog_ListByArchitecture(t *testing.T) {
 	}
 }
 
+// TestCatalog_B300Coverage pins the exact set of built-in checks that run on
+// an HGX B300 node. The NVLink fabric checks, gpu_power_limit and
+// numa_node_count stay off, and the Xid checks are exactly B200's.
+func TestCatalog_B300Coverage(t *testing.T) {
+	cat := New()
+	ids := func(architecture string, isXid bool) []string {
+		var out []string
+		for _, cd := range cat.List(Filter{Architecture: architecture}) {
+			if (cd.Category == health.Xid) == isXid {
+				out = append(out, cd.ID)
+			}
+		}
+		slices.Sort(out)
+		return out
+	}
+	want := []string{
+		"cpu_count",
+		"gpu_average_power_draw",
+		"gpu_compute_apps",
+		"gpu_count",
+		"gpu_power_state",
+		"gpu_sensor_throttle",
+		"nvlink_active",
+		"nvlink_bandwidth_count_speed",
+		"nvlink_capabilities",
+		"nvlink_p2p",
+		"rdma_linkflap_fatal",
+	}
+	if got := ids("B300", false); !slices.Equal(got, want) {
+		t.Errorf("non-Xid checks on B300 = %v, want %v", got, want)
+	}
+	gotXid, wantXid := ids("B300", true), ids("B200", true)
+	if len(wantXid) == 0 || !slices.Equal(gotXid, wantXid) {
+		t.Errorf("Xid checks on B300 = %v, want B200's %v", gotXid, wantXid)
+	}
+}
+
 func TestCatalog_Len(t *testing.T) {
 	cat := NewEmpty()
 	if cat.Len() != 0 {

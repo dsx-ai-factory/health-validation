@@ -71,6 +71,28 @@ func TestGPUCount(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
+			// B300 resolves its PerArchitecture default of 8 (one HGX
+			// baseboard), so a full node passes.
+			name:         "B300 accepts 8 GPUs",
+			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("B300")) },
+			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 8} },
+			wantSeverity: health.Pass,
+		},
+		{
+			// The GB200/GB300 tray count is a failure on B300, not a pass.
+			name:         "B300 with a tray's 4 GPUs fails",
+			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("B300")) },
+			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 4} },
+			wantSeverity: health.Critical,
+		},
+		{
+			// GB300 keeps its tray count of 4.
+			name:         "GB300 accepts 4 GPUs",
+			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("GB300")) },
+			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 4} },
+			wantSeverity: health.Pass,
+		},
+		{
 			name:         "VR200 accepts 4 GPUs",
 			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("VR200")) },
 			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 4} },

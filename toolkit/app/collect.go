@@ -206,7 +206,7 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 // field 155, and NVML power usage) is the one-second average that
 // average_power_draw_w holds. NVML documents it as averaged on Ampere except
 // GA100 and newer, and instantaneous on GA100 and older.
-var averagedPowerDrawArchitectures = []string{"H100", "H200", "B200", "GB200", "GB300", "VR200"}
+var averagedPowerDrawArchitectures = []string{"H100", "H200", "B200", "B300", "GB200", "GB300", "VR200"}
 
 // powerDrawGate keeps gpu.power.draw values only where the node architecture
 // averages them. Elsewhere a value becomes NOT_SUPPORTED, and with no
