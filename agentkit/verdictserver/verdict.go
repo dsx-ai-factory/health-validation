@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -114,7 +115,13 @@ func ServeListener(ctx context.Context, listener net.Listener, handler Handler, 
 	grpcStopped := make(chan struct{})
 	go func() { grpcServer.GracefulStop(); close(grpcStopped) }()
 	httpStopped := make(chan struct{})
-	go func() { _ = httpServer.Shutdown(shutdownCtx); close(httpStopped) }()
+	go func() {
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("HTTP graceful shutdown failed; closing active connections", "error", err)
+			_ = httpServer.Close()
+		}
+		close(httpStopped)
+	}()
 	select {
 	case <-grpcStopped:
 	case <-shutdownCtx.Done():

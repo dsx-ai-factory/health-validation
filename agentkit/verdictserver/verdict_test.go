@@ -487,3 +487,80 @@ func TestVerdictWriteDeadlineStartsAfterEvaluation(t *testing.T) {
 		}
 	})
 }
+
+func TestVerdictHTTPShutdownCancelsActiveRequest(t *testing.T) {
+	entered, canceled := make(chan struct{}), make(chan struct{})
+	grpcEntered := make(chan struct{})
+	address, cancel, stopped := startVerdictServer(t, func(ctx context.Context, request *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
+		if request.GetNodeId() == "grpc" {
+			close(grpcEntered)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		close(entered)
+		<-ctx.Done()
+		close(canceled)
+		return nil, ctx.Err()
+	}, WithShutdownTimeout(20*time.Millisecond))
+	ctx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stop()
+	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	grpcDone := make(chan struct{})
+	go func() {
+		defer close(grpcDone)
+		_, _ = healthv1.NewVerdictServiceClient(connection).Evaluate(ctx, &healthv1.EvaluateRequest{NodeId: proto.String("grpc")})
+	}()
+	select {
+	case <-grpcEntered:
+	case <-ctx.Done():
+		t.Fatal("gRPC handler did not start")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+address+"/verdict", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := make(chan error, 1)
+	go func() {
+		response, callErr := http.DefaultClient.Do(request)
+		if response != nil {
+			response.Body.Close()
+		}
+		finished <- callErr
+	}()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("HTTP handler did not start")
+	}
+	cancel()
+	select {
+	case shutdownErr := <-stopped:
+		if shutdownErr != nil {
+			t.Fatal(shutdownErr)
+		}
+	case <-ctx.Done():
+		t.Fatal("shutdown did not finish")
+	}
+	select {
+	case <-canceled:
+	case <-ctx.Done():
+		t.Fatal("shutdown left the active HTTP handler running")
+	}
+	select {
+	case <-grpcDone:
+	case <-ctx.Done():
+		t.Fatal("shutdown left the gRPC client waiting")
+	}
+	select {
+	case callErr := <-finished:
+		if callErr == nil {
+			t.Fatal("shutdown left the active HTTP connection open")
+		}
+	case <-ctx.Done():
+		t.Fatal("shutdown left the HTTP client waiting")
+	}
+}
