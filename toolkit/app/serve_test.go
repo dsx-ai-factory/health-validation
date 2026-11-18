@@ -365,36 +365,35 @@ func TestServeStartupRejectsBadConfigAndFlags(t *testing.T) {
 	}
 }
 
-func TestServeListenerRequiresExplicitRemoteOptIn(t *testing.T) {
+func TestServeListenerRequiresLoopback(t *testing.T) {
 	for _, tc := range []struct {
-		address     string
-		allowRemote bool
-		valid       bool
+		address string
+		valid   bool
 	}{
-		{"127.0.0.1:0", false, true},
-		{"127.0.0.2:8080", false, true},
-		{"[::1]:8080", false, true},
-		{"[::ffff:127.0.0.1]:8080", false, true},
-		{"0.0.0.0:8080", false, false},
-		{"[::]:8080", false, false},
-		{":8080", false, false},
-		{"192.0.2.1:8080", false, false},
-		{"localhost:8080", false, false},
-		{"0.0.0.0:8080", true, true},
-		{"[::]:8080", true, true},
-		{"192.0.2.1:8080", true, true},
-		{"localhost:8080", true, true},
-		{"bad-address", true, false},
+		{"127.0.0.1:0", true},
+		{"127.0.0.2:8080", true},
+		{"[::1]:8080", true},
+		{"[::ffff:127.0.0.1]:8080", true},
+		{"0.0.0.0:8080", false},
+		{"[::]:8080", false},
+		{":8080", false},
+		{"192.0.2.1:8080", false},
+		{"[2001:db8::1]:8080", false},
+		{"localhost:8080", false},
+		{"bad-address", false},
 	} {
-		if err := validateListenAddress(tc.address, tc.allowRemote); (err == nil) != tc.valid {
-			t.Errorf("address=%q allowRemote=%v: %v", tc.address, tc.allowRemote, err)
+		if err := validateListenAddress(tc.address); (err == nil) != tc.valid {
+			t.Errorf("address=%q: %v", tc.address, err)
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+}
+
+func TestServeRejectsRemovedRemoteFlag(t *testing.T) {
+	a := New().WithProgramName("test")
+	a.host = panicHost{}
 	var stderr bytes.Buffer
-	if code := cadenceRunApp().serve(ctx, []string{"--address", "0.0.0.0:0", "--allow-remote"}, &stderr); code != exitOK {
-		t.Fatalf("explicit remote opt-in exit=%d: %s", code, &stderr)
+	if code := a.serve(context.Background(), []string{"--address", "0.0.0.0:0", "--allow-remote"}, &stderr); code != exitError || !strings.Contains(stderr.String(), "flag provided but not defined: -allow-remote") {
+		t.Fatalf("removed flag exit=%d: %s", code, &stderr)
 	}
 }
 

@@ -35,19 +35,17 @@ a `NodeVerdict`. Generate clients from
 Generated Go types are in
 `github.com/dsx-ai-factory/health-validation/proto/go/health/v1`.
 
-The default address is `127.0.0.1:8080`. Without `--allow-remote`, the listener
-requires a numeric loopback IP such as `127.0.0.1` or `::1`. Wildcard addresses,
-remote IPs, and hostnames require this explicit opt-in. The API is intended for
-callers local to the node or its container environment; this version has no
-TLS, authentication, or rate limiting, including when `--allow-remote` is set.
-Choose the listener and container networking accordingly.
+The default address is `127.0.0.1:8080`. The listener requires a numeric loopback
+IP such as `127.0.0.1` or `::1`. Wildcard addresses, remote IPs, and hostnames
+are rejected. Callers must share the service's network namespace. This version
+has no TLS, authentication, or rate limiting; every caller that can reach the
+listener must be trusted.
 
 ## Defaults and request overrides
 
 | Setting | CLI default | Per-request behavior |
 | --- | --- | --- |
 | `--address` | `127.0.0.1:8080` | One listener for HTTP/1 and gRPC |
-| `--allow-remote` | false | Allow a non-loopback listener; does not enable TLS or authentication |
 | `--request-timeout` | `2m` | Admission and evaluation budget; must exceed `collection_timeout_seconds` |
 | `--node-id` | App-configured identifier, otherwise system hostname | Optional `node_id` replaces it for one request; whitespace-only values fail |
 | `--cadence` | Omitted: all registered checks | Optional `cadence` selects `CONTINUOUS`, `PROLOG`, or `MAINTENANCE` |
@@ -233,9 +231,9 @@ The one-shot `scripts/health-validation-run.sh` wrapper inserts `run` and is not
 a `serve` launcher.
 
 For Kubernetes, reuse the GPU allocation and journal mounts or journalctl shim
-from the integration guide, change the container arguments to `serve`, and pick
-an address reachable by the intended local caller. A sidecar shares its pod's
-network namespace and can use loopback. No readiness or liveness endpoint is
+from the integration guide and change the container arguments to `serve`.
+The caller must share the service's network namespace; a sidecar in the same
+pod can use loopback. No readiness or liveness endpoint is
 provided; `/verdict` performs a full health evaluation.
 
 ## Run under systemd

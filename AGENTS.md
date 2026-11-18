@@ -229,7 +229,7 @@ If the dep ends up linked into the CLI, `toolkit/cmd/health-validation/SHIPPED_M
 ### Agent mode (`health-validation serve`)
 
 `serve --address 127.0.0.1:8080` exposes `VerdictService.Evaluate` and
-`GET/POST /verdict` on one plaintext TCP port. The default listener is loopback.
+`GET/POST /verdict` on one plaintext TCP port. The listener accepts only numeric loopback IPs.
 `toolkit/app/evaluation.go` is the shared `run`/`serve` core: architecture discovery,
 check selection, collection, and aggregation run once per request. Configuration
 and host backends are process-lifetime state. `serve` accepts the same node,

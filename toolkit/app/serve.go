@@ -44,7 +44,6 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	fs := flag.NewFlagSet(a.prog+" serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	address := fs.String("address", "127.0.0.1:8080", "TCP address for the local gRPC and HTTP verdict API")
-	allowRemote := fs.Bool("allow-remote", false, "allow a non-loopback plaintext listener")
 	requestTimeout := fs.Duration("request-timeout", defaultRequestTimeout, "admission and evaluation timeout; must exceed the source collection timeout")
 	configPath := fs.String("config", "", "path to a YAML configuration file")
 	nodeID := fs.String("node-id", a.nodeID, "default node identifier")
@@ -64,7 +63,7 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	if strings.TrimSpace(*address) == "" {
 		return fail(fmt.Errorf("--address must not be empty"))
 	}
-	if err := validateListenAddress(*address, *allowRemote); err != nil {
+	if err := validateListenAddress(*address); err != nil {
 		return fail(err)
 	}
 	defaults, err := a.evaluationFlags(fs, *nodeID, *cadenceFlag, *contextFlag)
@@ -158,18 +157,15 @@ func validateWireOverrides(cfg *Config, cat *catalog.Catalog) error {
 	return nil
 }
 
-func validateListenAddress(address string, allowRemote bool) error {
+func validateListenAddress(address string) error {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return fmt.Errorf("--address: %w", err)
 	}
-	if allowRemote {
-		return nil
-	}
 	// A numeric address avoids validating one DNS result and binding another.
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
-		return fmt.Errorf("--address must use a loopback IP unless --allow-remote is set")
+		return fmt.Errorf("--address must use a loopback IP")
 	}
 	return nil
 }
