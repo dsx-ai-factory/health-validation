@@ -21,7 +21,7 @@ func TestEvaluateOnceCreatesFreshCyclesAndAppliesRequestOptions(t *testing.T) {
 	for i, cadence := range []*health.SchedulingCadence{&continuous, &maintenance} {
 		verdict, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{
 			NodeID: testNodeID, Cadence: cadence, ExecutionContext: health.TenantGuest,
-		}, nil)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -42,7 +42,7 @@ func TestEvaluateOnceCreatesFreshCyclesAndAppliesRequestOptions(t *testing.T) {
 	// that process-lifetime source reuse does not reuse the collection cache.
 	if _, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{
 		NodeID: testNodeID, Cadence: &maintenance, ExecutionContext: health.TenantGuest,
-	}, nil); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if len(source.cycles) != 2 || source.cycles[0] == source.cycles[1] || source.cycles[0].CollectionID() == source.cycles[1].CollectionID() {
@@ -55,7 +55,7 @@ func TestEvaluateOnceAlreadyCanceledDoesNotTouchHardware(t *testing.T) {
 	a.host = panicHost{}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := a.evaluateOnce(ctx, &Config{}, evaluationRequest{NodeID: testNodeID}, nil)
+	_, err := a.evaluateOnce(ctx, &Config{}, evaluationRequest{NodeID: testNodeID})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want context.Canceled", err)
 	}
@@ -85,7 +85,7 @@ func TestEvaluateOnceCancellationReachesCollectSource(t *testing.T) {
 	defer cancel()
 	completed := make(chan error, 1)
 	go func() {
-		_, err := a.evaluateOnce(ctx, &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+		_, err := a.evaluateOnce(ctx, &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest})
 		completed <- err
 	}()
 	select {

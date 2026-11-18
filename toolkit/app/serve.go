@@ -267,7 +267,7 @@ func (agent *verdictAgent) evaluate(ctx context.Context, req *healthv1.EvaluateR
 			agent.setTracker(nil)
 			<-agent.gate
 		}()
-		verdict, err := agent.app.evaluateOnce(tracked, agent.cfg, request, request.xidJournal)
+		verdict, err := agent.app.evaluateOnce(tracked, agent.cfg, request)
 		completed <- result{verdict: verdict, err: err}
 	}()
 	select {

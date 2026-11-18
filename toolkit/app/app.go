@@ -273,7 +273,8 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 	}
 
 	request.audit = true
-	verdict, err := a.evaluateOnce(context.Background(), cfg, request, xidJournal)
+	request.xidJournal = xidJournal
+	verdict, err := a.evaluateOnce(context.Background(), cfg, request)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError

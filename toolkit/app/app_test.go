@@ -853,7 +853,7 @@ func TestEvaluateExitCodes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := withAgentSource(cadenceRunApp(), tc.source)
-			verdict, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+			verdict, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest})
 			if err != nil {
 				t.Fatal(err)
 			}

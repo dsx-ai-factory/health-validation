@@ -26,7 +26,7 @@ type evaluationRequest struct {
 
 // evaluateOnce owns only per-request state. Its caller owns backend and source
 // lifetime, output, and metrics publication after the verdict is delivered.
-func (a *App) evaluateOnce(ctx context.Context, cfg *Config, request evaluationRequest, xidJournal collect.Sensor) (health.NodeVerdict, error) {
+func (a *App) evaluateOnce(ctx context.Context, cfg *Config, request evaluationRequest) (health.NodeVerdict, error) {
 	if contextErr := ctx.Err(); contextErr != nil {
 		return health.NodeVerdict{}, contextErr
 	}
@@ -64,7 +64,7 @@ func (a *App) evaluateOnce(ctx context.Context, cfg *Config, request evaluationR
 	if err != nil {
 		return health.NodeVerdict{}, fmt.Errorf("select runnable checks: %w", err)
 	}
-	sensors, err := a.sensorsContext(ctx, cycle, requiredFor(runnable), xidJournal)
+	sensors, err := a.sensorsContext(ctx, cycle, requiredFor(runnable), request.xidJournal)
 	if err != nil {
 		return health.NodeVerdict{}, fmt.Errorf("register collect sensors: %w", err)
 	}

@@ -351,7 +351,7 @@ func TestLoadConfigEmptyFile(t *testing.T) {
 // exit code 0. The architecture is set as the CLI does, so
 // architecture-scoped thresholds resolve to real expectations.
 func TestEvaluatePassingNode(t *testing.T) {
-	verdict, err := fixtureApp(healthyGB200()).evaluateOnce(context.Background(), &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+	verdict, err := fixtureApp(healthyGB200()).evaluateOnce(context.Background(), &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +415,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verdict, err := fixtureApp(healthyGB200()).evaluateOnce(context.Background(), mustLoadConfig(t, path), evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+	verdict, err := fixtureApp(healthyGB200()).evaluateOnce(context.Background(), mustLoadConfig(t, path), evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 func TestEvaluateGPUCountMismatch(t *testing.T) {
 	f := healthyGB200()
 	f.gpus = f.gpus[:3]
-	verdict, err := fixtureApp(f).evaluateOnce(context.Background(), &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+	verdict, err := fixtureApp(f).evaluateOnce(context.Background(), &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest})
 	if err != nil {
 		t.Fatal(err)
 	}
