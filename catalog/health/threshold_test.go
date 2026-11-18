@@ -31,7 +31,7 @@ func TestCheckDefinition_ValidateRejectsRequiredFixedThreshold(t *testing.T) {
 func TestCheckDefinition_ValidatePerArchitectureMustCoverArchitectures(t *testing.T) {
 	cd := CheckDefinition{
 		ID:            "speed_check",
-		Architectures: []string{"GB200", "H100"},
+		Architectures: []string{"H100", "GB200"},
 		Thresholds: map[string]ThresholdSpec{
 			"expected_speed": {
 				Value:           int64(50000),
@@ -51,7 +51,7 @@ func TestCheckDefinition_ValidatePerArchitectureMustCoverArchitectures(t *testin
 func TestCheckDefinition_ValidateAllowsNilValueWhenPerArchitectureCovers(t *testing.T) {
 	cd := CheckDefinition{
 		ID:            "power_check",
-		Architectures: []string{"GB200", "H100"},
+		Architectures: []string{"H100", "GB200"},
 		Thresholds: map[string]ThresholdSpec{
 			"expected_limit": {
 				PerArchitecture: map[string]any{

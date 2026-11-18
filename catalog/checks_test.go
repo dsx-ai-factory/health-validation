@@ -13,6 +13,31 @@ import (
 	"github.com/google/cel-go/cel"
 )
 
+// architectureOrder is first availability, oldest first. GB200 precedes B200.
+var architectureOrder = []string{"A100", "H100", "H200", "GB200", "B200", "GB300", "VR200"}
+
+func TestBuiltinCheckArchitecturesAreChronological(t *testing.T) {
+	order := make(map[string]int, len(architectureOrder))
+	for i, arch := range architectureOrder {
+		order[arch] = i
+	}
+	for _, check := range catalog.New().List(catalog.Filter{}) {
+		previous := -1
+		var previousName string
+		for _, arch := range check.Architectures {
+			rank, ok := order[arch]
+			if !ok {
+				t.Errorf("%s lists %q, which is absent from %v", check.ID, arch, architectureOrder)
+				continue
+			}
+			if rank <= previous {
+				t.Errorf("%s lists %s before %s; want %v", check.ID, previousName, arch, architectureOrder)
+			}
+			previous, previousName = rank, arch
+		}
+	}
+}
+
 func TestNew_HasBuiltinChecks(t *testing.T) {
 	cat := catalog.New()
 	if cat.Len() == 0 {

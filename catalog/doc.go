@@ -41,8 +41,8 @@
 // # Architectures
 //
 // Each [health.CheckDefinition] declares the architectures it applies
-// to (e.g. "GB200", "H100", "H200", "A100"). Evaluate requires
-// [WithArchitecture]; an unset architecture is an error, not a
+// to (e.g. "A100", "H100", "H200", "GB200"), listed oldest first.
+// Evaluate requires [WithArchitecture]; an unset architecture is an error, not a
 // filter-off. At evaluation time the catalog skips checks whose
 // architecture list does not include the configured one, so
 // architecture-specific thresholds and rules coexist in the same

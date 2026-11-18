@@ -53,7 +53,7 @@ func GPUClockCapped() health.CheckDefinition {
 		RequiredSignals: []string{"gpu_id", "sm_clock_mhz"},
 
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
-		Architectures:     []string{"GB200", "H100"},
+		Architectures:     []string{"H100", "GB200"},
 
 		// Your checks stay yours: the engine honors this classification as
 		// written. Use health.Private, the closest provenance for a definition
