@@ -137,10 +137,6 @@ the raw Check API's HTTP write timeout).
 It must exceed the source timeout; allow enough time for sequential source
 calls and verdict production. This lets a source watchdog produce a failure
 verdict before the request expires. A shorter client deadline also applies.
-<!-- coderabbit-ai-generated:v1 -->
-
-<!-- coderabbit-ai-generated-section:v1:9f3ff2e326ac67e4ace9e80876e61a795b52cec9009e4557c51b91f0317baf47 -->
-
 Protocol classification has a ten-second read and write budget, cleared before
 HTTP or gRPC handles the connection.
 HTTP request decoding and response writing are outside the request budget,
@@ -150,8 +146,6 @@ error responses and successful verdict responses (including encoding). This
 write deadline applies only to HTTP; the server does not enforce a delivery
 deadline for gRPC. gRPC callers must set their own client deadlines to bound
 the full RPC, including response delivery.
-
-<!-- /coderabbit-ai-generated:v1 -->
 
 Cancellation propagates to cooperative sensors. Native calls can outlive a
 watchdog because they cannot be interrupted. The service tracks that work and
@@ -194,10 +188,6 @@ point; its GPU and host-journal requirements are the same as `run`. The followin
 Bash example reuses the explicit journal mounts described in
 [Integrating into a GPU cluster](/health-validation/operating/integration):
 
-{/* coderabbit-ai-generated:v1 */}
-
-{/* coderabbit-ai-generated-section:v1:c3a4eeac4015f8eadec9696dd3355d9d4bf20bb50a095aa0b15c5b687635f64e */}
-
 ```bash
 image='ghcr.io/dsx-ai-factory/health-validation:<tag>' # replace <tag>
 dcgm_lib='/path/to/libdcgm.so.4' # replace with the host DCGM 4 client library path
@@ -230,8 +220,6 @@ docker run --rm --network host --pid host \
   "$image" serve --address 127.0.0.1:8080 \
   --node-id "$(hostname)" --execution-context OPERATOR_INFRA
 ```
-
-{/* /coderabbit-ai-generated:v1 */}
 
 This example uses Linux host networking so the container's loopback listener is
 available from the node. The host's `journalctl` must have no unresolved shared
