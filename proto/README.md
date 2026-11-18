@@ -26,11 +26,9 @@ Enum names deliberately match catalog JSON, including lowercase category,
 maturity, and operational-state names. Required scalar fields carry explicit
 presence so `PASS`, `false`, and other required values remain in JSON. Severity
 and operational state reserve zero for UNSPECIFIED, which the Go converter
-rejects. Valid enum names in JSON stay unchanged. For these two enums, wire
-numbers equal the current catalog numbers plus one. This renumbers the
-unreleased protobuf API, so regenerate clients built from earlier PR revisions.
-Timestamps are RFC3339
-strings, retaining the catalog's original offset and nanosecond precision.
+rejects. For these two enums, wire numbers equal the current catalog numbers
+plus one. Timestamps are RFC3339 strings, retaining the catalog's original
+offset and nanosecond precision.
 Remediation steps remain an open set of strings.
 
 Generated protobuf clients preserve unknown numeric enum values; consumers must
