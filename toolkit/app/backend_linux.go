@@ -34,7 +34,7 @@ import (
 // checks.
 type nvmlHost struct {
 	inventory *gpuinventory.Inventory
-	dcgm      *dcgmsource.Source
+	dcgm      *recoveringDCGMSensor
 	// inst is the collect NVML instance, once opened; processes reads through it.
 	inst           nvmlsource.Instance
 	nvmlSensor     collect.Sensor
@@ -44,16 +44,19 @@ type nvmlHost struct {
 }
 
 func newHostBackend() hostBackend {
-	h := &nvmlHost{
-		// v0.3's NVML sensor read the driver live; DCGM reads live to match.
-		dcgm: dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{LiveMetrics: true}),
+	dcgm := &recoveringDCGMSensor{
+		signals: slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals),
+		open: func() (collect.Sensor, func() error, error) {
+			// Live reads preserve the one-shot CLI's driver sampling behavior.
+			source := dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{LiveMetrics: true})
+			sensor, err := dcgmsensor.New(source, slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals).IDs()...)
+			if err != nil {
+				return nil, nil, err
+			}
+			return sensor, source.Close, nil
+		},
 	}
-	// The signal set is fixed, so New fails only on a programming error that
-	// the app tests catch; it records the watch without calling DCGM.
-	dcgm, err := dcgmsensor.New(h.dcgm, slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals).IDs()...)
-	if err != nil {
-		panic(err)
-	}
+	h := &nvmlHost{dcgm: dcgm}
 	h.gpu = []collect.Sensor{dcgm, nvmlGPUSensor{host: h}}
 	h.inventory = gpuinventory.New(gpuinventory.OpenNVML(h.instance))
 	return h
@@ -104,8 +107,10 @@ func (h *nvmlHost) gpuInventory() *gpuinventory.Inventory { return h.inventory }
 // timed-out native call still holds them; the process exits shortly after.
 func (h *nvmlHost) close() error {
 	var err error
-	if closeErr := h.dcgm.Close(); closeErr != nil && !errors.Is(closeErr, dcgmsource.ErrInUse) {
-		err = errors.Join(err, closeErr)
+	if h.dcgm != nil {
+		if closeErr := h.dcgm.Close(); closeErr != nil && !errors.Is(closeErr, dcgmsource.ErrInUse) {
+			err = errors.Join(err, closeErr)
+		}
 	}
 	h.mu.Lock()
 	inst := h.inst

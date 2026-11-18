@@ -125,6 +125,11 @@ changes the running process's exit policy.
 ## Concurrency, deadlines, and shutdown
 
 The service serializes evaluations because host NVML/DCGM sources are shared.
+A DCGM `DCGM_ST_CONNECTION_NOT_VALID` collection failure marks that client
+session stale. The failure remains in the current verdict; the next collection
+closes the old session and creates a new client and field watches. Recovery
+waits for unfinished native calls, and healthy sessions remain reusable.
+
 It does not coalesce requests or reuse a previous verdict. A shared limit admits
 at most 32 requests across HTTP and gRPC, including calls waiting for collection,
 response delivery, and metrics publication. Excess calls fail promptly with
