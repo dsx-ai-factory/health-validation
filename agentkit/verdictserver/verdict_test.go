@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"google.golang.org/grpc"
@@ -452,4 +453,37 @@ func TestVerdictHTTPPreservesRequiredEmptyComponentChecks(t *testing.T) {
 	if !proto.Equal(verdict, back) {
 		t.Fatalf("HTTP roundtrip changed verdict: got=%v want=%v", back, verdict)
 	}
+}
+
+// pipeResponseWriter writes to a client that deliberately never reads.
+type pipeResponseWriter struct {
+	*httptest.ResponseRecorder
+	conn net.Conn
+}
+
+func (w *pipeResponseWriter) SetWriteDeadline(deadline time.Time) error {
+	return w.conn.SetWriteDeadline(deadline)
+}
+
+func (w *pipeResponseWriter) Write(data []byte) (int, error) { return w.conn.Write(data) }
+
+func TestVerdictWriteDeadlineStartsAfterEvaluation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		server, client := net.Pipe()
+		defer server.Close()
+		defer client.Close()
+		writer := &pipeResponseWriter{ResponseRecorder: httptest.NewRecorder(), conn: server}
+		want := testVerdict(t)
+		handler := verdictHTTPHandler(&verdictService{handler: func(context.Context, *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
+			time.Sleep(3 * time.Minute)
+			return want, nil
+		}}, func(context.Context, *healthv1.EvaluateRequest, *healthv1.NodeVerdict) {
+			t.Error("failed delivery published telemetry")
+		})
+		started := time.Now()
+		handler.ServeHTTP(writer, httptest.NewRequest(http.MethodGet, "/verdict", nil))
+		if elapsed := time.Since(started); elapsed != 3*time.Minute+httpWriteTimeout {
+			t.Fatalf("request took %s; want evaluation plus delivery timeout", elapsed)
+		}
+	})
 }

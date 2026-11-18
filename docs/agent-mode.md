@@ -132,7 +132,8 @@ It must exceed the source timeout; allow enough time for sequential source
 calls and verdict production. This lets a source watchdog produce a failure
 verdict before the request expires. A shorter client deadline also applies.
 HTTP request decoding and response writing are outside the request budget,
-so the full HTTP call can take longer.
+so the full HTTP call can take longer. Verdict delivery has a separate two-minute
+write deadline that starts after evaluation and encoding finish.
 
 Cancellation propagates to cooperative sensors. Native calls can outlive a
 watchdog because they cannot be interrupted. The service tracks that work and

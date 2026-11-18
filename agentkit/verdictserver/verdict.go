@@ -31,6 +31,7 @@ import (
 const (
 	httpReadHeaderTimeout = 10 * time.Second
 	httpReadTimeout       = 30 * time.Second
+	httpWriteTimeout      = 2 * time.Minute
 	httpIdleTimeout       = 2 * time.Minute
 )
 
@@ -92,8 +93,7 @@ func ServeListener(ctx context.Context, listener net.Listener, handler Handler, 
 		Handler:           verdictHTTPHandler(service, settings.afterResponse),
 		ReadHeaderTimeout: httpReadHeaderTimeout,
 		ReadTimeout:       httpReadTimeout,
-		// The host bounds evaluation with its request context; a fixed write
-		// timeout would prematurely cut off a longer configured collection.
+		// Start the write deadline after evaluation so collection has its full budget.
 		WriteTimeout: 0,
 		IdleTimeout:  httpIdleTimeout,
 	}
@@ -230,6 +230,7 @@ func verdictHTTPHandler(service *verdictService, after AfterResponse) http.Handl
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writer.Header().Set("Content-Length", strconv.Itoa(len(out)))
+		_ = http.NewResponseController(writer).SetWriteDeadline(time.Now().Add(httpWriteTimeout))
 		if _, writeErr := writer.Write(out); writeErr != nil {
 			return
 		}
