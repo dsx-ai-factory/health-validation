@@ -25,7 +25,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.6",
+  "schema_version": "0.7",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
   "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
@@ -54,7 +54,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.6",
+  "schema_version": "0.7",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
@@ -232,7 +232,7 @@ The catalog includes these check families:
 | `rdma_linkflap_fatal` | infiniband | mlx5 RDMA link outages that stayed down past a window | `min_outage_seconds`, `fatal_flap_threshold` |
 | `gpu_xid_<code>` | xid | One check per Xid code seen in the journal, with catalog-defined severity and action | `occurrences`; Xids 144–150 use `fatal_occurrences`, `nonfatal_occurrences` |
 | `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | `occurrences` |
-| `gpu_xid_154` | xid | The recovery action Xid 154 last reported per GPU (CRITICAL for a reset or reboot; WARNING for a P2P drain, one the catalog does not map, or an unreadable transition; INFO for none; `occurrences` counts reports per action) | `occurrences` |
+| `gpu_xid_154` | xid | The recovery action Xid 154 last reported per GPU (CRITICAL for a reset, reboot, or P2P drain; WARNING for an action the catalog does not map or an unreadable transition; INFO for none; `occurrences` counts reports per action) | `occurrences` |
 | `gpu_xid_informational` | xid | A logged Xid code that NVIDIA's Xid catalog marks Unused, IGNORE or gives no resolution, and no registered check covers (INFO, no action) | `occurrences` |
 | `gpu_xid_unknown` | xid | A logged Xid code that no registered check covers and that is not informational (WARNING, monitor) | `occurrences` |
 

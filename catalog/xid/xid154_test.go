@@ -83,7 +83,7 @@ func TestXid154Check_ReportsRequestedAction(t *testing.T) {
 		{name: "os reboot", toCodes: []string{"0x2"}, wantSeverity: health.Critical, wantAction: restartOS},
 		{name: "system reboot", toCodes: []string{"0x7"}, wantSeverity: health.Critical, wantAction: restartOS},
 		{name: "bus reset", toCodes: []string{"0x6"}, wantSeverity: health.Critical, wantAction: restartOS},
-		{name: "drain p2p", toCodes: []string{"0x3"}, wantSeverity: health.Warning, wantAction: health.Drain(health.RemediationActionStopP2PTraffic, health.RemediationActionResetGPU, health.RemediationActionServiceRequired)},
+		{name: "drain p2p", toCodes: []string{"0x3"}, wantSeverity: health.Critical, wantAction: health.Drain(health.RemediationActionStopP2PTraffic, health.RemediationActionResetGPU, health.RemediationActionServiceRequired)},
 		{name: "unmapped", toCodes: []string{"0x5"}, wantSeverity: health.Warning, wantAction: health.Monitor},
 		{name: "reboot outranks reset", toCodes: []string{"0x1", "0x2"}, wantSeverity: health.Critical, wantAction: restartOS},
 		{name: "none", toCodes: []string{"0x0"}, wantSeverity: health.Info, wantAction: health.NoAction},
