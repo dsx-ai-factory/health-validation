@@ -468,24 +468,28 @@ func (w *pipeResponseWriter) SetWriteDeadline(deadline time.Time) error {
 func (w *pipeResponseWriter) Write(data []byte) (int, error) { return w.conn.Write(data) }
 
 func TestVerdictWriteDeadlineStartsAfterEvaluation(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		server, client := net.Pipe()
-		defer server.Close()
-		defer client.Close()
-		writer := &pipeResponseWriter{ResponseRecorder: httptest.NewRecorder(), conn: server}
-		want := testVerdict(t)
-		handler := verdictHTTPHandler(&verdictService{handler: func(context.Context, *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
-			time.Sleep(3 * time.Minute)
-			return want, nil
-		}}, func(context.Context, *healthv1.EvaluateRequest, *healthv1.NodeVerdict) {
-			t.Error("failed delivery published telemetry")
+	for name, evaluationErr := range map[string]error{"success": nil, "evaluation error": errors.New("evaluation failed")} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				server, client := net.Pipe()
+				defer server.Close()
+				defer client.Close()
+				writer := &pipeResponseWriter{ResponseRecorder: httptest.NewRecorder(), conn: server}
+				want := testVerdict(t)
+				handler := verdictHTTPHandler(&verdictService{handler: func(context.Context, *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
+					time.Sleep(3 * time.Minute)
+					return want, evaluationErr
+				}}, func(context.Context, *healthv1.EvaluateRequest, *healthv1.NodeVerdict) {
+					t.Error("failed delivery published telemetry")
+				})
+				started := time.Now()
+				handler.ServeHTTP(writer, httptest.NewRequest(http.MethodGet, "/verdict", nil))
+				if elapsed := time.Since(started); elapsed != 3*time.Minute+httpWriteTimeout {
+					t.Fatalf("request took %s; want evaluation plus delivery timeout", elapsed)
+				}
+			})
 		})
-		started := time.Now()
-		handler.ServeHTTP(writer, httptest.NewRequest(http.MethodGet, "/verdict", nil))
-		if elapsed := time.Since(started); elapsed != 3*time.Minute+httpWriteTimeout {
-			t.Fatalf("request took %s; want evaluation plus delivery timeout", elapsed)
-		}
-	})
+	}
 }
 
 func TestVerdictHTTPShutdownCancelsActiveRequest(t *testing.T) {

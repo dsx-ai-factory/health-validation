@@ -226,6 +226,7 @@ func verdictHTTPHandler(service *verdictService, after AfterResponse) http.Handl
 			return
 		}
 		verdict, err := service.Evaluate(request.Context(), input)
+		_ = http.NewResponseController(writer).SetWriteDeadline(time.Now().Add(httpWriteTimeout))
 		if err != nil {
 			writeHTTPError(writer, err)
 			return
@@ -237,7 +238,6 @@ func verdictHTTPHandler(service *verdictService, after AfterResponse) http.Handl
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writer.Header().Set("Content-Length", strconv.Itoa(len(out)))
-		_ = http.NewResponseController(writer).SetWriteDeadline(time.Now().Add(httpWriteTimeout))
 		if _, writeErr := writer.Write(out); writeErr != nil {
 			return
 		}

@@ -131,9 +131,19 @@ the raw Check API's HTTP write timeout).
 It must exceed the source timeout; allow enough time for sequential source
 calls and verdict production. This lets a source watchdog produce a failure
 verdict before the request expires. A shorter client deadline also applies.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:9f3ff2e326ac67e4ace9e80876e61a795b52cec9009e4557c51b91f0317baf47 -->
+
 HTTP request decoding and response writing are outside the request budget,
-so the full HTTP call can take longer. Verdict delivery has a separate two-minute
-write deadline that starts after evaluation and encoding finish.
+so the full HTTP call can take longer. HTTP response delivery has a separate
+two-minute write deadline that starts after evaluation returns, covering both
+error responses and successful verdict responses (including encoding). This
+write deadline applies only to HTTP; the server does not enforce a delivery
+deadline for gRPC. gRPC callers must set their own client deadlines to bound
+the full RPC, including response delivery.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Cancellation propagates to cooperative sensors. Native calls can outlive a
 watchdog because they cannot be interrupted. The service tracks that work and
