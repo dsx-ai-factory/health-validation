@@ -36,10 +36,11 @@ type nvmlHost struct {
 	inventory *gpuinventory.Inventory
 	dcgm      *dcgmsource.Source
 	// inst is the collect NVML instance, once opened; processes reads through it.
-	inst       nvmlsource.Instance
-	nvmlSensor collect.Sensor
-	gpu        []collect.Sensor
-	mu         sync.Mutex
+	inst           nvmlsource.Instance
+	nvmlSensor     collect.Sensor
+	nvmlSensorInst nvmlsource.Instance
+	gpu            []collect.Sensor
+	mu             sync.Mutex
 }
 
 func newHostBackend() hostBackend {
@@ -89,8 +90,9 @@ func (h *nvmlHost) sharedNVMLSensor() (collect.Sensor, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.nvmlSensor == nil {
+	if h.nvmlSensor == nil || h.nvmlSensorInst != inst {
 		h.nvmlSensor = nvmlsensor.NewWithOptions(inst, nvmlsensor.WithProcessCmdlineDiagnostics(true))
+		h.nvmlSensorInst = inst
 	}
 	return h.nvmlSensor, nil
 }

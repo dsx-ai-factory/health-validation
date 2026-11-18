@@ -176,23 +176,36 @@ point; its GPU and host-journal requirements are the same as `run`. The followin
 Bash example reuses the explicit journal mounts described in
 [Integrating into a GPU cluster](/health-validation/operating/integration):
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:521191e017b94ddf5b6e3bb739c59259b6fd8d6b6cc38b812bc922d4b4ca0cd5 -->
+
 ```bash
 image='ghcr.io/dsx-ai-factory/health-validation:<tag>' # replace <tag>
+dcgm_lib='/path/to/libdcgm.so.4' # replace with the host DCGM 4 client library path
 journalctl_bin="$(command -v journalctl)"
 journal_mounts=(-v "$journalctl_bin:/usr/bin/journalctl:ro")
 while read -r dependency; do
   journal_mounts+=(-v "$dependency:$dependency:ro")
 done < <(ldd "$journalctl_bin" | awk '$3 ~ /^\// && $1 !~ /^(lib(c|pthread|dl|rt|m)\.so)/ {print $3}')
 
-docker run --rm --network host \
+dcgm_mounts=(-v "$dcgm_lib:$dcgm_lib:ro")
+while read -r dependency; do
+  dcgm_mounts+=(-v "$dependency:$dependency:ro")
+done < <(ldd "$dcgm_lib" | awk '$3 ~ /^\// && $1 !~ /^(lib(c|pthread|dl|rt|m)\.so)/ {print $3}')
+
+docker run --rm --network host --pid host \
   --gpus all -e NVIDIA_DRIVER_CAPABILITIES=utility \
+  -e LD_LIBRARY_PATH="$(dirname "$dcgm_lib")" \
   -v /run/log/journal:/run/log/journal:ro \
   -v /var/log/journal:/var/log/journal:ro \
   -v /etc/machine-id:/etc/machine-id:ro \
-  "${journal_mounts[@]}" \
+  "${journal_mounts[@]}" "${dcgm_mounts[@]}" \
   "$image" serve --address 127.0.0.1:8080 \
   --node-id "$(hostname)" --execution-context OPERATOR_INFRA
 ```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 This example uses Linux host networking so the container's loopback listener is
 available from the node. The host's `journalctl` must have no unresolved shared
