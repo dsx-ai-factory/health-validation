@@ -133,6 +133,8 @@ verdict before the request expires. A shorter client deadline also applies.
 
 <!-- coderabbit-ai-generated-section:v1:9f3ff2e326ac67e4ace9e80876e61a795b52cec9009e4557c51b91f0317baf47 -->
 
+Protocol classification has a ten-second read and write budget, cleared before
+HTTP or gRPC handles the connection.
 HTTP request decoding and response writing are outside the request budget,
 so the full HTTP call can take longer. HTTP response delivery has a separate
 two-minute write deadline that starts after evaluation returns, covering both

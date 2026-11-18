@@ -86,7 +86,7 @@ func ServeListener(ctx context.Context, listener net.Listener, handler Handler, 
 	service := &verdictService{handler: handler}
 	multiplexer := cmux.New(listener)
 	multiplexer.SetReadTimeout(httpReadHeaderTimeout)
-	grpcListener := multiplexer.MatchWithWriters(cmux.HTTP2MatchHeaderFieldPrefixSendSettings("content-type", "application/grpc"))
+	grpcListener := multiplexer.MatchWithWriters(matchGRPCWithWriteDeadline)
 	httpListener := multiplexer.Match(cmux.HTTP1Fast())
 	grpcServer := grpc.NewServer(grpc.StatsHandler(&responseStats{after: settings.afterResponse}))
 	healthv1.RegisterVerdictServiceServer(grpcServer, service)
@@ -152,6 +152,22 @@ drain:
 		return nil
 	}
 	return firstErr
+}
+
+// Classification writes SETTINGS before gRPC owns the connection and its deadlines.
+func matchGRPCWithWriteDeadline(writer io.Writer, reader io.Reader) bool {
+	connection, ok := writer.(net.Conn)
+	if !ok {
+		return false
+	}
+	if err := connection.SetWriteDeadline(time.Now().Add(httpReadHeaderTimeout)); err != nil {
+		return false
+	}
+	matched := cmux.HTTP2MatchHeaderFieldPrefixSendSettings("content-type", "application/grpc")(writer, reader)
+	if err := connection.SetWriteDeadline(time.Time{}); err != nil {
+		return false
+	}
+	return matched
 }
 
 type verdictService struct {

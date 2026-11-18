@@ -4,6 +4,7 @@
 package verdictserver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -15,6 +16,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -619,5 +622,85 @@ func TestVerdictShutdownClosesActiveHTTPConnection(t *testing.T) {
 		}
 	case <-requestCtx.Done():
 		t.Fatal("HTTP client did not finish")
+	}
+}
+
+func grpcClassificationInput(t *testing.T) []byte {
+	t.Helper()
+	var input, headers bytes.Buffer
+	input.WriteString(http2.ClientPreface)
+	framer := http2.NewFramer(&input, nil)
+	if err := framer.WriteSettings(); err != nil {
+		t.Fatal(err)
+	}
+	encoder := hpack.NewEncoder(&headers)
+	if err := encoder.WriteField(hpack.HeaderField{Name: "content-type", Value: "application/grpc"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := framer.WriteHeaders(http2.HeadersFrameParam{StreamID: 1, BlockFragment: headers.Bytes(), EndHeaders: true}); err != nil {
+		t.Fatal(err)
+	}
+	return input.Bytes()
+}
+
+func TestGRPCClassificationBoundsSettingsWrites(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		server, client := net.Pipe()
+		defer server.Close()
+		defer client.Close()
+		// cmux's read deadline cannot unblock a write to a non-reading peer.
+		if err := server.SetReadDeadline(time.Now().Add(httpReadHeaderTimeout)); err != nil {
+			t.Fatal(err)
+		}
+		started := time.Now()
+		if matchGRPCWithWriteDeadline(server, bytes.NewReader(grpcClassificationInput(t))) {
+			t.Fatal("classified connection whose peer never reads SETTINGS")
+		}
+		if elapsed := time.Since(started); elapsed != httpReadHeaderTimeout {
+			t.Fatalf("classification took %s, want %s", elapsed, httpReadHeaderTimeout)
+		}
+	})
+}
+
+func TestClassificationClearsWriteDeadlineForBothProtocols(t *testing.T) {
+	for _, protocol := range []string{"gRPC", "HTTP"} {
+		t.Run(protocol, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				server, client := net.Pipe()
+				defer server.Close()
+				defer client.Close()
+				input := []byte("GET /verdict HTTP/1.1\r\nHost: localhost\r\n\r\n")
+				if protocol == "gRPC" {
+					input = grpcClassificationInput(t)
+					go func() {
+						frame, err := http2.NewFramer(nil, client).ReadFrame()
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						if _, ok := frame.(*http2.SettingsFrame); !ok {
+							t.Errorf("frame = %T, want SETTINGS", frame)
+						}
+					}()
+				}
+				if got := matchGRPCWithWriteDeadline(server, bytes.NewReader(input)); got != (protocol == "gRPC") {
+					t.Fatalf("gRPC classification = %v for %s", got, protocol)
+				}
+				// Response delivery must remain possible after a longer evaluation.
+				time.Sleep(httpReadHeaderTimeout + time.Second)
+				received := make(chan error, 1)
+				go func() {
+					var data [1]byte
+					_, err := io.ReadFull(client, data[:])
+					received <- err
+				}()
+				if _, err := server.Write([]byte{1}); err != nil {
+					t.Fatalf("classification left a write deadline: %v", err)
+				}
+				if err := <-received; err != nil {
+					t.Fatal(err)
+				}
+			})
+		})
 	}
 }
