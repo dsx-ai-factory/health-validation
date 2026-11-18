@@ -27,9 +27,9 @@ type criticalXid struct {
 }
 
 var (
-	allArchitectures             = []string{"A100", "H100", "H200", "GB200", "B200", "GB300"}
-	blackwellArchitectures       = []string{"GB200", "B200", "GB300"}
-	hopperBlackwellArchitectures = []string{"H100", "H200", "GB200", "B200", "GB300"}
+	allArchitectures             = []string{"A100", "H100", "H200", "B200", "GB200", "GB300"}
+	blackwellArchitectures       = []string{"B200", "GB200", "GB300"}
+	hopperBlackwellArchitectures = []string{"H100", "H200", "B200", "GB200", "GB300"}
 	ampereHopperArchitectures    = []string{"A100", "H100", "H200"}
 	hopperArchitectures          = []string{"H100", "H200"}
 	// graceBlackwellArchitectures covers Xids NVIDIA's catalog marks

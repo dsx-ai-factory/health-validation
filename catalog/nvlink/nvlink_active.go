@@ -30,7 +30,7 @@ func NVLinkActive() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"A100", "H100", "GB200", "B200", "GB300", "VR200"},
+		Architectures:     []string{"A100", "H100", "B200", "GB200", "GB300", "VR200"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,

@@ -13,8 +13,9 @@ import (
 	"github.com/google/cel-go/cel"
 )
 
-// architectureOrder is first availability, oldest first. GB200 precedes B200.
-var architectureOrder = []string{"A100", "H100", "H200", "GB200", "B200", "GB300", "VR200"}
+// architectureOrder follows the Xid catalog columns: A100, Hopper, Blackwell,
+// Grace Blackwell, then Rubin. Within a family the older part comes first.
+var architectureOrder = []string{"A100", "H100", "H200", "B200", "GB200", "GB300", "VR200"}
 
 func TestBuiltinCheckArchitecturesAreChronological(t *testing.T) {
 	order := make(map[string]int, len(architectureOrder))

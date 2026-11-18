@@ -41,7 +41,7 @@
 // # Architectures
 //
 // Each [health.CheckDefinition] declares the architectures it applies
-// to (e.g. "A100", "H100", "H200", "GB200"), listed oldest first.
+// to (e.g. "A100", "H100", "B200", "GB200"), grouped by family in Xid-catalog order.
 // Evaluate requires [WithArchitecture]; an unset architecture is an error, not a
 // filter-off. At evaluation time the catalog skips checks whose
 // architecture list does not include the configured one, so

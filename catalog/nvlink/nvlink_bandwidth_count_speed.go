@@ -15,7 +15,7 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // link that silently halves multi-GPU collective throughput without
 // raising an error.
 //
-// Covers H100, GB200, B200, and GB300 with per-architecture expected speeds
+// Covers H100, B200, GB200, and GB300 with per-architecture expected speeds
 // (26562 / 53125 / 53125 / 53125 MB/s), all at 18 links, and VR200 at 36
 // links of 41000 MB/s. A100 (12 links) and H200 are not yet covered; they
 // need their own PerArchitecture entries before being added.
@@ -43,7 +43,7 @@ func NVLinkBandwidthCountSpeed() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"H100", "GB200", "B200", "GB300", "VR200"},
+		Architectures:     []string{"H100", "B200", "GB200", "GB300", "VR200"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
