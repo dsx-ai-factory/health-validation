@@ -7,7 +7,7 @@ NVIDIA Health Validation runs on a GPU node, evaluates hardware and driver state
 The repository is `github.com/dsx-ai-factory/health-validation`. It is a single Go module, released under one version tag, whose main packages are:
 
 - **`catalog`** (`…/health-validation/catalog`): Check definitions, threshold logic, severity classifications, and a CEL-based evaluation engine. No hardware dependency. Import this if you already collect GPU telemetry and want NVIDIA's operational judgment applied to your signal stream.
-- **`toolkit`** (`…/health-validation/toolkit`): Sensor implementations (including NVML-backed GPU collection and CPU collection from Linux sysfs), mock backends for testing, and a `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Import this if you want the full working sensor and evaluation stack.
+- **`toolkit`** (`…/health-validation/toolkit`): A `Collect()` function that runs sensors, evaluates all checks, and returns a node-level verdict. Its `toolkit/app` package holds the CLI and the built-in collection wiring (DCGM and NVML for GPUs, sysfs for CPU, the kernel journal for Xid and RDMA link flap, all through `collect` sensors). Import these if you want the full working sensor and evaluation stack.
 
 `toolkit` depends on `catalog`; import `toolkit` to get both.
 
@@ -15,7 +15,7 @@ For raw observations without catalog evaluation, use the experimental `collect`
 package. See [Shared raw collection library](docs/integration.md#shared-raw-collection-library)
 for its ten collection families, typed targets, and custom sensor registration.
 
-> **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor/backend layer that feeds it is a reference implementation and is subject to change.
+> **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor and adapter layer that feeds it is a reference implementation and is subject to change.
 
 ## What it does
 
@@ -25,7 +25,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.6",
+  "schema_version": "0.7",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-05T14:32:01Z",
   "trace_id": "6f1f6f2c-2a70-4d3e-9d1a-0b8f1a3c5d21",
@@ -54,7 +54,7 @@ The check engine collects typed measurements from sensors, evaluates them agains
 
 ```json
 {
-  "schema_version": "0.6",
+  "schema_version": "0.7",
   "catalog_version": "v0.1.0",
   "timestamp": "2026-06-10T14:31:12.337336529-05:00",
   "trace_id": "0c9a4b83-7e5d-4a11-93f6-2c8b5e1470af",
@@ -187,7 +187,7 @@ The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.j
 Sensor.Measure() --> []Measurement --> Catalog.EvaluateAll() --> NodeVerdict
 ```
 
-Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The toolkit includes NVML-backed GPU, node, and NVLink sensors, a CPU sensor reading Linux sysfs (the CLI collects CPU through `collect/sensors/cpu`), an Xid sensor backed by `journalctl`, and mock constructors for testing. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
+Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The CLI reads GPUs and NVLink through DCGM and NVML, CPU through Linux sysfs, and Xid and RDMA link flap through the kernel journal, all as `collect` sensors whose observations the toolkit adapts into measurements. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
 
 The CPU sensor counts the logical CPUs in `/sys/devices/system/cpu/possible` and `/sys/devices/system/cpu/online`, and the NUMA nodes in `/sys/devices/system/node/online`. The `cpu_count` check requires no operator configuration and reports CRITICAL when a kernel-possible CPU is not online. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM or machine-SKU count, process affinity, or cgroup CPU limits.
 
@@ -232,7 +232,7 @@ The catalog includes these check families:
 | `rdma_linkflap_fatal` | infiniband | mlx5 RDMA link outages that stayed down past a window | `min_outage_seconds`, `fatal_flap_threshold` |
 | `gpu_xid_<code>` | xid | One check per Xid code seen in the journal, with catalog-defined severity and action | `occurrences`; Xids 144–150 use `fatal_occurrences`, `nonfatal_occurrences` |
 | `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | `occurrences` |
-| `gpu_xid_154` | xid | The recovery action Xid 154 last reported per GPU (CRITICAL for a reset or reboot; WARNING for a P2P drain, one the catalog does not map, or an unreadable transition; INFO for none; `occurrences` counts reports per action) | `occurrences` |
+| `gpu_xid_154` | xid | The recovery action Xid 154 last reported per GPU (CRITICAL for a reset, reboot, or P2P drain; WARNING for an action the catalog does not map or an unreadable transition; INFO for none; `occurrences` counts reports per action) | `occurrences` |
 | `gpu_xid_informational` | xid | A logged Xid code that NVIDIA's Xid catalog marks Unused, IGNORE or gives no resolution, and no registered check covers (INFO, no action) | `occurrences` |
 | `gpu_xid_unknown` | xid | A logged Xid code that no registered check covers and that is not informational (WARNING, monitor) | `occurrences` |
 
@@ -246,9 +246,13 @@ Each check definition carries:
 
 > **GB300 support.** Most checks in the catalog declare support for both GB200 and GB300 in their `Architectures` field. GB200 support has been validated; GB300 support has not yet completed the same validation pass. Treat GB300 results as directionally correct but experimental and subject to change until this note is removed.
 
+> **B300 support.** HGX B300 (8 GPUs per x86_64 node, NVLink within the node only) is listed next to B200 on the checks that apply to a single HGX baseboard, with its per-architecture defaults (8 GPUs, 18 NVLink 5 links at 53125 MB/s) taken from operator measurements on B300 nodes. As for B200, the multi-node NVLink fabric checks, the GPU power limit and the NUMA node count are not listed. B300 has not completed the GB200 validation pass; treat its results like GB300's.
+
 Xid checks use the public NVIDIA Xid catalog's per-code applicability. H200
 uses the H100 applicability matrix because both products use the Hopper
 architecture; Xid 144-150 and their subtype checks remain Blackwell-only.
+B300 uses the B200 applicability matrix because both are Blackwell GPUs on an
+HGX baseboard, so it runs Xid 144-150 but not the Grace Blackwell-only Xid 142.
 Warning-class Xids are individual `gpu_xid_<code>` checks.
 
 ## Prerequisites
@@ -323,8 +327,8 @@ positive and later than every supplied start time. Either bound may be omitted.
 Duplicate GPU bounds or multiple node-wide start times will result in an error.
 
 These flags filter the default Xid journal sensor within the current boot.
-Other journal sensors, including RDMA link-flap detection, and backends supplied
-through `WithXidBackend` keep their own collection behavior.
+Other journal sensors, including RDMA link-flap detection, and sensors that
+claim the Xid signals through `WithCollect` keep their own collection behavior.
 
 On exit `0` or `1` a JSON verdict is written to stdout; on exit `2` no verdict was produced — the error goes to stderr and stdout is empty. The exit code is a coarse health signal (`0` = PASS/INFO/WARNING, `1` = CRITICAL/UNKNOWN, `2` = the tool could not produce a verdict); check `overall_severity` in the output for the precise level.
 
@@ -408,16 +412,11 @@ cat := catalog.New(
     catalog.WithExecutionContext(health.OperatorInfra),
 )
 
-// backend implements toolkit.GPUBackend.
-// On Linux, use nvml.New() from toolkit/nvml (requires cgo + NVML).
-// For testing without hardware, use toolkit.MockGPU().
-gpuSensor := toolkit.NewGPUSensor(backend)
-nodeSensor := toolkit.NewNodeSensor(backend)
-cpuSensor := toolkit.NewCPUSensor(toolkit.SysfsCPU())
-// The Xid sensor reads the system journal, so it takes its own backend rather
-// than the GPU one: toolkit.Journalctl() in production, toolkit.MockXid(...) in tests.
-xidSensor := toolkit.NewXidSensor(toolkit.Journalctl())
-verdict, err := toolkit.Collect(cat, gpuSensor, nodeSensor, cpuSensor, xidSensor)
+// mySensor is any toolkit.Sensor. To run a collect sensor here, wrap it as in
+// toolkit's Example_collectSensor. To reuse the stock CLI's wiring instead,
+// build a toolkit/app App and add sources with WithCollect and adapters with
+// WithCollectAdapters; see docs/extending.md.
+verdict, err := toolkit.Collect(cat, mySensor)
 ```
 
 Disable a specific check:

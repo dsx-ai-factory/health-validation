@@ -89,10 +89,10 @@ Go 1.27.3, as declared in `go.mod`. The repo is a single Go module; `catalog`, `
 
 The catalog currently centers on GB200 and GB300 GPU nodes, with some checks scoped to further NVIDIA architectures, plus host CPU availability and topology. Registered checks cover host CPU (possible-versus-online logical CPU count and online NUMA node count), GPU power (power limit, power state, average draw, hardware throttle), leftover GPU compute processes, GPU count, NVLink (active links, fabric health, fabric status, bandwidth/count/speed, capabilities, and peer-to-peer), fatal mlx5 RDMA link flaps, and Xid-driven GPU events (a check per Xid code, CRITICAL for critical-class codes and WARNING for warning-class ones; per-subtype checks for Xid 149; and a check for the recovery action Xid 154 reports). See the README's GB300 support note — GB200 coverage has been validated, GB300 coverage has not yet completed the same validation pass.
 
-The sensor interface is extensible. Partners can implement `toolkit.GPUBackend` for other GPU types and supply measurements directly to `cat.EvaluateAll(m)` without modifying catalog source. NVIDIA does not author or validate checks for non-NVIDIA hardware.
+The sensor interface is extensible. Partners can implement a `collect.Sensor` for another data source and register it with `WithCollect`, or supply measurements directly to `cat.EvaluateAll(m)`, without modifying catalog source. NVIDIA does not author or validate checks for non-NVIDIA hardware.
 
 ## Can I test without a GPU?
 
-Yes. The toolkit ships mock constructors: `toolkit.MockGPU(measurements...)` returns a `GPUBackend`, and `toolkit.MockCPU(measurement)` returns a `CPUBackend`. Pass them to their matching sensor constructors and call `toolkit.Collect(cat, sensor)` normally.
+Yes. Any `toolkit.Sensor` whose `Measure` returns fixed measurements can be passed to `toolkit.Collect(cat, sensor)`. To exercise the CLI wiring through `toolkit/app`, implement a `collect.Sensor` that returns fixed observations and claim its signals with `WithCollect(sensor, signalIDs...)`; it replaces the built-in source for those signals.
 
 The catalog itself has no hardware dependency. Populate `gpu.GPUMeasurement` directly and call `cat.EvaluateAll(m)` for fully in-process testing.

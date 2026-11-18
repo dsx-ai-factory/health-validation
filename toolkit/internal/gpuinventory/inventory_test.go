@@ -107,11 +107,10 @@ func TestGPUCountFromInventory(t *testing.T) {
 		// A successful enumeration that found nothing proves zero GPUs.
 		{name: "zero GPUs", snapshot: inventory(), want: 0},
 		// A slot whose handle failed keeps its source index but is not
-		// counted, as the legacy backend excludes unreadable handles.
+		// counted.
 		{name: "failed handle", snapshot: inventory(gpuEntry(0, gb200), failedEntry(1, handleOperation), gpuEntry(2, gb200), gpuEntry(3, gb200)), want: 3},
 		{name: "every handle failed", snapshot: inventory(failedEntry(0, handleOperation), failedEntry(1, handleOperation)), want: 0},
-		// A GPU whose handle loaded still counts when a later read failed,
-		// as it does in the legacy backend.
+		// A GPU whose handle loaded still counts when a later read failed.
 		{name: "partial identity", snapshot: inventory(gpuEntry(0, gb200), failedEntry(1, "GetUUID"), failedEntry(2, "NewDevice"), failedEntry(3, "GetIndex")), want: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -257,6 +256,8 @@ func TestArchitecture(t *testing.T) {
 		{name: "failed slot skipped", snapshot: inventory(failedEntry(0, handleOperation), gpuEntry(1, "NVIDIA H100 80GB HBM3")), want: "H100"},
 		{name: "VR200 by name", snapshot: inventory(gpuEntry(0, "NVIDIA VR200")), want: "VR200"},
 		{name: "other VR name", snapshot: inventory(gpuEntry(0, "NVIDIA VR Test")), want: "VR200"},
+		{name: "GB300 not read as B300", snapshot: inventory(gpuEntry(0, "NVIDIA GB300")), want: "GB300"},
+		{name: "B300 after GB300", snapshot: inventory(gpuEntry(0, "NVIDIA B300 SXM6 AC")), want: "B300"},
 		{name: "unrecognized", snapshot: inventory(gpuEntry(0, "NVIDIA A10")), want: ArchitectureUnknown},
 		{name: "generic name", snapshot: inventory(gpuEntry(0, "NVIDIA Graphics Device")), want: ArchitectureUnknown},
 		{name: "enumeration failure", snapshot: enumerationFailure(), err: "Driver Not Loaded"},

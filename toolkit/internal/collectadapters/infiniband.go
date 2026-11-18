@@ -15,8 +15,8 @@ import (
 // as observations does.
 const linkFlapSinceUnknown = "boot"
 
-// InfiniBand is the category's one built-in adapter. It replaces
-// toolkit.RDMALinkFlapSensor for the stock CLI's link-flap measurement.
+// InfiniBand is the category's one built-in adapter. It builds
+// the stock CLI's link-flap measurement.
 func InfiniBand() *domainAdapter {
 	a := newDomainAdapter(health.InfiniBand, erroredInfiniBand)
 	a.complete = completeLinkFlap

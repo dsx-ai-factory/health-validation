@@ -18,6 +18,7 @@ import (
 type fakeInventorySource struct {
 	snapshot        *observation.GPUInventorySnapshot
 	identityFailure *observation.CollectionError
+	values          map[string]dcgmsource.FieldValue
 	identities      []dcgmsource.GPUIdentityEntry
 	inventoryReads  int
 	identityReads   int
@@ -38,6 +39,9 @@ func (source *fakeInventorySource) GPUIdentities(context.Context, *collect.Cycle
 
 func (source *fakeInventorySource) ReadGPUMetrics(_ context.Context, _ *collect.Cycle, _ uint, signalIDs []string) map[string]dcgmsource.FieldValue {
 	source.metricReads++
+	if source.values != nil {
+		return source.values
+	}
 	values := make(map[string]dcgmsource.FieldValue)
 	for _, signalID := range signalIDs {
 		values[signalID] = dcgmsource.FieldValue{Value: &observation.Value{Kind: &observation.Value_DoubleValue{DoubleValue: 100}}}
@@ -365,5 +369,65 @@ func TestNewAcceptsEveryDCGMSourceMode(t *testing.T) {
 		if _, err := New(source, gpusignals.PowerDraw.ID(), gpusignals.TemperatureCelsius.ID()); err != nil {
 			t.Fatalf("New(%s) error = %v", name, err)
 		}
+	}
+}
+
+// The DCGM source reports a first sample with no timestamp as a NO_DATA field
+// error, and a field DCGM omitted entirely must not read as healthy either.
+func TestMeasureIncompleteFirstSampleFailsClosed(t *testing.T) {
+	noTimestamp := &observation.CollectionError{
+		Source:      dcgmsource.Name,
+		Category:    observation.CollectionErrorCategoryUnavailable,
+		SourceError: "DCGM_ST_NO_DATA",
+		Detail:      "DCGM signal has no sample timestamp",
+	}
+	sampledAt := time.Unix(1_700_000_000, 0).UTC()
+	source := &fakeInventorySource{
+		identities: []dcgmsource.GPUIdentityEntry{{Index: 0, UUID: "GPU-0"}},
+		values: map[string]dcgmsource.FieldValue{
+			gpusignals.PowerDraw.ID():          {CollectionError: noTimestamp},
+			gpusignals.PowerLimitEnforced.ID(): {ObservedAt: sampledAt, Value: &observation.Value{Kind: &observation.Value_DoubleValue{DoubleValue: 700}}},
+		},
+	}
+	startedAt := time.Unix(1_700_000_100, 0).UTC()
+	cycle, err := collect.NewCycle("incomplete-first-sample", startedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := []string{gpusignals.PowerDraw.ID(), gpusignals.PowerLimitEnforced.ID(), gpusignals.PerformanceState.ID()}
+	batch, err := (&sensor{source: source, signals: supportedSignals}).Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID(selected...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if validationErr := observation.ValidateBatch(batch); validationErr != nil {
+		t.Fatal(validationErr)
+	}
+	got := make(map[string]*observation.Observation, len(batch.GetObservations()))
+	for _, current := range batch.GetObservations() {
+		if current.GetTarget().GetGpu().GetUuid() != "GPU-0" {
+			t.Fatalf("observation target = %v, want GPU-0", current.GetTarget())
+		}
+		got[current.GetSignalId()] = current
+	}
+	if len(got) != len(selected) {
+		t.Fatalf("observations = %v, want one per selected signal", batch.GetObservations())
+	}
+
+	untimed := got[gpusignals.PowerDraw.ID()]
+	if untimed.GetValue() != nil || untimed.GetCollectionError().GetSourceError() != "DCGM_ST_NO_DATA" {
+		t.Errorf("sample without timestamp = %v, want the source's NO_DATA collection error", untimed)
+	}
+	if !untimed.GetObservedAt().AsTime().Equal(startedAt) {
+		t.Errorf("sample without timestamp observed at %v, want cycle start %v", untimed.GetObservedAt().AsTime(), startedAt)
+	}
+
+	missing := got[gpusignals.PerformanceState.ID()]
+	if missing.GetValue() != nil || missing.GetCollectionError().GetCategory() != observation.CollectionErrorCategorySourceError || missing.GetCollectionError().GetOperation() != "metrics" {
+		t.Errorf("field missing from DCGM response = %v, want a metrics source error", missing)
+	}
+
+	healthy := got[gpusignals.PowerLimitEnforced.ID()]
+	if healthy.GetValue().GetDoubleValue() != 700 || !healthy.GetObservedAt().AsTime().Equal(sampledAt) {
+		t.Errorf("sampled field = %v, want 700 at its sample time", healthy)
 	}
 }
