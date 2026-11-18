@@ -122,11 +122,11 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 		return nil, err
 	}
 	var deviceSignals, portSignals collect.Signals
+	perDevice := ibsignals.DeviceSignals()
 	for _, signal := range selected {
-		switch paths[signal.ID()] {
-		case "fw_ver", "board_id", "hca_type":
+		if slices.Contains(perDevice, signal) {
 			deviceSignals = append(deviceSignals, signal)
-		default:
+		} else {
 			portSignals = append(portSignals, signal)
 		}
 	}
