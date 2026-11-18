@@ -487,3 +487,56 @@ func TestVerdictWriteDeadlineStartsAfterEvaluation(t *testing.T) {
 		}
 	})
 }
+
+func TestVerdictShutdownClosesActiveHTTPConnection(t *testing.T) {
+	entered := make(chan context.Context, 1)
+	release := make(chan struct{})
+	defer close(release)
+	address, cancel, stopped := startVerdictServer(t, func(ctx context.Context, _ *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
+		entered <- ctx
+		<-release
+		return nil, context.Canceled
+	}, WithShutdownTimeout(30*time.Millisecond))
+	requestCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stop()
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, "http://"+address+"/verdict", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		response, err := http.DefaultClient.Do(request)
+		if response != nil {
+			response.Body.Close()
+		}
+		done <- err
+	}()
+	var handlerCtx context.Context
+	select {
+	case handlerCtx = <-entered:
+	case <-requestCtx.Done():
+		t.Fatal("HTTP handler did not start")
+	}
+	cancel()
+	select {
+	case err := <-stopped:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-requestCtx.Done():
+		t.Fatal("shutdown did not finish")
+	}
+	select {
+	case <-handlerCtx.Done():
+	case <-requestCtx.Done():
+		t.Fatal("shutdown left HTTP connection open")
+	}
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("interrupted HTTP request succeeded")
+		}
+	case <-requestCtx.Done():
+		t.Fatal("HTTP client did not finish")
+	}
+}

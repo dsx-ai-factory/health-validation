@@ -20,6 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"google.golang.org/grpc"
@@ -530,13 +531,15 @@ func (delayedAgentNode) Measure(ctx context.Context, opts ...collect.OpOption) (
 }
 
 func TestAgentSequentialSourcesHaveIndependentBudgets(t *testing.T) {
-	agent := withAgentSource(withAgentSource(cadenceRunApp(), delayedAgentGPU{}), delayedAgentNode{}).newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	verdict, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{})
-	if err != nil || verdict.GetOverallSeverity() != healthv1.Severity_PASS {
-		t.Fatalf("healthy sequential sources: %v, %v", verdict, err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		agent := withAgentSource(withAgentSource(cadenceRunApp(), delayedAgentGPU{}), delayedAgentNode{}).newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		verdict, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{})
+		if err != nil || verdict.GetOverallSeverity() != healthv1.Severity_PASS {
+			t.Fatalf("healthy sequential sources: %v, %v", verdict, err)
+		}
+	})
 }
 
 func TestServeValidatesRequestBudgetAgainstSourceTimeout(t *testing.T) {

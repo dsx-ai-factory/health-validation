@@ -114,7 +114,12 @@ func ServeListener(ctx context.Context, listener net.Listener, handler Handler, 
 	grpcStopped := make(chan struct{})
 	go func() { grpcServer.GracefulStop(); close(grpcStopped) }()
 	httpStopped := make(chan struct{})
-	go func() { _ = httpServer.Shutdown(shutdownCtx); close(httpStopped) }()
+	go func() {
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			_ = httpServer.Close()
+		}
+		close(httpStopped)
+	}()
 	select {
 	case <-grpcStopped:
 	case <-shutdownCtx.Done():

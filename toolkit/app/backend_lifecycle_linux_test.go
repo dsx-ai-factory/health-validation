@@ -30,3 +30,25 @@ func TestOpenInventoryReusesLateCompletedInitialization(t *testing.T) {
 		t.Fatalf("count = %d, %v, want the retained source's four GPUs", count, ok)
 	}
 }
+
+func TestSharedNVMLSensorTracksInstance(t *testing.T) {
+	first := stalledInstance(make(chan struct{}), false)
+	host := &nvmlHost{inst: first}
+	sensor, err := host.sharedNVMLSensor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reused, err := host.sharedNVMLSensor()
+	if err != nil || reused != sensor {
+		t.Fatalf("sensor was not reused: %v", err)
+	}
+	second := stalledInstance(make(chan struct{}), false)
+	host.inst = second
+	rebuilt, err := host.sharedNVMLSensor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rebuilt == sensor || host.nvmlSensorInst != second {
+		t.Fatal("sensor did not rebuild for the replacement instance")
+	}
+}

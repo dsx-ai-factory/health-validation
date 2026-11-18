@@ -40,23 +40,29 @@ func requireTrackerFinished(t *testing.T, finished <-chan struct{}) {
 	}
 }
 
-func TestCallTrackerOutlivesWatchdogTimeout(t *testing.T) {
-	cycle, err := NewCycleWithTimeout("tracked-timeout", time.Now(), 20*time.Millisecond)
+func TestCallTrackerOutlivesCancellation(t *testing.T) {
+	cycle, err := NewCycleWithTimeout("tracked-timeout", time.Now(), time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, tracker := WithCallTracking(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx, tracker := WithCallTracking(ctx)
 	release := make(chan struct{})
 	var releaseOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
 	started := make(chan struct{})
+	go func() {
+		<-started
+		cancel()
+	}()
 	_, err = Run(ctx, cycle, "stuck", func(context.Context) (int, error) {
 		close(started)
 		<-release
 		return 7, nil
 	})
-	if !errors.Is(err, ErrCollectionTimeout) {
-		t.Fatalf("Run error = %v, want timeout", err)
+	if !errors.Is(err, ErrCollectionCanceled) {
+		t.Fatalf("Run error = %v, want canceled collection", err)
 	}
 	select {
 	case <-started:
@@ -70,16 +76,22 @@ func TestCallTrackerOutlivesWatchdogTimeout(t *testing.T) {
 }
 
 func TestCallTrackerIncludesNestedWorkAfterOuterCallbackReturns(t *testing.T) {
-	cycle, err := NewCycleWithTimeout("tracked-nested", time.Now(), 20*time.Millisecond)
+	cycle, err := NewCycleWithTimeout("tracked-nested", time.Now(), time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, tracker := WithCallTracking(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx, tracker := WithCallTracking(ctx)
 	release := make(chan struct{})
 	var releaseOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
 	outerReturned := make(chan struct{})
 	innerStarted := make(chan struct{})
+	go func() {
+		<-innerStarted
+		cancel()
+	}()
 	_, err = Run(ctx, cycle, "outer", func(ctx context.Context) (int, error) {
 		defer close(outerReturned)
 		return Run(ctx, cycle, "inner", func(context.Context) (int, error) {
@@ -88,13 +100,13 @@ func TestCallTrackerIncludesNestedWorkAfterOuterCallbackReturns(t *testing.T) {
 			return 7, nil
 		})
 	})
-	if !errors.Is(err, ErrCollectionTimeout) {
-		t.Fatalf("Run error = %v, want timeout", err)
+	if !errors.Is(err, ErrCollectionCanceled) {
+		t.Fatalf("Run error = %v, want canceled collection", err)
 	}
 	select {
 	case <-outerReturned:
 	case <-time.After(5 * time.Second):
-		t.Fatal("outer callback did not finish after its nested watchdog expired")
+		t.Fatal("outer callback did not finish after cancellation")
 	}
 	select {
 	case <-innerStarted:
