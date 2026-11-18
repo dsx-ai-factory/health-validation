@@ -312,6 +312,10 @@ example, to evaluate Xids within the same interval on all GPUs:
 ./health-validation run --xid-from 1792600000 --xid-to 1792603600
 ```
 
+The interval excludes its start and includes its end. A caller that polls
+back-to-back windows, passing the previous `--xid-to` as the next
+`--xid-from`, sees an Xid logged exactly on the shared second once.
+
 The two forms of `--xid-from` can be combined: a GPU-specific start time
 overrides the node-wide start time for that GPU. GPUs without an override use
 the node-wide start time, or the entire current boot if none is supplied.
