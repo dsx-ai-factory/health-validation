@@ -390,7 +390,8 @@ func TestMeasureMetricsWithoutUUID(t *testing.T) {
 
 type blockingUUIDSource struct {
 	*fakeInventorySource
-	release chan struct{}
+	uuidStarted chan struct{}
+	release     chan struct{}
 }
 
 func (source *blockingUUIDSource) ReadGPUMetrics(ctx context.Context, cycle *collect.Cycle, index uint, ids []string) map[string]dcgmsource.FieldValue {
@@ -412,6 +413,7 @@ func (source *blockingUUIDSource) ReadGPUMetrics(ctx context.Context, cycle *col
 func (source *blockingUUIDSource) GPUUUIDs(ctx context.Context, cycle *collect.Cycle, indices []uint) []dcgmsource.GPUIdentityEntry {
 	source.uuidReads++
 	_, err := collect.Run(ctx, cycle, dcgmsource.Name, func(context.Context) (struct{}, error) {
+		close(source.uuidStarted)
 		<-source.release
 		return struct{}{}, nil
 	})
@@ -428,23 +430,49 @@ func (source *blockingUUIDSource) GPUUUIDs(ctx context.Context, cycle *collect.C
 	return entries
 }
 
-func TestMeasureMetricValuesSurviveUUIDTimeout(t *testing.T) {
+func TestMeasureMetricValuesSurviveUUIDCancellation(t *testing.T) {
 	source := &blockingUUIDSource{
 		fakeInventorySource: &fakeInventorySource{identities: []dcgmsource.GPUIdentityEntry{{Index: 2}, {Index: 7}}},
+		uuidStarted:         make(chan struct{}),
 		release:             make(chan struct{}),
 	}
 	t.Cleanup(sync.OnceFunc(func() { close(source.release) }))
-	cycle, err := collect.NewCycleWithTimeout("metrics-before-uuid-timeout", time.Now(), 100*time.Millisecond)
+	cycle, err := collect.NewCycle("metrics-before-uuid-cancellation", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 	sensor := &sensor{source: source, signals: collect.Signals{gpusignals.PowerDraw, gpusignals.TemperatureCelsius}}
-	batch, err := sensor.Measure(context.Background(), collect.WithCycle(cycle))
-	if err != nil {
-		t.Fatal(err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	type result struct {
+		err   error
+		batch *observation.ObservationBatch
 	}
+	completed := make(chan result, 1)
+	go func() {
+		batch, measureErr := sensor.Measure(ctx, collect.WithCycle(cycle))
+		completed <- result{err: measureErr, batch: batch}
+	}()
+	select {
+	case <-source.uuidStarted:
+	case early := <-completed:
+		t.Fatalf("Measure returned before UUID lookup started: %v", early.err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("UUID lookup did not start")
+	}
+	cancel()
+	var measured result
+	select {
+	case measured = <-completed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Measure did not return after UUID cancellation")
+	}
+	if measured.err != nil {
+		t.Fatal(measured.err)
+	}
+	batch := measured.batch
 	if source.metricReads != 2 || source.uuidReads != 1 || len(batch.Observations) != 4 {
-		t.Fatalf("UUID timeout suppressed metric reads: reads=%d UUID reads=%d batch=%v", source.metricReads, source.uuidReads, batch)
+		t.Fatalf("UUID cancellation suppressed metric reads: reads=%d UUID reads=%d batch=%v", source.metricReads, source.uuidReads, batch)
 	}
 	for position, current := range batch.Observations {
 		gpu := current.GetTarget().GetGpu()
