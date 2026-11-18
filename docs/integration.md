@@ -618,12 +618,19 @@ the architecture cannot be discovered, and `collect` writes nothing. Entries
 stay if the run later exits `2`. If an entry cannot be written, or a value
 contains a newline, the run exits `2` with nothing on stdout.
 
+`health-validation serve` records its configured overrides once before opening
+the listener, without GPU discovery. Its audit `ORIGINAL_VALUE` uses the
+architecture-independent catalog default (`null` when no such default exists).
+Architecture-specific originals remain in each verdict's
+`thresholds[].original_value`. An audit failure exits `2`; driver availability
+is evaluated on each request and does not prevent the service from starting.
+
 Each entry carries:
 
 | Field | Value |
 | --- | --- |
 | `CHECK_ID`, `THRESHOLD_NAME` | The overridden threshold. |
-| `ORIGINAL_VALUE` | The catalog value for the node's architecture, as JSON; `null` when the catalog has none for it. |
+| `ORIGINAL_VALUE` | For `run`, the catalog value for the node's architecture; for `serve`, the architecture-independent default. JSON `null` when no such default exists. |
 | `OVERRIDE_VALUE` | The value from the config, as JSON. |
 | `PROVENANCE` | Who authored the check: `nvidia` for built-ins. |
 | `PRIORITY` | `5` (notice). |

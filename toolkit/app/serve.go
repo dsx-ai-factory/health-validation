@@ -27,7 +27,6 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
-	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/verdictproto"
 )
 
@@ -89,52 +88,16 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	if err := validateWireOverrides(cfg, cat); err != nil {
 		return fail(err)
 	}
+	if err := a.auditOverrides(cat); err != nil {
+		return fail(fmt.Errorf("audit threshold overrides: %w", err))
+	}
 	agent := a.newVerdictAgent(cfg, defaults, xidJournal)
 	agent.requestTimeout = *requestTimeout
 	defer agent.closeWhenIdle()
-	if err := agent.auditStartup(ctx, cat); err != nil {
-		return fail(fmt.Errorf("audit threshold overrides: %w", err))
-	}
 	if err := verdictserver.ServeContext(ctx, *address, agent.evaluate, verdictserver.WithAfterResponse(agent.afterResponse)); err != nil {
 		return fail(err)
 	}
 	return exitOK
-}
-
-func (agent *verdictAgent) auditStartup(ctx context.Context, startup *catalog.Catalog) error {
-	configured, err := startup.ConfiguredOverrides()
-	if err != nil || len(configured) == 0 {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(ctx, agent.requestTimeout)
-	defer cancel()
-	tracked, tracker := collect.WithCallTracking(ctx)
-	agent.gate <- struct{}{}
-	// A startup discovery call can outlive its watchdog, just as a request can.
-	defer func() {
-		go func() {
-			tracker.Wait()
-			<-agent.gate
-		}()
-	}()
-	cycle, err := newCycle(collectionTimeout(agent.cfg))
-	if err != nil {
-		return err
-	}
-	snapshot := agent.app.host.gpuInventory().Snapshot(tracked, cycle)
-	if contextErr := ctx.Err(); contextErr != nil {
-		return contextErr
-	}
-	arch, err := gpuinventory.Architecture(snapshot)
-	if err != nil {
-		return fmt.Errorf("discover architecture for audit: %w", err)
-	}
-	driver, _ := gpuinventory.DriverVersion(snapshot)
-	cat, _, err := buildCatalog(agent.cfg, agent.app.customChecks, arch, driver, agent.defaults.ExecutionContext)
-	if err != nil {
-		return err
-	}
-	return agent.app.auditOverrides(cat)
 }
 
 func validateWireOverrides(cfg *Config, cat *catalog.Catalog) error {

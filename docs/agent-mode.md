@@ -62,11 +62,14 @@ to load a changed configuration file.
 Configured threshold overrides are checked for wire compatibility before the
 listener starts. A numeric value that would be rounded by the verdict API is
 a configuration error (exit 2). Overrides are recorded in the system journal once
-at startup, including overrides on disabled checks. Startup discovery resolves
-architecture-specific catalog defaults for those records. If discovery or the
-audit write fails, the listener does not start and the process exits 2. With no
-threshold overrides, startup skips discovery and the audit journal. Requests do
-not repeat the audit.
+at startup, including overrides on disabled checks, without GPU discovery.
+Audit `ORIGINAL_VALUE` uses the architecture-independent catalog default, or
+`null` where only architecture-specific defaults exist. Each request's verdict
+still reports its architecture-specific `thresholds[].original_value`.
+If the audit write fails, the listener does not start and the process exits 2.
+With no threshold overrides, startup skips the audit journal. Requests do not
+repeat the audit. GPU discovery runs per request, so the service can start
+before the driver is ready and report discovery failures as verdicts.
 
 `xid_from` is non-negative; `xid_to` is positive. The effective start must be
 less than the effective end. Bounds are exclusive, matching the CLI, and each
