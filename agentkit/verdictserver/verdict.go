@@ -35,6 +35,8 @@ const (
 	httpReadTimeout            = 30 * time.Second
 	httpWriteTimeout           = 2 * time.Minute
 	httpIdleTimeout            = 2 * time.Minute
+	// Keep useful diagnostics while bounding escaped JSON to less than 32 KiB.
+	maxDecodeErrorBytes = 4 << 10
 )
 
 // Handler evaluates a request. Every produced verdict is a successful response,
@@ -297,6 +299,7 @@ func verdictHTTPHandler(service *verdictService, after AfterResponse) http.Handl
 		}
 		input, err := decodeEvaluateRequest(writer, request)
 		if err != nil {
+			_ = http.NewResponseController(writer).SetWriteDeadline(time.Now().Add(httpWriteTimeout))
 			writeHTTPError(writer, err)
 			return
 		}
@@ -335,7 +338,7 @@ func decodeEvaluateRequest(writer http.ResponseWriter, request *http.Request) (*
 	if request.Method == http.MethodGet {
 		values, err := urlQuery(request)
 		if err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
+			return nil, invalidRequestError(err.Error())
 		}
 		body, err = json.Marshal(values)
 		if err != nil {
@@ -355,9 +358,17 @@ func decodeEvaluateRequest(writer http.ResponseWriter, request *http.Request) (*
 		}
 	}
 	if err := (protojson.UnmarshalOptions{}).Unmarshal(body, input); err != nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid evaluation request: "+err.Error())
+		return nil, invalidRequestError("invalid evaluation request: " + err.Error())
 	}
 	return input, nil
+}
+
+func invalidRequestError(message string) error {
+	// Bound diagnostics before JSON escaping, which can expand each byte sixfold.
+	if len(message) > maxDecodeErrorBytes {
+		message = strings.ToValidUTF8(message[:maxDecodeErrorBytes-3], "?") + "..."
+	}
+	return status.Error(codes.InvalidArgument, message)
 }
 
 func urlQuery(request *http.Request) (map[string]string, error) {

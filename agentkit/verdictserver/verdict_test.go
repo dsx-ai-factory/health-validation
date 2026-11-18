@@ -6,11 +6,13 @@ package verdictserver
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -489,6 +491,102 @@ func TestVerdictWriteDeadlineStartsAfterEvaluation(t *testing.T) {
 				handler.ServeHTTP(writer, httptest.NewRequest(http.MethodGet, "/verdict", nil))
 				if elapsed := time.Since(started); elapsed != 3*time.Minute+httpWriteTimeout {
 					t.Fatalf("request took %s; want evaluation plus delivery timeout", elapsed)
+				}
+			})
+		})
+	}
+}
+
+func TestDecodeErrorsBoundEchoedInput(t *testing.T) {
+	handler := verdictHTTPHandler(&verdictService{handler: func(context.Context, *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
+		t.Error("invalid request started evaluation")
+		return nil, nil
+	}}, func(context.Context, *healthv1.EvaluateRequest, *healthv1.NodeVerdict) {
+		t.Error("invalid request published telemetry")
+	})
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		for name, field := range map[string]string{
+			"short":        "unknown_field",
+			"moderate":     strings.Repeat("a", 1024),
+			"oversized":    strings.Repeat("a", 1<<16),
+			"escape heavy": strings.Repeat("\x00\"\\", 1<<14),
+			"multibyte":    strings.Repeat("界", 1<<15),
+		} {
+			t.Run(method+"/"+name, func(t *testing.T) {
+				encoded, err := json.Marshal(map[string]bool{field: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				request := httptest.NewRequest(method, "/verdict", bytes.NewReader(encoded))
+				if method == http.MethodGet {
+					request = httptest.NewRequest(method, "/verdict?"+url.QueryEscape(field)+"=true", nil)
+				}
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, request)
+				if response.Code != http.StatusBadRequest || response.Body.Len() > 32<<10 {
+					t.Fatalf("status=%d, response bytes=%d", response.Code, response.Body.Len())
+				}
+				var result map[string]string
+				if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+					t.Fatal(err)
+				}
+				message := result["error"]
+				if message == "" || len(message) > maxDecodeErrorBytes {
+					t.Fatalf("error message bytes=%d", len(message))
+				}
+				if (name == "short" || name == "moderate") && !strings.Contains(message, field) {
+					t.Fatalf("diagnostic lost field name: %s", message)
+				}
+			})
+		}
+	}
+}
+
+func TestDecodeErrorDeliveryTimeoutReleasesAdmission(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		t.Run(method, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				server, client := net.Pipe()
+				defer server.Close()
+				defer client.Close()
+				writer := &pipeResponseWriter{ResponseRecorder: httptest.NewRecorder(), conn: server}
+				limit := make(requestLimit, 1)
+				calls, publications := 0, 0
+				want := testVerdict(t)
+				handler := limit.httpHandler(verdictHTTPHandler(&verdictService{handler: func(context.Context, *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
+					calls++
+					return want, nil
+				}}, func(context.Context, *healthv1.EvaluateRequest, *healthv1.NodeVerdict) { publications++ }))
+				request := httptest.NewRequest(method, "/verdict", strings.NewReader(`{"unknown":true}`))
+				if method == http.MethodGet {
+					request = httptest.NewRequest(method, "/verdict?unknown=true", nil)
+				}
+				done := make(chan struct{})
+				started := time.Now()
+				go func() {
+					handler.ServeHTTP(writer, request)
+					close(done)
+				}()
+				synctest.Wait()
+				if writer.Code != http.StatusBadRequest || len(limit) != 1 {
+					t.Fatalf("status=%d, outstanding=%d", writer.Code, len(limit))
+				}
+				overloaded := httptest.NewRecorder()
+				handler.ServeHTTP(overloaded, httptest.NewRequest(http.MethodGet, "/verdict", nil))
+				if overloaded.Code != http.StatusTooManyRequests {
+					t.Fatalf("blocked delivery did not hold admission: status=%d", overloaded.Code)
+				}
+				<-done
+				if elapsed := time.Since(started); elapsed != httpWriteTimeout {
+					t.Fatalf("decode-error delivery took %s, want %s", elapsed, httpWriteTimeout)
+				}
+				if len(limit) != 0 || calls != 0 || publications != 0 {
+					t.Fatalf("decode error: outstanding=%d evaluations=%d publications=%d", len(limit), calls, publications)
+				}
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/verdict", nil))
+				if response.Code != http.StatusOK || calls != 1 || publications != 1 || len(limit) != 0 {
+					t.Fatalf("capacity did not recover: status=%d evaluations=%d publications=%d outstanding=%d", response.Code, calls, publications, len(limit))
 				}
 			})
 		})
