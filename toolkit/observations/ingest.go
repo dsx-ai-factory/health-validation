@@ -333,11 +333,15 @@ func (b *builder) add(current *observation.Observation, f feed) {
 		e.addError(targetErr, append(f.schema.identityFields(), f.catalog...)...)
 	case current.GetCollectionError() != nil:
 		fields := f.catalog
-		// A whole-source failure leaves every GPU unidentified, so gpu_id
-		// carries the same failure.
-		if f.mapped && f.schema.gpuID >= 0 && current.GetTarget() == nil {
-			fields = append([]string{gpuIDField}, fields...)
-			e.fed[gpuIDField] = true
+		// A whole-source failure leaves every entity unidentified, so the
+		// identity fields carry the same failure; reported as never observed
+		// instead, they would hide a timeout behind a missing-data error.
+		if f.mapped && current.GetTarget() == nil {
+			identity := f.schema.identityFields()
+			fields = append(identity, fields...)
+			for _, field := range identity {
+				e.fed[field] = true
+			}
 		}
 		e.addError(collectionFailure(current.GetCollectionError()), fields...)
 	case current.GetNoValue() != nil:

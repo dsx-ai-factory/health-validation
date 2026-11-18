@@ -84,11 +84,13 @@ func TestToMeasurementsInfiniBandDeviceFailure(t *testing.T) {
 }
 
 // A whole-source failure carries no target and yields one measurement that
-// names no port, keyed by the source that failed, with every signal failed.
+// names no port, keyed by the source that failed. The port identity carries
+// the failure itself rather than a missing-data error, so a timeout of the
+// whole source still recommends a retry.
 func TestToMeasurementsInfiniBandSourceFailure(t *testing.T) {
 	o := ibObservation(ibsignals.StateName, nil)
 	o.Target = nil
-	o.Outcome = &observation.Observation_CollectionError{CollectionError: &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable}}
+	o.Outcome = &observation.Observation_CollectionError{CollectionError: &observation.CollectionError{Category: observation.CollectionErrorCategoryTimeout}}
 	port := only[infiniband.PortMeasurement](t, ToMeasurements([]*observation.Observation{o}))
 	if port.EntityID() != "" {
 		t.Fatalf("EntityID = %q, want empty for an unidentified port", port.EntityID())
@@ -96,11 +98,15 @@ func TestToMeasurementsInfiniBandSourceFailure(t *testing.T) {
 	if key := health.KeyOf(port); key != health.SourceEntity("infiniband.sysfs") {
 		t.Errorf("key = %v, want the failed source", key)
 	}
-	if failed := failedSignals(port); !slices.Equal(failed, []string{infiniband.SignalIBState}) {
-		t.Errorf("failed = %v, want the observed signal", failed)
+	errs := mappedErrors(port)
+	if len(errs) != 1 || !errors.Is(errs[0].Err(), health.ErrCollectionTimeout) {
+		t.Fatalf("errors = %v, want one timeout", errs)
 	}
-	if missing := missingSignals(port); !slices.Contains(missing, infiniband.SignalIBDevice) || !slices.Contains(missing, infiniband.SignalIBPort) {
-		t.Errorf("missing = %v, want the identity reported as never observed", missing)
+	if failed := errs[0].FailedSignals(); !slices.Equal(failed, []string{infiniband.SignalIBDevice, infiniband.SignalIBPort, infiniband.SignalIBState}) {
+		t.Errorf("failed = %v, want the identity and the observed signal", failed)
+	}
+	if missing := missingSignals(port); slices.Contains(missing, infiniband.SignalIBDevice) || slices.Contains(missing, infiniband.SignalIBPort) {
+		t.Errorf("missing = %v, want the identity attributed to the failure", missing)
 	}
 }
 
