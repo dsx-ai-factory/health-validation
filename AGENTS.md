@@ -238,7 +238,10 @@ fields override node/cadence/context defaults and node-wide Xid time bounds
 (`xid_from` / `xid_to`, exclusive Unix seconds) for that request only. Config is
 loaded at startup; restart to reload it.
 
-Agent collection is serialized. `collection_timeout_seconds` bounds each source
+Agent collection is serialized. The transport admits at most 32 in-flight
+requests across HTTP and gRPC by default; overload returns HTTP 429 / gRPC
+RESOURCE_EXHAUSTED without collection or metrics publication. Slots remain held
+through response delivery and metrics publication. `collection_timeout_seconds` bounds each source
 call. `--request-timeout` separately bounds admission and evaluation, including
 waiting for admission (default 2m), but excludes HTTP request decoding and
 response writing. It must exceed the source timeout; allow time for sequential

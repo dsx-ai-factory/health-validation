@@ -22,13 +22,17 @@ go_library(
 
 go_test(
     name = "verdictserver_test",
-    srcs = ["verdict_test.go"],
+    srcs = [
+        "admission_test.go",
+        "verdict_test.go",
+    ],
     embed = [":verdictserver"],
     deps = [
         "//proto/go/health/v1:health",
         "@org_golang_google_grpc//:grpc",
         "@org_golang_google_grpc//codes",
         "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//stats",
         "@org_golang_google_grpc//status",
         "@org_golang_google_protobuf//encoding/protojson",
         "@org_golang_google_protobuf//proto",

@@ -38,7 +38,7 @@ Generated Go types are in
 The default address is `127.0.0.1:8080`. The listener requires a numeric loopback
 IP such as `127.0.0.1` or `::1`. Wildcard addresses, remote IPs, and hostnames
 are rejected. Callers must share the service's network namespace. This version
-has no TLS, authentication, or rate limiting; every caller that can reach the
+has no TLS, authentication, or per-client rate limiting; every caller that can reach the
 listener must be trusted.
 
 ## Defaults and request overrides
@@ -103,6 +103,7 @@ that fails without exhausting the request budget produces the same CRITICAL
 | --- | --- | --- |
 | Verdict produced, including a discovery-failure verdict | OK | 200 |
 | Invalid request override or JSON | INVALID_ARGUMENT | 400 |
+| Request capacity exhausted | RESOURCE_EXHAUSTED | 429 |
 | Caller canceled | CANCELED | 408, if the client can still receive it |
 | Service reports a request deadline expired | DEADLINE_EXCEEDED | 504 |
 | Handler reports temporarily unavailable | UNAVAILABLE | 503 |
@@ -121,7 +122,14 @@ changes the running process's exit policy.
 ## Concurrency, deadlines, and shutdown
 
 The service serializes evaluations because host NVML/DCGM sources are shared.
-It does not coalesce requests or reuse a previous verdict.
+It does not coalesce requests or reuse a previous verdict. A shared limit admits
+at most 32 requests across HTTP and gRPC, including calls waiting for collection,
+response delivery, and metrics publication. Excess calls fail promptly with
+HTTP 429 / gRPC RESOURCE_EXHAUSTED and do not collect or publish metrics. HTTP
+admission occurs before body decoding; gRPC admission occurs after message
+decoding, before evaluation. This limits admitted work, not open connections.
+Library hosts can set a positive limit with `WithMaxInFlightRequests`.
+Retry overloaded requests with backoff.
 `collection_timeout_seconds` bounds each source call independently (default
 60 seconds). `--request-timeout` separately bounds admission and evaluation,
 including time spent waiting for another evaluation (default 2 minutes, matching

@@ -30,10 +30,11 @@ import (
 )
 
 const (
-	httpReadHeaderTimeout = 10 * time.Second
-	httpReadTimeout       = 30 * time.Second
-	httpWriteTimeout      = 2 * time.Minute
-	httpIdleTimeout       = 2 * time.Minute
+	defaultMaxInFlightRequests = 32
+	httpReadHeaderTimeout      = 10 * time.Second
+	httpReadTimeout            = 30 * time.Second
+	httpWriteTimeout           = 2 * time.Minute
+	httpIdleTimeout            = 2 * time.Minute
 )
 
 // Handler evaluates a request. Every produced verdict is a successful response,
@@ -45,14 +46,21 @@ type Handler func(context.Context, *healthv1.EvaluateRequest) (*healthv1.NodeVer
 type AfterResponse func(context.Context, *healthv1.EvaluateRequest, *healthv1.NodeVerdict)
 
 type verdictOptions struct {
-	afterResponse   AfterResponse
-	shutdownTimeout time.Duration
+	afterResponse       AfterResponse
+	shutdownTimeout     time.Duration
+	maxInFlightRequests int
 }
 
 type Option func(*verdictOptions)
 
 func WithAfterResponse(callback AfterResponse) Option {
 	return func(options *verdictOptions) { options.afterResponse = callback }
+}
+
+// WithMaxInFlightRequests bounds admitted requests across HTTP and gRPC.
+// Capacity includes request decoding (HTTP), evaluation, delivery, and telemetry.
+func WithMaxInFlightRequests(limit int) Option {
+	return func(options *verdictOptions) { options.maxInFlightRequests = limit }
 }
 
 // WithShutdownTimeout bounds the time allowed for requests to finish at shutdown.
@@ -79,19 +87,23 @@ func ServeListener(ctx context.Context, listener net.Listener, handler Handler, 
 	if handler == nil {
 		return errors.New("verdict handler is required")
 	}
-	settings := verdictOptions{shutdownTimeout: 5 * time.Second}
+	settings := verdictOptions{shutdownTimeout: 5 * time.Second, maxInFlightRequests: defaultMaxInFlightRequests}
 	for _, option := range options {
 		option(&settings)
 	}
+	if settings.maxInFlightRequests <= 0 {
+		return errors.New("maximum in-flight requests must be positive")
+	}
+	limit := make(requestLimit, settings.maxInFlightRequests)
 	service := &verdictService{handler: handler}
 	multiplexer := cmux.New(listener)
 	multiplexer.SetReadTimeout(httpReadHeaderTimeout)
 	grpcListener := multiplexer.MatchWithWriters(matchGRPCWithWriteDeadline)
 	httpListener := multiplexer.Match(cmux.HTTP1Fast())
-	grpcServer := grpc.NewServer(grpc.StatsHandler(&responseStats{after: settings.afterResponse}))
+	grpcServer := grpc.NewServer(grpc.StatsHandler(&responseStats{after: settings.afterResponse}), grpc.UnaryInterceptor(limit.intercept))
 	healthv1.RegisterVerdictServiceServer(grpcServer, service)
 	httpServer := &http.Server{
-		Handler:           verdictHTTPHandler(service, settings.afterResponse),
+		Handler:           limit.httpHandler(verdictHTTPHandler(service, settings.afterResponse)),
 		ReadHeaderTimeout: httpReadHeaderTimeout,
 		ReadTimeout:       httpReadTimeout,
 		// Start the write deadline after evaluation so collection has its full budget.
@@ -154,6 +166,42 @@ drain:
 	return firstErr
 }
 
+type requestLimit chan struct{}
+
+func (limit requestLimit) acquire() bool {
+	select {
+	case limit <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (limit requestLimit) httpHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if !limit.acquire() {
+			_ = http.NewResponseController(writer).SetWriteDeadline(time.Now().Add(httpWriteTimeout))
+			writeHTTPError(writer, status.Error(codes.ResourceExhausted, "too many in-flight verdict requests"))
+			return
+		}
+		defer func() { <-limit }()
+		next.ServeHTTP(writer, request)
+	})
+}
+
+func (limit requestLimit) intercept(ctx context.Context, request any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	response, ok := ctx.Value(responseKey{}).(*responseState)
+	if !ok {
+		return nil, status.Error(codes.Internal, "missing RPC response state")
+	}
+	if !limit.acquire() {
+		return nil, status.Error(codes.ResourceExhausted, "too many in-flight verdict requests")
+	}
+	// stats.End runs after delivery, including cancellation and transport errors.
+	response.release = func() { <-limit }
+	return handler(ctx, request)
+}
+
 // Classification writes SETTINGS before gRPC owns the connection and its deadlines.
 func matchGRPCWithWriteDeadline(writer io.Writer, reader io.Reader) bool {
 	connection, ok := writer.(net.Conn)
@@ -208,6 +256,7 @@ func transportError(err error) error {
 type (
 	responseKey   struct{}
 	responseState struct {
+		release func()
 		request *healthv1.EvaluateRequest
 		verdict *healthv1.NodeVerdict
 	}
@@ -219,12 +268,22 @@ func (handler *responseStats) TagRPC(ctx context.Context, _ *stats.RPCTagInfo) c
 }
 
 func (handler *responseStats) HandleRPC(ctx context.Context, event stats.RPCStats) {
-	if end, ok := event.(*stats.End); ok && end.Error == nil && handler.after != nil {
-		if response, ok := ctx.Value(responseKey{}).(*responseState); ok && response.verdict != nil {
-			handler.after(ctx, response.request, response.verdict)
-		}
+	end, ok := event.(*stats.End)
+	if !ok {
+		return
+	}
+	response, ok := ctx.Value(responseKey{}).(*responseState)
+	if !ok {
+		return
+	}
+	if response.release != nil {
+		defer response.release()
+	}
+	if end.Error == nil && handler.after != nil && response.verdict != nil {
+		handler.after(ctx, response.request, response.verdict)
 	}
 }
+
 func (*responseStats) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context { return ctx }
 func (*responseStats) HandleConn(context.Context, stats.ConnStats)                       {}
 
@@ -334,6 +393,8 @@ func writeHTTPError(writer http.ResponseWriter, err error) {
 		code = http.StatusGatewayTimeout
 	case codes.Unavailable:
 		code = http.StatusServiceUnavailable
+	case codes.ResourceExhausted:
+		code = http.StatusTooManyRequests
 	}
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(code)
