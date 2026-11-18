@@ -155,8 +155,7 @@ var criticalXids = []criticalXid{
 }
 
 // nvlink5Xid is one Xid code in the NVLink5/NVSwitch fault family
-// (144-150, Blackwell-only; on B300 the NVLink 5 links run to the HGX
-// baseboard's NVSwitches). Unlike other Xid codes, NVRM itself marks
+// (144-150, Blackwell-only). Unlike other Xid codes, NVRM itself marks
 // each occurrence Fatal or Nonfatal in the log line, so the check
 // differentiates severity and action on that basis instead of firing
 // CRITICAL uniformly — see [nvlink5Check].
