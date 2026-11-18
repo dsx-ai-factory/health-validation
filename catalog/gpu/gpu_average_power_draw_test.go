@@ -39,7 +39,7 @@ func averagePowerOverrides(minW, maxW float64) catalog.Option {
 
 func TestGPUAveragePowerDraw_Definition(t *testing.T) {
 	definition := gpu.GPUAveragePowerDraw()
-	if got, want := definition.Architectures, []string{"GB200", "GB300", "B200"}; !slices.Equal(got, want) {
+	if got, want := definition.Architectures, []string{"GB200", "GB300", "B200", "B300"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
 	if definition.SchedulingCadence != health.Continuous {
@@ -51,13 +51,13 @@ func TestGPUAveragePowerDraw_Definition(t *testing.T) {
 			t.Errorf("%s default = %v, want %g", name, spec.Value, want)
 		}
 		if len(spec.PerArchitecture) != 0 {
-			t.Errorf("%s PerArchitecture = %v, want empty for shared GB200/GB300 defaults", name, spec.PerArchitecture)
+			t.Errorf("%s PerArchitecture = %v, want empty for shared GB200/GB300/B300 defaults", name, spec.PerArchitecture)
 		}
 	}
 }
 
 func TestGPUAveragePowerDraw_UsesSupportedArchitectureDefaults(t *testing.T) {
-	for _, architecture := range []string{"GB200", "GB300"} {
+	for _, architecture := range []string{"GB200", "GB300", "B300"} {
 		t.Run(architecture, func(t *testing.T) {
 			cat := catalog.New(
 				catalog.WithArchitecture(architecture),
