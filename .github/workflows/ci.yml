@@ -79,6 +79,41 @@ jobs:
       - name: NOTICE up to date check
         run: bazel run //tools:check_notice
 
+  # A change to the verdict schema must bump its schema_version. Compares the
+  # schema on the PR against the one on main: same version with different
+  # content fails. Only runs for pull-request/* branches; main has nothing to
+  # compare against.
+  schema-version:
+    if: github.repository == 'dsx-ai-factory/health-validation' && startsWith(github.ref, 'refs/heads/pull-request/')
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a schema_version bump when the schema changes
+        run: |
+          set -euo pipefail
+          schema=catalog/health/node-verdict.schema.json
+          git fetch --no-tags origin main
+          base=$(git merge-base origin/main HEAD)
+
+          # jq -S sorts keys, so reformatting or reordering is not a change.
+          git show "${base}:${schema}" | jq -S . > "${RUNNER_TEMP}/base.json"
+          jq -S . "${schema}" > "${RUNNER_TEMP}/head.json"
+
+          base_version=$(jq -r '.properties.schema_version.const' "${RUNNER_TEMP}/base.json")
+          head_version=$(jq -r '.properties.schema_version.const' "${RUNNER_TEMP}/head.json")
+
+          if [[ "${base_version}" == "${head_version}" ]] && ! cmp -s "${RUNNER_TEMP}/base.json" "${RUNNER_TEMP}/head.json"; then
+            diff -u "${RUNNER_TEMP}/base.json" "${RUNNER_TEMP}/head.json" || true
+            echo "::error file=${schema}::The schema changed but schema_version is still ${head_version}. Bump health.NodeVerdictSchemaVersion and properties.schema_version.const (MINOR for breaking shape changes and for additive fields or enum values)."
+            exit 1
+          fi
+          echo "schema_version ${base_version} -> ${head_version}; schema change is consistent with the version."
+
   test:
     if: github.repository == 'dsx-ai-factory/health-validation'
     runs-on: linux-amd64-cpu4

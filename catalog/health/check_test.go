@@ -8,6 +8,84 @@ import (
 	"testing"
 )
 
+func TestCheckDefinition_ValidateActionSeverity(t *testing.T) {
+	for _, severity := range []Severity{Pass, Info, Warning, Unknown, Critical} {
+		for _, override := range []bool{false, true} {
+			name := severity.String() + "/default"
+			if override {
+				name = severity.String() + "/rule"
+			}
+			t.Run(name, func(t *testing.T) {
+				cd := CheckDefinition{
+					ID:                "action_severity",
+					RequiredSignals:   []string{"signal"},
+					RecommendedAction: GenericDrain(),
+					Rules:             []Rule{{Expression: "true", Severity: severity}},
+				}
+				if override {
+					cd.RecommendedAction = Monitor
+					cd.Rules[0].RecommendedAction = GenericDrain()
+				}
+				err := cd.Validate()
+				if severity < Unknown {
+					if err == nil || !strings.Contains(err.Error(), "cannot recommend drain") {
+						t.Fatalf("Validate() = %v, want drain rejection", err)
+					}
+				} else if err != nil {
+					t.Fatalf("Validate() = %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestCheckDefinition_ValidateAllowsMonitorAtEverySeverity(t *testing.T) {
+	for _, severity := range []Severity{Pass, Info, Warning, Unknown, Critical} {
+		for _, override := range []bool{false, true} {
+			name := severity.String() + "/default"
+			if override {
+				name = severity.String() + "/rule"
+			}
+			t.Run(name, func(t *testing.T) {
+				cd := CheckDefinition{
+					ID:                "monitor_severity",
+					RequiredSignals:   []string{"signal"},
+					RecommendedAction: MonitorWith(RemediationActionRestartApp),
+					Rules:             []Rule{{Expression: "true", Severity: severity}},
+				}
+				if override {
+					cd.Rules[0].RecommendedAction = cd.RecommendedAction
+					cd.RecommendedAction = GenericDrain()
+				}
+				if err := cd.Validate(); err != nil {
+					t.Fatalf("Validate() = %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestCheckDefinition_ValidateLeavesActionPrerequisitesToConsumer(t *testing.T) {
+	// Registration does not infer execution prerequisites from action names.
+	for _, action := range []RemediationAction{RemediationActionResetGPU, "consumer_defined_step"} {
+		t.Run(string(action), func(t *testing.T) {
+			cd := CheckDefinition{
+				ID:                "consumer_action",
+				RequiredSignals:   []string{"signal"},
+				RecommendedAction: GenericDrain(),
+				Rules: []Rule{{
+					Expression:        "true",
+					Severity:          Warning,
+					RecommendedAction: MonitorWith(action),
+				}},
+			}
+			if err := cd.Validate(); err != nil {
+				t.Fatalf("Validate() = %v", err)
+			}
+		})
+	}
+}
+
 // threshold-value validation, exercised through the public entry point.
 func TestCheckDefinition_ValidateThresholdValues(t *testing.T) {
 	tests := []struct {
