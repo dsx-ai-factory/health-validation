@@ -16,8 +16,7 @@ import (
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 )
 
-// NVML values and collect NVML sensor outcomes the aggregation reads, so it
-// can follow the legacy NVML backend's rules.
+// NVML values and collect NVML sensor outcomes the aggregation reads.
 const (
 	linkDisabled = 0 // nvmlEnableState_t FEATURE_DISABLED
 	p2pOK        = 0 // nvmlGpuP2PStatus_t P2P_STATUS_OK
@@ -64,7 +63,7 @@ func (l nvlinkLinks) feed(b *builder) {
 			e.setAggregate(s, nvlink.SignalLinkCount, links, linksErr)
 		}
 		if common := bySignal[gpusignals.NVLinkSpeedCommon.ID()]; len(common) > 0 {
-			speed, err := linkSpeed(common, bySignal[gpusignals.NVLinkEndpointSpeed.ID()], links, linksErr)
+			speed, err := linkSpeed(uuid, common, bySignal[gpusignals.NVLinkEndpointSpeed.ID()], links, linksErr, bySignal[gpusignals.NVLinkState.ID()])
 			e.setAggregate(s, nvlink.SignalSpeedMBytesPerSec, speed, err)
 		}
 		for _, capability := range gpusignals.EndpointCapabilitySignals() {
@@ -96,7 +95,7 @@ func (e *entity) setAggregate(s *schema, field string, value any, err error) {
 	e.value.Field(s.fields[field]).Set(reflect.ValueOf(value))
 }
 
-// inactiveCount counts disabled links, following the legacy NVML reads:
+// inactiveCount counts disabled links:
 // INVALID_ARGUMENT for a link is skipped, NOT_SUPPORTED ends the links (at
 // link 0, reported for the whole GPU, it means no NVLink), and any other
 // failure fails the count.
@@ -129,10 +128,46 @@ func inactiveCount(obs []*observation.Observation) (int64, error) {
 	return count, nil
 }
 
+// inactiveLinks is the set of links below the link count whose only state
+// observation reads disabled. A missing, duplicate, or failed state read
+// leaves the link out, so it never explains a speed failure.
+func inactiveLinks(states []*observation.Observation, links int64) map[int64]bool {
+	seen := make(map[int64]bool)
+	disabled := make(map[int64]bool)
+	for _, o := range states {
+		endpoint := o.GetTarget().GetNvLinkEndpoint()
+		if endpoint == nil || int64(endpoint.GetLinkIndex()) >= links {
+			continue
+		}
+		link := int64(endpoint.GetLinkIndex())
+		if seen[link] {
+			delete(disabled, link)
+			continue
+		}
+		seen[link] = true
+		if state, ok := uintValue(o); ok && state == linkDisabled {
+			disabled[link] = true
+		}
+	}
+	return disabled
+}
+
+// explainInactiveLink adds the observed state of the link whose speed failed.
+func explainInactiveLink(uuid string, link, links int64, inactive map[int64]bool, err error) error {
+	switch {
+	case !inactive[link]:
+		return err
+	case int64(len(inactive)) == links:
+		return fmt.Errorf("GPU %s: NVLink speed unavailable: all %d NVLinks are inactive: %w", uuid, links, err)
+	default:
+		return fmt.Errorf("GPU %s: NVLink speed unavailable: NVLink %d is inactive: %w", uuid, link, err)
+	}
+}
+
 // linkSpeed is the common NVLink speed. When the driver reports it
 // unsupported, it falls back to the slowest per-link speed below the link
 // count, and every one of those links must report a nonzero speed.
-func linkSpeed(common, perLink []*observation.Observation, links int64, linksErr error) (int64, error) {
+func linkSpeed(uuid string, common, perLink []*observation.Observation, links int64, linksErr error, states []*observation.Observation) (int64, error) {
 	speed, err := gpuValue(common)
 	if err == nil || len(common) != 1 || common[0].GetCollectionError().GetSourceError() != nvmlNotSupported {
 		return speed, err
@@ -140,6 +175,7 @@ func linkSpeed(common, perLink []*observation.Observation, links int64, linksErr
 	if linksErr != nil {
 		return 0, fmt.Errorf("per-link NVLink speed needs the link count: %w", linksErr)
 	}
+	inactive := inactiveLinks(states, links)
 	speeds := make(map[int64]int64)
 	for _, o := range perLink {
 		endpoint := o.GetTarget().GetNvLinkEndpoint()
@@ -155,7 +191,11 @@ func linkSpeed(common, perLink []*observation.Observation, links int64, linksErr
 		}
 		value, ok := uintValue(o)
 		if !ok {
-			return 0, outcomeFailure(o)
+			err := outcomeFailure(o)
+			if source := o.GetCollectionError().GetSourceError(); source == nvmlNotSupported || source == nvmlInvalidArgument {
+				err = explainInactiveLink(uuid, link, links, inactive, err)
+			}
+			return 0, err
 		}
 		speeds[link] = value
 	}
@@ -169,7 +209,7 @@ func linkSpeed(common, perLink []*observation.Observation, links int64, linksErr
 		case !observed:
 			return 0, fmt.Errorf("NVLink %d speed: %w", link, errNoObservation)
 		case value == 0:
-			return 0, fmt.Errorf("NVLink %d reported no speed", link)
+			return 0, explainInactiveLink(uuid, link, links, inactive, fmt.Errorf("NVLink %d reported no speed", link))
 		}
 		if link == 0 || value < slowest {
 			slowest = value
@@ -178,13 +218,13 @@ func linkSpeed(common, perLink []*observation.Observation, links int64, linksErr
 	return slowest, nil
 }
 
-// allLinksSupport ANDs one capability over a GPU's links in index order, as
-// the legacy NVML reads did: the first link without it or failing to report
-// it decides. The NVML sensor reports a failed state read on each capability
-// of that link; INVALID_ARGUMENT there is skipped as legacy skips it, so a GPU
-// whose every link was skipped supports the capability vacuously. A GPU-level
-// failure is not skipped: a GPU without NVLink, reported NOT_SUPPORTED at the
-// GPU rather than per link, fails the field as legacy does, though
+// allLinksSupport ANDs one capability over a GPU's links in index order: the
+// first link without it or failing to report it decides. The NVML sensor
+// reports a failed state read on each capability of that link;
+// INVALID_ARGUMENT there is skipped, so a GPU whose every link was skipped
+// supports the capability vacuously. A GPU-level failure is not skipped: a
+// GPU without NVLink, reported NOT_SUPPORTED at the GPU rather than per link,
+// fails the field, though
 // inactiveCount reads the same outcome as no inactive links.
 func allLinksSupport(obs []*observation.Observation) (bool, error) {
 	slices.SortStableFunc(obs, func(a, b *observation.Observation) int {

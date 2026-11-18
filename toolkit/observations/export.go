@@ -41,7 +41,8 @@ const toolkitSourcePrefix = "toolkit."
 // Each signal ID is the measurement's category and the field name the
 // catalog's checks read, e.g. "nvlink.inactive_count", so the batch carries
 // what the checks consume without depending on canonical collect signal
-// definitions. [ToMeasurements] reverses it.
+// definitions. [ToMeasurements] reverses it. The health-validation collect
+// command writes its output with it.
 //
 // A measurement with a gpu_id targets that GPU, or its source-local slot
 // when provisional; a source-level failure has no target; an Xid measurement

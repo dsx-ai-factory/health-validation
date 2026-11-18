@@ -9,9 +9,9 @@ Support under an NVIDIA commercial agreement is governed by that agreement.
 | Channel | Best for | Who | Response expectation |
 | --- | --- | --- | --- |
 | [Bug report](https://github.com/dsx-ai-factory/health-validation/issues/new?template=bug.yml) | Incorrect behavior, wrong verdicts, or crashes | Anyone | Maintainers aim to triage within 3–5 business days |
-| [Documentation request or correction](https://github.com/dsx-ai-factory/health-validation/issues/new?template=documentation.yml) | Missing, unclear, or incorrect documentation | Anyone | Best effort; maintainers aim to respond within 3 business days if unanswered |
-| [GitHub Discussions Q&A](https://github.com/dsx-ai-factory/health-validation/discussions/categories/q-a) | Usage questions | Anyone | Best effort; maintainers aim to respond within 3 business days if unanswered |
-| [Feature request](https://github.com/dsx-ai-factory/health-validation/issues/new?template=feature.yml) | New checks, signals, threshold changes, or other improvements | Anyone | Best effort; maintainers aim to respond within 3 business days if unanswered |
+| [Documentation request or correction](https://github.com/dsx-ai-factory/health-validation/issues/new?template=documentation.yml) | Missing, unclear, or incorrect documentation | Anyone | Best effort |
+| [GitHub Discussions Q&A](https://github.com/dsx-ai-factory/health-validation/discussions/categories/q-a) | Usage questions | Anyone | Best effort |
+| [Feature request](https://github.com/dsx-ai-factory/health-validation/issues/new?template=feature.yml) | New checks, signals, threshold changes, or other improvements | Anyone | Best effort |
 | Private reporting through [SECURITY.md](./SECURITY.md) | Potential security vulnerabilities | Anyone | Follow the NVIDIA PSIRT process |
 | NVIDIA support under your commercial agreement or through your NVIDIA account team | Production incidents and contract-governed requests | Customers with an applicable support agreement | Defined in the agreement |
 
@@ -94,10 +94,10 @@ not promises to fix a reported problem:
 
 - Maintainers aim to triage new bug issues within **3–5 business days**. Triage
   may mean acknowledging the report, requesting details, or confirming a defect.
-- Pull requests aim to receive an initial response within **5–7 business days**.
+- Pull requests aim to receive an initial response within **5 business days**.
   An initial response is not necessarily a full review.
-- Maintainers aim to respond to unanswered questions and feature proposals
-  within **3 business days**. There is no hard community-support SLA.
+- Unanswered questions, documentation requests, and feature proposals are
+  handled on a best-effort basis. There is no hard community-support SLA.
 - Security reports receive priority through the private process in
   [SECURITY.md](./SECURITY.md). Response and disclosure follow the
   [NVIDIA PSIRT policies](https://www.nvidia.com/en-us/product-security/psirt-policies/).

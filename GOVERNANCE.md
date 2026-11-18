@@ -41,4 +41,4 @@ in `MAINTAINERS.md`.
 ## Code of Conduct
 
 All participants are expected to follow the [Code of
-Conduct](CODE_OF_CONDUCT.md). Enforcement is handled by the maintainer team.
+Conduct](CODE_OF_CONDUCT.md). Report possible violations as described there.

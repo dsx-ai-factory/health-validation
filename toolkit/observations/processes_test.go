@@ -109,8 +109,8 @@ func TestToMeasurementsComputeProcesses(t *testing.T) {
 	}
 }
 
-// NVML failing to list processes fails the count and the cmdlines, as the
-// legacy backend does, and a missing cmdline feed is not read as no processes.
+// NVML failing to list processes fails the count and the cmdlines, and a
+// missing cmdline feed is not read as no processes.
 func TestToMeasurementsComputeProcessFailures(t *testing.T) {
 	listFailure := &observation.CollectionError{Category: observation.CollectionErrorCategorySourceError, Operation: "GetComputeRunningProcesses"}
 	tests := []struct {

@@ -10,11 +10,9 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
-	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
@@ -26,8 +24,7 @@ type stubHost struct{}
 
 func newHostBackend() hostBackend { return stubHost{} }
 
-func (stubHost) gpuSensors() []collect.Sensor         { return []collect.Sensor{unavailableGPUSensor{}} }
-func (stubHost) nvlinkBackend() toolkit.NVLinkBackend { return unavailableBackend{} }
+func (stubHost) gpuSensors() []collect.Sensor { return []collect.Sensor{unavailableGPUSensor{}} }
 
 // unavailableGPUSensor declares every GPU collect signal, a superset of what
 // the linux DCGM and NVML sensors declare, and fails at Measure, so GPU checks
@@ -49,16 +46,3 @@ var stubInventory = gpuinventory.New(func() (gpuinventory.Reader, error) {
 
 func (stubHost) gpuInventory() *gpuinventory.Inventory { return stubInventory }
 func (stubHost) close() error                          { return nil }
-
-// unavailableBackend implements every per-domain backend interface on a
-// platform with no NVML support; every measure method returns a clear error so
-// `run` fails loudly rather than silently producing an empty verdict.
-type unavailableBackend struct{}
-
-func unavailable() ([]health.Measurement, error) {
-	return nil, fmt.Errorf("NVML backend is only available on linux (current platform: %s)", runtime.GOOS)
-}
-
-func (unavailableBackend) MeasureGPUs() ([]health.Measurement, error)   { return unavailable() }
-func (unavailableBackend) MeasureNode() ([]health.Measurement, error)   { return unavailable() }
-func (unavailableBackend) MeasureNVLink() ([]health.Measurement, error) { return unavailable() }

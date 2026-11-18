@@ -82,6 +82,11 @@ func ArchitectureFromName(name string) string {
 		return "GB300"
 	case strings.Contains(name, "GB200"):
 		return "GB200"
+	// B300 and B200 come after GB300 and GB200: "NVIDIA GB300" contains
+	// "B300" and "NVIDIA GB200" contains "B200". HGX B300 boards report
+	// "NVIDIA B300 SXM6 AC".
+	case strings.Contains(name, "B300"):
+		return "B300"
 	case strings.Contains(name, "B200"):
 		return "B200"
 	case strings.Contains(name, "H200"):
