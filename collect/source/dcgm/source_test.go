@@ -361,8 +361,13 @@ func TestGPUUUIDsCancellationPreservesIDsAndNativeGate(t *testing.T) {
 	requested[0] = 99
 	release()
 	waitForNativeGate(t, gate)
-	if readIDs := <-native.uuidReadIndices; !slices.Equal(readIDs, []uint{2, 7}) {
-		t.Fatalf("native lookup retained caller-owned IDs after cancellation: %v", readIDs)
+	select {
+	case readIDs := <-native.uuidReadIndices:
+		if !slices.Equal(readIDs, []uint{2, 7}) {
+			t.Fatalf("native lookup retained caller-owned IDs after cancellation: %v", readIDs)
+		}
+	default:
+		t.Fatal("native UUID lookup did not capture the requested IDs")
 	}
 	if err := source.Close(); err != nil {
 		t.Fatal(err)
