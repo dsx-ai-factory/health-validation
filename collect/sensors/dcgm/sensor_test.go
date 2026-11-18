@@ -474,11 +474,15 @@ func TestMeasureMetricValuesSurviveUUIDCancellation(t *testing.T) {
 	if source.metricReads != 2 || source.uuidReads != 1 || len(batch.Observations) != 4 {
 		t.Fatalf("UUID cancellation suppressed metric reads: reads=%d UUID reads=%d batch=%v", source.metricReads, source.uuidReads, batch)
 	}
+	wantSignals := []string{gpusignals.PowerDraw.ID(), gpusignals.TemperatureCelsius.ID()}
 	for position, current := range batch.Observations {
 		gpu := current.GetTarget().GetGpu()
 		wantIndex := uint32(2)
 		if position >= 2 {
 			wantIndex = 7
+		}
+		if current.GetSignalId() != wantSignals[position%len(wantSignals)] {
+			t.Fatalf("metric signal = %q, want %q", current.GetSignalId(), wantSignals[position%len(wantSignals)])
 		}
 		if current.GetValue().GetDoubleValue() != 100 || current.GetCollectionError() != nil || gpu.GetUuid() != "" ||
 			gpu.GetNative().GetSource() != dcgmsource.Name || gpu.GetNative().GetEntityId() != wantIndex {

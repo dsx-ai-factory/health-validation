@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -736,70 +737,76 @@ func TestHealthCancellationSuppressesSharedSourceAndPreservesCleanup(t *testing.
 func TestNativeTimeoutSuppressesBothFeaturesForCycle(t *testing.T) {
 	for _, feature := range []string{"metric", "health"} {
 		t.Run(feature, func(t *testing.T) {
-			gate := &sync.Mutex{}
-			started, released := make(chan struct{}), make(chan struct{})
-			native := &healthLifecycleNative{health: &fakeHealthWatch{}, cleanupNative: cleanupNative{nativeCallGate: gate}}
-			if feature == "metric" {
-				native.fakeNative.readStarted = started
-				native.fakeNative.releaseRead = released
-			} else {
-				native.health.readStarted = started
-				native.health.releaseRead = released
-			}
-			release := sync.OnceFunc(func() { close(released) })
-			t.Cleanup(release)
-			source := newSource(native, gate)
-			registerMetricAndHealth(t, source)
-			cycle, err := collect.NewCycleWithTimeout("native-timeout-"+feature, time.Now(), 100*time.Millisecond)
-			if err != nil {
-				t.Fatal(err)
-			}
-			finished := make(chan *observation.CollectionError, 1)
-			go func() {
+			synctest.Test(t, func(t *testing.T) {
+				gate := &sync.Mutex{}
+				started, released := make(chan struct{}), make(chan struct{})
+				native := &healthLifecycleNative{health: &fakeHealthWatch{}, cleanupNative: cleanupNative{nativeCallGate: gate}}
 				if feature == "metric" {
-					finished <- source.ReadGPUMetrics(context.Background(), cycle, 0, []string{signalPowerDraw})[signalPowerDraw].CollectionError
+					native.fakeNative.readStarted = started
+					native.fakeNative.releaseRead = released
 				} else {
-					_, failure := source.ReadHealth(context.Background(), cycle)
-					finished <- failure
+					native.health.readStarted = started
+					native.health.releaseRead = released
 				}
-			}()
-			select {
-			case <-started:
-			case <-time.After(time.Second):
-				t.Fatal("native read did not start")
-			}
-			select {
-			case failure := <-finished:
-				if failure.GetCategory() != observation.CollectionErrorCategoryTimeout {
-					t.Fatalf("native timeout = %v", failure)
+				release := sync.OnceFunc(func() { close(released) })
+				defer release()
+				source := newSource(native, gate)
+				registerMetricAndHealth(t, source)
+				const timeout = 100 * time.Millisecond
+				cycle, err := collect.NewCycleWithTimeout("native-timeout-"+feature, time.Now(), timeout)
+				if err != nil {
+					t.Fatal(err)
 				}
-			case <-time.After(time.Second):
-				t.Fatal("native read did not time out")
-			}
-			for _, nextCycle := range []*collect.Cycle{cycle, newTestCycle(t, "next-cycle")} {
-				wantCategory := observation.CollectionErrorCategoryUnavailable
-				if nextCycle == cycle {
-					wantCategory = observation.CollectionErrorCategoryTimeout
+				finished := make(chan *observation.CollectionError, 1)
+				go func() {
+					if feature == "metric" {
+						finished <- source.ReadGPUMetrics(context.Background(), cycle, 0, []string{signalPowerDraw})[signalPowerDraw].CollectionError
+					} else {
+						_, failure := source.ReadHealth(context.Background(), cycle)
+						finished <- failure
+					}
+				}()
+				select {
+				case <-started:
+				case <-time.After(time.Second):
+					t.Fatal("native read did not start")
 				}
-				values := source.ReadGPUMetrics(context.Background(), nextCycle, 0, []string{signalPowerDraw})
-				if values[signalPowerDraw].CollectionError.GetCategory() != wantCategory {
-					t.Fatalf("metric read after %s timeout = %v", feature, values)
+				synctest.Wait()
+				time.Sleep(timeout)
+				select {
+				case failure := <-finished:
+					if failure.GetCategory() != observation.CollectionErrorCategoryTimeout {
+						t.Fatalf("native timeout = %v", failure)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("native read did not time out")
 				}
-				if _, failure := source.ReadHealth(context.Background(), nextCycle); failure.GetCategory() != wantCategory {
-					t.Fatalf("health read after %s timeout = %v", feature, failure)
+				for _, nextCycle := range []*collect.Cycle{cycle, newTestCycle(t, "next-cycle")} {
+					wantCategory := observation.CollectionErrorCategoryUnavailable
+					if nextCycle == cycle {
+						wantCategory = observation.CollectionErrorCategoryTimeout
+					}
+					values := source.ReadGPUMetrics(context.Background(), nextCycle, 0, []string{signalPowerDraw})
+					if values[signalPowerDraw].CollectionError.GetCategory() != wantCategory {
+						t.Fatalf("metric read after %s timeout = %v", feature, values)
+					}
+					if _, failure := source.ReadHealth(context.Background(), nextCycle); failure.GetCategory() != wantCategory {
+						t.Fatalf("health read after %s timeout = %v", feature, failure)
+					}
 				}
-			}
-			if native.readCalls.Load()+native.health.readCalls.Load() != 1 {
-				t.Fatal("timed-out native call allowed another feature to enter")
-			}
-			release()
-			waitForNativeGate(t, gate)
-			if _, failure := source.ReadHealth(context.Background(), cycle); failure.GetCategory() != observation.CollectionErrorCategoryTimeout {
-				t.Fatal("completed native call cleared the cycle's timeout suppression")
-			}
-			if err := source.Close(); err != nil {
-				t.Fatal(err)
-			}
+				if native.readCalls.Load()+native.health.readCalls.Load() != 1 {
+					t.Fatal("timed-out native call allowed another feature to enter")
+				}
+				release()
+				synctest.Wait()
+				waitForNativeGate(t, gate)
+				if _, failure := source.ReadHealth(context.Background(), cycle); failure.GetCategory() != observation.CollectionErrorCategoryTimeout {
+					t.Fatal("completed native call cleared the cycle's timeout suppression")
+				}
+				if err := source.Close(); err != nil {
+					t.Fatal(err)
+				}
+			})
 		})
 	}
 }
