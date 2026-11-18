@@ -25,8 +25,8 @@ const nvmlSource = "nvml"
 
 // NVML reads the basic inventory from inst's existing enumeration: every
 // slot with its handle, UUID and bus ID outcome, which needs no further NVML
-// call, GPU models in index order until one maps to an architecture, as
-// legacy discovery read them, and the system driver version, which the
+// call, GPU models in index order until one maps to an architecture, and
+// the system driver version, which the
 // catalog needs before it is built. Serial, VBIOS, other PCI, platform, and
 // fabric attributes are not read; collect's NVML sensor can enrich the same
 // devices on request.

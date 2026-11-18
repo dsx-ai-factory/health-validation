@@ -17,32 +17,22 @@ import (
 	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
-	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
-	"github.com/dsx-ai-factory/health-validation/toolkit/nvml"
 )
 
 // nvmlHost is the production hostBackend: the collect GPU sensors and the
 // collect NVML GPU inventory that architecture discovery and the node GPU
-// count share, plus one [nvml.NVMLBackend] that only explicit legacy
-// overrides ([App.NVMLBackend]) open. That backend is
-// wrapped in a [toolkit.LazyGPUBackend] so its NVML library open runs under
-// Collect's per-sensor watchdog, and close skips shutdown while a timed-out
-// Measure may still be parked inside the cgo call. The inventory and the NVML
-// sensor share one collect NVML instance, opened on first use under the
-// cycle's timeout.
+// count share. The inventory and the NVML sensor share one collect NVML
+// instance, opened on first use under the cycle's timeout, so a wedged driver
+// or a missing libnvidia-ml fails collection instead of hanging before any
+// verdict.
 //
 // The GPU domain reads DCGM through a hostengine already running on the node,
 // and NVML only for compute processes. The NVLink domain reads fabric
 // registration from DCGM, and links, P2P, and fabric health from NVML. Neither
 // falls back to the other: an unreachable hostengine fails the DCGM-backed
 // checks.
-//
-// b is the raw backend the probe accessor ([App.NVMLBackend]) hands out; lazy
-// wraps it.
 type nvmlHost struct {
-	b         *nvml.NVMLBackend
-	lazy      toolkit.MultiBackend
 	inventory *gpuinventory.Inventory
 	dcgm      *dcgmsource.Source
 	// inst is the collect NVML instance, once opened; processes reads through it.
@@ -53,11 +43,8 @@ type nvmlHost struct {
 }
 
 func newHostBackend() hostBackend {
-	b := nvml.New()
 	h := &nvmlHost{
-		b:    b,
-		lazy: toolkit.LazyGPUBackend(func() (toolkit.MultiBackend, error) { return b, nil }),
-		// Legacy NVML read the driver live, so read DCGM live too.
+		// v0.3's NVML sensor read the driver live; DCGM reads live to match.
 		dcgm: dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{LiveMetrics: true}),
 	}
 	// The signal set is fixed, so New fails only on a programming error that
@@ -109,13 +96,12 @@ func (h *nvmlHost) sharedNVMLSensor() (collect.Sensor, error) {
 }
 
 func (h *nvmlHost) gpuSensors() []collect.Sensor          { return h.gpu }
-func (h *nvmlHost) nvlinkBackend() toolkit.NVLinkBackend  { return h.lazy }
 func (h *nvmlHost) gpuInventory() *gpuinventory.Inventory { return h.inventory }
 
 // close leaves the collect NVML instance and the DCGM client open while a
 // timed-out native call still holds them; the process exits shortly after.
 func (h *nvmlHost) close() error {
-	err := h.lazy.Close()
+	var err error
 	if closeErr := h.dcgm.Close(); closeErr != nil && !errors.Is(closeErr, dcgmsource.ErrInUse) {
 		err = errors.Join(err, closeErr)
 	}
@@ -155,25 +141,4 @@ func (s nvmlGPUSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*
 		return nil, err
 	}
 	return sensor.Measure(ctx, opts...)
-}
-
-// One NVMLBackend backs the legacy overrides (WithGPUBackend,
-// WithNodeBackend, WithNVLinkBackend): it implements each narrow
-// per-domain interface (and MultiBackend for the lazy wrapper).
-var (
-	_ toolkit.GPUBackend    = (*nvml.NVMLBackend)(nil)
-	_ toolkit.NodeBackend   = (*nvml.NVMLBackend)(nil)
-	_ toolkit.NVLinkBackend = (*nvml.NVMLBackend)(nil)
-	_ toolkit.MultiBackend  = (*nvml.NVMLBackend)(nil)
-)
-
-// NVMLBackend returns the App's built-in NVML backend, which the NVLink
-// sensor reads. Layer custom per-GPU NVLink signals onto it with
-// WithNVLinkProbe and install the result with [App.WithNVLinkBackend]. For
-// per-GPU signals outside NVLink, use a [GPUAdapter] instead.
-//
-// It is defined only on linux: the per-device probe type ([nvml.DeviceProber])
-// is cgo/NVML-specific, and a consumer's probe code is linux-tagged too.
-func (a *App) NVMLBackend() *nvml.NVMLBackend {
-	return a.host.(*nvmlHost).b
 }

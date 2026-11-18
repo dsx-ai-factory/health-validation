@@ -24,7 +24,7 @@ func GPUAveragePowerDraw() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300", "B200"},
+		Architectures:     []string{"GB200", "GB300", "B200", "B300"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,

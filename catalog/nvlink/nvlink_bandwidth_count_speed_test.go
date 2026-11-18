@@ -168,6 +168,36 @@ func TestNVLinkBandwidthCountSpeed(t *testing.T) {
 			wantMessageParts: []string{"GPU-0", "41000", "20500"},
 		},
 		{
+			// HGX B300: 18 NVLink 5 links per GPU to the baseboard
+			// NVSwitches, each at 53125 MB/s.
+			name: "B300 passes against its own expected speed",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("B300"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.NVLinkMeasurement{GPUID: "GPU-0", LinkCount: 18, SpeedMBytesPerSec: 53125}
+			},
+			wantSeverity: health.Pass,
+		},
+		{
+			// A B300 GPU whose links trained at the NVLink 4 rate fails.
+			name: "B300 at the NVLink 4 rate fails",
+			cat: func() *catalog.Catalog {
+				return catalog.New(
+					catalog.WithArchitecture("B300"),
+					catalog.WithExecutionContext(health.OperatorInfra),
+				)
+			},
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.NVLinkMeasurement{GPUID: "GPU-0", LinkCount: 18, SpeedMBytesPerSec: 26562}
+			},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "53125", "26562"},
+		},
+		{
 			// A collection failure produces Unknown instead of evaluating a zero value.
 			name: "errored GPU reports unknown",
 			cat:  func() *catalog.Catalog { return fabricCatalog() },

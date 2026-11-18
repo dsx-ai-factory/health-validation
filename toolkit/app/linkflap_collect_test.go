@@ -19,7 +19,6 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
-	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -60,12 +59,10 @@ func linkFlapAppTransition(cursor, state string, after time.Duration) []*observa
 	}
 }
 
-// linkFlapApp is cadenceRunApp with the link-flap domain on the collect
-// path, its signals claimed by a stand-in sensor.
+// linkFlapApp is cadenceRunApp with the link-flap signals claimed by a
+// stand-in sensor.
 func linkFlapApp(calls *int, obs ...*observation.Observation) *App {
-	a := cadenceRunApp()
-	a.rdmaLinkFlap = nil
-	return a.WithCollect(linkFlapAppSensor{calls: calls, obs: obs}, ibsignals.LinkFlapSignals().IDs()...)
+	return builtinLinkFlapApp().WithCollect(linkFlapAppSensor{calls: calls, obs: obs}, ibsignals.LinkFlapSignals().IDs()...)
 }
 
 func runLinkFlapApp(t *testing.T, a *App, wantCode int) health.CheckVerdict {
@@ -132,8 +129,7 @@ func TestRunCommandLinkFlapReadsOneHourWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	a := cadenceRunApp()
-	a.rdmaLinkFlap = nil
+	a := builtinLinkFlapApp()
 	before := time.Now()
 	got := runLinkFlapApp(t, a, exitOK)
 	after := time.Now()
@@ -157,7 +153,7 @@ func TestRunCommandLinkFlapReadsOneHourWindow(t *testing.T) {
 		t.Fatalf("journalctl --since=@%d, want within [%d, %d] (one hour before the run); args = %q", since, lo, hi, data)
 	}
 	if linkFlapLookback != time.Hour {
-		t.Fatalf("linkFlapLookback = %v, want the legacy one hour", linkFlapLookback)
+		t.Fatalf("linkFlapLookback = %v, want v0.3's one hour", linkFlapLookback)
 	}
 }
 
@@ -171,8 +167,7 @@ func TestWithCollectRejectsPartialLinkFlapClaim(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			calls := 0
-			a := cadenceRunApp()
-			a.rdmaLinkFlap = nil
+			a := builtinLinkFlapApp()
 			a.WithCollect(linkFlapAppSensor{calls: &calls}, claims...)
 			var stdout, stderr bytes.Buffer
 			if code := a.Run([]string{"run", "--node-id", testNodeID}, &stdout, &stderr); code != exitError || stdout.Len() != 0 {
@@ -182,17 +177,5 @@ func TestWithCollectRejectsPartialLinkFlapClaim(t *testing.T) {
 				t.Fatalf("stderr=%q calls=%d", stderr.String(), calls)
 			}
 		})
-	}
-}
-
-// TestWithRDMALinkFlapBackendKeepsLegacySensor runs the override instead of
-// the built-in collect sensor.
-func TestWithRDMALinkFlapBackendKeepsLegacySensor(t *testing.T) {
-	a := cadenceRunApp().WithRDMALinkFlapBackend(toolkit.MockRDMALinkFlap(
-		"Thu 2025-12-11 11:49:00 UTC host kernel: mlx5_core 0000:5a:00.0 enp90s0np0: Link down",
-		"Thu 2025-12-11 11:51:00 UTC host kernel: mlx5_core 0000:5a:00.0 enp90s0np0: Link up",
-	))
-	if got := runLinkFlapApp(t, a, exitUnhealthy); got.Severity != health.Critical {
-		t.Fatalf("rdma_linkflap_fatal = %v, want CRITICAL from the legacy backend", got.Severity)
 	}
 }

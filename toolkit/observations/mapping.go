@@ -4,13 +4,13 @@
 // Package observations converts between the catalog's typed measurements
 // and the shared collect observation contract.
 //
-// [FromMeasurements] gives toolkit sensor output the ObservationBatch shape,
-// one observation per measurement field named <domain>.<field>.
-// [ToMeasurements] rebuilds measurements from a batch for evaluation. It
-// accepts those toolkit-shaped observations and observations from collect
-// sensors under mapped signal IDs, including both in one batch, so sensors
-// can move to collect one at a time. A mapped signal is a collect signal with
-// a row in this package's mapping table.
+// [FromMeasurements] writes measurements as observations, one per measurement
+// field named <domain>.<field>; this is the format the health-validation
+// collect command emits. [ToMeasurements] rebuilds measurements from a batch
+// for evaluation. It reads that measurement-shaped format and observations
+// from collect sensors under mapped signal IDs, including both in one batch.
+// A mapped signal is a collect signal with a row in this package's mapping
+// table.
 package observations
 
 import (
@@ -198,8 +198,8 @@ func mappingsFor(category health.Category) []mapping {
 // DCGM report an undeterminable state as 32 (NVML_PSTATE_UNKNOWN).
 const maxPerformanceState = 15
 
-// applyPerformanceState fails a pstate outside P0-P15, as the legacy NVML
-// sensor does, rather than letting the unknown sentinel fail the threshold.
+// applyPerformanceState fails a pstate outside P0-P15 rather than letting the
+// unknown sentinel fail the threshold.
 func applyPerformanceState(measurement any, current *observation.Observation) error {
 	var state int64
 	if err := setField(reflect.ValueOf(&state).Elem(), current); err != nil {
@@ -216,7 +216,7 @@ func applyPerformanceState(measurement any, current *observation.Observation) er
 // registration signals the NVLink fabric check reads. A status reported
 // unsupported reads as FabricManagerStatusNotSupported: fabric registration
 // is mandatory where the fabric checks run, so a GPU that cannot report it is
-// unregistered, as the legacy NVML sensor treats it.
+// unregistered.
 func applyFabricManagerStatus(measurement any, current *observation.Observation) error {
 	m := measurement.(*nvlink.NVLinkMeasurement)
 	integer, ok := current.GetValue().GetKind().(*observation.Value_IntValue)
