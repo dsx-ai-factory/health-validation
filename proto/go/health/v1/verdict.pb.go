@@ -587,7 +587,7 @@ func (x *EvaluateRequest) GetXidTo() int64 {
 	return 0
 }
 
-// The schema version follows catalog/health/node-verdict.schema.json, currently 0.6.
+// The schema version follows catalog/health/node-verdict.schema.json, currently 0.7.
 // Required catalog scalars use presence so protojson retains zero-valued fields.
 // Timestamps are RFC3339 strings to preserve the catalog's offset and precision.
 type NodeVerdict struct {

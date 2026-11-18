@@ -31,7 +31,7 @@ import (
 func testVerdict(t *testing.T) *healthv1.NodeVerdict {
 	t.Helper()
 	verdict := &healthv1.NodeVerdict{}
-	if err := protojson.Unmarshal([]byte(`{"schema_version":"0.6","catalog_version":"test","timestamp":"2026-11-02T00:00:00Z","trace_id":"trace","overall_severity":"CRITICAL","severity_by_domain":{"gpu":"CRITICAL"},"check_results":[]}`), verdict); err != nil {
+	if err := protojson.Unmarshal([]byte(`{"schema_version":"0.7","catalog_version":"test","timestamp":"2026-11-02T00:00:00Z","trace_id":"trace","overall_severity":"CRITICAL","severity_by_domain":{"gpu":"CRITICAL"},"check_results":[]}`), verdict); err != nil {
 		t.Fatal(err)
 	}
 	return verdict

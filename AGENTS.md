@@ -261,7 +261,7 @@ startup/server failure, independently of per-request verdict severity. No
 health/readiness endpoint is promised in v1.
 
 The converter lives in `toolkit/verdictproto`; catalog must not import proto.
-The wire contract mirrors the current schema **0.6**, including ordered
+The wire contract mirrors the current schema **0.7**, including ordered
 remediation sequences. Use `proto/verdictjson` for canonical HTTP JSON so
 required empty containers and zero-valued enums/bools match one-shot JSON.
 Dynamic `google.protobuf.Value` numbers that change numeric meaning through
