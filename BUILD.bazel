@@ -4,6 +4,7 @@
 # package. No Go packages live at the repo root.
 
 exports_files([
+    ".github/sla.toml",
     "MODULE.bazel",
     "fern/docs.yml",
 ])

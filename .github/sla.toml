@@ -1,0 +1,69 @@
+# SLA targets read by the daily digest (.github/workflows/daily-digest.yml).
+#
+# Durations take a unit: "business_days", "calendar_days", or "months".
+# `due_soon` is how long before the deadline an item enters the "Due soon"
+# section; it uses the duration's unit unless `due_soon_unit` says otherwise.
+
+# Timezone for business days and the posting hour.
+timezone = "America/Los_Angeles"
+# Days that count toward business-day SLAs.
+business_days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+[maintainers]
+# A comment or review counts as a maintainer response when its author has one
+# of these GitHub author associations or is listed in `users`. Bots and the
+# item's own author never count.
+#
+# Disabled until a GitHub App integration can read org membership. Members of
+# dsx-ai-factory keep their membership private, and private membership shows
+# as MEMBER only to callers allowed to see it, so the workflow token may not.
+# associations = ["OWNER", "MEMBER", "COLLABORATOR"]
+# The maintainers in MAINTAINERS.md, plus regular reviewers.
+users = [
+  "michaelbasnight-nv",
+  "tomfleming-nv",
+  "wesleygraybill-nv",
+  "SaiTejasJanjur-NV",
+  "mrbroll-nv",
+]
+# Accounts whose comments and reviews never count as a response.
+ignore_users = []
+# Comments matching any of these regular expressions are not a response.
+ignore_comment_patterns = ['^\s*/ok to test\b']
+
+# First maintainer response on a pull request. Drafts are excluded; the clock
+# starts when the pull request is opened or last marked ready for review.
+[pr_first_response]
+duration = 5
+unit = "business_days"
+due_soon = 1
+
+# Priority label on an issue, measured from when the issue was opened.
+[issue_priority]
+labels = ["priority/P0", "priority/P1", "priority/P2"]
+duration = 7
+unit = "calendar_days"
+due_soon = 2
+
+[issue_fix]
+# "label_applied" starts the clock when the priority label was last added;
+# "opened" starts it when the issue was opened.
+clock_starts = "label_applied"
+
+# A priority without a target here has no fix commitment.
+[issue_fix.targets."priority/P0"]
+duration = 30
+unit = "calendar_days"
+due_soon = 7
+
+[issue_fix.targets."priority/P1"]
+duration = 6
+unit = "months"
+due_soon = 30
+due_soon_unit = "calendar_days"
+
+[digest]
+title = "Health Validation"
+# Post an "all clear" message when nothing needs attention.
+post_when_empty = true
+max_items_per_section = 25

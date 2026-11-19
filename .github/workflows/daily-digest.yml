@@ -1,0 +1,61 @@
+name: Daily Digest
+
+# Posts a Slack summary of pull requests and issues measured against the SLA
+# targets in .github/sla.toml, built by tools/sla_digest/sla_digest.py.
+#
+# Runs at 17:00 UTC, Monday to Friday: 09:00 PST, and 10:00 during daylight
+# time because cron does not follow daylight saving. A manual run always builds
+# the digest.
+#
+# Requires the SLACK_DIGEST_WEBHOOK_URL secret, a Slack incoming webhook, in
+# the slack-digest environment. Without it the digest is written to the job
+# summary only.
+#
+# A manual run can pick any branch, including the pull-request/<number>
+# branches copy-pr-bot creates from contributed code. The slack-digest
+# environment must allow deployments from main only: that setting, not the
+# `if:` below, is what keeps the webhook away from another branch's copy of
+# this workflow.
+on:
+  schedule:
+    - cron: "0 17 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Write the digest to the job summary without posting to Slack
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    if: github.repository == 'dsx-ai-factory/health-validation' && github.ref == 'refs/heads/main'
+    environment: slack-digest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The runner's python3 (3.11+) provides tomllib and zoneinfo; the script
+      # has no other dependencies.
+      - name: Build and post the digest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DIGEST_WEBHOOK_URL }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--config .github/sla.toml)
+          if [[ "$DRY_RUN" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          python3 tools/sla_digest/sla_digest.py "${args[@]}"
