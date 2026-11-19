@@ -12,7 +12,7 @@ needs one under "Breaking Changes", and a pull request that puts an entry under
 
 Pull requests of other types, reverts, and pull requests labeled
 "skip-changelog" need nothing. Neither the label nor a revert exempts a "!"
-pull request. A link to the pull request that the base already has does not
+pull request or an entry under "Breaking Changes". A link to the pull request that the base already has does not
 count as an entry.
 
 Pull requests targeting a release/* branch have no Unreleased section, so an
@@ -84,8 +84,6 @@ def check(
     if parsed is None:
         return []  # commit-lint reports a malformed title.
     kind, breaking = parsed
-    if kind == "revert" and not breaking:
-        return []
 
     whole = base_ref.startswith("release/")
     base = entries(base_changelog, pr, whole)

@@ -131,6 +131,11 @@ class CheckTest(unittest.TestCase):
             self.run_check("revert!: a", with_entry("Breaking Changes", 10)), []
         )
 
+    def test_non_breaking_revert_still_needs_bang_for_a_breaking_entry(self):
+        head = with_entry("Breaking Changes", 10)
+        self.assertEqual(len(self.run_check("revert: a", head)), 1)
+        self.assertEqual(len(self.run_check('Revert "feat: x"', head)), 1)
+
     def test_link_already_in_the_base_is_not_a_new_entry(self):
         base = with_entry("Features", 10)
         moved = with_entry("Breaking Changes", 10, BASE)
