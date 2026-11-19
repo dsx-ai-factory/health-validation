@@ -110,10 +110,8 @@ func New(opts ...Option) *Catalog {
 		disabledChecks:   make(map[string]bool),
 		evaluationEngine: evaluation.NewEvaluationEngine(),
 	}
-	// Built-ins go through the same guards as caller-supplied checks: a
-	// duplicate ID or a self-contradictory threshold is an authoring error,
-	// caught the first time the catalog is constructed rather than surfacing
-	// as a check that silently never runs.
+	// Built-in definitions use the same registration checks as caller-supplied
+	// definitions.
 	for _, cd := range builtinChecks() {
 		c.MustRegister(cd)
 	}
@@ -123,8 +121,9 @@ func New(opts ...Option) *Catalog {
 	return c
 }
 
-// Register adds a check definition to the catalog. Returns an error if
-// the definition is invalid or if a check with the same ID is already registered.
+// Register validates and stores a check definition. CEL rules must compile to a
+// type that can return a boolean, and message placeholders must name declared
+// inputs. It returns an error for invalid definitions or duplicate check IDs.
 func (c *Catalog) Register(cd health.CheckDefinition) error {
 	if err := cd.Validate(); err != nil {
 		return err
@@ -135,6 +134,9 @@ func (c *Catalog) Register(cd health.CheckDefinition) error {
 		return err
 	}
 	cd.Thresholds = normalized
+	if err := evaluation.ValidateRules(cd); err != nil {
+		return err
+	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -129,10 +129,10 @@ func New() *App {
 	}
 }
 
-// WithChecks contributes check definitions on top of the built-in NVIDIA
-// catalog. They are registered exactly as given — declared classification
-// honored, not overridden — and participate in config-driven threshold
-// overrides like built-ins. A duplicate ID makes [App.Run] fail.
+// WithChecks queues custom definitions. [App.Run] registers them when it builds
+// the catalog for the run and collect subcommands. It preserves each definition's
+// classification and applies config-driven threshold overrides. A registration
+// error makes the command exit with code 2.
 func (a *App) WithChecks(defs ...health.CheckDefinition) *App {
 	a.customChecks = append(a.customChecks, defs...)
 	return a

@@ -48,8 +48,7 @@ func GPUClockCapped() health.CheckDefinition {
 		Description: "Flags a GPU whose sustained clock is pinned below the expected floor.",
 		Category:    health.GPU,
 
-		// The signals this check reads. A measurement must carry all of them
-		// (see "Routing") for the check to run.
+		// The signals this check uses in its rule and message.
 		RequiredSignals: []string{"gpu_id", "sm_clock_mhz"},
 
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra},
@@ -89,15 +88,17 @@ func GPUClockCapped() health.CheckDefinition {
 
 Fields worth knowing:
 
-- **`Category`** and **`RequiredSignals`** are the routing key — see below.
-  `RequiredSignals` must name every signal the rules read; registration
-  rejects an empty list or a blank name.
-- **`Rules`** are CEL expressions over the union of the measurement's signal
-  names and the check's threshold names. A rule can read a signal the check
-  does not declare, but a collection error on that signal does not fail the
-  check, so the rule runs on its zero value. The worst-severity matching rule
-  sets the verdict; `${name}` placeholders interpolate signal and threshold
-  values.
+- **`Category`** and **`RequiredSignals`** determine which measurements reach
+  the check. Declare every signal the rules or messages use and any signals
+  you want to collect and report alongside the result. Registration rejects
+  an empty list or a blank name.
+- **`Rules`** use CEL expressions with inputs from `RequiredSignals` and the
+  check's thresholds. `Catalog.Register` compiles each expression against
+  those names. Registration rejects invalid CEL, undeclared references, and
+  result types that cannot yield a boolean. Dynamic result types are allowed.
+  The evaluator checks that the actual result is boolean. The verdict takes
+  the highest severity among matching rules. Every `${name}` placeholder in
+  a message must name a required signal or threshold.
 - **`Thresholds`** are operator-tunable by default. `FixedThreshold` values can
   never be overridden; `RequiredOverride` means the check skips until a fleet
   supplies a value. Every threshold must declare a **`ValueType`** — CEL
@@ -106,7 +107,9 @@ Fields worth knowing:
   threshold without one. `ValueType` also types operator overrides, including
   on a threshold whose only values live in `PerArchitecture`. **`ValueMin`** and
   **`ValueMax`** are optional inclusive bounds, legal on the numeric types
-  only; see [thresholds](#thresholds-types-and-bounds).
+  only. A threshold name must differ from every name in `RequiredSignals`.
+  When renaming a threshold, update the rules, messages, and operator
+  overrides that use it. See [thresholds](#thresholds-types-and-bounds).
 - **`RecommendedAction`**'s `RemediationActions` is an open `[]RemediationAction`
   (a string type, not a closed enum): use the `health.RemediationAction*`
   constants for steps NVIDIA's own catalog uses, or supply your own string for
@@ -130,10 +133,10 @@ The engine feeds a measurement to a check when **both** hold:
 
 Your check is then evaluated once per matching measurement (so a per-GPU check
 yields one verdict per GPU). If no supplied measurement carries its required
-signals, the check is skipped `NO_APPLICABLE_MEASUREMENT`; if its whole category
-supplied no measurement at all, it is skipped `SENSOR_MISSING`. Registering the
-check is what declares that its sensor is expected, so every registered check
-produces a verdict — a result or a skip — and none disappears from the output.
+signals, the check is skipped `NO_APPLICABLE_MEASUREMENT`. If its whole category
+supplied no measurement, the check is skipped `SENSOR_MISSING`. Registration
+declares that the sensor is expected. A completed run reports a result or a skip
+for every registered check.
 
 So a private check only does something if **some measurement in its category
 carries its signals.** That is the real work of extending: getting your signals
@@ -323,10 +326,13 @@ func main() {
 }
 ```
 
-Registration errors, such as a field name the measurement does not have or a
-signal claimed by two sensors, exit `2` before anything is collected. The
-first comes back from `GPUAdapter` before `Run` starts, so the example exits
-`2` on it too.
+`WithChecks` queues definitions for registration when the app builds the
+catalog for `run` or `collect`. A registration error stops either command with
+exit `2` before it collects check signals. `run` discovers GPU architecture
+before it builds the catalog. The command also exits `2` if two sensors claim
+the same signal.
+The example handles `GPUAdapter` errors, such as an unknown measurement field,
+before it calls `Run`.
 
 If you do not want the node runner at all, use the catalog directly — the most
 stable path:
@@ -339,7 +345,9 @@ cat := catalog.New(
 		CheckID: "gpu_clock_capped", ThresholdName: "min_sm_clock_mhz", Value: int64(1400),
 	})),
 )
-_ = cat.Register(mychecks.GPUClockCapped())
+if err := cat.Register(mychecks.GPUClockCapped()); err != nil {
+	log.Fatal(err)
+}
 verdict, err := cat.EvaluateAll(measurements...) // measurements you produced yourself
 ```
 

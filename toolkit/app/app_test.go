@@ -225,6 +225,62 @@ func TestWithChecksRejectsCheckWithoutRequiredSignals(t *testing.T) {
 	}
 }
 
+func TestRunRejectsInvalidCustomChecks(t *testing.T) {
+	const expression = "gpu_count + sibling_count > max_count"
+	tests := []struct {
+		edit func(*health.CheckDefinition)
+		name string
+		want []string
+	}{
+		{
+			name: "undeclared rule input",
+			edit: func(check *health.CheckDefinition) { check.Rules[0].Expression = expression },
+			want: []string{expression, "undeclared reference to 'sibling_count'"},
+		},
+		{
+			name: "signal and threshold overlap",
+			edit: func(check *health.CheckDefinition) { check.Thresholds["gpu_count"] = check.Thresholds["max_count"] },
+			want: []string{`signal and threshold share the name "gpu_count"`},
+		},
+		{
+			name: "undeclared message input",
+			edit: func(check *health.CheckDefinition) { check.Rules[0].Message = "sibling count: ${sibling_count}" },
+			want: []string{`message placeholder "sibling_count" names an undeclared input`},
+		},
+		{
+			name: "non-boolean rule",
+			edit: func(check *health.CheckDefinition) { check.Rules[0].Expression = "42" },
+			want: []string{`expression "42" has type int, want bool`},
+		},
+	}
+	for _, command := range []string{"run", "collect"} {
+		for _, test := range tests {
+			t.Run(command+"/"+test.name, func(t *testing.T) {
+				check := customCheck()
+				test.edit(&check)
+				calls := 0
+				sensor := healthyCPU()
+				sensor.calls = &calls
+				a := withCleanXid(testAppWithCPU(sensor)).WithChecks(check)
+
+				var stdout, stderr bytes.Buffer
+				code := a.Run([]string{command, "--node-id", testNodeID}, &stdout, &stderr)
+				if code != exitError || stdout.Len() != 0 {
+					t.Errorf("exit = %d, stdout has %d bytes, want exit %d and empty stdout", code, stdout.Len(), exitError)
+				}
+				for _, want := range append([]string{"registering custom check", check.ID}, test.want...) {
+					if !strings.Contains(stderr.String(), want) {
+						t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
+					}
+				}
+				if calls != 0 {
+					t.Errorf("CPU sensor measured %d times, want zero", calls)
+				}
+			})
+		}
+	}
+}
+
 // TestBuildCatalogAppliesArchitecture confirms a detected architecture is
 // wired into the catalog: a check skips on an architecture it does not cover
 // (A100 here) instead of running with the wrong thresholds.
