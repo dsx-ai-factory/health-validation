@@ -118,6 +118,31 @@ class CheckTest(unittest.TestCase):
         head = with_entry("Features", 10, with_entry("Breaking Changes", 10))
         self.assertEqual(self.run_check("feat!: a", head), [])
 
+    def test_escaped_unreleased_heading(self):
+        head = with_entry("Features", 10).replace(
+            "## [Unreleased]", "## \\[Unreleased\\]"
+        )
+        base = BASE.replace("## [Unreleased]", "## \\[Unreleased\\]")
+        self.assertEqual(self.run_check("feat: a", head, base=base), [])
+
+    def test_breaking_revert_needs_a_breaking_entry(self):
+        self.assertEqual(len(self.run_check("revert!: a", BASE)), 1)
+        self.assertEqual(
+            self.run_check("revert!: a", with_entry("Breaking Changes", 10)), []
+        )
+
+    def test_link_already_in_the_base_is_not_a_new_entry(self):
+        base = with_entry("Features", 10)
+        moved = with_entry("Breaking Changes", 10, BASE)
+        self.assertEqual(len(self.run_check("feat!: a", moved, base=base)), 1)
+        copied = with_entry("Breaking Changes", 10, base)
+        self.assertEqual(len(self.run_check("feat!: a", copied, base=base)), 1)
+
+    def test_link_in_the_base_is_ignored_for_exempt_prs(self):
+        self.assertEqual(
+            self.run_check("docs: a", BASE, base=with_entry("Features", 10)), []
+        )
+
     def test_revert_and_unparseable_pass(self):
         self.assertEqual(self.run_check('Revert "feat: x"', BASE), [])
         self.assertEqual(self.run_check("no type", BASE), [])
