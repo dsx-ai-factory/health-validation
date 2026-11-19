@@ -94,8 +94,9 @@ breaking. The changelog still records notable changes under Features or Fixes.
   default thresholds. Downstream systems follow remediation as published.
 - **Verdict content that is not part of the schema's contract.** The contents
   of `observed_values` and `diagnostic` text.
-- **The toolkit.** `toolkit`, `toolkit/app`, `toolkit/observations`, the
-  sensors and backends, and the app builder are reference implementations.
+- **The toolkit's collection wiring.** `toolkit.Collect`, the collect bridge
+  and adapters, `toolkit/app` (the app builder, `WithCollect`, `WithChecks`,
+  and `GPUAdapter`), and `toolkit/observations` are reference implementations.
 - **`collect` and `agentkit`.** These packages are experimental.
 - **Everything under `internal/`**, build and CI configuration, container
   image contents, and log and stderr text.

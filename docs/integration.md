@@ -653,8 +653,8 @@ engine. Two paths:
   backend, and tests.
 
 Either way, the durable surface is the **catalog** (check definitions and the
-evaluation engine); the toolkit's sensor/backend layer that feeds it is a
-reference implementation and may change.
+evaluation engine); the toolkit's collection wiring (the collect bridge, adapters, and app
+builder) that feeds it is a reference implementation and may change.
 
 ## Shared raw collection library
 

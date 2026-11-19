@@ -193,9 +193,9 @@ GPU and NVLink sensors backed by DCGM and NVML, an NVML-backed node sensor,
 plus CPU, Xid, and RDMA link-flap sensors.
 
 For integrations using `toolkit.Collect`, prerequisites depend on the supplied
-sensors and backends. With the stock toolkit backends, CPU collection requires
+sensors. With the stock collect sources, CPU collection requires
 Linux sysfs; Xid and RDMA link-flap collection require host journal access
-through `journalctl`. These backend requirements also apply to the stock app.
+through `journalctl`. These requirements also apply to the stock app.
 The catalog can evaluate supplied measurements on other platforms without
 hardware access.
 See the [prerequisites](./README.md#prerequisites) and

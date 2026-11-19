@@ -15,7 +15,7 @@ For raw observations without catalog evaluation, use the experimental `collect`
 package. See [Shared raw collection library](docs/integration.md#shared-raw-collection-library)
 for its ten collection families, typed targets, and custom sensor registration.
 
-> **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s sensor and adapter layer that feeds it is a reference implementation and is subject to change.
+> **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s collection wiring (the collect bridge, adapters, and app builder) that feeds it is a reference implementation and is subject to change.
 
 ## What it does
 
