@@ -352,6 +352,8 @@ func TestAgentCollectorFailureOccursAfterCompleteResponse(t *testing.T) {
 }
 
 func TestServeStartupRejectsBadConfigAndFlags(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 	for _, args := range [][]string{
 		{"--address", " "},
 		{"--address", "0.0.0.0:0"},
@@ -371,7 +373,7 @@ func TestServeStartupRejectsBadConfigAndFlags(t *testing.T) {
 		a := New().WithProgramName("test")
 		a.host = panicHost{}
 		var stderr bytes.Buffer
-		if got := a.serve(context.Background(), args, &stderr); got != exitError || strings.TrimSpace(stderr.String()) == "" {
+		if got := a.serve(ctx, args, &stderr); got != exitError || strings.TrimSpace(stderr.String()) == "" {
 			t.Errorf("%v: exit=%d stderr=%q", args, got, stderr.String())
 		}
 	}
