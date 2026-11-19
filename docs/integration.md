@@ -655,7 +655,8 @@ engine. Two paths:
 Either way, the durable surface is the **catalog** (check definitions and the
 evaluation engine) and the collection seams (`WithCollect`,
 `WithCollectAdapters`, `WithChecks`, `GPUAdapter`, `CollectAdapter`,
-`collect.Sensor`); the rest of the toolkit's collection wiring is a reference
+`collect.Sensor`) and the `app.New`, `App.Run`, and `App.Close` lifecycle they
+need; the rest of the toolkit's collection wiring is a reference
 implementation and may change. See the
 [compatibility policy](https://github.com/dsx-ai-factory/health-validation/blob/main/RELEASE.md#compatibility).
 

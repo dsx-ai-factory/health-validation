@@ -58,10 +58,14 @@ policy.
 ## Compatibility
 
 A change is **breaking** only if it makes previously valid use of a guaranteed
-surface fail or change meaning, measured against the last release. An API that
-has not shipped in a release can change freely until it does. Anything else,
-including a behavior change to something listed as not guaranteed, is not
-breaking, however large its effect on a verdict.
+surface fail or change meaning, measured against the highest final release by
+version number, not the most recently published one: a patch to an older
+`release/vX.Y` line published after a newer minor does not lower the baseline.
+For a change to a `release/vX.Y` branch, the baseline is the latest release on
+that branch. Release candidates do not count. An API that has not shipped in a
+final release can change freely until it does. Anything else, including a
+behavior change to something listed as not guaranteed, is not breaking,
+however large its effect on a verdict.
 
 ### Guaranteed surfaces
 
@@ -85,7 +89,8 @@ breaking, however large its effect on a verdict.
   `catalog/health`, and the per-domain check packages, which is the intended
   integration and extension surface.
 - **Collection extension seams.** `WithCollect`, `WithCollectAdapters`,
-  `WithChecks`, and `GPUAdapter` in `toolkit/app`, with the types they take:
+  `WithChecks`, and `GPUAdapter` in `toolkit/app`, and the lifecycle they need,
+  `app.New`, `App.Run`, and `App.Close`, with the types they take:
   `collect.Sensor`, its signal IDs, the observation types it emits, and the
   `CollectAdapter` interface. `GPUAdapter` is registered through
   `WithCollectAdapters`, so the two are guaranteed together. Removing or
@@ -105,7 +110,7 @@ breaking. The changelog still records notable changes, under Changes.
 - **The rest of the toolkit's collection wiring.** `toolkit.Collect`, the
   collect bridge, the built-in adapters, and `toolkit/observations` are
   reference implementations, as is the rest of `toolkit/app` beyond the seams
-  above.
+  and lifecycle above.
 - **`agentkit`.** This package is experimental.
 - **Everything under `internal/`**, build and CI configuration, container
   image contents, and log and stderr text.
