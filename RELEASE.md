@@ -75,7 +75,9 @@ final tag lands.
 A minor release goes through QA as an RC, without freezing `main`:
 
 1. Merge a PR to `main` that adds the `CHANGELOG.md` entry. Point the entry's
-   link at the final `vX.Y.0` tag, even though it does not exist yet.
+   link at the final `vX.Y.0` tag, even though it does not exist yet. The
+   entries under Unreleased become that release's section, so check that
+   they are complete and sorted into the right sections first.
 2. Tag that commit `vX.Y.0-rc.1`, and create `release/vX.Y` from the tag.
 3. Land QA fixes on `main` first, then cherry-pick them onto `release/vX.Y`
    and tag the next `-rc.N` there.
