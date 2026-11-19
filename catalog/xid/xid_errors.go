@@ -386,7 +386,7 @@ func Checks() []health.CheckDefinition {
 	for _, class := range warningClasses {
 		warningCount += len(class.codes)
 	}
-	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+4)
+	checks := make([]health.CheckDefinition, 0, len(criticalXids)+len(nvlink5Xids)+len(nvlink5SubXidCodes)+warningCount+5)
 	for _, c := range criticalXids {
 		checks = append(checks, criticalCheck(c))
 	}
@@ -402,6 +402,7 @@ func Checks() []health.CheckDefinition {
 		}
 	}
 	checks = append(checks, xid45Check())
+	checks = append(checks, xid74Check())
 	checks = append(checks, xid154Check())
 	checks = append(checks, informationalCheck())
 	checks = append(checks, unknownCheck())

@@ -216,6 +216,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Features
 
+- `gpu_xid_74` reports Xid 74 (NVLink error). On H100 and H200 it decodes the
+  NVLink error registers in the driver message. Error bits are CRITICAL and
+  recommend a GPU reset or node reboot, then service; the fabric-reset bit
+  recommends a node reboot, then service. Secondary and signal-integrity bits
+  are CRITICAL only when no other documented error bit is set, and INFO
+  otherwise. Bits that need action only when they recur are WARNING with
+  `monitor`. Ignorable and corrected-ECC bits are INFO. Undecodable or
+  undocumented register dumps are WARNING with `monitor`. On A100 every Xid 74
+  is CRITICAL with `GenericDrain`; Blackwell skips the check.
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.

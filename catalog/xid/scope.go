@@ -49,6 +49,7 @@ var checkScopes = func() map[string]checkScope {
 		}
 	}
 	addCode(45)
+	addCode(74)
 	addCode(154)
 	for _, c := range nvlink5SubXidCodes {
 		out[subXidCodeCheckID(c.subXidCode)] = checkScope{sub: c.subXidCode}
