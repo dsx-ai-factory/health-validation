@@ -462,6 +462,15 @@ func TestEvaluateGPUCountMismatch(t *testing.T) {
 	if verdict.OverallSeverity != health.Critical || exitCodeForVerdict(verdict) != exitUnhealthy {
 		t.Fatalf("count mismatch = %+v", verdict)
 	}
+	for _, result := range verdict.CheckResults {
+		if result.CheckID == "gpu_count" {
+			if result.Severity != health.Critical {
+				t.Fatalf("gpu_count severity = %v, want CRITICAL", result.Severity)
+			}
+			return
+		}
+	}
+	t.Fatal("gpu_count verdict not found")
 }
 
 // TestLoadConfig_CollectionTimeout covers parsing the optional global
