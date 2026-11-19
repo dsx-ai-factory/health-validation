@@ -275,39 +275,42 @@ func (host closeObservedHost) close() error {
 }
 
 func TestAgentDefersBackendCloseUntilNativeWorkFinishes(t *testing.T) {
-	backend := &blockingAgentSource{started: make(chan struct{}, 1), release: make(chan struct{})}
-	defer close(backend.release)
-	a := withAgentSource(cadenceRunApp(), backend)
-	closed := make(chan struct{})
-	a.host = closeObservedHost{hostBackend: a.host, closed: closed}
-	agent := a.newVerdictAgent(&Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	finished := make(chan error, 1)
-	go func() { _, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{}); finished <- err }()
-	select {
-	case <-backend.started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("backend did not start")
-	}
-	cancel()
-	select {
-	case <-finished:
-	case <-time.After(5 * time.Second):
-		t.Fatal("canceled request did not finish")
-	}
-	agent.closeWhenIdle()
-	select {
-	case <-closed:
-		t.Fatal("backend closed while native work was in flight")
-	default:
-	}
-	backend.release <- struct{}{}
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("backend was not closed after work finished")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		backend := &blockingAgentSource{started: make(chan struct{}, 1), release: make(chan struct{})}
+		defer close(backend.release)
+		a := withAgentSource(cadenceRunApp(), backend)
+		closed := make(chan struct{})
+		a.host = closeObservedHost{hostBackend: a.host, closed: closed}
+		agent := a.newVerdictAgent(&Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		finished := make(chan error, 1)
+		go func() { _, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{}); finished <- err }()
+		select {
+		case <-backend.started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("backend did not start")
+		}
+		cancel()
+		select {
+		case <-finished:
+		case <-time.After(5 * time.Second):
+			t.Fatal("canceled request did not finish")
+		}
+		agent.closeWhenIdle()
+		synctest.Wait()
+		select {
+		case <-closed:
+			t.Fatal("backend closed while native work was in flight")
+		default:
+		}
+		backend.release <- struct{}{}
+		select {
+		case <-closed:
+		case <-time.After(5 * time.Second):
+			t.Fatal("backend was not closed after work finished")
+		}
+	})
 }
 
 func TestAgentCollectorFailureOccursAfterCompleteResponse(t *testing.T) {
