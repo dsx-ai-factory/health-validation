@@ -155,7 +155,7 @@ type sensorResult struct {
 	timedOut     bool
 }
 
-// collectSensor runs one sensor's Measure under a timeout and returns its
+// collectSensorContext runs one sensor's Measure under a timeout and returns its
 // outcome.
 //
 // Measure runs on its own goroutine because a backend reading NVML over
@@ -169,10 +169,6 @@ type sensorResult struct {
 // Measure is recovered and degraded like any other failure so one bad
 // backend cannot crash the whole run; a cgo segfault is not a Go panic and
 // cannot be caught here.
-func collectSensor(s Sensor, timeout time.Duration) sensorResult {
-	return collectSensorContext(context.Background(), s, timeout)
-}
-
 func collectSensorContext(parent context.Context, s Sensor, timeout time.Duration) sensorResult {
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()

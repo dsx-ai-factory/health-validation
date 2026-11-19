@@ -293,7 +293,7 @@ func newCycle(timeout time.Duration) (*collect.Cycle, error) {
 	return collect.NewCycleWithTimeout(uuid.NewString(), time.Now().UTC(), timeout)
 }
 
-// collectSensorsIn resolves registered sensors and adapters, plus the given
+// collectSensorsContext resolves registered sensors and adapters, plus the given
 // built-ins, collects every source once under cycle, and returns toolkit
 // sensors that convert the cached observations. required narrows collection to
 // the signals runnable checks require; an adapter or source left with none is
@@ -302,10 +302,6 @@ func newCycle(timeout time.Duration) (*collect.Cycle, error) {
 // Each source gets its own timeout budget; the toolkit watchdog then bounds
 // only adapter conversion. Registration errors and panics are returned so the
 // CLI exits 2 before anything is measured.
-func (a *App) collectSensorsIn(cycle *collect.Cycle, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter, required requiredSignals) ([]toolkit.Sensor, error) {
-	return a.collectSensorsContext(context.Background(), cycle, builtinSources, builtinAdapters, required)
-}
-
 func (a *App) collectSensorsContext(ctx context.Context, cycle *collect.Cycle, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter, required requiredSignals) (sensors []toolkit.Sensor, err error) {
 	adapters := slices.Concat(a.collectAdapters, builtinAdapters)
 	if len(a.collectSources) == 0 && len(builtinSources) == 0 && len(adapters) == 0 {
