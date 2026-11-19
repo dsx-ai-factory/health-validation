@@ -583,19 +583,26 @@ func TestServeValidatesRequestBudgetAgainstSourceTimeout(t *testing.T) {
 }
 
 func TestAgentRequestBudgetIncludesAdmission(t *testing.T) {
-	a := New()
-	a.host = panicHost{}
-	agent := a.newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID}, nil)
-	agent.requestTimeout = 1100 * time.Millisecond
-	agent.gate <- struct{}{}
-	defer func() { <-agent.gate }()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	started := time.Now()
-	_, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{})
-	if status.Code(err) != codes.DeadlineExceeded || time.Since(started) >= 3*time.Second {
-		t.Fatalf("queued request exceeded its service budget: %v, elapsed %s", err, time.Since(started))
-	}
+	synctest.Test(t, func(t *testing.T) {
+		const serviceTimeout = 1100 * time.Millisecond
+		a := New()
+		a.host = panicHost{}
+		agent := a.newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID}, nil)
+		agent.requestTimeout = serviceTimeout
+		agent.gate <- struct{}{}
+		defer func() { <-agent.gate }()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		started := time.Now()
+		_, err := agent.evaluate(ctx, &healthv1.EvaluateRequest{})
+		if status.Code(err) != codes.DeadlineExceeded {
+			t.Fatalf("queued request: %v, want DeadlineExceeded", err)
+		}
+		if elapsed := time.Since(started); elapsed != serviceTimeout || ctx.Err() != nil {
+			t.Fatalf("queued request finished after %s, want %s with caller context still active (err = %v)", elapsed, serviceTimeout, ctx.Err())
+		}
+	})
 }
 
 func waitForAgentIdle(t *testing.T, agent *verdictAgent) {
