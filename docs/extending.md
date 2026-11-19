@@ -19,12 +19,14 @@ health-validation itself.
 >   `Rule`, `ThresholdSpec`, the `Measurement` interface, the enums) and the
 >   `catalog` registry/evaluation engine — is the extension surface. Your check
 >   definitions are data written against it.
-> - The **collection seams** — `WithCollect`, `WithChecks`, and `GPUAdapter` in
->   `toolkit/app`, with `collect.Sensor` and its signal IDs — are guaranteed
->   under the [compatibility policy](../RELEASE.md#compatibility).
-> - The rest of the **toolkit** collection wiring (the collect bridge and
->   adapters, the `toolkit.Collect` pipeline, and the remainder of the `app.App`
->   builder) is a **reference implementation and may change.**
+> - The **collection seams** — `WithCollect`, `WithCollectAdapters`, `WithChecks`,
+>   and `GPUAdapter` in
+>   `toolkit/app`, with `collect.Sensor`, its signal IDs, and the
+>   `CollectAdapter` interface — are guaranteed under the
+>   [compatibility policy](https://github.com/dsx-ai-factory/health-validation/blob/main/RELEASE.md#compatibility).
+> - The rest of the **toolkit** collection wiring (the collect bridge, the
+>   built-in adapters, the `toolkit.Collect` pipeline, and the remainder of the
+>   `app.App` builder) is a **reference implementation and may change.**
 
 Put your *judgment* (what condition is unhealthy, at what threshold, with what
 remediation) in check definitions, and read signals through the guaranteed
