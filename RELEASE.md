@@ -58,14 +58,10 @@ policy.
 ## Compatibility
 
 A change is **breaking** only if it makes previously valid use of a guaranteed
-surface fail or change meaning, measured against the highest final release by
-version number, not the most recently published one: a patch to an older
-`release/vX.Y` line published after a newer minor does not lower the baseline.
-For a change to a `release/vX.Y` branch, the baseline is the latest release on
-that branch. Release candidates do not count. An API that has not shipped in a
-final release can change freely until it does. Anything else, including a
-behavior change to something listed as not guaranteed, is not breaking,
-however large its effect on a verdict.
+surface fail or change meaning, measured against the latest release. An API
+that has not shipped in a release can change freely until it does. Anything
+else, including a behavior change to something listed as not guaranteed, is not
+breaking, however large its effect on a verdict.
 
 ### Guaranteed surfaces
 
