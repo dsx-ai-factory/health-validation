@@ -53,8 +53,7 @@ func PortState() health.CheckDefinition {
 		Provenance:     health.NVIDIA,
 		MaturityLevel:  health.Experimental,
 		// A GPU reset cannot bring a NIC port up, so the generic sequence's
-		// first step is skipped; the link-flap check keeps GenericDrain from
-		// the downstream behavior #51 recorded.
+		// first step is skipped.
 		RecommendedAction: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired),
 
 		Thresholds: map[string]health.ThresholdSpec{
