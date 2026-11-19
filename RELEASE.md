@@ -58,9 +58,10 @@ policy.
 ## Compatibility
 
 A change is **breaking** only if it makes previously valid use of a guaranteed
-surface fail or change meaning. Anything else, including a behavior change to
-something listed as not guaranteed, is not breaking, however large its effect
-on a verdict.
+surface fail or change meaning, measured against the last release. An API that
+has not shipped in a release can change freely until it does. Anything else,
+including a behavior change to something listed as not guaranteed, is not
+breaking, however large its effect on a verdict.
 
 ### Guaranteed surfaces
 
