@@ -92,7 +92,7 @@ on a verdict.
 ### Not guaranteed
 
 These can change in any release, and a change to them is never listed as
-breaking. The changelog still records notable changes under Features or Fixes.
+breaking. The changelog still records notable changes, under Changes.
 
 - **Check behavior.** Severities, messages, recommended actions and
   remediation sequences, which checks are registered or run by default, and
@@ -116,8 +116,9 @@ breaking. The changelog still records notable changes under Features or Fixes.
   Do not use it for a behavior change to something not guaranteed.
 - A pull request with several changes lists only its breaking parts under
   **Breaking Changes** in [`CHANGELOG.md`](CHANGELOG.md), each saying what a
-  consumer must change. Its other changes get their own entries under Features
-  or Fixes, so one pull request can have entries in more than one section.
+  consumer must change. Its other changes get their own entries under Changes
+  (behavior or APIs that are not guaranteed), Features, or Fixes, so one pull
+  request can have entries in more than one section.
 - Deprecate before removing where practical, and say what replaces it.
 
 ## Branch naming and tagging
