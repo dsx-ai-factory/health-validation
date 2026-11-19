@@ -314,15 +314,19 @@ func TestAgentDefersBackendCloseUntilNativeWorkFinishes(t *testing.T) {
 }
 
 func TestAgentCollectorFailureOccursAfterCompleteResponse(t *testing.T) {
-	entered, release := make(chan struct{}, 1), make(chan struct{})
+	entered, release := make(chan struct{}), make(chan struct{})
+	exportFinished := make(chan struct{})
 	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		entered <- struct{}{}
+		defer close(exportFinished)
+		close(entered)
 		<-release
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer collector.Close()
 	defer close(release)
-	cfg := &Config{Metrics: MetricsConfig{Enabled: true, Endpoint: collector.URL, TimeoutSeconds: 1}}
+	// Export must outlast the client deadline so a pre-response export cannot
+	// pass by timing out before the response is delivered.
+	cfg := &Config{Metrics: MetricsConfig{Enabled: true, Endpoint: collector.URL, TimeoutSeconds: 10}}
 	agent := cadenceRunApp().newVerdictAgent(cfg, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
 	address := startAppAgent(t, agent)
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -339,6 +343,11 @@ func TestAgentCollectorFailureOccursAfterCompleteResponse(t *testing.T) {
 	case <-entered:
 	case <-time.After(5 * time.Second):
 		t.Fatal("metrics never published")
+	}
+	select {
+	case <-exportFinished:
+		t.Fatal("collector finished before the complete response was verified")
+	default:
 	}
 }
 
