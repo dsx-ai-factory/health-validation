@@ -162,12 +162,15 @@ on a best-effort basis; see [RELEASE.md](./RELEASE.md).
 
 ### Interface compatibility
 
-The module is currently **pre-1.0 (`v0.x`)**. Breaking public API or CLI
-changes may occur in minor releases; compatible fixes use patch releases.
-From 1.0, breaking changes to the catalog's public Go API or the CLI's
-behavior and flags require a major release. Breaking changes are announced
-in advance. A release deprecating a public API must document a migration path
-and retain the API until a later breaking release removes it.
+The module is currently **pre-1.0 (`v0.x`)**. Breaking changes to a guaranteed
+surface may occur in minor releases; compatible fixes use patch releases.
+From 1.0, such changes require a major release and are announced in advance. A
+release deprecating a public API must document a migration path and retain the
+API until a later breaking release removes it.
+
+[RELEASE.md](./RELEASE.md#compatibility) lists the guaranteed surfaces, such
+as the verdict JSON, the CLI, check IDs, configuration, and the catalog's Go
+API, and what is not guaranteed.
 
 Pin the source release tag or commit used for a deployment. Release candidates
 and builds from `main` contain prerelease or development changes. Review the
@@ -175,12 +178,6 @@ and builds from `main` contain prerelease or development changes. Review the
 [release notes](https://github.com/dsx-ai-factory/health-validation/releases),
 and [release policy](./RELEASE.md) before upgrading. Development builds and
 release candidates are outside the finalized-release lifecycle.
-
-The catalog is the intended integration and extension surface, subject to the
-pre-1.0 policy above. Toolkit sensors, backends, collection wiring, and the app
-builder are reference implementations and may change. The `collect` and
-`agentkit` packages are experimental. See the
-[developer guide](./docs/developer.md) and [extension guide](./docs/extending.md).
 
 Verdict JSON is versioned separately through `schema_version`.
 `catalog_version` identifies the catalog compiled into the producer. Validate

@@ -42,12 +42,7 @@ fixes in a Maintenance release.
 
 The module follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
-- **MAJOR** — a breaking change to the module's public Go API or the CLI's
-  behavior/flags. For the verdict JSON contract
-  specifically, `schema_version` (documented in
-  [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json))
-  is the authoritative breaking-change signal, independent of the module's own
-  semver.
+- **MAJOR** — a breaking change to a [guaranteed surface](#compatibility).
 - **MINOR** — backward-compatible additions (a new check, a new optional field,
   a new exported function).
 - **PATCH** — backward-compatible bug fixes.
@@ -59,6 +54,65 @@ public API must document a migration path and keep the deprecated API until a
 later breaking release removes it. See
 [`docs/developer.md`](docs/developer.md#versioning-and-releases) for the full
 policy.
+
+## Compatibility
+
+A change is **breaking** only if it makes previously valid use of a guaranteed
+surface fail or change meaning. Anything else, including a behavior change to
+something listed as not guaranteed, is not breaking, however large its effect
+on a verdict.
+
+### Guaranteed surfaces
+
+- **Verdict JSON.** Its shape and the meaning of its fields and enum values,
+  versioned by `schema_version`
+  ([`node-verdict.schema.json`](catalog/health/node-verdict.schema.json)).
+  Every change to the schema bumps `schema_version`. Removing or renaming a
+  field or enum value, or changing a field's type or meaning, is breaking.
+  Adding an optional field or an enum value is not.
+- **CLI.** Subcommand and flag names and values, and the exit-code contract:
+  `0` for PASS, INFO, and WARNING, `1` for CRITICAL and UNKNOWN, and `2` when
+  no verdict could be produced.
+- **Check IDs.** Renaming or removing a check ID is breaking. Adding a check is
+  not.
+- **Configuration.** The config file's keys, `checks.<id>.<param>` threshold
+  names and types, and the `metrics:` block. Removing or renaming one is
+  breaking.
+- **Published metrics.** The names and attributes of the OTLP metrics the CLI
+  pushes.
+- **Go API of the catalog.** The documented exported API of `catalog`,
+  `catalog/health`, and the per-domain check packages, which is the intended
+  integration and extension surface.
+
+### Not guaranteed
+
+These can change in any release, and a change to them is never listed as
+breaking. The changelog still records notable changes under Features or Fixes.
+
+- **Check behavior.** Severities, messages, recommended actions and
+  remediation sequences, which checks are registered or run by default, and
+  default thresholds. Downstream systems follow remediation as published.
+- **Verdict content that is not part of the schema's contract.** The contents
+  of `observed_values` and `diagnostic` text.
+- **The toolkit.** `toolkit`, `toolkit/app`, `toolkit/observations`, the
+  sensors and backends, and the app builder are reference implementations.
+- **`collect` and `agentkit`.** These packages are experimental.
+- **Everything under `internal/`**, build and CI configuration, container
+  image contents, and log and stderr text.
+
+### Making and announcing a breaking change
+
+- Before 1.0, a breaking change ships in a MINOR release. From 1.0 it ships in
+  a MAJOR release and is announced in advance. See
+  [SUPPORT.md](SUPPORT.md#interface-compatibility).
+- A pull request that makes a breaking change marks its title with `!`, as in
+  `feat(catalog)!: ...`. Use `!` only for a change to a guaranteed surface.
+  Do not use it for a behavior change to something not guaranteed.
+- A pull request with several changes lists only its breaking parts under
+  **Breaking Changes** in [`CHANGELOG.md`](CHANGELOG.md), each saying what a
+  consumer must change. Its other changes get their own entries under Features
+  or Fixes, so one pull request can have entries in more than one section.
+- Deprecate before removing where practical, and say what replaces it.
 
 ## Branch naming and tagging
 
