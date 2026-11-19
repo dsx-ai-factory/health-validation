@@ -71,9 +71,10 @@ breaking, however large its effect on a verdict.
   Every change to the schema bumps `schema_version`. Removing or renaming a
   field or enum value, or changing a field's type or meaning, is breaking.
   Adding an optional field or an enum value is not.
-- **CLI.** Subcommand and flag names and values, and the exit-code contract:
-  `0` for PASS, INFO, and WARNING, `1` for CRITICAL and UNKNOWN, and `2` when
-  no verdict could be produced.
+- **CLI.** Subcommand and flag names and values, and the exit codes. `run`
+  exits `0` for PASS, INFO, and WARNING, `1` for CRITICAL and UNKNOWN, and `2`
+  when no verdict could be produced. `collect` produces no verdict: it exits
+  `0` once it has written the observation batch, and `2` when it could not.
 - **Check IDs.** Renaming or removing a check ID is breaking. Adding a check is
   not.
 - **Configuration.** The config file's keys, `checks.<id>.<param>` threshold
