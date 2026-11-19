@@ -12,6 +12,9 @@ node_modules/
 # here too rather than depending on a tool's internals to keep it untracked.
 .ruff_cache/
 
+# Python bytecode from running the tools/ scripts and their tests directly.
+__pycache__/
+
 # Locally built/downloaded binaries. Keep these out of the repo root.
 /bin/
 
