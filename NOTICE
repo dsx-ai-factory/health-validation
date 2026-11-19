@@ -12,7 +12,7 @@ Go module dependencies:
   License:  Apache-2.0
   URL:      https://cel.dev/expr
 
-  github.com/NVIDIA/go-dcgm  v1.4702.0
+  github.com/NVIDIA/go-dcgm  v1.4712.2
   License:  Apache-2.0
   URL:      https://github.com/NVIDIA/go-dcgm
 
@@ -28,7 +28,7 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://github.com/antlr4-go/antlr/v4
 
-  github.com/bits-and-blooms/bitset  v1.26.0
+  github.com/bits-and-blooms/bitset  v1.29.0
   License:  BSD-3-Clause
   URL:      https://github.com/bits-and-blooms/bitset
 
@@ -104,7 +104,7 @@ Go module dependencies:
   License:  Apache-2.0
   URL:      https://go.opentelemetry.io/proto/otlp
 
-  go.yaml.in/yaml/v3  v3.0.5
+  go.yaml.in/yaml/v3  v3.0.6
   License:  Apache-2.0 AND MIT
   URL:      https://go.yaml.in/yaml/v3
 
@@ -128,7 +128,7 @@ Go module dependencies:
   License:  BSD-3-Clause
   URL:      https://golang.org/x/sync
 
-  golang.org/x/sys  v0.49.0
+  golang.org/x/sys  v0.50.0
   License:  BSD-3-Clause
   URL:      https://golang.org/x/sys
 

@@ -1544,6 +1544,7 @@ func TestPowerDrawIsAverageOnlyOnAveragingArchitectures(t *testing.T) {
 		{name: "H100", model: "NVIDIA H100 80GB HBM3", gpus: 4},
 		{name: "H200", model: "NVIDIA H200", gpus: 4},
 		{name: "GB200", model: "NVIDIA GB200", gpus: 4},
+		{name: "B300", model: "NVIDIA B300 SXM6 AC", gpus: 4},
 		{name: "A100", model: "NVIDIA A100-SXM4-80GB", gpus: 4, want: `NOT_SUPPORTED): power draw is not a one-second average on architecture "A100"`},
 		{name: "unknown", model: "Tesla V100-SXM2-32GB", gpus: 4, want: `on architecture "unknown"`},
 		{name: "discovery failure", gpus: 0, want: `"GPUArchitecture" failed with COLLECTION_ERROR_CATEGORY_UNAVAILABLE: GPU architecture discovery: no GPUs enumerated`},
