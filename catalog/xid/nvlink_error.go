@@ -47,7 +47,7 @@ type nvlinkErrorGroup struct {
 	benign bool
 	// monitor bits are reported as WARNING with monitor rather than drained.
 	monitor bool
-	// defers to other documented error bits in the same report.
+	// defers to nonbenign, nondeferring groups in the same report.
 	defers bool
 }
 
@@ -69,7 +69,7 @@ var nvlinkErrorGroups = []nvlinkErrorGroup{
 		label:   "Secondary-error",
 		defers:  true,
 		masks:   [7]uint32{0: 1<<1 | 1<<20, 3: 1<<16 | 1<<17},
-		message: "Secondary NVLink error with no other documented error bits in the report. Contact support if it persists.",
+		message: "Secondary NVLink error without accompanying fabric-reset, ECC/parity, link-hardware, repeat-class or unexpected bits in the report. Contact support if it persists.",
 	},
 	{
 		key: "ecc",
@@ -90,7 +90,7 @@ var nvlinkErrorGroups = []nvlinkErrorGroup{
 		label:   "Signal-integrity",
 		defers:  true,
 		masks:   [7]uint32{0: 1<<21 | 1<<22},
-		message: "Marginal NVLink signal integrity with no other documented error bits in the report. Check the link connections; contact support if it persists.",
+		message: "Marginal NVLink signal integrity without accompanying fabric-reset, ECC/parity, link-hardware, repeat-class or unexpected bits in the report. Check the link connections; contact support if it persists.",
 	},
 	{
 		key:     "recurring",
@@ -191,7 +191,7 @@ func (m XidMeasurement) nvlinkErrorCounts() map[string]int64 {
 				}
 			}
 		}
-		// A deferring group defers only to documented error bits.
+		// Benign and deferring groups cannot explain another deferring group.
 		accompanied := false
 		for _, group := range nvlinkErrorGroups {
 			accompanied = accompanied || hit[group.key] && !group.benign && !group.defers
@@ -235,6 +235,9 @@ func xid74Check() health.CheckDefinition {
 		Description:     "Whether the architecture uses the Hopper Xid 74 register layout. Fixed per architecture.",
 		PerArchitecture: map[string]any{"H100": true, "H200": true, "A100": false},
 	}
+	occurrences := def.Thresholds["occurrences"]
+	occurrences.Description = "Number of matching Xid 74 reports on one GPU within the collection window that triggers a rule. H100/H200 count each classification separately, including accompanied and unaccompanied secondary/signal-integrity bits; reports in different classifications do not add together. Each report counts at most once per classification, regardless of matching bits or links. A100 counts all Xid 74 reports together."
+	def.Thresholds["occurrences"] = occurrences
 	reached := func(key string) string {
 		return fmt.Sprintf("%[1]q in nvlink_error_counts && nvlink_error_counts[%[1]q] >= occurrences", key)
 	}

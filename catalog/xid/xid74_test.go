@@ -292,8 +292,8 @@ func TestXid74_RecoveryWith154Disabled(t *testing.T) {
 	}
 }
 
-// TestXid74_SoloBits acts on secondary and signal-integrity bits only when no
-// other error bit shares the report, as WORKFLOW_NVLINK_ERR says to follow those first.
+// TestXid74_SoloBits verifies that secondary and signal-integrity bits defer
+// only to nonbenign, nondeferring groups in the same report.
 func TestXid74_SoloBits(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
@@ -301,16 +301,16 @@ func TestXid74_SoloBits(t *testing.T) {
 		registers [7]uint32
 		want      health.Severity
 	}{
-		{"secondary alone", "no other documented error bits", [7]uint32{1 << 1}, health.Critical},
-		{"secondary with ignorable bit", "no other documented error bits", [7]uint32{1<<1 | 1}, health.Critical},
-		{"secondary with corrected ECC", "no other documented error bits", [7]uint32{0: 1 << 1, 4: 1 << 20}, health.Critical},
-		{"secondary and signal integrity only", "no other documented error bits", [7]uint32{1<<1 | 1<<21}, health.Critical},
+		{"secondary alone", "without accompanying", [7]uint32{1 << 1}, health.Critical},
+		{"secondary with ignorable bit", "without accompanying", [7]uint32{1<<1 | 1}, health.Critical},
+		{"secondary with corrected ECC", "without accompanying", [7]uint32{0: 1 << 1, 4: 1 << 20}, health.Critical},
+		{"secondary and signal integrity only", "without accompanying", [7]uint32{1<<1 | 1<<21}, health.Critical},
 		{"secondary with link-hardware bit", "Secondary-error bits accompanied", [7]uint32{1<<1 | 1<<8}, health.Critical},
 		{"secondary with one ECC report", "Secondary-error bits accompanied", [7]uint32{1<<1 | 1<<4}, health.Critical},
 		{"register 4 secondary with ECC", "Secondary-error bits accompanied", [7]uint32{0: 1 << 4, 3: 1 << 16}, health.Critical},
 		{"signal integrity with ECC", "Signal-integrity bits accompanied", [7]uint32{1<<21 | 1<<4}, health.Critical},
 		{"secondary with recurring bit", "Secondary-error bits accompanied", [7]uint32{1<<1 | 1<<27}, health.Warning},
-		{"secondary with undocumented bit", "no other documented error bits", [7]uint32{1<<1 | 1<<31}, health.Critical},
+		{"secondary with undocumented bit", "without accompanying", [7]uint32{1<<1 | 1<<31}, health.Critical},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			v := eval74(t, "H100", xid74Measurement(xid74Event("0000:01:00", 0, tt.registers)))
@@ -321,7 +321,7 @@ func TestXid74_SoloBits(t *testing.T) {
 	}
 	// An all-zero tuple on another link adds no error bits.
 	const zero = "NVRM: Xid (PCI:0000:01:00): 74, NVLink: fatal error detected on link 3(0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0), link 4(0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0)"
-	if v := eval74(t, "H100", xid74Measurement(xid.XidEvent{XidCode: 74, PCIAddress: "0000:01:00", Message: zero})); v.Severity != health.Critical || !strings.Contains(messages(v), "no other documented error bits") {
+	if v := eval74(t, "H100", xid74Measurement(xid.XidEvent{XidCode: 74, PCIAddress: "0000:01:00", Message: zero})); v.Severity != health.Critical || !strings.Contains(messages(v), "without accompanying") {
 		t.Errorf("secondary with an all-zero tuple: %+v, want CRITICAL", v)
 	}
 	// Bits on another link in the same report accompany the secondary bit too.

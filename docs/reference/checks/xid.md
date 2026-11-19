@@ -268,7 +268,7 @@ Detects NVRM Xid 74 in the system journal within the collection window; on H100 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
 | <nobr>`decode_hopper_registers`</nobr> | A100: false, H100: true, H200: true, other: false |  | <nobr>`FIXED`</nobr> | Whether the architecture uses the Hopper Xid 74 register layout. Fixed per architecture. |
-| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid 74 reports on one GPU within the collection window that triggers a rule. H100/H200 count each classification separately, including accompanied and unaccompanied secondary/signal-integrity bits; reports in different classifications do not add together. Each report counts at most once per classification, regardless of matching bits or links. A100 counts all Xid 74 reports together. |
 
 **Rules**
 
@@ -281,7 +281,7 @@ Detects NVRM Xid 74 in the system journal within the collection window; on H100 
 - **INFO** when `decode_hopper_registers && ("ignored" in nvlink_error_counts && nvlink_error_counts["ignored"] >= occurrences)`
   - Message: GPU Xid 74: NVLink status bits that need no action.
 - **CRITICAL** when `decode_hopper_registers && ("secondary" in nvlink_error_counts && nvlink_error_counts["secondary"] >= occurrences)`
-  - Message: GPU Xid 74: Secondary NVLink error with no other documented error bits in the report. Contact support if it persists.
+  - Message: GPU Xid 74: Secondary NVLink error without accompanying fabric-reset, ECC/parity, link-hardware, repeat-class or unexpected bits in the report. Contact support if it persists.
   - Action: operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
 - **INFO** when `decode_hopper_registers && ("secondary_accompanied" in nvlink_error_counts && nvlink_error_counts["secondary_accompanied"] >= occurrences)`
   - Message: GPU Xid 74: Secondary-error bits accompanied other documented error bits in the report; follow the guidance for those bits.
@@ -292,7 +292,7 @@ Detects NVRM Xid 74 in the system journal within the collection window; on H100 
   - Message: GPU Xid 74: Possible NVLink hardware issue. Check the link connections; contact support if it persists.
   - Action: operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
 - **CRITICAL** when `decode_hopper_registers && ("signal_integrity" in nvlink_error_counts && nvlink_error_counts["signal_integrity"] >= occurrences)`
-  - Message: GPU Xid 74: Marginal NVLink signal integrity with no other documented error bits in the report. Check the link connections; contact support if it persists.
+  - Message: GPU Xid 74: Marginal NVLink signal integrity without accompanying fabric-reset, ECC/parity, link-hardware, repeat-class or unexpected bits in the report. Check the link connections; contact support if it persists.
   - Action: operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
 - **INFO** when `decode_hopper_registers && ("signal_integrity_accompanied" in nvlink_error_counts && nvlink_error_counts["signal_integrity_accompanied"] >= occurrences)`
   - Message: GPU Xid 74: Signal-integrity bits accompanied other documented error bits in the report; follow the guidance for those bits.
