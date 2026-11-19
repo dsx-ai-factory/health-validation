@@ -83,6 +83,11 @@ on a verdict.
 - **Go API of the catalog.** The documented exported API of `catalog`,
   `catalog/health`, and the per-domain check packages, which is the intended
   integration and extension surface.
+- **Collection extension seams.** `WithCollect`, `WithChecks`, and
+  `GPUAdapter` in `toolkit/app`, with the types they take: `collect.Sensor`,
+  its signal IDs, and the observation types it emits. Removing or changing the
+  meaning of a built-in signal ID is breaking. Adding a sensor or a signal is
+  not.
 
 ### Not guaranteed
 
@@ -94,10 +99,10 @@ breaking. The changelog still records notable changes under Features or Fixes.
   default thresholds. Downstream systems follow remediation as published.
 - **Verdict content that is not part of the schema's contract.** The contents
   of `observed_values` and `diagnostic` text.
-- **The toolkit's collection wiring.** `toolkit.Collect`, the collect bridge
-  and adapters, `toolkit/app` (the app builder, `WithCollect`, `WithChecks`,
-  and `GPUAdapter`), and `toolkit/observations` are reference implementations.
-- **`collect` and `agentkit`.** These packages are experimental.
+- **The rest of the toolkit's collection wiring.** `toolkit.Collect`, the
+  collect bridge and adapters, and `toolkit/observations` are reference
+  implementations, as is the rest of `toolkit/app` beyond the seams above.
+- **`agentkit`.** This package is experimental.
 - **Everything under `internal/`**, build and CI configuration, container
   image contents, and log and stderr text.
 

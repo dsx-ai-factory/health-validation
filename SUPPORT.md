@@ -121,8 +121,7 @@ release carries the same version.
 
 This lifecycle takes effect on adoption of this policy. It covers final
 releases available at adoption and subsequent final releases, including pre-1.0
-releases. The experimental `collect` and `agentkit` packages are outside this
-lifecycle.
+releases. The experimental `agentkit` package is outside this lifecycle.
 
 | Stage | Meaning |
 | --- | --- |

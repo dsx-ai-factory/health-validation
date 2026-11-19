@@ -653,12 +653,14 @@ engine. Two paths:
   backend, and tests.
 
 Either way, the durable surface is the **catalog** (check definitions and the
-evaluation engine); the toolkit's collection wiring (the collect bridge, adapters, and app
-builder) that feeds it is a reference implementation and may change.
+evaluation engine) and the collection seams (`WithCollect`, `WithChecks`,
+`GPUAdapter`, `collect.Sensor`); the rest of the toolkit's collection wiring is
+a reference implementation and may change. See the
+[compatibility policy](../RELEASE.md#compatibility).
 
 ## Shared raw collection library
 
-Use the experimental `github.com/dsx-ai-factory/health-validation/collect`
+Use the `github.com/dsx-ai-factory/health-validation/collect`
 module when you need raw observations rather than a catalog verdict.
 `collect.Sensor` keeps the same `ID`, `Signals`, and `Measure(ctx, ...OpOption)`
 interface. The packages below collect and normalize source data; they do not

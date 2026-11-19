@@ -11,11 +11,11 @@ The repository is `github.com/dsx-ai-factory/health-validation`. It is a single 
 
 `toolkit` depends on `catalog`; import `toolkit` to get both.
 
-For raw observations without catalog evaluation, use the experimental `collect`
+For raw observations without catalog evaluation, use the `collect`
 package. See [Shared raw collection library](docs/integration.md#shared-raw-collection-library)
 for its ten collection families, typed targets, and custom sensor registration.
 
-> **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The `toolkit`'s collection wiring (the collect bridge, adapters, and app builder) that feeds it is a reference implementation and is subject to change.
+> **Stability.** The durable surface is the **catalog** — the check definitions and the evaluation engine. The collection seams (`WithCollect`, `WithChecks`, `GPUAdapter`, and `collect.Sensor`) are guaranteed too; the rest of the `toolkit`'s collection wiring is a reference implementation and is subject to change. See the [compatibility policy](RELEASE.md#compatibility).
 
 ## What it does
 
