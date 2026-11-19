@@ -95,7 +95,9 @@ def check(
     errors: list[str] = []
     # The pull request's own number should not be in the base. A link that is
     # already there, such as a forward reference, cannot count as this pull
-    # request's entry, even if it moves to another section or is copied.
+    # request's entry, even if it moves to another section or is copied. That
+    # only withholds credit: a new entry under Breaking Changes is still
+    # checked against the title below.
     if sum(base.values()) > 0:
         added: dict[str, int] = {}
         if needs_entry:
@@ -106,10 +108,11 @@ def check(
             )
     else:
         added = {sec: n for sec, n in head.items() if n > 0}
-    breaking_added = added.get(BREAKING, 0) > 0
+    breaking_credit = added.get(BREAKING, 0) > 0
+    breaking_new = head.get(BREAKING, 0) > base.get(BREAKING, 0)
 
     if breaking:
-        if not breaking_added and not errors:
+        if not breaking_credit and not errors:
             errors.append(
                 f"The title marks a breaking change (!), so CHANGELOG.md needs an entry "
                 f'under "{BREAKING}" linking /pull/{pr}. List only the parts of the '
@@ -117,7 +120,7 @@ def check(
                 f"consumer must change, and the other parts under Changes, Features, or "
                 f"Fixes. See RELEASE.md."
             )
-    elif breaking_added:
+    elif breaking_new:
         errors.append(
             f'CHANGELOG.md lists /pull/{pr} under "{BREAKING}", but the title has no "!". '
             f"Add ! to the title, or move the entry. See RELEASE.md."

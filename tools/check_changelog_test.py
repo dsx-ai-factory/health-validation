@@ -138,6 +138,12 @@ class CheckTest(unittest.TestCase):
         copied = with_entry("Breaking Changes", 10, base)
         self.assertEqual(len(self.run_check("feat!: a", copied, base=base)), 1)
 
+    def test_new_breaking_entry_needs_bang_even_if_the_base_has_the_link(self):
+        base = with_entry("Features", 10)
+        head = with_entry("Breaking Changes", 10, base)
+        self.assertEqual(len(self.run_check("docs: a", head, base=base)), 1)
+        self.assertEqual(len(self.run_check("feat: a", head, base=base)), 2)
+
     def test_link_in_the_base_is_ignored_for_exempt_prs(self):
         self.assertEqual(
             self.run_check("docs: a", BASE, base=with_entry("Features", 10)), []
