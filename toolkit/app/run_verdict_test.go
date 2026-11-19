@@ -115,6 +115,12 @@ func fixtureCases() []fixtureCase {
 			f.config = "checks:\n  rdma_linkflap_fatal:\n    min_outage_seconds: 120\n"
 		}), exit: exitOK},
 		{name: "healthy H100", node: healthyNode("NVIDIA H100 80GB HBM3", 8, 700, 1, 26562), exit: exitOK},
+		{name: "healthy B300", node: healthyNode("NVIDIA B300 SXM6 AC", 8, 1100, 2, 53125), exit: exitOK},
+		// Read as GB300 (4 GPUs expected) or as unknown (gpu_count skipped), a
+		// B300 node with 4 GPUs would pass.
+		{name: "B300 with 4 GPUs", node: healthyNode("NVIDIA B300 SXM6 AC", 4, 1100, 2, 53125), exit: exitUnhealthy, want: []fixtureResult{
+			{check: "gpu_count", severity: health.Critical, action: hardware},
+		}},
 	}
 }
 

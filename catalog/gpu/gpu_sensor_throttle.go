@@ -43,7 +43,7 @@ func GPUSensorThrottle() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Prolog,
-		Architectures:     []string{"GB200", "GB300", "B200", "H100", "H200", "A100", "VR200"},
+		Architectures:     []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "A100", "VR200"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
