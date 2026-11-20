@@ -6,7 +6,7 @@
 | Authors | Wesley Graybill |
 | Created | 2026-11-20 |
 | Issue | To be opened |
-| Design review | Add when opened |
+| Design review | [PR 318](https://github.com/dsx-ai-factory/health-validation/pull/318) |
 | Supersedes | None |
 
 ## Summary
