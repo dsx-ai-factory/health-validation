@@ -432,7 +432,7 @@ func usage(prog string) string {
 
 func registerXidTimeFlags(fs *flag.FlagSet) {
 	fs.Var(new(xidFromFlag), "xid-from", "read Xid entries strictly after Unix seconds; repeat PCI_ADDRESS=SECONDS for per-GPU bounds")
-	fs.Int64("xid-to", 0, "read Xid journal entries strictly before this Unix timestamp in seconds (positive; optional)")
+	fs.Int64("xid-to", 0, "read Xid journal entries at or before this Unix timestamp in seconds (positive; optional)")
 }
 
 type xidFromFlag struct {

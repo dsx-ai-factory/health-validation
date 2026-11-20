@@ -1078,7 +1078,9 @@ func TestXidTimeFlags(t *testing.T) {
 			}{
 				{nil, true, true},
 				{[]string{"--xid-from", "0"}, true, true},
-				{[]string{"--xid-to", "1792600000"}, false, true},
+				// --xid-to is inclusive: an entry on the end second is kept, a later one is not.
+				{[]string{"--xid-to", "1792600000"}, true, true},
+				{[]string{"--xid-to", "1792599999"}, false, true},
 				{[]string{"--xid-from", "1792600000", "--xid-to", "1792603600"}, false, false},
 				{[]string{"--xid-from", "0008:06:00=1792600000"}, false, true},
 				{[]string{"--xid-from", "0008:06:00=1792600000", "--xid-from", "0009:06:00=1792599999"}, false, false},
