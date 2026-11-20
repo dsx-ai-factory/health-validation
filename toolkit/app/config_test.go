@@ -23,6 +23,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 )
 
@@ -362,6 +363,7 @@ func TestEvaluatePassingNode(t *testing.T) {
 				EnforcedPowerLimitW: 1200,
 			},
 		}},
+		measurementSensor{name: "pcie", ms: []health.Measurement{pcie.PCIeMeasurement{GPUID: "GPU-0", PCIeMaxLinkWidth: 16, PCIeMaxLinkGeneration: 6}}},
 		measurementSensor{name: "node", ms: []health.Measurement{node.NodeMeasurement{GPUCount: 4}}},
 	}
 

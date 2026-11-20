@@ -5,12 +5,15 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"testing/fstest"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	pcisensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pci"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
@@ -82,7 +85,7 @@ func withCleanLinkFlap(a *App) *App {
 func baseTestApp() *App {
 	a := New().WithProgramName("test")
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	return a
+	return withPCI(a, spyGPUs, 64)
 }
 
 // testApp runs off the host: fake GPUs and inventory, a healthy CPU, and a
@@ -120,4 +123,21 @@ func (s measurementSensor) Errored(err error) []health.Measurement {
 		return nil
 	}
 	return s.errored(err)
+}
+
+// withPCI supplies link properties for the synthetic inventory's GPUs.
+func withPCI(a *App, gpus, maxSpeedGTs int) *App {
+	files := make(fstest.MapFS)
+	for i := range gpus {
+		base := fmt.Sprintf("sys/bus/pci/devices/0000:%02x:00.0/", i+1)
+		for field, value := range map[string]string{
+			"class":          "0x030200\n",
+			"vendor":         "0x10de\n",
+			"max_link_width": "16\n",
+			"max_link_speed": fmt.Sprintf("%d.0 GT/s PCIe\n", maxSpeedGTs),
+		} {
+			files[base+field] = &fstest.MapFile{Data: []byte(value)}
+		}
+	}
+	return a.WithCollect(pcisensor.NewGPUs(files), "pci.link.width.max", "pci.link.generation.max")
 }

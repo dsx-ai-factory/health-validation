@@ -25,12 +25,14 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
+	pcisignals "github.com/dsx-ai-factory/health-validation/collect/signals/pci"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -64,6 +66,8 @@ var mappings = []mapping{
 	{signal: cpusignals.OnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalOnlineCPUCount}, unit: "1"},
 	{signal: cpusignals.NUMANodeOnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalNUMANodeCount}, unit: "1"},
 	{signal: gpuinventory.GPUCount, measurement: node.NodeMeasurement{}, catalog: []string{node.SignalGPUCount}, unit: "1"},
+	{signal: pcisignals.MaxLinkWidth, unsupportedValue: &observation.Value{Kind: &observation.Value_IntValue{IntValue: pcie.UnsupportedLinkValue}}, measurement: pcie.PCIeMeasurement{}, catalog: []string{pcie.SignalPCIeMaxLinkWidth}, unit: "1"},
+	{signal: pcisignals.MaxLinkGeneration, unsupportedValue: &observation.Value{Kind: &observation.Value_IntValue{IntValue: pcie.UnsupportedLinkValue}}, measurement: pcie.PCIeMeasurement{}, catalog: []string{pcie.SignalPCIeMaxLinkGeneration}, unit: "1"},
 	// An average only on some architectures (instantaneous on GA100 and
 	// older); the CLI's GPU adapter turns other readings into NOT_SUPPORTED.
 	{signal: gpusignals.PowerDraw, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalAveragePowerDrawW}, unit: "watts"},

@@ -8,8 +8,12 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
+	"time"
+
+	"github.com/NVIDIA/go-nvml/pkg/nvml"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -17,6 +21,7 @@ import (
 	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
 	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
 	nvmlsource "github.com/dsx-ai-factory/health-validation/collect/source/nvml"
+	"github.com/dsx-ai-factory/health-validation/collect/source/nvml/device"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
@@ -38,6 +43,7 @@ type nvmlHost struct {
 	// inst is the collect NVML instance, once opened; processes reads through it.
 	inst       nvmlsource.Instance
 	nvmlSensor collect.Sensor
+	readGate   chan struct{}
 	gpu        []collect.Sensor
 	mu         sync.Mutex
 }
@@ -136,9 +142,86 @@ func (nvmlGPUSensor) ID() string               { return nvmlsensor.ID }
 func (nvmlGPUSensor) Signals() collect.Signals { return nvmlGPUSignals }
 
 func (s nvmlGPUSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	release, err := s.host.acquireNVMLRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	sensor, err := s.host.sharedNVMLSensor()
 	if err != nil {
 		return nil, err
 	}
 	return sensor.Measure(ctx, opts...)
+}
+
+// gpuVirtualization classifies a device without querying its PCIe link through NVML.
+// The caller bounds this optional read separately from architecture discovery.
+func (h *nvmlHost) gpuVirtualization(ctx context.Context, uuid string) (bool, error) {
+	release, err := h.acquireNVMLRead(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer release()
+	for {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		inst, err := h.instance()
+		virtual := false
+		if err == nil {
+			err = inst.Read(func(devices map[string]device.Device) error {
+				dev := devices[uuid]
+				if dev == nil {
+					return fmt.Errorf("GPU %s is absent from the NVML inventory", uuid)
+				}
+				mode, ret := dev.GetVirtualizationMode()
+				if ret != nvml.SUCCESS {
+					return fmt.Errorf("GPU %s: GetVirtualizationMode: %s", uuid, nvml.ErrorString(ret))
+				}
+				switch mode {
+				case nvml.GPU_VIRTUALIZATION_MODE_VGPU:
+					virtual = true
+				case nvml.GPU_VIRTUALIZATION_MODE_NONE, nvml.GPU_VIRTUALIZATION_MODE_PASSTHROUGH, nvml.GPU_VIRTUALIZATION_MODE_HOST_VGPU, nvml.GPU_VIRTUALIZATION_MODE_HOST_VSGA:
+				default:
+					return fmt.Errorf("GPU %s: unrecognized virtualization mode %d", uuid, mode)
+				}
+				return nil
+			})
+		}
+		if !errors.Is(err, nvmlsource.ErrInUse) {
+			return virtual, err
+		}
+		// Another stock NVML read may be active. Wait only within this read's
+		// deadline; a timed-out native call retains the gate.
+		retry := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			retry.Stop()
+			return false, ctx.Err()
+		case <-retry.C:
+		}
+	}
+}
+
+// acquireNVMLRead serializes optional classification with the stock NVML sensor
+// so collection concurrency does not itself produce native-gate refusals.
+func (h *nvmlHost) acquireNVMLRead(ctx context.Context) (func(), error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("collection context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	h.mu.Lock()
+	if h.readGate == nil {
+		h.readGate = make(chan struct{}, 1)
+	}
+	gate := h.readGate
+	h.mu.Unlock()
+	select {
+	case gate <- struct{}{}:
+		return func() { <-gate }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }

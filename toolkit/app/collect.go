@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -17,6 +18,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
 	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
+	pcisensor "github.com/dsx-ai-factory/health-validation/collect/sensors/pci"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
@@ -25,6 +27,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/pciaddr"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"github.com/google/uuid"
 )
@@ -169,15 +172,14 @@ var (
 )
 
 // builtinCollect returns the stock CLI's collect-backed domains. The node
-// domain and the GPU power-draw gate read the host GPU inventory that
-// architecture discovery already read in cycle, so they do not enumerate GPUs
-// again.
+// domain, PCI identity lookup, GPU power-draw gate, and architecture discovery
+// share the host GPU inventory for cycle. The first request loads it.
 func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectAdapter) {
 	inventory := a.host.gpuInventory()
 	// The host GPU sensors also feed NVLink; a source left with no requested
 	// signals does not run.
 	sources := slices.Concat(a.host.gpuSensors(), []collect.Sensor{
-		cpusensor.New(nil), inventory.Sensor(), xidsensor.New(nil),
+		pcisensor.NewGPUs(nil), cpusensor.New(nil), inventory.Sensor(), xidsensor.New(nil),
 		linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)),
 	})
 	adapters := []CollectAdapter{
@@ -185,6 +187,15 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 			CollectAdapter: collectadapters.GPU(),
 			architecture: func() (string, error) {
 				return gpuinventory.Architecture(inventory.Snapshot(context.Background(), cycle))
+			},
+		},
+		pciGPUAdapter{
+			CollectAdapter: collectadapters.PCIe(),
+			classify: func(uuids []string) (map[string]pciVirtualization, error) {
+				return collectPCIVirtualization(cycle, uuids, a.host.gpuVirtualization)
+			},
+			lookup: func() *observation.GPUInventorySnapshot {
+				return inventory.Snapshot(context.Background(), cycle)
 			},
 		},
 		collectadapters.CPU(),
@@ -403,6 +414,15 @@ func (a *App) declareAdapters(adapters []CollectAdapter) ([]declaredAdapter, err
 	return declared, nil
 }
 
+// collectRegistration distinguishes a caller sensor from a stock source with
+// the same public ID, without changing the observations' source identity.
+type collectRegistration struct {
+	collect.Sensor
+	id string
+}
+
+func (s collectRegistration) ID() string { return s.id }
+
 // registerSources binds the adapters and registers caller and built-in
 // sources on runner for the signals that required keeps. Claims are validated
 // against every declared signal; a claimed or bare caller source left with
@@ -427,13 +447,21 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 			continue
 		}
 		requested = append(requested, signals...)
-		bindings = append(bindings, collectbridge.Binding{
+		binding := collectbridge.Binding{
 			Name: d.name, Signals: signals, Category: d.category,
 			Build: d.build, Errored: d.adapter.Errored,
-		})
+		}
+		if pci, ok := d.adapter.(pciGPUAdapter); ok {
+			binding.Prepare = pci.prepare
+		}
+		bindings = append(bindings, binding)
 	}
 	// Every check here reads declared, not requested, signals, so the outcome
 	// does not depend on which checks are runnable.
+	stockIDs := make(map[string]bool)
+	for _, source := range builtinSources {
+		stockIDs[source.ID()] = true
+	}
 	claimedBy := make(map[string]int)
 	for i, source := range a.collectSources {
 		if isNilCollectInput(source.sensor) {
@@ -466,7 +494,11 @@ func (a *App) registerSources(runner *collectbridge.Runner, adapters []declaredA
 		if len(signals) == 0 {
 			continue
 		}
-		if err := runner.Register(source.sensor, signals...); err != nil {
+		sensor := source.sensor
+		if stockIDs[sensor.ID()] {
+			sensor = collectRegistration{Sensor: sensor, id: fmt.Sprintf("with_collect.%d.%s", i, sensor.ID())}
+		}
+		if err := runner.Register(sensor, signals...); err != nil {
 			return nil, err
 		}
 	}
@@ -537,4 +569,212 @@ func isNilCollectInput(input any) bool {
 	default:
 		return false
 	}
+}
+
+// pciGPUAdapter joins PCI properties to GPU measurements using the cycle's
+// existing inventory. PCI devices outside that inventory are not GPU inputs.
+type pciGPUAdapter struct {
+	classify func([]string) (map[string]pciVirtualization, error)
+	CollectAdapter
+	lookup func() *observation.GPUInventorySnapshot
+}
+
+// prepare joins and classifies PCIe observations before measurement conversion.
+func (a pciGPUAdapter) prepare(obs []*observation.Observation) []*observation.Observation {
+	ids := make(map[string]string)
+	var snapshot *observation.GPUInventorySnapshot
+	if slices.ContainsFunc(obs, func(o *observation.Observation) bool { return o.GetTarget().GetPci() != nil }) {
+		snapshot = a.lookup()
+		for _, entry := range snapshot.GetInventory().GetEntries() {
+			gpu := entry.GetGpu()
+			if address := pciaddr.NormalizeBDF(gpu.GetBusId()); address != "" && gpu.GetUuid() != "" {
+				ids[address] = gpu.GetUuid()
+			}
+		}
+	}
+	inventorySource := snapshot.GetSource()
+	if inventorySource == "" {
+		inventorySource = gpuinventory.SensorID
+	}
+	inventoryFailure := snapshot.GetCollectionError()
+	inventoryFailedSignals := make(map[string]bool)
+	sourceFailures := make(map[string]*observation.Observation)
+	for _, current := range obs {
+		target := current.GetTarget()
+		if current.GetCollectionError() != nil && (target == nil || target.GetNode() != nil) {
+			sourceFailures[current.GetSignalId()] = current
+		}
+	}
+	seen := make(map[string]map[string]bool)
+	markSeen := func(uuid, signal string) {
+		if seen[uuid] == nil {
+			seen[uuid] = make(map[string]bool)
+		}
+		seen[uuid][signal] = true
+	}
+	templates := make(map[string]*observation.Observation)
+	normalized := make([]*observation.Observation, 0, len(obs))
+	for _, current := range obs {
+		pci := current.GetTarget().GetPci()
+		if pci == nil {
+			// Whole-source failures belong to the PCIe domain rather than one GPU.
+			if current.GetTarget().GetNode() != nil && current.GetValue() == nil {
+				normalized = append(normalized, &observation.Observation{SignalId: current.SignalId, Source: current.Source, Unit: current.Unit, ObservedAt: current.ObservedAt, Outcome: current.Outcome})
+			} else {
+				normalized = append(normalized, current)
+				if uuid := current.GetTarget().GetGpu().GetUuid(); uuid != "" {
+					markSeen(uuid, current.GetSignalId())
+					templates[current.GetSignalId()] = current
+				}
+			}
+			continue
+		}
+		signal := current.GetSignalId()
+		if inventoryFailure != nil {
+			if !inventoryFailedSignals[signal] {
+				normalized = append(normalized, observation.NewCollectionErrorObservation(signal, current.Unit, gpuinventory.SensorID,
+					"GPUInventory", nil, current.ObservedAt, inventoryFailure))
+				inventoryFailedSignals[signal] = true
+			}
+			continue
+		}
+		templates[signal] = current
+		uuid := ids[pciaddr.NormalizeBDF(pci.GetAddress())]
+		if uuid == "" {
+			continue
+		}
+		markSeen(uuid, current.GetSignalId())
+		normalized = append(normalized, &observation.Observation{SignalId: current.SignalId, Source: current.Source, Unit: current.Unit, ObservedAt: current.ObservedAt, Outcome: current.Outcome, Target: observation.GPUTarget(uuid)})
+	}
+	// Keep inventory entries that could not be joined, using the slot when UUID is unavailable.
+	signals := slices.Sorted(maps.Keys(templates))
+	for _, entry := range snapshot.GetInventory().GetEntries() {
+		if entry == nil {
+			continue
+		}
+		uuid := entry.GetGpu().GetUuid()
+		target := observation.GPUTarget(uuid)
+		field := "bus_id"
+		if uuid == "" {
+			target = observation.GPUSourceLocalTarget(fmt.Sprint(entry.GetSourceIndex()))
+			field = "uuid"
+		}
+		failure := entry.GetFieldErrors()[field]
+		if failure == nil {
+			failure = entry.GetCollectionError()
+		}
+		if failure == nil {
+			detail := fmt.Sprintf("GPU %s has no PCIe observations in the PCI enumeration", uuid)
+			switch {
+			case uuid == "":
+				detail = fmt.Sprintf("GPU inventory slot %d has no UUID", entry.GetSourceIndex())
+			case entry.GetGpu().GetBusId() == "":
+				detail = fmt.Sprintf("GPU %s has no PCI bus ID in the GPU inventory", uuid)
+			}
+			failure = &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable, Detail: detail}
+		}
+		var sourceFailure *observation.Observation
+		for _, signal := range signals {
+			if seen[uuid][signal] {
+				continue
+			}
+			if uuid != "" && sourceFailures[signal] != nil {
+				// Replay inherits source failures for fields with no observation.
+				sourceFailure = sourceFailures[signal]
+				continue
+			}
+			current := templates[signal]
+			source := current.Source
+			if uuid == "" {
+				source = inventorySource
+			} else {
+				markSeen(uuid, signal)
+			}
+			normalized = append(normalized, observation.NewCollectionErrorObservation(
+				signal, current.Unit, source, "PCI GPU enumeration", target, current.ObservedAt, failure))
+		}
+		if sourceFailure != nil && len(seen[uuid]) == 0 {
+			// A GPU without any readings needs a row before it can inherit failures.
+			signal := sourceFailure.GetSignalId()
+			normalized = append(normalized, observation.NewCollectionErrorObservation(
+				signal, sourceFailure.Unit, sourceFailure.Source, "PCI GPU enumeration", target, sourceFailure.ObservedAt, sourceFailure.GetCollectionError()))
+			markSeen(uuid, signal)
+		}
+	}
+	return classifyPCIe(normalized, a.classify)
+}
+
+type pciVirtualization struct {
+	err     error
+	virtual bool
+}
+
+// collectPCIVirtualization keeps completed device classifications if a later NVML read hangs.
+func collectPCIVirtualization(cycle *collect.Cycle, uuids []string, read func(context.Context, string) (bool, error)) (map[string]pciVirtualization, error) {
+	type result struct {
+		uuid string
+		pciVirtualization
+	}
+	completed := make(chan result, len(uuids))
+	_, err := collect.Run(context.Background(), cycle, "nvml.pcie_virtualization", func(ctx context.Context) (struct{}, error) {
+		for _, uuid := range uuids {
+			if err := ctx.Err(); err != nil {
+				return struct{}{}, err
+			}
+			virtual, err := read(ctx, uuid)
+			if ctx.Err() == nil {
+				completed <- result{uuid: uuid, pciVirtualization: pciVirtualization{virtual: virtual, err: err}}
+			}
+		}
+		return struct{}{}, ctx.Err()
+	})
+	results := make(map[string]pciVirtualization, len(completed))
+	for range len(completed) {
+		result := <-completed
+		results[result.uuid] = result.pciVirtualization
+	}
+	return results, err
+}
+
+// classifyPCIe preserves collection failures and known VF outcomes. Only usable
+// capabilities need classification, once per GPU in this batch.
+func classifyPCIe(obs []*observation.Observation, classify func([]string) (map[string]pciVirtualization, error)) []*observation.Observation {
+	if classify == nil {
+		return obs
+	}
+	seen := make(map[string]bool)
+	var uuids []string
+	for _, o := range obs {
+		uuid := o.GetTarget().GetGpu().GetUuid()
+		if uuid != "" && o.GetValue() != nil && !seen[uuid] {
+			seen[uuid] = true
+			uuids = append(uuids, uuid)
+		}
+	}
+	if len(uuids) == 0 {
+		return obs
+	}
+	results, err := classify(uuids)
+	for i, o := range obs {
+		uuid := o.GetTarget().GetGpu().GetUuid()
+		if uuid == "" || o.GetValue() == nil {
+			continue
+		}
+		result, ok := results[uuid]
+		if !ok {
+			result.err = err
+		}
+		if result.err != nil {
+			category := observation.CollectionErrorCategoryUnavailable
+			if errors.Is(result.err, collect.ErrCollectionTimeout) {
+				category = observation.CollectionErrorCategoryTimeout
+			}
+			obs[i] = observation.NewCollectionErrorObservation(o.SignalId, o.Unit, o.Source, "GetVirtualizationMode", o.Target, o.ObservedAt,
+				&observation.CollectionError{Source: "nvml", Category: category, Detail: result.err.Error()})
+		} else if result.virtual {
+			obs[i] = observation.NewNoValueObservation(o.SignalId, o.Unit, o.Source, o.Target, o.ObservedAt,
+				&observation.NoValue{Reason: observation.NoValueReasonNotSupported, Detail: "vGPU does not expose independent physical PCIe link capabilities"})
+		}
+	}
+	return obs
 }

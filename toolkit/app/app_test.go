@@ -446,6 +446,8 @@ func (h fakeHost) gpuInventory() *gpuinventory.Inventory {
 		return inventoryReader{gpus: 4, model: "NVIDIA GB200", driver: h.driver}, nil
 	})
 }
+func (fakeHost) gpuVirtualization(context.Context, string) (bool, error) { return false, nil }
+
 func (fakeHost) close() error { return nil }
 
 // inventoryReader reports a basic inventory of identical GPUs without NVML.
@@ -458,11 +460,13 @@ type inventoryReader struct {
 
 func (inventoryReader) ID() string { return "fake" }
 
+// Read gives synthetic GPUs stable PCI addresses for joins across collection sources.
 func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapshot, error) {
 	inventory := &observation.GPUInventory{}
 	for i := range r.gpus {
 		uuid, model := fmt.Sprintf("GPU-%d", i), r.model
-		entry := &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}}
+		busID := fmt.Sprintf("0000:%02x:00.0", i+1)
+		entry := &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model, BusId: &busID}}
 		if r.driver != "" {
 			driver := r.driver
 			entry.Gpu.DriverVersion = &driver
@@ -477,7 +481,11 @@ type panicHost struct{}
 
 func (panicHost) gpuSensors() []collect.Sensor          { panic("unexpected GPU sensor access") }
 func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
-func (panicHost) close() error                          { panic("unexpected host backend close") }
+func (panicHost) gpuVirtualization(context.Context, string) (bool, error) {
+	panic("unexpected virtualization lookup")
+}
+
+func (panicHost) close() error { panic("unexpected host backend close") }
 
 func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
 	tests := []struct {
@@ -517,6 +525,7 @@ func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
 	}
 }
 
+// TestRunCommandDefaultsNodeIDToHostname uses the normalized hostname when no node ID is supplied.
 func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 	const hostname = "nvl72d014-T02"
 	hostnameCalls := 0
@@ -526,6 +535,7 @@ func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 		return "  " + hostname + "  ", nil
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withPCI(a, spyGPUs, 64)
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 
@@ -620,12 +630,14 @@ func TestRunCommandRejectsUnexpectedArguments(t *testing.T) {
 	}
 }
 
+// TestRunCommandNodeIDFlagOverridesBuilder gives an explicit flag precedence without hostname lookup.
 func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 	a := New().WithProgramName("test").WithNodeID("builder-node")
 	a.hostname = func() (string, error) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withPCI(a, spyGPUs, 64)
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 
@@ -643,12 +655,14 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 	}
 }
 
+// TestRunNodeIDFlagOverridesHostname exercises flag precedence through the public CLI entry point.
 func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 	a := New().WithProgramName("test")
 	a.hostname = func() (string, error) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withPCI(a, spyGPUs, 64)
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 
@@ -677,6 +691,7 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 	}
 	a.host = fakeHost{b: spyBackend{called: &hostGPUCalled}}
 	withCPU(a, healthyCPU())
+	withPCI(a, spyGPUs, 64)
 
 	var stdout, stderr bytes.Buffer
 	// This asserts which backend was read; the verdict severity is irrelevant, so
@@ -698,10 +713,12 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 	}
 }
 
+// TestWithCollectReplacesSysfsCPU verifies an explicit claim replaces CPU sysfs reads.
 func TestWithCollectReplacesSysfsCPU(t *testing.T) {
 	cpuCalls := 0
 	a := New()
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withPCI(a, spyGPUs, 64)
 	withCleanXid(withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 8, online: 8, numa: 34}))
 	withCleanLinkFlap(a)
 
@@ -940,6 +957,11 @@ func (h erroringHost) gpuSensors() []collect.Sensor {
 func (erroringHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })
 }
+
+func (erroringHost) gpuVirtualization(context.Context, string) (bool, error) {
+	panic("unexpected virtualization lookup")
+}
+
 func (erroringHost) close() error { return nil }
 
 // TestRunCommandArchDiscoveryFailureDrains confirms an architecture-discovery

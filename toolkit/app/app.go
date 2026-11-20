@@ -93,6 +93,7 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 // keeping the command buildable (and `version` runnable) while surfacing a
 // clear runtime error if `run` is invoked there.
 type hostBackend interface {
+	gpuVirtualization(ctx context.Context, uuid string) (bool, error)
 	gpuSensors() []collect.Sensor
 	gpuInventory() *gpuinventory.Inventory
 	close() error
