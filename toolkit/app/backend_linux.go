@@ -46,14 +46,14 @@ type nvmlHost struct {
 func newHostBackend() hostBackend {
 	dcgm := &recoveringDCGMSensor{
 		signals: slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals),
-		open: func() (collect.Sensor, func() error, error) {
+		open: func() (collect.Sensor, func() error, func() bool, error) {
 			// Live reads preserve the one-shot CLI's driver sampling behavior.
 			source := dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{LiveMetrics: true})
 			sensor, err := dcgmsensor.New(source, slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals).IDs()...)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
-			return sensor, source.Close, nil
+			return sensor, source.Close, source.Closed, nil
 		},
 	}
 	h := &nvmlHost{dcgm: dcgm}

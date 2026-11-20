@@ -261,6 +261,10 @@ func (source *Source) ensureMetricWatch() error {
 	return nil
 }
 
+// Closed reports whether the source has stopped accepting native work.
+// A failed watch setup closes the source. Cleanup may still be pending.
+func (source *Source) Closed() bool { return source.closed.Load() }
+
 // Close stops new native work and attempts all owned watch and field-group
 // cleanup before releasing the client reference. Cleanup errors are returned
 // without retry. ErrInUse requires another Close after the native call finishes.

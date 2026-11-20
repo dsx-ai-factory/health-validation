@@ -34,14 +34,14 @@ func TestDCGMDisconnectRecreatesSessionAndWatchesNextCollection(t *testing.T) {
 	failed := dcgmFailureBatch("DCGM_ST_CONNECTION_NOT_VALID")
 	var disconnected bool
 	opens, closes := 0, 0
-	sensor := &recoveringDCGMSensor{signals: dcgmGPUSignals, open: func() (collect.Sensor, func() error, error) {
+	sensor := &recoveringDCGMSensor{signals: dcgmGPUSignals, open: func() (collect.Sensor, func() error, func() bool, error) {
 		opens++
 		return dcgmSensorFunc(func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
 			if disconnected {
 				return failed, nil
 			}
 			return healthy, nil
-		}), func() error { closes++; return nil }, nil
+		}), func() error { closes++; return nil }, nil, nil
 	}}
 	if got, err := sensor.Measure(context.Background()); err != nil || got != healthy {
 		t.Fatalf("initial read = %v, %v", got, err)
@@ -72,14 +72,49 @@ func TestDCGMDisconnectRecreatesSessionAndWatchesNextCollection(t *testing.T) {
 	}
 }
 
+func TestDCGMFailedWatchSetupRecreatesSourceNextCollection(t *testing.T) {
+	failed := dcgmFailureBatch("DCGM_ST_NO_PERMISSION")
+	healthy := &observation.ObservationBatch{CollectionId: "healthy"}
+	opens, closes := 0, 0
+	sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, func() bool, error) {
+		opens++
+		firstSession := opens == 1
+		closed := false
+		return dcgmSensorFunc(func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
+			if firstSession {
+				closed = true
+				return failed, nil
+			}
+			return healthy, nil
+		}), func() error { closes++; return nil }, func() bool { return closed }, nil
+	}}
+	defer sensor.Close()
+
+	if got, err := sensor.Measure(context.Background()); err != nil || got != failed {
+		t.Fatalf("failed setup = %v, %v", got, err)
+	}
+	if opens != 1 || closes != 0 {
+		t.Fatalf("replaced source during failed collection: opens=%d closes=%d", opens, closes)
+	}
+	for range 2 {
+		if got, err := sensor.Measure(context.Background()); err != nil || got != healthy {
+			t.Fatalf("read after failed setup = %v, %v", got, err)
+		}
+	}
+	if opens != 2 || closes != 1 {
+		t.Fatalf("source replacement or reuse failed: opens=%d closes=%d, want 2/1", opens, closes)
+	}
+}
+
 func TestDCGMOtherErrorsKeepSession(t *testing.T) {
 	for _, code := range []string{"DCGM_ST_NO_PERMISSION", "DCGM_ST_GPU_IS_LOST", "DCGM_ST_NO_DATA"} {
 		t.Run(code, func(t *testing.T) {
 			opens, closes := 0, 0
 			failed := dcgmFailureBatch(code)
-			sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, error) {
+			sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, func() bool, error) {
 				opens++
-				return dcgmSensorFunc(func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) { return failed, nil }), func() error { closes++; return nil }, nil
+				return dcgmSensorFunc(func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) { return failed, nil }),
+					func() error { closes++; return nil }, func() bool { return false }, nil
 			}}
 			defer sensor.Close()
 			for range 2 {
@@ -97,7 +132,7 @@ func TestDCGMOtherErrorsKeepSession(t *testing.T) {
 func TestDCGMReconnectWaitsForBusyCleanup(t *testing.T) {
 	opens, cleanupCalls := 0, 0
 	busy := true
-	sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, error) {
+	sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, func() bool, error) {
 		opens++
 		return dcgmSensorFunc(func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
 				return dcgmFailureBatch("DCGM_ST_CONNECTION_NOT_VALID"), nil
@@ -107,7 +142,7 @@ func TestDCGMReconnectWaitsForBusyCleanup(t *testing.T) {
 					return dcgmsource.ErrInUse
 				}
 				return nil
-			}, nil
+			}, nil, nil
 	}}
 	if _, err := sensor.Measure(context.Background()); err != nil {
 		t.Fatal(err)
@@ -140,7 +175,7 @@ func TestDCGMDoesNotReplaceSessionWhileTimedOutCallRuns(t *testing.T) {
 		}
 	}()
 	opens, closes := 0, 0
-	sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, error) {
+	sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, func() bool, error) {
 		opens++
 		session := opens
 		return dcgmSensorFunc(func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
@@ -150,7 +185,7 @@ func TestDCGMDoesNotReplaceSessionWhileTimedOutCallRuns(t *testing.T) {
 				return dcgmFailureBatch("DCGM_ST_CONNECTION_NOT_VALID"), nil
 			}
 			return &observation.ObservationBatch{}, nil
-		}), func() error { closes++; return nil }, nil
+		}), func() error { closes++; return nil }, nil, nil
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -197,7 +232,7 @@ func TestDCGMDoesNotReplaceSessionWhileTimedOutCallRuns(t *testing.T) {
 
 func TestDCGMReconnectSurvivesStaleWatchCleanupFailure(t *testing.T) {
 	opens := 0
-	sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, error) {
+	sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, func() bool, error) {
 		opens++
 		session := opens
 		return dcgmSensorFunc(func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
@@ -210,7 +245,7 @@ func TestDCGMReconnectSurvivesStaleWatchCleanupFailure(t *testing.T) {
 					return errors.New("old hostengine watch no longer exists")
 				}
 				return nil
-			}, nil
+			}, nil, nil
 	}}
 	if _, err := sensor.Measure(context.Background()); err != nil {
 		t.Fatal(err)
