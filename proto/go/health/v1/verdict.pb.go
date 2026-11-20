@@ -515,7 +515,7 @@ type EvaluateRequest struct {
 	Cadence          *SchedulingCadence     `protobuf:"varint,1,opt,name=cadence,proto3,enum=health.verdict.v1.SchedulingCadence,oneof" json:"cadence,omitempty"`
 	ExecutionContext *ExecutionContext      `protobuf:"varint,2,opt,name=execution_context,json=executionContext,proto3,enum=health.verdict.v1.ExecutionContext,oneof" json:"execution_context,omitempty"`
 	NodeId           *string                `protobuf:"bytes,3,opt,name=node_id,json=nodeId,proto3,oneof" json:"node_id,omitempty"`
-	// Exclusive Unix-second bounds; omitted fields inherit the service defaults.
+	// Unix-second window (from, to]: after xid_from, at or before xid_to; omitted fields inherit the service defaults.
 	XidFrom       *int64 `protobuf:"varint,4,opt,name=xid_from,json=xidFrom,proto3,oneof" json:"xid_from,omitempty"`
 	XidTo         *int64 `protobuf:"varint,5,opt,name=xid_to,json=xidTo,proto3,oneof" json:"xid_to,omitempty"`
 	unknownFields protoimpl.UnknownFields

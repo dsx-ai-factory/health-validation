@@ -236,7 +236,7 @@ check selection, collection, and aggregation run once per request. Configuration
 and host backends are process-lifetime state. `serve` accepts the same node,
 cadence, execution-context, config, and Xid journal flags as `run`; API request
 fields override node/cadence/context defaults and node-wide Xid time bounds
-(`xid_from` / `xid_to`, exclusive Unix seconds) for that request only. Config is
+(`xid_from` / `xid_to`, Unix seconds, window `(from, to]`) for that request only. Config is
 loaded at startup; restart to reload it.
 
 Agent collection is serialized. The transport admits at most 32 in-flight

@@ -8,7 +8,7 @@ It is separate from the raw observation API in `collect/proto`.
 
 Each request evaluates one node. Optional request fields select the scheduling
 cadence, execution context, node identifier, and Xid time bounds (`xid_from` /
-`xid_to`, exclusive Unix seconds); omission uses the server's
+`xid_to`, Unix seconds, window `(from, to]`); omission uses the server's
 defaults. All verdict severities are successful responses. An inability to
 produce a verdict is a transport error. HTTP clients use `GET /verdict` with
 optional query parameters or `POST /verdict` with an `EvaluateRequest` JSON body.
