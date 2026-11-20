@@ -48,7 +48,7 @@ func TestNUMANodeCountDefinition(t *testing.T) {
 	if definition.SchedulingCadence != health.Continuous {
 		t.Errorf("SchedulingCadence = %v, want Continuous", definition.SchedulingCadence)
 	}
-	if got, want := definition.Architectures, []string{"GB200", "GB300"}; !slices.Equal(got, want) {
+	if got, want := definition.Architectures, []string{"GB200", "GB300", "VR200"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
 	if definition.Provenance != health.NVIDIA || definition.MaturityLevel != health.Stable {
@@ -68,6 +68,7 @@ func TestNUMANodeCountDefinition(t *testing.T) {
 	wantPerArchitecture := map[string]int64{
 		"GB200": 34,
 		"GB300": 34,
+		"VR200": 36,
 	}
 	if len(spec.PerArchitecture) != len(wantPerArchitecture) {
 		t.Errorf("PerArchitecture = %v, want exactly %v", spec.PerArchitecture, wantPerArchitecture)
@@ -156,20 +157,69 @@ func TestNUMANodeCount(t *testing.T) {
 // Every supported architecture has an explicit threshold, even when its value
 // currently matches the base fallback.
 func TestNUMANodeCount_PerArchitectureDefault(t *testing.T) {
-	for _, architecture := range []string{"GB200", "GB300"} {
-		t.Run(architecture, func(t *testing.T) {
+	tests := []struct {
+		architecture string
+		expected     int64
+	}{
+		{architecture: "GB200", expected: 34},
+		{architecture: "GB300", expected: 34},
+		{architecture: "VR200", expected: 36},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.architecture, func(t *testing.T) {
 			cat := catalog.New(
-				catalog.WithArchitecture(architecture),
+				catalog.WithArchitecture(tt.architecture),
 				catalog.WithExecutionContext(health.OperatorInfra),
 			)
 
-			verdict, err := cat.Evaluate("numa_node_count", cpu.CPUMeasurement{NUMANodeCount: 34})
+			verdict, err := cat.Evaluate("numa_node_count", cpu.CPUMeasurement{NUMANodeCount: tt.expected})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if verdict.Skipped || verdict.Severity != health.Pass {
-				t.Fatalf("skipped=%v severity=%v, want evaluated PASS (34 == %s default)",
-					verdict.Skipped, verdict.Severity, architecture)
+				t.Fatalf("skipped=%v severity=%v, want evaluated PASS (%d == %s default)",
+					verdict.Skipped, verdict.Severity, tt.expected, tt.architecture)
+			}
+		})
+	}
+}
+
+// VR200 is judged against its own count: the GB200 value of 34 fails there.
+func TestNUMANodeCount_VR200(t *testing.T) {
+	tests := []struct {
+		name         string
+		wantMessages []string
+		nodeCount    int64
+		wantSeverity health.Severity
+	}{
+		{name: "matches expected", nodeCount: 36, wantSeverity: health.Pass},
+		{
+			name:         "GB200 count",
+			nodeCount:    34,
+			wantSeverity: health.Critical,
+			wantMessages: []string{"Expected 36 NUMA nodes online, found 34."},
+		},
+		{
+			name:         "more than expected",
+			nodeCount:    37,
+			wantSeverity: health.Critical,
+			wantMessages: []string{"Expected 36 NUMA nodes online, found 37."},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			verdict, err := numaCatalog(catalog.WithArchitecture("VR200")).
+				Evaluate("numa_node_count", cpu.CPUMeasurement{NUMANodeCount: tt.nodeCount})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if verdict.Skipped || verdict.Severity != tt.wantSeverity {
+				t.Fatalf("skipped=%v severity=%v, want evaluated %v", verdict.Skipped, verdict.Severity, tt.wantSeverity)
+			}
+			if tt.wantMessages != nil && !slices.Equal(verdict.Messages, tt.wantMessages) {
+				t.Errorf("Messages = %q, want %q", verdict.Messages, tt.wantMessages)
 			}
 		})
 	}
