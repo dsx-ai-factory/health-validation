@@ -8,28 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
-
-// hostCatalog builds the Xid catalog for a host running driverVersion,
-// the way the app hands the version it discovers to the catalog.
-func hostCatalog(t *testing.T, driverVersion string) *catalog.Catalog {
-	t.Helper()
-	v, ok := health.ParseDriverVersion(driverVersion)
-	if !ok {
-		t.Fatalf("ParseDriverVersion(%q) failed", driverVersion)
-	}
-	return xidCatalog(t, catalog.WithDriverVersion(v))
-}
-
-// hostCatalogWith is [hostCatalog] at a v2-era driver with extra options.
-func hostCatalogWith(t *testing.T, opts ...catalog.Option) *catalog.Catalog {
-	t.Helper()
-	v, _ := health.ParseDriverVersion("575.51.03")
-	return xidCatalog(t, append([]catalog.Option{catalog.WithDriverVersion(v)}, opts...)...)
-}
 
 // TestDerivedSignals_RecoveryActionKeysAreCanonical is the same problem
 // one layer up: a padded rendering must not split one action across two
@@ -39,7 +20,7 @@ func TestDerivedSignals_RecoveryActionKeysAreCanonical(t *testing.T) {
 		recoveryEvent("0018:01:00", "0x0", "None", "0x1", "GPU Reset Required"),
 		recoveryEvent("0019:01:00", "0x0", "None", "0x00000001", "GPU Reset Required"),
 	}}
-	counts := m.DerivedSignals(health.Host{})[xid.SignalRecoveryActionCounts].(map[string]int64)
+	counts := refined(t, m).RecoveryActionCounts
 
 	if counts["0x1"] != 2 {
 		t.Errorf("counts = %v, want both GPUs under 0x1", counts)
@@ -56,7 +37,7 @@ func TestDerivedSignals_UnparseableActionCodeSurvives(t *testing.T) {
 	m := xid.XidMeasurement{Events: []xid.XidEvent{
 		recoveryEvent("0019:01:00", "0x0", "None", "not-hex", "Something Odd"),
 	}}
-	counts := m.DerivedSignals(health.Host{})[xid.SignalRecoveryActionCounts].(map[string]int64)
+	counts := refined(t, m).RecoveryActionCounts
 
 	if counts["not-hex"] != 1 {
 		t.Errorf("counts = %v, want the raw value preserved", counts)
@@ -97,7 +78,7 @@ func TestXid154Check_ReportsRequestedAction(t *testing.T) {
 				m.XidCounts[154]++
 				m.EventCount++
 			}
-			nv, err := hostCatalog(t, "575.51.03").EvaluateAll(m)
+			nv, err := xidCatalog(t).EvaluateAll(m)
 			if err != nil {
 				t.Fatalf("EvaluateAll: %v", err)
 			}
@@ -125,7 +106,7 @@ func xid154Verdict(t *testing.T, events ...xid.XidEvent) health.CheckVerdict {
 	for _, ev := range events {
 		m.XidCounts[ev.XidCode]++
 	}
-	nv, err := hostCatalog(t, "575.51.03").EvaluateAll(m)
+	nv, err := xidCatalog(t).EvaluateAll(m)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
@@ -174,7 +155,7 @@ func TestXid154Check_OneGPUAnySpelling(t *testing.T) {
 		Since: "boot", GPUID: "GPU-a", PCIAddress: "0000:89:00",
 		XidCounts: map[int64]int64{154: 2}, Events: []xid.XidEvent{reset, none}, EventCount: 2,
 	}
-	nv, err := hostCatalog(t, "575.51.03").EvaluateAll(m)
+	nv, err := xidCatalog(t).EvaluateAll(m)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v", err)
 	}
@@ -230,7 +211,7 @@ func TestXid154Check_UnreadableTransition(t *testing.T) {
 // action on the reports asking for it, so other GPUs' Xid 154 lines and
 // actions a GPU has left cannot carry a request over the threshold.
 func TestXid154Check_OccurrencesPerAction(t *testing.T) {
-	cat := hostCatalogWith(t, occurrencesOverride("gpu_xid_154", 2))
+	cat := xidCatalog(t, occurrencesOverride("gpu_xid_154", 2))
 	reset := recoveryEvent("0018:01:00", "0x0", "None", "0x1", "GPU Reset Required")
 	for _, tc := range []struct {
 		name   string

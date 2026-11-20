@@ -1,0 +1,68 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package health
+
+// Accumulator derives measurements from other measurements.
+//
+// A sensor reports what it observed. An accumulator reads everything a
+// run collected and produces new measurements whose meaning depends on
+// catalog knowledge or on more than one observation — a vendor decode
+// table applied to logged events, or those events joined against a fact
+// about the host that a different sensor reported. Its outputs are
+// ordinary measurements: checks route to them by category and signal
+// like any other, so a check reading a derived value needs nothing
+// special.
+//
+// Accumulators are registered with the catalog and run inside every
+// batch evaluation, so each source of measurements — the toolkit's
+// sensors, or a consumer converting its own observations — gets the same
+// derivations without running them itself.
+type Accumulator interface {
+	// Name identifies the accumulator in errors.
+	Name() string
+
+	// Outputs returns a zero value of every measurement type Accumulate
+	// can produce. Coverage and signal-uniqueness checks reason about a
+	// type's schema from a zero value; this lets them see a derived
+	// measurement without running Accumulate.
+	//
+	// An output type that is also one of Inputs is refined: the
+	// accumulator returns each collected measurement of that type with its
+	// derived signals filled in, and those outputs replace the collected
+	// ones. Identity, errors and every collected signal travel with the
+	// measurement, so checks reading a derived signal alongside collected
+	// ones route to one type. At most one registered accumulator may
+	// refine a given type.
+	Outputs() []Measurement
+
+	// Derived names the signals Accumulate computes, in its outputs'
+	// categories. Collection planning replaces a check's required derived
+	// signal with the inputs' signals, since a derived signal cannot be
+	// collected. For a refined type, the remaining signals are collected
+	// as usual.
+	Derived() []string
+
+	// Inputs returns a zero value of every measurement type Accumulate
+	// reads. Collection planning reads it to collect what a check needs
+	// when the check requires a signal only an accumulator produces.
+	Inputs() []Measurement
+
+	// Accumulate receives every measurement the run collected and returns
+	// what it derives from them, or nothing when its inputs are absent.
+	//
+	// An input that failed to collect is the accumulator's to carry
+	// forward: it must return its outputs errored for the signals that
+	// depended on that input, or a check reading them would report PASS
+	// on data nobody observed. The error return is reserved for a fault in
+	// the accumulator itself, and fails the whole evaluation.
+	Accumulate(measurements []Measurement) ([]Measurement, error)
+}
+
+// Refinable is implemented by a measurement type some of whose signals
+// only an accumulator fills in (see [Accumulator.Outputs]). Evaluating one
+// with no registered accumulator refining its type is an error, since
+// those signals would otherwise read as empty and their checks pass.
+type Refinable interface {
+	RefinedSignals() []string
+}

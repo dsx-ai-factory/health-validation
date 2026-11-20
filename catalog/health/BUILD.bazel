@@ -4,6 +4,7 @@ load("//catalog/cmd/healthschema:health_schema.bzl", "health_schema")
 go_library(
     name = "health",
     srcs = [
+        "accumulator.go",
         "action.go",
         "check.go",
         "classification.go",
@@ -13,7 +14,6 @@ go_library(
         "entity.go",
         "enum.go",
         "errors.go",
-        "host.go",
         "measurement.go",
         "threshold.go",
         "verdict.go",

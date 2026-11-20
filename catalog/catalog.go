@@ -15,6 +15,8 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"maps"
+	"reflect"
 	"slices"
 	"sync"
 
@@ -30,7 +32,7 @@ type Catalog struct {
 	evaluationEngine *evaluation.EvaluationEngine
 	overrides        OverrideSet
 	architecture     string
-	host             health.Host
+	accumulators     []health.Accumulator
 	executionContext health.ExecutionContext
 	mu               sync.RWMutex
 }
@@ -73,14 +75,6 @@ func WithArchitecture(arch string) Option {
 	return func(c *Catalog) { c.architecture = arch }
 }
 
-// WithDriverVersion sets the node's NVIDIA driver version, which reaches
-// derived signals through [health.Host]. Omitting it, or passing the zero
-// value, leaves the version unknown; unlike the architecture, evaluation
-// does not require it.
-func WithDriverVersion(v health.DriverVersion) Option {
-	return func(c *Catalog) { c.host.DriverVersion = v }
-}
-
 // WithExecutionContext sets the deployment position. Checks that
 // don't list this context are skipped.
 func WithExecutionContext(ctx health.ExecutionContext) Option {
@@ -117,6 +111,11 @@ func New(opts ...Option) *Catalog {
 	for _, cd := range builtinChecks() {
 		c.MustRegister(cd)
 	}
+	for _, a := range builtinAccumulators() {
+		if err := c.RegisterAccumulator(a); err != nil {
+			panic(err)
+		}
+	}
 	for _, opt := range opts {
 		opt(c)
 	}
@@ -145,6 +144,86 @@ func (c *Catalog) Register(cd health.CheckDefinition) error {
 	stored := cloneDefinition(cd)
 	c.checks[cd.ID] = &stored
 	return nil
+}
+
+// RegisterAccumulator adds an accumulator whose outputs every batch
+// evaluation feeds to the checks alongside the collected measurements.
+// Names must be unique.
+func (c *Catalog) RegisterAccumulator(a health.Accumulator) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, existing := range c.accumulators {
+		if existing.Name() == a.Name() {
+			return fmt.Errorf("accumulator %q already registered", a.Name())
+		}
+		for _, t := range refinedTypes(a) {
+			if slices.Contains(refinedTypes(existing), t) {
+				return fmt.Errorf("accumulator %q refines %s, which accumulator %q already refines", a.Name(), t, existing.Name())
+			}
+		}
+	}
+	c.accumulators = append(c.accumulators, a)
+	return nil
+}
+
+// accumulate runs each accumulator over the collected measurements and
+// returns what checks evaluate: the collected measurements, with those of
+// a refined type replaced by the refining accumulator's outputs, plus
+// every other output. Each accumulator sees only what was collected, not
+// another's outputs, so registration order cannot change the result.
+//
+// A [health.Refinable] measurement no accumulator refined is an error when
+// one of checks requires a signal it leaves unfilled, since that check
+// would read it as empty and pass.
+func accumulate(accumulators []health.Accumulator, measurements []health.Measurement, checks []*health.CheckDefinition) ([]health.Measurement, error) {
+	var derived []health.Measurement
+	replaced := make(map[reflect.Type]bool)
+	for _, a := range accumulators {
+		out, err := a.Accumulate(measurements)
+		if err != nil {
+			return nil, fmt.Errorf("accumulator %s: %w", a.Name(), err)
+		}
+		for _, t := range refinedTypes(a) {
+			replaced[t] = true
+		}
+		derived = append(derived, out...)
+	}
+	all := make([]health.Measurement, 0, len(measurements)+len(derived))
+	for _, m := range measurements {
+		if replaced[reflect.TypeOf(m)] {
+			continue
+		}
+		if r, ok := m.(health.Refinable); ok {
+			for _, cd := range checks {
+				if cd.Category != m.Category() {
+					continue
+				}
+				for _, s := range cd.RequiredSignals {
+					if slices.Contains(r.RefinedSignals(), s) {
+						return nil, fmt.Errorf("check %q requires %q, which only a registered accumulator refining %T fills in", cd.ID, s, m)
+					}
+				}
+			}
+		}
+		all = append(all, m)
+	}
+	return append(all, derived...), nil
+}
+
+// WithAccumulator registers a, replacing a registered accumulator of the
+// same name, such as a built-in one the caller configures differently. It
+// panics if a cannot be registered, as [Catalog.MustRegister] does.
+func WithAccumulator(a health.Accumulator) Option {
+	return func(c *Catalog) {
+		c.mu.Lock()
+		c.accumulators = slices.DeleteFunc(c.accumulators, func(existing health.Accumulator) bool {
+			return existing.Name() == a.Name()
+		})
+		c.mu.Unlock()
+		if err := c.RegisterAccumulator(a); err != nil {
+			panic(err)
+		}
+	}
 }
 
 // MustRegister is like Register but panics on error.
@@ -249,7 +328,6 @@ type paramsSnapshot struct {
 	disabledChecks   map[string]bool
 	overrides        OverrideSet
 	architecture     string
-	host             health.Host
 	executionContext health.ExecutionContext
 }
 
@@ -279,7 +357,6 @@ func (c *Catalog) snapshotParams() paramsSnapshot {
 		overrides:        c.overrides,
 		disabledChecks:   c.disabledChecks,
 		architecture:     c.architecture,
-		host:             c.host,
 		executionContext: c.executionContext,
 	}
 }
@@ -308,8 +385,31 @@ func (c *Catalog) Evaluate(checkID string, m health.Measurement) (health.CheckVe
 		return health.CheckVerdict{}, fmt.Errorf("check %q not found", checkID)
 	}
 
-	snap := c.snapshotParams()
-	return c.evaluationEngine.EvaluateCheck(cd, m, snap.host, snap.forCheck(checkID))
+	m, err := c.refineOne(m, cd)
+	if err != nil {
+		return health.CheckVerdict{}, err
+	}
+	return c.evaluationEngine.EvaluateCheck(cd, m, c.snapshotParams().forCheck(checkID))
+}
+
+// refineOne returns m as the accumulator refining its type fills it in,
+// or m unchanged when no accumulator refines it. The accumulator sees
+// only m, so a derivation joining another measurement, such as the
+// driver version, runs without it.
+func (c *Catalog) refineOne(m health.Measurement, cd *health.CheckDefinition) (health.Measurement, error) {
+	c.mu.RLock()
+	accumulators := slices.Clone(c.accumulators)
+	c.mu.RUnlock()
+	all, err := accumulate(accumulators, []health.Measurement{m}, []*health.CheckDefinition{cd})
+	if err != nil {
+		return nil, err
+	}
+	for _, out := range all {
+		if reflect.TypeOf(out) == reflect.TypeOf(m) {
+			return out, nil
+		}
+	}
+	return m, nil
 }
 
 // EvaluateAll runs all checks whose Category matches the provided
@@ -375,7 +475,15 @@ func (c *Catalog) evaluateAllRaw(opts EvaluationOptions, measurements ...health.
 		return nil, err
 	}
 	checks, snap := c.batchSnapshot(opts)
-	return c.evaluationEngine.EvaluateBatch(checks, measurements, snap.host, snap.forCheck)
+	c.mu.RLock()
+	accumulators := slices.Clone(c.accumulators)
+	c.mu.RUnlock()
+
+	all, err := accumulate(accumulators, measurements, slices.Collect(maps.Values(checks)))
+	if err != nil {
+		return nil, err
+	}
+	return c.evaluationEngine.EvaluateBatch(checks, all, snap.forCheck)
 }
 
 // RunnableChecks returns the registered checks that [Catalog.EvaluateAllWithOptions]
@@ -412,7 +520,6 @@ func (c *Catalog) batchSnapshot(opts EvaluationOptions) (map[string]*health.Chec
 		overrides:        c.overrides,
 		disabledChecks:   c.disabledChecks,
 		architecture:     c.architecture,
-		host:             c.host,
 		executionContext: c.executionContext,
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/internal/evaluation"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
@@ -31,6 +30,16 @@ func inJournalOrder(events ...xid.XidEvent) []xid.XidEvent {
 		events[i].Sequence = int64(i + 1)
 	}
 	return events
+}
+
+// refined returns m as the catalog's accumulator fills it in.
+func refined(t *testing.T, m xid.XidMeasurement) xid.XidMeasurement {
+	t.Helper()
+	out, err := xid.Accumulator{}.Accumulate([]health.Measurement{m})
+	if err != nil || len(out) != 1 {
+		t.Fatalf("Accumulate = %v, %v; want one measurement", out, err)
+	}
+	return out[0].(xid.XidMeasurement)
 }
 
 func recoveryEvent(pci, fromCode, fromName, toCode, toName string) xid.XidEvent {
@@ -199,34 +208,13 @@ func TestTerminalRecoveryActions_UnknownOrderKeepsRequest(t *testing.T) {
 	}
 }
 
-// TestDerivedSignals_KeySetIsDataIndependent supplies the populated
-// measurement and host for the contract [health.DerivedSignaler]
-// documents; the rule itself lives next to CheckSignalUniqueness, which
-// is what reads a zero value's signal set. Only this package knows what
-// "populated" looks like for an XidMeasurement.
-func TestDerivedSignals_KeySetIsDataIndependent(t *testing.T) {
-	m := xid.XidMeasurement{Events: []xid.XidEvent{
-		recoveryEvent("0019:01:00", "0x0", "None", "0x1", "GPU Reset Required"),
-		nvlink5Event("0019:01:00", 145, "RLW_SRC_TRACK", "0x00000020"),
-	}}
-	version, ok := health.ParseDriverVersion("575.51.03")
-	if !ok {
-		t.Fatal("ParseDriverVersion failed on a well-formed version")
-	}
-	host := health.Host{DriverVersion: version}
-	if err := catalog.CheckDerivedSignalKeysStable(m, host); err != nil {
-		t.Error(err)
-	}
-}
-
-// TestDerivedSignals_ReachesCELSignals is the end-to-end check that the
-// hook is wired up: a derived signal is worthless if ToSignals, which
-// builds the CEL variable map, does not merge it.
+// TestDerivedSignals_ReachesCELSignals checks that a refined
+// measurement's derived field reaches the CEL variable map.
 func TestDerivedSignals_ReachesCELSignals(t *testing.T) {
 	m := xid.XidMeasurement{Events: []xid.XidEvent{
 		recoveryEvent("0019:01:00", "0x0", "None", "0x1", "GPU Reset Required"),
 	}}
-	signals := evaluation.ToSignals(m, health.Host{})
+	signals := evaluation.ToSignals(refined(t, m))
 
 	counts, ok := signals[xid.SignalRecoveryActionCounts].(map[string]int64)
 	if !ok {
@@ -238,16 +226,6 @@ func TestDerivedSignals_ReachesCELSignals(t *testing.T) {
 	}
 }
 
-// TestDerivedSignals_DoNotShadowFields covers the other half of the
-// contract. CheckDerivedSignals reads the json field names by reflection,
-// so unlike the hand-listed version this cannot go stale when a field is
-// added to XidMeasurement.
-func TestDerivedSignals_DoNotShadowFields(t *testing.T) {
-	if err := catalog.CheckDerivedSignals(xid.XidMeasurement{}); err != nil {
-		t.Error(err)
-	}
-}
-
 // TestDerivedSignals_CountsGPUsNotLogLines is why the signal routes
 // through TerminalRecoveryActions instead of counting 154 events: one
 // escalating GPU logs several lines but needs one reset.
@@ -256,7 +234,7 @@ func TestDerivedSignals_CountsGPUsNotLogLines(t *testing.T) {
 		recoveryEvent("0019:01:00", "0x0", "None", "0x4", "Drain and Reset"),
 		recoveryEvent("0019:01:00", "0x4", "Drain and Reset", "0x1", "GPU Reset Required"),
 	)}
-	counts := m.DerivedSignals(health.Host{})[xid.SignalRecoveryActionCounts].(map[string]int64)
+	counts := refined(t, m).RecoveryActionCounts
 
 	if counts["0x1"] != 1 {
 		t.Errorf("terminal action count = %v, want 0x1 -> 1", counts)
@@ -271,8 +249,7 @@ func TestDerivedSignals_CountsGPUsNotLogLines(t *testing.T) {
 // left drop out, and every report counts when its order is unknown.
 func TestRecoveryActionCounts_CountsCurrentActionReports(t *testing.T) {
 	counts := func(events ...xid.XidEvent) map[string]int64 {
-		m := xid.XidMeasurement{Events: events}
-		return m.DerivedSignals(health.Host{})[xid.SignalRecoveryActionCounts].(map[string]int64)
+		return refined(t, xid.XidMeasurement{Events: events}).RecoveryActionCounts
 	}
 	for _, tc := range []struct {
 		name   string
