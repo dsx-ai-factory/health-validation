@@ -129,6 +129,9 @@ func TestFailedMetricWatchPermanentlyClosesSource(t *testing.T) {
 			if failure == nil {
 				t.Fatal("failed watch setup produced no collection error")
 			}
+			if !source.Closed() {
+				t.Fatal("failed watch setup did not close the source")
+			}
 			for _, detail := range test.wantDetails {
 				if !strings.Contains(failure.GetDetail(), detail) {
 					t.Fatalf("setup failure %v lost detail %q", failure, detail)

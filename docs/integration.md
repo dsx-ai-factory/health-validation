@@ -8,16 +8,17 @@ your hardware, and add a check when the catalog lacks one.
 
 ## First, the mental model
 
-health-validation is an **on-demand, node-local readiness gate**, not a
-monitoring daemon. One invocation:
+health-validation is an **on-demand, node-local readiness gate**. Each evaluation
+collects the current hardware/driver state of **one** node, evaluates it against
+the check catalog, and produces one `NodeVerdict`. Choose either operating mode:
 
-- collects the current hardware/driver state of **one** node,
-- evaluates it against the check catalog,
-- writes a single JSON `NodeVerdict` to stdout, and
-- exits.
+- `health-validation run` writes the verdict as JSON to stdout and exits.
+- `health-validation serve` waits for HTTP or gRPC requests and returns a fresh
+  verdict to each caller. It reuses backend objects and serializes
+  collection, releasing its NVML instance between requests; it does not cache
+  verdicts or schedule evaluations.
 
-It holds no state between runs, streams nothing, and does no cross-node
-correlation. See [Architecture](/health-validation/getting-started/architecture)
+Neither mode streams measurements or performs cross-node correlation. See [Architecture](/health-validation/getting-started/architecture)
 for the data flow. Two consequences shape everything below:
 
 - **You choose when it runs.** There is no built-in scheduler. You wire it into
@@ -157,6 +158,24 @@ DCGM package). If the hostengine is unreachable or the library is missing,
 those checks report a collection failure, never a PASS; the binary does not
 fall back to NVML for them. Place it on each node (config-management, image bake, or a
 shared mount) alongside any override config (below).
+
+### Local verdict service
+
+For a long-running process, use `health-validation serve`. The same image and
+host resources described above apply. Keep GPU visibility, sysfs, and journal
+access equivalent to `run`; a listening server alone does not prove that its
+collectors can read the node. Start with:
+
+```shell
+health-validation serve --address 127.0.0.1:8080 --execution-context OPERATOR_INFRA
+```
+
+Then call `GET /verdict` or POST per-request overrides. Every produced verdict,
+including CRITICAL and architecture-discovery failure, is a successful response.
+Read `overall_severity`; process exit codes report only service startup/shutdown.
+See [Agent mode](/health-validation/operating/agent-mode) for complete curl,
+container, and systemd examples, deadline and concurrency behavior, and metrics
+publication. A caller or scheduler still decides when to request a verdict.
 
 ## 2. Wire it into the workload lifecycle
 
@@ -612,12 +631,19 @@ the architecture cannot be discovered, and `collect` writes nothing. Entries
 stay if the run later exits `2`. If an entry cannot be written, or a value
 contains a newline, the run exits `2` with nothing on stdout.
 
+`health-validation serve` records its configured overrides once before opening
+the listener, without GPU discovery. Its audit `ORIGINAL_VALUE` uses the
+architecture-independent catalog default (`null` when no such default exists).
+Architecture-specific originals remain in each verdict's
+`thresholds[].original_value`. An audit failure exits `2`; driver availability
+is evaluated on each request and does not prevent the service from starting.
+
 Each entry carries:
 
 | Field | Value |
 | --- | --- |
 | `CHECK_ID`, `THRESHOLD_NAME` | The overridden threshold. |
-| `ORIGINAL_VALUE` | The catalog value for the node's architecture, as JSON; `null` when the catalog has none for it. |
+| `ORIGINAL_VALUE` | For `run`, the catalog value for the node's architecture; for `serve`, the architecture-independent default. JSON `null` when no such default exists. |
 | `OVERRIDE_VALUE` | The value from the config, as JSON. |
 | `PROVENANCE` | Who authored the check: `nvidia` for built-ins. |
 | `PRIORITY` | `5` (notice). |

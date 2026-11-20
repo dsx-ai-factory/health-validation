@@ -4,7 +4,7 @@
 // Package app is the importable implementation of the health-validation
 // CLI.
 //
-// The cmd/health-validation binary is a thin shim over [App.Run]; the
+// The cmd/health-validation binary is a thin shim over [App.RunAndClose]; the
 // same builder lets a downstream consumer build their own single binary that
 // inherits all of go-health's behavior — config loading, the built-in NVIDIA
 // check catalog, the host sensors, and the JSON verdict — while contributing
@@ -18,9 +18,7 @@
 //			log.Fatal(err)
 //		}
 //		a := app.New().WithStderrLogging().WithChecks(mychecks.All()...).WithCollectAdapters(ecc)
-//		code := a.Run(os.Args[1:], os.Stdout, os.Stderr)
-//		_ = a.Close()
-//		os.Exit(code)
+//		os.Exit(a.RunAndClose(os.Args[1:], os.Stdout, os.Stderr))
 //	}
 //
 // The GPU, NVLink, node, CPU, Xid, and RDMA link-flap domains come from collect
@@ -35,7 +33,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -95,6 +92,8 @@ func exitCodeForVerdict(nv health.NodeVerdict) int {
 type hostBackend interface {
 	gpuSensors() []collect.Sensor
 	gpuInventory() *gpuinventory.Inventory
+	// releaseCycle runs after all agent collection calls finish.
+	releaseCycle() error
 	close() error
 }
 
@@ -163,8 +162,8 @@ func (a *App) WithNodeID(id string) *App {
 }
 
 // Close shuts down the App's host backend, the built-in DCGM and NVML
-// connections. Call it when you are done with the App; [App.Run] leaves them
-// open so one App can run more than once. Collect sensors passed to
+// connections. Call it after the last one-shot [App.Run]. The serve command
+// manages its own shutdown through the agent. Collect sensors passed to
 // [App.WithCollect] are the caller's to manage and are not closed here.
 func (a *App) Close() error { return a.host.close() }
 
@@ -176,9 +175,26 @@ func (a *App) Close() error { return a.host.close() }
 // It parses the top-level flags, dispatches the subcommand, writes output to
 // stdout and diagnostics to stderr, and returns the process exit code.
 func (a *App) Run(args []string, stdout, stderr io.Writer) int {
+	return a.run(args, stdout, stderr, false)
+}
+
+// RunAndClose runs the CLI and closes the host backend for one-shot commands.
+// The serve command owns its backend shutdown.
+func (a *App) RunAndClose(args []string, stdout, stderr io.Writer) int {
+	return a.run(args, stdout, stderr, true)
+}
+
+func (a *App) run(args []string, stdout, stderr io.Writer, closeAfter bool) int {
 	if a.prog == "" {
 		a.prog = filepath.Base(os.Args[0])
 	}
+	defer func() {
+		if closeAfter {
+			if err := a.Close(); err != nil {
+				fmt.Fprintf(stderr, "%s: close: %v\n", a.prog, err)
+			}
+		}
+	}()
 
 	fs := flag.NewFlagSet(a.prog, flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -188,7 +204,11 @@ func (a *App) Run(args []string, stdout, stderr io.Writer) int {
 	}
 	a.initLogger(*verbose, stderr)
 
-	return a.dispatch(fs.Args(), stdout, stderr)
+	command := fs.Args()
+	if len(command) > 0 && command[0] == "serve" {
+		closeAfter = false
+	}
+	return a.dispatch(command, stdout, stderr)
 }
 
 // initLogger installs a stderr-backed slog default only when the caller opted
@@ -217,6 +237,8 @@ func (a *App) dispatch(args []string, stdout, stderr io.Writer) int {
 		return a.collectCommand(args[1:], stdout, stderr)
 	case "run":
 		return a.runCommand(args[1:], stdout, stderr)
+	case "serve":
+		return a.serveCommand(args[1:], stderr)
 	case "version":
 		return versionCommand(args[1:], stdout, stderr, a.prog)
 	default:
@@ -253,33 +275,9 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	nodeIDSet := a.nodeIDSet
-	cadenceSet := false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "node-id" {
-			nodeIDSet = true
-		}
-		if f.Name == "cadence" {
-			cadenceSet = true
-		}
-	})
-	resolvedNodeID, err := a.resolveNodeID(*nodeID, nodeIDSet)
+	request, err := a.evaluationFlags(fs, *nodeID, *cadenceFlag, *executionContextFlag)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
-		return exitError
-	}
-	var cadence *health.SchedulingCadence
-	if cadenceSet {
-		sc, parseErr := health.SchedulingCadenceFromName(strings.ToUpper(strings.TrimSpace(*cadenceFlag)))
-		if parseErr != nil {
-			fmt.Fprintf(stderr, "%s: --cadence: %v\n", a.prog, parseErr)
-			return exitError
-		}
-		cadence = &sc
-	}
-	executionContext, err := health.ExecutionContextFromName(strings.ToUpper(strings.TrimSpace(*executionContextFlag)))
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: --execution-context: %v\n", a.prog, err)
 		return exitError
 	}
 
@@ -293,76 +291,25 @@ func (a *App) runCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	// One cycle covers architecture discovery and collection, so discovery
-	// reads the same GPU inventory the node GPU count is derived from.
-	cycle, err := newCycle(collectionTimeout(cfg))
+	request.audit = true
+	request.xidJournal = xidJournal
+	verdict, err := a.evaluateOnce(context.Background(), cfg, request)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
 		return exitError
 	}
-
-	// Detect the node architecture so architecture-scoped checks run only
-	// where they apply. A discovery failure is a node fault — the GPUs are
-	// unenumerable or unreadable — so drain for that explicit reason instead
-	// of evaluating with no architecture (Evaluate requires WithArchitecture).
-	inventory := a.host.gpuInventory()
-	snapshot := inventory.Snapshot(context.Background(), cycle)
-	arch, err := gpuinventory.Architecture(snapshot)
-	if err != nil {
-		busy := errors.Is(inventory.Cause(cycle), gpuinventory.ErrSourceBusy)
-		slog.Warn("architecture discovery failed", "err", err, "busy", busy)
-		verdict := discoveryFailureVerdict(err, busy)
-		code := writeVerdict(verdict, a.prog, resolvedNodeID, stdout, stderr)
-		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
-		return code
-	}
-	warnUnknownArchitecture(slog.Default(), arch, snapshot)
-
-	// The driver version comes from the same snapshot. Unlike architecture
-	// an unknown version is not a node fault: whatever depends on it treats
-	// it as unknown, so log it and continue.
-	driverVersion, ok := gpuinventory.DriverVersion(snapshot)
-	if !ok {
-		slog.Warn("driver version unreadable; continuing without it")
-	}
-
-	cat, timeout, err := buildCatalog(cfg, a.customChecks, arch, driverVersion, executionContext)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
-		return exitError
-	}
-
-	// Fail closed: no verdict may rest on an override the journal did not record.
-	if auditErr := a.auditOverrides(cat); auditErr != nil {
-		fmt.Fprintf(stderr, "%s: audit threshold overrides: %v\n", a.prog, auditErr)
-		return exitError
-	}
-
-	runnable, err := cat.RunnableChecks(catalog.EvaluationOptions{Cadence: cadence})
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: select runnable checks: %v\n", a.prog, err)
-		return exitError
-	}
-
-	sensors, err := a.sensors(cycle, requiredFor(runnable), xidJournal)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: register collect sensors: %v\n", a.prog, err)
-		return exitError
-	}
-
-	verdict, produced, code := evaluate(cat, toolkit.CollectionOptions{
-		Cadence: cadence,
-		Timeout: timeout,
-	}, a.prog, resolvedNodeID, stdout, stderr, sensors...)
-	if produced {
-		publishMetrics(cfg.Metrics, verdict, resolvedNodeID)
-	}
+	code := writeVerdict(verdict, a.prog, request.NodeID, stdout, stderr)
+	publishMetrics(cfg.Metrics, verdict, request.NodeID)
 	return code
 }
 
 // sensors returns the collect-backed sensors, whose
 // sources are measured once now under cycle.
 func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
+	return a.sensorsContext(context.Background(), cycle, required, xidJournal)
+}
+
+func (a *App) sensorsContext(ctx context.Context, cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
 	builtinSources, builtinAdapters := a.builtinCollect(cycle)
 	if xidJournal != nil {
 		for i, source := range builtinSources {
@@ -371,7 +318,7 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 			}
 		}
 	}
-	return a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
+	return a.collectSensorsContext(ctx, cycle, builtinSources, builtinAdapters, required)
 }
 
 // publishMetrics pushes the verdict to the configured OTLP endpoint. It is a
@@ -429,6 +376,35 @@ func redactEndpoint(endpoint string) string {
 	return redacted.String()
 }
 
+func (a *App) evaluationFlags(fs *flag.FlagSet, nodeID, cadenceName, contextName string) (evaluationRequest, error) {
+	nodeIDSet, cadenceSet := a.nodeIDSet, false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "node-id" {
+			nodeIDSet = true
+		}
+		if f.Name == "cadence" {
+			cadenceSet = true
+		}
+	})
+	resolvedNodeID, err := a.resolveNodeID(nodeID, nodeIDSet)
+	if err != nil {
+		return evaluationRequest{}, err
+	}
+	request := evaluationRequest{NodeID: resolvedNodeID}
+	if cadenceSet {
+		cadence, cadenceErr := health.SchedulingCadenceFromName(strings.ToUpper(strings.TrimSpace(cadenceName)))
+		if cadenceErr != nil {
+			return request, fmt.Errorf("--cadence: %w", cadenceErr)
+		}
+		request.Cadence = &cadence
+	}
+	request.ExecutionContext, err = health.ExecutionContextFromName(strings.ToUpper(strings.TrimSpace(contextName)))
+	if err != nil {
+		return request, fmt.Errorf("--execution-context: %w", err)
+	}
+	return request, nil
+}
+
 func (a *App) resolveNodeID(value string, supplied bool) (string, error) {
 	nodeID := strings.TrimSpace(value)
 	if supplied {
@@ -451,7 +427,7 @@ func (a *App) resolveNodeID(value string, supplied bool) (string, error) {
 
 // usage returns the one-line usage banner for the given program name.
 func usage(prog string) string {
-	return "usage: " + prog + " <collect|run|version> [flags]"
+	return "usage: " + prog + " <collect|run|serve|version> [flags]"
 }
 
 func registerXidTimeFlags(fs *flag.FlagSet) {
@@ -742,21 +718,6 @@ func collectionTimeout(cfg *Config) time.Duration {
 		return toolkit.DefaultSensorTimeout
 	}
 	return cfg.CollectionTimeout()
-}
-
-// evaluate runs the sensors through the catalog, prints the node verdict as
-// indented JSON, and returns the exit code alongside the verdict. It takes the
-// collection options and sensors as arguments so tests can inject per-run
-// configuration and mock sensors without hardware. produced is false when
-// collection failed before any verdict existed, so the caller knows there is
-// nothing worth publishing.
-func evaluate(cat *catalog.Catalog, opts toolkit.CollectionOptions, prog, nodeID string, stdout, stderr io.Writer, sensors ...toolkit.Sensor) (verdict health.NodeVerdict, produced bool, code int) {
-	verdict, err := toolkit.CollectWithOptions(cat, opts, sensors...)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
-		return health.NodeVerdict{}, false, exitError
-	}
-	return verdict, true, writeVerdict(verdict, prog, nodeID, stdout, stderr)
 }
 
 // writeVerdict prints a node verdict as indented JSON and returns the process

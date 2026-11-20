@@ -6,10 +6,12 @@ package toolkit_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
@@ -18,6 +20,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 )
 
@@ -466,4 +469,41 @@ func TestCollectWithOptions_SensorPanicDegradesToUnknown(t *testing.T) {
 	if !found {
 		t.Fatal("gpu_count verdict not found; the panicking sensor did not degrade to a verdict")
 	}
+}
+
+func TestCollectCancellationKeepsOriginalSensorWatchdog(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		cat := catalog.New(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
+		source := &blockingSensor{name: "node", release: make(chan struct{}), errored: func(err error) []health.Measurement { return []health.Measurement{node.ErroredNode(err)} }}
+		defer func() {
+			select {
+			case <-source.release:
+			default:
+				close(source.release)
+			}
+		}()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		tracked, tracker := collect.WithCallTracking(ctx)
+		done := make(chan error, 1)
+		go func() {
+			_, err := toolkit.CollectWithContext(tracked, cat, toolkit.CollectionOptions{Timeout: 10 * time.Second}, source)
+			done <- err
+		}()
+		synctest.Wait()
+		cancel()
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+		if stuck, _ := tracker.StuckCalls(); len(stuck) != 0 {
+			t.Fatalf("canceled sensor immediately reported stuck: %v", stuck)
+		}
+		time.Sleep(10 * time.Second)
+		synctest.Wait()
+		if stuck, _ := tracker.StuckCalls(); len(stuck) != 1 || stuck[0].Source != "node" {
+			t.Fatalf("sensor watchdog did not report unfinished work: %v", stuck)
+		}
+		close(source.release)
+		tracker.Wait()
+	})
 }

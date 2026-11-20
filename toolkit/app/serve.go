@@ -1,0 +1,383 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package app
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"os"
+	"os/signal"
+	"slices"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/dsx-ai-factory/health-validation/agentkit/verdictserver"
+	"github.com/dsx-ai-factory/health-validation/catalog"
+	"github.com/dsx-ai-factory/health-validation/catalog/health"
+	"github.com/dsx-ai-factory/health-validation/collect"
+	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
+	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
+	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
+	"github.com/dsx-ai-factory/health-validation/toolkit/verdictproto"
+)
+
+// Match the raw Check API's HTTP write budget.
+const defaultRequestTimeout = 2 * time.Minute
+
+func (a *App) serveCommand(args []string, stderr io.Writer) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return a.serve(ctx, args, stderr)
+}
+
+func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
+	fs := flag.NewFlagSet(a.prog+" serve", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	address := fs.String("address", "127.0.0.1:8080", "TCP address for the local gRPC and HTTP verdict API")
+	requestTimeout := fs.Duration("request-timeout", defaultRequestTimeout, "admission and evaluation timeout; must exceed the source collection timeout")
+	configPath := fs.String("config", "", "path to a YAML configuration file")
+	nodeID := fs.String("node-id", a.nodeID, "default node identifier")
+	cadenceFlag := fs.String("cadence", "", "default cadence window (CONTINUOUS, PROLOG, MAINTENANCE)")
+	contextFlag := fs.String("execution-context", health.TenantGuest.String(), "default execution context")
+	registerXidTimeFlags(fs)
+	if err := fs.Parse(args); err != nil {
+		return exitError
+	}
+	fail := func(err error) int {
+		fmt.Fprintf(stderr, "%s: %v\n", a.prog, err)
+		return exitError
+	}
+	if fs.NArg() != 0 {
+		return fail(fmt.Errorf("unexpected argument %q", fs.Arg(0)))
+	}
+	if strings.TrimSpace(*address) == "" {
+		return fail(fmt.Errorf("--address must not be empty"))
+	}
+	if err := validateListenAddress(*address); err != nil {
+		return fail(err)
+	}
+	defaults, err := a.evaluationFlags(fs, *nodeID, *cadenceFlag, *contextFlag)
+	if err != nil {
+		return fail(err)
+	}
+
+	xidJournal, err := xidJournalFromFlags(fs)
+	if err != nil {
+		return fail(err)
+	}
+	cfg, err := loadOptionalConfig(*configPath)
+	if err != nil {
+		return fail(err)
+	}
+	if *requestTimeout <= collectionTimeout(cfg) {
+		return fail(fmt.Errorf("--request-timeout must exceed collection_timeout_seconds (%s)", collectionTimeout(cfg)))
+	}
+	cat, _, err := buildCatalog(cfg, a.customChecks, "", health.DriverVersion{}, defaults.ExecutionContext)
+	if err != nil {
+		return fail(err)
+	}
+	if err := validateWireOverrides(cfg, cat); err != nil {
+		return fail(err)
+	}
+	if err := a.auditOverrides(cat); err != nil {
+		return fail(fmt.Errorf("audit threshold overrides: %w", err))
+	}
+	agent := a.newVerdictAgent(cfg, defaults, xidJournal)
+	agent.requestTimeout = *requestTimeout
+	defer agent.closeWhenIdle()
+	if err := verdictserver.ServeContext(ctx, *address, agent.evaluate, verdictserver.WithAfterResponse(agent.afterResponse)); err != nil {
+		return fail(err)
+	}
+	return exitOK
+}
+
+func validateWireOverrides(cfg *Config, cat *catalog.Catalog) error {
+	overrides, err := cfg.Overrides(cat)
+	if err != nil {
+		return err
+	}
+	for _, checkID := range sortedKeys(cfg.Checks) {
+		params := overrides.ForCheck(checkID)
+		for _, name := range sortedKeys(params) {
+			// Use the response converter so startup and request precision rules agree.
+			check := health.CheckVerdict{CheckID: checkID, Thresholds: map[string]health.ResolvedThreshold{
+				name: {Value: params[name]},
+			}}
+			if _, err := verdictproto.ToProto(health.AggregateNodeVerdict([]health.CheckVerdict{check})); err != nil {
+				return fmt.Errorf("config: check %q parameter %q cannot be served: %w", checkID, name, err)
+			}
+		}
+	}
+	return nil
+}
+
+func validateListenAddress(address string) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("--address: %w", err)
+	}
+	// A numeric address avoids validating one DNS result and binding another.
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("--address must use a loopback IP")
+	}
+	return nil
+}
+
+type verdictAgent struct {
+	journal        collect.Sensor
+	app            *App
+	cfg            *Config
+	gate           chan struct{}
+	tracker        *collect.CallTracker
+	changed        chan struct{}
+	defaults       evaluationRequest
+	requestTimeout time.Duration
+	stateMu        sync.Mutex
+}
+
+func (a *App) newVerdictAgent(cfg *Config, defaults evaluationRequest, journal collect.Sensor) *verdictAgent {
+	return &verdictAgent{app: a, cfg: cfg, defaults: defaults, journal: journal, gate: make(chan struct{}, 1), changed: make(chan struct{}), requestTimeout: defaultRequestTimeout}
+}
+
+func (agent *verdictAgent) closeWhenIdle() {
+	closeBackend := func() {
+		if err := agent.app.host.close(); err != nil {
+			slog.Warn("backend shutdown failed", "error", err)
+		}
+		<-agent.gate
+	}
+	select {
+	case agent.gate <- struct{}{}:
+		closed := make(chan struct{})
+		go func() {
+			defer close(closed)
+			closeBackend()
+		}()
+		select {
+		case <-closed:
+		case <-time.After(time.Second):
+			slog.Warn("backend shutdown is still running")
+		}
+	default:
+		// Listener shutdown is bounded even when native collection cannot stop.
+		go func() {
+			agent.gate <- struct{}{}
+			closeBackend()
+		}()
+	}
+}
+
+func (agent *verdictAgent) request(req *healthv1.EvaluateRequest) (evaluationRequest, error) {
+	request := agent.defaults
+	if req == nil {
+		return request, status.Error(codes.InvalidArgument, "evaluate request is required")
+	}
+	if req.NodeId != nil {
+		nodeID := strings.TrimSpace(req.GetNodeId())
+		if nodeID == "" {
+			return request, status.Error(codes.InvalidArgument, "node_id must not be empty")
+		}
+		request.NodeID = nodeID
+	}
+	if req.Cadence != nil {
+		cadence, err := health.SchedulingCadenceFromName(req.GetCadence().String())
+		if err != nil {
+			return request, status.Error(codes.InvalidArgument, err.Error())
+		}
+		request.Cadence = &cadence
+	}
+	if req.ExecutionContext != nil {
+		value, err := health.ExecutionContextFromName(req.GetExecutionContext().String())
+		if err != nil {
+			return request, status.Error(codes.InvalidArgument, err.Error())
+		}
+		request.ExecutionContext = value
+	}
+
+	request.xidJournal = agent.journal
+	if req.XidFrom != nil || req.XidTo != nil {
+		source := agent.journal
+		claimIndex := -1
+		for i, registered := range agent.app.collectSources {
+			// A valid Xid claim includes the whole family, including the scan marker.
+			if slices.Contains(registered.claims, xidsignals.ScanWindow.ID()) {
+				source, claimIndex = registered.sensor, i
+				break
+			}
+		}
+		if claimIndex < 0 && source == nil {
+			source = xidsensor.New(nil)
+		}
+		bounded, ok := source.(interface {
+			WithTimeBounds(*int64, *int64) (collect.Sensor, error)
+		})
+		if !ok || isNilCollectInput(source) {
+			return request, status.Error(codes.InvalidArgument, "configured Xid source does not support time bounds")
+		}
+		journal, err := bounded.WithTimeBounds(req.XidFrom, req.XidTo)
+		if err != nil {
+			return request, status.Errorf(codes.InvalidArgument, "invalid xid_from/xid_to bounds: %v", err)
+		}
+		if isNilCollectInput(journal) {
+			return request, status.Error(codes.Internal, "configured Xid source returned no bounded sensor")
+		}
+		if claimIndex >= 0 {
+			request.xidClaim = &boundedXidClaim{index: claimIndex, sensor: journal}
+		} else {
+			request.xidJournal = journal
+		}
+	}
+	return request, nil
+}
+
+func (agent *verdictAgent) evaluate(ctx context.Context, req *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
+	request, err := agent.request(req)
+	if err != nil {
+		return nil, err
+	}
+	started := time.Now()
+	traceID := uuid.NewString()
+	// Admission time is included so queued callers have the same bounded budget.
+	ctx, cancel := context.WithTimeout(ctx, agent.requestTimeout)
+	defer cancel()
+	if stuck, err := agent.admit(ctx, request.NodeID); stuck != nil || err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, status.FromContextError(contextErr).Err()
+		}
+		return stuck, err
+	}
+
+	if err := ctx.Err(); err != nil {
+		<-agent.gate
+		return nil, status.FromContextError(err).Err()
+	}
+	type result struct {
+		err     error
+		verdict health.NodeVerdict
+	}
+	completed := make(chan result, 1)
+	tracked, tracker := collect.WithCallTracking(ctx)
+	agent.setTracker(tracker)
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				completed <- result{err: fmt.Errorf("evaluation panicked: %v", recovered)}
+			}
+			// Native calls can outlive their watchdog. Admission and shutdown
+			// wait for completion before touching the same backend again.
+			tracker.Wait()
+			finishRelease := collect.TrackSourceCallWithTimeout(tracked, "nvml.shutdown", collectionTimeout(agent.cfg))
+			releaseErr := agent.app.host.releaseCycle()
+			finishRelease()
+			if releaseErr != nil {
+				slog.Warn("releasing idle GPU resources failed", "error", releaseErr)
+			}
+			agent.setTracker(nil)
+			<-agent.gate
+		}()
+		verdict, err := agent.app.evaluateOnce(tracked, agent.cfg, request)
+		completed <- result{verdict: verdict, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		slog.Info("verdict request canceled", "request_id", traceID, "node_id", request.NodeID, "duration", time.Since(started), "error", ctx.Err())
+		return nil, status.FromContextError(ctx.Err()).Err()
+	case outcome := <-completed:
+		if err := ctx.Err(); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
+		if outcome.err != nil {
+			slog.Error("verdict request failed", "request_id", traceID, "node_id", request.NodeID, "duration", time.Since(started), "error", outcome.err)
+			return nil, status.Error(codes.Internal, outcome.err.Error())
+		}
+		verdict, err := verdictproto.ToProto(outcome.verdict)
+		if err != nil {
+			slog.Error("verdict conversion failed", "trace_id", outcome.verdict.TraceID, "node_id", request.NodeID, "duration", time.Since(started), "error", err)
+			return nil, status.Errorf(codes.Internal, "convert verdict: %v", err)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
+		slog.Info("verdict request evaluated", "trace_id", outcome.verdict.TraceID, "node_id", request.NodeID, "duration", time.Since(started), "overall_severity", outcome.verdict.OverallSeverity.String())
+		return verdict, nil
+	}
+}
+
+func (agent *verdictAgent) afterResponse(_ context.Context, _ *healthv1.EvaluateRequest, response *healthv1.NodeVerdict) {
+	if !agent.cfg.Metrics.Enabled {
+		return
+	}
+	verdict, err := verdictproto.FromProto(response)
+	if err != nil {
+		slog.Warn("metrics publishing skipped", "error", err)
+		return
+	}
+	publishMetrics(agent.cfg.Metrics, verdict, verdict.NodeID)
+}
+
+func (agent *verdictAgent) setTracker(tracker *collect.CallTracker) {
+	agent.stateMu.Lock()
+	defer agent.stateMu.Unlock()
+	agent.tracker = tracker
+	close(agent.changed)
+	agent.changed = make(chan struct{})
+}
+
+func (agent *verdictAgent) admit(ctx context.Context, nodeID string) (*healthv1.NodeVerdict, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
+		select {
+		case agent.gate <- struct{}{}:
+			return nil, nil
+		default:
+		}
+		agent.stateMu.Lock()
+		tracker, changed := agent.tracker, agent.changed
+		agent.stateMu.Unlock()
+		var sourceChanged <-chan struct{}
+		if tracker != nil {
+			stuck, next := tracker.StuckCalls()
+			sourceChanged = next
+			if len(stuck) > 0 {
+				var checks []health.CheckVerdict
+				for _, call := range stuck {
+					checks = append(checks, health.CheckVerdict{
+						Timestamp: time.Now(), CheckID: "collection_source_busy", Category: health.Node, Severity: health.Unknown,
+						RecommendedAction: health.Drain(health.RemediationActionRetryCollection),
+						Messages:          []string{fmt.Sprintf("source %q has an unfinished call started at %s", call.Source, call.Since.Format(time.RFC3339Nano))},
+						ObservedValues:    map[string]any{"source": call.Source, "since": call.Since.Format(time.RFC3339Nano)},
+					})
+				}
+				verdict := health.AggregateNodeVerdict(checks)
+				verdict.NodeID = nodeID
+				response, err := verdictproto.ToProto(verdict)
+				if err != nil {
+					return nil, status.Errorf(codes.Internal, "convert blocked-source verdict: %v", err)
+				}
+				return response, nil
+			}
+		}
+		select {
+		case agent.gate <- struct{}{}:
+			return nil, nil
+		case <-changed:
+		case <-sourceChanged:
+		case <-ctx.Done():
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+	}
+}

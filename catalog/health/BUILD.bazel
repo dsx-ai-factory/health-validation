@@ -1,6 +1,11 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 load("//catalog/cmd/healthschema:health_schema.bzl", "health_schema")
 
+exports_files(
+    ["node-verdict.schema.json"],
+    visibility = ["//visibility:public"],
+)
+
 go_library(
     name = "health",
     srcs = [

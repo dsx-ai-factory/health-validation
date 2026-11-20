@@ -5,7 +5,7 @@ package app
 
 import (
 	"bytes"
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
-	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
@@ -352,34 +351,12 @@ func TestLoadConfigEmptyFile(t *testing.T) {
 // exit code 0. The architecture is set as the CLI does, so
 // architecture-scoped thresholds resolve to real expectations.
 func TestEvaluatePassingNode(t *testing.T) {
-	cat := catalog.New(catalog.WithArchitecture("GB200"))
-	sensors := []toolkit.Sensor{
-		measurementSensor{name: "gpu", ms: []health.Measurement{
-			gpu.GPUMeasurement{
-				GPUID:               "GPU-0",
-				AveragePowerDrawW:   220,
-				PowerLimitW:         1200,
-				EnforcedPowerLimitW: 1200,
-			},
-		}},
-		measurementSensor{name: "node", ms: []health.Measurement{node.NodeMeasurement{GPUCount: 4}}},
+	verdict, err := fixtureApp(healthyGB200()).evaluateOnce(context.Background(), &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest})
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	var stdout, stderr bytes.Buffer
-	_, _, code := evaluate(cat, toolkit.CollectionOptions{}, "health-validation", testNodeID, &stdout, &stderr, sensors...)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
-	}
-
-	var verdict health.NodeVerdict
-	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
-		t.Fatalf("unmarshal stdout: %v\n%s", err, stdout.String())
-	}
-	if verdict.OverallSeverity != health.Pass {
-		t.Fatalf("overall severity = %v, want PASS", verdict.OverallSeverity)
-	}
-	if verdict.NodeID != testNodeID {
-		t.Fatalf("NodeID = %q, want %q", verdict.NodeID, testNodeID)
+	if verdict.OverallSeverity != health.Pass || exitCodeForVerdict(verdict) != exitOK || verdict.NodeID != testNodeID {
+		t.Fatalf("passing verdict = %+v", verdict)
 	}
 }
 
@@ -438,25 +415,12 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cat, timeout, err := buildCatalog(mustLoadConfig(t, path), nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
+	verdict, err := fixtureApp(healthyGB200()).evaluateOnce(context.Background(), mustLoadConfig(t, path), evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest})
 	if err != nil {
-		t.Fatalf("buildCatalog: %v", err)
+		t.Fatal(err)
 	}
-
-	sensors := []toolkit.Sensor{
-		measurementSensor{name: "node", ms: []health.Measurement{node.NodeMeasurement{GPUCount: 4}}},
-	}
-
-	var stdout, stderr bytes.Buffer
-	_, _, code := evaluate(cat, toolkit.CollectionOptions{Timeout: timeout}, "health-validation", testNodeID, &stdout, &stderr, sensors...)
-	if code != exitOK {
-		t.Fatalf("exit code = %d, want %d (a disabled check must not reach the verdict); stderr=%q",
-			code, exitOK, stderr.String())
-	}
-
-	var verdict health.NodeVerdict
-	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
-		t.Fatalf("unmarshal stdout: %v\n%s", err, stdout.String())
+	if code := exitCodeForVerdict(verdict); code != exitOK {
+		t.Fatalf("exit code = %d, want %d", code, exitOK)
 	}
 
 	for _, v := range verdict.CheckResults {
@@ -489,24 +453,24 @@ func TestBuildCatalogDisablesChecks(t *testing.T) {
 // a produced CRITICAL verdict is an out-of-service outcome. The full
 // severity still lives in the JSON verdict written to stdout.
 func TestEvaluateGPUCountMismatch(t *testing.T) {
-	cat := catalog.New(catalog.WithArchitecture("GB200"))
-	sensors := []toolkit.Sensor{
-		measurementSensor{name: "node", ms: []health.Measurement{node.NodeMeasurement{GPUCount: 3}}},
+	f := healthyGB200()
+	f.gpus = f.gpus[:3]
+	verdict, err := fixtureApp(f).evaluateOnce(context.Background(), &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest})
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	var stdout, stderr bytes.Buffer
-	_, _, code := evaluate(cat, toolkit.CollectionOptions{}, "health-validation", testNodeID, &stdout, &stderr, sensors...)
-	if code != exitUnhealthy {
-		t.Fatalf("exit code = %d, want %d (CRITICAL propagated); stderr=%q", code, exitUnhealthy, stderr.String())
+	if verdict.OverallSeverity != health.Critical || exitCodeForVerdict(verdict) != exitUnhealthy {
+		t.Fatalf("count mismatch = %+v", verdict)
 	}
-
-	var verdict health.NodeVerdict
-	if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
-		t.Fatalf("unmarshal stdout: %v\n%s", err, stdout.String())
+	for _, result := range verdict.CheckResults {
+		if result.CheckID == "gpu_count" {
+			if result.Severity != health.Critical {
+				t.Fatalf("gpu_count severity = %v, want CRITICAL", result.Severity)
+			}
+			return
+		}
 	}
-	if verdict.OverallSeverity != health.Critical {
-		t.Fatalf("overall severity = %v, want CRITICAL", verdict.OverallSeverity)
-	}
+	t.Fatal("gpu_count verdict not found")
 }
 
 // TestLoadConfig_CollectionTimeout covers parsing the optional global

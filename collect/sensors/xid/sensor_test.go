@@ -550,3 +550,33 @@ func TestNodeWideJournalReadBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestWithTimeBoundsPreservesDefaultsAndGPUOverrides(t *testing.T) {
+	from, to := int64(100), int64(400)
+	source, err := NewWithTimeRanges(journal.New(lines(
+		entryLine("old", time.Unix(150, 0), "NVRM: Xid (PCI:0008:06:00): 79")+
+			entryLine("new", time.Unix(250, 0), "NVRM: Xid (PCI:0009:06:00): 79"))), &from, &to, map[string]int64{"0008:06:00": 100})
+	require.NoError(t, err)
+	base := source.(*sensor)
+	lower := int64(200)
+	changed, err := base.WithTimeBounds(&lower, nil)
+	require.NoError(t, err)
+	lower = 350
+	require.Equal(t, int64(200), *changed.(*sensor).ranges.from)
+	require.Equal(t, int64(400), *changed.(*sensor).ranges.to)
+	require.Equal(t, int64(100), *base.ranges.from)
+	cycle, err := collect.NewCycle("window", time.Now())
+	require.NoError(t, err)
+	batch, err := changed.Measure(context.Background(), collect.WithCycle(cycle))
+	require.NoError(t, err)
+	count := 0
+	for _, o := range batch.GetObservations() {
+		if o.GetSignalId() == xidsignals.Code.ID() {
+			count++
+		}
+	}
+	require.Equal(t, 2, count, "GPU-specific start must retain the older event")
+	upper := int64(100)
+	_, err = base.WithTimeBounds(nil, &upper)
+	require.Error(t, err, "upper bound must exceed inherited global and GPU starts")
+}

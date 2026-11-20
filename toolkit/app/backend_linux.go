@@ -34,25 +34,29 @@ import (
 // checks.
 type nvmlHost struct {
 	inventory *gpuinventory.Inventory
-	dcgm      *dcgmsource.Source
+	dcgm      *recoveringDCGMSensor
 	// inst is the collect NVML instance, once opened; processes reads through it.
-	inst       nvmlsource.Instance
-	nvmlSensor collect.Sensor
-	gpu        []collect.Sensor
-	mu         sync.Mutex
+	inst           nvmlsource.Instance
+	nvmlSensor     collect.Sensor
+	nvmlSensorInst nvmlsource.Instance
+	gpu            []collect.Sensor
+	mu             sync.Mutex
 }
 
 func newHostBackend() hostBackend {
-	h := &nvmlHost{
-		// v0.3's NVML sensor read the driver live; DCGM reads live to match.
-		dcgm: dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{LiveMetrics: true}),
+	dcgm := &recoveringDCGMSensor{
+		signals: slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals),
+		open: func() (collect.Sensor, func() error, func() bool, error) {
+			// Live reads preserve the one-shot CLI's driver sampling behavior.
+			source := dcgmsource.NewStandaloneSource(dcgmsource.StandaloneOptions{LiveMetrics: true})
+			sensor, err := dcgmsensor.New(source, slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals).IDs()...)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			return sensor, source.Close, source.Closed, nil
+		},
 	}
-	// The signal set is fixed, so New fails only on a programming error that
-	// the app tests catch; it records the watch without calling DCGM.
-	dcgm, err := dcgmsensor.New(h.dcgm, slices.Concat(dcgmGPUSignals, dcgmNVLinkSignals).IDs()...)
-	if err != nil {
-		panic(err)
-	}
+	h := &nvmlHost{dcgm: dcgm}
 	h.gpu = []collect.Sensor{dcgm, nvmlGPUSensor{host: h}}
 	h.inventory = gpuinventory.New(gpuinventory.OpenNVML(h.instance))
 	return h
@@ -64,7 +68,7 @@ func (h *nvmlHost) instance() (nvmlsource.Instance, error) {
 	h.mu.Lock()
 	inst := h.inst
 	h.mu.Unlock()
-	if inst != nil {
+	if inst != nil && inst.NVMLExists() {
 		return inst, nil
 	}
 	inst, err := nvmlsource.New()
@@ -73,7 +77,7 @@ func (h *nvmlHost) instance() (nvmlsource.Instance, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.inst != nil {
+	if h.inst != nil && h.inst.NVMLExists() {
 		_ = inst.Shutdown()
 		return h.inst, nil
 	}
@@ -89,21 +93,49 @@ func (h *nvmlHost) sharedNVMLSensor() (collect.Sensor, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.nvmlSensor == nil {
+	if h.nvmlSensor == nil || h.nvmlSensorInst != inst {
 		h.nvmlSensor = nvmlsensor.NewWithOptions(inst, nvmlsensor.WithProcessCmdlineDiagnostics(true))
+		h.nvmlSensorInst = inst
 	}
 	return h.nvmlSensor, nil
 }
 
-func (h *nvmlHost) gpuSensors() []collect.Sensor          { return h.gpu }
-func (h *nvmlHost) gpuInventory() *gpuinventory.Inventory { return h.inventory }
+func (h *nvmlHost) gpuSensors() []collect.Sensor { return h.gpu }
+func (h *nvmlHost) gpuInventory() *gpuinventory.Inventory {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.inventory
+}
+
+// releaseCycle lets reset tooling use idle GPUs without stopping the agent.
+func (h *nvmlHost) releaseCycle() error {
+	h.mu.Lock()
+	inst := h.inst
+	h.mu.Unlock()
+	if inst == nil {
+		return nil
+	}
+	// Shutdown can enter native code; keep mu available to process shutdown.
+	if err := inst.Shutdown(); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.inst == inst {
+		h.inst, h.nvmlSensor, h.nvmlSensorInst = nil, nil, nil
+		h.inventory = gpuinventory.New(gpuinventory.OpenNVML(h.instance))
+	}
+	return nil
+}
 
 // close leaves the collect NVML instance and the DCGM client open while a
 // timed-out native call still holds them; the process exits shortly after.
 func (h *nvmlHost) close() error {
 	var err error
-	if closeErr := h.dcgm.Close(); closeErr != nil && !errors.Is(closeErr, dcgmsource.ErrInUse) {
-		err = errors.Join(err, closeErr)
+	if h.dcgm != nil {
+		if closeErr := h.dcgm.Close(); closeErr != nil && !errors.Is(closeErr, dcgmsource.ErrInUse) {
+			err = errors.Join(err, closeErr)
+		}
 	}
 	h.mu.Lock()
 	inst := h.inst

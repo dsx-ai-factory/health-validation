@@ -28,6 +28,9 @@ navigation:
       - page: Collection API
         path: collection-api.md
         slug: collection-api
+      - page: Agent mode
+        path: agent-mode.md
+        slug: agent-mode
 
   - section: Reference
     slug: reference
@@ -35,6 +38,9 @@ navigation:
       - page: Verdict Schema
         path: reference/verdict-schema.md
         slug: verdict-schema
+      - page: Verdict API
+        path: verdict-api.md
+        slug: verdict-api
       - section: Check Catalog
         slug: checks
         contents:

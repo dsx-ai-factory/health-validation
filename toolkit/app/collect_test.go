@@ -44,14 +44,14 @@ import (
 
 const customCountSignal = "test.node.custom_count"
 
-// collectSensors is [App.collectSensorsIn] under a fresh cycle. Production
+// collectSensors is [App.collectSensorsContext] under a fresh cycle. Production
 // callers create the cycle themselves so discovery can share it.
 func (a *App) collectSensors(timeout time.Duration, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter, required requiredSignals) ([]toolkit.Sensor, error) {
 	cycle, err := newCycle(timeout)
 	if err != nil {
 		return nil, err
 	}
-	return a.collectSensorsIn(cycle, builtinSources, builtinAdapters, required)
+	return a.collectSensorsContext(context.Background(), cycle, builtinSources, builtinAdapters, required)
 }
 
 func TestMigratedDomainsDefaultToCollectSensors(t *testing.T) {

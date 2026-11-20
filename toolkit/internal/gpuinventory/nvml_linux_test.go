@@ -208,6 +208,97 @@ func TestNVMLReaderFailures(t *testing.T) {
 	})
 }
 
+type changingInventoryInstance struct {
+	*fakeInstance
+	refresh func() error
+}
+
+func (i changingInventoryInstance) Refresh() error { return i.refresh() }
+
+func TestNVMLInventoryRefreshPreservesBusyCauseAndRecovers(t *testing.T) {
+	for _, failure := range []error{nvmlsource.ErrInUse, errors.New("enumeration failed")} {
+		t.Run(failure.Error(), func(t *testing.T) {
+			inst := withRecords(gpu(0, "NVIDIA GB200"))
+			refreshErr := failure
+			changing := changingInventoryInstance{fakeInstance: inst, refresh: func() error { return refreshErr }}
+			inv := New(func() (Reader, error) { return NVML(changing), nil })
+			if _, err := Architecture(inv.Snapshot(context.Background(), testCycle(t, "first"))); err != nil {
+				t.Fatal(err)
+			}
+			cycle := testCycle(t, "failed refresh")
+			failed := inv.Snapshot(context.Background(), cycle)
+			if failed.GetCollectionError().GetOperation() != "Refresh" {
+				t.Fatalf("expected refresh failure, got %v", failed)
+			}
+			cause := inv.Cause(cycle)
+			if !errors.Is(cause, failure) || errors.Is(cause, ErrSourceBusy) != errors.Is(failure, nvmlsource.ErrInUse) {
+				t.Fatalf("refresh cause = %v, want original error with only ErrInUse marked busy", cause)
+			}
+			refreshErr = nil
+			recovered := testCycle(t, "recovered")
+			if _, err := Architecture(inv.Snapshot(context.Background(), recovered)); err != nil {
+				t.Fatal(err)
+			}
+			if cause := inv.Cause(recovered); cause != nil {
+				t.Fatalf("recovered inventory retained failure: %v", cause)
+			}
+		})
+	}
+}
+
+func TestNVMLReaderRefreshesGPUCountAndArchitectureAcrossCycles(t *testing.T) {
+	inst := withRecords(gpu(0, "NVIDIA GB200"), gpu(1, "NVIDIA GB200"))
+	refreshes := 0
+	changing := changingInventoryInstance{fakeInstance: inst, refresh: func() error {
+		refreshes++
+		next := withRecords(gpu(0, "NVIDIA H100 80GB HBM3"))
+		inst.records, inst.devices = next.records, next.devices
+		return nil
+	}}
+	inv := New(func() (Reader, error) { return NVML(changing), nil })
+	first := testCycle(t, "first")
+	snapshot := inv.Snapshot(context.Background(), first)
+	if count, ok := Count(snapshot); !ok || count != 2 {
+		t.Fatalf("first count = %d, %v", count, ok)
+	}
+	if arch, err := Architecture(snapshot); err != nil || arch != "GB200" {
+		t.Fatalf("first architecture = %q, %v", arch, err)
+	}
+	inv.Snapshot(context.Background(), first)
+	if refreshes != 0 {
+		t.Fatalf("refreshed the freshly opened source %d times", refreshes)
+	}
+	snapshot = inv.Snapshot(context.Background(), testCycle(t, "second"))
+	if count, ok := Count(snapshot); !ok || count != 1 {
+		t.Fatalf("second count = %d, %v", count, ok)
+	}
+	if arch, err := Architecture(snapshot); err != nil || arch != "H100" {
+		t.Fatalf("second architecture = %q, %v", arch, err)
+	}
+	if refreshes != 1 {
+		t.Fatalf("refreshes = %d, want 1", refreshes)
+	}
+}
+
+func TestNVMLInventoryReopensMissingLibraryNextCycle(t *testing.T) {
+	opens := 0
+	inv := New(func() (Reader, error) {
+		opens++
+		if opens == 1 {
+			return NVML(nvmlsource.NewNoOp()), nil
+		}
+		return NVML(withRecords(gpu(0, "NVIDIA GB200"))), nil
+	})
+	first := inv.Snapshot(context.Background(), testCycle(t, "missing"))
+	if first.GetCollectionError() == nil {
+		t.Fatal("missing library did not produce a collection failure")
+	}
+	second := inv.Snapshot(context.Background(), testCycle(t, "available"))
+	if count, ok := Count(second); !ok || count != 1 || opens != 2 {
+		t.Fatalf("retry count=%d available=%v opens=%d, want 1/true/2", count, ok, opens)
+	}
+}
+
 func TestOpenNVMLMarksBusyOpen(t *testing.T) {
 	open := OpenNVML(func() (nvmlsource.Instance, error) { return nil, nvmlsource.ErrInUse })
 	if _, err := open(); !errors.Is(err, nvmlsource.ErrInUse) || !errors.Is(err, ErrSourceBusy) {

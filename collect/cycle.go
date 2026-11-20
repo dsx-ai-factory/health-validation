@@ -108,7 +108,9 @@ func Run[T any](
 		err   error
 	}
 	completed := make(chan result, 1)
+	finished := TrackSourceCallWithTimeout(ctx, source, cycle.timeout)
 	go func() {
+		defer finished()
 		current := result{}
 		defer func() {
 			if recovered := recover(); recovered != nil {
