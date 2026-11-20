@@ -318,7 +318,9 @@ example, to evaluate Xids within the same interval on all GPUs:
 
 The interval excludes its start and includes its end. A caller that polls
 back-to-back windows, passing the previous `--xid-to` as the next
-`--xid-from`, sees an Xid logged exactly on the shared second once.
+`--xid-from`, sees an Xid logged exactly on the shared second once. Advance
+any GPU-specific `--xid-from` the same way, or drop it so that the node-wide
+start applies; otherwise that GPU's entries since its start are reported again.
 
 The two forms of `--xid-from` can be combined: a GPU-specific start time
 overrides the node-wide start time for that GPU. GPUs without an override use
@@ -326,8 +328,8 @@ the node-wide start time, or the entire current boot if none is supplied.
 Addresses use `dddd:bb:dd` (optionally `.0`), with case-insensitive hex digits
 and domains of four or more digits.
 
-Both time bounds are exclusive. Start times must be non-negative, and the end time must be
-positive and later than every supplied start time. Either bound may be omitted.
+Start times must be non-negative, and the end time must be positive and later
+than every supplied start time. Either bound may be omitted.
 Duplicate GPU bounds or multiple node-wide start times will result in an error.
 
 These flags filter the default Xid journal sensor within the current boot.
