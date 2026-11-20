@@ -135,6 +135,12 @@ Titles follow [Conventional Commits](https://www.conventionalcommits.org/):
   all-caps subjects are rejected: not `feat: Add Support For X`, not `fix: BROKEN`.
 - Any title whose first word is `Revert` or `revert` skips the check entirely. That
   covers what GitHub's Revert button prefills, so a revert needs no retitling.
+- Add `!` after the type or scope (`feat(catalog)!: ...`) only when the change
+  breaks a guaranteed surface listed in
+  [RELEASE.md](RELEASE.md#compatibility). A behavior change to something not
+  guaranteed, such as a check's severity or remediation, is not breaking. Add
+  a `CHANGELOG.md` entry for each breaking part under Breaking Changes, and
+  list the PR's other changes under Changes, Features, or Fixes.
 - CI reads these rules from `main`, not from your branch. A PR that changes them
   is still judged by the current rules, so title it under those and use anything
   new in a follow-up PR.

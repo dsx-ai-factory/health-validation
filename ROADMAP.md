@@ -69,8 +69,8 @@ collection path.
 Captured and live evaluation should agree when measurements, node architecture,
 and evaluation settings are equivalent. Broader collection does not by itself
 expand the catalog's check coverage.
-The `collect` and `agentkit` packages remain experimental under the current
-[support policy](SUPPORT.md#support-lifecycle).
+The `agentkit` package remains experimental under the current
+[support policy](SUPPORT.md#support-lifecycle); `collect` is covered by it.
 
 ### Extend validated check coverage
 
