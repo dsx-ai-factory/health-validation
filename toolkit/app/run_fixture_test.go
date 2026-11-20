@@ -289,7 +289,14 @@ func fixtureApp(f nodeFixture) *App {
 	a.WithCollect(linkflapsensor.New(journal.New(f.journal(f.linkFlaps)), linkflapsensor.WithLookback(linkFlapLookback)),
 		ibsignals.LinkFlapSignals().IDs()...)
 	a.host = host
-	return a
+	maxSpeedGTs := 32
+	switch {
+	case strings.Contains(f.model, "A100"):
+		maxSpeedGTs = 16
+	case strings.Contains(f.model, "GB200"), strings.Contains(f.model, "GB300"), strings.Contains(f.model, "VR200"):
+		maxSpeedGTs = 64
+	}
+	return withPCI(a, len(f.gpus), maxSpeedGTs)
 }
 
 // runFixture runs the CLI over f and returns its normalized verdict and exit

@@ -83,8 +83,8 @@ const (
 	// link errors, and fabric state.
 	NVLink
 
-	// PCIe covers PCI Express bus health: link width, speed
-	// degradation, and error counters.
+	// PCIe covers PCI Express link capabilities. The registered GPU check
+	// validates maximum width and generation, not negotiated speed or error counters.
 	PCIe
 
 	// InfiniBand covers InfiniBand network health: port state,

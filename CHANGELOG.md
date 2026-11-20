@@ -216,6 +216,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Features
 
+- Add `gpu_pcie_max_link` in the PCIe category, collecting NVIDIA GPU maximum PCIe width and
+  generation from `pci.sysfs` signals `pci.link.width.max` and
+  `pci.link.generation.max`. Consumers replacing these built-in signals use
+  explicit `WithCollect` claims. Explicitly unsupported PCIe registers produce
+  INFO without remediation, including GPU virtual functions identified by
+  `physfn`; missing measurements and read failures report UNKNOWN. PCI-to-GPU
+  joins load the
+  shared inventory even during PCIe-only collection. Width must match exactly;
+  generation must meet or exceed the configured expectation. The check runs in
+  both `OPERATOR_INFRA` and `TENANT_GUEST`. The CLI uses NVML virtualization
+  mode to identify vGPUs without `physfn`, while link values still come from
+  PCI sysfs. Classification failures report UNKNOWN; physical and passed-through
+  GPUs retain normal capability validation. This optional classification does
+  not run during architecture discovery. Exported PCIe signals are
+  `pcie.max_link_width` and `pcie.max_link_generation`; unsupported values use
+  `NoValue` / `NOT_SUPPORTED` and preserve the verdict on replay. GPUs with a
+  UUID but no inventory bus ID receive UNKNOWN rather than being omitted.
+
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.

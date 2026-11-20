@@ -58,7 +58,7 @@ func fixtureCases() []fixtureCase {
 		}
 		return out
 	}
-	return []fixtureCase{
+	cases := []fixtureCase{
 		{name: "healthy GB200", node: healthyGB200(), exit: exitOK},
 		{
 			name: "continuous cadence", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--cadence", "CONTINUOUS"} }), exit: exitOK,
@@ -88,7 +88,7 @@ func fixtureCases() []fixtureCase {
 			{check: "gpu_xid_145", severity: health.Warning, action: health.NoAction, entities: []string{"0000:5f:00"}},
 		}},
 		{name: "Xid 154", node: xid(xid154Line), exit: exitUnhealthy, want: []fixtureResult{
-			{check: "gpu_xid_154", severity: health.Critical, action: resetGPU, entities: []string{"0000:01:00"}},
+			{check: "gpu_xid_154", severity: health.Critical, action: resetGPU, entities: []string{"GPU-0"}},
 		}},
 		{name: "unhealthy GPUs and CPUs", node: unhealthyGB200(), exit: exitUnhealthy, want: slices.Concat(
 			[]fixtureResult{
@@ -122,12 +122,13 @@ func fixtureCases() []fixtureCase {
 			{check: "gpu_count", severity: health.Critical, action: hardware},
 		}},
 	}
+	return cases
 }
 
 var (
 	resetGPU = health.Drain(health.RemediationActionResetGPU, health.RemediationActionServiceRequired)
-	xid48    = fixtureResult{check: "gpu_xid_48", severity: health.Critical, action: resetGPU, entities: []string{"0000:01:00"}}
-	xid79    = fixtureResult{check: "gpu_xid_79", severity: health.Critical, action: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired), entities: []string{"0000:01:00"}}
+	xid48    = fixtureResult{check: "gpu_xid_48", severity: health.Critical, action: resetGPU, entities: []string{"GPU-0"}}
+	xid79    = fixtureResult{check: "gpu_xid_79", severity: health.Critical, action: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired), entities: []string{"GPU-0"}}
 )
 
 // Each fixture node reports exactly its expected non-PASS results, passes

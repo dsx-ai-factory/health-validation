@@ -45,4 +45,8 @@ var stubInventory = gpuinventory.New(func() (gpuinventory.Reader, error) {
 })
 
 func (stubHost) gpuInventory() *gpuinventory.Inventory { return stubInventory }
-func (stubHost) close() error                          { return nil }
+func (stubHost) gpuVirtualization(context.Context, string) (bool, error) {
+	return false, fmt.Errorf("GPU virtualization classification is only available on linux")
+}
+
+func (stubHost) close() error { return nil }

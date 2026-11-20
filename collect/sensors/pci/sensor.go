@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -18,12 +19,31 @@ import (
 
 const ID = pcisource.Name
 
-type sensor struct{ source *pcisource.Source }
+var nextSensorID atomic.Uint64
 
-func New(files fs.FS) collect.Sensor     { return &sensor{source: pcisource.New(files)} }
+type sensor struct {
+	source   *pcisource.Source
+	cycleKey string
+	gpuOnly  bool
+}
+
+func New(files fs.FS) collect.Sensor { return newSensor(files, false) }
+
+// NewGPUs returns a sensor that reads only NVIDIA GPU-class PCI devices.
+func NewGPUs(files fs.FS) collect.Sensor { return newSensor(files, true) }
+
+func newSensor(files fs.FS, gpuOnly bool) *sensor {
+	return &sensor{
+		source:   pcisource.New(files),
+		cycleKey: fmt.Sprintf("%s.%d", ID, nextSensorID.Add(1)),
+		gpuOnly:  gpuOnly,
+	}
+}
+
 func (*sensor) ID() string               { return ID }
 func (*sensor) Signals() collect.Signals { return pcisignals.All() }
 
+// Measure emits selected PCI observations with per-device failures and the cycle timeout.
 func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("collection context is required")
@@ -46,11 +66,15 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		now = cycle.StartedAt()
 	}
 	observedAt := timestamppb.New(now)
+	read := s.source.Read
+	if s.gpuOnly {
+		read = s.source.ReadGPUs
+	}
 	var readings []pcisource.Reading
 	if cycle == nil {
-		readings, err = s.source.Read(ctx, selected)
+		readings, err = read(ctx, selected)
 	} else {
-		readings, err = collect.Run(ctx, cycle, ID, func(ctx context.Context) ([]pcisource.Reading, error) { return s.source.Read(ctx, selected) })
+		readings, err = collect.Run(ctx, cycle, s.cycleKey, func(ctx context.Context) ([]pcisource.Reading, error) { return read(ctx, selected) })
 	}
 	if err != nil {
 		for _, signal := range selected {

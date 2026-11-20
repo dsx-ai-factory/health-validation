@@ -23,6 +23,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
@@ -155,6 +156,7 @@ func roundTripFixture() []health.Measurement {
 			ComputeProcessCount: 1, ComputeProcessCmdlines: "123 'python train.py'",
 		},
 		partialGPU,
+		pcie.PCIeMeasurement{GPUID: "GPU-0", PCIeMaxLinkWidth: 16, PCIeMaxLinkGeneration: 5},
 		gpu.ErroredGPU("gpu", errors.New("nvml device handle failed"), gpu.MeasurementSignals()...),
 		link,
 		cpu.CPUMeasurement{PossibleCPUCount: 64, OnlineCPUCount: 63, NUMANodeCount: 2},
@@ -385,6 +387,79 @@ func TestRoundTripKeepsXidIdentity(t *testing.T) {
 			got, want := verdictSummary(t, "GB200", health.TenantGuest, restored), verdictSummary(t, "GB200", health.TenantGuest, tc.measurements)
 			if !slices.Equal(got, want) {
 				t.Fatalf("verdicts differ:\n got  %v\n want %v", got, want)
+			}
+		})
+	}
+}
+
+// TestPCIeUnsupportedRoundTrip exports NoValue rather than the internal -1
+// marker and restores the same verdict after a serialized observation replay.
+func TestPCIeUnsupportedRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		width, generation int64
+		want              health.Severity
+		failed            bool
+	}{
+		{name: "healthy", width: 16, generation: 5, want: health.Pass},
+		{name: "width unsupported", width: -1, generation: 5, want: health.Info},
+		{name: "generation unsupported", width: 16, generation: -1, want: health.Info},
+		{name: "both unsupported", width: -1, generation: -1, want: health.Info},
+		{name: "width mismatch", width: 8, generation: -1, want: health.Critical},
+		{name: "generation mismatch", width: -1, generation: 4, want: health.Critical},
+		{name: "missing width", generation: -1, want: health.Unknown},
+		{name: "failed generation", width: -1, generation: -1, failed: true, want: health.Unknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := pcie.PCIeMeasurement{GPUID: "GPU-0", PCIeMaxLinkWidth: tc.width, PCIeMaxLinkGeneration: tc.generation}
+			if tc.failed {
+				m.AddError(errors.New("PCI read failed"), pcie.SignalPCIeMaxLinkGeneration)
+			}
+			exported, err := FromMeasurements("pcie", testNode, time.Unix(1, 0), m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := map[string]int64{"pcie.max_link_width": tc.width, "pcie.max_link_generation": tc.generation}
+			seen := make(map[string]bool)
+			for _, o := range exported {
+				if o.SignalId == "pcie.gpu_id" {
+					continue
+				}
+				value, ok := expected[o.SignalId]
+				if !ok || seen[o.SignalId] {
+					t.Fatalf("unexpected exported signal: %s", o.SignalId)
+				}
+				seen[o.SignalId] = true
+				if tc.failed && o.SignalId == "pcie.max_link_generation" {
+					if o.GetCollectionError() == nil || o.GetNoValue() != nil {
+						t.Fatalf("failure lost: %v", o)
+					}
+				} else if value == pcie.UnsupportedLinkValue {
+					if o.GetValue() != nil || o.GetNoValue().GetReason() != observation.NoValueReasonNotSupported {
+						t.Fatalf("unsupported value leaked: %v", o)
+					}
+				} else if o.GetValue() == nil || o.GetValue().GetIntValue() != value {
+					t.Fatalf("value changed: %v", o)
+				}
+			}
+			if len(seen) != 2 {
+				t.Fatalf("missing exported signals: %v", seen)
+			}
+			wire, err := protojson.Marshal(&observation.ObservationBatch{Observations: exported})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var batch observation.ObservationBatch
+			if err := protojson.Unmarshal(wire, &batch); err != nil {
+				t.Fatal(err)
+			}
+			restored := only[pcie.PCIeMeasurement](t, ToMeasurements(batch.Observations))
+			cat := catalog.New(catalog.WithArchitecture("H100"))
+			for _, measurement := range []pcie.PCIeMeasurement{m, restored} {
+				v, err := cat.Evaluate("gpu_pcie_max_link", measurement)
+				if err != nil || v.Skipped || v.Severity != tc.want {
+					t.Fatalf("verdict=%+v err=%v, want %v", v, err, tc.want)
+				}
 			}
 		})
 	}
