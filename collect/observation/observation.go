@@ -334,6 +334,11 @@ func validateTarget(target *ObservationTarget) error {
 		if kind.InfiniBandPort.Device == nil {
 			return fmt.Errorf("target has an incomplete InfiniBand port payload")
 		}
+		// sysfs numbers ports from 1, and a zero port would identify the device
+		// rather than one of its ports.
+		if kind.InfiniBandPort.Port == 0 {
+			return fmt.Errorf("target has an InfiniBand port number of zero")
+		}
 	case *ObservationTarget_KernelRecord:
 		if kind == nil || kind.KernelRecord == nil {
 			return fmt.Errorf("target has an empty kernel record payload")

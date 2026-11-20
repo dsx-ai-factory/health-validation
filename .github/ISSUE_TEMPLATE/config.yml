@@ -3,6 +3,3 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/dsx-ai-factory/health-validation/blob/main/SECURITY.md
     about: Do not report security vulnerabilities here. See SECURITY.md for how to report to NVIDIA PSIRT.
-  - name: Ask a question
-    url: https://github.com/dsx-ai-factory/health-validation/discussions/categories/q-a
-    about: Ask and answer usage questions in GitHub Discussions.

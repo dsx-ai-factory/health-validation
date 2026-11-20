@@ -10,7 +10,7 @@
 | <nobr>`catalog/gpu`</nobr> | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPowerState` check definitions. |
 | <nobr>`catalog/node`</nobr> | `node.NodeMeasurement` struct and the node-level `GPUCount` check definition. |
 | <nobr>`catalog/nvlink`</nobr> | `nvlink.NVLinkMeasurement` struct and its NVLink check definitions (`NVLinkActive`, `NVLinkFabricHealth`, `NVLinkFabric`, `NVLinkBandwidthCountSpeed`, `NVLinkCapabilities`, `NVLinkP2P`). |
-| <nobr>`catalog/infiniband`</nobr> | `infiniband.LinkFlapMeasurement` struct and the `RDMALinkFlapFatal` check definition (category `infiniband`). |
+| <nobr>`catalog/infiniband`</nobr> | `infiniband.LinkFlapMeasurement` (journal link flaps) with the `RDMALinkFlapFatal` check, and `infiniband.PortMeasurement` (one sysfs port) with the `PortState` check; the two types share category `infiniband` with disjoint signals. |
 | <nobr>`catalog/xid`</nobr> | `xid.XidMeasurement` struct and the Xid check factory `xid.Checks()`, which returns one CRITICAL check per critical Xid code, architecture-scoped WARNING checks, the `gpu_xid_154` check, which reports the recovery action Xid 154 last requested for each GPU, `gpu_xid_informational`, which reports the Xid codes NVIDIA's catalog gives no resolution, and `gpu_xid_unknown`, which reports Xid codes no registered check covers. |
 | <nobr>`toolkit`</nobr> | The `Sensor` interface, `Collect()` / `CollectWithOptions()` / `CollectWithContext()`, and the bridge that runs collect sensors and adapts their observations into measurements. |
 | <nobr>`catalog/internal/celeval`</nobr> | Evaluates CEL expressions from check `Rule` definitions against signal values and resolved thresholds. Not a public API. |

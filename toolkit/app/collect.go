@@ -16,11 +16,13 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
+	ibsource "github.com/dsx-ai-factory/health-validation/collect/source/infiniband"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
@@ -182,6 +184,13 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 	sources := slices.Concat(a.host.gpuSensors(), []collect.Sensor{
 		cpusensor.New(nil), inventory.Sensor(), xidsensor.New(nil),
 		linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)),
+		// Port state is checked on RoCE ports and on renamed devices too, so
+		// the stock CLI widens collect's GPUd-parity defaults (InfiniBand-only,
+		// mlx*-named): a DOWN port on rdma0 must not hide behind a healthy
+		// mlx5_0. Devices are selected by PCI vendor rather than name so other
+		// vendors' and software RDMA devices do not fail the check. Signal
+		// narrowing keeps sysfs untouched unless an InfiniBand port check will run.
+		ibsensor.New(ibsource.New(nil, ibsource.WithVendors(ibsource.VendorNVIDIA)), ibsensor.WithLinkLayers("InfiniBand", "Ethernet")),
 	})
 	adapters := []CollectAdapter{
 		powerDrawGate{

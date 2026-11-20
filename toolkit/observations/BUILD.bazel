@@ -41,6 +41,7 @@ go_test(
         "converter_test.go",
         "entity_test.go",
         "export_test.go",
+        "infiniband_test.go",
         "linkflap_test.go",
         "nvlink_test.go",
         "observations_test.go",

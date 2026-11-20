@@ -110,7 +110,7 @@ func runDiscovery(t *testing.T, inst nvmlsource.Instance) (health.NodeVerdict, i
 		t.Fatal(err)
 	}
 	cpuCalls := 0
-	a := withCleanLinkFlap(New().WithProgramName("test"))
+	a := healthyInfiniBand(withCleanLinkFlap(New().WithProgramName("test")))
 	withCleanXid(withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 1, online: 1, numa: 34}))
 	a.host = inventoryHost{
 		fakeHost:  fakeHost{b: spyBackend{called: new(bool)}},

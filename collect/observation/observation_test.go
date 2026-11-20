@@ -120,6 +120,7 @@ func TestValidateObservationTarget(t *testing.T) {
 		{name: "empty InfiniBand port", target: &ObservationTarget{Kind: &ObservationTarget_InfiniBandPort{}}, wantError: "target has an empty InfiniBand port payload"},
 		{name: "nil InfiniBand port", target: &ObservationTarget{Kind: (*ObservationTarget_InfiniBandPort)(nil)}, wantError: "target has an empty InfiniBand port payload"},
 		{name: "missing InfiniBand port device", target: &ObservationTarget{Kind: &ObservationTarget_InfiniBandPort{InfiniBandPort: &InfiniBandPortRef{Port: 1}}}, wantError: "target has an incomplete InfiniBand port payload"},
+		{name: "InfiniBand port zero", target: InfiniBandPortTarget("mlx5_0", 0), wantError: "target has an InfiniBand port number of zero"},
 		{name: "empty kernel record", target: &ObservationTarget{Kind: &ObservationTarget_KernelRecord{}}, wantError: "target has an empty kernel record payload"},
 		{name: "nil kernel record", target: &ObservationTarget{Kind: (*ObservationTarget_KernelRecord)(nil)}, wantError: "target has an empty kernel record payload"},
 		{name: "journal entry", target: JournalEntryTarget("0123abcd", "s=1;i=2")},

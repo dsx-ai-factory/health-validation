@@ -4,7 +4,11 @@
 // Package infiniband defines port signals shared by InfiniBand collectors.
 package infiniband
 
-import "github.com/dsx-ai-factory/health-validation/collect"
+import (
+	"slices"
+
+	"github.com/dsx-ai-factory/health-validation/collect"
+)
 
 // Counter signals are cumulative; consumers compute deltas and handle resets.
 // Rate is link capacity, not measured traffic throughput.
@@ -137,4 +141,16 @@ func All() collect.Signals {
 		HardwareRxReadRequests,
 		HardwareRxWriteRequests,
 	}
+}
+
+// DeviceSignals returns the signals read once per HCA rather than per port.
+func DeviceSignals() collect.Signals {
+	return collect.Signals{FirmwareVersion, BoardID, HCAType}
+}
+
+// PortSignals returns the signals read per port, each targeting an
+// InfiniBand port.
+func PortSignals() collect.Signals {
+	device := DeviceSignals()
+	return slices.DeleteFunc(All(), func(s collect.Signal) bool { return slices.Contains(device, s) })
 }

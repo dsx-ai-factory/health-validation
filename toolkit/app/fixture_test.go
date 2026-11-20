@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"slices"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -78,11 +79,12 @@ func withCleanLinkFlap(a *App) *App {
 	return a.WithCollect(linkFlapAppSensor{calls: &calls, obs: []*observation.Observation{linkFlapAppMarker()}}, ibsignals.LinkFlapSignals().IDs()...)
 }
 
-// baseTestApp runs off the host on fake GPUs and inventory.
+// baseTestApp runs off the host on fake GPUs and inventory, with one healthy
+// InfiniBand port claimed so a run never reads the host's /sys/class/infiniband.
 func baseTestApp() *App {
 	a := New().WithProgramName("test")
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
-	return a
+	return healthyInfiniBand(a)
 }
 
 // testApp runs off the host: fake GPUs and inventory, a healthy CPU, and a
@@ -100,6 +102,54 @@ func builtinLinkFlapApp() *App { return withCleanXid(withCPU(baseTestApp(), heal
 // cadenceRunApp is testApp with a clean Xid scan, so a run touches no host
 // source.
 func cadenceRunApp() *App { return withCleanXid(testApp()) }
+
+// healthyInfiniBand replaces the stock sysfs InfiniBand source with one
+// reporting a single healthy port. Reporting no ports would fail the port
+// check, as it does on a host whose RDMA driver is missing.
+func healthyInfiniBand(a *App) *App {
+	return a.WithCollect(healthyIBSensor{}, healthyIBSensor{}.Signals().IDs()...)
+}
+
+type healthyIBSensor struct{}
+
+func (healthyIBSensor) ID() string { return "test.infiniband" }
+
+// Signals are the port signals the InfiniBand adapter maps.
+func (healthyIBSensor) Signals() collect.Signals {
+	mapped := observations.MappedSignalsFor(health.InfiniBand)
+	return slices.DeleteFunc(ibsignals.PortSignals(), func(s collect.Signal) bool { return !slices.Contains(mapped, s.ID()) })
+}
+
+func (s healthyIBSensor) Measure(_ context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	op := collect.NewOp(opts...)
+	selected, err := op.Signals(s.Signals())
+	if err != nil {
+		return nil, err
+	}
+	values := map[string]*observation.Value{
+		ibsignals.StateName.ID():         {Kind: &observation.Value_StringValue{StringValue: "ACTIVE"}},
+		ibsignals.PhysicalStateName.ID(): {Kind: &observation.Value_StringValue{StringValue: "LinkUp"}},
+		ibsignals.RateGbps.ID():          {Kind: &observation.Value_DoubleValue{DoubleValue: 400}},
+		ibsignals.LinkLayer.ID():         {Kind: &observation.Value_StringValue{StringValue: "InfiniBand"}},
+	}
+	batch := &observation.ObservationBatch{CollectionId: op.Cycle().CollectionID()}
+	now := timestamppb.New(op.Cycle().StartedAt())
+	for _, signal := range selected {
+		value, ok := values[signal.ID()]
+		if !ok {
+			continue
+		}
+		batch.Observations = append(batch.Observations, &observation.Observation{
+			SignalId:   signal.ID(),
+			Unit:       signal.Unit(),
+			Source:     s.ID(),
+			Target:     observation.InfiniBandPortTarget("mlx5_0", 1),
+			ObservedAt: now,
+			Outcome:    &observation.Observation_Value{Value: value},
+		})
+	}
+	return batch, nil
+}
 
 // measurementSensor is a toolkit sensor reporting fixed measurements, or
 // failing with err and reporting errored instead.
