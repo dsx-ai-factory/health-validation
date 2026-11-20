@@ -25,8 +25,8 @@ type FieldValue struct {
 // ReadGPUMetrics reads the requested fields for one GPU in a single DCGM call.
 // It returns field-level failures alongside successful fields so the sensor
 // can emit every available observation from the GPU.
-// A native watch-setup failure permanently disables metrics. If no health systems
-// were registered, it also closes the source.
+// A native watch-setup failure disables metrics and closes a metric-only source, except
+// for confirmed connection loss, which permits recovery in a later cycle.
 func (source *Source) ReadGPUMetrics(
 	ctx context.Context,
 	currentCycle *collect.Cycle,
@@ -54,15 +54,7 @@ func (source *Source) ReadGPUMetrics(
 		return values
 	}
 
-	collected, err := collect.Run(ctx, currentCycle, Name, func(callContext context.Context) (map[string]FieldValue, error) {
-		if err := source.startNativeCall(); err != nil {
-			return nil, err
-		}
-		defer source.finishNativeCall()
-
-		if err := source.ensureInitialized(); err != nil {
-			return nil, err
-		}
+	collected, err := runNative(ctx, currentCycle, source, func(callContext context.Context) (map[string]FieldValue, error) {
 		if err := source.ensureMetricWatch(); err != nil {
 			return nil, err
 		}
@@ -73,14 +65,22 @@ func (source *Source) ReadGPUMetrics(
 			return nil, err
 		}
 
-		return source.native.ReadGPUMetrics(gpuIndex, watched)
+		fields, readErr := source.native.ReadGPUMetrics(gpuIndex, watched)
+		for _, field := range fields {
+			source.recordFieldFailure(currentCycle, field.CollectionError)
+		}
+		return fields, readErr
 	})
 	if err != nil {
 		// One failure message is shared by every watched signal: the content
 		// is identical and observations treat it as read-only.
 		failure := collectionError(err)
 		for _, signalID := range watched {
-			values[signalID] = FieldValue{CollectionError: &failure}
+			if field, exists := collected[signalID]; exists {
+				values[signalID] = field
+			} else {
+				values[signalID] = FieldValue{CollectionError: &failure}
+			}
 		}
 		return values
 	}

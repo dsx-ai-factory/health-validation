@@ -8,12 +8,100 @@ package dcgm
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/collect/signals/dcgmhealth"
 )
+
+type nativeHealthFixture struct {
+	entities        map[godcgm.Field_Entity_Group][]uint
+	discoveryErrors map[godcgm.Field_Entity_Group]error
+	discoveryCalls  map[godcgm.Field_Entity_Group]int
+	failures        map[string]error
+	calls           []string
+	masks           []godcgm.HealthSystem
+	members         []godcgm.GroupEntityPair
+	response        godcgm.HealthResponse
+}
+
+func newNativeHealthFixture() *nativeHealthFixture {
+	return &nativeHealthFixture{
+		entities: map[godcgm.Field_Entity_Group][]uint{
+			godcgm.FE_GPU: {7}, godcgm.FE_SWITCH: {12},
+		},
+		discoveryErrors: make(map[godcgm.Field_Entity_Group]error),
+		discoveryCalls:  make(map[godcgm.Field_Entity_Group]int),
+		failures:        make(map[string]error),
+	}
+}
+
+func (fixture *nativeHealthFixture) call(operation string) error {
+	fixture.calls = append(fixture.calls, operation)
+	return fixture.failures[operation]
+}
+
+func (fixture *nativeHealthFixture) count(operation string) int {
+	var count int
+	for _, call := range fixture.calls {
+		if call == operation {
+			count++
+		}
+	}
+	return count
+}
+
+func (fixture *nativeHealthFixture) operations() healthWatchOperations {
+	return healthWatchOperations{
+		entities: func(kind godcgm.Field_Entity_Group) ([]uint, error) {
+			fixture.discoveryCalls[kind]++
+			if err := fixture.call("entities"); err != nil {
+				return nil, err
+			}
+			return slices.Clone(fixture.entities[kind]), fixture.discoveryErrors[kind]
+		},
+		create: func(string) (godcgm.GroupHandle, error) {
+			var group godcgm.GroupHandle
+			if err := fixture.call("create"); err != nil {
+				return group, err
+			}
+			group.SetHandle(uintptr(fixture.count("create")))
+			fixture.members = nil
+			return group, nil
+		},
+		add: func(_ godcgm.GroupHandle, kind godcgm.Field_Entity_Group, id uint) error {
+			if err := fixture.call("add"); err != nil {
+				return err
+			}
+			fixture.members = append(fixture.members, godcgm.GroupEntityPair{EntityGroupId: kind, EntityId: id})
+			return nil
+		},
+		set: func(_ godcgm.GroupHandle, systems godcgm.HealthSystem) error {
+			fixture.masks = append(fixture.masks, systems)
+			return fixture.call("set")
+		},
+		info: func(godcgm.GroupHandle) (*godcgm.GroupInfo, error) {
+			if err := fixture.call("info"); err != nil {
+				return nil, err
+			}
+			return &godcgm.GroupInfo{EntityList: slices.Clone(fixture.members)}, nil
+		},
+		check: func(godcgm.GroupHandle) (godcgm.HealthResponse, error) {
+			return fixture.response, fixture.call("check")
+		},
+		destroy: func(godcgm.GroupHandle) error {
+			if err := fixture.call("destroy"); err != nil {
+				return err
+			}
+			fixture.members = nil
+			return nil
+		},
+	}
+}
 
 func TestHealthSystemMasksMatchNative(t *testing.T) {
 	for _, pair := range []struct {
@@ -49,14 +137,18 @@ func TestNativeHealthStatusConversion(t *testing.T) {
 		{name: "unknown negative", native: godcgm.HealthResult(^uint(0)), portable: -1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			watch := &nativeHealthWatch{owned: true, ops: healthWatchOperations{
-				info: func(godcgm.GroupHandle) (*godcgm.GroupInfo, error) {
-					return &godcgm.GroupInfo{EntityList: []godcgm.GroupEntityPair{{EntityGroupId: godcgm.FE_GPU}}}, nil
+			watch := &nativeHealthWatch{
+				owned: true, configured: true, systems: dcgmhealth.SystemMemory, configuredSystems: dcgmhealth.SystemMemory,
+				targets: map[godcgm.Field_Entity_Group][]uint{godcgm.FE_GPU: {0}},
+				ops: healthWatchOperations{
+					info: func(godcgm.GroupHandle) (*godcgm.GroupInfo, error) {
+						return &godcgm.GroupInfo{EntityList: []godcgm.GroupEntityPair{{EntityGroupId: godcgm.FE_GPU}}}, nil
+					},
+					check: func(godcgm.GroupHandle) (godcgm.HealthResponse, error) {
+						return godcgm.HealthResponse{OverallHealth: test.native, Incidents: []godcgm.Incident{{Health: test.native}}}, nil
+					},
 				},
-				check: func(godcgm.GroupHandle) (godcgm.HealthResponse, error) {
-					return godcgm.HealthResponse{OverallHealth: test.native, Incidents: []godcgm.Incident{{Health: test.native}}}, nil
-				},
-			}}
+			}
 			report, err := watch.Read()
 			if err != nil || report.NativeGroupOverallHealth == nil || report.GetNativeGroupOverallHealth() != test.portable ||
 				len(report.Incidents) != 1 || report.Incidents[0].GetNativeHealth() != test.portable {
@@ -80,6 +172,7 @@ func TestNativeHealthSelectsEntitiesAndEnablesConfiguredUnion(t *testing.T) {
 			var kinds []godcgm.Field_Entity_Group
 			var added []godcgm.GroupEntityPair
 			var configured godcgm.HealthSystem
+			var setCalls int
 			var group godcgm.GroupHandle
 			group.SetHandle(42)
 			watch, err := startHealthWatch("owned-health", test.mask, healthWatchOperations{
@@ -105,7 +198,14 @@ func TestNativeHealthSelectsEntitiesAndEnablesConfiguredUnion(t *testing.T) {
 						t.Fatalf("configure unexpected group = %v", handle)
 					}
 					configured = systems
+					setCalls++
 					return nil
+				},
+				info: func(godcgm.GroupHandle) (*godcgm.GroupInfo, error) {
+					return &godcgm.GroupInfo{EntityList: slices.Clone(added)}, nil
+				},
+				check: func(godcgm.GroupHandle) (godcgm.HealthResponse, error) {
+					return godcgm.HealthResponse{}, nil
 				},
 				destroy: func(godcgm.GroupHandle) error { return nil },
 			})
@@ -113,7 +213,15 @@ func TestNativeHealthSelectsEntitiesAndEnablesConfiguredUnion(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer watch.Close()
-			if !reflect.DeepEqual(kinds, test.kinds) || uint64(configured) != test.mask || len(added) != len(test.kinds) {
+			if len(kinds) != 0 || len(added) != 0 || setCalls != 0 {
+				t.Fatal("constructing a health watch performed native setup")
+			}
+			for range 2 {
+				if _, err := watch.Read(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !reflect.DeepEqual(kinds, test.kinds) || uint64(configured) != test.mask || setCalls != 1 || len(added) != len(test.kinds) {
 				t.Fatalf("enumerated=%v added=%v configured=%#x", kinds, added, configured)
 			}
 			for i, kind := range test.kinds {
@@ -155,8 +263,16 @@ func TestNativeHealthRollbackAttemptsOwnedGroupOnce(t *testing.T) {
 				},
 			}
 			watch, err := startHealthWatch("test-health", dcgmhealth.SystemPCIe, ops)
-			if watch != nil || !errors.Is(err, setupErr) || !errors.Is(err, cleanupErr) {
-				t.Fatalf("setup returned watch=%v err=%v", watch, err)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer watch.Close()
+			if len(calls) != 0 {
+				t.Fatalf("watch construction performed native calls: %v", calls)
+			}
+			report, err := watch.Read()
+			if report != nil || !errors.Is(err, setupErr) || !errors.Is(err, cleanupErr) {
+				t.Fatalf("setup returned report=%v err=%v", report, err)
 			}
 			want := []string{"create", "add", "destroy"}
 			if failAt == "set" {
@@ -181,7 +297,8 @@ func TestNativeHealthNoTargetsDoesNotReportPassOrCreateGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err := watch.Read()
-	if err != nil || report.NativeGroupOverallHealth != nil || report.GroupId != nil || len(report.Entities) != 0 {
+	if err != nil || report.NativeGroupOverallHealth != nil || report.GroupId != nil || report.MonitoredSince != nil ||
+		len(report.Entities) != 0 || report.GetSystemsWithoutTargets() != dcgmhealth.KnownSystems || len(report.GetSystemErrors()) != 0 {
 		t.Fatalf("no-target report=%v err=%v", report, err)
 	}
 	if !reflect.DeepEqual(kinds, []godcgm.Field_Entity_Group{godcgm.FE_GPU, godcgm.FE_SWITCH}) {
@@ -192,12 +309,289 @@ func TestNativeHealthNoTargetsDoesNotReportPassOrCreateGroup(t *testing.T) {
 	}
 }
 
+func TestNativeHealthSetupFailuresRetryOnNextRead(t *testing.T) {
+	for _, operation := range []string{"entities", "create", "add", "set"} {
+		t.Run(operation, func(t *testing.T) {
+			fixture := newNativeHealthFixture()
+			failure := &godcgm.Error{Code: godcgm.DCGM_ST_NO_DATA}
+			fixture.failures[operation] = failure
+			watch, err := startHealthWatch("retry-setup", dcgmhealth.SystemMemory, fixture.operations())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer watch.Close()
+			if report, err := watch.Read(); report != nil || !errors.Is(err, failure) {
+				t.Fatalf("setup failure returned report=%v err=%v", report, err)
+			} else if detail := collectionError(err); detail.SourceError != "DCGM_ST_NO_DATA" {
+				t.Fatalf("setup failure lost native status: %v", &detail)
+			}
+			if fixture.count(operation) != 1 {
+				t.Fatalf("failed setup retried within one read: %v", fixture.calls)
+			}
+			wantRollback := 0
+			if operation == "add" || operation == "set" {
+				wantRollback = 1
+			}
+			if fixture.count("destroy") != wantRollback {
+				t.Fatalf("setup cleanup calls=%v", fixture.calls)
+			}
+			delete(fixture.failures, operation)
+			for range 2 {
+				report, err := watch.Read()
+				if err != nil || report.GetNativeGroupOverallHealth() != observation.DCGMHealthResultPass ||
+					report.NativeGroupOverallHealth == nil || report.MonitoredSince == nil || len(report.Entities) != 1 {
+					t.Fatalf("setup did not recover: report=%v err=%v", report, err)
+				}
+			}
+			if fixture.count(operation) != 2 || fixture.count("check") != 2 || fixture.count("destroy") != wantRollback {
+				t.Fatalf("successful setup was repeated: %v", fixture.calls)
+			}
+		})
+	}
+}
+
+func TestNativeHealthFailedRollbackRetainsGroupUntilDestructionSucceeds(t *testing.T) {
+	for _, operation := range []string{"add", "set"} {
+		t.Run(operation, func(t *testing.T) {
+			fixture := newNativeHealthFixture()
+			setupErr := &godcgm.Error{Code: godcgm.DCGM_ST_NO_DATA}
+			cleanupErr := &godcgm.Error{Code: godcgm.DCGM_ST_NO_PERMISSION}
+			fixture.failures[operation], fixture.failures["destroy"] = setupErr, cleanupErr
+			watch, err := startHealthWatch("retry-rollback", dcgmhealth.SystemMemory, fixture.operations())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer watch.Close()
+			if report, readErr := watch.Read(); report != nil || !errors.Is(readErr, setupErr) || !errors.Is(readErr, cleanupErr) {
+				t.Fatalf("setup lost joined failures: report=%v err=%v", report, readErr)
+			}
+			native := watch.(*nativeHealthWatch)
+			if !native.owned || native.configured || !native.monitoredSince.IsZero() || fixture.count("destroy") != 1 {
+				t.Fatalf("failed rollback lost group ownership: watch=%+v calls=%v", native, fixture.calls)
+			}
+			previousCalls := len(fixture.calls)
+			delete(fixture.failures, operation)
+			if report, readErr := watch.Read(); report != nil || !errors.Is(readErr, cleanupErr) {
+				t.Fatalf("pending rollback failure: report=%v err=%v", report, readErr)
+			}
+			if !slices.Equal(fixture.calls[previousCalls:], []string{"destroy"}) {
+				t.Fatalf("setup restarted before cleanup succeeded: %v", fixture.calls)
+			}
+			delete(fixture.failures, "destroy")
+			report, err := watch.Read()
+			if err != nil || report.GetGroupId() != 2 || !native.owned || !native.configured || fixture.count("destroy") != 3 || fixture.count("create") != 2 {
+				t.Fatalf("pending rollback did not recover: report=%v err=%v calls=%v", report, err, fixture.calls)
+			}
+		})
+	}
+}
+
+func TestNativeHealthPartialDiscoveryRecoversWithoutReconfiguringKnownTargets(t *testing.T) {
+	fixture := newNativeHealthFixture()
+	fixture.discoveryErrors[godcgm.FE_SWITCH] = &godcgm.Error{Code: godcgm.DCGM_ST_NOT_SUPPORTED}
+	const gpuSystems = dcgmhealth.SystemMemory | dcgmhealth.SystemPCIe
+	const requested = gpuSystems | dcgmhealth.NVSwitchSystems
+	watch, err := startHealthWatch("partial-discovery", requested, fixture.operations())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watch.Close()
+	first, err := watch.Read()
+	if err != nil || len(first.GetEntities()) != 1 || len(first.GetSystemErrors()) != 2 ||
+		first.GetRequestedSystems() != requested || first.GetSystemsWithoutTargets() != 0 || first.NativeGroupOverallHealth == nil {
+		t.Fatalf("partial discovery report=%v err=%v", first, err)
+	}
+	for _, system := range []uint64{dcgmhealth.SystemNVSwitchFatal, dcgmhealth.SystemNVSwitchNonfatal} {
+		failure := first.GetSystemErrors()[system]
+		if failure.GetSource() != Name || failure.GetOperation() != "health discovery" ||
+			failure.GetSourceError() != "DCGM_ST_NOT_SUPPORTED" || failure.GetCategory() != observation.CollectionErrorCategoryUnsupported {
+			t.Fatalf("discovery error for system %#x = %v", system, failure)
+		}
+	}
+	if _, err := watch.Read(); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.discoveryCalls[godcgm.FE_GPU] != 1 || fixture.discoveryCalls[godcgm.FE_SWITCH] != 2 || fixture.count("set") != 1 {
+		t.Fatalf("known targets were rediscovered or reconfigured: %+v calls=%v", fixture.discoveryCalls, fixture.calls)
+	}
+	delete(fixture.discoveryErrors, godcgm.FE_SWITCH)
+	for range 2 {
+		report, err := watch.Read()
+		if err != nil || len(report.GetEntities()) != 2 || len(report.GetSystemErrors()) != 0 || report.GetSystemsWithoutTargets() != 0 ||
+			report.GetGroupId() != first.GetGroupId() || !report.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) {
+			t.Fatalf("discovery recovery report=%v err=%v", report, err)
+		}
+	}
+	if fixture.discoveryCalls[godcgm.FE_GPU] != 1 || fixture.discoveryCalls[godcgm.FE_SWITCH] != 3 || fixture.count("create") != 1 ||
+		fixture.count("add") != 2 || !slices.Equal(fixture.masks, []godcgm.HealthSystem{godcgm.HealthSystem(gpuSystems), godcgm.HealthSystem(requested)}) || len(first.GetSystemErrors()) != 2 {
+		t.Fatalf("discovery recovery repeated setup or changed earlier report: calls=%v masks=%v", fixture.calls, fixture.masks)
+	}
+}
+
+func TestNativeHealthRetriesKnownEmptyEntityKinds(t *testing.T) {
+	fixture := newNativeHealthFixture()
+	fixture.entities[godcgm.FE_SWITCH] = nil
+	const requested = dcgmhealth.SystemMemory | dcgmhealth.NVSwitchSystems
+	watch, err := startHealthWatch("empty-kind", requested, fixture.operations())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watch.Close()
+	var groupID uint64
+	for range 2 {
+		report, readErr := watch.Read()
+		if readErr != nil || report.GetSystemsWithoutTargets() != dcgmhealth.NVSwitchSystems || len(report.GetSystemErrors()) != 0 || len(report.GetEntities()) != 1 {
+			t.Fatalf("known empty kind report=%v err=%v", report, readErr)
+		}
+		groupID = report.GetGroupId()
+	}
+	if fixture.count("set") != 1 || fixture.discoveryCalls[godcgm.FE_GPU] != 1 || fixture.discoveryCalls[godcgm.FE_SWITCH] != 2 {
+		t.Fatalf("empty discovery reconfigured known targets: calls=%v", fixture.calls)
+	}
+	fixture.entities[godcgm.FE_SWITCH] = []uint{12}
+	report, err := watch.Read()
+	if err != nil || report.GetSystemsWithoutTargets() != 0 || len(report.GetEntities()) != 2 || report.GetGroupId() != groupID || fixture.count("set") != 2 {
+		t.Fatalf("new targets were not configured: report=%v err=%v calls=%v", report, err, fixture.calls)
+	}
+}
+
+func TestNativeHealthDiscoveryErrorsAreNotMissingTargets(t *testing.T) {
+	for _, allErrors := range []bool{false, true} {
+		t.Run(map[bool]string{false: "known empty GPU and failed switches", true: "all kinds fail"}[allErrors], func(t *testing.T) {
+			fixture := newNativeHealthFixture()
+			gpuErr, switchErr := errors.New("GPU discovery failed"), errors.New("switch discovery failed")
+			fixture.entities[godcgm.FE_GPU] = nil
+			fixture.discoveryErrors[godcgm.FE_SWITCH] = switchErr
+			if allErrors {
+				fixture.discoveryErrors[godcgm.FE_GPU] = gpuErr
+			}
+			const requested = dcgmhealth.SystemMemory | dcgmhealth.NVSwitchSystems
+			watch, err := startHealthWatch("discovery-errors", requested, fixture.operations())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer watch.Close()
+			report, err := watch.Read()
+			if allErrors {
+				if report != nil || !errors.Is(err, gpuErr) || !errors.Is(err, switchErr) {
+					t.Fatalf("all discovery errors: report=%v err=%v", report, err)
+				}
+			} else if err != nil || report.GetSystemsWithoutTargets() != dcgmhealth.SystemMemory || len(report.GetSystemErrors()) != 2 ||
+				report.GroupId != nil || report.NativeGroupOverallHealth != nil || report.MonitoredSince != nil {
+				t.Fatalf("mixed empty and failed discovery: report=%v err=%v", report, err)
+			}
+			if fixture.count("create") != 0 || fixture.count("check") != 0 {
+				t.Fatalf("failed discovery created a native group: %v", fixture.calls)
+			}
+		})
+	}
+}
+
+func TestNativeHealthConnectionFailureIsNotPartialDiscovery(t *testing.T) {
+	fixture := newNativeHealthFixture()
+	fixture.discoveryErrors[godcgm.FE_SWITCH] = &godcgm.Error{Code: godcgm.DCGM_ST_CONNECTION_NOT_VALID}
+	watch, err := startHealthWatch("connection-failure", dcgmhealth.KnownSystems, fixture.operations())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watch.Close()
+	if report, err := watch.Read(); report != nil || !errors.Is(err, errConnectionNotValid) {
+		t.Fatalf("connection failure returned partial findings: report=%v err=%v", report, err)
+	}
+	if fixture.count("create") != 0 || fixture.count("check") != 0 {
+		t.Fatalf("connection failure continued native setup: %v", fixture.calls)
+	}
+}
+
+func TestNativeHealthReconfigurationFailureRebuildsGroup(t *testing.T) {
+	for _, operation := range []string{"add", "set"} {
+		t.Run(operation, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				fixture := newNativeHealthFixture()
+				fixture.entities[godcgm.FE_SWITCH] = nil
+				watch, err := startHealthWatch("reconfigure", dcgmhealth.KnownSystems, fixture.operations())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer watch.Close()
+				first, err := watch.Read()
+				if err != nil {
+					t.Fatal(err)
+				}
+				time.Sleep(time.Second)
+				fixture.entities[godcgm.FE_SWITCH] = []uint{12}
+				failure := &godcgm.Error{Code: godcgm.DCGM_ST_NO_DATA}
+				fixture.failures[operation] = failure
+				if report, readErr := watch.Read(); report != nil || !errors.Is(readErr, failure) {
+					t.Fatalf("reconfiguration failure: report=%v err=%v", report, readErr)
+				}
+				if fixture.count("destroy") != 1 || fixture.count("create") != 1 || watch.(*nativeHealthWatch).owned {
+					t.Fatalf("failed reconfiguration retained a usable group: %v", fixture.calls)
+				}
+				delete(fixture.failures, operation)
+				time.Sleep(time.Second)
+				report, err := watch.Read()
+				if err != nil || report.GetGroupId() == first.GetGroupId() || len(report.GetEntities()) != 2 || len(report.GetSystemErrors()) != 0 ||
+					report.GetSystemsWithoutTargets() != 0 || !report.GetMonitoredSince().AsTime().After(first.GetMonitoredSince().AsTime()) {
+					t.Fatalf("group was not rebuilt: report=%v err=%v", report, err)
+				}
+				if fixture.count("create") != 2 || fixture.discoveryCalls[godcgm.FE_GPU] != 2 {
+					t.Fatalf("rebuild reused stale setup: calls=%v discoveries=%v", fixture.calls, fixture.discoveryCalls)
+				}
+			})
+		})
+	}
+}
+
+func TestNativeHealthQueryFailureKeepsConfiguredGroup(t *testing.T) {
+	for _, operation := range []string{"info", "check"} {
+		t.Run(operation, func(t *testing.T) {
+			fixture := newNativeHealthFixture()
+			failure := &godcgm.Error{Code: godcgm.DCGM_ST_NO_DATA}
+			fixture.failures[operation] = failure
+			watch, err := startHealthWatch("query-failure", dcgmhealth.SystemMemory, fixture.operations())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer watch.Close()
+			if report, readErr := watch.Read(); report != nil || !errors.Is(readErr, failure) {
+				t.Fatalf("query failure: report=%v err=%v", report, readErr)
+			}
+			native := watch.(*nativeHealthWatch)
+			monitoredSince := native.monitoredSince
+			delete(fixture.failures, operation)
+			report, err := watch.Read()
+			if err != nil || report.GetGroupId() != uint64(native.group.GetHandle()) || !report.GetMonitoredSince().AsTime().Equal(monitoredSince) ||
+				fixture.count("create") != 1 || fixture.count("set") != 1 || fixture.count("destroy") != 0 || fixture.discoveryCalls[godcgm.FE_GPU] != 1 {
+				t.Fatalf("query failure rebuilt the group: report=%v err=%v calls=%v", report, err, fixture.calls)
+			}
+		})
+	}
+}
+
+func TestNativeHealthReportMarksIncidentCapacity(t *testing.T) {
+	for _, count := range []int{maxNativeHealthIncidents - 1, maxNativeHealthIncidents} {
+		fixture := newNativeHealthFixture()
+		fixture.response.Incidents = make([]godcgm.Incident, count)
+		watch, err := startHealthWatch("incident-capacity", dcgmhealth.SystemMemory, fixture.operations())
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := watch.Read()
+		closeErr := watch.Close()
+		if err != nil || closeErr != nil || len(report.GetIncidents()) != count || report.GetPossiblyTruncated() != (count == maxNativeHealthIncidents) {
+			t.Fatalf("incident count %d: report=%v err=%v close=%v", count, report, err, closeErr)
+		}
+	}
+}
+
 func TestNativeHealthPreservesUnknownIncidentsAndEntityIDs(t *testing.T) {
 	var calls []string
 	var group godcgm.GroupHandle
 	group.SetHandle(42)
 	watch := &nativeHealthWatch{
-		group: group, systems: dcgmhealth.SystemMemory, owned: true,
+		group: group, systems: dcgmhealth.SystemMemory, owned: true, configured: true, configuredSystems: dcgmhealth.SystemMemory,
+		targets: map[godcgm.Field_Entity_Group][]uint{godcgm.FE_GPU: {0}},
 		ops: healthWatchOperations{
 			info: func(godcgm.GroupHandle) (*godcgm.GroupInfo, error) {
 				return &godcgm.GroupInfo{EntityList: []godcgm.GroupEntityPair{

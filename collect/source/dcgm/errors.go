@@ -11,6 +11,10 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
+const connectionNotValidStatus = "DCGM_ST_CONNECTION_NOT_VALID"
+
+var errConnectionNotValid = errors.New("DCGM connection is invalid")
+
 // dcgmError carries source-specific details through collect.Run. It is used for
 // failures of an entire operation, not individual fields.
 type dcgmError struct {
@@ -18,6 +22,11 @@ type dcgmError struct {
 	sourceError string
 	detail      string
 	category    observation.CollectionErrorCategory
+}
+
+// Is identifies connection loss through wrapped or joined native failures.
+func (failure *dcgmError) Is(target error) bool {
+	return failure != nil && target == errConnectionNotValid && failure.sourceError == connectionNotValidStatus
 }
 
 func (failure *dcgmError) Unwrap() error {

@@ -57,12 +57,15 @@ func (*fakeNative) MetricWatchGroups(signalIDs []string) ([]metricWatchGroup, er
 	return []metricWatchGroup{{fieldIDs: []uint16{1}}}, nil
 }
 
-func (native *fakeNative) Init() (func(), error) {
+func (native *fakeNative) Init() (func() error, error) {
 	native.initCalls.Add(1)
 	if native.initErr != nil {
 		return nil, native.initErr
 	}
-	return func() { native.cleanupCalls.Add(1) }, nil
+	return func() error {
+		native.cleanupCalls.Add(1)
+		return nil
+	}, nil
 }
 
 func (native *fakeNative) AllGPUIndices() ([]uint, error) {
@@ -108,11 +111,8 @@ func (native *fakeNative) ReadGPUInventory(gpuIndices []uint) (map[uint]*observa
 		close(native.inventoryStarted)
 		<-native.releaseRead
 	}
-	if native.inventoryErr != nil {
-		return nil, native.inventoryErr
-	}
-	if native.inventoryEntries != nil {
-		return native.inventoryEntries, nil
+	if native.inventoryEntries != nil || native.inventoryErr != nil {
+		return native.inventoryEntries, native.inventoryErr
 	}
 	gpus := make(map[uint]*observation.GPUInventoryEntry, len(gpuIndices))
 	for _, gpuIndex := range gpuIndices {
@@ -592,6 +592,85 @@ func TestInventoryReportsQueryFailure(t *testing.T) {
 	}
 	if native.enumerationCalls.Load() != 1 || native.uuidCalls.Load() != 1 || entries[0].GetGpu().GetUuid() != "GPU-2" || entries[1].GetGpu().GetUuid() != "GPU-7" {
 		t.Fatalf("inventory did not preserve original identities: %+v", entries)
+	}
+}
+
+func TestInventoryPreservesPartialDataOnConnectionLoss(t *testing.T) {
+	for _, status := range []string{"DcgmEntityStatusLost", "DcgmEntityStatusUnsupported"} {
+		t.Run(status, func(t *testing.T) {
+			model, serial := "H100", "serial-7"
+			entityFailure := &observation.CollectionError{
+				Source: Name, Operation: "inventory", SourceError: status,
+				Category: observation.CollectionErrorCategoryUnavailable,
+			}
+			if status == "DcgmEntityStatusUnsupported" {
+				entityFailure.Category = observation.CollectionErrorCategoryUnsupported
+			}
+			serialFailure := &observation.CollectionError{
+				Source: Name, Operation: "inventory", SourceError: "DCGM_ST_NOT_SUPPORTED",
+				Category: observation.CollectionErrorCategoryUnsupported,
+			}
+			busFailure := &observation.CollectionError{
+				Source: Name, Operation: "inventory", SourceError: "DCGM_ST_NO_PERMISSION",
+				Category: observation.CollectionErrorCategoryPermissionDenied,
+			}
+			native := &fakeNative{
+				inventoryErr: connectionLoss(),
+				inventoryEntries: map[uint]*observation.GPUInventoryEntry{
+					2: {
+						Gpu: &observation.GPUDevice{Model: &model}, CollectionError: entityFailure,
+						FieldErrors: map[string]*observation.CollectionError{"serial": serialFailure, "bus_id": busFailure},
+					},
+					7: {Gpu: &observation.GPUDevice{Serial: &serial}},
+				},
+			}
+			source := newSource(native, &sync.Mutex{})
+			t.Cleanup(func() { _ = source.Close() })
+			cycle := newTestCycle(t, "partial-inventory")
+			identities := []GPUIdentityEntry{{Index: 2, UUID: "GPU-2"}, {Index: 7, UUID: "GPU-7"}}
+			snapshot := source.GPUInventory(context.Background(), cycle, identities)
+			entries := snapshot.GetInventory().GetEntries()
+			if len(entries) != len(identities) {
+				t.Fatalf("membership discarded: %v", snapshot)
+			}
+			for position, entry := range entries {
+				identity := identities[position]
+				if entry.GetSourceIndex() != uint32(identity.Index) || entry.GetGpu().GetUuid() != identity.UUID {
+					t.Fatalf("partial data lost its identity: %v", entry)
+				}
+			}
+			if entries[0].GetCollectionError().GetSourceError() != status || entries[0].GetCollectionError().GetCategory() != entityFailure.Category || entries[0].GetGpu().GetModel() != model {
+				t.Fatalf("entity status or partial attributes overwritten: %v", entries[0])
+			}
+			if failures := entries[0].GetFieldErrors(); len(failures) != 2 || failures["serial"].GetSourceError() != serialFailure.SourceError || failures["bus_id"].GetSourceError() != busFailure.SourceError {
+				t.Fatalf("specific field errors changed or query failure repeated: %v", entries[0])
+			}
+			if entries[1].GetCollectionError().GetSourceError() != connectionNotValidStatus || entries[1].GetGpu().GetSerial() != serial || len(entries[1].GetFieldErrors()) != 0 {
+				t.Fatalf("partial attributes discarded after query failure: %v", entries[1])
+			}
+			if err := observation.ValidateBatch(&observation.ObservationBatch{Inventory: &observation.HardwareInventory{
+				GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot},
+			}}); err != nil {
+				t.Fatalf("partial inventory is invalid: %v", err)
+			}
+			if _, failure := source.GPUIndices(context.Background(), cycle); failure.GetSourceError() != connectionNotValidStatus {
+				t.Fatalf("inventory failure did not invalidate the session: %v", failure)
+			}
+			if native.initCalls.Load() != 1 || native.cleanupCalls.Load() != 0 || native.enumerationCalls.Load() != 0 {
+				t.Fatal("failing collection reset or reused its session")
+			}
+			native.inventoryErr = nil
+			native.inventoryEntries = nil
+			recovered := source.GPUInventory(context.Background(), newTestCycle(t, "recovered-inventory"), identities)
+			for _, entry := range recovered.GetInventory().GetEntries() {
+				if entry.GetCollectionError() != nil || len(entry.GetFieldErrors()) != 0 {
+					t.Fatalf("inventory did not recover: %v", recovered)
+				}
+			}
+			if native.initCalls.Load() != 2 || native.cleanupCalls.Load() != 1 || native.inventoryCalls.Load() != 2 {
+				t.Fatal("next collection did not replace the failed session exactly once")
+			}
+		})
 	}
 }
 

@@ -7,15 +7,37 @@
 // (embedded); a process uses one mode.
 //
 // Keep one Source open for the process lifetime. Register all required metric
-// signals and health systems before collection starts, then read repeatedly and Close
-// when finished. Native initialization and watches remain lazy. Health setup
-// and metric setup have independent failure state within the same client
-// lifetime; native calls, timeouts, and connection failures remain shared.
+// signals and health systems before the first metric or health read. Inventory
+// reads leave registration open. Then read repeatedly and Close when finished.
+// Native initialization and watches remain lazy. Health and metric setup have
+// independent failure state within the same client lifetime; native calls,
+// timeouts, and connection failures remain shared.
+// Metric field groups are prepared only when metrics are read. Field-mapping
+// errors leave inventory and health collection available.
 // Requested health systems may have no targets when hardware is discovered;
 // reports list those systems separately in SystemsWithoutTargets.
 //
+// A failed client initialization is shared by subsequent DCGM calls in the
+// same cycle. The next cycle may try initialization again without closing the
+// Source or changing its registrations.
+//
+// Runtime health setup failures retry on the next read. Unfinished group cleanup
+// retains ownership and must succeed before replacement allocation. Discovery
+// failures for one entity kind can accompany findings from available systems
+// in SystemErrors; an error does not establish that targets are absent.
+// Adding group members or enabling systems affects the shared health group;
+// failure rolls back the group and returns an error for that read.
+//
+// Confirmed connection loss returns an error in the failing collection and
+// replaces the client and both watches lazily in a later cycle. A timed-out
+// native call must finish before recovery can enter DCGM. Recovery requires
+// this Source to be the process's sole go-dcgm owner: another outstanding Init
+// reference keeps the wrapper's old shared connection alive.
+//
 // ReadHealth performs a fresh read on each call. When health is selected,
 // sensors call it once per measurement. CheckId is the collection ID.
+// PossiblyTruncated marks a report that reaches the native incident limit;
+// absent incidents cannot establish that omitted faults have cleared.
 //
 // GPUIndices and GPUUUIDs separate device discovery from optional UUID lookup;
 // GPUIdentities retains their combined convenience flow. UUIDs identify GPUs
@@ -27,9 +49,9 @@
 // can enforce different effective settings. These defaults do not establish
 // complete history for every health rule, including a memory rule that uses a
 // week-old baseline. ReadHealth returns successful native reports immediately.
-// MonitoredSince records when this Source enabled health monitoring; elapsed
-// time does not establish native coverage. Consumers choose any startup grace
-// period.
+// MonitoredSince records the group's first successful health setup. Systems
+// enabled later can have less history. Elapsed time does not establish native
+// coverage. Consumers choose any startup grace period.
 //
 // WatchPolicy controls this client's metric sampling requests, not a node-wide
 // rate limit. DCGM shares its cache per entity and field across clients and

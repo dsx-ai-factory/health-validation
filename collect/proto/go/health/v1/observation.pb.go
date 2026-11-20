@@ -2219,7 +2219,7 @@ func (*Value_UintValue) isValue_Kind() {}
 
 func (*Value_DcgmHealthReport) isValue_Kind() {}
 
-// DcgmHealthReport preserves one complete Source health read.
+// DcgmHealthReport preserves one Source health read and its coverage limitations.
 // An empty incident list means only that no incidents were reported.
 type DcgmHealthReport struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2229,19 +2229,28 @@ type DcgmHealthReport struct {
 	// Absent when no native group was created.
 	GroupId  *uint64              `protobuf:"varint,3,opt,name=group_id,json=groupId,proto3,oneof" json:"group_id,omitempty"`
 	Entities []*ObservationTarget `protobuf:"bytes,4,rep,name=entities,proto3" json:"entities,omitempty"`
-	// The result returned by the native group check.
+	// The result returned for the native group's enabled systems. System errors
+	// and systems without targets limit coverage of the requested systems.
 	// Absent when no native check was performed; unknown numbers are preserved.
 	NativeGroupOverallHealth *DcgmHealthReport_HealthResult `protobuf:"varint,5,opt,name=native_group_overall_health,json=nativeGroupOverallHealth,proto3,enum=health.v1.DcgmHealthReport_HealthResult,oneof" json:"native_group_overall_health,omitempty"`
 	Incidents                []*DcgmHealthIncident          `protobuf:"bytes,6,rep,name=incidents,proto3" json:"incidents,omitempty"`
-	MonitoredSince           *timestamppb.Timestamp         `protobuf:"bytes,7,opt,name=monitored_since,json=monitoredSince,proto3" json:"monitored_since,omitempty"`
+	// First successful health setup for this group. Systems enabled later may
+	// have less history; this timestamp does not establish sample coverage.
+	MonitoredSince *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=monitored_since,json=monitoredSince,proto3" json:"monitored_since,omitempty"`
 	// Identifies this source read.
 	CheckId string `protobuf:"bytes,8,opt,name=check_id,json=checkId,proto3" json:"check_id,omitempty"`
 	// Requested systems with no relevant GPU or NVSwitch members.
 	// Unrequested systems are excluded. This does not describe native support
 	// or sample coverage.
 	SystemsWithoutTargets uint64 `protobuf:"varint,10,opt,name=systems_without_targets,json=systemsWithoutTargets,proto3" json:"systems_without_targets,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// Discovery failures keyed by one requested subsystem bit each.
+	// A failed system is unavailable; it is not a system without targets.
+	SystemErrors map[uint64]*CollectionError `protobuf:"bytes,11,rep,name=system_errors,json=systemErrors,proto3" json:"system_errors,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// The native incident limit may have been reached. The omitted count is
+	// unknown, and an absent incident cannot establish that a fault cleared.
+	PossiblyTruncated bool `protobuf:"varint,12,opt,name=possibly_truncated,json=possiblyTruncated,proto3" json:"possibly_truncated,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *DcgmHealthReport) Reset() {
@@ -2328,6 +2337,20 @@ func (x *DcgmHealthReport) GetSystemsWithoutTargets() uint64 {
 		return x.SystemsWithoutTargets
 	}
 	return 0
+}
+
+func (x *DcgmHealthReport) GetSystemErrors() map[uint64]*CollectionError {
+	if x != nil {
+		return x.SystemErrors
+	}
+	return nil
+}
+
+func (x *DcgmHealthReport) GetPossiblyTruncated() bool {
+	if x != nil {
+		return x.PossiblyTruncated
+	}
+	return false
 }
 
 // DcgmHealthIncident is source data, not a Health Validation verdict.
@@ -2713,7 +2736,7 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\n" +
 	"uint_value\x18\x05 \x01(\x04H\x00R\tuintValue\x12K\n" +
 	"\x12dcgm_health_report\x18\x06 \x01(\v2\x1b.health.v1.DcgmHealthReportH\x00R\x10dcgmHealthReportB\x06\n" +
-	"\x04kind\"\xb7\x04\n" +
+	"\x04kind\"\x97\x06\n" +
 	"\x10DcgmHealthReport\x12+\n" +
 	"\x11requested_systems\x18\x02 \x01(\x04R\x10requestedSystems\x12\x1e\n" +
 	"\bgroup_id\x18\x03 \x01(\x04H\x00R\agroupId\x88\x01\x01\x128\n" +
@@ -2723,7 +2746,12 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x0fmonitored_since\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x0emonitoredSince\x12\x19\n" +
 	"\bcheck_id\x18\b \x01(\tR\acheckId\x126\n" +
 	"\x17systems_without_targets\x18\n" +
-	" \x01(\x04R\x15systemsWithoutTargets\",\n" +
+	" \x01(\x04R\x15systemsWithoutTargets\x12R\n" +
+	"\rsystem_errors\x18\v \x03(\v2-.health.v1.DcgmHealthReport.SystemErrorsEntryR\fsystemErrors\x12-\n" +
+	"\x12possibly_truncated\x18\f \x01(\bR\x11possiblyTruncated\x1a[\n" +
+	"\x11SystemErrorsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\x04R\x03key\x120\n" +
+	"\x05value\x18\x02 \x01(\v2\x1a.health.v1.CollectionErrorR\x05value:\x028\x01\",\n" +
 	"\fHealthResult\x12\b\n" +
 	"\x04PASS\x10\x00\x12\b\n" +
 	"\x04WARN\x10\n" +
@@ -2776,7 +2804,7 @@ func file_health_v1_observation_proto_rawDescGZIP() []byte {
 
 var (
 	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 31)
+	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 32)
 	file_health_v1_observation_proto_goTypes   = []any{
 		(CollectionErrorCategory)(0),       // 0: health.v1.CollectionErrorCategory
 		(NoValueReason)(0),                 // 1: health.v1.NoValueReason
@@ -2812,7 +2840,8 @@ var (
 		(*CollectionError)(nil),            // 31: health.v1.CollectionError
 		(*NoValue)(nil),                    // 32: health.v1.NoValue
 		nil,                                // 33: health.v1.GpuInventoryEntry.FieldErrorsEntry
-		(*timestamppb.Timestamp)(nil),      // 34: google.protobuf.Timestamp
+		nil,                                // 34: health.v1.DcgmHealthReport.SystemErrorsEntry
+		(*timestamppb.Timestamp)(nil),      // 35: google.protobuf.Timestamp
 	}
 )
 
@@ -2820,7 +2849,7 @@ var file_health_v1_observation_proto_depIdxs = []int32{
 	9,  // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
 	4,  // 1: health.v1.ObservationBatch.inventory:type_name -> health.v1.HardwareInventory
 	5,  // 2: health.v1.HardwareInventory.gpu_snapshots:type_name -> health.v1.GpuInventorySnapshot
-	34, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
+	35, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
 	6,  // 4: health.v1.GpuInventorySnapshot.inventory:type_name -> health.v1.GpuInventory
 	31, // 5: health.v1.GpuInventorySnapshot.collection_error:type_name -> health.v1.CollectionError
 	7,  // 6: health.v1.GpuInventory.entries:type_name -> health.v1.GpuInventoryEntry
@@ -2828,12 +2857,12 @@ var file_health_v1_observation_proto_depIdxs = []int32{
 	31, // 8: health.v1.GpuInventoryEntry.collection_error:type_name -> health.v1.CollectionError
 	33, // 9: health.v1.GpuInventoryEntry.field_errors:type_name -> health.v1.GpuInventoryEntry.FieldErrorsEntry
 	10, // 10: health.v1.Observation.target:type_name -> health.v1.ObservationTarget
-	34, // 11: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
+	35, // 11: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
 	28, // 12: health.v1.Observation.value:type_name -> health.v1.Value
 	31, // 13: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
 	32, // 14: health.v1.Observation.no_value:type_name -> health.v1.NoValue
-	34, // 15: health.v1.Observation.sample_started_at:type_name -> google.protobuf.Timestamp
-	34, // 16: health.v1.Observation.sample_ended_at:type_name -> google.protobuf.Timestamp
+	35, // 15: health.v1.Observation.sample_started_at:type_name -> google.protobuf.Timestamp
+	35, // 16: health.v1.Observation.sample_ended_at:type_name -> google.protobuf.Timestamp
 	11, // 17: health.v1.ObservationTarget.node:type_name -> health.v1.NodeRef
 	12, // 18: health.v1.ObservationTarget.gpu:type_name -> health.v1.GpuRef
 	15, // 19: health.v1.ObservationTarget.nv_link_endpoint:type_name -> health.v1.NvLinkEndpointRef
@@ -2863,17 +2892,19 @@ var file_health_v1_observation_proto_depIdxs = []int32{
 	10, // 43: health.v1.DcgmHealthReport.entities:type_name -> health.v1.ObservationTarget
 	2,  // 44: health.v1.DcgmHealthReport.native_group_overall_health:type_name -> health.v1.DcgmHealthReport.HealthResult
 	30, // 45: health.v1.DcgmHealthReport.incidents:type_name -> health.v1.DcgmHealthIncident
-	34, // 46: health.v1.DcgmHealthReport.monitored_since:type_name -> google.protobuf.Timestamp
-	2,  // 47: health.v1.DcgmHealthIncident.native_health:type_name -> health.v1.DcgmHealthReport.HealthResult
-	10, // 48: health.v1.DcgmHealthIncident.entity:type_name -> health.v1.ObservationTarget
-	0,  // 49: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
-	1,  // 50: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
-	31, // 51: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
-	52, // [52:52] is the sub-list for method output_type
-	52, // [52:52] is the sub-list for method input_type
-	52, // [52:52] is the sub-list for extension type_name
-	52, // [52:52] is the sub-list for extension extendee
-	0,  // [0:52] is the sub-list for field type_name
+	35, // 46: health.v1.DcgmHealthReport.monitored_since:type_name -> google.protobuf.Timestamp
+	34, // 47: health.v1.DcgmHealthReport.system_errors:type_name -> health.v1.DcgmHealthReport.SystemErrorsEntry
+	2,  // 48: health.v1.DcgmHealthIncident.native_health:type_name -> health.v1.DcgmHealthReport.HealthResult
+	10, // 49: health.v1.DcgmHealthIncident.entity:type_name -> health.v1.ObservationTarget
+	0,  // 50: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
+	1,  // 51: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
+	31, // 52: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
+	31, // 53: health.v1.DcgmHealthReport.SystemErrorsEntry.value:type_name -> health.v1.CollectionError
+	54, // [54:54] is the sub-list for method output_type
+	54, // [54:54] is the sub-list for method input_type
+	54, // [54:54] is the sub-list for extension type_name
+	54, // [54:54] is the sub-list for extension extendee
+	0,  // [0:54] is the sub-list for field type_name
 }
 
 func init() { file_health_v1_observation_proto_init() }
@@ -2925,7 +2956,7 @@ func file_health_v1_observation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_health_v1_observation_proto_rawDesc), len(file_health_v1_observation_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   31,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
