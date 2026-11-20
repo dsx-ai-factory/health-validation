@@ -33,6 +33,11 @@ func (unsupportedNative) ReadGPUMetrics(uint, []string) (map[string]FieldValue, 
 	return nil, unsupportedError()
 }
 
+// WatchHealth reports that native DCGM health collection is unsupported.
+func (unsupportedNative) WatchHealth(uint64) (healthWatch, error) {
+	return nil, unsupportedError()
+}
+
 func unsupportedError() error {
 	return &dcgmError{
 		category: observation.CollectionErrorCategoryUnsupported,

@@ -19,6 +19,17 @@ type nativeAPI interface {
 	// rollback, joins setup and cleanup errors, and returns no cleanup function.
 	WatchMetrics([]metricWatchGroup) (func() error, error)
 	ReadGPUMetrics(uint, []string) (map[string]FieldValue, error)
+	// WatchHealth returns the owned health watch on success. On failure it
+	// attempts rollback once and returns the joined error with no watch.
+	WatchHealth(uint64) (healthWatch, error)
+}
+
+// healthWatch manages an optional native health group separately from the shared client.
+type healthWatch interface {
+	// Read returns the complete native group result and membership.
+	Read() (*observation.DCGMHealthReport, error)
+	// Close attempts owned group destruction once without releasing the client.
+	Close() error
 }
 
 // sessionMode selects how a source starts DCGM. The zero value is unset.

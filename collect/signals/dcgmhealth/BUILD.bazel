@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//build/visibility:collect_consumers"])
+
+go_library(
+    name = "dcgmhealth",
+    srcs = ["signals.go"],
+    importpath = "github.com/dsx-ai-factory/health-validation/collect/signals/dcgmhealth",
+    deps = ["//collect"],
+)
+
+go_test(
+    name = "dcgmhealth_test",
+    srcs = ["signals_test.go"],
+    embed = [":dcgmhealth"],
+    deps = ["//collect"],
+)
