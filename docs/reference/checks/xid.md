@@ -246,6 +246,71 @@ Detects NVRM Xid 54 in the system journal within the collection window.
 
 **Recommended action:** operational state `drain`, then `service_required`
 
+## GPU Xid 74 (NVLink error)
+
+`gpu_xid_74`
+
+Detects NVRM Xid 74 in the system journal within the collection window; on H100 and H200, decodes the NVLink error registers to set severity and recommended action.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`H100`</nobr>, <nobr>`H200`</nobr>, <nobr>`A100`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`nvlink_error_counts`</nobr>, <nobr>`events`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`decode_hopper_registers`</nobr> | A100: false, H100: true, H200: true, other: false |  | <nobr>`FIXED`</nobr> | Whether the architecture uses the Hopper Xid 74 register layout. Fixed per architecture. |
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid 74 reports on one GPU within the collection window that triggers a rule. H100/H200 count each classification separately, including accompanied and unaccompanied secondary/signal-integrity bits; reports in different classifications do not add together. Each report counts at most once per classification, regardless of matching bits or links. A100 counts all Xid 74 reports together. |
+
+**Rules**
+
+- **CRITICAL** when `!decode_hopper_registers && ("total" in nvlink_error_counts && nvlink_error_counts["total"] >= occurrences)`
+  - Message: GPU Xid 74 detected: NVLink connection error. Reset the GPU or reboot the node to clear the error. Inspect nvidia-smi nvlink output and the peer device; contact support if recovery fails.
+  - Action: operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+- **CRITICAL** when `decode_hopper_registers && ("fabric_reset" in nvlink_error_counts && nvlink_error_counts["fabric_reset"] >= occurrences)`
+  - Message: GPU Xid 74: NVLink fabric reset required. Reboot the node to reset the NVLink fabric; contact support if the error persists.
+  - Action: operational state `drain`, then `restart_os` → `service_required`
+- **INFO** when `decode_hopper_registers && ("ignored" in nvlink_error_counts && nvlink_error_counts["ignored"] >= occurrences)`
+  - Message: GPU Xid 74: NVLink status bits that need no action.
+- **CRITICAL** when `decode_hopper_registers && ("secondary" in nvlink_error_counts && nvlink_error_counts["secondary"] >= occurrences)`
+  - Message: GPU Xid 74: Secondary NVLink error without accompanying fabric-reset, ECC/parity, link-hardware, repeat-class or unexpected bits in the report. Contact support if it persists.
+  - Action: operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+- **INFO** when `decode_hopper_registers && ("secondary_accompanied" in nvlink_error_counts && nvlink_error_counts["secondary_accompanied"] >= occurrences)`
+  - Message: GPU Xid 74: Secondary-error bits accompanied other documented error bits in the report; follow the guidance for those bits.
+- **CRITICAL** when `decode_hopper_registers && ("ecc" in nvlink_error_counts && nvlink_error_counts["ecc"] >= occurrences)`
+  - Message: GPU Xid 74: NVLink ECC/parity error. Contact support if it recurs on the same link.
+  - Action: operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+- **CRITICAL** when `decode_hopper_registers && ("mechanical" in nvlink_error_counts && nvlink_error_counts["mechanical"] >= occurrences)`
+  - Message: GPU Xid 74: Possible NVLink hardware issue. Check the link connections; contact support if it persists.
+  - Action: operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+- **CRITICAL** when `decode_hopper_registers && ("signal_integrity" in nvlink_error_counts && nvlink_error_counts["signal_integrity"] >= occurrences)`
+  - Message: GPU Xid 74: Marginal NVLink signal integrity without accompanying fabric-reset, ECC/parity, link-hardware, repeat-class or unexpected bits in the report. Check the link connections; contact support if it persists.
+  - Action: operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+- **INFO** when `decode_hopper_registers && ("signal_integrity_accompanied" in nvlink_error_counts && nvlink_error_counts["signal_integrity_accompanied"] >= occurrences)`
+  - Message: GPU Xid 74: Signal-integrity bits accompanied other documented error bits in the report; follow the guidance for those bits.
+- **WARNING** when `decode_hopper_registers && ("recurring" in nvlink_error_counts && nvlink_error_counts["recurring"] >= occurrences)`
+  - Message: GPU Xid 74: NVLink error detected. Contact support if it occurs repeatedly on the same link.
+  - Action: operational state `monitor`
+- **CRITICAL** when `decode_hopper_registers && ("unexpected" in nvlink_error_counts && nvlink_error_counts["unexpected"] >= occurrences)`
+  - Message: GPU Xid 74: NVLink error bit not expected in production. Contact support.
+  - Action: operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+- **INFO** when `decode_hopper_registers && ("corrected" in nvlink_error_counts && nvlink_error_counts["corrected"] >= occurrences)`
+  - Message: GPU Xid 74: Corrected NVLink ECC errors exceeded a threshold; no uncorrectable error occurred.
+- **WARNING** when `decode_hopper_registers && ("unmapped" in nvlink_error_counts && nvlink_error_counts["unmapped"] >= occurrences)`
+  - Message: GPU Xid 74: NVLink register dump with undocumented bits or no status bits set. Inspect the log line and contact support.
+  - Action: operational state `monitor`
+- **WARNING** when `decode_hopper_registers && ("unreadable" in nvlink_error_counts && nvlink_error_counts["unreadable"] >= occurrences)`
+  - Message: GPU Xid 74: NVLink link number or registers could not be read. Inspect the log line and contact support.
+  - Action: operational state `monitor`
+
 ## GPU Xid 80 Warning
 
 `gpu_xid_80`

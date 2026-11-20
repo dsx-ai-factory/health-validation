@@ -222,6 +222,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Features
 
+- `gpu_xid_74` adds NVLink error decoding for Hopper (H100/H200), with
+  CRITICAL/`drain`, WARNING/`monitor` and INFO/`ready` verdicts. Ampere (A100)
+  reports any Xid 74 as CRITICAL with `GenericDrain`; Blackwell skips the check.
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.
