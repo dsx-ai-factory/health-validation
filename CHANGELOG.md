@@ -7,80 +7,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Breaking Changes
 
-- Verdict `schema_version` is now `0.7`. Monitor recommendations can carry
-  remediation steps and appear in the node-level summary. Consumers must inspect
-  `operational_state` before treating a sequence as a drain workflow; application
-  actions still require context from `check_results`.
-  `WARNING` and `INFO` results no longer recommend `drain`. The warning-class
-  Xid checks (including `gpu_xid_45` alone) now recommend `monitor` with
-  `["restart_app"]`, and `gpu_xid_78` recommends `monitor` with `["update_swfw"]`.
-  Xid 154 Drain P2P is now CRITICAL and retains its drain sequence because it
-  requires disabling scheduling and stopping P2P traffic.
-  `remediation_actions` is now emitted with `monitor` as well as `drain`, and
-  the node-level `recommended_action` can be a `monitor` sequence when no eligible
-  drain sequence exists. Drain sequences outrank monitor sequences, then severity
-  and action rank decide. Consumers that drain on `operational_state: drain` stop
-  draining for these findings. `CheckDefinition.Validate`, and so `Register`,
-  rejects rules below `UNKNOWN` that recommend `drain`. Any severity may
-  recommend `monitor`; CRITICAL and UNKNOWN still exit `1`.
-  Consumers determine repair scope from the check results and affected
-  entities. The new `health.MonitorWith`
-  builds a `monitor` recommendation with steps. ([#209](https://github.com/dsx-ai-factory/health-validation/issues/209), [#227](https://github.com/dsx-ai-factory/health-validation/issues/227))
+- `CheckDefinition.Validate`, and so `Register`, rejects rules below `UNKNOWN`
+  that recommend `drain`. Recommend `monitor` for them instead; any severity
+  may. The verdict `schema_version` is now `0.7` (`0.3` in v0.3.x). ([#209](https://github.com/dsx-ai-factory/health-validation/issues/209), [#227](https://github.com/dsx-ai-factory/health-validation/issues/227))
 - Schema `0.6` changed `affected_components` to list each
   failing check once, under `checks`, with that check's `entities`. The
   parallel `check_ids` and `entities` arrays are removed.
   ([#210](https://github.com/dsx-ai-factory/health-validation/issues/210))
-- Collection failures report `UNKNOWN`
-  instead of `CRITICAL`. Update alerts that match collection failures as
-  `CRITICAL` to handle `UNKNOWN`. `CRITICAL` now ranks above `UNKNOWN`, and the
-  Go `Critical` and `Unknown` constants swap numeric values. ([#267](https://github.com/dsx-ai-factory/health-validation/pull/267))
+- `CRITICAL` now ranks above `UNKNOWN` in the verdict (schema `0.5`), and the
+  Go `Critical` and `Unknown` constants in `catalog/health` swap numeric values.
+  Compare severities by name, not by number. ([#267](https://github.com/dsx-ai-factory/health-validation/pull/267))
 - The `catalog`, `toolkit`, `collect`, and `agentkit` modules are merged into
   the single root module `github.com/dsx-ai-factory/health-validation`, with one
   `go.mod` and one version. Import paths are unchanged. Replace requires on
   `…/catalog`, `…/toolkit`, `…/collect`, and `…/agentkit` with one require on the root module
   at the first `vX.Y.Z` release. Releases are tagged `vX.Y.Z` instead of
   `catalog/vX.Y.Z` and `toolkit/vX.Y.Z`, and the verdict's `catalog_version`
-  equals the CLI version.
+  equals the CLI version. ([#216](https://github.com/dsx-ai-factory/health-validation/pull/216))
 - The public `catalog/version` package is removed. Read the version from a
   verdict's `catalog_version`. In unstamped builds, `health-validation version`
-  now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`.
-- The CLI reads the GPU domain from DCGM, through a hostengine running on the
-  node, and from NVML only for compute processes. Nodes need `nv-hostengine`
-  and the DCGM 4 client library (`libdcgm.so.4`); without them the GPU power,
-  power-limit, pstate, and throttle checks report a collection failure. There
-  is no fallback to NVML.
-- The CLI reads the NVLink domain through collect sensors: fabric
-  registration from DCGM, and link state, count, speed, capabilities, P2P,
-  and fabric health from NVML. Without a reachable hostengine, `nvlink_fabric`
-  reports a collection failure. Other differences from the legacy NVLink
-  sensor, from the conversion added in
-  [#237](https://github.com/dsx-ai-factory/health-validation/pull/237):
-  - A driver reporting `NOT_SUPPORTED` past a GPU's last link no longer fails
-    `nvlink_capabilities`, and a disabled link past the reported count no
-    longer fails `nvlink_active`: links past the count are not read.
-  - An unknown fabric health value fails `nvlink_fabric_health` with
-    `check_collection` instead of passing.
-  - Through the library, a node with no GPUs fails every NVLink check with
-    `check_collection` instead of skipping it. The CLI is unchanged: it stops
-    at `architecture_discovery` before running any check.
-
-  Library callers migrating:
-  - The collect adapter name `nvlink` is reserved for the built-in NVLink
-    adapter.
-  - A caller sensor passed to `WithCollect` that produces NVLink signals must
-    name them, or the run fails because the built-in sources produce them too.
-- The collect adapter name `gpu` is reserved for the built-in GPU adapter.
-  Drop a caller-registered adapter of that name: the built-in one reads the
-  canonical GPU signals from whichever registered sensor produces them.
-- `App.WithCollect` requires the signal IDs the sensor supplies: a bare
-  `WithCollect(sensor)` is a registration error. Pass the IDs, for example
-  `WithCollect(sensor, cpusignals.OnlineCount.ID(), cpusignals.PossibleCount.ID())`.
-  Claims are explicit so a release that adds built-in collect sources never
-  changes which sensor supplies a signal. Related registration rules, all checked whatever checks
-  are runnable: one signal claimed by two sensors is an error, every catalog
-  category name (`cpu`, `nvlink`, …) is reserved for built-in adapters, and a
-  caller adapter may not feed a catalog field that an active built-in adapter
-  of its category also feeds. The stock CLI is unaffected.
+  now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`. ([#223](https://github.com/dsx-ai-factory/health-validation/pull/223))
 - `run` records every validated threshold override in the host's systemd
   journal before collecting and exits `2` if it cannot. Container deployments
   that pass overrides must mount `/run/systemd/journal/socket`; see
@@ -89,18 +35,122 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `CheckDefinition.Validate`, and so `Catalog.Register` and `MustRegister`,
   rejects a check that names no `RequiredSignals`, or a blank one. A check
   with none was routed every measurement of its category and ran its rules on
-  zero values when collection failed. Name the signals the check's rules
+  zero values when collection failed ([#263](https://github.com/dsx-ai-factory/health-validation/pull/263)). Name the signals the check's rules
   read. A custom check
   passed to the CLI through `App.WithChecks` without them now stops the run
   with exit 2 once GPU architecture discovery succeeds, before the sensors
   are collected. If discovery fails, `run` still reports the
   `architecture_discovery` verdict and exits 1.
-- `collect/source/infiniband.New(files, excludedDevices ...string)` is now
-  `New(files, opts ...Option)`. Replace `New(files, names...)` with
-  `New(files, WithExcludedDevices(names...))`; a `[]string` spread into the
-  options no longer compiles. `WithVendors` selects devices by the PCI vendor
-  ID in `<device>/device/vendor` (`VendorNVIDIA` is `0x15b3`) instead of by
-  name. The defaults are unchanged: mlx-named devices, matching GPUd.
+- The remediation action constants `RemediationActionCheckUVM` (`check_uvm`),
+  `RemediationActionWorkflowXid45` (`workflow_xid_45`), and
+  `RemediationActionXid154` (`xid_154`) are removed, and nothing recommends
+  those actions any longer. Drop references to them.
+  ([#138](https://github.com/dsx-ai-factory/health-validation/pull/138), [#230](https://github.com/dsx-ai-factory/health-validation/pull/230), [#78](https://github.com/dsx-ai-factory/health-validation/pull/78))
+- The `DEPENDENCY_SKIPPED` skip reason is removed from the verdict schema and
+  from `health.SkipReason`, so remove any match on it.
+  ([#91](https://github.com/dsx-ai-factory/health-validation/pull/91))
+- Every `ThresholdSpec` must declare a `ValueType`; registration rejects one
+  that does not, so out-of-tree checks must add it. `Register` coerces the
+  default, per-architecture values, and overrides to the declared type, and
+  rejects NaN, infinities, and lossy conversions, with the offending check and
+  parameter named in the error. A string where a number belongs is now a
+  configuration error instead of a check that fails on every GPU. Optional
+  `ValueMin`/`ValueMax` bounds are enforced on defaults, per-architecture
+  values, and overrides alike, and an `AdjustableThreshold` must declare at
+  least one. The 100 kW ceilings on `expected_power_limit_w` and `min_power_w`
+  are gone.
+  ([#166](https://github.com/dsx-ai-factory/health-validation/pull/166))
+- The evaluation engine rejects two measurements that feed one check for the
+  same entity with `ErrAmbiguousMeasurement`, and the CLI exits `2`. A
+  measurement type without `EntityIdentifier` is keyed as the node, so two
+  instances collide. Give a per-entity measurement an `EntityID`.
+  ([#197](https://github.com/dsx-ai-factory/health-validation/pull/197))
+- Public API hardening. ([#175](https://github.com/dsx-ai-factory/health-validation/pull/175))
+  - Removed `NodeVerdict.ExitCode` (its 0/1/2/3 scheme differed from the CLI's;
+    read `OverallSeverity`), `CheckDefinition.FeasibilityClass`, and
+    `ResolveThresholds` (now internal).
+  - `MeasurementSignals` is a function returning a copy in every domain
+    package.
+
+### Changes
+
+Changes to behavior and APIs outside the
+[compatibility guarantees](RELEASE.md).
+
+- Monitor recommendations can carry remediation steps and appear in the
+  node-level summary. Consumers must inspect `operational_state` before treating
+  a sequence as a drain workflow; application actions still require context
+  from `check_results`. `WARNING` and `INFO` results no longer recommend
+  `drain`. The warning-class Xid checks (including `gpu_xid_45` alone) now
+  recommend `monitor` with `["restart_app"]`, and `gpu_xid_78` recommends
+  `monitor` with `["update_swfw"]`. Xid 154 Drain P2P is CRITICAL and retains
+  its drain sequence because it requires disabling scheduling and stopping P2P
+  traffic. `remediation_actions` is now emitted with `monitor` as well as
+  `drain`, and the node-level `recommended_action` can be a `monitor` sequence
+  when no eligible drain sequence exists. Drain sequences outrank monitor
+  sequences, then severity and action rank decide. Consumers that drain on
+  `operational_state: drain` stop draining for these findings. CRITICAL and
+  UNKNOWN still exit `1`. Consumers determine repair scope from the check
+  results and affected entities. The new `health.MonitorWith` builds a
+  `monitor` recommendation with steps. ([#209](https://github.com/dsx-ai-factory/health-validation/issues/209), [#227](https://github.com/dsx-ai-factory/health-validation/issues/227))
+- Collection failures report `UNKNOWN` instead of `CRITICAL`. Update alerts
+  that match collection failures as `CRITICAL` to handle `UNKNOWN`.
+  ([#267](https://github.com/dsx-ai-factory/health-validation/pull/267))
+- Xid severity and remediation changes. Downstream remediation follows the
+  recommended sequences as published, so these change behavior without breaking
+  consumers:
+  - Xid 159 recommends a GPU reset instead of `check_uvm`.
+    ([#138](https://github.com/dsx-ai-factory/health-validation/pull/138))
+  - Xid 151 (key rotation error) is now CRITICAL instead of WARNING.
+    ([#168](https://github.com/dsx-ai-factory/health-validation/pull/168))
+  - Xid 45 (preemptive removal) is WARNING with `restart_app` when it is the
+    only Xid seen in the evaluated window (the whole current boot by default),
+    and INFO with no action when another Xid is present in it (Xid 154 does
+    not count).
+    ([#230](https://github.com/dsx-ai-factory/health-validation/pull/230))
+  - Remediation sequences follow NVIDIA's catalog: Xids 79 and 151 recommend
+    `restart_os` then `service_required`, the application-level warning
+    classes recommend `restart_app` alone rather than followed by
+    `service_required`, and the Xid 78 and Xid 151 messages say what to fix.
+    ([#234](https://github.com/dsx-ai-factory/health-validation/pull/234))
+  - `gpu_xid_154` reports the recovery action the driver last requested for each
+    GPU instead of an INFO notice on every Xid 154. That holds when a GPU's
+    readable reports carry distinct sequence numbers. When they cannot be
+    ordered, the GPU keeps the most disruptive action it reported and each
+    report counts under its own action, so an earlier, less severe request can
+    still reach `occurrences` and affect the verdict. OS reboot, bus reset, and
+    system reboot are CRITICAL with `restart_os` then `service_required`. GPU
+    reset is CRITICAL with `reset_gpu` then `service_required`. Drain and Reset
+    is CRITICAL with the same sequence. Drain P2P is CRITICAL with the new
+    `stop_p2p_traffic` action, then `reset_gpu`, then `service_required`. An
+    action the catalog does not map, or a transition that cannot be read, is
+    WARNING with `monitor`. `None` is INFO.
+    ([#78](https://github.com/dsx-ai-factory/health-validation/pull/78))
+- A check's `Dependencies` no longer skip it. A dependent check always runs
+  and reports its own result. Only when its entity could not be read at all and
+  a dependency is Critical or Unknown does its collection-failure message name
+  the dependency as the cause. `gpu_count` is now the declared cause of the GPU
+  and NVLink checks' collection failures on GB200/GB300.
+  ([#91](https://github.com/dsx-ai-factory/health-validation/pull/91))
+- The CLI reads the GPU domain from DCGM, through a hostengine running on the
+  node, and from NVML only for compute processes. Nodes need `nv-hostengine`
+  and the DCGM 4 client library (`libdcgm.so.4`); without them the GPU power,
+  power-limit, pstate, and throttle checks report a collection failure. There
+  is no fallback to NVML. ([#262](https://github.com/dsx-ai-factory/health-validation/pull/262))
+- The CLI reads the NVLink domain through collect sensors: fabric
+  registration from DCGM, and link state, count, speed, capabilities, P2P,
+  and fabric health from NVML. Without a reachable hostengine, `nvlink_fabric`
+  reports a collection failure. Other differences from the legacy NVLink
+  sensor, from the conversion added in
+  [#237](https://github.com/dsx-ai-factory/health-validation/pull/237) and the switch in [#275](https://github.com/dsx-ai-factory/health-validation/pull/275):
+  - A driver reporting `NOT_SUPPORTED` past a GPU's last link no longer fails
+    `nvlink_capabilities`, and a disabled link past the reported count no
+    longer fails `nvlink_active`: links past the count are not read.
+  - An unknown fabric health value fails `nvlink_fabric_health` with
+    `check_collection` instead of passing.
+  - Through the library, a node with no GPUs fails every NVLink check with
+    `check_collection` instead of skipping it. The CLI is unchanged: it stops
+    at `architecture_discovery` before running any check.
 - Domains the CLI collects through `collect` sensors and the toolkit's collect
   bridge report the same severities, failed signals, and recommended actions
   as the legacy toolkit sensors, except as listed below. Collection-failure
@@ -156,7 +206,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
       report the same GPUs.
     - `App.Run` no longer closes the host's DCGM and NVML connections; call
       `App.Close` when done with the App.
-
 - The legacy toolkit sensors are removed. The CLI has collected every
   built-in domain through `collect` sensors since the changes above, so the
   stock CLI is unaffected. Library callers migrate as follows:
@@ -219,12 +268,49 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     `MockRDMALinkFlap`: to test without hardware, pass any `toolkit.Sensor`
     that returns fixed measurements to `toolkit.Collect`, or claim signals from
     an in-memory collect sensor with `WithCollect` (`docs/faq.md`).
+    ([#289](https://github.com/dsx-ai-factory/health-validation/pull/289))
+- Also in [#175](https://github.com/dsx-ai-factory/health-validation/pull/175): `MockIB` is removed, the Xid parser
+  (`toolkit/xid`) and `ParseLinkFlaps` are internal, and the `Errored*` helpers
+  default to every signal when given none. None had known consumers.
+- InfiniBand collection options ([#201](https://github.com/dsx-ai-factory/health-validation/pull/201)).
+  `collect/source/infiniband.New(files, excludedDevices ...string)` is now
+  `New(files, opts ...Option)`. Replace `New(files, names...)` with
+  `New(files, WithExcludedDevices(names...))`; a `[]string` spread into the
+  options no longer compiles. `WithVendors` selects devices by the PCI vendor ID
+  in `<device>/device/vendor` (`VendorNVIDIA` is `0x15b3`) instead of by name.
+  The defaults are unchanged: mlx-named devices, matching GPUd.
+  `collect/sensors/infiniband.New` takes options too, and `WithLinkLayers`
+  admits non-InfiniBand (RoCE) ports; the default stays InfiniBand-only.
+- `toolkit/observations` converts several measurement types per category when
+  their signals are disjoint, and carries InfiniBand port and device targets in
+  both directions. The collect bridge validates those targets.
+  `infiniband.PortMeasurement` implements `health.EntityKeyed`: a named port is
+  verified under `<device>/<port>`, and a failure before any port was
+  enumerated is keyed by its source. ([#201](https://github.com/dsx-ai-factory/health-validation/pull/201))
 
 ### Features
 
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.
+- `WithCollect` and `WithCollectAdapters` register collect sensors and adapters
+  with the app. They have not been in a release, so these registration rules
+  are not breaking changes:
+  - `WithCollect(sensor, signalIDs...)` requires the signal IDs the sensor
+    supplies: a bare `WithCollect(sensor)` is a registration error. Pass the
+    IDs, for example
+    `WithCollect(sensor, cpusignals.OnlineCount.ID(), cpusignals.PossibleCount.ID())`.
+    Claims are explicit so a release that adds built-in collect sources never
+    changes which sensor supplies a signal. One signal claimed by two sensors is
+    an error, whatever checks are runnable, and a sensor that produces NVLink
+    signals must name them. The stock CLI is unaffected.
+    ([#134](https://github.com/dsx-ai-factory/health-validation/pull/134), [#273](https://github.com/dsx-ai-factory/health-validation/pull/273), [#275](https://github.com/dsx-ai-factory/health-validation/pull/275))
+  - Every catalog category name (`cpu`, `nvlink`, …) is reserved as an adapter
+    name for the built-in adapter, and a caller adapter may not feed a catalog
+    field that an active built-in adapter of its category also feeds. Drop a
+    caller adapter named `gpu`: the built-in one reads the GPU signals from
+    whichever registered sensor produces them.
+    ([#262](https://github.com/dsx-ai-factory/health-validation/pull/262), [#273](https://github.com/dsx-ai-factory/health-validation/pull/273), [#275](https://github.com/dsx-ai-factory/health-validation/pull/275))
 - The built-in NVML source (`gpu.nvml`), which produced only the
   compute-process signals, now produces every signal collect's NVML sensor
   declares
@@ -240,34 +326,103 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `health.KeyOf` treats a zero `EntityKey` as unset and keys the measurement
   by its `EntityID`, so a measurement embedding `observations.Entity` that a
   test constructs directly names its GPU.
-- `ib_port_state`, an InfiniBand port check evaluating the new
-  `infiniband.PortMeasurement` (one per sysfs port, RoCE included): every port
-  must be ACTIVE with its physical link up. Verdicts name the port (`mlx5_0/1`)
-  in `affected_components[].entities`. `excluded_link_layers` (empty by
-  default) lets a fleet with uncabled RoCE ports leave Ethernet out; an
-  exclusion list means a misspelled entry checks more ports, never fewer.
-  It runs on GB200 and GB300; B200 waits on the architecture validation
-  process being settled in #255.
-- The stock CLI feeds that check from the `collect/sensors/infiniband` sysfs
-  sensor through the collect bridge, requesting port signals only when a port
-  check will run. It selects devices under `/sys/class/infiniband` by PCI
-  vendor (`collect/source/infiniband.WithVendors(VendorNVIDIA)`), so a DOWN
-  port on a renamed NVIDIA HCA such as `rdma0` is reported rather than hidden
-  behind a healthy `mlx5_0`, while other vendors' and software RDMA devices
-  are not checked. Finding no ports at all is a collection failure, not a
-  skip.
-- `collect/sensors/infiniband.New` takes options; `WithLinkLayers` admits
-  non-InfiniBand (RoCE) ports. The default stays InfiniBand-only.
-
-### Changed
-
-- `toolkit/observations` converts several measurement types per category when
-  their signals are disjoint, and carries InfiniBand port and device targets
-  in both directions. The collect bridge validates those targets.
-- `infiniband.PortMeasurement` implements `health.EntityKeyed`: a named port
-  is verified under `<device>/<port>`, and a failure before any port was
-  enumerated is keyed by its source (`collect.infiniband` for the bridge
-  adapter) via `SetEntityKey`.
+- `--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND` selects the
+  execution context the CLI evaluates in, and `health.ExecutionContextFromName`
+  parses the names. The default is `TENANT_GUEST`, so `gpu_compute_apps`, which
+  runs only in the guest, now runs by default; pass `--execution-context
+  OPERATOR_INFRA` to skip it as before.
+  ([#139](https://github.com/dsx-ai-factory/health-validation/pull/139))
+- `health-validation serve` keeps the node's collectors available and evaluates
+  on request, over HTTP (`GET` and `POST /verdict`) and gRPC
+  (`health.verdict.v1.VerdictService/Evaluate`) on one listener. Each request
+  runs a fresh collection cycle through the same evaluation core as `run`, and
+  may override `node_id`, `cadence`, `execution_context`, `xid_from`, and
+  `xid_to`. The listener accepts only a numeric loopback address (default
+  `127.0.0.1:8080`) and has no TLS or authentication. The verdict service and its
+  protobuf API (`proto/health/v1`) are experimental, like `agentkit`. See
+  `docs/agent-mode.md`. `App.RunAndClose(args, stdout, stderr)` runs the CLI and
+  closes the host backend after a one-shot command; `serve` manages its own
+  shutdown. ([#268](https://github.com/dsx-ai-factory/health-validation/pull/268))
+- New `ib_port_state` check: every InfiniBand port, RoCE included, must be
+  ACTIVE with its physical link up. It evaluates the new
+  `infiniband.PortMeasurement`, one per sysfs port, and names the failing port
+  (`mlx5_0/1`) in `affected_components[].checks[].entities`.
+  `excluded_link_layers` (empty by default) leaves a link layer out, such as
+  Ethernet for uncabled RoCE ports; because it excludes, a misspelled entry
+  checks more ports, never fewer. It runs on GB200 and GB300. Finding no ports
+  at all is a collection failure, not a skip, so a deployment without
+  InfiniBand disables the check. The stock CLI reads it through the
+  `collect/sensors/infiniband` sysfs sensor on the collect bridge, requesting
+  port signals only when a port check will run. It selects devices by PCI
+  vendor (`WithVendors(VendorNVIDIA)`), so a DOWN port on a renamed NVIDIA HCA
+  such as `rdma0` is reported instead of hidden behind a healthy `mlx5_0`, while
+  other vendors' and software RDMA devices are not checked.
+  ([#201](https://github.com/dsx-ai-factory/health-validation/pull/201))
+- Node-level `recommended_action`: `NodeVerdict` carries the one complete
+  remediation sequence that outranks the others. A `drain` sequence outranks a
+  `monitor` sequence. Otherwise severity, then each step's rank in sequence
+  order, then check ID decide. Consumers must inspect `operational_state`
+  before treating the sequence as a drain workflow. Absent means no remediation
+  sequence is available, not that the node is healthy. See
+  `docs/remediation.md`.
+  ([#248](https://github.com/dsx-ai-factory/health-validation/pull/248))
+- New architectures. Each is added to the checks that apply to it, with its
+  own thresholds where they differ.
+  - B200 ([#225](https://github.com/dsx-ai-factory/health-validation/pull/225)) and B300 ([#296](https://github.com/dsx-ai-factory/health-validation/pull/296)), the HGX parts. B300 is
+    recognized by its product name and shares B200's Xid scope.
+  - VR200: `gpu_power_limit` ([#239](https://github.com/dsx-ai-factory/health-validation/pull/239)), `gpu_count` ([#240](https://github.com/dsx-ai-factory/health-validation/pull/240)),
+    `gpu_sensor_throttle` ([#243](https://github.com/dsx-ai-factory/health-validation/pull/243)), the NVLink active and
+    count/speed checks ([#244](https://github.com/dsx-ai-factory/health-validation/pull/244)), `rdma_linkflap_fatal`
+    ([#245](https://github.com/dsx-ai-factory/health-validation/pull/245)), `numa_node_count` ([#310](https://github.com/dsx-ai-factory/health-validation/pull/310)), and `gpu_compute_apps`
+    ([#313](https://github.com/dsx-ai-factory/health-validation/pull/313)). Discovery recognizes any GPU whose name contains `VR`
+    ([#238](https://github.com/dsx-ai-factory/health-validation/pull/238), [#288](https://github.com/dsx-ai-factory/health-validation/pull/288)). A GPU that reports a generic name stays
+    `unknown`.
+  - The Xid checks cover H100, H200, and A100. ([#194](https://github.com/dsx-ai-factory/health-validation/pull/194))
+- Xid additions:
+  - Per-subtype `gpu_xid_149_<hex>` checks for the Xid 149
+    NETIR_LINK_EVT/NETIR_LINK_DOWN subtypes NVIDIA's decode table separates,
+    each independently disableable and configurable, additive to
+    `gpu_xid_149`. ([#62](https://github.com/dsx-ai-factory/health-validation/pull/62))
+  - Every Xid check has an `occurrences` threshold (default 1); Xids 144-150
+    have `fatal_occurrences` and `nonfatal_occurrences`.
+    ([#199](https://github.com/dsx-ai-factory/health-validation/pull/199), [#205](https://github.com/dsx-ai-factory/health-validation/pull/205))
+  - Every Xid code the node logs is reported. `gpu_xid_informational` is INFO
+    with no action for a code NVIDIA's catalog marks Unused or IGNORE, or gives
+    no resolution, and `gpu_xid_unknown` is WARNING with `monitor` for a code
+    neither a check nor the catalog covers. ([#260](https://github.com/dsx-ai-factory/health-validation/pull/260))
+  - Xid results list the journal lines they matched in `observed_values`, and
+    Xid 13 reports the GPC, TPC, and SM. ([#241](https://github.com/dsx-ai-factory/health-validation/pull/241), [#229](https://github.com/dsx-ai-factory/health-validation/pull/229))
+  - `run` and `collect` take `--xid-from` and `--xid-to` (Unix seconds), and a
+    repeatable `--xid-from PCI_ADDRESS=TIMESTAMP` for one GPU, to evaluate only
+    Xid events in the interval `(from, to]`. The start is exclusive and the end
+    inclusive, so back-to-back windows that pass the previous `--xid-to` as the
+    next `--xid-from` report an entry on the shared second once. The default is
+    the whole current boot. ([#215](https://github.com/dsx-ai-factory/health-validation/pull/215), [#301](https://github.com/dsx-ai-factory/health-validation/pull/301))
+- `health-validation collect` runs sensors without evaluating the catalog and
+  prints the observation batch as JSON, for callers that keep evidence apart
+  from evaluation. ([#81](https://github.com/dsx-ai-factory/health-validation/pull/81))
+- `run` collects only the signals that runnable checks need, so a disabled
+  check, a check outside `--cadence`, or one for another architecture or
+  execution context causes no hardware reads. The new `Catalog.RunnableChecks`
+  reports them, and `CollectAdapter` declares `Category()` and `Signals()`.
+  ([#156](https://github.com/dsx-ai-factory/health-validation/pull/156))
+- The toolkit bridges `collect` sensors into evaluation, with
+  `toolkit/observations` (`ToMeasurements`, `FromMeasurements`) converting
+  between catalog measurements and collect observations. ([#106](https://github.com/dsx-ai-factory/health-validation/pull/106),
+  [#112](https://github.com/dsx-ai-factory/health-validation/pull/112))
+- New collect sensors and sources. None changes a check.
+  - Power and temperature, InfiniBand snapshots, and a shared kernel-message
+    stream with an opt-in kernel-message patterns ([#86](https://github.com/dsx-ai-factory/health-validation/pull/86)).
+  - GPU, process, storage, PCI, FUSE, pstore, and profiling families
+    ([#153](https://github.com/dsx-ai-factory/health-validation/pull/153)).
+  - Native PCI link speed, width, and generation ([#186](https://github.com/dsx-ai-factory/health-validation/pull/186)).
+  - An embedded DCGM source for one-shot runs ([#221](https://github.com/dsx-ai-factory/health-validation/pull/221)), and DCGM
+    sampling configuration with best-effort cleanup ([#278](https://github.com/dsx-ai-factory/health-validation/pull/278)).
+  - A kmsg overrun keeps its `EPIPE` identity so a consumer can report lost
+    records and keep sampling ([#247](https://github.com/dsx-ai-factory/health-validation/pull/247)).
+- `run` logs a warning naming the GPU models when architecture discovery
+  resolves to `unknown`, since every architecture-scoped check then skips.
+  ([#287](https://github.com/dsx-ai-factory/health-validation/pull/287))
 
 ### Fixes
 
@@ -277,6 +432,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   library or reader (`source`); the legacy lines named the toolkit sensor.
   Any failed read of a node-wide sensor, such as the CPU NUMA count, also
   warns. Errors on individual GPUs are not logged.
+- `Catalog.Register`, `Get`, `List`, and `OverrideSet.ForCheck` no longer
+  share slices or maps with callers. ([#175](https://github.com/dsx-ai-factory/health-validation/pull/175))
+- `observed_values` reports only a check's `RequiredSignals`, not every field of
+  the measurement, so a verdict no longer shows sibling signals the rules never
+  read, such as `numa_node_count: 0` on `cpu_count`. A check that declares none
+  keeps them all. ([#156](https://github.com/dsx-ai-factory/health-validation/pull/156))
+- The Xid and RDMA link-flap reads filter journal lines in the process instead
+  of passing `--grep` to `journalctl`. A line longer than the maximum fails the
+  read rather than passing silently. ([#154](https://github.com/dsx-ai-factory/health-validation/pull/154))
+- `nvlink_bandwidth_count_speed` names an inactive link as the reason a speed
+  could not be read, instead of reporting a bare read failure.
+  ([#292](https://github.com/dsx-ai-factory/health-validation/pull/292))
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
