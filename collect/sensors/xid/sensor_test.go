@@ -343,8 +343,8 @@ func TestPerGPUTimeRanges(t *testing.T) {
 func TestChainedWindowsReportEachEntryOnce(t *testing.T) {
 	windows := [][2]int64{{100, 200}, {200, 300}}
 	for _, tt := range []struct {
-		name string
 		at   time.Time
+		name string
 	}{
 		{name: "inside first window", at: time.Unix(150, 0)},
 		{name: "last microsecond of first window", at: time.Unix(199, 999999000)},
