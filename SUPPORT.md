@@ -165,8 +165,7 @@ module, but a `go.mod` that requires `…/catalog` or `…/toolkit` must be chan
 to require the root module instead. Import paths stay the same.
 
 This includes later `v0.3.x` patches, which are still tagged per module from
-`release/v0.3` and published as container images. `go get -u` skips them, so
-request one by its explicit version. See
+`release/v0.3`. `go get -u` skips them, so request one by its explicit version. See
 [RELEASE.md](./RELEASE.md#retired-per-module-tags).
 
 Maintainers update this table and the release notes when final releases change
