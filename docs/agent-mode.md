@@ -177,7 +177,8 @@ receive an UNKNOWN `collection_source_busy` verdict naming its source
 and call start time, with `retry_collection`. These verdicts use the normal
 post-response metrics path. Fresh collection resumes when all underlying calls
 return. This prevents an unresponsive source from accumulating overlapping
-collections.
+collections. NVML release between evaluations uses the same watchdog budget.
+If release stalls, the busy verdict names `nvml.shutdown`.
 
 SIGINT or SIGTERM stops accepting requests and initiates shutdown. The transport
 allows up to five seconds for active handlers before force-closing connections.

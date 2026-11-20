@@ -6,8 +6,10 @@ package app
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -82,34 +84,68 @@ func TestAgentWaitsForNativeWorkBeforeReleasingResources(t *testing.T) {
 	}
 }
 
-func TestAgentKeepsAdmissionClosedDuringResourceRelease(t *testing.T) {
-	entered, release := make(chan struct{}), make(chan struct{})
-	defer close(release)
-	a := cadenceRunApp()
-	a.host = cycleReleaseHost{hostBackend: a.host, release: func() error { close(entered); <-release; return nil }}
-	agent := a.newVerdictAgent(&Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
-	if _, err := agent.evaluate(context.Background(), &healthv1.EvaluateRequest{}); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("resource release did not start")
-	}
-	select {
-	case agent.gate <- struct{}{}:
-		<-agent.gate
-		t.Fatal("admission reopened during native shutdown")
-	default:
-	}
-	// A caller's budget still bounds its wait while cleanup owns admission.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if _, err := agent.admit(ctx, testNodeID); status.Code(err) != codes.Canceled {
-		t.Fatalf("canceled admission: %v", err)
-	}
-	release <- struct{}{}
-	waitForAgentIdle(t, agent)
+func TestAgentReportsBusyWhileResourceReleaseIsStuck(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		entered, release := make(chan struct{}), make(chan struct{})
+		unblock := sync.OnceFunc(func() { close(release) })
+		defer unblock()
+		var releases int
+		a := cadenceRunApp()
+		a.host = cycleReleaseHost{hostBackend: a.host, release: func() error {
+			releases++
+			if releases == 1 {
+				close(entered)
+				<-release
+			}
+			return nil
+		}}
+		agent := a.newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+		request := &healthv1.EvaluateRequest{}
+		if _, err := agent.evaluate(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+		<-entered
+		started := time.Now()
+		type result struct {
+			verdict *healthv1.NodeVerdict
+			err     error
+		}
+		queued := make(chan result, 1)
+		go func() {
+			verdict, err := agent.evaluate(context.Background(), request)
+			queued <- result{verdict: verdict, err: err}
+		}()
+		synctest.Wait()
+		select {
+		case got := <-queued:
+			t.Fatalf("request returned before release timed out: %v, %v", got.verdict, got.err)
+		default:
+		}
+
+		assertBusy := func(verdict *healthv1.NodeVerdict, err error) {
+			t.Helper()
+			checks := verdict.GetCheckResults()
+			if err != nil || verdict.GetOverallSeverity() != healthv1.Severity_UNKNOWN || len(checks) != 1 ||
+				checks[0].GetCheckId() != "collection_source_busy" ||
+				checks[0].GetObservedValues()["source"].GetStringValue() != "nvml.shutdown" {
+				t.Fatalf("expected busy verdict for NVML shutdown, got %v, %v", verdict, err)
+			}
+		}
+		got := <-queued
+		assertBusy(got.verdict, got.err)
+		assertBusy(agent.evaluate(context.Background(), request))
+		if elapsed := time.Since(started); elapsed != time.Second || releases != 1 {
+			t.Fatalf("cleanup blocked requests for %s or overlapped with another release (calls=%d)", elapsed, releases)
+		}
+
+		unblock()
+		waitForAgentIdle(t, agent)
+		verdict, err := agent.evaluate(context.Background(), request)
+		if err != nil || verdict.GetOverallSeverity() != healthv1.Severity_PASS {
+			t.Fatalf("collection did not resume after release: %v, %v", verdict, err)
+		}
+		waitForAgentIdle(t, agent)
+	})
 }
 
 func TestAgentDiscoveryFailureStillReleasesResources(t *testing.T) {
