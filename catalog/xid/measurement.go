@@ -113,7 +113,7 @@ type RecoveryAction struct {
 }
 
 // NVLink5Detail carries the extended fields NVRM logs for the
-// NVLink5/NVSwitch fault family (Xid 144-150, Blackwell-only) instead
+// NVLink5/NVSwitch fault family (Xid 144-150, Blackwell and Rubin) instead
 // of the pid/name pair other Xid codes use.
 //
 // Every field here is directly available from the log line: IntrInfo,
