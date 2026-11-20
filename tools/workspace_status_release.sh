@@ -47,6 +47,9 @@ latest_line_release() {
 
 	while IFS= read -r tag; do
 		[[ "$tag" =~ ^${module}/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+		# A tag with no history in common with HEAD is not a release of this line,
+		# such as one that only retracts versions.
+		git merge-base HEAD "${tag}^{commit}" >/dev/null 2>&1 || continue
 		# A release built on top of HEAD is in HEAD's future, not its past.
 		git merge-base --is-ancestor HEAD "${tag}^{commit}" && continue
 		printf '%s\n' "${tag##*.}"
