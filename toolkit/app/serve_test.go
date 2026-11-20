@@ -816,14 +816,14 @@ func TestAgentXidWindowsOverHTTPAndGRPC(t *testing.T) {
 				count   float64
 				invalid bool
 			}{
-				{request: &healthv1.EvaluateRequest{}, count: 3},
-				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(200)}, count: 1},
-				{request: &healthv1.EvaluateRequest{XidTo: proto.Int64(200)}, count: 1},
-				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(250), XidTo: proto.Int64(300)}, count: 0},
-				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(0)}, count: 4},
+				{request: &healthv1.EvaluateRequest{}, count: 4},
+				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(200)}, count: 2},
+				{request: &healthv1.EvaluateRequest{XidTo: proto.Int64(200)}, count: 2},
+				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(250), XidTo: proto.Int64(300)}, count: 1},
+				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(0)}, count: 5},
 				{request: &healthv1.EvaluateRequest{XidFrom: proto.Int64(300)}, invalid: true},
 				{request: &healthv1.EvaluateRequest{XidTo: proto.Int64(100)}, invalid: true},
-				{request: &healthv1.EvaluateRequest{}, count: 3},
+				{request: &healthv1.EvaluateRequest{}, count: 4},
 			} {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				var verdict *healthv1.NodeVerdict

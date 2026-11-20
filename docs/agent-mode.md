@@ -72,7 +72,7 @@ repeat the audit. GPU discovery runs per request, so the service can start
 before the driver is ready and report discovery failures as verdicts.
 
 `xid_from` is non-negative; `xid_to` is positive. The effective start must be
-less than the effective end. Bounds are exclusive, matching the CLI, and each
+less than the effective end. The window is (`xid_from`, `xid_to`], matching the CLI, and each
 omitted field inherits its startup value. Per-GPU `--xid-from PCI_ADDRESS=SECONDS`
 settings retain precedence over the node-wide start. Zero is an explicit start
 at the Unix epoch, not omission. Requests cannot clear an inherited end bound.
