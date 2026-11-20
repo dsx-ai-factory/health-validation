@@ -592,6 +592,19 @@ func (a pciGPUAdapter) prepare(obs []*observation.Observation) []*observation.Ob
 			}
 		}
 	}
+	inventorySource := snapshot.GetSource()
+	if inventorySource == "" {
+		inventorySource = gpuinventory.SensorID
+	}
+	inventoryFailure := snapshot.GetCollectionError()
+	inventoryFailedSignals := make(map[string]bool)
+	sourceFailures := make(map[string]*observation.Observation)
+	for _, current := range obs {
+		target := current.GetTarget()
+		if current.GetCollectionError() != nil && (target == nil || target.GetNode() != nil) {
+			sourceFailures[current.GetSignalId()] = current
+		}
+	}
 	seen := make(map[string]map[string]bool)
 	markSeen := func(uuid, signal string) {
 		if seen[uuid] == nil {
@@ -616,7 +629,16 @@ func (a pciGPUAdapter) prepare(obs []*observation.Observation) []*observation.Ob
 			}
 			continue
 		}
-		templates[current.GetSignalId()] = current
+		signal := current.GetSignalId()
+		if inventoryFailure != nil {
+			if !inventoryFailedSignals[signal] {
+				normalized = append(normalized, observation.NewCollectionErrorObservation(signal, current.Unit, gpuinventory.SensorID,
+					"GPUInventory", nil, current.ObservedAt, inventoryFailure))
+				inventoryFailedSignals[signal] = true
+			}
+			continue
+		}
+		templates[signal] = current
 		uuid := ids[pciaddr.NormalizeBDF(pci.GetAddress())]
 		if uuid == "" {
 			continue
@@ -626,10 +648,6 @@ func (a pciGPUAdapter) prepare(obs []*observation.Observation) []*observation.Ob
 	}
 	// Keep inventory entries that could not be joined, using the slot when UUID is unavailable.
 	signals := slices.Sorted(maps.Keys(templates))
-	inventorySource := snapshot.GetSource()
-	if inventorySource == "" {
-		inventorySource = gpuinventory.SensorID
-	}
 	for _, entry := range snapshot.GetInventory().GetEntries() {
 		if entry == nil {
 			continue
@@ -655,8 +673,14 @@ func (a pciGPUAdapter) prepare(obs []*observation.Observation) []*observation.Ob
 			}
 			failure = &observation.CollectionError{Category: observation.CollectionErrorCategoryUnavailable, Detail: detail}
 		}
+		var sourceFailure *observation.Observation
 		for _, signal := range signals {
 			if seen[uuid][signal] {
+				continue
+			}
+			if uuid != "" && sourceFailures[signal] != nil {
+				// Replay inherits source failures for fields with no observation.
+				sourceFailure = sourceFailures[signal]
 				continue
 			}
 			current := templates[signal]
@@ -668,6 +692,13 @@ func (a pciGPUAdapter) prepare(obs []*observation.Observation) []*observation.Ob
 			}
 			normalized = append(normalized, observation.NewCollectionErrorObservation(
 				signal, current.Unit, source, "PCI GPU enumeration", target, current.ObservedAt, failure))
+		}
+		if sourceFailure != nil && len(seen[uuid]) == 0 {
+			// A GPU without any readings needs a row before it can inherit failures.
+			signal := sourceFailure.GetSignalId()
+			normalized = append(normalized, observation.NewCollectionErrorObservation(
+				signal, sourceFailure.Unit, sourceFailure.Source, "PCI GPU enumeration", target, sourceFailure.ObservedAt, sourceFailure.GetCollectionError()))
+			markSeen(uuid, signal)
 		}
 	}
 	return classifyPCIe(normalized, a.classify)
@@ -685,7 +716,7 @@ func collectPCIVirtualization(cycle *collect.Cycle, uuids []string, read func(co
 		pciVirtualization
 	}
 	completed := make(chan result, len(uuids))
-	_, err := collect.Run(context.Background(), cycle, "nvml", func(ctx context.Context) (struct{}, error) {
+	_, err := collect.Run(context.Background(), cycle, "nvml.pcie_virtualization", func(ctx context.Context) (struct{}, error) {
 		for _, uuid := range uuids {
 			if err := ctx.Err(); err != nil {
 				return struct{}{}, err

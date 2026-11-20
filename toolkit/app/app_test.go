@@ -691,6 +691,7 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 	}
 	a.host = fakeHost{b: spyBackend{called: &hostGPUCalled}}
 	withCPU(a, healthyCPU())
+	withPCI(a, spyGPUs, 64)
 
 	var stdout, stderr bytes.Buffer
 	// This asserts which backend was read; the verdict severity is irrelevant, so

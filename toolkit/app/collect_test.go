@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"testing/synctest"
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
@@ -1956,6 +1957,68 @@ func TestPCIeUnsupportedScope(t *testing.T) {
 	}
 }
 
+func TestPCIeInventoryLookupTimeoutPreservesCause(t *testing.T) {
+	signals := collect.Signals{pcisignals.MaxLinkWidth, pcisignals.MaxLinkGeneration}
+	obs := append(pciCapabilityObservations("0000:01:00.0"), pciCapabilityObservations("0000:02:00.0")...)
+	source := fixedSensor{id: pcisensor.ID, signals: signals, obs: obs}
+	snapshot := &observation.GPUInventorySnapshot{Source: "nvml", Outcome: &observation.GPUInventorySnapshot_CollectionError{
+		CollectionError: &observation.CollectionError{Source: "nvml", Operation: "GPUInventory", Category: observation.CollectionErrorCategoryTimeout, Detail: "inventory read timed out"},
+	}}
+	adapter := pciGPUAdapter{CollectAdapter: collectadapters.PCIe(), lookup: func() *observation.GPUInventorySnapshot { return snapshot }}
+	ms := collectPCIeMeasurements(t, New().WithCollect(source, signals.IDs()...), nil, adapter)
+	if len(ms) != 1 || !health.KeyOf(ms[0]).SourceLevel() {
+		t.Fatalf("measurements=%v, want one source-level inventory failure", ms)
+	}
+	assertPCIeRetry(t, ms[0], "inventory read timed out")
+}
+
+func TestPCIePartialReadPreservesSourceTimeout(t *testing.T) {
+	signals := collect.Signals{pcisignals.MaxLinkWidth, pcisignals.MaxLinkGeneration}
+	first := pciCapabilityObservations("0000:01:00.0")
+	second := pciCapabilityObservations("0000:02:00.0")
+	timeout := observation.NewCollectionErrorObservation(signals[0].ID(), signals[0].Unit(), "caller.pci", "Read", nil, first[0].ObservedAt,
+		&observation.CollectionError{Category: observation.CollectionErrorCategoryTimeout, Detail: "caller width timed out"})
+	caller := fixedSensor{id: "caller.pci", signals: signals[:1], obs: []*observation.Observation{first[0], timeout}}
+	stock := fixedSensor{id: pcisensor.ID, signals: signals[1:], obs: []*observation.Observation{first[1], second[1]}}
+	adapter := pciGPUAdapter{CollectAdapter: collectadapters.PCIe(), lookup: func() *observation.GPUInventorySnapshot {
+		return pciInventory(map[string]string{"0000:01:00.0": "GPU-0", "0000:02:00.0": "GPU-1"})
+	}}
+	ms := collectPCIeMeasurements(t, New().WithCollect(caller, signals[0].ID()), []collect.Sensor{stock}, adapter)
+	want := map[string]health.Severity{"GPU-0": health.Pass, "GPU-1": health.Unknown}
+	if got := pciVerdicts(t, ms); !reflect.DeepEqual(got, want) {
+		t.Fatalf("verdicts=%v, want %v", got, want)
+	}
+	for _, m := range ms {
+		if p := m.(pcie.PCIeMeasurement); p.GPUID == "GPU-1" {
+			if p.PCIeMaxLinkGeneration != 5 {
+				t.Fatalf("stock generation lost: %+v", p)
+			}
+			assertPCIeRetry(t, m, "caller width timed out")
+		}
+	}
+}
+
+func collectPCIeMeasurements(t *testing.T, a *App, sources []collect.Sensor, adapter pciGPUAdapter) []health.Measurement {
+	t.Helper()
+	sensors, err := a.collectSensors(time.Second, sources, []CollectAdapter{adapter}, requiredSignals{health.PCIe: nil})
+	if err != nil || len(sensors) != 1 {
+		t.Fatalf("sensors=%v err=%v", sensors, err)
+	}
+	ms, err := sensors[0].Measure(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ms
+}
+
+func assertPCIeRetry(t *testing.T, m health.Measurement, detail string) {
+	t.Helper()
+	v, err := catalog.New(catalog.WithArchitecture("GB200")).Evaluate("gpu_pcie_max_link", m)
+	if err != nil || v.Severity != health.Unknown || !v.RecommendedAction.Equal(health.Drain(health.RemediationActionRetryCollection)) || !strings.Contains(strings.Join(v.Messages, " "), detail) {
+		t.Fatalf("verdict=%+v err=%v, want UNKNOWN with retry_collection and %q", v, err, detail)
+	}
+}
+
 // virtualizationHost supplies classification independently of basic discovery.
 type virtualizationHost struct {
 	hostBackend
@@ -2078,56 +2141,84 @@ func TestPCIeClassificationPreservesOutcomes(t *testing.T) {
 // TestPCIeVirtualizationTimeout preserves completed classifications and avoids
 // further calls to a wedged NVML source.
 func TestPCIeVirtualizationTimeout(t *testing.T) {
-	release := make(chan struct{})
-	entered := make(chan string, 3)
-	defer close(release)
-	a := New()
-	a.host = virtualizationHost{hostBackend: fixtureApp(healthyGB200()).host, classify: func(uuid string) (bool, error) {
-		entered <- uuid
-		if uuid == "GPU-1" {
-			<-release
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		entered := make(chan string, 3)
+		defer close(release)
+		a := New()
+		a.host = virtualizationHost{hostBackend: fixtureApp(healthyGB200()).host, classify: func(uuid string) (bool, error) {
+			entered <- uuid
+			if uuid == "GPU-1" {
+				<-release
+			}
+			return false, nil
+		}}
+		const timeout = time.Second
+		cycle, err := newCycle(timeout)
+		if err != nil {
+			t.Fatal(err)
 		}
-		return false, nil
-	}}
-	const timeout = 100 * time.Millisecond
-	cycle, err := newCycle(timeout)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, adapters := a.builtinCollect(cycle)
-	for _, adapter := range adapters {
-		pci, ok := adapter.(pciGPUAdapter)
-		if !ok {
-			continue
-		}
-		signals := collect.Signals{pcisignals.MaxLinkWidth, pcisignals.MaxLinkGeneration}
-		var obs []*observation.Observation
-		for slot := range 3 {
-			obs = append(obs, pciCapabilityObservations(fmt.Sprintf("0000:%02x:00.0", slot+1))...)
-		}
-		source := fixedSensor{id: pcisensor.ID, signals: signals, obs: obs}
-		sensors, err := a.collectSensorsIn(cycle, []collect.Sensor{source}, []CollectAdapter{pci}, requiredSignals{health.PCIe: nil})
-		if err != nil || len(sensors) != 1 {
-			t.Fatalf("sensors=%v err=%v", sensors, err)
-		}
-		groups := toolkit.CollectMeasurementsWithTimeout(timeout, sensors...)
-		want := map[string]health.Severity{"GPU-0": health.Pass, "GPU-1": health.Unknown, "GPU-2": health.Unknown, "GPU-3": health.Unknown}
-		if got := pciVerdicts(t, groups[0].Measurements); !reflect.DeepEqual(got, want) {
-			t.Fatalf("verdicts=%v, want %v", got, want)
-		}
-		for _, m := range groups[0].Measurements {
-			if id := m.(pcie.PCIeMeasurement).GPUID; id == "GPU-1" || id == "GPU-2" {
-				if got := m.Errors(); len(got) != 1 || !errors.Is(got[0].Err(), health.ErrCollectionTimeout) {
-					t.Fatalf("%s errors=%v, want timeout", id, got)
+		_, adapters := a.builtinCollect(cycle)
+		for _, adapter := range adapters {
+			pci, ok := adapter.(pciGPUAdapter)
+			if !ok {
+				continue
+			}
+			signals := collect.Signals{pcisignals.MaxLinkWidth, pcisignals.MaxLinkGeneration}
+			var obs []*observation.Observation
+			for slot := range 3 {
+				obs = append(obs, pciCapabilityObservations(fmt.Sprintf("0000:%02x:00.0", slot+1))...)
+			}
+			source := fixedSensor{id: pcisensor.ID, signals: signals, obs: obs}
+			sensors, err := a.collectSensorsIn(cycle, []collect.Sensor{source}, []CollectAdapter{pci}, requiredSignals{health.PCIe: nil})
+			if err != nil || len(sensors) != 1 {
+				t.Fatalf("sensors=%v err=%v", sensors, err)
+			}
+			groups := toolkit.CollectMeasurementsWithTimeout(timeout, sensors...)
+			want := map[string]health.Severity{"GPU-0": health.Pass, "GPU-1": health.Unknown, "GPU-2": health.Unknown, "GPU-3": health.Unknown}
+			if got := pciVerdicts(t, groups[0].Measurements); !reflect.DeepEqual(got, want) {
+				t.Fatalf("verdicts=%v, want %v", got, want)
+			}
+			for _, m := range groups[0].Measurements {
+				if id := m.(pcie.PCIeMeasurement).GPUID; id == "GPU-1" || id == "GPU-2" {
+					if got := m.Errors(); len(got) != 1 || !errors.Is(got[0].Err(), health.ErrCollectionTimeout) {
+						t.Fatalf("%s errors=%v, want timeout", id, got)
+					}
 				}
 			}
+			if len(entered) != 2 || <-entered != "GPU-0" || <-entered != "GPU-1" {
+				t.Fatal("expected one NVML call each for GPU-0 and GPU-1")
+			}
+			return
 		}
-		if len(entered) != 2 || <-entered != "GPU-0" || <-entered != "GPU-1" {
-			t.Fatal("expected one NVML call each for GPU-0 and GPU-1")
+		t.Fatal("missing PCIe adapter")
+	})
+}
+
+func TestPCIeVirtualizationRunsAfterTelemetryTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		cycle, err := newCycle(time.Second)
+		if err != nil {
+			t.Fatal(err)
 		}
-		return
-	}
-	t.Fatal("missing PCIe adapter")
+		finished := make(chan struct{})
+		_, err = collect.Run(context.Background(), cycle, "nvml", func(ctx context.Context) (bool, error) {
+			defer close(finished)
+			<-ctx.Done()
+			return false, ctx.Err()
+		})
+		if !errors.Is(err, collect.ErrCollectionTimeout) {
+			t.Fatalf("telemetry error=%v, want timeout", err)
+		}
+		<-finished
+
+		results, err := collectPCIVirtualization(cycle, []string{"GPU-0"}, func(context.Context, string) (bool, error) {
+			return true, nil
+		})
+		if result := results["GPU-0"]; err != nil || result.err != nil || !result.virtual {
+			t.Fatalf("classification=%v err=%v, want vGPU", results, err)
+		}
+	})
 }
 
 // pciInventory supplies GPU identities for PCI adapter fixtures.
@@ -2209,8 +2300,8 @@ func TestPCIGPUAdapterKeepsUnidentifiedInventorySlot(t *testing.T) {
 	t.Fatal("no provisional inventory slot")
 }
 
-// TestPCIGPUAdapterMissingBusID keeps every inventory UUID represented, while
-// preserving caller-provided GPU observations when no PCI join is possible.
+// TestPCIGPUAdapterMissingBusID covers both bridge-validated PCI targets and
+// direct GPU observations passed to the adapter after validation.
 func TestPCIGPUAdapterMissingBusID(t *testing.T) {
 	for _, direct := range []int{0, 1, 2} {
 		for _, inventoryError := range []bool{false, true} {
@@ -2243,7 +2334,13 @@ func TestPCIGPUAdapterMissingBusID(t *testing.T) {
 						obs = append(obs, &observation.Observation{SignalId: signal.ID(), Source: "pci.sysfs", Unit: signal.Unit(), ObservedAt: timestamppb.Now(), Target: target, Outcome: &observation.Observation_Value{Value: &observation.Value{Kind: &observation.Value_UintValue{UintValue: value}}}})
 					}
 				}
-				ms := adapter.Build(adapter.prepare(obs))
+				var ms []health.Measurement
+				if direct == 0 {
+					source := fixedSensor{id: pcisensor.ID, signals: signals, obs: obs}
+					ms = collectPCIeMeasurements(t, New().WithCollect(source, signals.IDs()...), nil, adapter)
+				} else {
+					ms = adapter.Build(adapter.prepare(obs))
+				}
 				want := map[string]health.Severity{"GPU-0": health.Pass, "GPU-1": health.Pass, "GPU-2": health.Pass, "GPU-3": health.Unknown}
 				if direct == 2 {
 					want["GPU-3"] = health.Pass
