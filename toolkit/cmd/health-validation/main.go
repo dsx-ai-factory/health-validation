@@ -9,14 +9,13 @@
 //	health-validation run [--node-id <id>] [--config <path>]
 //	health-validation version [--short] [--output json]
 //
-// It is a thin shim over [app.App]: the same builder ([app.New]) lets a
+// It is a thin shim over [app.App.RunAndClose]: the same builder ([app.New]) lets a
 // downstream consumer assemble their own binary that inherits this behavior
 // while contributing their own checks and a per-GPU probe. See the toolkit/app
 // package.
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/dsx-ai-factory/health-validation/toolkit/app"
@@ -24,9 +23,5 @@ import (
 
 func main() {
 	a := app.New().WithStderrLogging()
-	code := a.Run(os.Args[1:], os.Stdout, os.Stderr)
-	if err := a.Close(); err != nil {
-		fmt.Fprintf(os.Stderr, "health-validation: close: %v\n", err)
-	}
-	os.Exit(code)
+	os.Exit(a.RunAndClose(os.Args[1:], os.Stdout, os.Stderr))
 }

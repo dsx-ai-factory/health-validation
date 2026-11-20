@@ -424,8 +424,32 @@ func TestServeCleanShutdownAndListenerFailureExitCodes(t *testing.T) {
 	}
 	defer listener.Close()
 	stderr.Reset()
-	if code := cadenceRunApp().serve(context.Background(), []string{"--address", listener.Addr().String(), "--node-id", testNodeID}, &stderr); code != exitError || !strings.Contains(stderr.String(), "listen") {
+	a := cadenceRunApp()
+	closed := make(chan struct{})
+	a.host = closeObservedHost{hostBackend: a.host, closed: closed}
+	args := []string{"--verbose=false", "serve", "--address", listener.Addr().String(), "--node-id", testNodeID}
+	if code := a.RunAndClose(args, io.Discard, &stderr); code != exitError || !strings.Contains(stderr.String(), "listen") {
 		t.Fatalf("listener failure exit=%d: %s", code, stderr.String())
+	}
+	select {
+	case <-closed:
+	default:
+		t.Fatal("serve did not close its backend after listener failure")
+	}
+}
+
+func TestRunAndCloseClosesBackendForOneShotCommand(t *testing.T) {
+	a := cadenceRunApp()
+	closed := make(chan struct{})
+	a.host = closeObservedHost{hostBackend: a.host, closed: closed}
+	var stderr bytes.Buffer
+	if code := a.RunAndClose([]string{"version"}, io.Discard, &stderr); code != exitOK {
+		t.Fatalf("version exit=%d: %s", code, stderr.String())
+	}
+	select {
+	case <-closed:
+	default:
+		t.Fatal("one-shot command did not close its backend")
 	}
 }
 

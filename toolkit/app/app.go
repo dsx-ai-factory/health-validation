@@ -4,7 +4,7 @@
 // Package app is the importable implementation of the health-validation
 // CLI.
 //
-// The cmd/health-validation binary is a thin shim over [App.Run]; the
+// The cmd/health-validation binary is a thin shim over [App.RunAndClose]; the
 // same builder lets a downstream consumer build their own single binary that
 // inherits all of go-health's behavior — config loading, the built-in NVIDIA
 // check catalog, the host sensors, and the JSON verdict — while contributing
@@ -18,9 +18,7 @@
 //			log.Fatal(err)
 //		}
 //		a := app.New().WithStderrLogging().WithChecks(mychecks.All()...).WithCollectAdapters(ecc)
-//		code := a.Run(os.Args[1:], os.Stdout, os.Stderr)
-//		_ = a.Close()
-//		os.Exit(code)
+//		os.Exit(a.RunAndClose(os.Args[1:], os.Stdout, os.Stderr))
 //	}
 //
 // The GPU, NVLink, node, CPU, Xid, and RDMA link-flap domains come from collect
@@ -164,8 +162,8 @@ func (a *App) WithNodeID(id string) *App {
 }
 
 // Close shuts down the App's host backend, the built-in DCGM and NVML
-// connections. Call it when you are done with the App; [App.Run] leaves them
-// open so one App can run more than once. Collect sensors passed to
+// connections. Call it after the last one-shot [App.Run]. The serve command
+// manages its own shutdown through the agent. Collect sensors passed to
 // [App.WithCollect] are the caller's to manage and are not closed here.
 func (a *App) Close() error { return a.host.close() }
 
@@ -177,9 +175,26 @@ func (a *App) Close() error { return a.host.close() }
 // It parses the top-level flags, dispatches the subcommand, writes output to
 // stdout and diagnostics to stderr, and returns the process exit code.
 func (a *App) Run(args []string, stdout, stderr io.Writer) int {
+	return a.run(args, stdout, stderr, false)
+}
+
+// RunAndClose runs the CLI and closes the host backend for one-shot commands.
+// The serve command owns its backend shutdown.
+func (a *App) RunAndClose(args []string, stdout, stderr io.Writer) int {
+	return a.run(args, stdout, stderr, true)
+}
+
+func (a *App) run(args []string, stdout, stderr io.Writer, closeAfter bool) int {
 	if a.prog == "" {
 		a.prog = filepath.Base(os.Args[0])
 	}
+	defer func() {
+		if closeAfter {
+			if err := a.Close(); err != nil {
+				fmt.Fprintf(stderr, "%s: close: %v\n", a.prog, err)
+			}
+		}
+	}()
 
 	fs := flag.NewFlagSet(a.prog, flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -189,7 +204,11 @@ func (a *App) Run(args []string, stdout, stderr io.Writer) int {
 	}
 	a.initLogger(*verbose, stderr)
 
-	return a.dispatch(fs.Args(), stdout, stderr)
+	command := fs.Args()
+	if len(command) > 0 && command[0] == "serve" {
+		closeAfter = false
+	}
+	return a.dispatch(command, stdout, stderr)
 }
 
 // initLogger installs a stderr-backed slog default only when the caller opted
