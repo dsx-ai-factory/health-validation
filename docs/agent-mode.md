@@ -77,6 +77,9 @@ omitted field inherits its startup value. Per-GPU `--xid-from PCI_ADDRESS=SECOND
 settings retain precedence over the node-wide start. Zero is an explicit start
 at the Unix epoch, not omission. Requests cannot clear an inherited end bound.
 The scan still reads only the current boot.
+If a custom sensor supplies the Xid signals, bounded requests use that sensor's
+time bounds support. A sensor without that support causes HTTP 400 or gRPC
+`INVALID_ARGUMENT` for requests that specify bounds.
 
 For example, move the Xid window for one evaluation:
 

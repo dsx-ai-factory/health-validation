@@ -63,6 +63,9 @@ type CollectAdapter interface {
 // link-flap signals, are each claimed all together or not at all. A built-in
 // source left with no requested signals never runs, and built-in adapters read
 // claimed signals from this sensor.
+// To accept per-request Xid bounds in serve, the sensor claiming Xid signals
+// must implement WithTimeBounds(*int64, *int64) (collect.Sensor, error). It must
+// return an independently configured sensor and support concurrent calls.
 // Each registered collect source has its own timeout budget.
 // Timeout blocking is keyed by sensor ID, not the underlying source. Shared
 // NVML/DCGM sources must prevent new calls while a timed-out call is running.

@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -26,6 +27,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
+	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
 	"github.com/dsx-ai-factory/health-validation/toolkit/verdictproto"
 )
@@ -207,20 +209,35 @@ func (agent *verdictAgent) request(req *healthv1.EvaluateRequest) (evaluationReq
 	request.xidJournal = agent.journal
 	if req.XidFrom != nil || req.XidTo != nil {
 		source := agent.journal
-		if source == nil {
+		claimIndex := -1
+		for i, registered := range agent.app.collectSources {
+			// A valid Xid claim includes the whole family, including the scan marker.
+			if slices.Contains(registered.claims, xidsignals.ScanWindow.ID()) {
+				source, claimIndex = registered.sensor, i
+				break
+			}
+		}
+		if claimIndex < 0 && source == nil {
 			source = xidsensor.New(nil)
 		}
 		bounded, ok := source.(interface {
 			WithTimeBounds(*int64, *int64) (collect.Sensor, error)
 		})
-		if !ok {
-			return request, status.Error(codes.Internal, "configured Xid source does not support time bounds")
+		if !ok || isNilCollectInput(source) {
+			return request, status.Error(codes.InvalidArgument, "configured Xid source does not support time bounds")
 		}
 		journal, err := bounded.WithTimeBounds(req.XidFrom, req.XidTo)
 		if err != nil {
 			return request, status.Errorf(codes.InvalidArgument, "invalid xid_from/xid_to bounds: %v", err)
 		}
-		request.xidJournal = journal
+		if isNilCollectInput(journal) {
+			return request, status.Error(codes.Internal, "configured Xid source returned no bounded sensor")
+		}
+		if claimIndex >= 0 {
+			request.xidClaim = &boundedXidClaim{index: claimIndex, sensor: journal}
+		} else {
+			request.xidJournal = journal
+		}
 	}
 	return request, nil
 }

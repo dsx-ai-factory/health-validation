@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
@@ -18,10 +19,16 @@ import (
 
 type evaluationRequest struct {
 	xidJournal       collect.Sensor
+	xidClaim         *boundedXidClaim
 	Cadence          *health.SchedulingCadence
 	NodeID           string
 	ExecutionContext health.ExecutionContext
 	audit            bool
+}
+
+type boundedXidClaim struct {
+	sensor collect.Sensor
+	index  int
 }
 
 // evaluateOnce owns only per-request state. Its caller owns backend and source
@@ -64,7 +71,14 @@ func (a *App) evaluateOnce(ctx context.Context, cfg *Config, request evaluationR
 	if err != nil {
 		return health.NodeVerdict{}, fmt.Errorf("select runnable checks: %w", err)
 	}
-	sensors, err := a.sensorsContext(ctx, cycle, requiredFor(runnable), request.xidJournal)
+	collectionApp := a
+	if claim := request.xidClaim; claim != nil {
+		scoped := *a
+		scoped.collectSources = slices.Clone(a.collectSources)
+		scoped.collectSources[claim.index].sensor = claim.sensor
+		collectionApp = &scoped
+	}
+	sensors, err := collectionApp.sensorsContext(ctx, cycle, requiredFor(runnable), request.xidJournal)
 	if err != nil {
 		return health.NodeVerdict{}, fmt.Errorf("register collect sensors: %w", err)
 	}

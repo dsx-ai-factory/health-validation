@@ -738,6 +738,58 @@ func (delayedAgentGPU) Signals() collect.Signals      { return agentPowerSignals
 func (delayedAgentNode) ID() string                   { return "test.delayed.node" }
 func (delayedAgentNode) Signals() collect.Signals     { return collect.Signals{gpuinventory.GPUCount} }
 
+func TestAgentXidBoundsApplyToClaimedSource(t *testing.T) {
+	reader := journal.New(func(_ context.Context, _ []string, out, _ io.Writer) error {
+		for _, seconds := range []int64{150, 250} {
+			fmt.Fprintf(out, `{"__CURSOR":"c%d","__REALTIME_TIMESTAMP":"%d","_BOOT_ID":"0123456789abcdef0123456789abcdef","MESSAGE":"NVRM: Xid (PCI:0008:06:00): 79"}`+"\n", seconds, seconds*1000000)
+		}
+		return nil
+	})
+	source, err := xidsensor.NewWithTimeRanges(reader, proto.Int64(100), proto.Int64(300), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := testApp().WithCollect(source, source.Signals().IDs()...)
+	agent := a.newVerdictAgent(&Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+	for _, tc := range []struct {
+		from *int64
+		want float64
+	}{{nil, 2}, {proto.Int64(200), 1}, {nil, 2}} {
+		verdict, evaluateErr := agent.evaluate(context.Background(), &healthv1.EvaluateRequest{XidFrom: tc.from})
+		if evaluateErr != nil {
+			t.Fatal(evaluateErr)
+		}
+		var count float64
+		for _, check := range verdict.GetCheckResults() {
+			if check.GetCheckId() == "gpu_xid_79" {
+				count += check.GetObservedValues()["xid_counts"].GetStructValue().GetFields()["79"].GetNumberValue()
+			}
+		}
+		if count != tc.want {
+			t.Fatalf("claimed source reported %v Xid events, want %v", count, tc.want)
+		}
+	}
+}
+
+func TestAgentRejectsXidBoundsUnsupportedByClaimedSource(t *testing.T) {
+	calls := 0
+	source := xidAppSensor{calls: &calls, obs: []*observation.Observation{xidAppMarker()}}
+	a := testApp().WithCollect(source, source.Signals().IDs()...)
+	agent := a.newVerdictAgent(&Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+	if _, err := agent.evaluate(context.Background(), &healthv1.EvaluateRequest{XidFrom: proto.Int64(200)}); status.Code(err) != codes.InvalidArgument || !strings.Contains(err.Error(), "does not support time bounds") {
+		t.Fatalf("bounded request = %v, want unsupported bounds error", err)
+	}
+	if calls != 0 {
+		t.Fatalf("bounded request measured unsupported source %d times", calls)
+	}
+	if _, err := agent.evaluate(context.Background(), &healthv1.EvaluateRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("unbounded request measured claimed source %d times, want 1", calls)
+	}
+}
+
 func TestAgentXidWindowsOverHTTPAndGRPC(t *testing.T) {
 	reader := journal.New(func(_ context.Context, _ []string, out, _ io.Writer) error {
 		for _, seconds := range []int64{100, 150, 200, 250, 300} {
