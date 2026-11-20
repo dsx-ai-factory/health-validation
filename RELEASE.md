@@ -85,6 +85,59 @@ A minor release goes through QA as an RC, without freezing `main`:
 Because the module lives at the repository root, `go get
 github.com/dsx-ai-factory/health-validation@vX.Y.Z` resolves the tag directly.
 
+## Retired per-module tags
+
+`catalog/vX.Y.Z`, `collect/vX.Y.Z`, and `toolkit/vX.Y.Z` tags belong to the
+modules that were merged into the root module. They remain on the Go module
+proxy, and Go prefers the longest matching module path, so they would otherwise
+shadow the root module: `go install …/toolkit/cmd/health-validation@latest`
+picks `toolkit@v0.3.2`, whose `go.mod` has `replace` directives that
+`go install` rejects.
+
+One final version of each retired module retracts every earlier version:
+`catalog/v0.3.99`, `collect/v0.3.99`, and `toolkit/v0.3.99`. Each tag points at
+a commit outside `main` and every release branch, holding only that module's
+`go.mod` and no `.github/` directory:
+
+```text
+// Deprecated: merged into github.com/dsx-ai-factory/health-validation; depend on that module instead.
+module github.com/dsx-ai-factory/health-validation/toolkit
+
+// No code here; 1.16 is the minimum that supports retract.
+go 1.16
+
+// Merged into github.com/dsx-ai-factory/health-validation.
+retract [v0.0.0-0, v0.3.99]
+```
+
+`catalog` and `collect` use their own module paths.
+
+The tags are `v0.3.99`, not the next patch number, because Go reads retractions
+from a module's highest version. A real `toolkit/v0.3.N` patch tagged above the
+retraction would be `@latest` and carry no `retract`, bringing the failure back.
+Patches on `release/v0.3` stay below `v0.3.99`, so the retraction stays
+authoritative, and they fall inside the retracted range. Never require a
+`v0.3.99` version from `release/v0.3`: it holds no code.
+
+Do not add a `go.mod` under `catalog/`, `collect/`, or `toolkit/` on `main` or a
+release branch: it would split the root module again. `release/v0.3` already
+carries them, since it predates the merge. The retraction tags match
+`release/v0.3`'s `catalog/v*` and `toolkit/v*` CI triggers, which publish an
+image on `toolkit/v*`. Workflows run from the tagged commit, so the commit must
+not contain `.github/`.
+
+Retraction does not break builds that pin a retired version, including patches
+of the `v0.3` line; it only flags them and stops `@latest` and `go get -u` from
+choosing them. Consumers who stay on the `v0.3` line must request each patch by
+its explicit version (`go get …/toolkit@v0.3.4`) or move to the root module.
+Those patches carry the "Merged into …" retraction notice even though they are
+supported releases.
+
+Retraction does not affect explicit revision queries. `go install …@main` still
+resolves `…/toolkit` to a pre-merge pseudo-version, so it cannot be fixed this
+way, and tagging a root release does not change it. Install the tip by pinning
+the root module's version, as the README shows.
+
 ## Who can trigger a release
 
 Any [maintainer](MAINTAINERS.md) can cut a release by pushing a tag in the
