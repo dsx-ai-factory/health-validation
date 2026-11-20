@@ -288,6 +288,8 @@ func fixtureApp(f nodeFixture) *App {
 	a.WithCollect(xidsensor.New(journal.New(f.journal(f.xid))), xidsignals.All().IDs()...)
 	a.WithCollect(linkflapsensor.New(journal.New(f.journal(f.linkFlaps)), linkflapsensor.WithLookback(linkFlapLookback)),
 		ibsignals.LinkFlapSignals().IDs()...)
+	// Without a port claim the port check would read the host's sysfs.
+	healthyInfiniBand(a)
 	a.host = host
 	return a
 }

@@ -231,7 +231,8 @@ func TestRunKernelJournalUnreadable(t *testing.T) {
 	}
 	results := map[health.Category]int{}
 	for _, r := range v.CheckResults {
-		if r.Category != health.Xid && r.Category != health.InfiniBand {
+		// ib_port_state reads sysfs, not the journal, so it is left out.
+		if r.Category != health.Xid && r.CheckID != "rdma_linkflap_fatal" {
 			continue
 		}
 		results[r.Category]++

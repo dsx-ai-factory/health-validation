@@ -307,7 +307,7 @@ func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
 func TestRunCommandPassesDriverVersion(t *testing.T) {
 	a := New().WithProgramName("test").WithChecks(driverEchoCheck())
 	a.host = fakeHost{b: spyBackend{called: new(bool)}, driver: echoedDriverVersion}
-	withCleanLinkFlap(a)
+	healthyInfiniBand(withCleanLinkFlap(a))
 	withCleanXid(withCPU(a, healthyCPU()))
 	// A caller adapter carries the echo into an otherwise stock run.
 	withShadow(a, shadowAdapter{name: "driver-echo", category: health.Node, ms: []health.Measurement{driverEchoMeasurement{}}})
@@ -528,6 +528,7 @@ func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
+	healthyInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitOK {
@@ -628,6 +629,7 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
+	healthyInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand([]string{"--node-id", "  cli-node  "}, &stdout, &stderr); code != exitOK {
@@ -651,6 +653,7 @@ func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
+	healthyInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.Run([]string{"run", "--node-id", "cli-node"}, &stdout, &stderr); code != exitOK {
@@ -676,7 +679,7 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: &hostGPUCalled}}
-	withCPU(a, healthyCPU())
+	healthyInfiniBand(withCPU(a, healthyCPU()))
 
 	var stdout, stderr bytes.Buffer
 	// This asserts which backend was read; the verdict severity is irrelevant, so
@@ -704,6 +707,7 @@ func TestWithCollectReplacesSysfsCPU(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanXid(withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 8, online: 8, numa: 34}))
 	withCleanLinkFlap(a)
+	healthyInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitOK {
@@ -750,6 +754,7 @@ func TestNUMANodeCountReachesVerdict(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanXid(withCPU(a, cpuAppSensor{possible: 8, online: 8, numa: 33}))
 	withCleanLinkFlap(a)
+	healthyInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitUnhealthy {
