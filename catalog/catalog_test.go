@@ -322,3 +322,91 @@ func TestCatalog_RegisterRejectsCheckWithoutRequiredSignals(t *testing.T) {
 	}()
 	cat.MustRegister(cd)
 }
+
+func TestCatalog_RegisterRejectsUndeclaredCELInput(t *testing.T) {
+	const expression = "gpu_pstate != expected_pstate"
+	cat := NewEmpty(WithArchitecture("A100"))
+	cd := health.CheckDefinition{
+		ID:              "gpu_pstate_probe",
+		Category:        health.GPU,
+		Architectures:   []string{"GB200"},
+		RequiredSignals: []string{"gpu_id"},
+		Thresholds: map[string]health.ThresholdSpec{
+			"expected_pstate": {
+				ValueType:        health.ThresholdInt64,
+				Category:         health.DefaultThreshold,
+				RequiredOverride: true,
+			},
+		},
+		Rules: []health.Rule{{Expression: expression, Severity: health.Critical}},
+	}
+
+	err := cat.Register(cd)
+	if err == nil {
+		t.Error("Register accepted an undeclared CEL input")
+	} else {
+		for _, want := range []string{cd.ID, expression, "undeclared reference to 'gpu_pstate'"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("Register error = %v, want it to contain %q", err, want)
+			}
+		}
+	}
+	if _, err := cat.Get(cd.ID); err == nil {
+		t.Error("rejected check was stored")
+	}
+
+	cd.RequiredSignals = append(cd.RequiredSignals, "gpu_pstate")
+	cd.Rules[0].Message = "pstate ${gpu_pstate}, expected ${expected_pstate}"
+	if err := cat.Register(cd); err != nil {
+		t.Fatalf("Register corrected check: %v", err)
+	}
+}
+
+func TestCatalog_RegisterRejectsInvalidRuleInputs(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		expression string
+		message    string
+		threshold  string
+		want       string
+	}{
+		{
+			name:       "signal and threshold overlap",
+			expression: "gpu_pstate > 0",
+			threshold:  "gpu_pstate",
+			want:       `signal and threshold share the name "gpu_pstate"`,
+		},
+		{
+			name:       "undeclared message placeholder",
+			expression: "gpu_pstate > expected_pstate",
+			message:    "GPU ${gpu_id} exceeds pstate ${expected_pstate}",
+			threshold:  "expected_pstate",
+			want:       `message placeholder "gpu_id" names an undeclared input`,
+		},
+		{
+			name:       "nonboolean rule",
+			expression: "gpu_pstate + 1",
+			threshold:  "expected_pstate",
+			want:       `expression "gpu_pstate + 1" has type int, want bool`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cat := NewEmpty()
+			cd := health.CheckDefinition{
+				ID:              "gpu_pstate_probe",
+				Category:        health.GPU,
+				RequiredSignals: []string{"gpu_pstate"},
+				Thresholds: map[string]health.ThresholdSpec{
+					tt.threshold: {Value: int64(0), ValueType: health.ThresholdInt64, Category: health.DefaultThreshold},
+				},
+				Rules: []health.Rule{{Expression: tt.expression, Message: tt.message, Severity: health.Critical}},
+			}
+			if err := cat.Register(cd); err == nil || !strings.Contains(err.Error(), cd.ID) || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("Register error = %v, want check %q and %q", err, cd.ID, tt.want)
+			}
+			if _, err := cat.Get(cd.ID); err == nil {
+				t.Error("rejected check was stored")
+			}
+		})
+	}
+}

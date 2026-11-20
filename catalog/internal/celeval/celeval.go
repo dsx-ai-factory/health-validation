@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package celeval provides CEL expression evaluation for health check rules.
+// Package celeval validates and evaluates CEL expressions for health check rules.
 //
-// It wraps cel-go with lazy compilation and caching: expressions are compiled
-// on first evaluation when the full set of variable names is known, and
-// compiled programs are reused for subsequent evaluations with the same
-// variable set.
+// The evaluator builds and caches programs on first use for each expression
+// and set of variable names.
 package celeval
 
 import (
@@ -73,7 +71,25 @@ func (e *Evaluator) Eval(expression string, vars map[string]any) (bool, error) {
 	return b, nil
 }
 
-func compile(expression string, vars map[string]any) (cel.Program, error) {
+// Validate checks expressions against the declared names and their ability to return a bool.
+func Validate(expressions []string, vars map[string]any) error {
+	env, err := newEnv(vars)
+	if err != nil {
+		return err
+	}
+	for _, expression := range expressions {
+		ast, err := checkExpression(env, expression)
+		if err != nil {
+			return err
+		}
+		if output := ast.OutputType(); !output.IsAssignableType(cel.BoolType) {
+			return fmt.Errorf("expression %q has type %s, want bool", expression, output)
+		}
+	}
+	return nil
+}
+
+func newEnv(vars map[string]any) (*cel.Env, error) {
 	opts := make([]cel.EnvOption, 0, len(vars))
 	for name := range vars {
 		opts = append(opts, cel.Variable(name, cel.DynType))
@@ -83,12 +99,26 @@ func compile(expression string, vars map[string]any) (cel.Program, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating CEL environment: %w", err)
 	}
+	return env, nil
+}
 
+func checkExpression(env *cel.Env, expression string) (*cel.Ast, error) {
 	ast, iss := env.Compile(expression)
 	if iss.Err() != nil {
 		return nil, fmt.Errorf("compiling %q: %w", expression, iss.Err())
 	}
+	return ast, nil
+}
 
+func compile(expression string, vars map[string]any) (cel.Program, error) {
+	env, err := newEnv(vars)
+	if err != nil {
+		return nil, err
+	}
+	ast, err := checkExpression(env, expression)
+	if err != nil {
+		return nil, err
+	}
 	prg, err := env.Program(ast)
 	if err != nil {
 		return nil, fmt.Errorf("building program for %q: %w", expression, err)

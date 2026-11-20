@@ -11,6 +11,7 @@ package evaluation
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -29,6 +30,38 @@ type EvaluationEngine struct {
 // NewEvaluationEngine creates an evaluation engine.
 func NewEvaluationEngine() *EvaluationEngine {
 	return &EvaluationEngine{cel: celeval.New()}
+}
+
+var messagePlaceholder = regexp.MustCompile(`\$\{([^{}]*)\}`)
+
+// ValidateRules checks the declared inputs, CEL expressions, and message placeholders.
+func ValidateRules(cd health.CheckDefinition) error {
+	names := make(map[string]any, len(cd.RequiredSignals)+len(cd.Thresholds))
+	for _, name := range cd.RequiredSignals {
+		if _, ok := cd.Thresholds[name]; ok {
+			return fmt.Errorf("check %q: signal and threshold share the name %q", cd.ID, name)
+		}
+		names[name] = nil
+	}
+	if len(cd.Rules) == 0 {
+		return nil
+	}
+	for name := range cd.Thresholds {
+		names[name] = nil
+	}
+	expressions := make([]string, 0, len(cd.Rules))
+	for _, rule := range cd.Rules {
+		for _, placeholder := range messagePlaceholder.FindAllStringSubmatch(rule.Message, -1) {
+			if _, ok := names[placeholder[1]]; !ok {
+				return fmt.Errorf("check %q rule %q: message placeholder %q names an undeclared input", cd.ID, rule.Expression, placeholder[1])
+			}
+		}
+		expressions = append(expressions, rule.Expression)
+	}
+	if err := celeval.Validate(expressions, names); err != nil {
+		return fmt.Errorf("check %q: %w", cd.ID, err)
+	}
+	return nil
 }
 
 // Params holds the evaluation context that is independent of any
@@ -53,8 +86,8 @@ type Params struct {
 // Category and a schema carrying every RequiredSignal (see [routes]) —
 // or the check skips with [health.NoApplicableMeasurement]. A routed
 // measurement then runs through error attribution and CEL: an error
-// covering a required signal short-circuits to Critical, otherwise the
-// rules evaluate against the populated fields.
+// covering a required signal produces Unknown. Otherwise, the rules evaluate
+// against the declared signals and resolved thresholds.
 func (e *EvaluationEngine) EvaluateCheck(cd *health.CheckDefinition, m health.Measurement, host health.Host, p Params) (health.CheckVerdict, error) {
 	now := time.Now()
 	if v, isSkip := checkLevelSkip(cd, p, now); isSkip {
@@ -417,12 +450,7 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 		return health.CheckVerdict{}, err
 	}
 
-	// Merge signals and resolved threshold values into a flat map
-	// for CEL evaluation.
-	vars := make(map[string]any, len(signals)+len(resolved))
-	for k, v := range signals {
-		vars[k] = v
-	}
+	vars := declaredSignalValues(cd.RequiredSignals, signals)
 	for k, rt := range resolved {
 		vars[k] = rt.Value
 	}
@@ -490,20 +518,21 @@ func (e *EvaluationEngine) evaluateAgainst(cd *health.CheckDefinition, signals m
 	return withEntity(v, entity), nil
 }
 
-// observedValues limits signals to the ones cd requires. A sibling field the
-// check never read may be unfed (narrowed collection, unmapped or failed
-// signal), and its zero value would read as a real measurement. A
-// measurement that implements [scope.Scoper] then narrows the result to the
-// check's own part.
+// observedValues scopes a copy for reporting after the rules use the raw values.
 func observedValues(cd *health.CheckDefinition, signals map[string]any, scoper scope.Scoper) map[string]any {
-	out := make(map[string]any, len(cd.RequiredSignals))
-	for _, name := range cd.RequiredSignals {
+	out := declaredSignalValues(cd.RequiredSignals, signals)
+	if scoper != nil {
+		return scoper.ScopeObservedValues(scope.Request{CheckID: cd.ID, Observed: out})
+	}
+	return out
+}
+
+func declaredSignalValues(required []string, signals map[string]any) map[string]any {
+	out := make(map[string]any, len(required))
+	for _, name := range required {
 		if v, ok := signals[name]; ok {
 			out[name] = v
 		}
-	}
-	if scoper != nil {
-		return scoper.ScopeObservedValues(scope.Request{CheckID: cd.ID, Observed: out})
 	}
 	return out
 }

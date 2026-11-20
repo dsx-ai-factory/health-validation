@@ -5,7 +5,7 @@
 | Package | Role |
 |---|---|
 | <nobr>`catalog/health`</nobr> | Shared vocabulary and node-verdict aggregation. Defines all domain types: `CheckDefinition`, `CheckVerdict`, `NodeVerdict`, the `Measurement` interface, and all enums. It depends on the module's leaf `internal/version` package for verdict provenance and does not import check-domain or evaluation packages. |
-| <nobr>`catalog`</nobr> | Check registry and evaluation entry point. `Catalog` is a thread-safe registry that holds check definitions and exposes `EvaluateAll(measurements...)` plus per-run configuration through `EvaluateAllWithOptions`. Built-in checks are registered in `checks.go`. |
+| <nobr>`catalog`</nobr> | Thread-safe check registry and evaluation entry point. `Catalog` validates rule expressions and message placeholders against declared inputs before storing each definition. It exposes `EvaluateAll(measurements...)` plus per-run configuration through `EvaluateAllWithOptions`. Built-in checks are registered in `checks.go`. |
 | <nobr>`catalog/cpu`</nobr> | `cpu.CPUMeasurement` and the host-wide `CPUCount` and `NUMANodeCount` check definitions. |
 | <nobr>`catalog/gpu`</nobr> | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPowerState` check definitions. |
 | <nobr>`catalog/node`</nobr> | `node.NodeMeasurement` struct and the node-level `GPUCount` check definition. |
@@ -13,7 +13,7 @@
 | <nobr>`catalog/infiniband`</nobr> | `infiniband.LinkFlapMeasurement` (journal link flaps) with the `RDMALinkFlapFatal` check, and `infiniband.PortMeasurement` (one sysfs port) with the `PortState` check; the two types share category `infiniband` with disjoint signals. |
 | <nobr>`catalog/xid`</nobr> | `xid.XidMeasurement` struct and the Xid check factory `xid.Checks()`, which returns one CRITICAL check per critical Xid code, architecture-scoped WARNING checks, the `gpu_xid_154` check, which reports the recovery action Xid 154 last requested for each GPU, `gpu_xid_informational`, which reports the Xid codes NVIDIA's catalog gives no resolution, and `gpu_xid_unknown`, which reports Xid codes no registered check covers. |
 | <nobr>`toolkit`</nobr> | The `Sensor` interface, `Collect()` / `CollectWithOptions()`, and the bridge that runs collect sensors and adapts their observations into measurements. |
-| <nobr>`catalog/internal/celeval`</nobr> | Evaluates CEL expressions from check `Rule` definitions against signal values and resolved thresholds. Not a public API. |
+| <nobr>`catalog/internal/celeval`</nobr> | Compiles CEL expressions and checks their result types during registration. During a run it evaluates them against signal values and resolved thresholds and requires a boolean result. |
 | <nobr>`catalog/internal/evaluation`</nobr> | Orchestrates a single check evaluation: filters by architecture/context, resolves threshold overrides, calls CEL, returns `CheckVerdict`. Not a public API. |
 | <nobr>`toolkit/cmd/health-validation`</nobr> | Binary entry point. Subcommands: `run`, `collect`, `version`. |
 
@@ -25,14 +25,22 @@ collect.Sensor.Measure()
         --> collect adapter
             --> []health.Measurement
         --> Catalog.EvaluateAll()
-            --> per-category check routing
+            --> routing by category and required signals
                 --> CEL evaluation per check
                     --> []CheckVerdict
                         --> AggregateNodeVerdict()
                             --> NodeVerdict
 ```
 
-Each sensor produces one or more measurements. Device sensors normally emit one per device; the CPU sensor emits one host-wide measurement. Each measurement is routed to the checks whose `Category` matches the measurement's category. The evaluation engine resolves threshold overrides, checks architecture and execution context prerequisites, runs CEL rules, and returns a `CheckVerdict`. Aggregation computes the node-level worst-case severity. The process exit code is a coarse mapping of that severity (0 for PASS/INFO/WARNING, 1 for CRITICAL/UNKNOWN, 2 when the tool could not run to a verdict); the precise level is conveyed in the JSON.
+Each sensor produces one or more measurements. Device sensors normally emit one
+per device. The CPU sensor emits one host-wide measurement. A check receives
+measurements that share its `Category` and carry every signal in its
+`RequiredSignals`. The evaluation engine checks whether the definition applies
+to the run and whether its required signals were collected. It then resolves
+thresholds and runs CEL rules using those thresholds and declared signal values.
+Aggregation computes the node-level worst-case severity. The process exits 0 for
+PASS, INFO, or WARNING, 1 for CRITICAL or UNKNOWN, and 2 if the tool could not
+produce a verdict. The JSON reports the precise severity.
 
 ## Sensors and backends
 
@@ -158,7 +166,7 @@ See [Empty results and collection failures](#empty-results-and-collection-failur
 
 ## Empty results and collection failures
 
-Every check that runs ends in one of three outcomes:
+A completed evaluation reports each check as a value, collection failure, or skip.
 
 - **Value.** Its required signals were collected, so its rules ran and `observed_values` is set.
 - **Collection failure.** A required signal could not be read, so the rules did not run. `observed_values` is absent, every message starts with `measurement unavailable: `, and the action is `check_collection`, or `retry_collection` after a timeout.
@@ -168,9 +176,15 @@ A collection failure is never a PASS and never exits 0. Identify one by its mess
 
 Skips never count toward `overall_severity`, so read `skipped_checks`. `SENSOR_MISSING` and `NO_APPLICABLE_MEASUREMENT` mean data the run expected never arrived; the other reasons are deliberate exclusions.
 
+`run` discovers GPU architecture before registering checks. If discovery
+fails, it reports the `architecture_discovery` verdict and exits 1.
+
 | Case | Evidence of collection | Outcome | Exit |
 |---|---|---|---|
-| A check names no `RequiredSignals`, or a blank one | None | Registration fails; the CLI prints no verdict. `run` registers checks after GPU architecture discovery, so if discovery fails it reports that verdict instead | 2, or 1 if discovery fails |
+| A check names no `RequiredSignals`, or a blank one | No check sensor readings | Registration returns an error and the CLI prints no verdict | 2 |
+| A rule fails CEL compilation, has a result type that cannot yield a boolean, or has an undeclared message placeholder | No check sensor readings | Registration returns an error and the CLI prints no verdict | 2 |
+| A threshold and a required signal share a name | No check sensor readings | Registration returns an error and the CLI prints no verdict | 2 |
+| A rule produces a nonboolean result during evaluation | Values for the declared signals | Evaluation returns an error and the CLI prints no verdict | 2 |
 | Every required signal was collected | Values | Value | 0 or 1 by severity |
 | A required signal failed, alone or with others | Collection error on that signal | Collection failure | 1 |
 | Only signals the check does not require failed | Values for the required signals | Value | 0 or 1 by severity |
@@ -206,7 +220,7 @@ Differences between domains:
 ## Adding a check
 
 1. Add any new signal fields to the measurement struct in `catalog/<domain>/measurement.go`. Add matching `Signal*` string constants.
-2. Write a `CheckDefinition` factory in `catalog/<domain>/`. Declare `RequiredSignals` (at least one; registration rejects an empty list or a blank name), `Thresholds`, and `Rules` (CEL expressions referencing signal names and threshold names). Declare `Dependencies` when another check explains this one's *complete* failure to read an entity, as the GPU and NVLink checks do for `gpu_count`. A partial read, where only some required signals failed, is an independent fault and is not attributed.
+2. Write a `CheckDefinition` factory in `catalog/<domain>/`. Include at least one entry in `RequiredSignals` and name every measurement signal the CEL rules or messages use. Give thresholds distinct names and write rules that produce boolean results. Declare `Dependencies` when another check explains this one's *complete* failure to read an entity, as the GPU and NVLink checks do for `gpu_count`. A partial read, where only some required signals failed, is an independent fault and is not attributed.
 3. Register it in `catalog/checks.go` via `builtinChecks()` so `catalog.New()` and the stock CLI run it. Declare `SchedulingCadence` on the check. Omit `--cadence` (or use a zero-value evaluation/collection context) to evaluate every registered check; set a cadence to run checks whose cadence covers that window (Continuous ⊂ Prolog ⊂ Maintenance) and report the others as skipped.
 4. Add a test covering the PASS path, at least one non-PASS path, and the skipped path (errored measurement).
 

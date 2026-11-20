@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Breaking Changes
 
+- `Catalog.Register` validates CEL rules and message placeholders against
+  the check's `RequiredSignals` and threshold names. Registration rejects
+  invalid CEL, undeclared references or placeholders, names shared by a
+  required signal and a threshold, and CEL result types that cannot yield a
+  boolean. Evaluation still requires an actual boolean result. The app
+  registers definitions from `WithChecks` when it builds the catalog for
+  `run` and `collect`. Both exit `2` if registration fails. `run` discovers GPU
+  architecture first. To migrate a custom check, declare and supply every
+  measurement signal its rules or messages use. Rename any threshold whose
+  name appears in `RequiredSignals` and update its references in rules,
+  messages, and override configuration. Use a boolean condition for each rule.
+  ([#270](https://github.com/dsx-ai-factory/health-validation/issues/270))
 - Verdict `schema_version` is now `0.7`. Monitor recommendations can carry
   remediation steps and appear in the node-level summary. Consumers must inspect
   `operational_state` before treating a sequence as a drain workflow; application

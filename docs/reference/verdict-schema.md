@@ -51,7 +51,7 @@ CheckDefinition is the canonical shape of a health check in the catalog. Each de
 | <nobr>`Rules`</nobr> | <nobr>`rules`</nobr> | [<nobr>`[]Rule`</nobr>](#rule) |  |
 | <nobr>`ExecutionContexts`</nobr> | <nobr>`execution_contexts`</nobr> | [<nobr>`[]ExecutionContext`</nobr>](#executioncontext) |  |
 | <nobr>`Prerequisites`</nobr> | <nobr>`prerequisites`</nobr> | [<nobr>`[]Prerequisite`</nobr>](#prerequisite) |  |
-| <nobr>`RequiredSignals`</nobr> | <nobr>`required_signals`</nobr> | <nobr>`[]string`</nobr> | RequiredSignals must name every signal the check's rules read. A measurement reaches the check only when it shares Category and its schema carries every one, and a collection error on any of them fails the check instead of running its rules. Rules can also read the measurement's other signals, but a collection error on one of those does not fail the check. Validate rejects an empty list or a blank name. |
+| <nobr>`RequiredSignals`</nobr> | <nobr>`required_signals`</nobr> | <nobr>`[]string`</nobr> | RequiredSignals names the measurement signals available to the check's rules and messages. Include any other signals the check needs to collect and report. Required signal names must differ from threshold names. A measurement reaches the check only when it shares Category and carries every required signal. A collection error on any of them produces UNKNOWN without evaluating the rules. Validate rejects an empty list or a blank name. |
 | <nobr>`RecommendedAction`</nobr> | <nobr>`recommended_action`</nobr> | [<nobr>`RecommendedAction`</nobr>](#recommendedaction) |  |
 | <nobr>`Timeout`</nobr> | <nobr>`timeout`</nobr> | <nobr>`time.Duration`</nobr> |  |
 | <nobr>`MaturityLevel`</nobr> | <nobr>`maturity_level`</nobr> | [<nobr>`MaturityLevel`</nobr>](#maturitylevel) |  |
@@ -174,8 +174,8 @@ Rule defines a single evaluation condition within a check. Every rule is evaluat
 
 | Field | JSON name | Type | Description |
 |---|---|---|---|
-| <nobr>`Expression`</nobr> | <nobr>`expression`</nobr> | <nobr>`string`</nobr> | Expression is a CEL expression that evaluates to a boolean. Variables available are the union of signal field names and threshold names from the parent CheckDefinition. |
-| <nobr>`Message`</nobr> | <nobr>`message`</nobr> | <nobr>`string`</nobr> | Message describes the detected condition. May contain $\{variable\} placeholders interpolated from signal and threshold values. |
+| <nobr>`Expression`</nobr> | <nobr>`expression`</nobr> | <nobr>`string`</nobr> | Expression is a CEL expression that evaluates to a boolean. Its inputs are the signals named in RequiredSignals and the check's resolved thresholds. Registration checks that the CEL result type can yield a boolean. Evaluation checks the actual result. |
+| <nobr>`Message`</nobr> | <nobr>`message`</nobr> | <nobr>`string`</nobr> | Message describes the detected condition. Each $\{variable\} placeholder must name a required signal or a threshold. The evaluator substitutes those inputs when the rule matches. |
 | <nobr>`RecommendedAction`</nobr> | <nobr>`recommended_action`</nobr> | [<nobr>`RecommendedAction`</nobr>](#recommendedaction) | RecommendedAction, when non-zero (see [RecommendedAction.IsZero]), overrides the parent [CheckDefinition.RecommendedAction] in the resulting [CheckVerdict]. Use it when a specific failure mode warrants a different remediation sequence than the check's default. A zero value leaves the check-level action in place. |
 | <nobr>`Severity`</nobr> | <nobr>`severity`</nobr> | [<nobr>`Severity`</nobr>](#severity) | Severity produced when this rule matches. |
 

@@ -958,6 +958,34 @@ func TestXidErrors_VerdictScopesAndGroupsEvents(t *testing.T) {
 	}
 }
 
+func TestXidErrors_EvaluatesRawEventsBeforeScoping(t *testing.T) {
+	const checkID = "gpu_xid_13"
+	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"))
+	cat.MustRegister(health.CheckDefinition{
+		ID:              checkID,
+		Category:        health.Xid,
+		RequiredSignals: []string{xid.SignalEvents},
+		Rules:           []health.Rule{{Expression: "size(events) == 3", Severity: health.Warning}},
+	})
+	m := measurementFor(13, 13, 48)
+	m.Events[0].Message = "NVRM: Xid (PCI:0000:01:00): 13, Graphics SM Warp Exception"
+	m.Events[1].Message = m.Events[0].Message
+
+	v, err := cat.Evaluate(checkID, m)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if v.Severity != health.Warning {
+		t.Errorf("severity = %v, want WARNING from three events", v.Severity)
+	}
+	want := m.Events[0]
+	want.Count = 2
+	got, ok := v.ObservedValues[xid.SignalEvents].([]xid.XidEvent)
+	if !ok || !slices.Equal(got, []xid.XidEvent{want}) {
+		t.Errorf("observed events = %+v, want [%+v]", got, want)
+	}
+}
+
 func TestXidErrors_PerCodeCriticalCheck(t *testing.T) {
 	// Xid 79 fires its own gpu_xid_79 check (CRITICAL, restart+escalate); every
 	// other Xid check runs against the same measurement but passes.

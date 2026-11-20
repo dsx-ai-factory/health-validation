@@ -19,7 +19,13 @@ go_library(
 
 go_test(
     name = "evaluation_test",
-    srcs = ["thresholds_test.go"],
+    srcs = [
+        "evaluate_test.go",
+        "thresholds_test.go",
+    ],
     embed = [":evaluation"],
-    deps = ["//catalog/health"],
+    deps = [
+        "//catalog/gpu",
+        "//catalog/health",
+    ],
 )

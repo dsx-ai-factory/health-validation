@@ -37,12 +37,13 @@ type CheckDefinition struct {
 	Rules             []Rule             `json:"rules"`
 	ExecutionContexts []ExecutionContext `json:"execution_contexts"`
 	Prerequisites     []Prerequisite     `json:"prerequisites,omitempty"`
-	// RequiredSignals must name every signal the check's rules read. A
-	// measurement reaches the check only when it shares Category and its schema
-	// carries every one, and a collection error on any of them fails the check
-	// instead of running its rules. Rules can also read the measurement's other
-	// signals, but a collection error on one of those does not fail the check.
-	// Validate rejects an empty list or a blank name.
+	// RequiredSignals names the measurement signals available to the check's
+	// rules and messages. Include any other signals the check needs to collect
+	// and report. Required signal names must differ from threshold names. A
+	// measurement reaches the check only when it shares Category and carries
+	// every required signal. A collection error on any of them produces UNKNOWN
+	// without evaluating the rules. Validate rejects an empty list or a blank
+	// name.
 	RequiredSignals   []string          `json:"required_signals"`
 	RecommendedAction RecommendedAction `json:"recommended_action,omitzero"`
 	Timeout           time.Duration     `json:"timeout,omitempty"`
@@ -197,13 +198,15 @@ func validateThresholdCoverage(checkID, name string, spec ThresholdSpec, archite
 // matching rule (ties go to declaration order); its override applies when
 // present, otherwise the check-level action is used.
 type Rule struct {
-	// Expression is a CEL expression that evaluates to a boolean.
-	// Variables available are the union of signal field names and
-	// threshold names from the parent CheckDefinition.
+	// Expression is a CEL expression that evaluates to a boolean. Its inputs
+	// are the signals named in RequiredSignals and the check's resolved
+	// thresholds. Registration checks that the CEL result type can yield a
+	// boolean. Evaluation checks the actual result.
 	Expression string `json:"expression"`
 
-	// Message describes the detected condition. May contain ${variable}
-	// placeholders interpolated from signal and threshold values.
+	// Message describes the detected condition. Each ${variable} placeholder
+	// must name a required signal or a threshold. The evaluator substitutes
+	// those inputs when the rule matches.
 	Message string `json:"message"`
 
 	// RecommendedAction, when non-zero (see

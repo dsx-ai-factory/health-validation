@@ -3,7 +3,61 @@
 
 package celeval
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestValidate(t *testing.T) {
+	vars := map[string]any{"temperature": nil, "limit": nil, "samples": nil}
+	const comparison = "temperature > limit"
+	if err := Validate([]string{comparison, "samples.exists(sample, sample > limit)"}, vars); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name       string
+		expression string
+		want       string
+	}{
+		{name: "undeclared name", expression: "temperature > missing", want: "undeclared reference to 'missing'"},
+		{name: "syntax error", expression: "temperature >", want: "Syntax error"},
+		{name: "arithmetic result", expression: "temperature + 1", want: "has type int, want bool"},
+		{name: "size result", expression: "size(samples)", want: "has type int, want bool"},
+		{name: "string result", expression: "'x'", want: "has type string, want bool"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Validate([]string{comparison, tt.expression}, vars)
+			if err == nil || !strings.Contains(err.Error(), tt.expression) || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("Validate = %v, want expression %q and %q", err, tt.expression, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateAllowsBooleanResults(t *testing.T) {
+	vars := map[string]any{"slowdown": true}
+	for _, tt := range []struct {
+		name       string
+		expression string
+	}{
+		{name: "dynamic", expression: "slowdown"},
+		{name: "protobuf bool wrapper", expression: "google.protobuf.BoolValue{value: true}"},
+		{
+			name:       "protobuf any containing bool",
+			expression: `google.protobuf.Any{type_url: "type.googleapis.com/google.protobuf.BoolValue", value: b"\x08\x01"}`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := Validate([]string{tt.expression}, vars); err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+			if got, err := New().Eval(tt.expression, vars); err != nil || !got {
+				t.Errorf("Eval = %t, %v, want true without error", got, err)
+			}
+		})
+	}
+}
 
 func TestEval_BasicComparison(t *testing.T) {
 	e := New()
@@ -83,10 +137,12 @@ func TestEval_CompileError(t *testing.T) {
 }
 
 func TestEval_NonBoolResult(t *testing.T) {
-	e := New()
-
-	_, err := e.Eval("x + 1", map[string]any{"x": int64(1)})
-	if err == nil {
-		t.Error("expected error for non-bool result")
+	const expression = "x"
+	vars := map[string]any{"x": int64(1)}
+	if err := Validate([]string{expression}, vars); err != nil {
+		t.Fatalf("Validate dynamic expression: %v", err)
+	}
+	if _, err := New().Eval(expression, vars); err == nil || !strings.Contains(err.Error(), "produced int64, want bool") {
+		t.Errorf("Eval error = %v, want a nonboolean result error", err)
 	}
 }
