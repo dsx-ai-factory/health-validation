@@ -51,11 +51,14 @@ func TestNativeInitSelectsMode(t *testing.T) {
 			library := &nativeLibrary{
 				options: test.options,
 				mode:    test.mode,
-				dcgmInit: func(mode sessionMode, args ...string) (func(), error) {
+				dcgmInit: func(mode sessionMode, args ...string) (func() error, error) {
 					calls++
 					gotMode = mode
 					gotArgs = args
-					return func() { cleanups++ }, nil
+					return func() error {
+						cleanups++
+						return nil
+					}, nil
 				},
 			}
 
@@ -67,7 +70,9 @@ func TestNativeInitSelectsMode(t *testing.T) {
 				t.Fatalf("dcgmInit calls = %d, mode = %v, args = %q; want 1, %v, %q",
 					calls, gotMode, gotArgs, test.mode, test.wantArgs)
 			}
-			cleanup()
+			if err := cleanup(); err != nil {
+				t.Fatalf("cleanup() error = %v", err)
+			}
 			if cleanups != 1 {
 				t.Fatalf("cleanup calls = %d, want 1", cleanups)
 			}
@@ -78,7 +83,7 @@ func TestNativeInitSelectsMode(t *testing.T) {
 func TestNativeInitWrapsInitError(t *testing.T) {
 	library := &nativeLibrary{
 		mode: embeddedMode,
-		dcgmInit: func(sessionMode, ...string) (func(), error) {
+		dcgmInit: func(sessionMode, ...string) (func() error, error) {
 			return nil, errors.New("libdcgm.so.4 not found")
 		},
 	}
@@ -126,6 +131,36 @@ func TestInitDCGMPassesGoDCGMMode(t *testing.T) {
 		if gotMode != test.wantMode || !slices.Equal(gotArgs, test.args) {
 			t.Fatalf("initDCGM(%v) called go-dcgm Init(%v, %q), want Init(%v, %q)", test.mode, gotMode, gotArgs, test.wantMode, test.args)
 		}
+	}
+}
+
+func TestInitDCGMCleanupReportsShutdownError(t *testing.T) {
+	originalInit, originalShutdown := goDCGMInit, goDCGMShutdown
+	t.Cleanup(func() { goDCGMInit, goDCGMShutdown = originalInit, originalShutdown })
+	var mode any
+	var args []string
+	goDCGMInit = recordGoDCGMInit(goDCGMInit, &mode, &args)
+	shutdownError := &godcgm.Error{Code: godcgm.DCGM_ST_CONNECTION_NOT_VALID}
+	shutdownCalls := 0
+	goDCGMShutdown = func() error {
+		shutdownCalls++
+		return shutdownError
+	}
+	cleanup, err := initDCGM(standaloneMode, "localhost", "0")
+	if err != nil {
+		t.Fatalf("initDCGM() error = %v", err)
+	}
+	if shutdownCalls != 0 {
+		t.Fatal("initialization released the client before cleanup")
+	}
+	err = cleanup()
+	var original *godcgm.Error
+	if shutdownCalls != 1 || !errors.Is(err, shutdownError) || !errors.As(err, &original) || original != shutdownError {
+		t.Fatalf("cleanup lost shutdown failure: calls=%d error=%v", shutdownCalls, err)
+	}
+	failure := collectionError(err)
+	if failure.SourceError != "DCGM_ST_CONNECTION_NOT_VALID" || failure.Category != observation.CollectionErrorCategoryUnavailable {
+		t.Fatalf("cleanup lost native status: %v", &failure)
 	}
 }
 

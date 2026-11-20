@@ -20,7 +20,7 @@ import (
 type nativeLibrary struct {
 	readFields func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error)
 	gpuStatus  func(uint) godcgm.EntityStatus
-	dcgmInit   func(sessionMode, ...string) (func(), error)
+	dcgmInit   func(sessionMode, ...string) (func() error, error)
 	// Embedded mode ignores options.Address and options.IsSocket.
 	options StandaloneOptions
 	mode    sessionMode
@@ -39,21 +39,33 @@ func newNative(options StandaloneOptions, mode sessionMode) nativeAPI {
 	}
 }
 
-// Tests replace goDCGMInit to check the go-dcgm mode, whose type is unexported.
-var goDCGMInit = godcgm.Init
+// Tests replace these calls without naming go-dcgm's unexported mode type.
+var (
+	goDCGMInit     = godcgm.Init
+	goDCGMShutdown = godcgm.Shutdown
+)
 
-func initDCGM(mode sessionMode, args ...string) (func(), error) {
+// initDCGM opens one client reference and returns its error-reporting release.
+func initDCGM(mode sessionMode, args ...string) (func() error, error) {
+	var err error
 	switch mode {
 	case embeddedMode:
-		return goDCGMInit(godcgm.Embedded)
+		_, err = goDCGMInit(godcgm.Embedded)
 	case standaloneMode:
-		return goDCGMInit(godcgm.Standalone, args...)
+		_, err = goDCGMInit(godcgm.Standalone, args...)
 	default:
 		return nil, fmt.Errorf("unknown DCGM session mode %d", mode)
 	}
+	if err != nil {
+		return nil, err
+	}
+	// Init's cleanup only prints shutdown errors. Return the error so the
+	// source can report a failed release while consuming its reference once.
+	return func() error { return dcgmErrorFromError(goDCGMShutdown()) }, nil
 }
 
-func (library *nativeLibrary) Init() (func(), error) {
+// Init opens the configured client and preserves native initialization failures.
+func (library *nativeLibrary) Init() (func() error, error) {
 	var args []string
 	if library.mode == standaloneMode {
 		isSocket := "0"
@@ -62,8 +74,8 @@ func (library *nativeLibrary) Init() (func(), error) {
 		}
 		args = []string{library.options.Address, isSocket}
 	}
-	// go-dcgm already reference-counts Init and Shutdown. Keep its cleanup
-	// function with this source instead of adding another counter.
+	// go-dcgm already reference-counts Init and Shutdown. Keep one balanced
+	// release with this source instead of adding another counter.
 	cleanup, err := library.dcgmInit(library.mode, args...)
 	if err != nil {
 		return nil, dcgmErrorFromError(err)
@@ -80,7 +92,7 @@ func (*nativeLibrary) AllGPUIndices() ([]uint, error) {
 	return gpuIndices, nil
 }
 
-// MetricWatchGroups resolves signals and checks field-group limits before Init.
+// MetricWatchGroups resolves signals and checks limits before metric-watch setup.
 func (library *nativeLibrary) MetricWatchGroups(signalIDs []string) ([]metricWatchGroup, error) {
 	if policy := library.options.WatchPolicy; policy != nil {
 		signalOverrides := make([]string, 0, len(policy.SignalIntervals))

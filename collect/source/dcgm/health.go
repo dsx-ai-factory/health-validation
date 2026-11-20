@@ -7,10 +7,8 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"time"
 
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -19,10 +17,10 @@ import (
 
 const gpuEntityKind = 1
 
-// AddHealthToWatch adds systems to the requested union before collection starts.
+// AddHealthToWatch adds systems to the requested union for lazy watch setup.
 // Zero is a no-op; other masks must contain only dcgmhealth.KnownSystems bits.
-// The first metric or health read, or successful inventory initialization,
-// freezes registration. Targets are discovered and watches are created lazily.
+// The first metric or health read freezes registration; inventory reads leave
+// it open. Targets are discovered and watches are created lazily.
 // It must not run concurrently with collection or Close.
 func (source *Source) AddHealthToWatch(systems uint64) error {
 	if source.closed.Load() {
@@ -46,22 +44,18 @@ func (source *Source) AddHealthToWatch(systems uint64) error {
 // Success returns a nonnil report whose CheckId is the cycle's collection ID.
 // Successful reports with no incidents are returned immediately.
 // No registered systems returns NotConfigured without native setup.
+// Runtime setup failures retry on a later read, retaining unfinished cleanup.
+// Connection loss requires a fresh session in a later collection cycle.
 func (source *Source) ReadHealth(ctx context.Context, currentCycle *collect.Cycle) (*observation.DCGMHealthReport, *observation.CollectionError) {
 	source.watchRegistrationFrozen.Store(true)
-	report, err := collect.Run(ctx, currentCycle, Name, func(callContext context.Context) (*observation.DCGMHealthReport, error) {
-		if err := source.startNativeCall(); err != nil {
-			return nil, err
+	if source.healthSystems == 0 {
+		return nil, &observation.CollectionError{
+			Source: Name, Operation: "health",
+			Category: observation.CollectionErrorCategoryNotConfigured,
+			Detail:   "no DCGM health systems are registered",
 		}
-		defer source.finishNativeCall()
-		if source.healthSystems == 0 {
-			return nil, &dcgmError{
-				category: observation.CollectionErrorCategoryNotConfigured,
-				detail:   "no DCGM health systems are registered",
-			}
-		}
-		if err := source.ensureInitialized(); err != nil {
-			return nil, err
-		}
+	}
+	report, err := runNative(ctx, currentCycle, source, func(callContext context.Context) (*observation.DCGMHealthReport, error) {
 		if err := source.ensureHealthWatch(); err != nil {
 			return nil, err
 		}
@@ -84,16 +78,9 @@ func (source *Source) ReadHealth(ctx context.Context, currentCycle *collect.Cycl
 		}
 		report = proto.Clone(report).(*observation.DCGMHealthReport)
 		report.RequestedSystems = source.healthSystems
-		report.MonitoredSince = timestamppb.New(source.healthMonitoredSince)
 		report.CheckId = currentCycle.CollectionID()
-		report.SystemsWithoutTargets = source.healthSystems
-		for _, entity := range report.Entities {
-			switch {
-			case entity.GetGpu() != nil:
-				report.SystemsWithoutTargets &^= dcgmhealth.GPUSystems
-			case entity.GetNvSwitch() != nil:
-				report.SystemsWithoutTargets &^= dcgmhealth.NVSwitchSystems
-			}
+		for _, failure := range report.SystemErrors {
+			source.recordFieldFailure(currentCycle, failure)
 		}
 		return report, nil
 	})
@@ -142,8 +129,8 @@ func (source *Source) enrichHealthUUIDs(ctx context.Context, currentCycle *colle
 	}
 }
 
-// ensureHealthWatch creates the configured health watch lazily and retains
-// setup failures so partial native setup is not repeated.
+// ensureHealthWatch retains the native watch that owns setup and rollback state.
+// Failed construction owns no resources and may retry on the next read.
 func (source *Source) ensureHealthWatch() error {
 	if source.closed.Load() {
 		return errClosed
@@ -151,18 +138,13 @@ func (source *Source) ensureHealthWatch() error {
 	if source.healthWatch != nil {
 		return nil
 	}
-	if source.healthWatchError != nil {
-		return source.healthWatchError
-	}
 	watch, err := source.native.WatchHealth(source.healthSystems)
 	if err == nil && watch == nil {
 		err = fmt.Errorf("DCGM health watch returned no watch")
 	}
 	if err != nil {
-		source.healthWatchError = err
 		return err
 	}
 	source.healthWatch = watch
-	source.healthMonitoredSince = time.Now()
 	return nil
 }

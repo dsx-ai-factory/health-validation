@@ -40,6 +40,11 @@ func TestDCGMHealthReportRoundTrip(t *testing.T) {
 		MonitoredSince:        timestamppb.New(time.Unix(1_790_000_000, 123)),
 		CheckId:               "shared-check",
 		SystemsWithoutTargets: 1 << 62,
+		SystemErrors: map[uint64]*CollectionError{
+			1:       {Source: "dcgm", Operation: "health discovery", Category: CollectionErrorCategoryUnavailable, Detail: "PCIe discovery failed"},
+			1 << 61: {Source: "dcgm", Operation: "health discovery", SourceError: "FUTURE_STATUS", Category: CollectionErrorCategoryUnavailable, Detail: "future system unavailable"},
+		},
+		PossiblyTruncated: true,
 	})
 	if err := ValidateBatch(batch); err != nil {
 		t.Fatalf("ValidateBatch() error = %v", err)
@@ -71,6 +76,39 @@ func TestDCGMHealthReportRoundTrip(t *testing.T) {
 				t.Fatalf("native values changed after round trip: got %v, want %v", got, batch)
 			}
 		})
+	}
+}
+
+func TestDCGMHealthPartialCoveragePreservesFindings(t *testing.T) {
+	batch := healthReportBatch(&DCGMHealthReport{
+		RequestedSystems:         1 | 16 | 1<<10,
+		GroupId:                  proto.Uint64(3),
+		NativeGroupOverallHealth: DCGMHealthResultFail.Enum(),
+		Incidents: []*DCGMHealthIncident{{
+			System: 16, NativeHealth: DCGMHealthResultFail, ErrorCode: 42,
+			Message: "memory finding", Entity: GPUTarget("GPU-0"),
+		}},
+		SystemsWithoutTargets: 1 << 10,
+		SystemErrors: map[uint64]*CollectionError{
+			1: {Source: "dcgm", Operation: "health discovery", Category: CollectionErrorCategoryUnavailable, Detail: "PCIe unavailable"},
+		},
+		PossiblyTruncated: true,
+	})
+	if err := ValidateBatch(batch); err != nil {
+		t.Fatalf("partial health report rejected: %v", err)
+	}
+	encoded, err := protojson.Marshal(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded := &ObservationBatch{}
+	if err := protojson.Unmarshal(encoded, decoded); err != nil {
+		t.Fatal(err)
+	}
+	report := decoded.GetObservations()[0].GetValue().GetDcgmHealthReport()
+	if len(report.GetIncidents()) != 1 || report.GetIncidents()[0].GetMessage() != "memory finding" ||
+		report.GetSystemErrors()[1].GetDetail() != "PCIe unavailable" || report.GetSystemsWithoutTargets() != 1<<10 || !report.GetPossiblyTruncated() {
+		t.Fatalf("partial health report lost findings or coverage limits: %v", report)
 	}
 }
 
@@ -128,6 +166,12 @@ func TestValidateDCGMHealthReportStructure(t *testing.T) {
 		{name: "invalid setup timestamp", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{MonitoredSince: &timestamppb.Timestamp{Nanos: -1}}}, wantError: "monitored since"},
 		{name: "unrequested no-target system", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemsWithoutTargets: 1}}, wantError: "systems_without_targets includes unrequested systems"},
 		{name: "unknown requested system without targets", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 1 << 63, SystemsWithoutTargets: 1 << 63}}},
+		{name: "zero failed system", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemErrors: map[uint64]*CollectionError{0: {}}}}, wantError: "key must identify one subsystem"},
+		{name: "multiple failed systems in key", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 17, SystemErrors: map[uint64]*CollectionError{17: {}}}}, wantError: "key must identify one subsystem"},
+		{name: "unrequested failed system", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemErrors: map[uint64]*CollectionError{1: {}}}}, wantError: "system_errors includes an unrequested system"},
+		{name: "missing system error", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemErrors: map[uint64]*CollectionError{16: nil}}}, wantError: "requires an error for each system"},
+		{name: "failed system without targets", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemsWithoutTargets: 16, SystemErrors: map[uint64]*CollectionError{16: {}}}}, wantError: "failed system cannot also have no targets"},
+		{name: "unknown requested failed system", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 1 << 63, SystemErrors: map[uint64]*CollectionError{1 << 63: {}}}}},
 		{name: "unknown and zero native identity", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{Incidents: []*DCGMHealthIncident{{Entity: &ObservationTarget{Kind: &ObservationTarget_NativeEntity{NativeEntity: &NativeEntityRef{Source: "dcgm"}}}}}}}},
 	}
 	for _, test := range tests {

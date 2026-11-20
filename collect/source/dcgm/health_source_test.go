@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -88,14 +89,14 @@ func (native *healthLifecycleNative) WatchHealth(systems uint64) (healthWatch, e
 	if native.missingWatch {
 		return nil, nil
 	}
+	if native.healthSetupError != nil {
+		return nil, native.healthSetupError
+	}
 	if native.health == nil {
 		native.health = &fakeHealthWatch{}
 	}
 	native.health.native = &native.fakeNative
 	native.health.gate = native.nativeCallGate
-	if native.healthSetupError != nil {
-		return nil, errors.Join(native.healthSetupError, native.health.Close())
-	}
 	return native.health, nil
 }
 
@@ -185,17 +186,13 @@ func TestMetricCollectionDoesNotEnableHealth(t *testing.T) {
 }
 
 func TestHealthAndMetricRegistrationShareStartedBoundary(t *testing.T) {
-	for _, stage := range []string{"inventory", "metric", "health"} {
+	for _, stage := range []string{"metric", "health"} {
 		t.Run(stage, func(t *testing.T) {
 			source := newSource(&fakeNative{}, &sync.Mutex{})
 			t.Cleanup(func() { _ = source.Close() })
 			registerMetricAndHealth(t, source)
 			cycle := newTestCycle(t, "freeze-"+stage)
 			switch stage {
-			case "inventory":
-				if _, failure := source.GPUIdentities(context.Background(), cycle); failure != nil {
-					t.Fatal(failure)
-				}
 			case "metric":
 				if values := source.ReadGPUMetrics(context.Background(), cycle, 0, []string{signalPowerDraw}); values[signalPowerDraw].Value == nil {
 					t.Fatal(values)
@@ -221,26 +218,51 @@ func TestHealthAndMetricRegistrationShareStartedBoundary(t *testing.T) {
 	}
 }
 
-func TestFailedInventoryInitializationKeepsHealthRegistrationOpen(t *testing.T) {
-	native := &fakeNative{initErr: errors.New("client unavailable")}
-	source := newSource(native, &sync.Mutex{})
-	if _, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "failed-init")); failure == nil {
-		t.Fatal("initialization succeeded")
-	}
-	registerMetricAndHealth(t, source)
-	native.initErr = nil
-	if _, failure := source.ReadHealth(context.Background(), newTestCycle(t, "healthy-retry")); failure != nil {
-		t.Fatal(failure)
-	}
-	if err := source.Close(); err != nil {
-		t.Fatal(err)
+func TestInventoryInitializationKeepsWatchRegistrationOpen(t *testing.T) {
+	for _, stage := range []string{"successful", "failed"} {
+		t.Run(stage, func(t *testing.T) {
+			native := &healthLifecycleNative{}
+			if stage == "failed" {
+				native.initErr = errNoHostengine
+			}
+			source := newSource(native, &sync.Mutex{})
+			t.Cleanup(func() { _ = source.Close() })
+			cycle := newTestCycle(t, "inventory-init")
+			identities, failure := source.GPUIdentities(context.Background(), cycle)
+			if (failure != nil) != (stage == "failed") {
+				t.Fatalf("inventory initialization = %v", failure)
+			}
+			if failure == nil {
+				if entries := source.GPUInventory(context.Background(), cycle, identities).GetInventory().GetEntries(); len(entries) != 1 || entries[0].GetCollectionError() != nil {
+					t.Fatalf("inventory = %v", entries)
+				}
+			}
+			registerMetricAndHealth(t, source)
+			if native.watchCalls.Load() != 0 || native.healthWatchCalls.Load() != 0 {
+				t.Fatal("inventory or registration eagerly created watches")
+			}
+			native.initErr = nil
+			if report, failure := source.ReadHealth(context.Background(), newTestCycle(t, "health-after-inventory")); failure != nil || report.GetRequestedSystems() != dcgmhealth.SystemMemory || native.healthSystems != dcgmhealth.SystemMemory {
+				t.Fatalf("health registered after inventory = %v, %v", report, failure)
+			}
+			wantInitCalls := int32(1)
+			if stage == "failed" {
+				wantInitCalls++
+			}
+			if native.initCalls.Load() != wantInitCalls || native.healthWatchCalls.Load() != 1 {
+				t.Fatal("health did not reuse the initialized client or retry failed initialization")
+			}
+		})
 	}
 }
 
 func TestHealthEmptyReportReturnsImmediatelyAndKeepsWatchTimestamp(t *testing.T) {
+	monitoredSince := timestamppb.New(time.Unix(100, 0))
 	raw := &observation.DCGMHealthReport{
 		GroupId: proto.Uint64(23), NativeGroupOverallHealth: observation.DCGMHealthResultPass.Enum(),
-		Entities: []*observation.ObservationTarget{healthTestGPUTarget(2)},
+		Entities:              []*observation.ObservationTarget{healthTestGPUTarget(2)},
+		MonitoredSince:        monitoredSince,
+		SystemsWithoutTargets: dcgmhealth.SystemNVSwitchFatal,
 	}
 	native := &healthLifecycleNative{health: &fakeHealthWatch{report: raw}}
 	source := newSource(native, &sync.Mutex{})
@@ -252,41 +274,39 @@ func TestHealthEmptyReportReturnsImmediatelyAndKeepsWatchTimestamp(t *testing.T)
 	if native.initCalls.Load() != 0 || native.healthWatchCalls.Load() != 0 {
 		t.Fatal("health registration eagerly initialized the native watch")
 	}
-	beforeFirstRead := time.Now()
-	var monitoredSince time.Time
 	for _, cycleID := range []string{"first-empty-health", "later-empty-health"} {
 		cycle := newTestCycle(t, cycleID)
 		report, failure := source.ReadHealth(context.Background(), cycle)
 		if failure != nil || report == nil || len(report.GetIncidents()) != 0 {
 			t.Fatalf("empty health report = %v, %v", report, failure)
 		}
-		if monitoredSince.IsZero() {
-			monitoredSince = report.GetMonitoredSince().AsTime()
-			if monitoredSince.Before(beforeFirstRead) || monitoredSince.After(time.Now()) {
-				t.Fatalf("monitoring start %v is outside the first read", monitoredSince)
-			}
-		}
 		if report.GetGroupId() != 23 || report.GetNativeGroupOverallHealth() != observation.DCGMHealthResultPass ||
 			report.GetRequestedSystems() != systems || report.GetSystemsWithoutTargets() != dcgmhealth.SystemNVSwitchFatal ||
 			report.GetEntities()[0].GetGpu().GetUuid() != "GPU-2" || report.GetEntities()[0].GetGpu().GetNative().GetEntityId() != 2 ||
-			report.GetCheckId() != cycle.CollectionID() || !report.GetMonitoredSince().AsTime().Equal(monitoredSince) {
+			report.GetCheckId() != cycle.CollectionID() || !proto.Equal(report.GetMonitoredSince(), monitoredSince) {
 			t.Fatalf("empty health report lost metadata: %v", report)
 		}
 	}
 	if native.healthWatchCalls.Load() != 1 || native.health.readCalls.Load() != 2 || native.initCalls.Load() != 1 {
 		t.Fatal("repeated empty reads did not retain the original health watch")
 	}
-	if raw.GetMonitoredSince() != nil || raw.GetCheckId() != "" || raw.GetEntities()[0].GetGpu().GetUuid() != "" {
+	if !proto.Equal(raw.GetMonitoredSince(), monitoredSince) || raw.GetCheckId() != "" || raw.GetEntities()[0].GetGpu().GetUuid() != "" {
 		t.Fatal("empty health read mutated the native-owned report")
 	}
 }
 
 func TestHealthReportMetadataAndSharedClient(t *testing.T) {
 	gate := &sync.Mutex{}
+	monitoredSince := time.Unix(100, 0)
 	raw := &observation.DCGMHealthReport{
 		GroupId: proto.Uint64(23), RequestedSystems: 999, NativeGroupOverallHealth: observation.DCGMHealthResult(987).Enum(),
-		Entities:  []*observation.ObservationTarget{{Kind: &observation.ObservationTarget_NativeEntity{NativeEntity: &observation.NativeEntityRef{Source: Name, EntityKind: 51, EntityId: 17}}}},
-		Incidents: []*observation.DCGMHealthIncident{{System: 9999, NativeHealth: 777, ErrorCode: 1234, Message: "native detail"}},
+		Entities:       []*observation.ObservationTarget{{Kind: &observation.ObservationTarget_NativeEntity{NativeEntity: &observation.NativeEntityRef{Source: Name, EntityKind: 51, EntityId: 17}}}},
+		Incidents:      []*observation.DCGMHealthIncident{{System: 9999, NativeHealth: 777, ErrorCode: 1234, Message: "native detail"}},
+		MonitoredSince: timestamppb.New(monitoredSince),
+		SystemErrors: map[uint64]*observation.CollectionError{
+			dcgmhealth.SystemPCIe: {Source: Name, Operation: "health discovery", Category: observation.CollectionErrorCategoryUnavailable, Detail: "PCIe discovery failed"},
+		},
+		PossiblyTruncated: true,
 	}
 	native := &healthLifecycleNative{health: &fakeHealthWatch{report: raw}, cleanupNative: cleanupNative{nativeCallGate: gate}}
 	source := newSource(native, gate)
@@ -304,14 +324,14 @@ func TestHealthReportMetadataAndSharedClient(t *testing.T) {
 	if failure != nil || first == nil {
 		t.Fatalf("ReadHealth() = %+v, %v", first, failure)
 	}
-	monitoredSince := source.healthMonitoredSince
 	if first.GetRequestedSystems() != dcgmhealth.SystemMemory|dcgmhealth.SystemPCIe ||
 		first.GetGroupId() != raw.GetGroupId() || first.GetNativeGroupOverallHealth() != 987 ||
 		!proto.Equal(first.GetEntities()[0], raw.GetEntities()[0]) || !proto.Equal(first.GetIncidents()[0], raw.GetIncidents()[0]) ||
-		!first.GetMonitoredSince().AsTime().Equal(monitoredSince) {
+		!first.GetMonitoredSince().AsTime().Equal(monitoredSince) ||
+		!proto.Equal(first.GetSystemErrors()[dcgmhealth.SystemPCIe], raw.GetSystemErrors()[dcgmhealth.SystemPCIe]) || !first.GetPossiblyTruncated() {
 		t.Fatalf("raw report information changed: %v", first)
 	}
-	if raw.GetCheckId() != "" || raw.GetMonitoredSince() != nil || raw.GetRequestedSystems() != 999 {
+	if raw.GetCheckId() != "" || !raw.GetMonitoredSince().AsTime().Equal(monitoredSince) || raw.GetRequestedSystems() != 999 {
 		t.Fatal("Source mutated native-owned report")
 	}
 	second, failure := source.ReadHealth(context.Background(), cycle)
@@ -330,19 +350,25 @@ func TestHealthReportMetadataAndSharedClient(t *testing.T) {
 	first.GetEntities()[0].GetNativeEntity().EntityId = 42
 	*first.GroupId = 45
 	first.MonitoredSince.Seconds++
+	first.SystemErrors[dcgmhealth.SystemPCIe].Detail = "consumer edit"
+	delete(first.SystemErrors, dcgmhealth.SystemPCIe)
+	first.PossiblyTruncated = false
 	if second.GetIncidents()[0].GetMessage() != "native detail" || second.GetEntities()[0].GetNativeEntity().GetEntityId() != 17 ||
-		second.GetGroupId() != 23 || !second.GetMonitoredSince().AsTime().Equal(monitoredSince) {
+		second.GetGroupId() != 23 || !second.GetMonitoredSince().AsTime().Equal(monitoredSince) ||
+		second.GetSystemErrors()[dcgmhealth.SystemPCIe].GetDetail() != "PCIe discovery failed" || !second.GetPossiblyTruncated() {
 		t.Fatal("reports from distinct reads alias each other")
 	}
-	if raw.GetIncidents()[0].GetMessage() != "native detail" || raw.GetEntities()[0].GetNativeEntity().GetEntityId() != 17 || raw.GetGroupId() != 23 {
+	if raw.GetIncidents()[0].GetMessage() != "native detail" || raw.GetEntities()[0].GetNativeEntity().GetEntityId() != 17 || raw.GetGroupId() != 23 ||
+		!raw.GetMonitoredSince().AsTime().Equal(monitoredSince) || raw.GetSystemErrors()[dcgmhealth.SystemPCIe].GetDetail() != "PCIe discovery failed" || !raw.GetPossiblyTruncated() {
 		t.Fatal("returned report aliases native-owned data")
 	}
 }
 
-func TestHealthReportNoTargetsUsesGroupMembership(t *testing.T) {
+func TestHealthReportPreservesNativeAvailability(t *testing.T) {
 	switchTarget := &observation.ObservationTarget{Kind: &observation.ObservationTarget_NVSwitch{NvSwitch: &observation.NVSwitchRef{Native: &observation.NativeEntityRef{Source: Name, EntityKind: 3}}}}
 	unknownTarget := &observation.ObservationTarget{Kind: &observation.ObservationTarget_NativeEntity{NativeEntity: &observation.NativeEntityRef{Source: Name, EntityKind: 71}}}
 	for _, test := range []struct {
+		failures map[uint64]*observation.CollectionError
 		name     string
 		entities []*observation.ObservationTarget
 		missing  uint64
@@ -354,10 +380,14 @@ func TestHealthReportNoTargetsUsesGroupMembership(t *testing.T) {
 		{name: "unknown", entities: []*observation.ObservationTarget{unknownTarget}, missing: dcgmhealth.KnownSystems},
 		{name: "GPU without native metadata", entities: []*observation.ObservationTarget{observation.GPUTarget("GPU-known")}, missing: dcgmhealth.NVSwitchSystems},
 		{name: "raw known kind", entities: []*observation.ObservationTarget{{Kind: &observation.ObservationTarget_NativeEntity{NativeEntity: &observation.NativeEntityRef{Source: Name, EntityKind: 1}}}}, missing: dcgmhealth.KnownSystems},
+		{name: "switch discovery failure", entities: []*observation.ObservationTarget{healthTestGPUTarget(0)}, failures: map[uint64]*observation.CollectionError{
+			dcgmhealth.SystemNVSwitchFatal:    {Source: Name, Category: observation.CollectionErrorCategoryUnavailable, Detail: "switch discovery failed"},
+			dcgmhealth.SystemNVSwitchNonfatal: {Source: Name, Category: observation.CollectionErrorCategoryUnavailable, Detail: "switch discovery failed"},
+		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			raw := &observation.DCGMHealthReport{
-				Entities: test.entities, SystemsWithoutTargets: 1 << 63,
+				Entities: test.entities, SystemsWithoutTargets: test.missing, SystemErrors: test.failures,
 				Incidents: []*observation.DCGMHealthIncident{{
 					System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail,
 					Entity: healthTestGPUTarget(99),
@@ -370,58 +400,69 @@ func TestHealthReportNoTargetsUsesGroupMembership(t *testing.T) {
 				t.Fatal(err)
 			}
 			report, failure := source.ReadHealth(context.Background(), newTestCycle(t, "targets-"+test.name))
-			if failure != nil || report.GetSystemsWithoutTargets() != test.missing || len(report.GetIncidents()) != 1 {
+			if failure != nil || report.GetSystemsWithoutTargets() != test.missing || len(report.GetIncidents()) != 1 ||
+				!proto.Equal(report.GetMonitoredSince(), raw.GetMonitoredSince()) || len(report.GetSystemErrors()) != len(test.failures) {
 				t.Fatalf("ReadHealth() = %v, %v; want missing %#x with native incident", report, failure, test.missing)
 			}
-			if raw.SystemsWithoutTargets != 1<<63 {
+			for system, want := range test.failures {
+				if !proto.Equal(report.GetSystemErrors()[system], want) {
+					t.Fatalf("native discovery error for %#x changed: %v", system, report.GetSystemErrors()[system])
+				}
+			}
+			if raw.SystemsWithoutTargets != test.missing {
 				t.Fatal("availability metadata mutated the native-owned report")
 			}
 		})
 	}
 }
 
-func TestHealthSetupFailureIsTerminalAndKeepsMetrics(t *testing.T) {
-	setupError := &dcgmError{category: observation.CollectionErrorCategoryNotConfigured, sourceError: "NATIVE_STATUS", detail: "health setup failed"}
-	rollbackError := errors.New("health rollback failed")
+func TestHealthWatchConstructionFailureRetriesAndKeepsMetrics(t *testing.T) {
+	setupError := &dcgmError{category: observation.CollectionErrorCategoryNotConfigured, sourceError: "NATIVE_STATUS", detail: "health watch construction failed"}
 	for _, missing := range []bool{false, true} {
-		t.Run(map[bool]string{false: "rollback", true: "missing watch"}[missing], func(t *testing.T) {
+		t.Run(map[bool]string{false: "native error", true: "missing watch"}[missing], func(t *testing.T) {
 			gate := &sync.Mutex{}
 			native := &healthLifecycleNative{
-				healthSetupError: setupError, health: &fakeHealthWatch{cleanupError: rollbackError},
+				healthSetupError: setupError, health: &fakeHealthWatch{},
 				cleanupNative: cleanupNative{nativeCallGate: gate}, missingWatch: missing,
 			}
 			source := newSource(native, gate)
+			t.Cleanup(func() { _ = source.Close() })
 			registerMetricAndHealth(t, source)
-			for _, cycleID := range []string{"failed-health", "health-retry"} {
-				_, failure := source.ReadHealth(context.Background(), newTestCycle(t, cycleID))
-				if failure == nil {
+			cycle := newTestCycle(t, "failed-health-construction")
+			for attempt := range 2 {
+				report, failure := source.ReadHealth(context.Background(), cycle)
+				if report != nil || failure == nil || failure.GetSource() != Name || failure.GetOperation() != "health" {
 					t.Fatal("health setup unexpectedly succeeded")
 				}
-				if !missing && (!strings.Contains(failure.GetDetail(), setupError.Error()) || !strings.Contains(failure.GetDetail(), rollbackError.Error()) || failure.GetSourceError() != "NATIVE_STATUS" || failure.GetCategory() != observation.CollectionErrorCategoryNotConfigured) {
-					t.Fatalf("health failure lost native or rollback detail: %v", failure)
+				if !missing && (failure.GetDetail() != setupError.Error() || failure.GetSourceError() != "NATIVE_STATUS" || failure.GetCategory() != observation.CollectionErrorCategoryNotConfigured) {
+					t.Fatalf("health failure lost native status: %v", failure)
+				}
+				if missing && (failure.GetCategory() != observation.CollectionErrorCategorySourceError || !strings.Contains(failure.GetDetail(), "no watch")) {
+					t.Fatalf("missing watch lost its contract failure: %v", failure)
+				}
+				if native.healthWatchCalls.Load() != int32(attempt+1) || native.health.readCalls.Load() != 0 || native.health.cleanupCalls.Load() != 0 {
+					t.Fatal("failed construction retried inside one call or acquired native resources")
 				}
 			}
-			if native.healthWatchCalls.Load() != 1 || native.cleanupCalls.Load() != 0 || source.closed.Load() {
-				t.Fatal("health setup failure retried setup or released the shared client")
+			values := source.ReadGPUMetrics(context.Background(), cycle, 0, []string{signalPowerDraw})
+			if values[signalPowerDraw].Value == nil || source.closed.Load() || native.cleanupCalls.Load() != 0 {
+				t.Fatalf("health construction failure blocked metrics or released the client: %v", values)
 			}
-			if !missing && !errors.Is(source.healthWatchError, rollbackError) {
-				t.Fatal("terminal error lost rollback cause")
+			native.healthSetupError = nil
+			native.missingWatch = false
+			if report, failure := source.ReadHealth(context.Background(), newTestCycle(t, "health-construction-recovered")); failure != nil || report == nil {
+				t.Fatalf("later health construction did not recover: %v, %v", report, failure)
 			}
-			values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "metric-after-health-failure"), 0, []string{signalPowerDraw})
-			if values[signalPowerDraw].Value == nil {
-				t.Fatalf("health setup failure blocked metrics: %v", values)
+			if native.healthWatchCalls.Load() != 3 || native.health.readCalls.Load() != 1 || native.initCalls.Load() != 1 {
+				t.Fatal("health construction recovery did not retain the shared client")
 			}
 			for range 2 {
 				if err := source.Close(); err != nil {
 					t.Fatal(err)
 				}
 			}
-			wantRollbacks := int32(1)
-			if missing {
-				wantRollbacks = 0
-			}
-			if native.health.cleanupCalls.Load() != wantRollbacks || native.watchCleanupCalls.Load() != 1 || native.cleanupCalls.Load() != 1 || native.health.cleanedAfterClient.Load() || native.health.outsideGate.Load() {
-				t.Fatal("health setup rollback was repeated or client cleanup ordering changed")
+			if native.health.cleanupCalls.Load() != 1 || native.watchCleanupCalls.Load() != 1 || native.cleanupCalls.Load() != 1 || native.health.cleanedAfterClient.Load() || native.health.outsideGate.Load() || native.cleanupOutsideGate.Load() {
+				t.Fatal("recovered watch or client cleanup repeated or escaped native-call ownership")
 			}
 		})
 	}
@@ -474,6 +515,9 @@ func TestCombinedMetricPreflightFailureKeepsHealth(t *testing.T) {
 	if _, failure := source.ReadHealth(context.Background(), newTestCycle(t, "health-after-preflight")); failure != nil {
 		t.Fatal(failure)
 	}
+	if native.preparationCalls.Load() != 0 {
+		t.Fatal("health collection prepared metric watches")
+	}
 	for _, cycleID := range []string{"failed-preflight", "preflight-retry"} {
 		values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, cycleID), 0, []string{signalPowerDraw})
 		if failure := values[signalPowerDraw].CollectionError; failure.GetDetail() != native.failure.Error() {
@@ -488,13 +532,19 @@ func TestCombinedMetricPreflightFailureKeepsHealth(t *testing.T) {
 	}
 }
 
-func TestHealthQueryFailureCanRetryAndKeepsMetrics(t *testing.T) {
-	for _, outcome := range []string{"native error", "missing report"} {
+func TestHealthReadFailureCanRetryAndKeepsMetrics(t *testing.T) {
+	for _, outcome := range []string{"native error", "setup and rollback error", "missing report"} {
 		t.Run(outcome, func(t *testing.T) {
 			watch := &fakeHealthWatch{missingReport: outcome == "missing report"}
 			wantDetail := "no report"
 			if outcome == "native error" {
 				watch.readError = errors.New("health query failed")
+				wantDetail = watch.readError.Error()
+			} else if outcome == "setup and rollback error" {
+				watch.readError = errors.Join(
+					&dcgmError{category: observation.CollectionErrorCategoryUnavailable, sourceError: "NATIVE_STATUS", detail: "health setup failed"},
+					errors.New("health rollback failed"),
+				)
 				wantDetail = watch.readError.Error()
 			}
 			native := &healthLifecycleNative{health: watch}
@@ -509,6 +559,9 @@ func TestHealthQueryFailureCanRetryAndKeepsMetrics(t *testing.T) {
 			if outcome == "missing report" && failure.GetCategory() != observation.CollectionErrorCategorySourceError {
 				t.Fatalf("missing report category = %v", failure)
 			}
+			if outcome == "setup and rollback error" && (failure.GetSourceError() != "NATIVE_STATUS" || failure.GetCategory() != observation.CollectionErrorCategoryUnavailable) {
+				t.Fatalf("setup and rollback failure lost native status: %v", failure)
+			}
 			values := source.ReadGPUMetrics(context.Background(), cycle, 0, []string{signalPowerDraw})
 			if values[signalPowerDraw].Value == nil {
 				t.Fatal("completed health query failure blocked metrics in the same cycle")
@@ -519,8 +572,8 @@ func TestHealthQueryFailureCanRetryAndKeepsMetrics(t *testing.T) {
 			if failure != nil || recovered == nil || len(recovered.GetIncidents()) != 0 {
 				t.Fatalf("recovered empty health report = %v, %v", recovered, failure)
 			}
-			if native.healthWatchCalls.Load() != 1 || native.health.readCalls.Load() != 2 || native.cleanupCalls.Load() != 0 {
-				t.Fatal("query error reset health monitoring")
+			if native.healthWatchCalls.Load() != 1 || native.health.readCalls.Load() != 2 || native.health.cleanupCalls.Load() != 0 || native.cleanupCalls.Load() != 0 {
+				t.Fatal("health read error discarded the watch that owns lazy setup and cleanup")
 			}
 		})
 	}
@@ -818,7 +871,7 @@ type healthBlockingSetupNative struct {
 	blockWatch bool
 }
 
-func (native *healthBlockingSetupNative) Init() (func(), error) {
+func (native *healthBlockingSetupNative) Init() (func() error, error) {
 	if !native.blockWatch {
 		close(native.started)
 		<-native.release

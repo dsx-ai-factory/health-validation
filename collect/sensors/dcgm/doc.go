@@ -22,20 +22,26 @@
 // When health is selected, Measure makes one health read. Consumers needing
 // the same findings can share the returned batch.
 //
-// Metrics and health findings retain native DCGM entity IDs and attempt GPU
-// UUID enrichment after collection. Missing UUIDs never discard collected
-// values. Native IDs are source-local and may change after a restart; consumers
-// that need persistent GPU identity must require a UUID. Metric targets retain
-// their existing source_local_id fallback when the UUID is unavailable.
+// Metrics and health findings retain native DCGM entity IDs. Metrics look up
+// GPU UUIDs before reading fields; health reports attempt UUID enrichment after
+// the native health check. Missing UUIDs retain native identities, but a UUID
+// lookup timeout can prevent subsequent native reads. Native IDs are source-local
+// and may change after a restart; consumers that need persistent GPU identity
+// must require a UUID. Metric targets retain their existing source_local_id
+// fallback when the UUID is unavailable.
 //
 // Health observations target the node and retain native incident entities and
 // the native overall result for the complete group. An empty incident list
 // means no incidents were reported; it does not assert that every target was
 // checked or healthy. Successful native reports are available immediately,
-// including empty incident lists. MonitoredSince records when this Source
-// enabled monitoring; consumers choose any startup grace period.
-// NO_TARGETS means no selected system has relevant GPU or NVSwitch targets.
-// Usable reports retain missing-target facts alongside incidents.
+// including empty incident lists. MonitoredSince records the group's first
+// successful setup; systems enabled later may have less history. Consumers
+// choose any startup grace period.
+// NO_TARGETS means no selected system has relevant GPU or NVSwitch targets;
+// this source-wide outcome has no observation target.
+// Usable reports retain missing-target facts and per-system discovery errors
+// alongside incidents. The native overall result covers the enabled group;
+// it does not establish coverage for systems listed in SystemErrors.
 // Report members and incidents use shared GPU and NVSwitch references with
 // native identity metadata; unknown native entity kinds remain available.
 // These are source findings; consumers supply verdict and recovery policy.

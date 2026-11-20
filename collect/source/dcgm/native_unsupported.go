@@ -15,7 +15,7 @@ func (unsupportedNative) MetricWatchGroups([]string) ([]metricWatchGroup, error)
 	return []metricWatchGroup{}, nil
 }
 
-func (unsupportedNative) Init() (func(), error)          { return nil, unsupportedError() }
+func (unsupportedNative) Init() (func() error, error)    { return nil, unsupportedError() }
 func (unsupportedNative) AllGPUIndices() ([]uint, error) { return nil, unsupportedError() }
 func (unsupportedNative) ReadGPUUUIDs([]uint) (map[uint]GPUIdentityEntry, error) {
 	return nil, unsupportedError()

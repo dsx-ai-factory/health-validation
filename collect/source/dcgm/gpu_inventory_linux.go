@@ -46,7 +46,7 @@ func (library *nativeLibrary) ReadGPUInventory(gpuIndices []uint) (map[uint]*obs
 				entry.CollectionError = &failure
 			}
 		}
-		return entries, nil
+		return entries, err
 	}
 	decoded := decodeGPUInventoryFields(gpuIndices, inventoryFields, values)
 	for gpuIndex, entry := range decoded {

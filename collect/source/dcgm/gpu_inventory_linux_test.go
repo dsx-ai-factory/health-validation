@@ -21,6 +21,7 @@ func TestReadGPUInventoryPreservesStatusAndQueryErrors(t *testing.T) {
 		t.Run(fmt.Sprintf("query_fails_%t", queryFails), func(t *testing.T) {
 			indices := []uint{2, 7, 9}
 			var checked []uint
+			queryError := &dcgmError{sourceError: "DCGM_ST_NO_PERMISSION", category: observation.CollectionErrorCategoryPermissionDenied, detail: "No permission"}
 			library := &nativeLibrary{
 				gpuStatus: func(gpuIndex uint) godcgm.EntityStatus {
 					checked = append(checked, gpuIndex)
@@ -38,14 +39,14 @@ func TestReadGPUInventoryPreservesStatusAndQueryErrors(t *testing.T) {
 						t.Fatalf("unexpected read: %v, %v", gpuIndices, fields)
 					}
 					if queryFails {
-						return nil, &dcgmError{sourceError: "DCGM_ST_NO_PERMISSION", category: observation.CollectionErrorCategoryPermissionDenied, detail: "No permission"}
+						return nil, queryError
 					}
 					model := "H100"
 					return []godcgm.FieldValue_v2{{EntityGroupId: godcgm.FE_GPU, EntityID: 7, FieldID: godcgm.DCGM_FI_DEV_NAME, FieldType: godcgm.DCGM_FT_STRING, StringValue: &model}}, nil
 				},
 			}
 			entries, err := library.ReadGPUInventory(indices)
-			if err != nil || len(entries) != len(indices) || !slices.Equal(checked, indices) {
+			if queryFails != errors.Is(err, queryError) || (!queryFails && err != nil) || len(entries) != len(indices) || !slices.Equal(checked, indices) {
 				t.Fatalf("membership or checks lost: %v, %v, %v", entries, checked, err)
 			}
 			for _, gpuIndex := range indices {
@@ -82,20 +83,43 @@ func TestReadGPUInventoryPreservesStatusAndQueryErrors(t *testing.T) {
 
 func TestReadGPUInventoryAllLost(t *testing.T) {
 	indices := []uint{2, 7}
+	queryError := errors.New("attributes unavailable")
 	library := &nativeLibrary{
 		gpuStatus: func(uint) godcgm.EntityStatus { return godcgm.EntityStatusLost },
 		readFields: func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
-			return nil, errors.New("attributes unavailable")
+			return nil, queryError
 		},
 	}
 	entries, err := library.ReadGPUInventory(indices)
-	if err != nil || len(entries) != len(indices) {
+	if !errors.Is(err, queryError) || len(entries) != len(indices) {
 		t.Fatalf("all-Lost membership discarded: %v, %v", entries, err)
 	}
 	for _, gpuIndex := range indices {
 		if entries[gpuIndex].GetCollectionError().GetSourceError() != "DcgmEntityStatusLost" {
 			t.Fatalf("Lost error discarded: %v", entries[gpuIndex])
 		}
+	}
+}
+
+func TestReadGPUInventoryPreservesConnectionLossWithEntityStatus(t *testing.T) {
+	for _, status := range []godcgm.EntityStatus{godcgm.EntityStatusLost, godcgm.EntityStatusUnsupported} {
+		t.Run(status.String(), func(t *testing.T) {
+			nativeFailure := &godcgm.Error{Code: godcgm.DCGM_ST_CONNECTION_NOT_VALID}
+			queryError := dcgmErrorFromError(nativeFailure)
+			library := &nativeLibrary{
+				gpuStatus: func(uint) godcgm.EntityStatus { return status },
+				readFields: func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
+					return nil, queryError
+				},
+			}
+			entries, err := library.ReadGPUInventory([]uint{7})
+			if err != queryError || !errors.Is(err, errConnectionNotValid) || !errors.Is(err, nativeFailure) {
+				t.Fatalf("operation-level connection failure lost: %v", err)
+			}
+			if failure := entries[7].GetCollectionError(); failure.GetSourceError() != "DcgmEntityStatus"+status.String() {
+				t.Fatalf("entity status replaced by query failure: %v", failure)
+			}
+		})
 	}
 }
 

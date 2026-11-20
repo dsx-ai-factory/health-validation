@@ -246,7 +246,7 @@ message Value {
   }
 }
 
-// DcgmHealthReport preserves one complete Source health read.
+// DcgmHealthReport preserves one Source health read and its coverage limitations.
 // An empty incident list means only that no incidents were reported.
 message DcgmHealthReport {
   // Values match DCGM; unknown numeric results remain valid source data.
@@ -262,10 +262,13 @@ message DcgmHealthReport {
   // Absent when no native group was created.
   optional uint64 group_id = 3;
   repeated ObservationTarget entities = 4;
-  // The result returned by the native group check.
+  // The result returned for the native group's enabled systems. System errors
+  // and systems without targets limit coverage of the requested systems.
   // Absent when no native check was performed; unknown numbers are preserved.
   optional HealthResult native_group_overall_health = 5;
   repeated DcgmHealthIncident incidents = 6;
+  // First successful health setup for this group. Systems enabled later may
+  // have less history; this timestamp does not establish sample coverage.
   google.protobuf.Timestamp monitored_since = 7;
   // Identifies this source read.
   string check_id = 8;
@@ -273,6 +276,12 @@ message DcgmHealthReport {
   // Unrequested systems are excluded. This does not describe native support
   // or sample coverage.
   uint64 systems_without_targets = 10;
+  // Discovery failures keyed by one requested subsystem bit each.
+  // A failed system is unavailable; it is not a system without targets.
+  map<uint64, CollectionError> system_errors = 11;
+  // The native incident limit may have been reached. The omitted count is
+  // unknown, and an absent incident cannot establish that a fault cleared.
+  bool possibly_truncated = 12;
 }
 
 // DcgmHealthIncident is source data, not a Health Validation verdict.

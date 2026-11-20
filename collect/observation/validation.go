@@ -5,6 +5,7 @@ package observation
 
 import (
 	"fmt"
+	"math/bits"
 	"strings"
 )
 
@@ -25,6 +26,20 @@ func validateDCGMHealthValue(value *Value) error {
 	// The missing-target mask describes only checks the caller requested.
 	if systemsWithoutTargets&requestedSystems != systemsWithoutTargets {
 		return fmt.Errorf("DCGM health report systems_without_targets includes unrequested systems")
+	}
+	for system, failure := range report.GetSystemErrors() {
+		if bits.OnesCount64(system) != 1 {
+			return fmt.Errorf("DCGM health report system_errors key must identify one subsystem")
+		}
+		if system&requestedSystems == 0 {
+			return fmt.Errorf("DCGM health report system_errors includes an unrequested system")
+		}
+		if system&systemsWithoutTargets != 0 {
+			return fmt.Errorf("DCGM health report failed system cannot also have no targets")
+		}
+		if failure == nil {
+			return fmt.Errorf("DCGM health report system_errors requires an error for each system")
+		}
 	}
 	if since := report.GetMonitoredSince(); since != nil {
 		if err := since.CheckValid(); err != nil {

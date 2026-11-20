@@ -353,7 +353,7 @@ func TestMeasureHealthOnceBetweenMetricsAndInventory(t *testing.T) {
 	source := newFakeHealthSource()
 	sensor := configuredHealthSensor(t, source, gpusignals.PowerDraw.ID(), gpusignals.PowerDraw.ID())
 	batch := measureHealthSensor(t, sensor, collect.WithGPUInventory())
-	if !slices.Equal(source.calls, []string{"indices", "metrics", "health", "uuid", "inventory"}) {
+	if !slices.Equal(source.calls, []string{"indices", "uuid", "metrics", "health", "inventory"}) {
 		t.Fatalf("collection order = %v", source.calls)
 	}
 	if source.healthReads != 1 || source.enumerationReads != 1 || len(batch.Observations) != 2 {
@@ -482,11 +482,13 @@ func TestAggregateHealthAvailabilityOutcomes(t *testing.T) {
 			}
 			current := batch.Observations[0]
 			if test.wantNoValue != observation.NoValueReasonUnspecified {
-				if current.GetValue() != nil || current.GetNoValue().GetReason() != test.wantNoValue {
+				if current.GetValue() != nil || current.GetNoValue().GetReason() != test.wantNoValue || current.GetTarget() != nil {
 					t.Fatalf("availability observation = %v", current)
 				}
 			} else if report := current.GetValue().GetDcgmHealthReport(); !proto.Equal(report, source.report) {
 				t.Fatalf("usable aggregate facts changed or synthetic incidents appeared: %v", current)
+			} else if _, ok := current.GetTarget().GetKind().(*observation.ObservationTarget_Node); !ok {
+				t.Fatalf("usable health report lost its node target: %v", current)
 			}
 		})
 	}
@@ -498,7 +500,7 @@ func TestHealthAPIErrorPreservesMetricObservations(t *testing.T) {
 		Operation: "health setup", Category: observation.CollectionErrorCategoryUnavailable, Detail: "native API failed", SourceError: "-3",
 	}
 	batch := measureHealthSensor(t, configuredHealthSensor(t, source, gpusignals.PowerDraw.ID()))
-	if batch.Observations[0].GetValue().GetDoubleValue() != 100 || len(batch.Observations) != 2 || source.healthReads != 1 {
+	if batch.Observations[0].GetValue().GetDoubleValue() != 100 || batch.Observations[0].GetTarget().GetGpu().GetUuid() != "GPU-7" || len(batch.Observations) != 2 || source.healthReads != 1 {
 		t.Fatalf("partial metric batch = %v", batch)
 	}
 	expected := proto.Clone(source.healthFailure).(*observation.CollectionError)

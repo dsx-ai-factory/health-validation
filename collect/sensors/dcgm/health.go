@@ -44,9 +44,9 @@ type configurableSource interface {
 // Combine flags such as dcgmhealth.SystemMemory|dcgmhealth.SystemPCIe to request
 // multiple subsystems. Health setup occurs lazily on the first health read.
 //
-// Construct all sensors sharing source before source collection begins. The
-// source unions registered health masks; per-call signal selection does not
-// reconfigure the watch.
+// Construct all sensors sharing source before its first metric or health read.
+// Inventory reads leave registration open. The source unions registered health
+// masks; per-call signal selection does not reconfigure the watch.
 func NewWithHealth(source *dcgmsource.Source, systems uint64, metricSignalIDs ...string) (collect.Sensor, error) {
 	if source == nil {
 		return nil, fmt.Errorf("DCGM source is required")
@@ -132,7 +132,7 @@ func (sensor *sensor) appendHealth(
 	})
 }
 
-// appendHealthNoValue records why the aggregate health report has no usable value.
+// appendHealthNoValue records source-wide health unavailability.
 func (sensor *sensor) appendHealthNoValue(
 	batch *observation.ObservationBatch,
 	definition collect.Signal,
@@ -141,7 +141,7 @@ func (sensor *sensor) appendHealthNoValue(
 	detail string,
 ) {
 	batch.Observations = append(batch.Observations, observation.NewNoValueObservation(
-		definition.ID(), definition.Unit(), sensor.source.ID(), observation.NodeTarget(""),
+		definition.ID(), definition.Unit(), sensor.source.ID(), nil,
 		timestamppb.New(observedAt), &observation.NoValue{Reason: reason, Detail: detail},
 	))
 }

@@ -5,9 +5,11 @@ package dcgm
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -388,110 +390,215 @@ func TestMeasureMetricsWithoutUUID(t *testing.T) {
 	}
 }
 
-type blockingUUIDSource struct {
+type blockingCollectionSource struct {
 	*fakeInventorySource
-	uuidStarted chan struct{}
-	release     chan struct{}
+	started    chan struct{}
+	release    chan struct{}
+	blockedGPU uint
+	blockUUID  bool
 }
 
-func (source *blockingUUIDSource) ReadGPUMetrics(ctx context.Context, cycle *collect.Cycle, index uint, ids []string) map[string]dcgmsource.FieldValue {
+func (source *blockingCollectionSource) ReadGPUMetrics(ctx context.Context, cycle *collect.Cycle, index uint, ids []string) map[string]dcgmsource.FieldValue {
 	values, err := collect.Run(ctx, cycle, dcgmsource.Name, func(callContext context.Context) (map[string]dcgmsource.FieldValue, error) {
-		return source.fakeInventorySource.ReadGPUMetrics(callContext, cycle, index, ids), nil
+		values := source.fakeInventorySource.ReadGPUMetrics(callContext, cycle, index, ids)
+		if !source.blockUUID && index == source.blockedGPU {
+			close(source.started)
+			<-source.release
+		}
+		return values, nil
 	})
 	if err == nil {
 		return values
 	}
+	category := observation.CollectionErrorCategoryUnavailable
+	if errors.Is(err, collect.ErrCollectionTimeout) {
+		category = observation.CollectionErrorCategoryTimeout
+	}
 	values = make(map[string]dcgmsource.FieldValue, len(ids))
 	for _, id := range ids {
 		values[id] = dcgmsource.FieldValue{CollectionError: &observation.CollectionError{
-			Category: observation.CollectionErrorCategoryUnavailable, Detail: err.Error(),
+			Source: dcgmsource.Name, Operation: "metrics", Category: category, Detail: err.Error(),
 		}}
 	}
 	return values
 }
 
-func (source *blockingUUIDSource) GPUUUIDs(ctx context.Context, cycle *collect.Cycle, indices []uint) []dcgmsource.GPUIdentityEntry {
-	source.uuidReads++
-	_, err := collect.Run(ctx, cycle, dcgmsource.Name, func(context.Context) (struct{}, error) {
-		close(source.uuidStarted)
-		<-source.release
-		return struct{}{}, nil
-	})
-	entries := make([]dcgmsource.GPUIdentityEntry, 0, len(indices))
-	for _, index := range indices {
-		entry := dcgmsource.GPUIdentityEntry{Index: index}
-		if err != nil {
-			entry.UUIDError = &observation.CollectionError{
-				Category: observation.CollectionErrorCategoryUnavailable, Detail: err.Error(),
-			}
+func (source *blockingCollectionSource) GPUUUIDs(ctx context.Context, cycle *collect.Cycle, indices []uint) []dcgmsource.GPUIdentityEntry {
+	entries, err := collect.Run(ctx, cycle, dcgmsource.Name, func(callContext context.Context) ([]dcgmsource.GPUIdentityEntry, error) {
+		entries := source.fakeInventorySource.GPUUUIDs(callContext, cycle, indices)
+		if source.blockUUID {
+			close(source.started)
+			<-source.release
 		}
-		entries = append(entries, entry)
+		return entries, nil
+	})
+	if err == nil {
+		return entries
+	}
+	entries = make([]dcgmsource.GPUIdentityEntry, 0, len(indices))
+	for _, index := range indices {
+		entries = append(entries, dcgmsource.GPUIdentityEntry{
+			Index: index,
+			UUIDError: &observation.CollectionError{
+				Category: observation.CollectionErrorCategoryUnavailable, Detail: err.Error(),
+			},
+		})
 	}
 	return entries
 }
 
-func TestMeasureMetricValuesSurviveUUIDCancellation(t *testing.T) {
-	source := &blockingUUIDSource{
-		fakeInventorySource: &fakeInventorySource{identities: []dcgmsource.GPUIdentityEntry{{Index: 2}, {Index: 7}}},
-		uuidStarted:         make(chan struct{}),
-		release:             make(chan struct{}),
-	}
-	t.Cleanup(sync.OnceFunc(func() { close(source.release) }))
-	cycle, err := collect.NewCycle("metrics-before-uuid-cancellation", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sensor := &sensor{source: source, signals: collect.Signals{gpusignals.PowerDraw, gpusignals.TemperatureCelsius}}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	type result struct {
-		err   error
-		batch *observation.ObservationBatch
-	}
-	completed := make(chan result, 1)
-	go func() {
-		batch, measureErr := sensor.Measure(ctx, collect.WithCycle(cycle))
-		completed <- result{err: measureErr, batch: batch}
-	}()
-	select {
-	case <-source.uuidStarted:
-	case early := <-completed:
-		t.Fatalf("Measure returned before UUID lookup started: %v", early.err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("UUID lookup did not start")
-	}
-	cancel()
-	var measured result
-	select {
-	case measured = <-completed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Measure did not return after UUID cancellation")
-	}
-	if measured.err != nil {
-		t.Fatal(measured.err)
-	}
-	batch := measured.batch
-	if source.metricReads != 2 || source.uuidReads != 1 || len(batch.Observations) != 4 {
-		t.Fatalf("UUID cancellation suppressed metric reads: reads=%d UUID reads=%d batch=%v", source.metricReads, source.uuidReads, batch)
-	}
-	wantSignals := []string{gpusignals.PowerDraw.ID(), gpusignals.TemperatureCelsius.ID()}
-	for position, current := range batch.Observations {
-		gpu := current.GetTarget().GetGpu()
-		wantIndex := uint32(2)
-		if position >= 2 {
-			wantIndex = 7
+type sensorMeasureResult struct {
+	err   error
+	batch *observation.ObservationBatch
+}
+
+func TestMeasureUUIDTimeoutOrCancellationSuppressesMetrics(t *testing.T) {
+	for _, cancellation := range []bool{false, true} {
+		name := "timeout"
+		if cancellation {
+			name = "cancellation"
 		}
-		if current.GetSignalId() != wantSignals[position%len(wantSignals)] {
-			t.Fatalf("metric signal = %q, want %q", current.GetSignalId(), wantSignals[position%len(wantSignals)])
-		}
-		if current.GetValue().GetDoubleValue() != 100 || current.GetCollectionError() != nil || gpu.GetUuid() != "" ||
-			gpu.GetNative().GetSource() != dcgmsource.Name || gpu.GetNative().GetEntityId() != wantIndex {
-			t.Fatalf("metric lost its value or native identity: %v", current)
-		}
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				source := &blockingCollectionSource{
+					fakeInventorySource: &fakeInventorySource{identities: []dcgmsource.GPUIdentityEntry{{Index: 2}, {Index: 7}}},
+					started:             make(chan struct{}),
+					release:             make(chan struct{}),
+					blockUUID:           true,
+				}
+				release := sync.OnceFunc(func() { close(source.release) })
+				defer release()
+				const timeout = 100 * time.Millisecond
+				cycle, err := collect.NewCycleWithTimeout("uuid-"+name, time.Now(), timeout)
+				if err != nil {
+					t.Fatal(err)
+				}
+				sensor := &sensor{source: source, signals: collect.Signals{gpusignals.PowerDraw, gpusignals.TemperatureCelsius}}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				completed := make(chan sensorMeasureResult, 1)
+				go func() {
+					batch, measureErr := sensor.Measure(ctx, collect.WithCycle(cycle))
+					completed <- sensorMeasureResult{err: measureErr, batch: batch}
+				}()
+				select {
+				case <-source.started:
+				case early := <-completed:
+					t.Fatalf("Measure returned before UUID lookup started: %v", early.err)
+				case <-time.After(time.Second):
+					t.Fatal("UUID lookup did not start")
+				}
+				synctest.Wait()
+				wantCategory := observation.CollectionErrorCategoryTimeout
+				if cancellation {
+					cancel()
+					wantCategory = observation.CollectionErrorCategoryUnavailable
+				} else {
+					time.Sleep(timeout)
+				}
+				measured := <-completed
+				if measured.err != nil {
+					t.Fatal(measured.err)
+				}
+				batch := measured.batch
+				if source.metricReads != 0 || source.uuidReads != 1 || len(batch.Observations) != 4 {
+					t.Fatalf("reads after UUID %s: metric reads=%d UUID reads=%d batch=%v", name, source.metricReads, source.uuidReads, batch)
+				}
+				wantSignals := []string{gpusignals.PowerDraw.ID(), gpusignals.TemperatureCelsius.ID()}
+				for position, current := range batch.Observations {
+					gpu := current.GetTarget().GetGpu()
+					wantIndex, wantLocalID := uint32(2), "dcgm-index-2"
+					if position >= 2 {
+						wantIndex, wantLocalID = 7, "dcgm-index-7"
+					}
+					if current.GetSignalId() != wantSignals[position%len(wantSignals)] {
+						t.Fatalf("metric signal = %q, want %q", current.GetSignalId(), wantSignals[position%len(wantSignals)])
+					}
+					failure := current.GetCollectionError()
+					if current.GetValue() != nil || failure.GetCategory() != wantCategory || failure.GetSource() != dcgmsource.Name || failure.GetOperation() != "metrics" {
+						t.Fatalf("metric outcome after UUID %s = %v", name, current)
+					}
+					if gpu.GetUuid() != "" || gpu.GetSourceLocalId() != wantLocalID ||
+						gpu.GetNative().GetSource() != dcgmsource.Name || gpu.GetNative().GetEntityKind() != dcgmGPUEntityKind || gpu.GetNative().GetEntityId() != wantIndex {
+						t.Fatalf("metric lost its native identity: %v", current)
+					}
+				}
+				if err := observation.ValidateBatch(batch); err != nil {
+					t.Fatal(err)
+				}
+				release()
+				synctest.Wait()
+			})
+		})
 	}
-	if err := observation.ValidateBatch(batch); err != nil {
-		t.Fatal(err)
-	}
+}
+
+func TestMeasureMetricTimeoutPreservesEarlierGPUUUID(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		source := &blockingCollectionSource{
+			fakeInventorySource: &fakeInventorySource{identities: []dcgmsource.GPUIdentityEntry{{Index: 0, UUID: "GPU-0"}, {Index: 1, UUID: "GPU-1"}}},
+			started:             make(chan struct{}),
+			release:             make(chan struct{}),
+			blockedGPU:          1,
+		}
+		release := sync.OnceFunc(func() { close(source.release) })
+		defer release()
+		const timeout = 100 * time.Millisecond
+		cycle, err := collect.NewCycleWithTimeout("metrics-after-uuid", time.Now(), timeout)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sensor := &sensor{source: source, signals: collect.Signals{gpusignals.PowerDraw, gpusignals.TemperatureCelsius}}
+		completed := make(chan sensorMeasureResult, 1)
+		go func() {
+			batch, measureErr := sensor.Measure(context.Background(), collect.WithCycle(cycle))
+			completed <- sensorMeasureResult{err: measureErr, batch: batch}
+		}()
+		select {
+		case <-source.started:
+		case early := <-completed:
+			t.Fatalf("Measure returned before GPU 1 read started: %v", early.err)
+		case <-time.After(time.Second):
+			t.Fatal("GPU 1 read did not start")
+		}
+		synctest.Wait()
+		time.Sleep(timeout)
+		measured := <-completed
+		if measured.err != nil {
+			t.Fatal(measured.err)
+		}
+		batch := measured.batch
+		if source.metricReads != 2 || source.uuidReads != 1 || len(batch.Observations) != 4 {
+			t.Fatalf("metric timeout reads: metric reads=%d UUID reads=%d batch=%v", source.metricReads, source.uuidReads, batch)
+		}
+		wantSignals := []string{gpusignals.PowerDraw.ID(), gpusignals.TemperatureCelsius.ID()}
+		for position, current := range batch.Observations {
+			gpu := current.GetTarget().GetGpu()
+			wantIndex, wantUUID := uint32(0), "GPU-0"
+			if position >= 2 {
+				wantIndex, wantUUID = 1, "GPU-1"
+			}
+			if current.GetSignalId() != wantSignals[position%len(wantSignals)] {
+				t.Fatalf("metric signal = %q, want %q", current.GetSignalId(), wantSignals[position%len(wantSignals)])
+			}
+			if gpu.GetUuid() != wantUUID || gpu.GetSourceLocalId() != "" ||
+				gpu.GetNative().GetSource() != dcgmsource.Name || gpu.GetNative().GetEntityKind() != dcgmGPUEntityKind || gpu.GetNative().GetEntityId() != wantIndex {
+				t.Fatalf("metric lost its UUID or native identity: %v", current)
+			}
+			if wantIndex == 0 {
+				if current.GetValue().GetDoubleValue() != 100 || current.GetCollectionError() != nil {
+					t.Fatalf("earlier GPU lost its metric value: %v", current)
+				}
+			} else if failure := current.GetCollectionError(); current.GetValue() != nil || failure.GetCategory() != observation.CollectionErrorCategoryTimeout || failure.GetSource() != dcgmsource.Name || failure.GetOperation() != "metrics" {
+				t.Fatalf("GPU 1 metric timeout = %v", current)
+			}
+		}
+		if err := observation.ValidateBatch(batch); err != nil {
+			t.Fatal(err)
+		}
+		release()
+		synctest.Wait()
+	})
 }
 
 func TestNewAcceptsEveryDCGMSourceMode(t *testing.T) {
