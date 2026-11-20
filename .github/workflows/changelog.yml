@@ -1,0 +1,77 @@
+name: Changelog
+
+# Requires a CHANGELOG.md entry on pull requests that change what users see.
+# The rules live in tools/check_changelog.py and RELEASE.md.
+#
+# pull_request_target, not pull_request, for the reason commit-lint.yml gives:
+# the workflow and the script it runs come from the default branch, so a pull
+# request cannot edit the gate that judges it. That trigger is only safe
+# because this job never checks out or executes pull request content. It reads
+# the title and labels from the event payload and fetches the two CHANGELOG.md
+# files through the API as data. Do not add a head-ref or merge-ref checkout
+# here, and do not widen `permissions`.
+#
+# `edited` re-runs the check when a title is corrected, and `labeled` and
+# `unlabeled` when skip-changelog is added or removed.
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # No `ref:` on purpose: the default checkout under pull_request_target is
+      # the base repository's default branch, which carries the script and is
+      # trusted.
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # A fork's CHANGELOG.md is read by commit SHA from the head repository.
+      # The files are data for the script and are never executed.
+      - name: Fetch the base and head changelogs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gh api -H "Accept: application/vnd.github.raw" \
+            "repos/${BASE_REPO}/contents/CHANGELOG.md?ref=${BASE_SHA}" > "${RUNNER_TEMP}/base.md"
+          gh api -H "Accept: application/vnd.github.raw" \
+            "repos/${HEAD_REPO}/contents/CHANGELOG.md?ref=${HEAD_SHA}" > "${RUNNER_TEMP}/head.md"
+
+      # The title, labels, and branch name are untrusted input: pass them
+      # through the environment, never interpolate them into the run command.
+      - name: Check the changelog
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          python3 tools/check_changelog.py \
+            --title "${PR_TITLE}" \
+            --labels "${PR_LABELS}" \
+            --pr "${PR_NUMBER}" \
+            --base-ref "${BASE_REF}" \
+            --base-changelog "${RUNNER_TEMP}/base.md" \
+            --head-changelog "${RUNNER_TEMP}/head.md"
