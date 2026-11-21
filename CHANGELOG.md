@@ -217,7 +217,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Features
 
 - Add opt-in passive DCGM health collection through `dcgm.NewWithHealth`, with
-  an explicit selection of eight health systems, optional metric signals,
+  an explicit selection of nine health systems, optional metric signals,
   and one `dcgm.health` report. A zero systems mask skips health collection;
   omit metric signals to request only health when the mask is nonzero.
   Reports preserve all native incidents, group metadata, readable health statuses,
@@ -225,6 +225,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   and NVSwitch references with optional source-native identity metadata;
   unknown native entity kinds are preserved. Existing metric-only constructors
   and defaults are unchanged.
+  Driver health monitors GPU recovery actions reported by the driver.
   Successful native reports are available immediately, including empty incident
   lists; absent incidents do not establish healthy status or complete coverage.
   Consumers choose any startup grace period.

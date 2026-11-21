@@ -113,6 +113,7 @@ func TestHealthSystemMasksMatchNative(t *testing.T) {
 		{dcgmhealth.SystemInfoROM, godcgm.DCGM_HEALTH_WATCH_INFOROM},
 		{dcgmhealth.SystemThermal, godcgm.DCGM_HEALTH_WATCH_THERMAL},
 		{dcgmhealth.SystemPower, godcgm.DCGM_HEALTH_WATCH_POWER},
+		{dcgmhealth.SystemDriver, godcgm.DCGM_HEALTH_WATCH_DRIVER},
 		{dcgmhealth.SystemNVLink, godcgm.DCGM_HEALTH_WATCH_NVLINK},
 		{dcgmhealth.SystemNVSwitchFatal, godcgm.DCGM_HEALTH_WATCH_NVSWITCH_FATAL},
 		{dcgmhealth.SystemNVSwitchNonfatal, godcgm.DCGM_HEALTH_WATCH_NVSWITCH_NONFATAL},
@@ -165,6 +166,7 @@ func TestNativeHealthSelectsEntitiesAndEnablesConfiguredUnion(t *testing.T) {
 		mask  uint64
 	}{
 		{name: "GPU", mask: dcgmhealth.SystemMemory | dcgmhealth.SystemPCIe, kinds: []godcgm.Field_Entity_Group{godcgm.FE_GPU}},
+		{name: "driver", mask: dcgmhealth.SystemDriver, kinds: []godcgm.Field_Entity_Group{godcgm.FE_GPU}},
 		{name: "NVSwitch", mask: dcgmhealth.SystemNVSwitchFatal, kinds: []godcgm.Field_Entity_Group{godcgm.FE_SWITCH}},
 		{name: "combined", mask: dcgmhealth.KnownSystems, kinds: []godcgm.Field_Entity_Group{godcgm.FE_GPU, godcgm.FE_SWITCH}},
 	} {
