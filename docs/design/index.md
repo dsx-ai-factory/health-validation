@@ -107,6 +107,7 @@ instead of a public proposal.
 | Number | Design | Status |
 | --- | --- | --- |
 | 0001 | [Review design proposals in the repository](0001-design-proposals.md) | Proposed |
+| 0002 | [Derive measurements with accumulators](0002-accumulators.md) | Proposed |
 
 ## References
 
