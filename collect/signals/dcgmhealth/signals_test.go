@@ -35,11 +35,12 @@ func TestNativeSystemMasks(t *testing.T) {
 		{name: "InfoROM", got: SystemInfoROM, want: 64},
 		{name: "thermal", got: SystemThermal, want: 128},
 		{name: "power", got: SystemPower, want: 256},
+		{name: "driver", got: SystemDriver, want: 512},
 		{name: "NVSwitch nonfatal", got: SystemNVSwitchNonfatal, want: 1024},
 		{name: "NVSwitch fatal", got: SystemNVSwitchFatal, want: 2048},
 		{name: "all native", got: SystemAll, want: 0xffffffff},
-		{name: "known", got: KnownSystems, want: 3539},
-		{name: "GPU", got: GPUSystems, want: 467},
+		{name: "known", got: KnownSystems, want: 4051},
+		{name: "GPU", got: GPUSystems, want: 979},
 		{name: "NVSwitch", got: NVSwitchSystems, want: 3072},
 	}
 	for _, test := range tests {
