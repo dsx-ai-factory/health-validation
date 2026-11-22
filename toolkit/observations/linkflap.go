@@ -136,10 +136,11 @@ type linkTransition struct {
 }
 
 // buildLinkFlap groups transitions by interface and pairs them. Per
-// interface, in time order, each down pairs with the next up not yet
-// paired:
+// interface, in time order, a down opens an outage and the next up closes
+// it:
 //   - Consecutive downs before an up are one outage from the first down; the
-//     later downs find no unpaired up and record nothing.
+//     later downs record nothing. Consecutive ups after an outage closes
+//     record nothing either.
 //   - A down with no later up in the window is an outage still in progress
 //     and records nothing; the next scan whose window holds its up counts it.
 //   - An up with no earlier down in the window recovers an outage that began
@@ -181,27 +182,27 @@ func buildLinkFlap(since string, scan linkFlapScan) (infiniband.LinkFlapMeasurem
 	for _, iface := range slices.Sorted(maps.Keys(byInterface)) {
 		transitions := byInterface[iface]
 		slices.SortStableFunc(transitions, func(a, b linkTransition) int { return a.at.Compare(b.at) })
-		paired := make([]bool, len(transitions))
-		for i, down := range transitions {
-			if !down.down {
+		var open *linkTransition
+		for i := range transitions {
+			transition := &transitions[i]
+			if transition.down {
+				if open == nil {
+					open = transition
+				}
 				continue
 			}
-			for j := i + 1; j < len(transitions); j++ {
-				if transitions[j].down || paired[j] {
-					continue
-				}
-				paired[j] = true
-				up := transitions[j]
-				seconds := int64(up.at.Sub(down.at) / time.Second)
-				m.OutageDurations = append(m.OutageDurations, seconds)
-				m.FlapEvents = append(m.FlapEvents, infiniband.LinkFlapEvent{
-					Interface:       iface,
-					DownAt:          down.at.Format(linkFlapTimeLayout),
-					UpAt:            up.at.Format(linkFlapTimeLayout),
-					DurationSeconds: seconds,
-				})
-				break
+			if open == nil {
+				continue
 			}
+			seconds := int64(transition.at.Sub(open.at) / time.Second)
+			m.OutageDurations = append(m.OutageDurations, seconds)
+			m.FlapEvents = append(m.FlapEvents, infiniband.LinkFlapEvent{
+				Interface:       iface,
+				DownAt:          open.at.Format(linkFlapTimeLayout),
+				UpAt:            transition.at.Format(linkFlapTimeLayout),
+				DurationSeconds: seconds,
+			})
+			open = nil
 		}
 	}
 	return m, nil

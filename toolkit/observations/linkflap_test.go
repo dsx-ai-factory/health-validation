@@ -110,6 +110,24 @@ func TestToMeasurementsPairsLinkTransitions(t *testing.T) {
 			flaps:     []infiniband.LinkFlapEvent{{Interface: "ib0", DownAt: flapTime(0), UpAt: flapTime(2 * time.Minute), DurationSeconds: 120}},
 		},
 		{
+			// A repeated down must not borrow the up of a later, separate outage.
+			name: "repeated down then a later outage",
+			events: []flapEvent{
+				down("ib0", 0), down("ib0", time.Second), up("ib0", 5*time.Second),
+				down("ib0", 10*time.Minute), up("ib0", 10*time.Minute+5*time.Second),
+			},
+			durations: []int64{5, 5},
+			flaps: []infiniband.LinkFlapEvent{
+				{Interface: "ib0", DownAt: flapTime(0), UpAt: flapTime(5 * time.Second), DurationSeconds: 5},
+				{Interface: "ib0", DownAt: flapTime(10 * time.Minute), UpAt: flapTime(10*time.Minute + 5*time.Second), DurationSeconds: 5},
+			},
+		},
+		{
+			name:      "repeated up after an outage closes",
+			events:    []flapEvent{down("ib0", 0), down("ib0", time.Second), up("ib0", 5*time.Second), up("ib0", 40*time.Second)},
+			durations: []int64{5},
+		},
+		{
 			name:      "interfaces pair independently in name order",
 			events:    []flapEvent{down("ib1", 0), down("ib0", 0), up("ib1", 5*time.Second), up("ib0", 40*time.Second)},
 			durations: []int64{40, 5},
