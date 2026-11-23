@@ -135,6 +135,17 @@ func TestBuildCatalogExperimentalChecks(t *testing.T) {
 			wantPort: true, wantStable: true, wantBuildOK: true,
 		},
 		{
+			// enabled is not a switch that the list narrows: the two add up, so a
+			// list beside enabled: true changes nothing.
+			name: "enabled with a list is the same as enabled", cfg: &Config{Experimental: ExperimentalConfig{Enabled: true, Checks: []string{portCheck}}},
+			wantPort: true, wantCustom: true, wantStable: true, wantBuildOK: true,
+		},
+		{
+			// The list is still validated when it is redundant, so a typo is
+			// caught before enabled: true is later removed.
+			name: "an unknown ID is an error even with enabled", cfg: &Config{Experimental: ExperimentalConfig{Enabled: true, Checks: []string{"nope"}}},
+		},
+		{
 			// A custom check is validated against the catalog that includes it.
 			name: "a custom experimental check enabled by ID", cfg: &Config{Experimental: ExperimentalConfig{Checks: []string{"custom_experimental"}}},
 			wantCustom: true, wantStable: true, wantBuildOK: true,

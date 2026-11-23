@@ -514,8 +514,11 @@ experimental:
     - ib_port_state
 ```
 
-`enabled: true` also covers checks added in a later release, so name the checks
-instead if you want an upgrade never to start running one. An ID that matches no
+The two settings add up: `enabled: true` runs every experimental check, so a list
+beside it adds nothing, and `checks` never narrows `enabled`. Leave `enabled` off
+and name the checks if you want an upgrade never to start running a new
+experimental check, since `enabled: true` also covers ones a later release adds.
+The list is validated either way. An ID that matches no
 registered check is an error, like `disabled_checks`. Naming a check that has
 since become stable is not, so a config keeps working when a check graduates. A
 check listed under `disabled_checks` stays off however it is enabled. Read

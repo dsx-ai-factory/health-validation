@@ -60,7 +60,9 @@ type Config struct {
 // ExperimentalConfig opts in to experimental checks, which are off by default
 // because they are still under evaluation and may change or be withdrawn.
 // Enabled turns on every experimental check, including ones a later release
-// adds; Checks turns on only the ones it names:
+// adds; Checks turns on only the ones it names. They add up: Checks never
+// narrows Enabled, so a list beside enabled: true changes nothing, though it is
+// still validated:
 //
 //	experimental:
 //	  enabled: true     # every experimental check

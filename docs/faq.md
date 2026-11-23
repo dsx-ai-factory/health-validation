@@ -70,7 +70,7 @@ experimental:
     - ib_port_state
 ```
 
-An ID that matches no registered check is an error. A check listed under `disabled_checks` stays off however it is enabled. `enabled: true` also turns on experimental checks that later releases add, so name the checks instead if an upgrade should never start running a new one. Library consumers use `catalog.WithExperimentalChecks()` or `catalog.WithAllExperimentalChecks()`.
+The two settings add up: `enabled: true` runs every experimental check, so a list beside it adds nothing, and `checks` never narrows `enabled`. An ID that matches no registered check is an error whichever way it is enabled. A check listed under `disabled_checks` stays off however it is enabled. `enabled: true` also turns on experimental checks that later releases add, so leave it off and name the checks if an upgrade should never start running a new one. Library consumers use `catalog.WithExperimentalChecks()` or `catalog.WithAllExperimentalChecks()`.
 
 To select checks by scheduling cadence, use the optional `--cadence` flag. Each check declares a `SchedulingCadence` (CONTINUOUS, PROLOG, or MAINTENANCE), and the windows nest (CONTINUOUS ⊂ PROLOG ⊂ MAINTENANCE): PROLOG runs the CONTINUOUS and PROLOG checks, and MAINTENANCE runs every check. Checks outside the requested window appear in `skipped_checks` with `skip_reason: CADENCE_MISMATCH`. **Omit the flag and every registered check still runs**, including Prolog checks such as `gpu_power_limit`. Job-time integrators that must not run Prolog checks pass `--cadence=CONTINUOUS`. Cadence is not a YAML config field: one cluster config can serve every window.
 
