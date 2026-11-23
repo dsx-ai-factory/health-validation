@@ -28,6 +28,10 @@
 //
 // Requested health systems may have no targets when hardware is discovered;
 // reports list those systems separately in SystemsWithoutTargets.
+// Each health read refreshes GPU and NVSwitch discovery, using active GPUs,
+// and repairs missing members in the owned group. Settings are reapplied for added
+// members; unchanged membership reuses the current watches. General GPU
+// inventory can still include lost or detached devices that health cannot watch.
 //
 // A failed initialization is shared with same-cycle Source calls until another
 // cycle attempts initialization. Collect retains its own admission error for
@@ -36,10 +40,13 @@
 //
 // Runtime health setup failures retry on the next read. Unfinished group cleanup
 // retains ownership and must succeed before replacement allocation. Discovery
-// failures for one entity kind can accompany findings from available systems
-// in SystemErrors; an error does not establish that targets are absent.
-// Adding group members or enabling systems affects the shared health group;
-// failure rolls back the group and returns an error for that read.
+// and rejected GPU or NVSwitch additions appear in SystemErrors alongside
+// findings from usable members, even when every discovery call fails. These
+// errors indicate incomplete coverage, not absent targets. Rejected additions
+// retry on the next read without resetting usable members' history. If all
+// additions fail without usable members, the read fails and cleans up the
+// empty group. Connection loss, missing groups, or failures enabling health
+// systems invalidate the shared setup.
 //
 // Confirmed connection loss invalidates the client session for every collection
 // already using it. A fresh collection in a later cycle may replace the client
@@ -73,8 +80,8 @@
 // for every health rule, including a memory rule that uses a
 // week-old baseline. Collect returns successful native health reports immediately.
 // MonitoredSince records the group's first successful health setup. Systems
-// enabled later can have less history. Elapsed time does not establish native
-// coverage. Consumers choose any startup grace period.
+// or members added later can have less history. Elapsed time does not establish
+// native coverage. Consumers choose any startup grace period.
 //
 // WatchPolicy controls this client's metric sampling requests, not a node-wide
 // rate limit. DCGM shares its cache per entity and field across clients and

@@ -218,6 +218,8 @@ func categoryFromCode(code int) observation.CollectionErrorCategory {
 // codes retain their numeric value so source information is not lost.
 func dcgmStatusName(code int) string {
 	switch code {
+	case godcgm.DCGM_ST_BADPARAM:
+		return "DCGM_ST_BADPARAM"
 	case godcgm.DCGM_ST_NOT_SUPPORTED:
 		return "DCGM_ST_NOT_SUPPORTED"
 	case godcgm.DCGM_ST_INIT_ERROR:

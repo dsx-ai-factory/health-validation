@@ -18,10 +18,11 @@ import (
 )
 
 type nativeLibrary struct {
-	readFields func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error)
-	gpuStatus  func(uint) godcgm.EntityStatus
-	dcgmInit   func(sessionMode, ...string) (func() error, error)
-	healthSet  func(godcgm.GroupHandle, godcgm.HealthSystem, time.Duration, time.Duration) error
+	readFields       func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error)
+	gpuStatus        func(uint) godcgm.EntityStatus
+	healthGPUIndices func() ([]uint, error)
+	dcgmInit         func(sessionMode, ...string) (func() error, error)
+	healthSet        func(godcgm.GroupHandle, godcgm.HealthSystem, time.Duration, time.Duration) error
 	// Embedded mode ignores options.Address and options.IsSocket.
 	options StandaloneOptions
 	mode    sessionMode
@@ -32,12 +33,13 @@ var metricWatchSequence atomic.Uint64
 
 func newNative(options StandaloneOptions, mode sessionMode) nativeAPI {
 	return &nativeLibrary{
-		options:    options,
-		mode:       mode,
-		readFields: readGPUFields,
-		gpuStatus:  godcgm.GetGPUStatus,
-		dcgmInit:   initDCGM,
-		healthSet:  godcgm.HealthSetWithParams,
+		options:          options,
+		mode:             mode,
+		readFields:       readGPUFields,
+		gpuStatus:        godcgm.GetGPUStatus,
+		healthGPUIndices: godcgm.GetSupportedDevices,
+		dcgmInit:         initDCGM,
+		healthSet:        godcgm.HealthSetWithParams,
 	}
 }
 

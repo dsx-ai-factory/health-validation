@@ -316,6 +316,10 @@ Changes to behavior and APIs outside the
   Source `HealthWatch` options configure the health update interval and retention
   independently of metric `WatchPolicy`, keeping 30 seconds and 10 minutes as
   defaults.
+  Health reads rediscover devices and restore missing group members after
+  GPU reattachment, reusing the group and existing watches when unchanged.
+  Rejected GPU or NVSwitch additions preserve findings from usable members,
+  report incomplete coverage in `system_errors`, and retry on the next read.
   Source `Collect` keeps independently selected metrics, health, and inventory
   on one client session while allowing concurrent collections to interleave.
   Recovery replaces failed sessions only for fresh collections; existing

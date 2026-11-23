@@ -2243,8 +2243,8 @@ type DcgmHealthReport struct {
 	// Absent when no native check was performed; unknown numbers are preserved.
 	NativeGroupOverallHealth *DcgmHealthReport_HealthResult `protobuf:"varint,5,opt,name=native_group_overall_health,json=nativeGroupOverallHealth,proto3,enum=health.v1.DcgmHealthReport_HealthResult,oneof" json:"native_group_overall_health,omitempty"`
 	Incidents                []*DcgmHealthIncident          `protobuf:"bytes,6,rep,name=incidents,proto3" json:"incidents,omitempty"`
-	// First successful health setup for this group. Systems enabled later may
-	// have less history; this timestamp does not establish sample coverage.
+	// First successful health setup for this group. Systems or members added
+	// later may have less history; this timestamp does not establish coverage.
 	MonitoredSince *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=monitored_since,json=monitoredSince,proto3" json:"monitored_since,omitempty"`
 	// Collection cycle that produced this report, including standalone reads.
 	CollectionId string `protobuf:"bytes,8,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
@@ -2252,8 +2252,9 @@ type DcgmHealthReport struct {
 	// Unrequested systems are excluded. This does not describe native support
 	// or sample coverage.
 	SystemsWithoutTargets uint64 `protobuf:"varint,10,opt,name=systems_without_targets,json=systemsWithoutTargets,proto3" json:"systems_without_targets,omitempty"`
-	// Discovery failures keyed by one requested subsystem bit each.
-	// A failed system is unavailable; it is not a system without targets.
+	// Discovery or member-add failures keyed by one requested subsystem bit each.
+	// Coverage is incomplete; usable members and their incidents may still be
+	// present. These systems are excluded from systems_without_targets.
 	SystemErrors map[uint64]*CollectionError `protobuf:"bytes,11,rep,name=system_errors,json=systemErrors,proto3" json:"system_errors,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// The native incident limit may have been reached. The omitted count is
 	// unknown, and an absent incident cannot establish that a fault cleared.

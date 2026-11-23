@@ -45,7 +45,7 @@
 // choose any startup grace period.
 // NO_TARGETS means no selected system has relevant GPU or NVSwitch targets;
 // this source-wide outcome has no observation target.
-// Usable reports retain missing-target facts and per-system discovery errors
+// Usable reports retain missing-target facts and per-system discovery or add errors
 // alongside incidents. The native overall result covers the enabled group;
 // it does not establish coverage for systems listed in SystemErrors.
 // Report members and incidents use shared GPU and NVSwitch references with
