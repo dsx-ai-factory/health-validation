@@ -175,7 +175,9 @@ These need no entry: `build`, `chore`, `ci`, `docs`, `test`, `style`, and
 user-visible effect can carry the `skip-changelog` label instead. The label never
 exempts a `!` PR, and an entry under Breaking Changes needs `!` in the title.
 A PR to a `release/*` branch adds its entry anywhere in that branch's
-changelog.
+changelog. A cherry-picked backport is a new PR with its own number, and the
+original's entry lives on `main`, so the backport adds its own entry under the
+patch release's section, linking the backport PR and the original.
 
 ## Code Style
 

@@ -136,18 +136,23 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(len(self.run_check("revert: a", head)), 1)
         self.assertEqual(len(self.run_check('Revert "feat: x"', head)), 1)
 
-    def test_link_already_in_the_base_is_not_a_new_entry(self):
+    def test_moving_an_existing_link_is_not_a_new_entry(self):
         base = with_entry("Features", 10)
         moved = with_entry("Breaking Changes", 10, BASE)
         self.assertEqual(len(self.run_check("feat!: a", moved, base=base)), 1)
-        copied = with_entry("Breaking Changes", 10, base)
-        self.assertEqual(len(self.run_check("feat!: a", copied, base=base)), 1)
+
+    def test_forward_reference_in_the_base_does_not_block_an_own_entry(self):
+        base = with_entry("Features", 10)
+        head = with_entry("Features", 10, base)
+        self.assertEqual(self.run_check("fix: a", head, base=base), [])
+        head = with_entry("Breaking Changes", 10, base)
+        self.assertEqual(self.run_check("feat!: a", head, base=base), [])
 
     def test_new_breaking_entry_needs_bang_even_if_the_base_has_the_link(self):
         base = with_entry("Features", 10)
         head = with_entry("Breaking Changes", 10, base)
         self.assertEqual(len(self.run_check("docs: a", head, base=base)), 1)
-        self.assertEqual(len(self.run_check("feat: a", head, base=base)), 2)
+        self.assertEqual(len(self.run_check("feat: a", head, base=base)), 1)
 
     def test_link_in_the_base_is_ignored_for_exempt_prs(self):
         self.assertEqual(

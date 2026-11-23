@@ -6,14 +6,15 @@
 A pull request needs an entry when its title type is feat, fix, or perf, or when
 the title carries "!". An entry is a changelog line that links the pull request
 (".../pull/<number>)") under the Unreleased section of the head's CHANGELOG.md
-and that the base's CHANGELOG.md does not already have. A "!" pull request
-needs one under "Breaking Changes", and a pull request that puts an entry under
-"Breaking Changes" must carry "!". See RELEASE.md.
+and that the base's CHANGELOG.md does not already have: the head must link the
+pull request more times than the base does, so a link the base already carries,
+such as a forward reference, does not count. A "!" pull request needs one under
+"Breaking Changes", and a pull request that puts an entry under "Breaking
+Changes" must carry "!". See RELEASE.md.
 
 Pull requests of other types, reverts, and pull requests labeled
 "skip-changelog" need nothing. Neither the label nor a revert exempts a "!"
-pull request or an entry under "Breaking Changes". A link to the pull request that the base already has does not
-count as an entry.
+pull request or an entry under "Breaking Changes".
 
 Pull requests targeting a release/* branch have no Unreleased section, so an
 entry anywhere in the file counts.
@@ -90,27 +91,16 @@ def check(
     head = entries(head_changelog, pr, whole)
     needs_entry = breaking or (kind in REQUIRED_TYPES and SKIP_LABEL not in labels)
 
-    errors: list[str] = []
-    # The pull request's own number should not be in the base. A link that is
-    # already there, such as a forward reference, cannot count as this pull
-    # request's entry, even if it moves to another section or is copied. That
-    # only withholds credit: a new entry under Breaking Changes is still
-    # checked against the title below.
-    if sum(base.values()) > 0:
-        added: dict[str, int] = {}
-        if needs_entry:
-            errors.append(
-                f"CHANGELOG.md on the base branch already links /pull/{pr}, so an "
-                f"entry for it cannot be told apart from this pull request's. "
-                f"Remove the existing link, or check that the number is right."
-            )
-    else:
-        added = {sec: n for sec, n in head.items() if n > 0}
-    breaking_credit = added.get(BREAKING, 0) > 0
+    # An entry is a link this pull request adds. The base may already link the
+    # pull request, such as a forward reference from another entry, so only a
+    # net increase counts: a link that moves between sections adds nothing.
+    credited = sum(head.values()) > sum(base.values())
     breaking_new = head.get(BREAKING, 0) > base.get(BREAKING, 0)
+    breaking_credit = credited and breaking_new
+    errors: list[str] = []
 
     if breaking:
-        if not breaking_credit and not errors:
+        if not breaking_credit:
             errors.append(
                 f"The title marks a breaking change (!), so CHANGELOG.md needs an entry "
                 f'under "{BREAKING}" linking /pull/{pr}. List only the parts of the '
@@ -124,7 +114,7 @@ def check(
             f"Add ! to the title, or move the entry. See RELEASE.md."
         )
 
-    if needs_entry and not added and not errors:
+    if needs_entry and not credited and not errors:
         errors.append(
             f"A {kind} pull request needs a CHANGELOG.md entry. Add one under "
             f"Unreleased linking /pull/{pr}, or add the {SKIP_LABEL} label if the "
