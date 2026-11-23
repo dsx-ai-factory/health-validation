@@ -38,34 +38,33 @@ func newNative(options StandaloneOptions, mode sessionMode) nativeAPI {
 		readFields:       readGPUFields,
 		gpuStatus:        godcgm.GetGPUStatus,
 		healthGPUIndices: godcgm.GetSupportedDevices,
-		dcgmInit:         initDCGM,
+		dcgmInit:         newDCGMInitializer(godcgm.Init, godcgm.Shutdown, godcgm.Embedded, godcgm.Standalone),
 		healthSet:        godcgm.HealthSetWithParams,
 	}
 }
 
-// Tests replace these calls without naming go-dcgm's unexported mode type.
-var (
-	goDCGMInit     = godcgm.Init
-	goDCGMShutdown = godcgm.Shutdown
-)
-
-// initDCGM opens one client reference and returns its error-reporting release.
-func initDCGM(mode sessionMode, args ...string) (func() error, error) {
-	var err error
-	switch mode {
-	case embeddedMode:
-		_, err = goDCGMInit(godcgm.Embedded)
-	case standaloneMode:
-		_, err = goDCGMInit(godcgm.Standalone, args...)
-	default:
-		return nil, fmt.Errorf("unknown DCGM session mode %d", mode)
+// newDCGMInitializer adapts go-dcgm's unexported mode and supplies a release
+// function that returns Shutdown errors.
+func newDCGMInitializer[M any](
+	initialize func(M, ...string) (func(), error),
+	shutdown func() error,
+	embedded, standalone M,
+) func(sessionMode, ...string) (func() error, error) {
+	return func(mode sessionMode, args ...string) (func() error, error) {
+		var err error
+		switch mode {
+		case embeddedMode:
+			_, err = initialize(embedded)
+		case standaloneMode:
+			_, err = initialize(standalone, args...)
+		default:
+			return nil, fmt.Errorf("unknown DCGM session mode %d", mode)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return func() error { return dcgmErrorFromError(shutdown()) }, nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	// Init's cleanup only prints shutdown errors. Return the error so the
-	// source can report a failed release while consuming its reference once.
-	return func() error { return dcgmErrorFromError(goDCGMShutdown()) }, nil
 }
 
 // Init opens the configured client and preserves native initialization failures.

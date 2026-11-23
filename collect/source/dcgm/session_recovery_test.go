@@ -522,9 +522,19 @@ func TestLateConnectionLossWaitsForNativeCallBeforeRecovery(t *testing.T) {
 			defer close(finished)
 			_, _ = source.newCollectionReader(newTestCycle(t, "blocked")).gpuIndices(ctx)
 		}()
-		<-native.entered
+		synctest.Wait()
+		select {
+		case <-native.entered:
+		default:
+			t.Fatal("discovery did not enter the native call")
+		}
 		cancel()
-		<-finished
+		synctest.Wait()
+		select {
+		case <-finished:
+		default:
+			t.Fatal("cancellation did not return while the native call was blocked")
+		}
 		if _, failure := source.newCollectionReader(newTestCycle(t, "still-busy")).gpuIndices(context.Background()); failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || native.cleanupCalls.Load() != 0 {
 			t.Fatalf("recovery raced an unfinished native call: %v", failure)
 		}

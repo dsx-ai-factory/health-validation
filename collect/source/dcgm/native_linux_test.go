@@ -113,11 +113,10 @@ func recordGoDCGMInit[M any](_ func(M, ...string) (func(), error), gotMode *any,
 }
 
 func TestInitDCGMPassesGoDCGMMode(t *testing.T) {
-	original := goDCGMInit
-	t.Cleanup(func() { goDCGMInit = original })
 	var gotMode any
 	var gotArgs []string
-	goDCGMInit = recordGoDCGMInit(goDCGMInit, &gotMode, &gotArgs)
+	fakeInit := recordGoDCGMInit(godcgm.Init, &gotMode, &gotArgs)
+	initDCGM := newDCGMInitializer(fakeInit, func() error { return nil }, godcgm.Embedded, godcgm.Standalone)
 
 	for _, test := range []struct {
 		wantMode any
@@ -137,17 +136,16 @@ func TestInitDCGMPassesGoDCGMMode(t *testing.T) {
 }
 
 func TestInitDCGMCleanupReportsShutdownError(t *testing.T) {
-	originalInit, originalShutdown := goDCGMInit, goDCGMShutdown
-	t.Cleanup(func() { goDCGMInit, goDCGMShutdown = originalInit, originalShutdown })
 	var mode any
 	var args []string
-	goDCGMInit = recordGoDCGMInit(goDCGMInit, &mode, &args)
+	fakeInit := recordGoDCGMInit(godcgm.Init, &mode, &args)
 	shutdownError := &godcgm.Error{Code: godcgm.DCGM_ST_CONNECTION_NOT_VALID}
 	shutdownCalls := 0
-	goDCGMShutdown = func() error {
+	shutdown := func() error {
 		shutdownCalls++
 		return shutdownError
 	}
+	initDCGM := newDCGMInitializer(fakeInit, shutdown, godcgm.Embedded, godcgm.Standalone)
 	cleanup, err := initDCGM(standaloneMode, "localhost", "0")
 	if err != nil {
 		t.Fatalf("initDCGM() error = %v", err)
@@ -167,6 +165,10 @@ func TestInitDCGMCleanupReportsShutdownError(t *testing.T) {
 }
 
 func TestInitDCGMRejectsUnknownMode(t *testing.T) {
+	var gotMode any
+	var gotArgs []string
+	fakeInit := recordGoDCGMInit(godcgm.Init, &gotMode, &gotArgs)
+	initDCGM := newDCGMInitializer(fakeInit, func() error { return nil }, godcgm.Embedded, godcgm.Standalone)
 	for _, mode := range []sessionMode{0, embeddedMode + 1} {
 		cleanup, err := initDCGM(mode)
 		if cleanup != nil {
@@ -176,6 +178,9 @@ func TestInitDCGMRejectsUnknownMode(t *testing.T) {
 		if err == nil || err.Error() != want {
 			t.Fatalf("initDCGM(%d) error = %v, want %q", mode, err, want)
 		}
+	}
+	if gotMode != nil {
+		t.Fatalf("unsupported session mode initialized go-dcgm with mode %v", gotMode)
 	}
 }
 

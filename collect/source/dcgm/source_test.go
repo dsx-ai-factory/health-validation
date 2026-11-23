@@ -662,7 +662,15 @@ func TestInventoryPreservesPartialDataOnConnectionLoss(t *testing.T) {
 			native.inventoryErr = nil
 			native.inventoryEntries = nil
 			recovered := source.GPUInventory(context.Background(), newTestCycle(t, "recovered-inventory"), identities)
-			for _, entry := range recovered.GetInventory().GetEntries() {
+			recoveredEntries := recovered.GetInventory().GetEntries()
+			if recovered.GetCollectionError() != nil || len(recoveredEntries) != len(identities) {
+				t.Fatalf("recovered inventory lost requested GPUs: %v", recovered)
+			}
+			for position, entry := range recoveredEntries {
+				identity := identities[position]
+				if entry.GetSourceIndex() != uint32(identity.Index) || entry.GetGpu().GetUuid() != identity.UUID {
+					t.Fatalf("recovered inventory lost GPU identity: %v", entry)
+				}
 				if entry.GetCollectionError() != nil || len(entry.GetFieldErrors()) != 0 {
 					t.Fatalf("inventory did not recover: %v", recovered)
 				}
