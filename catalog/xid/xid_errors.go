@@ -34,7 +34,7 @@ var (
 	blackwellArchitectures      = slices.Concat(graceBlackwellArchitectures, hgxBlackwellArchitectures)
 	// rubinArchitectures is added wherever GB300 is: NVIDIA's Xid catalog
 	// marks every Xid that applies to GB-x00 as applying to Rubin too.
-	rubinArchitectures = []string{"VR200"}
+	rubinArchitectures = []string{"VR"}
 
 	allArchitectures                  = slices.Concat(blackwellArchitectures, hopperArchitectures, ampereArchitectures, rubinArchitectures)
 	blackwellRubinArchitectures       = slices.Concat(blackwellArchitectures, rubinArchitectures)

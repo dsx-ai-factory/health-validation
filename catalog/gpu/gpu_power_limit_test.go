@@ -49,7 +49,7 @@ func TestGPUPowerLimit_UsesArchitectureDefault(t *testing.T) {
 		{arch: "GB200", limitW: 1200},
 		{arch: "GB300", limitW: 1400},
 		{arch: "H100", limitW: 700},
-		{arch: "VR200", limitW: 2300},
+		{arch: "VR", limitW: 2300},
 	} {
 		t.Run(tc.arch, func(t *testing.T) {
 			cat := catalog.New(

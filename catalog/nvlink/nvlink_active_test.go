@@ -65,10 +65,10 @@ func TestNVLinkActive(t *testing.T) {
 			wantSeverity: health.Critical,
 		},
 		{
-			name: "VR200 all active",
+			name: "VR all active",
 			cat: func() *catalog.Catalog {
 				return catalog.New(
-					catalog.WithArchitecture("VR200"),
+					catalog.WithArchitecture("VR"),
 					catalog.WithExecutionContext(health.OperatorInfra),
 				)
 			},
@@ -76,10 +76,10 @@ func TestNVLinkActive(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
-			name: "VR200 one inactive",
+			name: "VR one inactive",
 			cat: func() *catalog.Catalog {
 				return catalog.New(
-					catalog.WithArchitecture("VR200"),
+					catalog.WithArchitecture("VR"),
 					catalog.WithExecutionContext(health.OperatorInfra),
 				)
 			},

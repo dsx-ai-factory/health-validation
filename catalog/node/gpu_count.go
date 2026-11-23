@@ -19,7 +19,7 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 //
 // The check is scoped to architectures with a known canonical GPU
 // count: 4 per node on GB200 and GB300 (one Grace Blackwell compute
-// tray) and on VR200 (one Vera Rubin compute tray), 8 per node on B200
+// tray) and on VR (one Vera Rubin compute tray), 8 per node on B200
 // and B300 (HGX/DGX baseboards). A fleet
 // with a different SKU overrides expected_gpu_count via
 // [catalog.WithOverrides]; other architectures need an entry here
@@ -36,7 +36,7 @@ func GPUCount() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300", "B200", "B300", "VR200"},
+		Architectures:     []string{"GB200", "GB300", "B200", "B300", "VR"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
@@ -51,12 +51,12 @@ func GPUCount() health.CheckDefinition {
 					"GB300": int64(4),
 					"B200":  int64(8),
 					"B300":  int64(8),
-					"VR200": int64(4),
+					"VR":    int64(4),
 				},
 				ValueType:   health.ThresholdInt64,
 				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
-				Description: "Expected number of GPUs on a node: 4 on GB200/GB300/VR200, 8 on B200/B300. Override per fleet.",
+				Description: "Expected number of GPUs on a node: 4 on GB200/GB300/VR, 8 on B200/B300. Override per fleet.",
 				Unit:        "count",
 			},
 		},

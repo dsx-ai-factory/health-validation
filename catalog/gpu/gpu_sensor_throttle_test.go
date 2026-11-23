@@ -73,14 +73,14 @@ func TestGPUSensorThrottle(t *testing.T) {
 			wantSeverity: health.Critical,
 		},
 		{
-			name:         "VR200 healthy",
-			cat:          throttleCatalog(catalog.WithArchitecture("VR200")),
+			name:         "VR healthy",
+			cat:          throttleCatalog(catalog.WithArchitecture("VR")),
 			measurement:  healthyThrottleGB200,
 			wantSeverity: health.Pass,
 		},
 		{
-			name: "VR200 thermal slowdown",
-			cat:  throttleCatalog(catalog.WithArchitecture("VR200")),
+			name: "VR thermal slowdown",
+			cat:  throttleCatalog(catalog.WithArchitecture("VR")),
 			measurement: func() gpu.GPUMeasurement {
 				m := healthyThrottleGB200()
 				m.HWThermalSlowdown = true
@@ -89,8 +89,8 @@ func TestGPUSensorThrottle(t *testing.T) {
 			wantSeverity: health.Critical,
 		},
 		{
-			name: "VR200 power-brake slowdown",
-			cat:  throttleCatalog(catalog.WithArchitecture("VR200")),
+			name: "VR power-brake slowdown",
+			cat:  throttleCatalog(catalog.WithArchitecture("VR")),
 			measurement: func() gpu.GPUMeasurement {
 				m := healthyThrottleGB200()
 				m.HWPowerBrakeSlowdown = true

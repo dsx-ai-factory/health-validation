@@ -126,11 +126,11 @@ func TestNVLinkBandwidthCountSpeed(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
-			// VR200 GPUs expose 36 links at 41000 MB/s each.
-			name: "VR200 passes with 36 links at its own speed",
+			// VR GPUs expose 36 links at 41000 MB/s each.
+			name: "VR passes with 36 links at its own speed",
 			cat: func() *catalog.Catalog {
 				return catalog.New(
-					catalog.WithArchitecture("VR200"),
+					catalog.WithArchitecture("VR"),
 					catalog.WithExecutionContext(health.OperatorInfra),
 				)
 			},
@@ -140,10 +140,10 @@ func TestNVLinkBandwidthCountSpeed(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
-			name: "VR200 link shortfall",
+			name: "VR link shortfall",
 			cat: func() *catalog.Catalog {
 				return catalog.New(
-					catalog.WithArchitecture("VR200"),
+					catalog.WithArchitecture("VR"),
 					catalog.WithExecutionContext(health.OperatorInfra),
 				)
 			},
@@ -154,10 +154,10 @@ func TestNVLinkBandwidthCountSpeed(t *testing.T) {
 			wantMessageParts: []string{"GPU-0", "36", "35"},
 		},
 		{
-			name: "VR200 speed mismatch",
+			name: "VR speed mismatch",
 			cat: func() *catalog.Catalog {
 				return catalog.New(
-					catalog.WithArchitecture("VR200"),
+					catalog.WithArchitecture("VR"),
 					catalog.WithExecutionContext(health.OperatorInfra),
 				)
 			},

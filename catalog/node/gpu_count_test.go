@@ -93,15 +93,15 @@ func TestGPUCount(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
-			name:         "VR200 accepts 4 GPUs",
-			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("VR200")) },
+			name:         "VR accepts 4 GPUs",
+			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("VR")) },
 			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 4} },
 			wantSeverity: health.Pass,
 		},
 		{
-			// A VR200 compute tray that enumerates 3 of its 4 GPUs is missing one.
-			name:         "VR200 flags a missing GPU",
-			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("VR200")) },
+			// A VR compute tray that enumerates 3 of its 4 GPUs is missing one.
+			name:         "VR flags a missing GPU",
+			cat:          func() *catalog.Catalog { return newCatalog(catalog.WithArchitecture("VR")) },
 			measurement:  func() node.NodeMeasurement { return node.NodeMeasurement{GPUCount: 3} },
 			wantSeverity: health.Critical,
 		},
