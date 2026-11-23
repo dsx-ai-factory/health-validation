@@ -13,23 +13,25 @@ health-validation itself.
 ## What is stable, and what is not
 
 > [!IMPORTANT]
-> **Build against the catalog. Treat the toolkit's sensor/backend layer as a
-> demonstration.**
+> **Build against the catalog and the collection seams.**
 >
 > - The **catalog** — the `catalog/health` vocabulary (`CheckDefinition`,
 >   `Rule`, `ThresholdSpec`, the `Measurement` interface, the enums) and the
 >   `catalog` registry/evaluation engine — is the extension surface. Your check
 >   definitions are data written against it.
-> - The **toolkit** collection wiring (the collect bridge and adapters, the
->   `toolkit.Collect` pipeline, the `app.App` builder, and the `GPUAdapter` and
->   `WithCollect` seams shown below) are **reference implementations for demonstration
->   and are subject to change.** They are functional today, but do not treat
->   their API as stable; expect the collection wiring to churn.
+> - The **collection seams** — `WithCollect`, `WithCollectAdapters`, `WithChecks`,
+>   and `GPUAdapter` in `toolkit/app`, the `app.New`, `App.Run`, and `App.Close`
+>   lifecycle they need, and `collect.Sensor`, its signal IDs, and the
+>   `CollectAdapter` interface — are guaranteed under the
+>   [compatibility policy](https://github.com/dsx-ai-factory/health-validation/blob/main/RELEASE.md#compatibility).
+> - The rest of the **toolkit** collection wiring (the collect bridge, the
+>   built-in adapters, the `toolkit.Collect` pipeline, and the rest of the
+>   `app.App` builder) is a **reference implementation and may change.**
 
-The practical consequence: put your *judgment* (what condition is unhealthy, at
-what threshold, with what remediation) in check definitions, which are durable.
-Keep your dependence on the collection wiring thin and localized so it is cheap
-to follow when it changes.
+Put your *judgment* (what condition is unhealthy, at what threshold, with what
+remediation) in check definitions, and read signals through the guaranteed
+seams. Keep any other dependence on the collection wiring thin and localized
+so it is cheap to follow when it changes.
 
 ## A check is data
 

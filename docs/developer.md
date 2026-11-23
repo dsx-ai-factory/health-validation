@@ -57,8 +57,8 @@ are grouped by directory:
 - **`agentkit/`** — gRPC/HTTP server exposing `collect`
 
 The [support lifecycle](../SUPPORT.md#support-lifecycle) applies to the
-module as a whole. `collect` and `agentkit` remain experimental and outside that
-lifecycle. A dependency pin affects every package, so it can change the versions
+module as a whole, including `collect`. `agentkit` remains experimental and
+outside that lifecycle. A dependency pin affects every package, so it can change the versions
 linked into the CLI. CI gates `mod tidy -diff`.
 
 Run `bazel run //tools/go -- mod tidy` from the repository root after changing
