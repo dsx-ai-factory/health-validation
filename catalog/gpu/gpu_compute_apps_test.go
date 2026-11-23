@@ -61,10 +61,10 @@ func TestGPUComputeApps_ProcessFails(t *testing.T) {
 	}
 }
 
-// VR200 runs the same rule as every other GPU: a free GPU passes and a
+// VR runs the same rule as every other GPU: a free GPU passes and a
 // leftover compute process fails.
-func TestGPUComputeApps_VR200(t *testing.T) {
-	cat := computeAppsCatalog(catalog.WithArchitecture("VR200"))
+func TestGPUComputeApps_VR(t *testing.T) {
+	cat := computeAppsCatalog(catalog.WithArchitecture("VR"))
 	tests := []struct {
 		name string
 		m    gpu.GPUMeasurement
@@ -88,7 +88,7 @@ func TestGPUComputeApps_VR200(t *testing.T) {
 				t.Fatalf("Evaluate: %v", err)
 			}
 			if v.Skipped {
-				t.Fatalf("Skipped = true (%v), want VR200 evaluated", v.SkipReason)
+				t.Fatalf("Skipped = true (%v), want VR evaluated", v.SkipReason)
 			}
 			if v.Severity != tt.want {
 				t.Errorf("Severity = %v, want %v", v.Severity, tt.want)

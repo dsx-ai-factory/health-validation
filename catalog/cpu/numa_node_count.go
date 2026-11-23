@@ -13,7 +13,7 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // argument, or a node provisioned as the wrong SKU. A reboot is required for a
 // corrected firmware or boot-argument setting to take effect.
 //
-// Covers GB200 and GB300 (34 nodes) and VR200 (36 nodes). A100, H100, and
+// Covers GB200 and GB300 (34 nodes) and VR (36 nodes). A100, H100, and
 // H200 are not yet covered; they need their own PerArchitecture entries
 // before being added.
 // On these platforms the count spans more than the CPU sockets: accelerator
@@ -31,7 +31,7 @@ func NUMANodeCount() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300", "VR200"},
+		Architectures:     []string{"GB200", "GB300", "VR"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,
@@ -44,12 +44,12 @@ func NUMANodeCount() health.CheckDefinition {
 				PerArchitecture: map[string]any{
 					"GB200": int64(34),
 					"GB300": int64(34),
-					"VR200": int64(36),
+					"VR":    int64(36),
 				},
 				ValueType:   health.ThresholdInt64,
 				ValueMin:    int64(1),
 				Category:    health.DefaultThreshold,
-				Description: "Expected number of NUMA nodes online. GB200 and GB300 at 34, VR200 at 36. Override per fleet.",
+				Description: "Expected number of NUMA nodes online. GB200 and GB300 at 34, VR at 36. Override per fleet.",
 				Unit:        "count",
 			},
 		},

@@ -48,7 +48,7 @@ func TestNUMANodeCountDefinition(t *testing.T) {
 	if definition.SchedulingCadence != health.Continuous {
 		t.Errorf("SchedulingCadence = %v, want Continuous", definition.SchedulingCadence)
 	}
-	if got, want := definition.Architectures, []string{"GB200", "GB300", "VR200"}; !slices.Equal(got, want) {
+	if got, want := definition.Architectures, []string{"GB200", "GB300", "VR"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
 	if definition.Provenance != health.NVIDIA || definition.MaturityLevel != health.Stable {
@@ -68,7 +68,7 @@ func TestNUMANodeCountDefinition(t *testing.T) {
 	wantPerArchitecture := map[string]int64{
 		"GB200": 34,
 		"GB300": 34,
-		"VR200": 36,
+		"VR":    36,
 	}
 	if len(spec.PerArchitecture) != len(wantPerArchitecture) {
 		t.Errorf("PerArchitecture = %v, want exactly %v", spec.PerArchitecture, wantPerArchitecture)
@@ -163,7 +163,7 @@ func TestNUMANodeCount_PerArchitectureDefault(t *testing.T) {
 	}{
 		{architecture: "GB200", expected: 34},
 		{architecture: "GB300", expected: 34},
-		{architecture: "VR200", expected: 36},
+		{architecture: "VR", expected: 36},
 	}
 
 	for _, tt := range tests {
@@ -185,8 +185,8 @@ func TestNUMANodeCount_PerArchitectureDefault(t *testing.T) {
 	}
 }
 
-// VR200 is judged against its own count: the GB200 value of 34 fails there.
-func TestNUMANodeCount_VR200(t *testing.T) {
+// VR is judged against its own count: the GB200 value of 34 fails there.
+func TestNUMANodeCount_VR(t *testing.T) {
 	tests := []struct {
 		name         string
 		wantMessages []string
@@ -210,7 +210,7 @@ func TestNUMANodeCount_VR200(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			verdict, err := numaCatalog(catalog.WithArchitecture("VR200")).
+			verdict, err := numaCatalog(catalog.WithArchitecture("VR")).
 				Evaluate("numa_node_count", cpu.CPUMeasurement{NUMANodeCount: tt.nodeCount})
 			if err != nil {
 				t.Fatal(err)
