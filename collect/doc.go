@@ -4,10 +4,8 @@
 // Package collect is the shared collection library: source clients,
 // sensors, and the observation types they emit.
 //
-// This package is the sensor path the CLI and toolkit read through, and is
-// covered by the project's support lifecycle and compatibility policy
-// (RELEASE.md#compatibility). Nothing in this package applies health judgment; it collects
-// and normalizes only.
+// Nothing in this package applies health judgment; it collects and normalizes
+// only.
 //
 // Raw families cover GPU inventory and telemetry, memory reliability, NVLink
 // and fabric, GPU processes, Linux processes, host memory/CPU/resources,
