@@ -41,7 +41,7 @@ func (source *Source) AddHealthToWatch(systems uint64) error {
 
 // ReadHealth performs a fresh health read with lazy setup and optional GPU UUID
 // enrichment. Sensors call it once when health is selected for Measure.
-// Success returns a nonnil report whose CheckId is the cycle's collection ID.
+// Success returns a nonnil report whose CollectionId is the cycle's collection ID.
 // Successful reports with no incidents are returned immediately.
 // No registered systems returns NotConfigured without native setup.
 // Runtime setup failures retry on a later read, retaining unfinished cleanup.
@@ -78,7 +78,7 @@ func (source *Source) ReadHealth(ctx context.Context, currentCycle *collect.Cycl
 		}
 		report = proto.Clone(report).(*observation.DCGMHealthReport)
 		report.RequestedSystems = source.healthSystems
-		report.CheckId = currentCycle.CollectionID()
+		report.CollectionId = currentCycle.CollectionID()
 		for _, failure := range report.SystemErrors {
 			source.recordFieldFailure(currentCycle, failure)
 		}

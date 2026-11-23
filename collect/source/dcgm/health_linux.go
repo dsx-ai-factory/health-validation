@@ -141,7 +141,7 @@ func (watch *nativeHealthWatch) Read() (*observation.DCGMHealthReport, error) {
 	for _, incident := range response.Incidents {
 		report.Incidents = append(report.Incidents, &observation.DCGMHealthIncident{
 			System:       uint64(incident.System),
-			NativeHealth: observation.DCGMHealthResult(incident.Health),
+			NativeHealth: observation.DCGMHealthResult(incident.Health).Enum(),
 			ErrorCode:    uint64(incident.Error.Code),
 			Message:      incident.Error.Message,
 			Entity:       healthEntity(incident.EntityInfo),

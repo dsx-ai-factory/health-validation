@@ -283,14 +283,14 @@ func TestHealthEmptyReportReturnsImmediatelyAndKeepsWatchTimestamp(t *testing.T)
 		if report.GetGroupId() != 23 || report.GetNativeGroupOverallHealth() != observation.DCGMHealthResultPass ||
 			report.GetRequestedSystems() != systems || report.GetSystemsWithoutTargets() != dcgmhealth.SystemNVSwitchFatal ||
 			report.GetEntities()[0].GetGpu().GetUuid() != "GPU-2" || report.GetEntities()[0].GetGpu().GetNative().GetEntityId() != 2 ||
-			report.GetCheckId() != cycle.CollectionID() || !proto.Equal(report.GetMonitoredSince(), monitoredSince) {
+			report.GetCollectionId() != cycle.CollectionID() || !proto.Equal(report.GetMonitoredSince(), monitoredSince) {
 			t.Fatalf("empty health report lost metadata: %v", report)
 		}
 	}
 	if native.healthWatchCalls.Load() != 1 || native.health.readCalls.Load() != 2 || native.initCalls.Load() != 1 {
 		t.Fatal("repeated empty reads did not retain the original health watch")
 	}
-	if !proto.Equal(raw.GetMonitoredSince(), monitoredSince) || raw.GetCheckId() != "" || raw.GetEntities()[0].GetGpu().GetUuid() != "" {
+	if !proto.Equal(raw.GetMonitoredSince(), monitoredSince) || raw.GetCollectionId() != "" || raw.GetEntities()[0].GetGpu().GetUuid() != "" {
 		t.Fatal("empty health read mutated the native-owned report")
 	}
 }
@@ -301,7 +301,7 @@ func TestHealthReportMetadataAndSharedClient(t *testing.T) {
 	raw := &observation.DCGMHealthReport{
 		GroupId: proto.Uint64(23), RequestedSystems: 999, NativeGroupOverallHealth: observation.DCGMHealthResult(987).Enum(),
 		Entities:       []*observation.ObservationTarget{{Kind: &observation.ObservationTarget_NativeEntity{NativeEntity: &observation.NativeEntityRef{Source: Name, EntityKind: 51, EntityId: 17}}}},
-		Incidents:      []*observation.DCGMHealthIncident{{System: 9999, NativeHealth: 777, ErrorCode: 1234, Message: "native detail"}},
+		Incidents:      []*observation.DCGMHealthIncident{{System: 9999, NativeHealth: observation.DCGMHealthResult(777).Enum(), ErrorCode: 1234, Message: "native detail"}},
 		MonitoredSince: timestamppb.New(monitoredSince),
 		SystemErrors: map[uint64]*observation.CollectionError{
 			dcgmhealth.SystemPCIe: {Source: Name, Operation: "health discovery", Category: observation.CollectionErrorCategoryUnavailable, Detail: "PCIe discovery failed"},
@@ -331,16 +331,16 @@ func TestHealthReportMetadataAndSharedClient(t *testing.T) {
 		!proto.Equal(first.GetSystemErrors()[dcgmhealth.SystemPCIe], raw.GetSystemErrors()[dcgmhealth.SystemPCIe]) || !first.GetPossiblyTruncated() {
 		t.Fatalf("raw report information changed: %v", first)
 	}
-	if raw.GetCheckId() != "" || !raw.GetMonitoredSince().AsTime().Equal(monitoredSince) || raw.GetRequestedSystems() != 999 {
+	if raw.GetCollectionId() != "" || !raw.GetMonitoredSince().AsTime().Equal(monitoredSince) || raw.GetRequestedSystems() != 999 {
 		t.Fatal("Source mutated native-owned report")
 	}
 	second, failure := source.ReadHealth(context.Background(), cycle)
-	if failure != nil || first.GetCheckId() != cycle.CollectionID() || !proto.Equal(first, second) {
+	if failure != nil || first.GetCollectionId() != cycle.CollectionID() || !proto.Equal(first, second) {
 		t.Fatalf("second read = %+v, %v", second, failure)
 	}
 	nextCycle := newTestCycle(t, "next-cycle")
 	third, failure := source.ReadHealth(context.Background(), nextCycle)
-	if failure != nil || third.GetCheckId() != nextCycle.CollectionID() || !third.GetMonitoredSince().AsTime().Equal(monitoredSince) {
+	if failure != nil || third.GetCollectionId() != nextCycle.CollectionID() || !third.GetMonitoredSince().AsTime().Equal(monitoredSince) {
 		t.Fatalf("later read = %+v, %v", third, failure)
 	}
 	if native.initCalls.Load() != 1 || native.watchCalls.Load() != 1 || native.healthWatchCalls.Load() != 1 || native.health.readCalls.Load() != 3 || native.health.outsideGate.Load() {
@@ -389,7 +389,7 @@ func TestHealthReportPreservesNativeAvailability(t *testing.T) {
 			raw := &observation.DCGMHealthReport{
 				Entities: test.entities, SystemsWithoutTargets: test.missing, SystemErrors: test.failures,
 				Incidents: []*observation.DCGMHealthIncident{{
-					System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail,
+					System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(),
 					Entity: healthTestGPUTarget(99),
 				}},
 			}
@@ -678,7 +678,7 @@ func TestHealthUUIDCancellationPreservesIncidentsAndNativeGate(t *testing.T) {
 		health: &fakeHealthWatch{report: &observation.DCGMHealthReport{
 			Entities: []*observation.ObservationTarget{healthTestGPUTarget(2)},
 			Incidents: []*observation.DCGMHealthIncident{{
-				System: dcgmhealth.SystemMemory, NativeHealth: 20, ErrorCode: 123, Message: "memory incident",
+				System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 123, Message: "memory incident",
 				Entity: healthTestGPUTarget(2),
 			}},
 		}},

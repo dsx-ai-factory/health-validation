@@ -35,7 +35,7 @@
 // reference keeps the wrapper's old shared connection alive.
 //
 // ReadHealth performs a fresh read on each call. When health is selected,
-// sensors call it once per measurement. CheckId is the collection ID.
+// sensors call it once per measurement. Reports retain the collection ID.
 // PossiblyTruncated marks a report that reaches the native incident limit;
 // absent incidents cannot establish that omitted faults have cleared.
 //

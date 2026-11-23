@@ -72,7 +72,7 @@ func TestSharedNativeEntityTargetsRoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			batch := healthReportBatch(&DCGMHealthReport{
 				Entities:  []*ObservationTarget{target},
-				Incidents: []*DCGMHealthIncident{{Entity: target, NativeHealth: DCGMHealthResultFail}},
+				Incidents: []*DCGMHealthIncident{{Entity: target, NativeHealth: DCGMHealthResultFail.Enum()}},
 			})
 			batch.Observations = append(batch.Observations, extendedObservation(target))
 			if err := ValidateBatch(batch); err != nil {

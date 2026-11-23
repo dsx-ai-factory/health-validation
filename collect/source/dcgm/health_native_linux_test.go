@@ -152,7 +152,7 @@ func TestNativeHealthStatusConversion(t *testing.T) {
 			}
 			report, err := watch.Read()
 			if err != nil || report.NativeGroupOverallHealth == nil || report.GetNativeGroupOverallHealth() != test.portable ||
-				len(report.Incidents) != 1 || report.Incidents[0].GetNativeHealth() != test.portable {
+				len(report.Incidents) != 1 || report.Incidents[0].NativeHealth == nil || report.Incidents[0].GetNativeHealth() != test.portable {
 				t.Fatalf("native status %v converted to %v, %v", test.native, report, err)
 			}
 		})
@@ -625,7 +625,7 @@ func TestNativeHealthPreservesUnknownIncidentsAndEntityIDs(t *testing.T) {
 		t.Fatalf("group metadata=%v", report)
 	}
 	incident := report.Incidents[0]
-	if incident.System != 1<<30 || incident.NativeHealth != 71 || incident.ErrorCode != 123456 ||
+	if incident.System != 1<<30 || incident.GetNativeHealth() != 71 || incident.ErrorCode != 123456 ||
 		incident.Message != "future incident" || incident.Entity.GetNativeEntity().GetSource() != Name ||
 		incident.Entity.GetNativeEntity().GetEntityKind() != 123 || incident.Entity.GetNativeEntity().GetEntityId() != 99 {
 		t.Fatalf("incident lost native details: %v", incident)

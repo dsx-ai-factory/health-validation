@@ -108,7 +108,7 @@ func newFakeHealthSource() *fakeHealthSource {
 			},
 			NativeGroupOverallHealth: observation.DCGMHealthResultFail.Enum(),
 			MonitoredSince:           timestamppb.New(time.Unix(100, 0)),
-			CheckId:                  "native-check-1",
+			CollectionId:             "native-collection-1",
 		},
 	}
 }
@@ -425,13 +425,13 @@ func TestAggregateHealthPreservesAllNativeFindingsAndOwnsClones(t *testing.T) {
 	raw.SystemsWithoutTargets = dcgmhealth.NVSwitchSystems
 	raw.Entities = append(raw.Entities, rawHealthTarget(77, 0xffffffff))
 	raw.Incidents = []*observation.DCGMHealthIncident{
-		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail, ErrorCode: 100, Message: "first memory fault", Entity: raw.Entities[0]},
-		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultWarn, ErrorCode: 101, Message: "second memory fault", Entity: raw.Entities[0]},
-		{System: dcgmhealth.SystemPCIe, NativeHealth: observation.DCGMHealthResultFail, ErrorCode: 102, Entity: raw.Entities[0]},
-		{System: dcgmhealth.SystemAll, NativeHealth: observation.DCGMHealthResultFail, ErrorCode: 103, Entity: rawHealthTarget(0, 0)},
-		{System: 0, NativeHealth: observation.DCGMHealthResult(-38), ErrorCode: 104, Entity: rawHealthTarget(0, 0)},
-		{System: 1 << 40, NativeHealth: observation.DCGMHealthResult(39), ErrorCode: 1 << 61, Entity: raw.Entities[2]},
-		{System: dcgmhealth.SystemThermal | 1<<41, NativeHealth: observation.DCGMHealthResultFail, ErrorCode: 106, Entity: raw.Entities[1]},
+		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 100, Message: "first memory fault", Entity: raw.Entities[0]},
+		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultWarn.Enum(), ErrorCode: 101, Message: "second memory fault", Entity: raw.Entities[0]},
+		{System: dcgmhealth.SystemPCIe, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 102, Entity: raw.Entities[0]},
+		{System: dcgmhealth.SystemAll, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 103, Entity: rawHealthTarget(0, 0)},
+		{System: 0, NativeHealth: observation.DCGMHealthResult(-38).Enum(), ErrorCode: 104, Entity: rawHealthTarget(0, 0)},
+		{System: 1 << 40, NativeHealth: observation.DCGMHealthResult(39).Enum(), ErrorCode: 1 << 61, Entity: raw.Entities[2]},
+		{System: dcgmhealth.SystemThermal | 1<<41, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 106, Entity: raw.Entities[1]},
 	}
 	expected := proto.Clone(raw).(*observation.DCGMHealthReport)
 	sensor := configuredHealthSensor(t, source)
@@ -474,7 +474,7 @@ func TestAggregateHealthAvailabilityOutcomes(t *testing.T) {
 			source.report.SystemsWithoutTargets = test.missing
 			source.report.MonitoredSince = timestamppb.New(time.Unix(200, 0))
 			if test.incident {
-				source.report.Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail, Entity: source.report.Entities[0]}}
+				source.report.Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), Entity: source.report.Entities[0]}}
 			}
 			batch := measureHealthSensor(t, configuredHealthSensor(t, source))
 			if source.healthReads != 1 || len(batch.Observations) != 1 {

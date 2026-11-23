@@ -2237,8 +2237,8 @@ type DcgmHealthReport struct {
 	// First successful health setup for this group. Systems enabled later may
 	// have less history; this timestamp does not establish sample coverage.
 	MonitoredSince *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=monitored_since,json=monitoredSince,proto3" json:"monitored_since,omitempty"`
-	// Identifies this source read.
-	CheckId string `protobuf:"bytes,8,opt,name=check_id,json=checkId,proto3" json:"check_id,omitempty"`
+	// Collection cycle that produced this report, including standalone reads.
+	CollectionId string `protobuf:"bytes,8,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
 	// Requested systems with no relevant GPU or NVSwitch members.
 	// Unrequested systems are excluded. This does not describe native support
 	// or sample coverage.
@@ -2325,9 +2325,9 @@ func (x *DcgmHealthReport) GetMonitoredSince() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *DcgmHealthReport) GetCheckId() string {
+func (x *DcgmHealthReport) GetCollectionId() string {
 	if x != nil {
-		return x.CheckId
+		return x.CollectionId
 	}
 	return ""
 }
@@ -2356,12 +2356,13 @@ func (x *DcgmHealthReport) GetPossiblyTruncated() bool {
 // DcgmHealthIncident is source data, not a Health Validation verdict.
 // Native numeric values remain open to values added by newer DCGM versions.
 type DcgmHealthIncident struct {
-	state         protoimpl.MessageState        `protogen:"open.v1"`
-	System        uint64                        `protobuf:"varint,1,opt,name=system,proto3" json:"system,omitempty"`
-	NativeHealth  DcgmHealthReport_HealthResult `protobuf:"varint,2,opt,name=native_health,json=nativeHealth,proto3,enum=health.v1.DcgmHealthReport_HealthResult" json:"native_health,omitempty"`
-	ErrorCode     uint64                        `protobuf:"varint,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
-	Message       string                        `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
-	Entity        *ObservationTarget            `protobuf:"bytes,5,opt,name=entity,proto3" json:"entity,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	System uint64                 `protobuf:"varint,1,opt,name=system,proto3" json:"system,omitempty"`
+	// Absent when the producer did not supply a native result.
+	NativeHealth  *DcgmHealthReport_HealthResult `protobuf:"varint,2,opt,name=native_health,json=nativeHealth,proto3,enum=health.v1.DcgmHealthReport_HealthResult,oneof" json:"native_health,omitempty"`
+	ErrorCode     uint64                         `protobuf:"varint,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	Message       string                         `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	Entity        *ObservationTarget             `protobuf:"bytes,5,opt,name=entity,proto3" json:"entity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2404,8 +2405,8 @@ func (x *DcgmHealthIncident) GetSystem() uint64 {
 }
 
 func (x *DcgmHealthIncident) GetNativeHealth() DcgmHealthReport_HealthResult {
-	if x != nil {
-		return x.NativeHealth
+	if x != nil && x.NativeHealth != nil {
+		return *x.NativeHealth
 	}
 	return DcgmHealthReport_PASS
 }
@@ -2736,15 +2737,15 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\n" +
 	"uint_value\x18\x05 \x01(\x04H\x00R\tuintValue\x12K\n" +
 	"\x12dcgm_health_report\x18\x06 \x01(\v2\x1b.health.v1.DcgmHealthReportH\x00R\x10dcgmHealthReportB\x06\n" +
-	"\x04kind\"\x97\x06\n" +
+	"\x04kind\"\xa1\x06\n" +
 	"\x10DcgmHealthReport\x12+\n" +
 	"\x11requested_systems\x18\x02 \x01(\x04R\x10requestedSystems\x12\x1e\n" +
 	"\bgroup_id\x18\x03 \x01(\x04H\x00R\agroupId\x88\x01\x01\x128\n" +
 	"\bentities\x18\x04 \x03(\v2\x1c.health.v1.ObservationTargetR\bentities\x12l\n" +
 	"\x1bnative_group_overall_health\x18\x05 \x01(\x0e2(.health.v1.DcgmHealthReport.HealthResultH\x01R\x18nativeGroupOverallHealth\x88\x01\x01\x12;\n" +
 	"\tincidents\x18\x06 \x03(\v2\x1d.health.v1.DcgmHealthIncidentR\tincidents\x12C\n" +
-	"\x0fmonitored_since\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x0emonitoredSince\x12\x19\n" +
-	"\bcheck_id\x18\b \x01(\tR\acheckId\x126\n" +
+	"\x0fmonitored_since\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x0emonitoredSince\x12#\n" +
+	"\rcollection_id\x18\b \x01(\tR\fcollectionId\x126\n" +
 	"\x17systems_without_targets\x18\n" +
 	" \x01(\x04R\x15systemsWithoutTargets\x12R\n" +
 	"\rsystem_errors\x18\v \x03(\v2-.health.v1.DcgmHealthReport.SystemErrorsEntryR\fsystemErrors\x12-\n" +
@@ -2758,14 +2759,15 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x12\b\n" +
 	"\x04FAIL\x10\x14B\v\n" +
 	"\t_group_idB\x1e\n" +
-	"\x1c_native_group_overall_health\"\xea\x01\n" +
+	"\x1c_native_group_overall_health\"\x81\x02\n" +
 	"\x12DcgmHealthIncident\x12\x16\n" +
-	"\x06system\x18\x01 \x01(\x04R\x06system\x12M\n" +
-	"\rnative_health\x18\x02 \x01(\x0e2(.health.v1.DcgmHealthReport.HealthResultR\fnativeHealth\x12\x1d\n" +
+	"\x06system\x18\x01 \x01(\x04R\x06system\x12R\n" +
+	"\rnative_health\x18\x02 \x01(\x0e2(.health.v1.DcgmHealthReport.HealthResultH\x00R\fnativeHealth\x88\x01\x01\x12\x1d\n" +
 	"\n" +
 	"error_code\x18\x03 \x01(\x04R\terrorCode\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x124\n" +
-	"\x06entity\x18\x05 \x01(\v2\x1c.health.v1.ObservationTargetR\x06entity\"\xc2\x01\n" +
+	"\x06entity\x18\x05 \x01(\v2\x1c.health.v1.ObservationTargetR\x06entityB\x10\n" +
+	"\x0e_native_health\"\xc2\x01\n" +
 	"\x0fCollectionError\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x1c\n" +
 	"\toperation\x18\x02 \x01(\tR\toperation\x12!\n" +
@@ -2950,6 +2952,7 @@ func file_health_v1_observation_proto_init() {
 		(*Value_DcgmHealthReport)(nil),
 	}
 	file_health_v1_observation_proto_msgTypes[26].OneofWrappers = []any{}
+	file_health_v1_observation_proto_msgTypes[27].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

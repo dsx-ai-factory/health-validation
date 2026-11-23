@@ -33,12 +33,12 @@ func TestDCGMHealthReportRoundTrip(t *testing.T) {
 		Entities:                 []*ObservationTarget{gpuEntity, switchEntity, unknownEntity},
 		NativeGroupOverallHealth: DCGMHealthResult(-987).Enum(),
 		Incidents: []*DCGMHealthIncident{
-			{System: 16, NativeHealth: DCGMHealthResultWarn, ErrorCode: 1, Message: "memory finding", Entity: gpuEntity},
-			{System: 0xffffffff, NativeHealth: -123, ErrorCode: math.MaxUint64, Message: "unknown native status", Entity: unknownEntity},
-			{System: 1 << 63, NativeHealth: math.MaxInt32, ErrorCode: 0, Entity: switchEntity},
+			{System: 16, NativeHealth: DCGMHealthResultWarn.Enum(), ErrorCode: 1, Message: "memory finding", Entity: gpuEntity},
+			{System: 0xffffffff, NativeHealth: DCGMHealthResult(-123).Enum(), ErrorCode: math.MaxUint64, Message: "unknown native status", Entity: unknownEntity},
+			{System: 1 << 63, NativeHealth: DCGMHealthResult(math.MaxInt32).Enum(), ErrorCode: 0, Entity: switchEntity},
 		},
 		MonitoredSince:        timestamppb.New(time.Unix(1_790_000_000, 123)),
-		CheckId:               "shared-check",
+		CollectionId:          "shared-collection",
 		SystemsWithoutTargets: 1 << 62,
 		SystemErrors: map[uint64]*CollectionError{
 			1:       {Source: "dcgm", Operation: "health discovery", Category: CollectionErrorCategoryUnavailable, Detail: "PCIe discovery failed"},
@@ -55,6 +55,9 @@ func TestDCGMHealthReportRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(string(jsonData), `"dcgmHealthReport"`) {
 		t.Fatalf("JSON has no typed report branch: %s", jsonData)
+	}
+	if !strings.Contains(string(jsonData), `"collectionId"`) || strings.Contains(string(jsonData), `"checkId"`) {
+		t.Fatalf("JSON has an incorrect report collection ID field: %s", jsonData)
 	}
 	binaryData, err := proto.Marshal(batch)
 	if err != nil {
@@ -85,7 +88,7 @@ func TestDCGMHealthPartialCoveragePreservesFindings(t *testing.T) {
 		GroupId:                  proto.Uint64(3),
 		NativeGroupOverallHealth: DCGMHealthResultFail.Enum(),
 		Incidents: []*DCGMHealthIncident{{
-			System: 16, NativeHealth: DCGMHealthResultFail, ErrorCode: 42,
+			System: 16, NativeHealth: DCGMHealthResultFail.Enum(), ErrorCode: 42,
 			Message: "memory finding", Entity: GPUTarget("GPU-0"),
 		}},
 		SystemsWithoutTargets: 1 << 10,
@@ -203,9 +206,9 @@ func TestDCGMHealthResultEncoding(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.result.String(), func(t *testing.T) {
-			report := &DCGMHealthReport{NativeGroupOverallHealth: test.result.Enum()}
-			if test.result != DCGMHealthResultPass {
-				report.Incidents = []*DCGMHealthIncident{{NativeHealth: test.result, Entity: GPUTarget("GPU-0")}}
+			report := &DCGMHealthReport{
+				NativeGroupOverallHealth: test.result.Enum(),
+				Incidents:                []*DCGMHealthIncident{{NativeHealth: test.result.Enum(), Entity: GPUTarget("GPU-0")}},
 			}
 			jsonData, err := protojson.Marshal(report)
 			if err != nil {
@@ -218,14 +221,12 @@ func TestDCGMHealthResultEncoding(t *testing.T) {
 			if got := string(fields["nativeGroupOverallHealth"]); got != test.wantJSON {
 				t.Fatalf("native group JSON = %s, want %s", got, test.wantJSON)
 			}
-			if test.result != DCGMHealthResultPass {
-				var incidents []map[string]json.RawMessage
-				if err = json.Unmarshal(fields["incidents"], &incidents); err != nil {
-					t.Fatal(err)
-				}
-				if got := string(incidents[0]["nativeHealth"]); got != test.wantJSON {
-					t.Fatalf("incident JSON = %s, want %s", got, test.wantJSON)
-				}
+			var incidents []map[string]json.RawMessage
+			if err = json.Unmarshal(fields["incidents"], &incidents); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(incidents[0]["nativeHealth"]); got != test.wantJSON {
+				t.Fatalf("incident JSON = %s, want %s", got, test.wantJSON)
 			}
 			binaryData, err := proto.Marshal(report)
 			if err != nil {
@@ -245,6 +246,50 @@ func TestDCGMHealthResultEncoding(t *testing.T) {
 					}
 					if err := ValidateBatch(healthReportBatch(got)); err != nil {
 						t.Fatal(err)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestDCGMHealthIncidentAbsentAndPassStatus(t *testing.T) {
+	for _, test := range []struct {
+		status *DCGMHealthResult
+		name   string
+	}{
+		{name: "omitted"},
+		{name: "explicit PASS", status: DCGMHealthResultPass.Enum()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			incident := &DCGMHealthIncident{NativeHealth: test.status, Entity: GPUTarget("GPU-0")}
+			jsonData, err := protojson.Marshal(incident)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]json.RawMessage
+			if err = json.Unmarshal(jsonData, &fields); err != nil {
+				t.Fatal(err)
+			}
+			_, present := fields["nativeHealth"]
+			if present != (test.status != nil) || present && string(fields["nativeHealth"]) != `"PASS"` {
+				t.Fatalf("JSON changed native status presence: %s", jsonData)
+			}
+			binaryData, err := proto.Marshal(incident)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for name, unmarshal := range map[string]func(*DCGMHealthIncident) error{
+				"binary": func(m *DCGMHealthIncident) error { return proto.Unmarshal(binaryData, m) },
+				"JSON":   func(m *DCGMHealthIncident) error { return protojson.Unmarshal(jsonData, m) },
+			} {
+				t.Run(name, func(t *testing.T) {
+					got := &DCGMHealthIncident{}
+					if err := unmarshal(got); err != nil {
+						t.Fatal(err)
+					}
+					if (got.NativeHealth != nil) != (test.status != nil) || !proto.Equal(incident, got) {
+						t.Fatalf("native status presence changed: got %v, want %v", got, incident)
 					}
 				})
 			}

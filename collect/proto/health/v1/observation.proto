@@ -270,8 +270,8 @@ message DcgmHealthReport {
   // First successful health setup for this group. Systems enabled later may
   // have less history; this timestamp does not establish sample coverage.
   google.protobuf.Timestamp monitored_since = 7;
-  // Identifies this source read.
-  string check_id = 8;
+  // Collection cycle that produced this report, including standalone reads.
+  string collection_id = 8;
   // Requested systems with no relevant GPU or NVSwitch members.
   // Unrequested systems are excluded. This does not describe native support
   // or sample coverage.
@@ -288,7 +288,8 @@ message DcgmHealthReport {
 // Native numeric values remain open to values added by newer DCGM versions.
 message DcgmHealthIncident {
   uint64 system = 1;
-  DcgmHealthReport.HealthResult native_health = 2;
+  // Absent when the producer did not supply a native result.
+  optional DcgmHealthReport.HealthResult native_health = 2;
   uint64 error_code = 3;
   string message = 4;
   ObservationTarget entity = 5;
