@@ -166,7 +166,7 @@ Put each entry under the section that matches its effect:
 
 | Section | What belongs there |
 | --- | --- |
-| Breaking Changes | A change that makes previously valid use of the verdict JSON, the CLI, check IDs, configuration, the catalog's Go API, or `WithCollect`/`WithChecks`/`GPUAdapter` fail or change meaning (see [RELEASE.md](RELEASE.md)). Say what a consumer must change. Requires `!` in the title. |
+| Breaking Changes | A change that makes previously valid use of the verdict JSON, the CLI, check IDs, configuration, the catalog's Go API, or `WithCollect`/`WithChecks`/`GPUAdapter` fail or change meaning (see [RELEASE.md](RELEASE.md#compatibility)). Say what a consumer must change. Requires `!` in the title. |
 | Changes | A change to behavior or an API that is not guaranteed, such as a check's severity, a remediation sequence, or toolkit wiring. |
 | Features | Something new. |
 | Fixes | A bug fix. |

@@ -6,7 +6,7 @@
 //
 // This package is the sensor path the CLI and toolkit read through, and is
 // covered by the project's support lifecycle and compatibility policy
-// (RELEASE.md). Nothing in this package applies health judgment; it collects
+// (RELEASE.md#compatibility). Nothing in this package applies health judgment; it collects
 // and normalizes only.
 //
 // Raw families cover GPU inventory and telemetry, memory reliability, NVLink
