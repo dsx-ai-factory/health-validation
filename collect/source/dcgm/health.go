@@ -35,11 +35,14 @@ func (source *Source) AddHealthToWatch(systems uint64) error {
 	if systems&^dcgmhealth.KnownSystems != 0 {
 		return fmt.Errorf("invalid DCGM health-system mask %#x", systems)
 	}
+	if systems != 0 && source.healthConfigurationError != nil {
+		return source.healthConfigurationError
+	}
 	source.healthSystems |= systems
 	return nil
 }
 
-// ReadHealth performs a fresh health read with lazy setup and optional GPU UUID
+// ReadHealth performs a fresh health read with lazy setup and optional GPU identity
 // enrichment. Sensors call it once when health is selected for Measure.
 // Success returns a nonnil report whose CollectionId is the cycle's collection ID.
 // Successful reports with no incidents are returned immediately.
@@ -90,13 +93,13 @@ func (source *Source) ReadHealth(ctx context.Context, currentCycle *collect.Cycl
 		failure.Operation = "health"
 		return nil, &failure
 	}
-	source.enrichHealthUUIDs(ctx, currentCycle, report)
+	source.enrichHealthIdentities(ctx, currentCycle, report)
 	return report, nil
 }
 
-// enrichHealthUUIDs adds available GPU UUIDs without discarding the report on
+// enrichHealthIdentities adds available UUIDs and PCI addresses without discarding the report on
 // lookup failure. Its separate native call uses the shared timeout gate.
-func (source *Source) enrichHealthUUIDs(ctx context.Context, currentCycle *collect.Cycle, report *observation.DCGMHealthReport) {
+func (source *Source) enrichHealthIdentities(ctx context.Context, currentCycle *collect.Cycle, report *observation.DCGMHealthReport) {
 	entities := slices.Clone(report.Entities)
 	for _, incident := range report.Incidents {
 		entities = append(entities, incident.GetEntity())
@@ -114,16 +117,20 @@ func (source *Source) enrichHealthUUIDs(ctx context.Context, currentCycle *colle
 		return
 	}
 	identities := source.GPUUUIDs(ctx, currentCycle, gpuIDs)
-	uuids := make(map[uint]string, len(identities))
+	byIndex := make(map[uint]GPUIdentityEntry, len(identities))
 	for _, identity := range identities {
-		uuids[identity.Index] = identity.UUID
+		byIndex[identity.Index] = identity
 	}
 	for _, entity := range entities {
 		gpu := entity.GetGpu()
 		native := gpu.GetNative()
 		if native.GetSource() == Name && native.GetEntityKind() == gpuEntityKind {
-			if uuid := uuids[uint(native.GetEntityId())]; uuid != "" {
-				gpu.Uuid = uuid
+			identity := byIndex[uint(native.GetEntityId())]
+			if identity.UUID != "" {
+				gpu.Uuid = identity.UUID
+			}
+			if identity.BusID != "" {
+				gpu.BusId = identity.BusID
 			}
 		}
 	}
@@ -134,6 +141,9 @@ func (source *Source) enrichHealthUUIDs(ctx context.Context, currentCycle *colle
 func (source *Source) ensureHealthWatch() error {
 	if source.closed.Load() {
 		return errClosed
+	}
+	if source.healthConfigurationError != nil {
+		return source.healthConfigurationError
 	}
 	if source.healthWatch != nil {
 		return nil

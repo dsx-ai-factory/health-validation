@@ -277,9 +277,12 @@ func TestMeasurePartialInventoryDoesNotBlockMetrics(t *testing.T) {
 }
 
 func TestDeviceTargetDoesNotLabelSourceIndexAsUUID(t *testing.T) {
-	target := identityEntryTarget(dcgmsource.GPUIdentityEntry{Index: 7})
+	target := identityEntryTarget(dcgmsource.GPUIdentityEntry{Index: 7, BusID: "0000:53:00.0"})
 	if target.GetGpu().GetUuid() != "" || target.GetGpu().GetSourceLocalId() != "dcgm-index-7" {
 		t.Fatalf("device target = %v", target)
+	}
+	if target.GetGpu().GetBusId() != "0000:53:00.0" {
+		t.Fatalf("device target lost PCI address: %v", target)
 	}
 }
 

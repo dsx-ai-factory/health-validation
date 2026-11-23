@@ -53,6 +53,9 @@ type StandaloneOptions struct {
 	// 30-second watch and its cache settings. The policy is copied now; invalid
 	// intervals fail metric registration or collection before native setup.
 	WatchPolicy *WatchPolicy
+	// HealthWatch optionally configures health sampling and retention. Nil uses
+	// 30 seconds and 10 minutes. Invalid values affect only health registration.
+	HealthWatch *HealthWatchOptions
 	// Address is the hostengine endpoint. Empty defaults to localhost.
 	Address string
 	// GroupNamePrefix identifies this consumer in DCGM group listings.
@@ -74,6 +77,8 @@ type StandaloneOptions struct {
 type EmbeddedOptions struct {
 	// WatchPolicy optionally sets sampling intervals, as in StandaloneOptions.
 	WatchPolicy *WatchPolicy
+	// HealthWatch configures health sampling and retention, as in StandaloneOptions.
+	HealthWatch *HealthWatchOptions
 	// GroupNamePrefix names this source's DCGM groups. An embedded engine
 	// opens no listener, so no other process can list the group. The source
 	// appends the process ID and a process-local sequence before the "-fields"
@@ -93,8 +98,9 @@ func metricWatchName(prefix string, processID int, sequence uint64) string {
 // reference-counts Init/Shutdown process-wide; each successful Init returns
 // one balanced cleanup function retained here.
 type Source struct {
-	native             nativeAPI
-	configurationError error
+	native                   nativeAPI
+	configurationError       error
+	healthConfigurationError error
 	// Production sources share this lock and fail fast when it is held. The lock
 	// protects native calls and the source state changed by those calls.
 	nativeCallMu               *sync.Mutex
@@ -123,8 +129,11 @@ func NewStandaloneSource(options StandaloneOptions) *Source {
 	}
 	policy, err := freezeWatchPolicy(options.WatchPolicy)
 	options.WatchPolicy = policy
+	healthOptions, healthErr := freezeHealthWatchOptions(options.HealthWatch)
+	options.HealthWatch = healthOptions
 	source := newSource(newNative(options, standaloneMode), &defaultNativeCallMu)
 	source.configurationError = err
+	source.healthConfigurationError = healthErr
 	source.mode = standaloneMode
 	source.processMode = &defaultProcessMode
 	return source
@@ -137,8 +146,10 @@ func NewStandaloneSource(options StandaloneOptions) *Source {
 // DCGM in one mode, so a source of the other mode reports NOT_CONFIGURED.
 func NewEmbeddedSource(options EmbeddedOptions) *Source {
 	policy, err := freezeWatchPolicy(options.WatchPolicy)
-	source := newSource(newNative(StandaloneOptions{GroupNamePrefix: options.GroupNamePrefix, WatchPolicy: policy}, embeddedMode), &defaultNativeCallMu)
+	healthOptions, healthErr := freezeHealthWatchOptions(options.HealthWatch)
+	source := newSource(newNative(StandaloneOptions{GroupNamePrefix: options.GroupNamePrefix, WatchPolicy: policy, HealthWatch: healthOptions}, embeddedMode), &defaultNativeCallMu)
 	source.configurationError = err
+	source.healthConfigurationError = healthErr
 	source.mode = embeddedMode
 	source.processMode = &defaultProcessMode
 	return source

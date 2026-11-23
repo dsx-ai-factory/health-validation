@@ -7,6 +7,7 @@ package dcgm
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"testing"
@@ -121,6 +122,74 @@ func TestHealthSystemMasksMatchNative(t *testing.T) {
 	} {
 		if pair.portable != uint64(pair.native) {
 			t.Errorf("portable mask %#x != native %#x", pair.portable, pair.native)
+		}
+	}
+}
+
+func TestHealthWatchSamplingParametersReachNativeSetup(t *testing.T) {
+	for _, constructor := range []struct {
+		newSource func(*HealthWatchOptions) *Source
+		name      string
+	}{
+		{name: "standalone", newSource: func(options *HealthWatchOptions) *Source {
+			return NewStandaloneSource(StandaloneOptions{HealthWatch: options})
+		}},
+		{name: "embedded", newSource: func(options *HealthWatchOptions) *Source {
+			return NewEmbeddedSource(EmbeddedOptions{HealthWatch: options})
+		}},
+	} {
+		for _, custom := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/custom=%t", constructor.name, custom), func(t *testing.T) {
+				var options *HealthWatchOptions
+				want := HealthWatchOptions{UpdateInterval: 30 * time.Second, MaxKeepAge: 10 * time.Minute}
+				if custom {
+					want = HealthWatchOptions{UpdateInterval: 75*time.Second + time.Microsecond, MaxKeepAge: 1500*time.Second + time.Millisecond}
+					copied := want
+					options = &copied
+				}
+				source := constructor.newSource(options)
+				library := source.native.(*nativeLibrary)
+				if custom {
+					options.UpdateInterval, options.MaxKeepAge = time.Second, time.Second
+				}
+				var calls int
+				library.healthSet = func(group godcgm.GroupHandle, systems godcgm.HealthSystem, interval, retention time.Duration) error {
+					calls++
+					if group.GetHandle() == 0 || uint64(systems) != dcgmhealth.SystemMemory || interval != want.UpdateInterval || retention != want.MaxKeepAge {
+						t.Fatalf("native setup = %v, %#x, %v, %v; want %+v", group, systems, interval, retention, want)
+					}
+					if calls == 1 {
+						return errors.New("temporary setup failure")
+					}
+					return nil
+				}
+				// Every new session constructs a watch with the source's copied settings.
+				for session := 0; session < 2; session++ {
+					created, err := library.WatchHealth(dcgmhealth.SystemMemory)
+					if err != nil {
+						t.Fatal(err)
+					}
+					watch := created.(*nativeHealthWatch)
+					fixture := newNativeHealthFixture()
+					ops := fixture.operations()
+					ops.set = watch.ops.set
+					watch.ops = ops
+					if session == 0 {
+						if _, err := watch.Read(); err == nil {
+							t.Fatal("first setup unexpectedly succeeded")
+						}
+					}
+					if _, err := watch.Read(); err != nil {
+						t.Fatal(err)
+					}
+					if err := watch.Close(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if calls != 3 {
+					t.Fatalf("native setup calls = %d; want 3", calls)
+				}
+			})
 		}
 	}
 }

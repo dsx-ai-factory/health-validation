@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -178,6 +180,7 @@ func TestInitDCGMRejectsUnknownMode(t *testing.T) {
 }
 
 func TestNewStandaloneSourceNativeOptions(t *testing.T) {
+	healthDefaults := &HealthWatchOptions{UpdateInterval: 30 * time.Second, MaxKeepAge: 10 * time.Minute}
 	tests := []struct {
 		name string
 		in   StandaloneOptions
@@ -185,12 +188,12 @@ func TestNewStandaloneSourceNativeOptions(t *testing.T) {
 	}{
 		{
 			name: "defaults",
-			want: StandaloneOptions{Address: "localhost"},
+			want: StandaloneOptions{Address: "localhost", HealthWatch: healthDefaults},
 		},
 		{
 			name: "explicit",
 			in:   StandaloneOptions{Address: "/run/x", GroupNamePrefix: "hv", IsSocket: true, LiveMetrics: true},
-			want: StandaloneOptions{Address: "/run/x", GroupNamePrefix: "hv", IsSocket: true, LiveMetrics: true},
+			want: StandaloneOptions{Address: "/run/x", GroupNamePrefix: "hv", IsSocket: true, LiveMetrics: true, HealthWatch: healthDefaults},
 		},
 	}
 	for _, test := range tests {
@@ -203,7 +206,7 @@ func TestNewStandaloneSourceNativeOptions(t *testing.T) {
 			if !ok {
 				t.Fatalf("native = %T, want *nativeLibrary", source.native)
 			}
-			if library.options != test.want || library.mode != standaloneMode {
+			if !reflect.DeepEqual(library.options, test.want) || library.mode != standaloneMode {
 				t.Fatalf("native options = %+v, mode %v; want %+v, %v", library.options, library.mode, test.want, standaloneMode)
 			}
 			if library.dcgmInit == nil {
@@ -218,7 +221,7 @@ func TestNewEmbeddedSourceNativeOptions(t *testing.T) {
 	if !ok {
 		t.Fatal("embedded source native is not *nativeLibrary")
 	}
-	if want := (StandaloneOptions{GroupNamePrefix: "hv"}); library.options != want || library.mode != embeddedMode {
+	if want := (StandaloneOptions{GroupNamePrefix: "hv", HealthWatch: &HealthWatchOptions{UpdateInterval: 30 * time.Second, MaxKeepAge: 10 * time.Minute}}); !reflect.DeepEqual(library.options, want) || library.mode != embeddedMode {
 		t.Fatalf("native options = %+v, mode %v; want %+v, %v", library.options, library.mode, want, embeddedMode)
 	}
 	if library.dcgmInit == nil {

@@ -14,15 +14,17 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
-// GPUIdentityEntry pairs a DCGM index with optional UUID enrichment.
+// GPUIdentityEntry pairs a DCGM index with optional UUID and PCI address enrichment.
 type GPUIdentityEntry struct {
-	UUIDError *observation.CollectionError
-	UUID      string
-	Index     uint
+	UUIDError  *observation.CollectionError
+	BusIDError *observation.CollectionError
+	UUID       string
+	BusID      string
+	Index      uint
 }
 
-// GPUIdentities enumerates GPUs and enriches their indices with UUIDs.
-// A UUID lookup failure preserves the indices for subsequent collection.
+// GPUIdentities enumerates GPUs and enriches their indices with UUIDs and PCI addresses.
+// Lookup failures preserve the indices for subsequent collection.
 func (source *Source) GPUIdentities(ctx context.Context, currentCycle *collect.Cycle) ([]GPUIdentityEntry, *observation.CollectionError) {
 	gpuIndices, failure := source.GPUIndices(ctx, currentCycle)
 	if failure != nil {
@@ -42,8 +44,9 @@ func (source *Source) GPUIndices(ctx context.Context, currentCycle *collect.Cycl
 	return gpuIndices, nil
 }
 
-// GPUUUIDs enriches the supplied GPU IDs without enumerating devices.
-// It preserves request order and IDs, recording lookup failures per entry.
+// GPUUUIDs enriches the supplied GPU IDs with UUIDs and PCI addresses in one
+// lookup without enumerating devices. It preserves request order and IDs,
+// recording failures independently for each identity field.
 // An empty request performs no native work.
 func (source *Source) GPUUUIDs(ctx context.Context, currentCycle *collect.Cycle, gpuIndices []uint) []GPUIdentityEntry {
 	if len(gpuIndices) == 0 {
@@ -55,6 +58,7 @@ func (source *Source) GPUUUIDs(ctx context.Context, currentCycle *collect.Cycle,
 		entries, err := source.native.ReadGPUUUIDs(gpuIndices)
 		for _, entry := range entries {
 			source.recordFieldFailure(currentCycle, entry.UUIDError)
+			source.recordFieldFailure(currentCycle, entry.BusIDError)
 		}
 		return entries, err
 	})
@@ -62,10 +66,19 @@ func (source *Source) GPUUUIDs(ctx context.Context, currentCycle *collect.Cycle,
 	for _, gpuIndex := range gpuIndices {
 		entry := identities[gpuIndex]
 		entry.Index = gpuIndex
-		if readErr != nil {
-			entry.UUIDError = source.gpuCollectionError("identity", readErr)
-		} else if entry.UUID == "" && entry.UUIDError == nil {
-			entry.UUIDError = source.gpuCollectionError("identity", fmt.Errorf("no UUID returned for GPU index %d", gpuIndex))
+		if entry.UUID == "" && entry.UUIDError == nil {
+			err := readErr
+			if err == nil {
+				err = fmt.Errorf("no UUID returned for GPU index %d", gpuIndex)
+			}
+			entry.UUIDError = source.gpuCollectionError("identity", err)
+		}
+		if entry.BusID == "" && entry.BusIDError == nil {
+			err := readErr
+			if err == nil {
+				err = fmt.Errorf("no PCI bus ID returned for GPU index %d", gpuIndex)
+			}
+			entry.BusIDError = source.gpuCollectionError("identity", err)
 		}
 		entries = append(entries, entry)
 	}

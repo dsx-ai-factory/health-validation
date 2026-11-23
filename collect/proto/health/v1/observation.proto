@@ -142,6 +142,8 @@ message GpuRef {
   string uuid = 1;
   string source_local_id = 2;
   NativeEntityRef native = 3;
+  // Optional PCI address on this node; not a persistent hardware identity.
+  string bus_id = 4;
 }
 
 // NvSwitchRef retains native identity when a hardware UUID is unavailable.

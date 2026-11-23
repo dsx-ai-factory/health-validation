@@ -309,9 +309,13 @@ Changes to behavior and APIs outside the
   omit metric signals to request only health when the mask is nonzero.
   Reports preserve all native incidents, group metadata, readable health statuses,
   monitoring start time, and missing-target facts. Entities reuse shared GPU
-  and NVSwitch references with optional source-native identity metadata;
-  unknown native entity kinds are preserved. Existing metric-only constructors
+  and NVSwitch references with optional source-native identity metadata.
+  GPU references include available UUIDs and PCI bus addresses from one lookup.
+  Unknown native entity kinds are preserved. Existing metric-only constructors
   and defaults are unchanged.
+  Source `HealthWatch` options configure the health update interval and retention
+  independently of metric `WatchPolicy`, keeping 30 seconds and 10 minutes as
+  defaults.
   Driver health monitors GPU recovery actions reported by the driver.
   Successful native reports are available immediately, including empty incident
   lists; absent incidents do not establish healthy status or complete coverage.

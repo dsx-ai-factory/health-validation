@@ -23,8 +23,9 @@
 // the same findings can share the returned batch.
 //
 // Metrics and health findings retain native DCGM entity IDs. Metrics look up
-// GPU UUIDs before reading fields; health reports attempt UUID enrichment after
-// the native health check. Missing UUIDs retain native identities, but a UUID
+// GPU UUIDs and PCI addresses before reading fields; health reports attempt the
+// same enrichment after the native health check. Either identity field can be
+// available when the other fails. Missing UUIDs retain native identities, but a
 // lookup timeout can prevent subsequent native reads. Native IDs are source-local
 // and may change after a restart; consumers that need persistent GPU identity
 // must require a UUID. Metric targets retain their existing source_local_id

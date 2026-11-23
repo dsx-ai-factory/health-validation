@@ -212,6 +212,102 @@ func TestDecodeGPUUUIDStringValues(t *testing.T) {
 	}
 }
 
+func TestReadGPUIdentityFieldsUsesOneBatch(t *testing.T) {
+	indices := []uint{7, 2}
+	calls := 0
+	library := &nativeLibrary{readFields: func(gpuIndices []uint, fields []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
+		calls++
+		if !slices.Equal(gpuIndices, indices) || !slices.Equal(fields, []godcgm.Short{godcgm.DCGM_FI_DEV_UUID, godcgm.DCGM_FI_DEV_PCI_BUSID}) {
+			t.Fatalf("identity batch = indices %v, fields %v", gpuIndices, fields)
+		}
+		uuid, busID := "GPU-7", "0000:53:00.0"
+		return []godcgm.FieldValue_v2{
+			{EntityGroupId: godcgm.FE_GPU, EntityID: 7, FieldID: godcgm.DCGM_FI_DEV_UUID, FieldType: godcgm.DCGM_FT_STRING, StringValue: &uuid},
+			{EntityGroupId: godcgm.FE_GPU, EntityID: 7, FieldID: godcgm.DCGM_FI_DEV_PCI_BUSID, FieldType: godcgm.DCGM_FT_STRING, StringValue: &busID},
+		}, nil
+	}}
+	entries, err := library.ReadGPUUUIDs(indices)
+	if err != nil || calls != 1 || len(entries) != len(indices) {
+		t.Fatalf("identity lookup = %v, %v; native calls = %d", entries, err, calls)
+	}
+	if entry := entries[7]; entry.UUID != "GPU-7" || entry.BusID != "0000:53:00.0" || entry.UUIDError != nil || entry.BusIDError != nil {
+		t.Fatalf("successful identity fields were not decoded: %+v", entry)
+	}
+	if entry := entries[2]; entry.UUIDError.GetSourceError() != "DCGM_ST_NO_DATA" || entry.BusIDError.GetSourceError() != "DCGM_ST_NO_DATA" {
+		t.Fatalf("missing GPU response did not retain both field failures: %+v", entry)
+	}
+}
+
+func TestDecodeGPUIdentityFieldsAreIndependent(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		uuid       string
+		busID      string
+		fieldError string
+		status     int
+		fieldType  uint
+		badField   godcgm.Short
+		omit       bool
+	}{
+		{name: "both available", uuid: "GPU-7", busID: "0000:53:00.0"},
+		{name: "UUID status fails", busID: "0000:53:00.0", badField: godcgm.DCGM_FI_DEV_UUID, status: int(godcgm.DCGM_ST_NOT_SUPPORTED), fieldError: "DCGM_ST_NOT_SUPPORTED"},
+		{name: "PCI status fails", uuid: "GPU-7", badField: godcgm.DCGM_FI_DEV_PCI_BUSID, status: int(godcgm.DCGM_ST_NO_PERMISSION), fieldError: "DCGM_ST_NO_PERMISSION"},
+		{name: "PCI field missing", uuid: "GPU-7", badField: godcgm.DCGM_FI_DEV_PCI_BUSID, omit: true, fieldError: "DCGM_ST_NO_DATA"},
+		{name: "PCI unsupported sentinel", uuid: "GPU-7", busID: godcgm.DCGM_FT_STR_NOT_SUPPORTED, badField: godcgm.DCGM_FI_DEV_PCI_BUSID, fieldError: "DCGM_FT_NOT_SUPPORTED"},
+		{name: "PCI wrong type", uuid: "GPU-7", badField: godcgm.DCGM_FI_DEV_PCI_BUSID, fieldType: godcgm.DCGM_FT_INT64},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			uuid, busID := test.uuid, test.busID
+			fields := []godcgm.FieldValue_v2{
+				{EntityGroupId: godcgm.FE_GPU, EntityID: 7, FieldID: godcgm.DCGM_FI_DEV_UUID, FieldType: godcgm.DCGM_FT_STRING, StringValue: &uuid},
+				{EntityGroupId: godcgm.FE_GPU, EntityID: 7, FieldID: godcgm.DCGM_FI_DEV_PCI_BUSID, FieldType: godcgm.DCGM_FT_STRING, StringValue: &busID},
+			}
+			for i := range fields {
+				if fields[i].FieldID == test.badField {
+					if test.omit {
+						fields = append(fields[:i], fields[i+1:]...)
+						break
+					}
+					fields[i].Status = test.status
+					if test.fieldType != 0 {
+						fields[i].FieldType = test.fieldType
+					}
+				}
+			}
+			entry := decodeGPUUUIDs([]uint{7}, fields)[7]
+			if entry.Index != 7 {
+				t.Fatalf("identity index changed: %+v", entry)
+			}
+			for _, field := range []struct {
+				failure *observation.CollectionError
+				value   string
+				want    string
+				id      godcgm.Short
+			}{
+				{failure: entry.UUIDError, value: entry.UUID, want: test.uuid, id: godcgm.DCGM_FI_DEV_UUID},
+				{failure: entry.BusIDError, value: entry.BusID, want: test.busID, id: godcgm.DCGM_FI_DEV_PCI_BUSID},
+			} {
+				if field.id != test.badField {
+					if field.failure != nil || field.value != field.want {
+						t.Fatalf("unrelated identity field %d was lost: value=%q failure=%v", field.id, field.value, field.failure)
+					}
+					continue
+				}
+				if field.value != "" || field.failure == nil || field.failure.GetSource() != Name || field.failure.GetOperation() != "identity" {
+					t.Fatalf("failed identity field %d = %q, %v", field.id, field.value, field.failure)
+				}
+				if test.fieldType != 0 {
+					if field.failure.GetCategory() != observation.CollectionErrorCategoryParseError {
+						t.Fatalf("invalid PCI type category = %v", field.failure)
+					}
+				} else if field.failure.GetSourceError() != test.fieldError {
+					t.Fatalf("identity failure = %v, want %s", field.failure, test.fieldError)
+				}
+			}
+		})
+	}
+}
+
 func TestDecodeInventory(t *testing.T) {
 	stringField := func(gpuIndex uint, fieldID godcgm.Short, value string) godcgm.FieldValue_v2 {
 		field := godcgm.FieldValue_v2{EntityGroupId: godcgm.FE_GPU, EntityID: gpuIndex, FieldID: fieldID, FieldType: godcgm.DCGM_FT_STRING, Status: godcgm.DCGM_ST_OK}

@@ -39,15 +39,22 @@
 // PossiblyTruncated marks a report that reaches the native incident limit;
 // absent incidents cannot establish that omitted faults have cleared.
 //
-// GPUIndices and GPUUUIDs separate device discovery from optional UUID lookup;
-// GPUIdentities retains their combined convenience flow. UUIDs identify GPUs
-// across collections. Native numeric IDs are source-local and must not be
-// treated as persistent hardware identities.
+// GPUIndices and GPUUUIDs separate device discovery from optional identity
+// lookup. GPUUUIDs fetches UUIDs and PCI addresses together; either field can
+// succeed independently. GPUIdentities retains their combined convenience flow.
+// UUIDs identify GPUs across collections. PCI addresses describe their location
+// on this node and can help correlate hardware replacements. Native numeric IDs
+// are source-local and must not be treated as persistent hardware identities.
 //
-// Passive health uses DCGM's HealthSet defaults, independently of WatchPolicy:
-// a requested 30-second update interval and 10-minute retention. Native systems
-// can enforce different effective settings. These defaults do not establish
-// complete history for every health rule, including a memory rule that uses a
+// Source HealthWatch options configure health sampling independently of WatchPolicy.
+// Nil options or zero fields retain DCGM's HealthSet defaults: a requested
+// 30-second update interval and 10-minute retention. Set HealthWatchOptions on
+// StandaloneOptions or EmbeddedOptions before constructing the Source. Use an
+// interval matching the health polling cadence and MaxKeepAge covering
+// the longest expected gap between polls. These options do not enable health;
+// register the desired systems separately. Native systems can enforce different
+// effective settings. Requested retention does not establish complete history
+// for every health rule, including a memory rule that uses a
 // week-old baseline. ReadHealth returns successful native reports immediately.
 // MonitoredSince records the group's first successful health setup. Systems
 // enabled later can have less history. Elapsed time does not establish native

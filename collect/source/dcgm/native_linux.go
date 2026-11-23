@@ -21,6 +21,7 @@ type nativeLibrary struct {
 	readFields func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error)
 	gpuStatus  func(uint) godcgm.EntityStatus
 	dcgmInit   func(sessionMode, ...string) (func() error, error)
+	healthSet  func(godcgm.GroupHandle, godcgm.HealthSystem, time.Duration, time.Duration) error
 	// Embedded mode ignores options.Address and options.IsSocket.
 	options StandaloneOptions
 	mode    sessionMode
@@ -36,6 +37,7 @@ func newNative(options StandaloneOptions, mode sessionMode) nativeAPI {
 		readFields: readGPUFields,
 		gpuStatus:  godcgm.GetGPUStatus,
 		dcgmInit:   initDCGM,
+		healthSet:  godcgm.HealthSetWithParams,
 	}
 }
 

@@ -164,11 +164,12 @@ func (sensor *sensor) Measure(
 	return batch, nil
 }
 
-// identityEntryTarget retains the native GPU ID and an optional UUID.
+// identityEntryTarget retains the native GPU ID and optional UUID and PCI address.
 // Missing UUIDs retain the existing source-local fallback for compatibility.
 func identityEntryTarget(entry dcgmsource.GPUIdentityEntry) *observation.ObservationTarget {
 	gpu := &observation.GPURef{
-		Uuid: entry.UUID,
+		Uuid:  entry.UUID,
+		BusId: entry.BusID,
 		Native: &observation.NativeEntityRef{
 			Source: dcgmsource.Name, EntityKind: dcgmGPUEntityKind, EntityId: uint32(entry.Index),
 		},

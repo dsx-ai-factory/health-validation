@@ -1222,6 +1222,8 @@ type GpuRef struct {
 	Uuid          string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	SourceLocalId string                 `protobuf:"bytes,2,opt,name=source_local_id,json=sourceLocalId,proto3" json:"source_local_id,omitempty"`
 	Native        *NativeEntityRef       `protobuf:"bytes,3,opt,name=native,proto3" json:"native,omitempty"`
+	// Optional PCI address on this node; not a persistent hardware identity.
+	BusId         string `protobuf:"bytes,4,opt,name=bus_id,json=busId,proto3" json:"bus_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1275,6 +1277,13 @@ func (x *GpuRef) GetNative() *NativeEntityRef {
 		return x.Native
 	}
 	return nil
+}
+
+func (x *GpuRef) GetBusId() string {
+	if x != nil {
+		return x.BusId
+	}
+	return ""
 }
 
 // NvSwitchRef retains native identity when a hardware UUID is unavailable.
@@ -2673,11 +2682,12 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\rnative_entity\x18\x11 \x01(\v2\x1a.health.v1.NativeEntityRefH\x00R\fnativeEntityB\x06\n" +
 	"\x04kind\"\x19\n" +
 	"\aNodeRef\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"x\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x8f\x01\n" +
 	"\x06GpuRef\x12\x12\n" +
 	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12&\n" +
 	"\x0fsource_local_id\x18\x02 \x01(\tR\rsourceLocalId\x122\n" +
-	"\x06native\x18\x03 \x01(\v2\x1a.health.v1.NativeEntityRefR\x06native\"U\n" +
+	"\x06native\x18\x03 \x01(\v2\x1a.health.v1.NativeEntityRefR\x06native\x12\x15\n" +
+	"\x06bus_id\x18\x04 \x01(\tR\x05busId\"U\n" +
 	"\vNvSwitchRef\x12\x12\n" +
 	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x122\n" +
 	"\x06native\x18\x02 \x01(\v2\x1a.health.v1.NativeEntityRefR\x06native\"g\n" +

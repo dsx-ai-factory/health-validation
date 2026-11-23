@@ -60,6 +60,8 @@ func TestSharedNativeEntityTargetsRoundTrip(t *testing.T) {
 	targets := map[string]*ObservationTarget{
 		"GPU native only":                     {Kind: &ObservationTarget_GPU{Gpu: &GPURef{Native: &NativeEntityRef{Source: "dcgm", EntityKind: 1}}}},
 		"GPU UUID":                            {Kind: &ObservationTarget_GPU{Gpu: &GPURef{Uuid: "GPU-0", Native: &NativeEntityRef{Source: "dcgm", EntityKind: 1}}}},
+		"GPU UUID and PCI address":            {Kind: &ObservationTarget_GPU{Gpu: &GPURef{Uuid: "GPU-0", BusId: "0000:53:00.0", Native: &NativeEntityRef{Source: "dcgm", EntityKind: 1}}}},
+		"GPU PCI address without UUID":        {Kind: &ObservationTarget_GPU{Gpu: &GPURef{BusId: "0000:53:00.0", Native: &NativeEntityRef{Source: "dcgm", EntityKind: 1}}}},
 		"GPU local ID":                        {Kind: &ObservationTarget_GPU{Gpu: &GPURef{SourceLocalId: "dcgm-index-7", Native: &NativeEntityRef{Source: "dcgm", EntityKind: 1, EntityId: 7}}}},
 		"switch native only":                  {Kind: &ObservationTarget_NVSwitch{NvSwitch: &NVSwitchRef{Native: &NativeEntityRef{Source: "dcgm", EntityKind: 3, EntityId: 17}}}},
 		"switch UUID":                         {Kind: &ObservationTarget_NVSwitch{NvSwitch: &NVSwitchRef{Uuid: "switch-known-uuid", Native: &NativeEntityRef{Source: "dcgm", EntityKind: 3, EntityId: 17}}}},

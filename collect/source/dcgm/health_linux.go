@@ -53,15 +53,21 @@ const maxNativeHealthIncidents = 1024
 
 // WatchHealth prepares a watch whose native setup occurs during Read.
 func (library *nativeLibrary) WatchHealth(systems uint64) (healthWatch, error) {
+	options, err := freezeHealthWatchOptions(library.options.HealthWatch)
+	if err != nil {
+		return nil, err
+	}
 	name := metricWatchName(library.options.GroupNamePrefix, os.Getpid(), metricWatchSequence.Add(1)) + "-health"
 	return startHealthWatch(name, systems, healthWatchOperations{
 		entities: godcgm.GetEntityGroupEntities,
 		create:   godcgm.CreateGroup,
 		add:      godcgm.AddEntityToGroup,
-		set:      godcgm.HealthSet,
-		info:     godcgm.GetGroupInfo,
-		check:    godcgm.HealthCheck,
-		destroy:  godcgm.DestroyGroup,
+		set: func(group godcgm.GroupHandle, systems godcgm.HealthSystem) error {
+			return library.healthSet(group, systems, options.UpdateInterval, options.MaxKeepAge)
+		},
+		info:    godcgm.GetGroupInfo,
+		check:   godcgm.HealthCheck,
+		destroy: godcgm.DestroyGroup,
 	})
 }
 
