@@ -25,14 +25,16 @@ import (
 // Catalog is a registry of health check definitions with evaluation
 // capabilities. It is safe for concurrent use.
 type Catalog struct {
-	checks           map[string]*health.CheckDefinition
-	disabledChecks   map[string]bool
-	evaluationEngine *evaluation.EvaluationEngine
-	overrides        OverrideSet
-	architecture     string
-	host             health.Host
-	executionContext health.ExecutionContext
-	mu               sync.RWMutex
+	checks             map[string]*health.CheckDefinition
+	disabledChecks     map[string]bool
+	experimentalChecks map[string]bool
+	evaluationEngine   *evaluation.EvaluationEngine
+	overrides          OverrideSet
+	architecture       string
+	host               health.Host
+	executionContext   health.ExecutionContext
+	mu                 sync.RWMutex
+	experimentalAll    bool
 }
 
 // Option configures a Catalog during construction.
@@ -58,6 +60,26 @@ func WithDisabledChecks(ids ...string) Option {
 			c.disabledChecks[id] = true
 		}
 	}
+}
+
+// WithExperimentalChecks enables the named experimental checks. An
+// experimental check ([health.Experimental]) is skipped with reason
+// CheckDisabled unless it is named here or [WithAllExperimentalChecks] is
+// set; naming a stable check has no effect, so a check that graduates keeps
+// working in configuration that already lists it. [WithDisabledChecks] still
+// wins over both.
+func WithExperimentalChecks(ids ...string) Option {
+	return func(c *Catalog) {
+		for _, id := range ids {
+			c.experimentalChecks[id] = true
+		}
+	}
+}
+
+// WithAllExperimentalChecks enables every experimental check, including ones
+// registered after construction.
+func WithAllExperimentalChecks() Option {
+	return func(c *Catalog) { c.experimentalAll = true }
 }
 
 // ErrArchitectureUnset is returned by [Catalog.Evaluate] and [Catalog.EvaluateAll]
@@ -92,9 +114,10 @@ func WithExecutionContext(ctx health.ExecutionContext) Option {
 // custom check dependencies). Most users should use [New] instead.
 func NewEmpty(opts ...Option) *Catalog {
 	c := &Catalog{
-		checks:           make(map[string]*health.CheckDefinition),
-		disabledChecks:   make(map[string]bool),
-		evaluationEngine: evaluation.NewEvaluationEngine(),
+		checks:             make(map[string]*health.CheckDefinition),
+		disabledChecks:     make(map[string]bool),
+		experimentalChecks: make(map[string]bool),
+		evaluationEngine:   evaluation.NewEvaluationEngine(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -106,9 +129,10 @@ func NewEmpty(opts ...Option) *Catalog {
 // and configured with the given options.
 func New(opts ...Option) *Catalog {
 	c := &Catalog{
-		checks:           make(map[string]*health.CheckDefinition),
-		disabledChecks:   make(map[string]bool),
-		evaluationEngine: evaluation.NewEvaluationEngine(),
+		checks:             make(map[string]*health.CheckDefinition),
+		disabledChecks:     make(map[string]bool),
+		experimentalChecks: make(map[string]bool),
+		evaluationEngine:   evaluation.NewEvaluationEngine(),
 	}
 	// Built-ins go through the same guards as caller-supplied checks: a
 	// duplicate ID or a self-contradictory threshold is an authoring error,
@@ -245,12 +269,14 @@ func (c *Catalog) Len() int {
 // lock round-trips on the batch path. Per-run fields such as cadence are
 // set on a local copy for that evaluation; they are not stored on Catalog.
 type paramsSnapshot struct {
-	cadence          *health.SchedulingCadence
-	disabledChecks   map[string]bool
-	overrides        OverrideSet
-	architecture     string
-	host             health.Host
-	executionContext health.ExecutionContext
+	cadence            *health.SchedulingCadence
+	disabledChecks     map[string]bool
+	experimentalChecks map[string]bool
+	overrides          OverrideSet
+	architecture       string
+	host               health.Host
+	executionContext   health.ExecutionContext
+	experimentalAll    bool
 }
 
 // forCheck specializes the snapshot for a single check. Both the
@@ -260,11 +286,12 @@ type paramsSnapshot struct {
 // disabled checks.
 func (s paramsSnapshot) forCheck(checkID string) evaluation.Params {
 	return evaluation.Params{
-		Architecture:     s.architecture,
-		ExecutionContext: s.executionContext,
-		Disabled:         s.disabledChecks[checkID],
-		Overrides:        s.overrides.ForCheck(checkID),
-		Cadence:          s.cadence,
+		Architecture:        s.architecture,
+		ExecutionContext:    s.executionContext,
+		Disabled:            s.disabledChecks[checkID],
+		ExperimentalEnabled: s.experimentalAll || s.experimentalChecks[checkID],
+		Overrides:           s.overrides.ForCheck(checkID),
+		Cadence:             s.cadence,
 	}
 }
 
@@ -276,11 +303,13 @@ func (c *Catalog) snapshotParams() paramsSnapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return paramsSnapshot{
-		overrides:        c.overrides,
-		disabledChecks:   c.disabledChecks,
-		architecture:     c.architecture,
-		host:             c.host,
-		executionContext: c.executionContext,
+		overrides:          c.overrides,
+		disabledChecks:     c.disabledChecks,
+		experimentalChecks: c.experimentalChecks,
+		experimentalAll:    c.experimentalAll,
+		architecture:       c.architecture,
+		host:               c.host,
+		executionContext:   c.executionContext,
 	}
 }
 
@@ -408,11 +437,13 @@ func (c *Catalog) batchSnapshot(opts EvaluationOptions) (map[string]*health.Chec
 		checks[k] = v
 	}
 	return checks, paramsSnapshot{
-		cadence:          opts.Cadence,
-		overrides:        c.overrides,
-		disabledChecks:   c.disabledChecks,
-		architecture:     c.architecture,
-		host:             c.host,
-		executionContext: c.executionContext,
+		cadence:            opts.Cadence,
+		overrides:          c.overrides,
+		disabledChecks:     c.disabledChecks,
+		experimentalChecks: c.experimentalChecks,
+		experimentalAll:    c.experimentalAll,
+		architecture:       c.architecture,
+		host:               c.host,
+		executionContext:   c.executionContext,
 	}
 }

@@ -85,6 +85,8 @@ The bridge is the production adapter layer between `collect` and the catalog. Ex
 | <nobr>`catalog.WithDriverVersion(v)`</nobr> | Records the host's NVIDIA driver version (a `health.DriverVersion`) for derived signals that depend on it. Leave it unset when the version is unknown. |
 | <nobr>`catalog.WithExecutionContext(health.OperatorInfra)`</nobr> | Checks that don't list this context are skipped with `SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL`. |
 | <nobr>`catalog.WithDisabledChecks("check_id", ...)`</nobr> | Named checks are skipped with `CHECK_DISABLED`. Built from a config file's `disabled_checks:` via `Config.DisabledCheckIDs()`. |
+| <nobr>`catalog.WithExperimentalChecks("check_id", ...)`</nobr> | Enables the named experimental checks. An experimental check is otherwise skipped with `CHECK_DISABLED`; naming a stable check has no effect. Built from a config file's `experimental.checks:` via `Config.ExperimentalCheckIDs()`. |
+| <nobr>`catalog.WithAllExperimentalChecks()`</nobr> | Enables every experimental check. Built from a config file's `experimental.enabled: true`. |
 | <nobr>`catalog.WithOverrides(overrides)`</nobr> | Applies operator threshold overrides. Built from a config file via `Config.Overrides()`. |
 
 Scheduling cadence is not a construction option. Set `Cadence` in per-run `catalog.EvaluationOptions` or `toolkit.CollectionOptions`; either zero value evaluates every registered check, and zero-value collection options also use the default timeout. Checks outside the requested window are reported with `CADENCE_MISMATCH`. One catalog can serve Continuous, Prolog, and Maintenance windows.
@@ -169,7 +171,7 @@ Severity is ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL.
 | NOT_SKIPPED | The check ran normally. |
 | SIGNAL_UNAVAILABLE_ARCHITECTURE | The check does not apply to this GPU architecture. |
 | SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL | The check requires a different execution context. |
-| CHECK_DISABLED | An operator disabled this check. |
+| CHECK_DISABLED | An operator disabled this check, or it is experimental and was not enabled. |
 | INSUFFICIENT_HISTORY | Time-window data has not yet accumulated. Applies only to checks that evaluate over a window; no currently registered check uses it. |
 | CADENCE_MISMATCH | The check is not scheduled for the requested `--cadence` window. |
 | THRESHOLD_UNCONFIGURED | A threshold the operator must supply was not configured. |

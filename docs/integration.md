@@ -122,7 +122,9 @@ which needs systemd 236 or later; without a readable kernel journal for the
 current boot, `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure
 verdicts. Neither falls back to `/dev/kmsg`, whose ring buffer cannot show
 that nothing was logged in the window.
-`ib_port_state` reads `/sys/class/infiniband`, which the container sees
+`ib_port_state` is experimental, so it runs only once the config enables it (see
+[Experimental checks](#experimental-checks) below). When it does, it reads
+`/sys/class/infiniband`, which the container sees
 through the host's sysfs without extra mounts, and examines every NVIDIA HCA
 there (PCI vendor `0x15b3`), not only `mlx*`-named ones; other vendors' and
 software RDMA devices are not checked. Selection reads each device's own
@@ -133,7 +135,7 @@ a collection failure, not a skip: the check assumes the run sees the node's
 RDMA devices, which holds on a bare-metal host, in a container or Kubernetes
 worker on host sysfs, and in a VM with HCAs or SR-IOV VFs passed through. A
 deployment without InfiniBand, or a tenant guest with no RDMA device assigned,
-lists the check in `disabled_checks`.
+leaves the check unenabled, or lists it in `disabled_checks`.
 
 ### Static binary (bare metal, Slurm)
 
@@ -620,6 +622,18 @@ Maintain one config per node-class (GB200 vs H100, expected GPU counts) and
 select it at invocation. To turn a check off entirely, list it under `disabled_checks:` in the config
 (or use `catalog.WithDisabledChecks` when embedding the library). It then
 appears in `skipped_checks` with `skip_reason: CHECK_DISABLED`.
+
+### Experimental checks
+
+Checks with `maturity_level: experimental` are off by default and are reported
+as skipped with `skip_reason: CHECK_DISABLED`, with a `skip_detail` that says they
+are experimental. Turn them on
+in the config with `experimental.enabled: true` (all of them) or by naming them
+under `experimental.checks:`. They then count toward `overall_severity` and the
+exit code like any other check. `enabled: true` also covers experimental checks a
+later release adds, so name the checks if an upgrade should never start running
+a new one. When embedding the library, use `catalog.WithExperimentalChecks` or
+`catalog.WithAllExperimentalChecks`.
 
 ### Audit trail for overrides
 

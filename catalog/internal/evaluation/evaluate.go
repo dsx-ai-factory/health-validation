@@ -43,12 +43,16 @@ type Params struct {
 	Architecture     string
 	ExecutionContext health.ExecutionContext
 	Disabled         bool
+	// ExperimentalEnabled lets an experimental check run. It is irrelevant to
+	// a stable check, which always runs.
+	ExperimentalEnabled bool
 }
 
 // EvaluateCheck runs a single check against one measurement.
 //
-// The measurement-independent skips apply first (disabled, cadence,
-// architecture, execution context, unconfigured required threshold).
+// The measurement-independent skips apply first (disabled, experimental and
+// not enabled, cadence, architecture, execution context, unconfigured
+// required threshold).
 // If the check survives those, the measurement must route to it — same
 // Category and a schema carrying every RequiredSignal (see [routes]) —
 // or the check skips with [health.NoApplicableMeasurement]. A routed
@@ -98,9 +102,9 @@ func observe(m health.Measurement, host health.Host) observed {
 // so a per-entity check yields one verdict per entity, and exactly once as
 // a [health.NoApplicableMeasurement] skip when its category was collected
 // but no measurement carried its required signals. The
-// measurement-independent skips (disabled, cadence, architecture, context,
-// unconfigured threshold) are decided once per check, not once per
-// measurement. A dependency is not among them: it is examined per
+// measurement-independent skips (disabled, experimental not enabled, cadence,
+// architecture, context, unconfigured threshold) are decided once per check,
+// not once per measurement. A dependency is not among them: it is examined per
 // measurement, and only to name the cause on a verdict for an entity this
 // check could not read at all. See [lostEntity].
 //
@@ -349,14 +353,21 @@ func noApplicableDetail(cd *health.CheckDefinition) string {
 }
 
 // checkLevelSkip decides the measurement-independent skips: an operator
-// disable, cadence, architecture or execution-context mismatch, or a required
-// threshold the operator never supplied. These depend only on the check and
-// evaluation context, not on any measurement, so the batch path decides them
-// once per check rather than once per routed measurement. It returns the skip
-// verdict and true when the check must not run.
+// disable, an experimental check nobody enabled, cadence, architecture or
+// execution-context mismatch, or a required threshold the operator never
+// supplied. These depend only on the check and evaluation context, not on any
+// measurement, so the batch path decides them once per check rather than once
+// per routed measurement. It returns the skip verdict and true when the check
+// must not run.
 func checkLevelSkip(cd *health.CheckDefinition, p Params, now time.Time) (health.CheckVerdict, bool) {
 	if p.Disabled {
 		return skippedVerdict(cd, now, health.CheckDisabled, "disabled by operator configuration"), true
+	}
+
+	// Experimental checks are off unless enabled. They share CheckDisabled
+	// with an operator disable: both are intentional, and the detail says which.
+	if cd.MaturityLevel == health.Experimental && !p.ExperimentalEnabled {
+		return skippedVerdict(cd, now, health.CheckDisabled, "experimental check, off unless enabled"), true
 	}
 
 	if p.Cadence != nil && !cd.SchedulingCadence.Covers(*p.Cadence) {

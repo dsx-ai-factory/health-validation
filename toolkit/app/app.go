@@ -579,7 +579,9 @@ func collectionCategories(cat *catalog.Catalog, cfg *Config) (map[health.Categor
 	wanted := make(map[health.Category]bool)
 	if len(cfg.Checks) == 0 {
 		for _, check := range cat.List(catalog.Filter{}) {
-			if !disabled[check.ID] {
+			// An experimental check the config leaves off will not run, so it
+			// must not pull its sensor in either.
+			if !disabled[check.ID] && !cfg.experimentalOff(check) {
 				wanted[check.Category] = true
 			}
 		}
@@ -591,6 +593,9 @@ func collectionCategories(cat *catalog.Catalog, cfg *Config) (map[health.Categor
 			check, err := cat.Get(checkID)
 			if err != nil {
 				return nil, err
+			}
+			if cfg.experimentalOff(check) {
+				continue
 			}
 			wanted[check.Category] = true
 		}
@@ -703,6 +708,17 @@ func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch strin
 		return nil, 0, err
 	}
 	opts = append(opts, catalog.WithDisabledChecks(disabledCheckIDs...))
+
+	// Experimental checks stay off unless the config opts in, validated the
+	// same way so a typo'd ID is an error rather than a check that never runs.
+	experimentalIDs, err := cfg.ExperimentalCheckIDs(validation)
+	if err != nil {
+		return nil, 0, err
+	}
+	opts = append(opts, catalog.WithExperimentalChecks(experimentalIDs...))
+	if cfg.Experimental.Enabled {
+		opts = append(opts, catalog.WithAllExperimentalChecks())
+	}
 
 	final := catalog.New(append([]catalog.Option{catalog.WithOverrides(overrides)}, opts...)...)
 	if err = register(final); err != nil {

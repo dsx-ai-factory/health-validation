@@ -15,12 +15,14 @@ import (
 )
 
 // ibCatalog builds a catalog on an architecture and execution context the
-// InfiniBand checks apply to, so a test that does not exercise filtering
-// gets an evaluated verdict rather than a skip.
+// InfiniBand checks apply to, with the experimental port check enabled, so a
+// test that does not exercise filtering gets an evaluated verdict rather than
+// a skip.
 func ibCatalog(opts ...catalog.Option) *catalog.Catalog {
 	defaults := []catalog.Option{
 		catalog.WithArchitecture("GB200"),
 		catalog.WithExecutionContext(health.OperatorInfra),
+		catalog.WithExperimentalChecks("ib_port_state"),
 	}
 	return catalog.New(append(defaults, opts...)...)
 }
@@ -245,6 +247,7 @@ func TestPortState_SkipsOffArchitecture(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("A100"),
 		catalog.WithExecutionContext(health.OperatorInfra),
+		catalog.WithExperimentalChecks("ib_port_state"),
 	)
 	v, err := cat.Evaluate("ib_port_state", port("DOWN", "Polling"))
 	if err != nil {
@@ -252,5 +255,46 @@ func TestPortState_SkipsOffArchitecture(t *testing.T) {
 	}
 	if !v.Skipped || v.SkipReason != health.ArchitectureUnsupported {
 		t.Errorf("skipped=%v reason=%v, want skipped on A100", v.Skipped, v.SkipReason)
+	}
+}
+
+// The port check is experimental, so a catalog that does not enable it skips
+// it even on a node it applies to, and nothing is collected for it.
+func TestPortState_ExperimentalSoOffByDefault(t *testing.T) {
+	cat := catalog.New(
+		catalog.WithArchitecture("GB200"),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+	def, err := cat.Get("ib_port_state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def.MaturityLevel != health.Experimental {
+		t.Fatalf("MaturityLevel = %v, want experimental: the rest of this test assumes it", def.MaturityLevel)
+	}
+	v, err := cat.Evaluate("ib_port_state", port("DOWN", "Polling"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.Skipped || v.SkipReason != health.CheckDisabled {
+		t.Errorf("skipped=%v reason=%v, want skipped CHECK_DISABLED", v.Skipped, v.SkipReason)
+	}
+	runnable, err := cat.RunnableChecks(catalog.EvaluationOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cd := range runnable {
+		if cd.ID == "ib_port_state" {
+			t.Error("ib_port_state is runnable, so its sysfs signals would be collected")
+		}
+	}
+
+	enabled := catalog.New(
+		catalog.WithArchitecture("GB200"),
+		catalog.WithExecutionContext(health.OperatorInfra),
+		catalog.WithAllExperimentalChecks(),
+	)
+	if v, err := enabled.Evaluate("ib_port_state", port("DOWN", "Polling")); err != nil || v.Skipped {
+		t.Errorf("with all experimental checks enabled: skipped=%v err=%v, want it evaluated", v.Skipped, err)
 	}
 }

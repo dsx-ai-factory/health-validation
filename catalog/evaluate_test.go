@@ -216,6 +216,12 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 					v.CheckID, v.SkipDetail)
 			}
 		case health.DeploymentUnsupported:
+		case health.CheckDisabled:
+			// Nothing here is disabled by the operator, so this is the
+			// experimental gate, decided before any sensor question.
+			if cd, err := cat.Get(v.CheckID); err != nil || cd.MaturityLevel != health.Experimental {
+				t.Errorf("CheckID %q skipped CHECK_DISABLED but is not an experimental check", v.CheckID)
+			}
 		default:
 			t.Errorf("CheckID %q (category %v) skip reason = %v, want SENSOR_MISSING",
 				v.CheckID, v.Category, v.SkipReason)
