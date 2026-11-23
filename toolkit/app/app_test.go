@@ -24,7 +24,6 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/cpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/gpu"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
-	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -307,7 +306,7 @@ func TestBuildCatalogAppliesDriverVersion(t *testing.T) {
 func TestRunCommandPassesDriverVersion(t *testing.T) {
 	a := New().WithProgramName("test").WithChecks(driverEchoCheck())
 	a.host = fakeHost{b: spyBackend{called: new(bool)}, driver: echoedDriverVersion}
-	withCleanLinkFlap(a)
+	healthyInfiniBand(withCleanLinkFlap(a))
 	withCleanXid(withCPU(a, healthyCPU()))
 	// A caller adapter carries the echo into an otherwise stock run.
 	withShadow(a, shadowAdapter{name: "driver-echo", category: health.Node, ms: []health.Measurement{driverEchoMeasurement{}}})
@@ -446,7 +445,8 @@ func (h fakeHost) gpuInventory() *gpuinventory.Inventory {
 		return inventoryReader{gpus: 4, model: "NVIDIA GB200", driver: h.driver}, nil
 	})
 }
-func (fakeHost) close() error { return nil }
+func (fakeHost) releaseCycle() error { return nil }
+func (fakeHost) close() error        { return nil }
 
 // inventoryReader reports a basic inventory of identical GPUs without NVML.
 // An empty driver leaves the driver version unrecorded.
@@ -477,6 +477,7 @@ type panicHost struct{}
 
 func (panicHost) gpuSensors() []collect.Sensor          { panic("unexpected GPU sensor access") }
 func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
+func (panicHost) releaseCycle() error                   { panic("unexpected host cycle release") }
 func (panicHost) close() error                          { panic("unexpected host backend close") }
 
 func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
@@ -528,6 +529,7 @@ func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
+	healthyInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitOK {
@@ -628,6 +630,7 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
+	healthyInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand([]string{"--node-id", "  cli-node  "}, &stdout, &stderr); code != exitOK {
@@ -651,6 +654,7 @@ func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
+	healthyInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.Run([]string{"run", "--node-id", "cli-node"}, &stdout, &stderr); code != exitOK {
@@ -676,7 +680,7 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: &hostGPUCalled}}
-	withCPU(a, healthyCPU())
+	healthyInfiniBand(withCPU(a, healthyCPU()))
 
 	var stdout, stderr bytes.Buffer
 	// This asserts which backend was read; the verdict severity is irrelevant, so
@@ -704,6 +708,7 @@ func TestWithCollectReplacesSysfsCPU(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanXid(withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 8, online: 8, numa: 34}))
 	withCleanLinkFlap(a)
+	healthyInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitOK {
@@ -750,6 +755,7 @@ func TestNUMANodeCountReachesVerdict(t *testing.T) {
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
 	withCleanXid(withCPU(a, cpuAppSensor{possible: 8, online: 8, numa: 33}))
 	withCleanLinkFlap(a)
+	healthyInfiniBand(a)
 
 	var stdout, stderr bytes.Buffer
 	if code := a.runCommand(nil, &stdout, &stderr); code != exitUnhealthy {
@@ -833,19 +839,6 @@ func TestExitCodeForVerdict(t *testing.T) {
 	}
 }
 
-// nodeCatalog isolates the exit-code tests from the built-in catalog so the
-// produced severity depends only on the test's input, not on built-in defaults
-// (e.g. the built-in gpu_count expects 4). It holds just the custom check,
-// which is CRITICAL when gpu_count > 8.
-func nodeCatalog(t *testing.T) *catalog.Catalog {
-	t.Helper()
-	cat := catalog.NewEmpty(catalog.WithArchitecture(catalogtest.DummyArchitecture))
-	if err := cat.Register(customCheck()); err != nil {
-		t.Fatalf("register custom check: %v", err)
-	}
-	return cat
-}
-
 // TestEvaluateExitCodes drives evaluate end-to-end across its verdict exit
 // codes. The custom check is CRITICAL when gpu_count > 8, so the count picks
 // the verdict. A backend that fails to collect no longer aborts the run: the
@@ -854,31 +847,31 @@ func nodeCatalog(t *testing.T) *catalog.Catalog {
 // the verdict still written — not exitError, which is reserved for the case
 // where no verdict is produced at all.
 func TestEvaluateExitCodes(t *testing.T) {
-	cases := []struct {
-		sensor toolkit.Sensor
+	for _, tc := range []struct {
+		source collect.Sensor
 		name   string
 		want   int
 	}{
-		{measurementSensor{name: "node", ms: []health.Measurement{node.NodeMeasurement{GPUCount: 16}}}, "critical verdict", exitUnhealthy},
-		{measurementSensor{name: "node", ms: []health.Measurement{node.NodeMeasurement{GPUCount: 8}}}, "healthy verdict", exitOK},
-		{measurementSensor{name: "node", err: errors.New("backend unavailable"), errored: func(err error) []health.Measurement {
-			return []health.Measurement{node.ErroredNode(err, node.MeasurementSignals()...)}
-		}}, "collection failure reports unknown", exitUnhealthy},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+		{agentNodeCountSource(16), "critical verdict", exitUnhealthy},
+		{agentNodeCountSource(4), "healthy verdict", exitOK},
+		{failingAgentNodeSource{}, "collection failure", exitUnhealthy},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := withAgentSource(cadenceRunApp(), tc.source)
+			verdict, err := a.evaluateOnce(context.Background(), &Config{}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest})
+			if err != nil {
+				t.Fatal(err)
+			}
 			var stdout, stderr bytes.Buffer
-			_, _, code := evaluate(nodeCatalog(t), toolkit.CollectionOptions{}, "test", testNodeID, &stdout, &stderr, c.sensor)
-			if code != c.want {
-				t.Fatalf("evaluate = %d, want %d; stderr=%q", code, c.want, stderr.String())
+			if code := writeVerdict(verdict, "test", testNodeID, &stdout, &stderr); code != tc.want {
+				t.Fatalf("exit = %d, want %d: %s", code, tc.want, &stderr)
 			}
-
-			var verdict health.NodeVerdict
-			if err := json.Unmarshal(stdout.Bytes(), &verdict); err != nil {
-				t.Fatalf("unmarshal verdict: %v; stdout = %s", err, stdout.String())
+			var output health.NodeVerdict
+			if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+				t.Fatal(err)
 			}
-			if verdict.NodeID != testNodeID {
-				t.Errorf("NodeID = %q, want %q", verdict.NodeID, testNodeID)
+			if output.NodeID != testNodeID {
+				t.Fatalf("NodeID = %q", output.NodeID)
 			}
 		})
 	}
@@ -940,7 +933,8 @@ func (h erroringHost) gpuSensors() []collect.Sensor {
 func (erroringHost) gpuInventory() *gpuinventory.Inventory {
 	return gpuinventory.New(func() (gpuinventory.Reader, error) { return inventoryReader{}, nil })
 }
-func (erroringHost) close() error { return nil }
+func (erroringHost) releaseCycle() error { return nil }
+func (erroringHost) close() error        { return nil }
 
 // TestRunCommandArchDiscoveryFailureDrains confirms an architecture-discovery
 // error yields a Critical verdict and does NOT collect: a healthy node is not
@@ -1084,7 +1078,9 @@ func TestXidTimeFlags(t *testing.T) {
 			}{
 				{nil, true, true},
 				{[]string{"--xid-from", "0"}, true, true},
-				{[]string{"--xid-to", "1792600000"}, false, true},
+				// --xid-to is inclusive: an entry on the end second is kept, a later one is not.
+				{[]string{"--xid-to", "1792600000"}, true, true},
+				{[]string{"--xid-to", "1792599999"}, false, true},
 				{[]string{"--xid-from", "1792600000", "--xid-to", "1792603600"}, false, false},
 				{[]string{"--xid-from", "0008:06:00=1792600000"}, false, true},
 				{[]string{"--xid-from", "0008:06:00=1792600000", "--xid-from", "0009:06:00=1792599999"}, false, false},

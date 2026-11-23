@@ -329,11 +329,54 @@ func TestPerGPUTimeRanges(t *testing.T) {
 				require.Contains(t, o.GetValue().GetStringValue(), "0008:0a:00:from=")
 			}
 		}
-		other := 6
+		other := 7
 		if globalFrom != nil {
-			other = 4
+			other = 5
 		}
-		require.Equal(t, map[string]int{"0008:0a:00": 2, "0009:06:00": 6, "000a:06:00": other, "10000:e0:17.0": 2}, counts)
+		require.Equal(t, map[string]int{"0008:0a:00": 3, "0009:06:00": 7, "000a:06:00": other, "10000:e0:17.0": 3}, counts)
+	}
+}
+
+// A caller polling back-to-back windows passes the previous end as the next
+// start; every entry, including one exactly on the shared edge, must be
+// reported in exactly one window (#297).
+func TestChainedWindowsReportEachEntryOnce(t *testing.T) {
+	windows := [][2]int64{{100, 200}, {200, 300}}
+	for _, tt := range []struct {
+		at   time.Time
+		name string
+	}{
+		{name: "inside first window", at: time.Unix(150, 0)},
+		{name: "last microsecond of first window", at: time.Unix(199, 999999000)},
+		{name: "exactly on the shared edge", at: time.Unix(200, 0)},
+		{name: "just after the shared edge", at: time.Unix(200, 1000)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout := entryLine("c1", tt.at, "NVRM: Xid (PCI:0008:06:00): 79")
+			// The start is node-wide or, after a GPU reset, per GPU; both
+			// follow the same edge rule.
+			for _, perGPU := range []bool{false, true} {
+				reported := 0
+				for _, w := range windows {
+					from, to := w[0], w[1]
+					nodeFrom, gpuFrom := &from, map[string]int64(nil)
+					if perGPU {
+						nodeFrom, gpuFrom = nil, map[string]int64{"0008:06:00": from}
+					}
+					s, err := NewWithTimeRanges(journal.New(lines(stdout)), nodeFrom, &to, gpuFrom)
+					require.NoError(t, err)
+					cycle, err := collect.NewCycle("cycle-1", scanTime)
+					require.NoError(t, err)
+					batch, err := s.Measure(context.Background(), collect.WithCycle(cycle))
+					require.NoError(t, err)
+					require.NoError(t, observation.ValidateBatch(batch))
+					if _, ok := keyed(t, batch)[xidsignals.Code.ID()+"|c1"]; ok {
+						reported++
+					}
+				}
+				require.Equal(t, 1, reported, "per-GPU start %v: entry must be reported in exactly one chained window", perGPU)
+			}
+		})
 	}
 }
 
@@ -387,7 +430,8 @@ func TestTimeRangesFilterMalformedEntries(t *testing.T) {
 		{name: "at node start", message: malformed, from: &from, seconds: 100},
 		{name: "after node start", message: malformed, from: &from, seconds: 100, nanos: 1000, wantFailure: true},
 		{name: "before end", message: malformed, to: &to, seconds: 199, nanos: 999999000, wantFailure: true},
-		{name: "at end", message: malformed, to: &to, seconds: 200},
+		{name: "at end", message: malformed, to: &to, seconds: 200, wantFailure: true},
+		{name: "just after end", message: malformed, to: &to, seconds: 200, nanos: 1000},
 		{name: "after end", message: unknownAddress, to: &to, seconds: 201},
 		{name: "wide domain before GPU start", message: "NVRM: Xid (PCI:10000:e0:17.0): invalid", gpuFrom: map[string]int64{"10000:E0:17": 150}, seconds: 149},
 		{name: "wide domain after GPU start", message: "NVRM: Xid (PCI:10000:e0:17): invalid", gpuFrom: map[string]int64{"10000:e0:17.0": 150}, seconds: 151, wantFailure: true},
@@ -549,4 +593,34 @@ func TestNodeWideJournalReadBounds(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWithTimeBoundsPreservesDefaultsAndGPUOverrides(t *testing.T) {
+	from, to := int64(100), int64(400)
+	source, err := NewWithTimeRanges(journal.New(lines(
+		entryLine("old", time.Unix(150, 0), "NVRM: Xid (PCI:0008:06:00): 79")+
+			entryLine("new", time.Unix(250, 0), "NVRM: Xid (PCI:0009:06:00): 79"))), &from, &to, map[string]int64{"0008:06:00": 100})
+	require.NoError(t, err)
+	base := source.(*sensor)
+	lower := int64(200)
+	changed, err := base.WithTimeBounds(&lower, nil)
+	require.NoError(t, err)
+	lower = 350
+	require.Equal(t, int64(200), *changed.(*sensor).ranges.from)
+	require.Equal(t, int64(400), *changed.(*sensor).ranges.to)
+	require.Equal(t, int64(100), *base.ranges.from)
+	cycle, err := collect.NewCycle("window", time.Now())
+	require.NoError(t, err)
+	batch, err := changed.Measure(context.Background(), collect.WithCycle(cycle))
+	require.NoError(t, err)
+	count := 0
+	for _, o := range batch.GetObservations() {
+		if o.GetSignalId() == xidsignals.Code.ID() {
+			count++
+		}
+	}
+	require.Equal(t, 2, count, "GPU-specific start must retain the older event")
+	upper := int64(100)
+	_, err = base.WithTimeBounds(nil, &upper)
+	require.Error(t, err, "upper bound must exceed inherited global and GPU starts")
 }

@@ -13,13 +13,14 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
+	"github.com/dsx-ai-factory/health-validation/collect/sensorids"
 	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
 )
 
 var _ collect.Sensor = (*sensor)(nil)
 
 // ID identifies the DCGM-backed GPU sensor.
-const ID = "gpu.dcgm"
+const ID = sensorids.DCGM
 
 // sensor turns a configured set of DCGM GPU fields into observations.
 type sensor struct {

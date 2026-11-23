@@ -25,10 +25,11 @@ type timeRanges struct {
 	gpuFrom map[string]int64
 }
 
-// NewWithTimeRanges filters the current boot's Xid entries to exclusive Unix
-// second bounds. Nil bounds are unbounded. gpuFrom replaces from for the
-// specified domain-qualified PCI addresses (dddd:bb:dd, optionally .0),
-// whose domains contain at least four hexadecimal digits.
+// NewWithTimeRanges filters the current boot's Xid entries to the Unix second
+// interval (from, to]: strictly after from, at or before to. Nil bounds are
+// unbounded. gpuFrom replaces from for the specified domain-qualified PCI
+// addresses (dddd:bb:dd, optionally .0), whose domains contain at least four
+// hexadecimal digits.
 func NewWithTimeRanges(reader *journal.Reader, from, to *int64, gpuFrom map[string]int64) (collect.Sensor, error) {
 	if from != nil && *from < 0 {
 		return nil, fmt.Errorf("start time must be a non-negative Unix timestamp in seconds")
@@ -69,12 +70,26 @@ func NewWithTimeRanges(reader *journal.Reader, from, to *int64, gpuFrom map[stri
 	return s, nil
 }
 
+// WithTimeBounds returns an independent sensor sharing the reader. Omitted bounds
+// inherit this sensor's settings; per-GPU lower bounds retain their precedence.
+func (s *sensor) WithTimeBounds(from, to *int64) (collect.Sensor, error) {
+	if from == nil {
+		from = s.ranges.from
+	}
+	if to == nil {
+		to = s.ranges.to
+	}
+	return NewWithTimeRanges(s.reader, from, to, s.ranges.gpuFrom)
+}
+
 func normalizePCIAddress(address string) string {
 	return strings.TrimSuffix(strings.ToLower(address), ".0")
 }
 
 func (r timeRanges) excludes(at time.Time, message string) bool {
-	if r.to != nil && at.Unix() >= *r.to {
+	// The end is inclusive and the start exclusive, so back-to-back windows
+	// that share an edge report an entry stamped exactly on it once.
+	if r.to != nil && at.After(time.Unix(*r.to, 0)) {
 		return true
 	}
 	from := r.from

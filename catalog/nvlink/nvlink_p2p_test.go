@@ -43,6 +43,24 @@ func TestNVLinkP2P(t *testing.T) {
 			wantMessageParts: []string{"GPU-0", "1 peer", "allowed: 0"},
 		},
 		{
+			name: "VR all reachable",
+			cat:  func() *catalog.Catalog { return fabricCatalog(catalog.WithArchitecture("VR")) },
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.NVLinkMeasurement{GPUID: "GPU-0", UnhealthyP2PPeerCount: 0}
+			},
+			wantSeverity: health.Pass,
+		},
+		{
+			name: "VR one unreachable",
+			cat:  func() *catalog.Catalog { return fabricCatalog(catalog.WithArchitecture("VR")) },
+			measurement: func() nvlink.NVLinkMeasurement {
+				return nvlink.NVLinkMeasurement{GPUID: "GPU-0", UnhealthyP2PPeerCount: 1}
+			},
+			wantSeverity:     health.Critical,
+			wantAction:       health.GenericDrain(),
+			wantMessageParts: []string{"GPU-0", "1 peer", "allowed: 0"},
+		},
+		{
 			name: "skipped on wrong architecture",
 			cat: func() *catalog.Catalog {
 				return catalog.New(

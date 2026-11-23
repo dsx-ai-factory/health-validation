@@ -5,6 +5,7 @@ package gpu_test
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -39,20 +40,29 @@ func averagePowerOverrides(minW, maxW float64) catalog.Option {
 
 func TestGPUAveragePowerDraw_Definition(t *testing.T) {
 	definition := gpu.GPUAveragePowerDraw()
-	if got, want := definition.Architectures, []string{"GB200", "GB300", "B200", "B300"}; !slices.Equal(got, want) {
+	if got, want := definition.Architectures, []string{"GB200", "GB300", "B200", "B300", "VR"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
 	if definition.SchedulingCadence != health.Continuous {
 		t.Errorf("SchedulingCadence = %v, want CONTINUOUS", definition.SchedulingCadence)
 	}
 	for name, want := range map[string]float64{"min_power_w": 65, "max_power_w": 1500} {
-		spec := definition.Thresholds[name]
-		if spec.Value != want {
+		if spec := definition.Thresholds[name]; spec.Value != want {
 			t.Errorf("%s default = %v, want %g", name, spec.Value, want)
 		}
-		if len(spec.PerArchitecture) != 0 {
-			t.Errorf("%s PerArchitecture = %v, want empty for shared GB200/GB300/B300 defaults", name, spec.PerArchitecture)
-		}
+	}
+	if perArch := definition.Thresholds["min_power_w"].PerArchitecture; len(perArch) != 0 {
+		t.Errorf("min_power_w PerArchitecture = %v, want empty for a shared minimum", perArch)
+	}
+	wantMax := map[string]any{
+		"GB200": float64(1500),
+		"GB300": float64(1500),
+		"B200":  float64(1500),
+		"B300":  float64(1500),
+		"VR":    float64(2300),
+	}
+	if got := definition.Thresholds["max_power_w"].PerArchitecture; !maps.Equal(got, wantMax) {
+		t.Errorf("max_power_w PerArchitecture = %v, want %v", got, wantMax)
 	}
 }
 
@@ -79,6 +89,44 @@ func TestGPUAveragePowerDraw_UsesSupportedArchitectureDefaults(t *testing.T) {
 						t.Errorf("max_power_w = %v, want %s default 1500", got, architecture)
 					}
 				})
+			}
+		})
+	}
+}
+
+// A VR GPU idles at about 405 W, and its power limit is 2300 W, so it gets
+// its own maximum while the minimum stays shared.
+func TestGPUAveragePowerDraw_VR(t *testing.T) {
+	cat := catalog.New(
+		catalog.WithArchitecture("VR"),
+		catalog.WithExecutionContext(health.OperatorInfra),
+	)
+	tests := []struct {
+		name        string
+		messagePart string
+		powerW      float64
+		want        health.Severity
+	}{
+		{name: "idle", powerW: 405, want: health.Pass},
+		{name: "above the shared 1500 W maximum", powerW: 1800, want: health.Pass},
+		{name: "at the power limit", powerW: 2300, want: health.Pass},
+		{name: "above the power limit", powerW: 2300.001, want: health.Critical, messagePart: "above maximum 2300 W"},
+		{name: "below minimum", powerW: 64.999, want: health.Critical, messagePart: "below minimum 65 W"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := cat.Evaluate("gpu_average_power_draw", averagePowerMeasurement(tt.powerW))
+			if err != nil {
+				t.Fatalf("Evaluate: %v", err)
+			}
+			if v.Severity != tt.want {
+				t.Fatalf("Severity = %v, want %v at %g W", v.Severity, tt.want, tt.powerW)
+			}
+			if got := v.Thresholds["max_power_w"].Value; got != float64(2300) {
+				t.Errorf("max_power_w = %v, want VR default 2300", got)
+			}
+			if tt.messagePart != "" && !strings.Contains(strings.Join(v.Messages, " "), tt.messagePart) {
+				t.Errorf("Messages = %q, want %q", v.Messages, tt.messagePart)
 			}
 		})
 	}

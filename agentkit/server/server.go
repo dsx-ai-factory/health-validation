@@ -16,8 +16,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
-	dcgmsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/dcgm"
-	nvmlsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/nvml"
+	"github.com/dsx-ai-factory/health-validation/collect/sensorids"
 )
 
 type Server struct {
@@ -45,7 +44,7 @@ func (s *Server) Check(ctx context.Context) (*observation.ObservationBatch, erro
 	batch := &observation.ObservationBatch{CollectionId: collectionID}
 	for _, sensor := range s.sensors {
 		opts := []collect.OpOption{collect.WithCycle(currentCycle)}
-		if sensor.ID() == nvmlsensor.ID || sensor.ID() == dcgmsensor.ID {
+		if sensor.ID() == sensorids.NVML || sensor.ID() == sensorids.DCGM {
 			opts = append(opts, collect.WithGPUInventory())
 		}
 		b, err := sensor.Measure(ctx, opts...)

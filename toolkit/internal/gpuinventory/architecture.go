@@ -75,9 +75,10 @@ func describe(failure *observation.CollectionError) string {
 // broader family match.
 func ArchitectureFromName(name string) string {
 	switch {
-	// Any VR name maps to VR200 until VR variants need different checks.
+	// Every VR GPU name maps to one VR architecture until VR variants need
+	// different checks.
 	case strings.Contains(name, "VR"):
-		return "VR200"
+		return "VR"
 	case strings.Contains(name, "GB300"):
 		return "GB300"
 	case strings.Contains(name, "GB200"):

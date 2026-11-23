@@ -82,17 +82,17 @@ func TestXidErrors_ArchitectureCoverage(t *testing.T) {
 		checkID       string
 		architectures []string
 	}{
-		{name: "all generations", checkID: "gpu_xid_46", architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "A100"}},
+		{name: "all generations", checkID: "gpu_xid_46", architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "A100", "VR"}},
 		{name: "HGX and PCIe baseboards, not Grace", checkID: "gpu_xid_54", architectures: []string{"B200", "B300", "H100", "H200", "A100"}},
 		{name: "Hopper only", checkID: "gpu_xid_136", architectures: []string{"H100", "H200"}},
-		{name: "Hopper and Blackwell", checkID: "gpu_xid_110", architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200"}},
-		{name: "Grace Blackwell only", checkID: "gpu_xid_142", architectures: []string{"GB200", "GB300"}},
-		{name: "NVLink5 remains Blackwell only", checkID: "gpu_xid_144", architectures: []string{"GB200", "GB300", "B200", "B300"}},
-		{name: "common warning", checkID: "gpu_xid_8", architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "A100"}},
+		{name: "Hopper, Blackwell and Rubin", checkID: "gpu_xid_110", architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "VR"}},
+		{name: "GB-x00 and Rubin, not HGX", checkID: "gpu_xid_142", architectures: []string{"GB200", "GB300", "VR"}},
+		{name: "NVLink5 is Blackwell and Rubin only", checkID: "gpu_xid_144", architectures: []string{"GB200", "GB300", "B200", "B300", "VR"}},
+		{name: "common warning", checkID: "gpu_xid_8", architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "A100", "VR"}},
 		{name: "Ampere and Hopper warning", checkID: "gpu_xid_80", architectures: []string{"H100", "H200", "A100"}},
-		{name: "Hopper and Blackwell warning", checkID: "gpu_xid_96", architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200"}},
-		{name: "Blackwell warning", checkID: "gpu_xid_126", architectures: []string{"GB200", "GB300", "B200", "B300"}},
-		{name: "informational all generations", checkID: "gpu_xid_154", architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "A100"}},
+		{name: "Hopper, Blackwell and Rubin warning", checkID: "gpu_xid_96", architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "VR"}},
+		{name: "Blackwell and Rubin warning", checkID: "gpu_xid_126", architectures: []string{"GB200", "GB300", "B200", "B300", "VR"}},
+		{name: "informational all generations", checkID: "gpu_xid_154", architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "A100", "VR"}},
 	}
 
 	definitions := make(map[string]health.CheckDefinition)
@@ -227,12 +227,12 @@ func TestXidErrors_WarningArchitectureMatrix(t *testing.T) {
 		codes         []int64
 	}{
 		{
-			architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "A100"},
+			architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "A100", "VR"},
 			codes:         []int64{8, 11, 13, 25, 31, 32, 39, 40, 41, 45, 60, 68, 69, 70, 71, 72, 75, 76, 77, 78, 82, 83, 84, 85, 86, 88, 89, 94},
 		},
 		{architectures: []string{"H100", "H200", "A100"}, codes: []int64{80}},
-		{architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200"}, codes: []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105}},
-		{architectures: []string{"GB200", "GB300", "B200", "B300"}, codes: []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139}},
+		{architectures: []string{"GB200", "GB300", "B200", "B300", "H100", "H200", "VR"}, codes: []int64{96, 97, 98, 99, 100, 101, 102, 103, 104, 105}},
+		{architectures: []string{"GB200", "GB300", "B200", "B300", "VR"}, codes: []int64{126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 139}},
 	}
 
 	definitions := make(map[string]health.CheckDefinition)
@@ -1129,6 +1129,63 @@ func TestXidErrors_B300(t *testing.T) {
 			}
 			if v.Severity != health.Critical {
 				t.Errorf("%s severity = %v, want CRITICAL", tt.checkID, v.Severity)
+			}
+		})
+	}
+}
+
+// NVIDIA's Xid catalog marks every Xid that applies to GB-x00 as
+// applying to Rubin too, so VR runs exactly the checks GB300 runs.
+func TestXidErrors_VRFollowsGB300(t *testing.T) {
+	for _, def := range xid.Checks() {
+		gb300 := slices.Contains(def.Architectures, "GB300")
+		if vr := slices.Contains(def.Architectures, "VR"); vr != gb300 {
+			t.Errorf("%s: VR listed = %v, GB300 listed = %v; want the same", def.ID, vr, gb300)
+		}
+	}
+}
+
+func TestXidErrors_VR(t *testing.T) {
+	tests := []struct {
+		name         string
+		checkID      string
+		measurement  xid.XidMeasurement
+		wantSeverity health.Severity
+		wantSkipped  bool
+	}{
+		{name: "Xid 79 is critical", checkID: "gpu_xid_79", measurement: measurementFor(79), wantSeverity: health.Critical},
+		{name: "Fatal NVLink5 Xid 146 is critical", checkID: "gpu_xid_146", measurement: nvlink5MeasurementFor(146, true), wantSeverity: health.Critical},
+		{name: "Nonfatal NVLink5 Xid 146 is a warning", checkID: "gpu_xid_146", measurement: nvlink5MeasurementFor(146, false), wantSeverity: health.Warning},
+		{name: "Xid 13 is a warning", checkID: "gpu_xid_13", measurement: measurementFor(13), wantSeverity: health.Warning},
+		{name: "a code no check covers is unknown", checkID: unknownID, measurement: measurementFor(9999), wantSeverity: health.Warning},
+		{name: "an informational code is info", checkID: informationalID, measurement: measurementFor(14), wantSeverity: health.Info},
+		{name: "HGX-only Xid 54 is skipped", checkID: "gpu_xid_54", measurement: measurementFor(54), wantSkipped: true},
+		{name: "Hopper-only Xid 136 is skipped", checkID: "gpu_xid_136", measurement: measurementFor(136), wantSkipped: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nv, err := xidCatalogFor(t, "VR").EvaluateAll(tt.measurement)
+			if err != nil {
+				t.Fatalf("EvaluateAll: %v", err)
+			}
+			if tt.wantSkipped {
+				for _, v := range nv.SkippedChecks {
+					if v.CheckID == tt.checkID && v.SkipReason == health.ArchitectureUnsupported {
+						return
+					}
+				}
+				t.Fatalf("%s not skipped for an unsupported architecture on VR", tt.checkID)
+			}
+			v, ok := checkResult(nv, tt.checkID)
+			if !ok {
+				t.Fatalf("%s verdict not found", tt.checkID)
+			}
+			if v.Skipped {
+				t.Fatalf("%s skipped (%v), want evaluated on VR", tt.checkID, v.SkipReason)
+			}
+			if v.Severity != tt.wantSeverity {
+				t.Errorf("%s severity = %v, want %v", tt.checkID, v.Severity, tt.wantSeverity)
 			}
 		})
 	}

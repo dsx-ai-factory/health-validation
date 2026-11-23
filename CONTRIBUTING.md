@@ -109,6 +109,7 @@ The short version (see the architecture section in `README.md` for context):
 1. Fork the repository and create a branch off `main`.
 2. Make your changes and run `bazel test //...` and `bazel run //tools/format`.
 3. Open a PR using the [pull request template](.github/PULL_REQUEST_TEMPLATE.md).
+   Add a [changelog entry](#changelog) if the change needs one.
 4. Sign off and cryptographically sign every commit with `git commit -s -S`
    (see [Signing Your Work](#signing-your-work)). PRs without sign-offs or
    verified commit signatures cannot be merged.
@@ -145,6 +146,38 @@ Examples from this repository:
 feat(gpu): add average power draw health check
 fix(catalog): add GB300 to remaining GB200-only checks
 ```
+
+## Changelog
+
+[`CHANGELOG.md`](CHANGELOG.md) records what changes for users. The `changelog`
+check requires an entry when the PR title's type is `feat`, `fix`, or `perf`, or
+when the title has `!`. Add the entry to the **Unreleased** section in the same
+PR, and link the PR: `([#123](https://github.com/dsx-ai-factory/health-validation/pull/123))`.
+The check matches that link, so it needs the PR number; open the PR first, then
+add the entry.
+
+Put each entry under the section that matches its effect:
+
+| Section | What belongs there |
+| --- | --- |
+| Breaking Changes | A change that makes previously valid use of the verdict JSON, the CLI, check IDs, configuration, the catalog's Go API, or `WithCollect`/`WithChecks`/`GPUAdapter` fail or change meaning (see [RELEASE.md](RELEASE.md)). Say what a consumer must change. Requires `!` in the title. |
+| Changes | A change to behavior or an API that is not guaranteed, such as a check's severity, a remediation sequence, or toolkit wiring. |
+| Features | Something new. |
+| Fixes | A bug fix. |
+
+One PR can have entries in several sections, for example a `feat!` PR whose
+breaking part is under Breaking Changes and whose other parts are under
+Features. Write for the person upgrading, not for the reviewer: describe the
+effect, not the diff.
+
+These need no entry: `build`, `chore`, `ci`, `docs`, `test`, `style`, and
+`refactor` PRs without `!`, and reverts. A `feat`, `fix`, or `perf` PR with no
+user-visible effect can carry the `skip-changelog` label instead. The label never
+exempts a `!` PR, and an entry under Breaking Changes needs `!` in the title.
+A PR to a `release/*` branch adds its entry anywhere in that branch's
+changelog. A cherry-picked backport is a new PR with its own number, and the
+original's entry lives on `main`, so the backport adds its own entry under the
+patch release's section, linking the backport PR and the original.
 
 ## Code Style
 

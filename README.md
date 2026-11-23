@@ -230,6 +230,7 @@ The catalog includes these check families:
 | `nvlink_capabilities` | nvlink | Whether each GPU reports its expected NVLink capabilities | None |
 | `nvlink_p2p` | nvlink | Peer GPUs reachable over NVLink P2P | `max_unhealthy_p2p_peers` |
 | `rdma_linkflap_fatal` | infiniband | mlx5 RDMA link outages that stayed down past a window | `min_outage_seconds`, `fatal_flap_threshold` |
+| `ib_port_state` | infiniband | Whether every InfiniBand or RoCE port is ACTIVE with its link up | `excluded_link_layers`, `expected_ib_state`, `expected_ib_physical_state` |
 | `gpu_xid_<code>` | xid | One check per Xid code seen in the journal, with catalog-defined severity and action | `occurrences`; Xids 144–150 use `fatal_occurrences`, `nonfatal_occurrences` |
 | `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | `occurrences` |
 | `gpu_xid_154` | xid | The recovery action Xid 154 last reported per GPU (CRITICAL for a reset, reboot, or P2P drain; WARNING for an action the catalog does not map or an unreadable transition; INFO for none; `occurrences` counts reports per action) | `occurrences` |
@@ -250,9 +251,11 @@ Each check definition carries:
 
 Xid checks use the public NVIDIA Xid catalog's per-code applicability. H200
 uses the H100 applicability matrix because both products use the Hopper
-architecture; Xid 144-150 and their subtype checks remain Blackwell-only.
+architecture; Xid 144-150 and their subtype checks run on Blackwell and Rubin only.
 B300 uses the B200 applicability matrix because both are Blackwell GPUs on an
-HGX baseboard, so it runs Xid 144-150 but not the Grace Blackwell-only Xid 142.
+HGX baseboard, so it runs Xid 144-150 but not Xid 142, which the catalog marks
+for GB-x00 and Rubin only. VR uses the catalog's Rubin column, which marks
+every Xid that applies to GB-x00, so VR runs the same Xid checks as GB300.
 Warning-class Xids are individual `gpu_xid_<code>` checks.
 
 ## Prerequisites
@@ -288,6 +291,22 @@ Run a one-shot check:
 ./health-validation run
 ```
 
+Serve verdicts on demand over local HTTP and gRPC:
+
+```shell
+./health-validation serve --address 127.0.0.1:8080
+# From another terminal on the same node:
+curl --fail http://127.0.0.1:8080/verdict
+```
+
+Each request uses the same evaluation core as `run` and returns a fresh
+`NodeVerdict`. Every severity, including CRITICAL, is a successful API response;
+inspect `overall_severity`. The agent serializes collection and exits `0` on a
+clean shutdown or `2` on startup failure. Its default listener is
+`127.0.0.1:8080`; the plaintext API is intended for local callers. Agentkit remains
+experimental (v0). See [Agent mode](docs/agent-mode.md) for the contract, request
+overrides, timeouts, metrics, and container/systemd examples.
+
 The verdict's `node_id` defaults to the configured system hostname. Use
 `--node-id <id>` to supply a scheduler or inventory identifier instead.
 Optional `--cadence CONTINUOUS|PROLOG|MAINTENANCE`
@@ -297,7 +316,7 @@ The execution context defaults to `TENANT_GUEST`. Use
 `--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND` to select checks
 for a different execution context.
 
-Both `run` and `collect` can limit which Xid events are considered. By default,
+`run`, `serve`, and `collect` can limit which Xid events are considered. By default,
 collection covers the entire current boot.
 
 After resetting an individual GPU, use `--xid-from PCI_ADDRESS=unix-seconds`
@@ -316,14 +335,20 @@ example, to evaluate Xids within the same interval on all GPUs:
 ./health-validation run --xid-from 1792600000 --xid-to 1792603600
 ```
 
+The interval excludes its start and includes its end. A caller that polls
+back-to-back windows, passing the previous `--xid-to` as the next
+`--xid-from`, sees an Xid logged exactly on the shared second once. Advance
+any GPU-specific `--xid-from` the same way, or drop it so that the node-wide
+start applies; otherwise that GPU's entries since its start are reported again.
+
 The two forms of `--xid-from` can be combined: a GPU-specific start time
 overrides the node-wide start time for that GPU. GPUs without an override use
 the node-wide start time, or the entire current boot if none is supplied.
 Addresses use `dddd:bb:dd` (optionally `.0`), with case-insensitive hex digits
 and domains of four or more digits.
 
-Both time bounds are exclusive. Start times must be non-negative, and the end time must be
-positive and later than every supplied start time. Either bound may be omitted.
+Start times must be non-negative, and the end time must be positive and later
+than every supplied start time. Either bound may be omitted.
 Duplicate GPU bounds or multiple node-wide start times will result in an error.
 
 These flags filter the default Xid journal sensor within the current boot.

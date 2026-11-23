@@ -29,5 +29,6 @@
 - [ ] Every commit has a DCO `Signed-off-by` trailer
 - [ ] Every commit is cryptographically signed and shows Verified on GitHub
 - [ ] No internal tooling references, URLs, or credentials in the diff
+- [ ] `CHANGELOG.md` entry added under Unreleased, or the change needs none (see [Changelog](../CONTRIBUTING.md#changelog))
 - [ ] `bazel run //tools/go -- mod tidy` run
 - [ ] Struct fields ordered for minimal padding (nogo `fieldalignment` gating CI)

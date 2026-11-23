@@ -34,9 +34,9 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ### Capability boundaries
 
-- Health Validation emits verdicts. It does not take action. The binary exits after writing JSON. What happens to the node is the downstream system's decision.
+- Health Validation emits verdicts. It does not take action. `run` exits after writing JSON; `serve` returns one verdict per request over local HTTP/gRPC. What happens to the node is the downstream system's decision.
 - Health Validation is node-local. Each run evaluates one node's measurements. There is no cross-node analysis, fleet correlation, or pattern detection.
-- Health Validation is not a monitoring system. It runs on demand and produces one verdict per invocation. It does not maintain state between runs or stream signals continuously.
+- Health Validation is not a monitoring system. It evaluates on demand: once per `run` invocation or once per `serve` request. Agent mode retains backend/source objects but starts a fresh collection cycle for each request and releases its NVML instance after native calls finish; it does not cache verdicts, poll automatically, or stream signals continuously.
 - Health Validation is not a host security boundary. It does not authenticate workload submitters, enforce tenant isolation, or attest to host compliance.
 
 ### Common operator misreads
@@ -48,7 +48,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ### Known gaps and data accuracy notes
 
-- **Catalog is early.** Coverage is whatever is registered in `catalog/checks.go` (CPU (count, NUMA), GPU power/state/limit/throttle/compute-apps, NVLink (active, fabric, fabric-health, bandwidth/count/speed, capabilities, P2P), node GPU count, InfiniBand RDMA link flap, XID, …). Do not describe coverage beyond that file. The catalog ships one InfiniBand check (`rdma_linkflap_fatal`), fed by the journal link-flap sensor. A consumer that brings additional InfiniBand measurements registers its own collect sensor and adapter with `WithCollect` and `WithCollectAdapters`.
+- **Catalog is early.** Coverage is whatever is registered in `catalog/checks.go` (CPU (count, NUMA), GPU power/state/limit/throttle/compute-apps, NVLink (active, fabric, fabric-health, bandwidth/count/speed, capabilities, P2P), node GPU count, InfiniBand RDMA link flap and per-port state, XID, …). Do not describe coverage beyond that file. The InfiniBand category carries two measurement types with disjoint signals: `rdma_linkflap_fatal` is fed by the `collect/sensors/linkflap` journal sensor, and `ib_port_state` by the `collect/sensors/infiniband` sysfs sensor through the collect bridge (`infiniband.PortMeasurement`, one per port, RoCE ports included). `ib_port_state` declares GB200 and GB300 only; elsewhere it is an architecture skip. Finding no ports (no device, or a missing or unreadable `/sys/class/infiniband`) is a collection failure that reports the port check UNKNOWN, since the same emptiness comes from a missing driver; deployments without InfiniBand list the check in `disabled_checks`. A consumer that brings additional InfiniBand measurements registers its own collect sensor and adapter with `WithCollect` and `WithCollectAdapters`.
 - **CLI cadence default is unfiltered.** Checks declare `SchedulingCadence`. Pass `--cadence` (or set cadence in `EvaluationOptions` / `CollectionOptions`) to apply the nested Continuous ⊂ Prolog ⊂ Maintenance window. Checks outside the window are reported as `CADENCE_MISMATCH` skips. Omit it and all registered checks run, including Prolog power/throttle/compute-apps checks. Cadence is per evaluation so one constructed catalog can serve Continuous and Prolog windows. Cluster YAML is thresholds/disables/timeout only — not the run window.
 - **The exit policy lives only in `toolkit/app`.** The catalog library has no exit-code method. `exitCodeForVerdict` plus the `exitOK`/`exitUnhealthy`/`exitError` constants map PASS/INFO/WARNING→0, CRITICAL/UNKNOWN→1, tool/runtime error→2. WARNING→0 is deliberate and noted as eventually-configurable.
 - **OUT_OF_BAND context is defined but not used** by any registered check. The enum value exists in the codebase; no current check declares it as a valid context.
@@ -74,6 +74,7 @@ This file provides guidance to AI coding agents when working with code in this r
 | `nvlink_capabilities` | nvlink | A required NVLink capability (P2P, sysmem access/atomics, SLI, link) is unsupported | None |
 | `nvlink_p2p` | nvlink | Unhealthy P2P peer count exceeds `max_unhealthy_p2p_peers` | None |
 | `rdma_linkflap_fatal` | infiniband | Count of mlx5 RDMA link outages (down→up ≥ `min_outage_seconds`) reaches `fatal_flap_threshold` | None |
+| `ib_port_state` | infiniband | A port whose link layer is not in `excluded_link_layers` (empty by default, so InfiniBand and Ethernet alike) has logical state ≠ `expected_ib_state` (ACTIVE) or physical state ≠ `expected_ib_physical_state` (LinkUp) | None |
 | `gpu_xid_<code>` | xid | A critical-class Xid code is seen on a GPU in the system journal within the collection window | A warning-class Xid code is seen on a GPU in the system journal within the collection window |
 | `gpu_xid_149_<hex>` | xid | An Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype on a GPU whose decode-table resolution is a GPU reset | The same, for a subtype the table resolves to IGNORE |
 | `gpu_xid_154` | xid | The driver requested a GPU reset, reboot, or P2P drain for a GPU | The driver requested an action the catalog does not map, or an Xid 154's transition could not be read |
@@ -150,11 +151,12 @@ This repo is a **hardware health check catalog and evaluation engine** for NVIDI
 The repo is **one Go module** (`github.com/dsx-ai-factory/health-validation`) with a single `go.mod`, a single `go.sum`, and one version: a `vX.Y.Z` tag releases everything. Import paths are the module path plus the directory, so every package below is imported as `github.com/dsx-ai-factory/health-validation/<dir>`. A dependency pin therefore changes the versions linked into every binary built from the repo.
 
 - **`catalog/`** — the check catalog and evaluation engine. Self-contained: `health/` (shared vocabulary), `internal/{celeval,evaluation}/`, the `catalog` package at the directory root, the per-domain check packages (`cpu/`, `gpu/`, `node/`, `nvlink/`, `xid/`), and the catalog-only codegen/dump binaries under `cmd/`. No dependency on the toolkit.
-- **`toolkit/`** — the collect bridge and adapters, and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on `catalog/` and `collect/`.**
+- **`toolkit/`** — the collect bridge and adapters, and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on `catalog/`, `collect/`, and `agentkit/`.**
 - **`collect/`** — raw collection library (sensors and sources); no dependency on the catalog or toolkit.
-- **`agentkit/`** — in-repo agent scaffolding and examples.
+- **`agentkit/`** — experimental (v0) transports and examples. `server` serves the raw Check API; `verdictserver` serves the verdict proto API. Transport packages must remain independently usable and must not import catalog or toolkit.
+- **`proto/health/v1/`** — verdict wire contract (`health.verdict.v1`), with generated Go under `proto/go/health/v1/`. Raw observations retain their separate `collect/proto` contract.
 
-The dependency direction is strict: `catalog → (nothing)`, `collect → (nothing)`, `toolkit → catalog, collect`. Never add a catalog import of toolkit; keep catalog usable without the toolkit's dependencies. Bazel enforces most of this through the package groups in `build/visibility/`: a `catalog` or `collect` target cannot depend on `toolkit`, and a `catalog` target cannot depend on `collect`. `collect → catalog` is not blocked by visibility, and plain `go build` ignores it, so keep to the rule there. Tests are bound by the same rule: a catalog test that needs sensor-style input builds its measurement structs directly rather than importing the toolkit.
+The dependency direction is strict: `catalog → (nothing)`, `collect → (nothing)`, `toolkit → catalog, collect, agentkit`. Never add a catalog import of toolkit; keep catalog usable without the toolkit's dependencies. Bazel enforces most of this through the package groups in `build/visibility/`: a `catalog` or `collect` target cannot depend on `toolkit`, and a `catalog` target cannot depend on `collect`. `collect → catalog` is not blocked by visibility, and plain `go build` ignores it, so keep to the rule there. Tests are bound by the same rule: a catalog test that needs sensor-style input builds its measurement structs directly rather than importing the toolkit.
 
 #### Package roles
 
@@ -199,7 +201,7 @@ The binary's exit code is a coarse health signal set by `toolkit/app`: 0 for PAS
 #### Adding a sensor for a new domain
 
 1. Define the typed measurement struct (with `Category()` returning the new `health.Category` value, signal constants, a `MeasurementSignals()` function that returns a copy of the signal list, and an `ErroredXxx` helper that defaults to every signal) in `catalog/<domain>/measurement.go`.
-   If the domain has several like entities rather than being host-wide, also implement `health.EntityIdentifier` (`EntityID() string`) on it. The evaluation engine copies that value into a non-PASS verdict's `AffectedEntities`, which is what feeds the JSON verdict's `affected_components[].checks[].entities` and the `health_validation.check.affected_entities` metric. Omit it and a failing per-entity check cannot say which entity failed. It also keys duplicate detection: evaluation rejects two measurements feeding one check for the same `health.EntityKey` (`ErrAmbiguousMeasurement`, CLI exit 2), a type without `EntityIdentifier` is keyed as the node, so two instances collide, and an empty `EntityID()` is accepted only on a collection failure (values without an identity are rejected). When the ID is not a verified hardware identity (a source-local slot, a whole-source failure), also implement `health.EntityKeyed` with `ProvisionalEntity(source, slot)` or `SourceEntity(source)`. GPU/NVLink measurements take one via `SetEntityKey`.
+   If the domain has several like entities rather than being host-wide, also implement `health.EntityIdentifier` (`EntityID() string`) on it. The evaluation engine copies that value into a non-PASS verdict's `AffectedEntities`, which is what feeds the JSON verdict's `affected_components[].checks[].entities` and the `health_validation.check.affected_entities` metric. Omit it and a failing per-entity check cannot say which entity failed. It also keys duplicate detection: evaluation rejects two measurements feeding one check for the same `health.EntityKey` (`ErrAmbiguousMeasurement`, CLI exit 2), a type without `EntityIdentifier` is keyed as the node, so two instances collide, and an empty `EntityID()` is accepted only on a collection failure (values without an identity are rejected). When the ID is not a verified hardware identity (a source-local slot, a whole-source failure), also implement `health.EntityKeyed` with `ProvisionalEntity(source, slot)` or `SourceEntity(source)`. GPU, NVLink, and InfiniBand port measurements take one via `SetEntityKey`.
 2. Define the collect signals in `collect/signals/<domain>` and a `collect.Sensor` that reports them in `collect/sensors/<domain>`.
 3. Map the signals to the measurement's fields in `toolkit/observations/mapping.go` and add a built-in adapter in `toolkit/internal/collectadapters`.
 4. Register the sensor and adapter in `builtinCollect` (`toolkit/app/collect.go`). App tests replace a built-in source with an in-memory `collect.Sensor` claimed through `WithCollect`; see `toolkit/app/fixture_test.go`.
@@ -210,7 +212,7 @@ Implement `collect.Sensor` for the signals the source can report, in whichever p
 
 #### The operator CLI (`toolkit/cmd/health-validation`)
 
-`toolkit/cmd/health-validation` is the operator-facing binary (`health-validation [--verbose] run [--node-id <id>] [--config <path>] [--cadence CONTINUOUS|PROLOG|MAINTENANCE] [--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND] [--xid-from <unix-seconds>] [--xid-to <unix-seconds>]`); `collect` (measurements without evaluation) and `version` subcommands also exist. It loads an optional YAML config, builds the catalog, runs the GPU (DCGM, and NVML for compute processes), NVLink (DCGM for fabric registration, and NVML for links, P2P, and fabric health), Node GPU inventory, CPU, Xid, and RDMA link-flap collect sensors through the collect bridge, through `toolkit.CollectWithOptions`, and prints the `NodeVerdict` as JSON. `node_id` defaults to the hostname reported by the operating system without DNS canonicalization; `--node-id` overrides it. The config parameterizes and disables checks: each `checks.<id>.<param>` becomes a `catalog.Override` (config values are coerced to each `ThresholdSpec`'s declared Go type because CEL is type-sensitive), and each entry in the `disabled_checks` list becomes a `catalog.WithDisabledChecks` ID. Optional `--cadence CONTINUOUS|PROLOG|MAINTENANCE` is passed through `CollectionOptions` / `EvaluationOptions`; checks outside that window are cadence skips. Omit it and every registered check is evaluated. Cadence is not stored on the catalog and is not a YAML config field. Both check IDs and cadence names are validated, so a typo'd ID or cadence is an error rather than a silently-still-running check. `run` records every validated override in the systemd journal (`toolkit/app/override_audit.go`) before collecting, and exits 2 with empty stdout if it cannot; `collect` records none. Architecture discovery that finds NVML busy with an earlier call in the same process reports UNKNOWN with `retry_collection` instead of CRITICAL with reset/restart/escalate. `main` closes the host sources after `Run` returns, so one `App` can run more than once. It is the repo's first production binary and first cgo binary.
+`toolkit/cmd/health-validation` is the operator-facing binary (`health-validation [--verbose] run [--node-id <id>] [--config <path>] [--cadence CONTINUOUS|PROLOG|MAINTENANCE] [--execution-context OPERATOR_INFRA|TENANT_GUEST|OUT_OF_BAND] [--xid-from <unix-seconds>] [--xid-to <unix-seconds>]`); `collect` (measurements without evaluation) and `version` subcommands also exist. It loads an optional YAML config, builds the catalog, runs the GPU (DCGM, and NVML for compute processes), NVLink (DCGM for fabric registration, and NVML for links, P2P, and fabric health), Node GPU inventory, CPU, Xid, RDMA link-flap, and InfiniBand port collect sensors through the collect bridge, through `toolkit.CollectWithOptions`, and prints the `NodeVerdict` as JSON. Collect-backed sources are read only for the signals runnable checks require, so sysfs InfiniBand is untouched unless a port check will run. The CLI selects devices under `/sys/class/infiniband` by PCI vendor (`0x15b3`, via `collect/source/infiniband.WithVendors`) rather than by collect's GPUd-parity `mlx*` name default, so a DOWN port on a renamed NVIDIA HCA is still reported while other vendors' and software RDMA devices are left alone; an mlx5 scalable function, whose vendor file lives on its parent, is skipped with them. `node_id` defaults to the hostname reported by the operating system without DNS canonicalization; `--node-id` overrides it. The config parameterizes and disables checks: each `checks.<id>.<param>` becomes a `catalog.Override` (config values are coerced to each `ThresholdSpec`'s declared Go type because CEL is type-sensitive), and each entry in the `disabled_checks` list becomes a `catalog.WithDisabledChecks` ID. Optional `--cadence CONTINUOUS|PROLOG|MAINTENANCE` is passed through `CollectionOptions` / `EvaluationOptions`; checks outside that window are cadence skips. Omit it and every registered check is evaluated. Cadence is not stored on the catalog and is not a YAML config field. Both check IDs and cadence names are validated, so a typo'd ID or cadence is an error rather than a silently-still-running check. `run` records every validated override in the systemd journal (`toolkit/app/override_audit.go`) before collecting, and exits 2 with empty stdout if it cannot; `collect` records none. Architecture discovery that finds NVML busy with an earlier call in the same process reports UNKNOWN with `retry_collection` instead of CRITICAL with reset/restart/escalate. `main` closes the host sources after `Run` returns, so one `App` can run more than once. It is the repo's first production binary and first cgo binary.
 
 The config's `metrics:` block optionally pushes the verdict to an OTLP/HTTP endpoint through `toolkit/otelmetrics` (see the README for the metric set). Three invariants hold that path together and should not be relaxed: publishing runs **after** the verdict is written to stdout (even when that write fails) and every failure is logged and swallowed, so a collector outage cannot change a node's health or the exit code; the publisher uses a `ManualReader` and exports exactly once, because a `PeriodicReader` also flushes on `Shutdown` and would double-publish every run; and exporter retries are disabled, so `metrics.timeout_seconds` is the real ceiling rather than one attempt's. The config is loaded before architecture detection so the discovery-failure verdict — the outcome most worth alerting on — is published too.
 The logic lives in `toolkit/app/`; `toolkit/cmd/health-validation/main.go` is a thin shim over `app.New().Run(...)`. The backend is wired through a **platform split** so the command stays buildable and unit-testable everywhere:
@@ -225,9 +227,62 @@ When adding a direct third-party dep here (this is how `gopkg.in/yaml.v3` arrive
 
 If the dep ends up linked into the CLI, `toolkit/cmd/health-validation/SHIPPED_MODULES.txt` changes too. Regenerate it with `bazel run //toolkit/cmd/health-validation:shipped_modules_update`, then run `bazel run //tools:check_notice -- --write` so `NOTICE` keeps up (without `--write` it only verifies). `//toolkit/cmd/health-validation:shipped_modules_cross_check` also checks the recorded list against the module set the Bazel graph says is linked, which catches a module that is linked but absent from the embedded list.
 
+### Agent mode (`health-validation serve`)
+
+`serve --address 127.0.0.1:8080` exposes `VerdictService.Evaluate` and
+`GET/POST /verdict` on one plaintext TCP port. The listener accepts only numeric loopback IPs.
+`toolkit/app/evaluation.go` is the shared `run`/`serve` core: architecture discovery,
+check selection, collection, and aggregation run once per request. Configuration
+and host backends are process-lifetime state. `serve` accepts the same node,
+cadence, execution-context, config, and Xid journal flags as `run`; API request
+fields override node/cadence/context defaults and node-wide Xid time bounds
+(`xid_from` / `xid_to`, Unix seconds, window `(from, to]`) for that request only. Config is
+loaded at startup; restart to reload it.
+
+Agent collection is serialized. The transport admits at most 32 in-flight
+requests across HTTP and gRPC by default; overload returns HTTP 429 / gRPC
+RESOURCE_EXHAUSTED without collection or metrics publication. Slots remain held
+through response delivery and metrics publication. `collection_timeout_seconds` bounds each source
+call. `--request-timeout` separately bounds admission and evaluation, including
+waiting for admission (default 2m), but excludes HTTP request decoding and
+response writing. It must exceed the source timeout; allow time for sequential
+sources and verdict production. Client cancellation propagates through
+the collection bridge. `collect.WithCallTracking` tracks underlying
+calls that outlive watchdogs; admission stays closed until those calls return,
+so a timed-out native call cannot overlap the next collection. After tracking
+finishes, agent mode releases NVML before reopening admission. Successful
+release clears the cached instance, sensor, and inventory reader; the next
+request opens fresh handles so idle serve does not block GPU resets. Client
+cancellation alone keeps later callers waiting; each source's watchdog continues
+independently until its callback returns. Once a source watchdog expires,
+queued and new callers receive an UNKNOWN `collection_source_busy` verdict naming unfinished
+sources and their call start times, with `retry_collection`. Preserve that
+lifetime boundary when changing cancellation or shutdown handling.
+
+Every produced verdict, including a CRITICAL discovery-failure verdict, is a
+successful response. Invalid requests use gRPC INVALID_ARGUMENT / HTTP 400;
+request deadlines use DEADLINE_EXCEEDED / HTTP 504; inability to produce a
+verdict uses a server error. `serve` returns exit 0 for clean shutdown and 2 for
+startup/server failure, independently of per-request verdict severity. No
+health/readiness endpoint is promised in v1.
+
+The converter lives in `toolkit/verdictproto`; catalog must not import proto.
+The wire contract mirrors the current schema **0.7**, including ordered
+remediation sequences. Use `proto/verdictjson` for canonical HTTP JSON so
+required empty containers and zero-valued enums/bools match one-shot JSON.
+Dynamic `google.protobuf.Value` numbers that change numeric meaning through
+double conversion are rejected rather than silently rounded. Unknown enum
+values fail conversion.
+Metrics publish best-effort only after a successful response is written and
+retain the ManualReader/export-once/no-retry/timeout invariants of `run`.
+See [docs/agent-mode.md](docs/agent-mode.md) for the operating contract and test
+matrix. Keep agentkit experimental (v0); readiness remains a separate follow-up.
+
 ### Conventions
 
 **Comments** — Keep comments sparse and concise. Explain why a non-obvious constraint or decision exists; do not narrate code, restate names, or add boilerplate. Keep required Go doc comments factual and brief, and shorten or remove redundant comments when editing nearby code.
+
+**Changelog** — `feat`, `fix`, `perf`, and `!` PRs need an entry under `## [Unreleased]` in `CHANGELOG.md` that links the PR (`/pull/<number>)`), checked by `.github/workflows/changelog.yml` through `tools/check_changelog.py`. Section meanings and exemptions are in [`CONTRIBUTING.md`](CONTRIBUTING.md#changelog). Use `!` and Breaking Changes only for a change to a public surface (the verdict JSON, CLI, check IDs, configuration, catalog Go API, or collection seams; see [`RELEASE.md`](RELEASE.md)); list a PR's other changes under Changes, Features, or Fixes. When you add an entry, you have the PR number only after the PR exists.
 
 **Commit and PR titles** — Conventional Commits (`type(scope): subject`), checked on every pull request by the `commit-lint` check. Only the PR title is checked; it is the subject that lands on `main`, and individual commit subjects are unconstrained. A leading capital is allowed (`fix: RDMA link-flap`); title-case and all-caps subjects are not. Any title whose first word is `Revert` or `revert` skips the check entirely. Rules live in `commitlint.config.js`, the type list and examples in `CONTRIBUTING.md`.
 

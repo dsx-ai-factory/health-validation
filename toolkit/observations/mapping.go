@@ -122,6 +122,10 @@ var mappings = []mapping{
 	{signal: gpusignals.NVLinkEndpointCapabilitySLIBridge, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalAllLinksSupportSLI}, aggregated: true},
 	{signal: gpusignals.NVLinkEndpointCapabilityValid, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalAllLinksSupportLink}, aggregated: true},
 	{signal: gpusignals.NVLinkP2PStatus, measurement: nvlink.NVLinkMeasurement{}, catalog: []string{nvlink.SignalUnhealthyP2PPeerCount}, aggregated: true},
+	{signal: ibsignals.StateName, measurement: infiniband.PortMeasurement{}, catalog: []string{infiniband.SignalIBState}},
+	{signal: ibsignals.PhysicalStateName, measurement: infiniband.PortMeasurement{}, catalog: []string{infiniband.SignalIBPhysicalState}},
+	{signal: ibsignals.RateGbps, measurement: infiniband.PortMeasurement{}, catalog: []string{infiniband.SignalIBRateGbps}, unit: "gigabits_per_second"},
+	{signal: ibsignals.LinkLayer, measurement: infiniband.PortMeasurement{}, catalog: []string{infiniband.SignalIBLinkLayer}},
 }
 
 // canonicalFamilies are collect signal families that build one measurement
@@ -170,7 +174,9 @@ func MappedSignalsFor(category health.Category) []string {
 }
 
 // MappedFeeds maps each mapped collect signal ID that feeds the
-// catalog's measurements for category to the catalog signals it fills.
+// catalog's measurements for category to the catalog signals it fills. The
+// identity fields a measurement takes from its target (gpu_id, or ib_device
+// and ib_port) are fed by every observation of it and are not listed.
 func MappedFeeds(category health.Category) map[string][]string {
 	feeds := make(map[string][]string)
 	for _, mapped := range mappingsFor(category) {

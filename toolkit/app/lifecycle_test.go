@@ -132,6 +132,60 @@ func TestStalledNativeSourceFailsOnlyItsChecks(t *testing.T) {
 	}
 }
 
+// stalledIBSensor parks the sysfs port read under a WithCollect claim until
+// release is closed.
+type stalledIBSensor struct {
+	release chan struct{}
+}
+
+func (stalledIBSensor) ID() string               { return "test.infiniband" }
+func (stalledIBSensor) Signals() collect.Signals { return healthyIBSensor{}.Signals() }
+
+func (s stalledIBSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	return collect.Run(ctx, collect.NewOp(opts...).Cycle(), "infiniband.sysfs", func(context.Context) (*observation.ObservationBatch, error) {
+		<-s.release
+		return healthyIBSensor{}.Measure(ctx, opts...)
+	})
+}
+
+// A stalled port read names no port, and the timeout, not the missing
+// identity, is what ib_port_state reports: UNKNOWN with retry_collection.
+func TestStalledInfiniBandSourceRecommendsRetry(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(config, []byte("collection_timeout_seconds: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	a := New().WithProgramName("test")
+	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withCleanXid(withCleanLinkFlap(withCPU(a, healthyCPU())))
+	a.WithCollect(stalledIBSensor{release: release}, stalledIBSensor{}.Signals().IDs()...)
+
+	var stdout, stderr bytes.Buffer
+	if code := a.runCommand([]string{"--node-id", testNodeID, "--config", config}, &stdout, &stderr); code != exitUnhealthy {
+		t.Fatalf("exit = %d, want exitUnhealthy; stderr = %q", code, stderr.String())
+	}
+	var v health.NodeVerdict
+	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil {
+		t.Fatalf("unmarshal verdict: %v; stdout = %s", err, stdout.String())
+	}
+	retry := health.Drain(health.RemediationActionRetryCollection)
+	found := false
+	for _, r := range v.CheckResults {
+		if r.CheckID != "ib_port_state" {
+			continue
+		}
+		found = true
+		if r.Severity != health.Unknown || !r.RecommendedAction.Equal(retry) {
+			t.Errorf("ib_port_state = %s %+v %v, want UNKNOWN retry_collection", r.Severity, r.RecommendedAction, r.Messages)
+		}
+	}
+	if !found {
+		t.Error("ib_port_state has no result")
+	}
+}
+
 // gatedReader holds a process-wide gate for each read, as the NVML source's
 // native-call gate does, and refuses a read while another holds it. The first
 // read parks until release; done closes once it has returned the gate.

@@ -16,11 +16,13 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusensor "github.com/dsx-ai-factory/health-validation/collect/sensors/cpu"
+	ibsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/infiniband"
 	linkflapsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/linkflap"
 	xidsensor "github.com/dsx-ai-factory/health-validation/collect/sensors/xid"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
+	ibsource "github.com/dsx-ai-factory/health-validation/collect/source/infiniband"
 	"github.com/dsx-ai-factory/health-validation/toolkit"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectadapters"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/collectbridge"
@@ -63,6 +65,9 @@ type CollectAdapter interface {
 // link-flap signals, are each claimed all together or not at all. A built-in
 // source left with no requested signals never runs, and built-in adapters read
 // claimed signals from this sensor.
+// To accept per-request Xid bounds in serve, the sensor claiming Xid signals
+// must implement WithTimeBounds(*int64, *int64) (collect.Sensor, error). It must
+// return an independently configured sensor and support concurrent calls.
 // Each registered collect source has its own timeout budget.
 // Timeout blocking is keyed by sensor ID, not the underlying source. Shared
 // NVML/DCGM sources must prevent new calls while a timed-out call is running.
@@ -179,6 +184,13 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 	sources := slices.Concat(a.host.gpuSensors(), []collect.Sensor{
 		cpusensor.New(nil), inventory.Sensor(), xidsensor.New(nil),
 		linkflapsensor.New(nil, linkflapsensor.WithLookback(linkFlapLookback)),
+		// Port state is checked on RoCE ports and on renamed devices too, so
+		// the stock CLI widens collect's GPUd-parity defaults (InfiniBand-only,
+		// mlx*-named): a DOWN port on rdma0 must not hide behind a healthy
+		// mlx5_0. Devices are selected by PCI vendor rather than name so other
+		// vendors' and software RDMA devices do not fail the check. Signal
+		// narrowing keeps sysfs untouched unless an InfiniBand port check will run.
+		ibsensor.New(ibsource.New(nil, ibsource.WithVendors(ibsource.VendorNVIDIA)), ibsensor.WithLinkLayers("InfiniBand", "Ethernet")),
 	})
 	adapters := []CollectAdapter{
 		powerDrawGate{
@@ -206,7 +218,7 @@ func (a *App) builtinCollect(cycle *collect.Cycle) ([]collect.Sensor, []CollectA
 // field 155, and NVML power usage) is the one-second average that
 // average_power_draw_w holds. NVML documents it as averaged on Ampere except
 // GA100 and newer, and instantaneous on GA100 and older.
-var averagedPowerDrawArchitectures = []string{"H100", "H200", "B200", "B300", "GB200", "GB300", "VR200"}
+var averagedPowerDrawArchitectures = []string{"H100", "H200", "B200", "B300", "GB200", "GB300", "VR"}
 
 // powerDrawGate keeps gpu.power.draw values only where the node architecture
 // averages them. Elsewhere a value becomes NOT_SUPPORTED, and with no
@@ -293,7 +305,7 @@ func newCycle(timeout time.Duration) (*collect.Cycle, error) {
 	return collect.NewCycleWithTimeout(uuid.NewString(), time.Now().UTC(), timeout)
 }
 
-// collectSensorsIn resolves registered sensors and adapters, plus the given
+// collectSensorsContext resolves registered sensors and adapters, plus the given
 // built-ins, collects every source once under cycle, and returns toolkit
 // sensors that convert the cached observations. required narrows collection to
 // the signals runnable checks require; an adapter or source left with none is
@@ -302,7 +314,7 @@ func newCycle(timeout time.Duration) (*collect.Cycle, error) {
 // Each source gets its own timeout budget; the toolkit watchdog then bounds
 // only adapter conversion. Registration errors and panics are returned so the
 // CLI exits 2 before anything is measured.
-func (a *App) collectSensorsIn(cycle *collect.Cycle, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter, required requiredSignals) (sensors []toolkit.Sensor, err error) {
+func (a *App) collectSensorsContext(ctx context.Context, cycle *collect.Cycle, builtinSources []collect.Sensor, builtinAdapters []CollectAdapter, required requiredSignals) (sensors []toolkit.Sensor, err error) {
 	adapters := slices.Concat(a.collectAdapters, builtinAdapters)
 	if len(a.collectSources) == 0 && len(builtinSources) == 0 && len(adapters) == 0 {
 		return nil, nil
@@ -330,7 +342,7 @@ func (a *App) collectSensorsIn(cycle *collect.Cycle, builtinSources []collect.Se
 	if err != nil {
 		return nil, err
 	}
-	runner.Collect()
+	runner.CollectContext(ctx)
 	for _, binding := range bindings {
 		sensors = append(sensors, runner.Sensor(binding))
 	}
