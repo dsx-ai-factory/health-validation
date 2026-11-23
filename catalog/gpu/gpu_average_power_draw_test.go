@@ -40,7 +40,7 @@ func averagePowerOverrides(minW, maxW float64) catalog.Option {
 
 func TestGPUAveragePowerDraw_Definition(t *testing.T) {
 	definition := gpu.GPUAveragePowerDraw()
-	if got, want := definition.Architectures, []string{"GB200", "GB300", "B200", "B300", "VR200"}; !slices.Equal(got, want) {
+	if got, want := definition.Architectures, []string{"GB200", "GB300", "B200", "B300", "VR"}; !slices.Equal(got, want) {
 		t.Errorf("Architectures = %v, want %v", got, want)
 	}
 	if definition.SchedulingCadence != health.Continuous {
@@ -59,7 +59,7 @@ func TestGPUAveragePowerDraw_Definition(t *testing.T) {
 		"GB300": float64(1500),
 		"B200":  float64(1500),
 		"B300":  float64(1500),
-		"VR200": float64(2300),
+		"VR":    float64(2300),
 	}
 	if got := definition.Thresholds["max_power_w"].PerArchitecture; !maps.Equal(got, wantMax) {
 		t.Errorf("max_power_w PerArchitecture = %v, want %v", got, wantMax)
@@ -94,11 +94,11 @@ func TestGPUAveragePowerDraw_UsesSupportedArchitectureDefaults(t *testing.T) {
 	}
 }
 
-// A VR200 GPU idles at about 405 W, and its power limit is 2300 W, so it gets
+// A VR GPU idles at about 405 W, and its power limit is 2300 W, so it gets
 // its own maximum while the minimum stays shared.
-func TestGPUAveragePowerDraw_VR200(t *testing.T) {
+func TestGPUAveragePowerDraw_VR(t *testing.T) {
 	cat := catalog.New(
-		catalog.WithArchitecture("VR200"),
+		catalog.WithArchitecture("VR"),
 		catalog.WithExecutionContext(health.OperatorInfra),
 	)
 	tests := []struct {
@@ -123,7 +123,7 @@ func TestGPUAveragePowerDraw_VR200(t *testing.T) {
 				t.Fatalf("Severity = %v, want %v at %g W", v.Severity, tt.want, tt.powerW)
 			}
 			if got := v.Thresholds["max_power_w"].Value; got != float64(2300) {
-				t.Errorf("max_power_w = %v, want VR200 default 2300", got)
+				t.Errorf("max_power_w = %v, want VR default 2300", got)
 			}
 			if tt.messagePart != "" && !strings.Contains(strings.Join(v.Messages, " "), tt.messagePart) {
 				t.Errorf("Messages = %q, want %q", v.Messages, tt.messagePart)

@@ -18,14 +18,14 @@ Verifies each GPU's one-second average power draw is within the expected range.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`B300`</nobr>, <nobr>`VR200`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`B300`</nobr>, <nobr>`VR`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`average_power_draw_w`</nobr> |
 
 **Thresholds**
 
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
-| <nobr>`max_power_w`</nobr> | B200: 1500, B300: 1500, GB200: 1500, GB300: 1500, VR200: 2300, other: 1500 | W | <nobr>`DEFAULT`</nobr> | Maximum expected one-second average power draw per GPU. 1500 W, or 2300 W on VR200, its power limit. Override per fleet. |
+| <nobr>`max_power_w`</nobr> | B200: 1500, B300: 1500, GB200: 1500, GB300: 1500, VR: 2300, other: 1500 | W | <nobr>`DEFAULT`</nobr> | Maximum expected one-second average power draw per GPU. 1500 W, or 2300 W on VR, its power limit. Override per fleet. |
 | <nobr>`min_power_w`</nobr> | 65 | W | <nobr>`DEFAULT`</nobr> | Minimum expected one-second average power draw per GPU. Override per fleet. |
 
 **Rules**

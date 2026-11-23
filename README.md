@@ -254,8 +254,8 @@ uses the H100 applicability matrix because both products use the Hopper
 architecture; Xid 144-150 and their subtype checks run on Blackwell and Rubin only.
 B300 uses the B200 applicability matrix because both are Blackwell GPUs on an
 HGX baseboard, so it runs Xid 144-150 but not Xid 142, which the catalog marks
-for GB-x00 and Rubin only. VR200 uses the catalog's Rubin column, which marks
-every Xid that applies to GB-x00, so VR200 runs the same Xid checks as GB300.
+for GB-x00 and Rubin only. VR uses the catalog's Rubin column, which marks
+every Xid that applies to GB-x00, so VR runs the same Xid checks as GB300.
 Warning-class Xids are individual `gpu_xid_<code>` checks.
 
 ## Prerequisites
