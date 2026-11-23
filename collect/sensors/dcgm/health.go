@@ -4,7 +4,6 @@
 package dcgm
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -17,15 +16,8 @@ import (
 	dcgmsource "github.com/dsx-ai-factory/health-validation/collect/source/dcgm"
 )
 
-type healthSource interface {
-	// ReadHealth returns a nonnil report on success, or nil and a collection error.
-	// The source validates missing native reports; success must never be nil, nil.
-	ReadHealth(context.Context, *collect.Cycle) (*observation.DCGMHealthReport, *observation.CollectionError)
-}
-
 type configurableSource interface {
 	metricSource
-	healthSource
 	AddHealthToWatch(uint64) error
 }
 
@@ -75,7 +67,6 @@ func newHealthSensor(source configurableSource, systems uint64, metricSignalIDs 
 		return nil, err
 	}
 	if systems != 0 {
-		result.health = source
 		result.signals = append(result.signals, dcgmhealth.Report)
 	}
 	return result, nil
@@ -96,21 +87,12 @@ func splitSignals(definitions collect.Signals) (metrics collect.Signals, health 
 // appendHealth adds one node-wide report, collection error, or no-target outcome.
 // Reports are cloned, and incidents are preserved even when targets are absent.
 func (sensor *sensor) appendHealth(
-	ctx context.Context,
-	cycle *collect.Cycle,
 	batch *observation.ObservationBatch,
 	observedAt time.Time,
+	report *observation.DCGMHealthReport,
+	failure *observation.CollectionError,
 ) {
 	definition := dcgmhealth.Report
-	if sensor.health == nil {
-		sensor.appendError(batch, definition, observation.NodeTarget(""), observedAt, "health",
-			&observation.CollectionError{
-				Category: observation.CollectionErrorCategoryNotConfigured,
-				Detail:   "DCGM health source is not configured",
-			})
-		return
-	}
-	report, failure := sensor.health.ReadHealth(ctx, cycle)
 	if failure != nil {
 		sensor.appendError(batch, definition, observation.NodeTarget(""), observedAt, "health", failure)
 		return

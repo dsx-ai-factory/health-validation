@@ -239,7 +239,7 @@ func TestGPUIndicesSkipsUUIDEnrichment(t *testing.T) {
 	native := &fakeNative{gpuIndices: []uint{7, 2}}
 	source := newSource(native, &sync.Mutex{})
 	t.Cleanup(func() { _ = source.Close() })
-	indices, failure := source.GPUIndices(context.Background(), newTestCycle(t, "indices-only"))
+	indices, failure := source.newCollectionReader(newTestCycle(t, "indices-only")).gpuIndices(context.Background())
 	if failure != nil || !slices.Equal(indices, []uint{7, 2}) {
 		t.Fatalf("GPUIndices() = %v, %v", indices, failure)
 	}
@@ -269,7 +269,7 @@ func TestGPUUUIDsPreservesRequestedIDsAndPartialResults(t *testing.T) {
 			source := newSource(native, &sync.Mutex{})
 			t.Cleanup(func() { _ = source.Close() })
 			requested := []uint{7, 0, 2}
-			entries := source.GPUUUIDs(context.Background(), newTestCycle(t, "UUIDs-only"), requested)
+			entries := source.newCollectionReader(newTestCycle(t, "UUIDs-only")).gpuUUIDs(context.Background(), requested)
 			if len(entries) != len(requested) {
 				t.Fatalf("GPUUUIDs() = %v", entries)
 			}
@@ -298,7 +298,7 @@ func TestGPUUUIDsPreservesRequestedIDsAndPartialResults(t *testing.T) {
 func TestGPUUUIDsEmptyRequestSkipsNativeWork(t *testing.T) {
 	native := &fakeNative{}
 	source := newSource(native, &sync.Mutex{})
-	if entries := source.GPUUUIDs(context.Background(), nil, nil); len(entries) != 0 {
+	if entries := source.newCollectionReader(nil).gpuUUIDs(context.Background(), nil); len(entries) != 0 {
 		t.Fatalf("GPUUUIDs(empty) = %v", entries)
 	}
 	if native.initCalls.Load() != 0 || native.enumerationCalls.Load() != 0 || native.uuidCalls.Load() != 0 {
@@ -326,7 +326,7 @@ func TestGPUUUIDsCancellationPreservesIDsAndNativeGate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	uuidResult := make(chan []GPUIdentityEntry, 1)
-	go func() { uuidResult <- source.GPUUUIDs(ctx, cycle, requested) }()
+	go func() { uuidResult <- source.newCollectionReader(cycle).gpuUUIDs(ctx, requested) }()
 	select {
 	case <-native.uuidStarted:
 	case <-time.After(5 * time.Second):
@@ -653,7 +653,7 @@ func TestInventoryPreservesPartialDataOnConnectionLoss(t *testing.T) {
 			}}); err != nil {
 				t.Fatalf("partial inventory is invalid: %v", err)
 			}
-			if _, failure := source.GPUIndices(context.Background(), cycle); failure.GetSourceError() != connectionNotValidStatus {
+			if _, failure := source.newCollectionReader(cycle).gpuIndices(context.Background()); failure.GetSourceError() != connectionNotValidStatus {
 				t.Fatalf("inventory failure did not invalidate the session: %v", failure)
 			}
 			if native.initCalls.Load() != 1 || native.cleanupCalls.Load() != 0 || native.enumerationCalls.Load() != 0 {

@@ -6,6 +6,7 @@ go_library(
     name = "dcgm",
     srcs = [
         "call.go",
+        "collection.go",
         "doc.go",
         "errors.go",
         "errors_linux.go",
@@ -46,6 +47,7 @@ go_test(
     name = "dcgm_test",
     srcs = [
         "cleanup_source_test.go",
+        "collection_test.go",
         "errors_linux_test.go",
         "errors_test.go",
         "fields_linux_test.go",

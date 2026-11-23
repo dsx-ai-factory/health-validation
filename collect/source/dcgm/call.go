@@ -12,32 +12,30 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
-// runNative initializes and serializes a timed native operation. Connection loss
-// is recorded before unlocking, even when its caller has already timed out.
-func runNative[T any](ctx context.Context, cycle *collect.Cycle, source *Source, call func(context.Context) (T, error)) (T, error) {
-	return collect.Run(ctx, cycle, Name, func(callContext context.Context) (value T, err error) {
+var errSessionReplaced = &dcgmError{
+	category: observation.CollectionErrorCategoryUnavailable,
+	detail:   "DCGM session was replaced during collection",
+}
+
+// runNative serializes a timed operation on the collection's session. The
+// worker records connection loss under the gate even if its caller timed out.
+func runNative[T any](ctx context.Context, reader *collectionReader, call func(context.Context, *clientSession) (T, error)) (T, error) {
+	source := reader.source
+	return collect.Run(ctx, reader.cycle, Name, func(callContext context.Context) (value T, err error) {
 		if err = source.startNativeCall(); err != nil {
 			return value, err
 		}
 		defer source.finishNativeCall()
-		defer func() { source.recordConnectionFailure(cycle, err) }()
 		if err = callContext.Err(); err != nil {
 			return value, err
 		}
-		// Return a known connection failure throughout its collection cycle.
-		// A later cycle releases the old session before initializing a replacement.
-		if source.connectionFailure != nil {
-			if source.connectionFailureCycle == cycle {
-				return value, source.connectionFailure
-			}
-			if err = source.releaseInvalidSession(); err != nil {
-				return value, err
-			}
-			if err = callContext.Err(); err != nil {
-				return value, err
-			}
+		if reader.admissionError != nil {
+			return value, reader.admissionError
 		}
-		if err = source.ensureInitialized(cycle); err != nil {
+		if err = reader.bindSession(callContext); err != nil {
+			if reader.session == nil {
+				reader.admissionError = err
+			}
 			return value, err
 		}
 		if source.closed.Load() {
@@ -46,44 +44,62 @@ func runNative[T any](ctx context.Context, cycle *collect.Cycle, source *Source,
 		if err = callContext.Err(); err != nil {
 			return value, err
 		}
-		return call(callContext)
+		session := reader.session
+		defer func() {
+			if source.session == session {
+				session.recordConnectionFailure(reader.cycle, err)
+			}
+		}()
+		return call(callContext, session)
 	})
+}
+
+// bindSession can recover only before a collection has started using a session.
+// go-dcgm uses a shared handle, so the check must precede all native work.
+func (reader *collectionReader) bindSession(ctx context.Context) error {
+	source := reader.source
+	if reader.session != nil {
+		if failure := reader.session.connectionFailure; failure != nil {
+			return failure
+		}
+		if reader.session != source.session {
+			return errSessionReplaced
+		}
+		return nil
+	}
+	if session := source.session; session != nil && session.connectionFailure != nil {
+		if session.connectionFailureCycle == reader.cycle {
+			reader.session = session
+			return session.connectionFailure
+		}
+		if err := source.releaseSession(); err != nil && !errors.Is(err, errConnectionNotValid) {
+			return fmt.Errorf("release invalid DCGM session: %w", err)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	if err := source.ensureInitialized(reader.cycle); err != nil {
+		return err
+	}
+	reader.session = source.session
+	return nil
 }
 
 // recordConnectionFailure retains the first confirmed loss in this session.
 // The caller holds the native-call gate.
-func (source *Source) recordConnectionFailure(cycle *collect.Cycle, err error) {
-	// Failed initialization owns no session; ensureInitialized scopes its retry.
-	if source.ready && source.connectionFailure == nil && errors.Is(err, errConnectionNotValid) {
-		source.connectionFailure = err
-		source.connectionFailureCycle = cycle
+func (session *clientSession) recordConnectionFailure(cycle *collect.Cycle, err error) {
+	if session.connectionFailure == nil && errors.Is(err, errConnectionNotValid) {
+		session.connectionFailure = err
+		session.connectionFailureCycle = cycle
 	}
 }
 
 // recordFieldFailure recognizes connection loss reported as a per-field status.
-func (source *Source) recordFieldFailure(cycle *collect.Cycle, failure *observation.CollectionError) {
+func (session *clientSession) recordFieldFailure(cycle *collect.Cycle, failure *observation.CollectionError) {
 	if failure.GetSourceError() == connectionNotValidStatus {
-		source.recordConnectionFailure(cycle, &dcgmError{
+		session.recordConnectionFailure(cycle, &dcgmError{
 			category: failure.GetCategory(), sourceError: failure.GetSourceError(), detail: failure.GetDetail(),
 		})
 	}
-}
-
-// releaseInvalidSession discards stale handles before releasing the old client.
-// Releasing a known-invalid connection may itself report connection loss.
-func (source *Source) releaseInvalidSession() error {
-	cleanup := source.clientCleanup
-	source.clientCleanup = nil
-	source.ready = false
-	source.metricWatchCleanup = nil
-	source.metricWatchError = nil
-	source.healthWatch = nil
-	source.connectionFailure = nil
-	source.connectionFailureCycle = nil
-	if cleanup != nil {
-		if err := cleanup(); err != nil && !errors.Is(err, errConnectionNotValid) {
-			return fmt.Errorf("release invalid DCGM session: %w", err)
-		}
-	}
-	return nil
 }

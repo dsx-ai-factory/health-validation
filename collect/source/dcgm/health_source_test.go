@@ -155,7 +155,8 @@ func TestAddHealthToWatchZeroKeepsUnionWithoutNativeWork(t *testing.T) {
 			if source.healthSystems != test.systems || native.initCalls.Load() != 0 || native.healthWatchCalls.Load() != 0 || native.watchCalls.Load() != 0 {
 				t.Fatal("zero registration changed the requested union or performed native work")
 			}
-			report, failure := source.ReadHealth(context.Background(), newTestCycle(t, "zero-"+test.name))
+			result := source.Collect(context.Background(), newTestCycle(t, "zero-"+test.name), CollectionRequest{Health: true})
+			report, failure := result.HealthReport, result.HealthError
 			if test.systems == 0 {
 				if report != nil || failure.GetCategory() != observation.CollectionErrorCategoryNotConfigured || native.initCalls.Load() != 0 || native.healthWatchCalls.Load() != 0 {
 					t.Fatalf("disabled health read = %v, %v; initialized=%d watches=%d", report, failure, native.initCalls.Load(), native.healthWatchCalls.Load())
@@ -177,7 +178,7 @@ func TestMetricCollectionDoesNotEnableHealth(t *testing.T) {
 	if values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "metric-only"), 0, []string{signalPowerDraw}); values[signalPowerDraw].Value == nil {
 		t.Fatalf("metric-only read = %v", values)
 	}
-	if _, failure := source.ReadHealth(context.Background(), newTestCycle(t, "no-health")); failure.GetCategory() != observation.CollectionErrorCategoryNotConfigured {
+	if failure := source.Collect(context.Background(), newTestCycle(t, "no-health"), CollectionRequest{Health: true}).HealthError; failure.GetCategory() != observation.CollectionErrorCategoryNotConfigured {
 		t.Fatalf("unregistered health = %v", failure)
 	}
 	if native.healthWatchCalls.Load() != 0 || native.initCalls.Load() != 1 {
@@ -198,11 +199,11 @@ func TestHealthAndMetricRegistrationShareStartedBoundary(t *testing.T) {
 					t.Fatal(values)
 				}
 			case "health":
-				if _, failure := source.ReadHealth(context.Background(), cycle); failure != nil {
+				if failure := source.Collect(context.Background(), cycle, CollectionRequest{Health: true}).HealthError; failure != nil {
 					t.Fatal(failure)
 				}
 			}
-			if source.metricWatchCleanup != nil && stage != "metric" {
+			if source.session != nil && source.session.metricWatchCleanup != nil && stage != "metric" {
 				t.Fatal("non-metric read eagerly created metric watch")
 			}
 			if err := source.AddMetricsToWatch([]string{signalTemperature}); err == nil {
@@ -242,7 +243,7 @@ func TestInventoryInitializationKeepsWatchRegistrationOpen(t *testing.T) {
 				t.Fatal("inventory or registration eagerly created watches")
 			}
 			native.initErr = nil
-			if report, failure := source.ReadHealth(context.Background(), newTestCycle(t, "health-after-inventory")); failure != nil || report.GetRequestedSystems() != dcgmhealth.SystemMemory || native.healthSystems != dcgmhealth.SystemMemory {
+			if report, failure := source.newCollectionReader(newTestCycle(t, "health-after-inventory")).readHealth(context.Background()); failure != nil || report.GetRequestedSystems() != dcgmhealth.SystemMemory || native.healthSystems != dcgmhealth.SystemMemory {
 				t.Fatalf("health registered after inventory = %v, %v", report, failure)
 			}
 			wantInitCalls := int32(1)
@@ -276,7 +277,8 @@ func TestHealthEmptyReportReturnsImmediatelyAndKeepsWatchTimestamp(t *testing.T)
 	}
 	for _, cycleID := range []string{"first-empty-health", "later-empty-health"} {
 		cycle := newTestCycle(t, cycleID)
-		report, failure := source.ReadHealth(context.Background(), cycle)
+		result := source.Collect(context.Background(), cycle, CollectionRequest{Health: true})
+		report, failure := result.HealthReport, result.HealthError
 		if failure != nil || report == nil || len(report.GetIncidents()) != 0 {
 			t.Fatalf("empty health report = %v, %v", report, failure)
 		}
@@ -320,9 +322,10 @@ func TestHealthReportMetadataAndSharedClient(t *testing.T) {
 	if values[signalPowerDraw].Value == nil || native.healthWatchCalls.Load() != 0 {
 		t.Fatal("metrics failed or eagerly set up health")
 	}
-	first, failure := source.ReadHealth(context.Background(), cycle)
-	if failure != nil || first == nil {
-		t.Fatalf("ReadHealth() = %+v, %v", first, failure)
+	result := source.Collect(context.Background(), cycle, CollectionRequest{Health: true})
+	first := result.HealthReport
+	if result.HealthError != nil || first == nil {
+		t.Fatalf("health collection = %+v, %v", first, result.HealthError)
 	}
 	if first.GetRequestedSystems() != dcgmhealth.SystemMemory|dcgmhealth.SystemPCIe ||
 		first.GetGroupId() != raw.GetGroupId() || first.GetNativeGroupOverallHealth() != 987 ||
@@ -334,14 +337,16 @@ func TestHealthReportMetadataAndSharedClient(t *testing.T) {
 	if raw.GetCollectionId() != "" || !raw.GetMonitoredSince().AsTime().Equal(monitoredSince) || raw.GetRequestedSystems() != 999 {
 		t.Fatal("Source mutated native-owned report")
 	}
-	second, failure := source.ReadHealth(context.Background(), cycle)
-	if failure != nil || first.GetCollectionId() != cycle.CollectionID() || !proto.Equal(first, second) {
-		t.Fatalf("second read = %+v, %v", second, failure)
+	result = source.Collect(context.Background(), cycle, CollectionRequest{Health: true})
+	second := result.HealthReport
+	if result.HealthError != nil || first.GetCollectionId() != cycle.CollectionID() || !proto.Equal(first, second) {
+		t.Fatalf("second read = %+v, %v", second, result.HealthError)
 	}
 	nextCycle := newTestCycle(t, "next-cycle")
-	third, failure := source.ReadHealth(context.Background(), nextCycle)
-	if failure != nil || third.GetCollectionId() != nextCycle.CollectionID() || !third.GetMonitoredSince().AsTime().Equal(monitoredSince) {
-		t.Fatalf("later read = %+v, %v", third, failure)
+	result = source.Collect(context.Background(), nextCycle, CollectionRequest{Health: true})
+	third := result.HealthReport
+	if result.HealthError != nil || third.GetCollectionId() != nextCycle.CollectionID() || !third.GetMonitoredSince().AsTime().Equal(monitoredSince) {
+		t.Fatalf("later read = %+v, %v", third, result.HealthError)
 	}
 	if native.initCalls.Load() != 1 || native.watchCalls.Load() != 1 || native.healthWatchCalls.Load() != 1 || native.health.readCalls.Load() != 3 || native.health.outsideGate.Load() {
 		t.Fatal("metric and health did not share one initialized, gated lifetime")
@@ -399,10 +404,10 @@ func TestHealthReportPreservesNativeAvailability(t *testing.T) {
 			if err := source.AddHealthToWatch(dcgmhealth.KnownSystems); err != nil {
 				t.Fatal(err)
 			}
-			report, failure := source.ReadHealth(context.Background(), newTestCycle(t, "targets-"+test.name))
+			report, failure := source.newCollectionReader(newTestCycle(t, "targets-"+test.name)).readHealth(context.Background())
 			if failure != nil || report.GetSystemsWithoutTargets() != test.missing || len(report.GetIncidents()) != 1 ||
 				!proto.Equal(report.GetMonitoredSince(), raw.GetMonitoredSince()) || len(report.GetSystemErrors()) != len(test.failures) {
-				t.Fatalf("ReadHealth() = %v, %v; want missing %#x with native incident", report, failure, test.missing)
+				t.Fatalf("health collection = %v, %v; want missing %#x with native incident", report, failure, test.missing)
 			}
 			for system, want := range test.failures {
 				if !proto.Equal(report.GetSystemErrors()[system], want) {
@@ -430,7 +435,7 @@ func TestHealthWatchConstructionFailureRetriesAndKeepsMetrics(t *testing.T) {
 			registerMetricAndHealth(t, source)
 			cycle := newTestCycle(t, "failed-health-construction")
 			for attempt := range 2 {
-				report, failure := source.ReadHealth(context.Background(), cycle)
+				report, failure := source.newCollectionReader(cycle).readHealth(context.Background())
 				if report != nil || failure == nil || failure.GetSource() != Name || failure.GetOperation() != "health" {
 					t.Fatal("health setup unexpectedly succeeded")
 				}
@@ -450,7 +455,7 @@ func TestHealthWatchConstructionFailureRetriesAndKeepsMetrics(t *testing.T) {
 			}
 			native.healthSetupError = nil
 			native.missingWatch = false
-			if report, failure := source.ReadHealth(context.Background(), newTestCycle(t, "health-construction-recovered")); failure != nil || report == nil {
+			if report, failure := source.newCollectionReader(newTestCycle(t, "health-construction-recovered")).readHealth(context.Background()); failure != nil || report == nil {
 				t.Fatalf("later health construction did not recover: %v, %v", report, failure)
 			}
 			if native.healthWatchCalls.Load() != 3 || native.health.readCalls.Load() != 1 || native.initCalls.Load() != 1 {
@@ -481,10 +486,11 @@ func TestMetricSetupFailureIsTerminalAndKeepsHealth(t *testing.T) {
 			t.Fatalf("metric error lost native rollback details: %v", failure)
 		}
 	}
-	if source.closed.Load() || native.watchCalls.Load() != 1 || native.cleanupCalls.Load() != 0 || !errors.Is(source.metricWatchError, setupError) || !errors.Is(source.metricWatchError, rollbackError) {
+	if source.closed.Load() || native.watchCalls.Load() != 1 || native.cleanupCalls.Load() != 0 ||
+		source.session == nil || !errors.Is(source.session.metricWatchError, setupError) || !errors.Is(source.session.metricWatchError, rollbackError) {
 		t.Fatal("combined source retried metric setup or released client")
 	}
-	if _, failure := source.ReadHealth(context.Background(), newTestCycle(t, "health-after-metric-failure")); failure != nil {
+	if failure := source.Collect(context.Background(), newTestCycle(t, "health-after-metric-failure"), CollectionRequest{Health: true}).HealthError; failure != nil {
 		t.Fatal(failure)
 	}
 	for range 2 {
@@ -512,7 +518,7 @@ func TestCombinedMetricPreflightFailureKeepsHealth(t *testing.T) {
 	native := &healthPreflightNative{failure: errors.New("metric configuration rejected")}
 	source := newSource(native, &sync.Mutex{})
 	registerMetricAndHealth(t, source)
-	if _, failure := source.ReadHealth(context.Background(), newTestCycle(t, "health-after-preflight")); failure != nil {
+	if failure := source.Collect(context.Background(), newTestCycle(t, "health-after-preflight"), CollectionRequest{Health: true}).HealthError; failure != nil {
 		t.Fatal(failure)
 	}
 	if native.preparationCalls.Load() != 0 {
@@ -552,7 +558,7 @@ func TestHealthReadFailureCanRetryAndKeepsMetrics(t *testing.T) {
 			t.Cleanup(func() { _ = source.Close() })
 			registerMetricAndHealth(t, source)
 			cycle := newTestCycle(t, "query-failure")
-			report, failure := source.ReadHealth(context.Background(), cycle)
+			report, failure := source.newCollectionReader(cycle).readHealth(context.Background())
 			if report != nil || failure.GetOperation() != "health" || failure.GetSource() != Name || !strings.Contains(failure.GetDetail(), wantDetail) {
 				t.Fatalf("query failure = %v", failure)
 			}
@@ -568,7 +574,7 @@ func TestHealthReadFailureCanRetryAndKeepsMetrics(t *testing.T) {
 			}
 			native.health.readError = nil
 			native.health.missingReport = false
-			recovered, failure := source.ReadHealth(context.Background(), cycle)
+			recovered, failure := source.newCollectionReader(cycle).readHealth(context.Background())
 			if failure != nil || recovered == nil || len(recovered.GetIncidents()) != 0 {
 				t.Fatalf("recovered empty health report = %v, %v", recovered, failure)
 			}
@@ -592,7 +598,7 @@ func TestCloseAttemptsBothFeatureCleanupsBeforeClient(t *testing.T) {
 	if values := source.ReadGPUMetrics(context.Background(), cycle, 0, []string{signalPowerDraw}); values[signalPowerDraw].Value == nil {
 		t.Fatal(values)
 	}
-	if _, failure := source.ReadHealth(context.Background(), cycle); failure != nil {
+	if failure := source.Collect(context.Background(), cycle, CollectionRequest{Health: true}).HealthError; failure != nil {
 		t.Fatal(failure)
 	}
 	if err := source.Close(); !errors.Is(err, metricError) || !errors.Is(err, healthError) {
@@ -607,7 +613,7 @@ func TestCloseAttemptsBothFeatureCleanupsBeforeClient(t *testing.T) {
 	if err := source.AddHealthToWatch(dcgmhealth.SystemPCIe); err == nil {
 		t.Fatal("closed source accepted health registration")
 	}
-	if _, failure := source.ReadHealth(context.Background(), newTestCycle(t, "closed-health")); failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || native.health.readCalls.Load() != 1 {
+	if failure := source.Collect(context.Background(), newTestCycle(t, "closed-health"), CollectionRequest{Health: true}).HealthError; failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || native.health.readCalls.Load() != 1 {
 		t.Fatalf("health read after Close = %v", failure)
 	}
 }
@@ -624,7 +630,7 @@ func TestHealthUUIDEnrichmentPreservesNativeIdentity(t *testing.T) {
 	source := newSource(native, &sync.Mutex{})
 	registerMetricAndHealth(t, source)
 	t.Cleanup(func() { _ = source.Close() })
-	result, failure := source.ReadHealth(context.Background(), newTestCycle(t, "enriched-health"))
+	result, failure := source.newCollectionReader(newTestCycle(t, "enriched-health")).readHealth(context.Background())
 	if failure != nil {
 		t.Fatal(failure)
 	}
@@ -664,9 +670,9 @@ func TestHealthUUIDEnrichmentRequiresTypedDCGMGPUIdentity(t *testing.T) {
 			if err := source.AddHealthToWatch(dcgmhealth.KnownSystems); err != nil {
 				t.Fatal(err)
 			}
-			report, failure := source.ReadHealth(context.Background(), newTestCycle(t, "skip-uuid-"+test.name))
+			report, failure := source.newCollectionReader(newTestCycle(t, "skip-uuid-"+test.name)).readHealth(context.Background())
 			if failure != nil || native.uuidCalls.Load() != 0 || !proto.Equal(report.Entities[0], test.target) {
-				t.Fatalf("ReadHealth() = %v, %v; UUID calls = %d", report, failure, native.uuidCalls.Load())
+				t.Fatalf("health collection = %v, %v; UUID calls = %d", report, failure, native.uuidCalls.Load())
 			}
 		})
 	}
@@ -691,11 +697,10 @@ func TestHealthUUIDCancellationPreservesIncidentsAndNativeGate(t *testing.T) {
 	cycle := newTestCycle(t, "health-uuid-cancellation")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var result *observation.DCGMHealthReport
-	var failure *observation.CollectionError
+	var collected CollectionResult
 	finished := make(chan struct{})
 	go func() {
-		result, failure = source.ReadHealth(ctx, cycle)
+		collected = source.Collect(ctx, cycle, CollectionRequest{Health: true})
 		close(finished)
 	}()
 	select {
@@ -709,6 +714,7 @@ func TestHealthUUIDCancellationPreservesIncidentsAndNativeGate(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("health read did not return after UUID enrichment cancellation")
 	}
+	result, failure := collected.HealthReport, collected.HealthError
 	if failure != nil || len(result.GetIncidents()) != 1 || result.Incidents[0].GetMessage() != "memory incident" ||
 		result.Incidents[0].Entity.GetGpu().GetNative().GetEntityId() != 2 || result.Incidents[0].Entity.GetGpu().GetUuid() != "" {
 		t.Fatalf("optional cancellation lost native report: %v, %v", result, failure)
@@ -748,8 +754,7 @@ func TestHealthCancellationSuppressesSharedSourceAndPreservesCleanup(t *testing.
 	cycle := newTestCycle(t, "interrupted-health")
 	finished := make(chan *observation.CollectionError, 1)
 	go func() {
-		_, failure := source.ReadHealth(ctx, cycle)
-		finished <- failure
+		finished <- source.Collect(ctx, cycle, CollectionRequest{Health: true}).HealthError
 	}()
 	select {
 	case <-watch.readStarted:
@@ -770,7 +775,7 @@ func TestHealthCancellationSuppressesSharedSourceAndPreservesCleanup(t *testing.
 		if values[signalPowerDraw].CollectionError.GetCategory() != observation.CollectionErrorCategoryUnavailable || native.watchCalls.Load() != 0 {
 			t.Fatal("metric setup entered during unfinished native health read")
 		}
-		if _, failure := source.ReadHealth(context.Background(), laterCycle); failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || watch.readCalls.Load() != 1 {
+		if failure := source.Collect(context.Background(), laterCycle, CollectionRequest{Health: true}).HealthError; failure.GetCategory() != observation.CollectionErrorCategoryUnavailable || watch.readCalls.Load() != 1 {
 			t.Fatal("health call re-entered during unfinished native health read")
 		}
 	}
@@ -815,8 +820,7 @@ func TestNativeTimeoutSuppressesBothFeaturesForCycle(t *testing.T) {
 					if feature == "metric" {
 						finished <- source.ReadGPUMetrics(context.Background(), cycle, 0, []string{signalPowerDraw})[signalPowerDraw].CollectionError
 					} else {
-						_, failure := source.ReadHealth(context.Background(), cycle)
-						finished <- failure
+						finished <- source.Collect(context.Background(), cycle, CollectionRequest{Health: true}).HealthError
 					}
 				}()
 				select {
@@ -843,7 +847,7 @@ func TestNativeTimeoutSuppressesBothFeaturesForCycle(t *testing.T) {
 					if values[signalPowerDraw].CollectionError.GetCategory() != wantCategory {
 						t.Fatalf("metric read after %s timeout = %v", feature, values)
 					}
-					if _, failure := source.ReadHealth(context.Background(), nextCycle); failure.GetCategory() != wantCategory {
+					if failure := source.Collect(context.Background(), nextCycle, CollectionRequest{Health: true}).HealthError; failure.GetCategory() != wantCategory {
 						t.Fatalf("health read after %s timeout = %v", feature, failure)
 					}
 				}
@@ -853,7 +857,7 @@ func TestNativeTimeoutSuppressesBothFeaturesForCycle(t *testing.T) {
 				release()
 				synctest.Wait()
 				waitForNativeGate(t, gate)
-				if _, failure := source.ReadHealth(context.Background(), cycle); failure.GetCategory() != observation.CollectionErrorCategoryTimeout {
+				if failure := source.Collect(context.Background(), cycle, CollectionRequest{Health: true}).HealthError; failure.GetCategory() != observation.CollectionErrorCategoryTimeout {
 					t.Fatal("completed native call cleared the cycle's timeout suppression")
 				}
 				if err := source.Close(); err != nil {
@@ -898,8 +902,7 @@ func TestCloseDuringHealthSetupPreventsNativeRead(t *testing.T) {
 			finished := make(chan *observation.CollectionError, 1)
 			cycle := newTestCycle(t, "close-during-health-"+stage)
 			go func() {
-				_, failure := source.ReadHealth(context.Background(), cycle)
-				finished <- failure
+				finished <- source.Collect(context.Background(), cycle, CollectionRequest{Health: true}).HealthError
 			}()
 			select {
 			case <-native.started:

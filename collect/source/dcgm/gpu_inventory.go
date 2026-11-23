@@ -26,39 +26,42 @@ type GPUIdentityEntry struct {
 // GPUIdentities enumerates GPUs and enriches their indices with UUIDs and PCI addresses.
 // Lookup failures preserve the indices for subsequent collection.
 func (source *Source) GPUIdentities(ctx context.Context, currentCycle *collect.Cycle) ([]GPUIdentityEntry, *observation.CollectionError) {
-	gpuIndices, failure := source.GPUIndices(ctx, currentCycle)
+	return source.newCollectionReader(currentCycle).gpuIdentities(ctx)
+}
+
+// gpuIdentities preserves enumerated IDs when enrichment fails.
+func (reader *collectionReader) gpuIdentities(ctx context.Context) ([]GPUIdentityEntry, *observation.CollectionError) {
+	gpuIndices, failure := reader.gpuIndices(ctx)
 	if failure != nil {
 		return nil, failure
 	}
-	return source.GPUUUIDs(ctx, currentCycle, gpuIndices), nil
+	return reader.gpuUUIDs(ctx, gpuIndices), nil
 }
 
-// GPUIndices enumerates source-local GPU IDs without looking up UUIDs.
-func (source *Source) GPUIndices(ctx context.Context, currentCycle *collect.Cycle) ([]uint, *observation.CollectionError) {
-	gpuIndices, err := runNative(ctx, currentCycle, source, func(context.Context) ([]uint, error) {
-		return source.native.AllGPUIndices()
+// gpuIndices discovers IDs for subsequent reads on the same session.
+func (reader *collectionReader) gpuIndices(ctx context.Context) ([]uint, *observation.CollectionError) {
+	gpuIndices, err := runNative(ctx, reader, func(context.Context, *clientSession) ([]uint, error) {
+		return reader.source.native.AllGPUIndices()
 	})
 	if err != nil {
-		return nil, source.gpuCollectionError("identity", err)
+		return nil, reader.source.gpuCollectionError("identity", err)
 	}
 	return gpuIndices, nil
 }
 
-// GPUUUIDs enriches the supplied GPU IDs with UUIDs and PCI addresses in one
-// lookup without enumerating devices. It preserves request order and IDs,
-// recording failures independently for each identity field.
-// An empty request performs no native work.
-func (source *Source) GPUUUIDs(ctx context.Context, currentCycle *collect.Cycle, gpuIndices []uint) []GPUIdentityEntry {
+// gpuUUIDs preserves request order and reports UUID and PCI failures independently.
+func (reader *collectionReader) gpuUUIDs(ctx context.Context, gpuIndices []uint) []GPUIdentityEntry {
 	if len(gpuIndices) == 0 {
 		return nil
 	}
 	// Native work can outlive a timeout, so it must not retain caller-owned IDs.
 	gpuIndices = slices.Clone(gpuIndices)
-	identities, readErr := runNative(ctx, currentCycle, source, func(context.Context) (map[uint]GPUIdentityEntry, error) {
+	source := reader.source
+	identities, readErr := runNative(ctx, reader, func(_ context.Context, session *clientSession) (map[uint]GPUIdentityEntry, error) {
 		entries, err := source.native.ReadGPUUUIDs(gpuIndices)
 		for _, entry := range entries {
-			source.recordFieldFailure(currentCycle, entry.UUIDError)
-			source.recordFieldFailure(currentCycle, entry.BusIDError)
+			session.recordFieldFailure(reader.cycle, entry.UUIDError)
+			session.recordFieldFailure(reader.cycle, entry.BusIDError)
 		}
 		return entries, err
 	})
@@ -86,20 +89,27 @@ func (source *Source) GPUUUIDs(ctx context.Context, currentCycle *collect.Cycle,
 }
 
 // GPUInventory enriches the supplied identities without re-enumerating GPUs or reading UUIDs again.
+// Use Collect to keep discovery and inventory on the same session.
 func (source *Source) GPUInventory(ctx context.Context, currentCycle *collect.Cycle, identities []GPUIdentityEntry) *observation.GPUInventorySnapshot {
+	return source.newCollectionReader(currentCycle).gpuInventory(ctx, identities)
+}
+
+// gpuInventory adds device attributes while preserving known identity and status.
+func (reader *collectionReader) gpuInventory(ctx context.Context, identities []GPUIdentityEntry) *observation.GPUInventorySnapshot {
 	gpuIndices := make([]uint, 0, len(identities))
 	for _, identity := range identities {
 		gpuIndices = append(gpuIndices, identity.Index)
 	}
 	var err error
 	var collected map[uint]*observation.GPUInventoryEntry
+	source := reader.source
 	if len(gpuIndices) > 0 {
-		collected, err = runNative(ctx, currentCycle, source, func(context.Context) (map[uint]*observation.GPUInventoryEntry, error) {
+		collected, err = runNative(ctx, reader, func(_ context.Context, session *clientSession) (map[uint]*observation.GPUInventoryEntry, error) {
 			entries, readErr := source.native.ReadGPUInventory(gpuIndices)
 			for _, entry := range entries {
-				source.recordFieldFailure(currentCycle, entry.GetCollectionError())
+				session.recordFieldFailure(reader.cycle, entry.GetCollectionError())
 				for _, failure := range entry.GetFieldErrors() {
-					source.recordFieldFailure(currentCycle, failure)
+					session.recordFieldFailure(reader.cycle, failure)
 				}
 			}
 			return entries, readErr

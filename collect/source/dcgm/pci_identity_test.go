@@ -45,7 +45,8 @@ func TestHealthIdentityEnrichmentPreservesIndependentFields(t *testing.T) {
 			if err := source.AddHealthToWatch(dcgmhealth.SystemMemory); err != nil {
 				t.Fatal(err)
 			}
-			report, failure := source.ReadHealth(context.Background(), newTestCycle(t, test.name))
+			result := source.Collect(context.Background(), newTestCycle(t, test.name), CollectionRequest{Health: true})
+			report, failure := result.HealthReport, result.HealthError
 			if failure != nil || report == nil || len(report.GetIncidents()) != 1 || report.GetIncidents()[0].GetErrorCode() != 123 || report.GetIncidents()[0].GetMessage() != "memory fault" {
 				t.Fatalf("optional identity lookup discarded the health result: %v, %v", report, failure)
 			}
@@ -81,18 +82,20 @@ func TestPCIIdentityConnectionLossRecoversOnNextCycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	cycle := newTestCycle(t, "PCI-identity-connection-loss")
-	report, failure := source.ReadHealth(context.Background(), cycle)
+	result := source.Collect(context.Background(), cycle, CollectionRequest{Health: true})
+	report, failure := result.HealthReport, result.HealthError
 	if failure != nil || report == nil || report.GetEntities()[0].GetGpu().GetUuid() != "GPU-7" || report.GetEntities()[0].GetGpu().GetBusId() != "" {
 		t.Fatalf("PCI field error discarded a successful UUID or health read: %v, %v", report, failure)
 	}
-	if _, indicesFailure := source.GPUIndices(context.Background(), cycle); indicesFailure.GetSourceError() != connectionNotValidStatus {
+	if _, indicesFailure := source.newCollectionReader(cycle).gpuIndices(context.Background()); indicesFailure.GetSourceError() != connectionNotValidStatus {
 		t.Fatalf("PCI field connection loss did not invalidate the session: %v", indicesFailure)
 	}
 	if native.initCalls.Load() != 1 || native.enumerationCalls.Load() != 0 || native.cleanupCalls.Load() != 0 {
 		t.Fatal("same-cycle call entered or replaced the failed session")
 	}
 	native.uuidEntries[7] = GPUIdentityEntry{UUID: "GPU-7", BusID: "0000:53:00.0"}
-	report, failure = source.ReadHealth(context.Background(), newTestCycle(t, "PCI-identity-recovered"))
+	result = source.Collect(context.Background(), newTestCycle(t, "PCI-identity-recovered"), CollectionRequest{Health: true})
+	report, failure = result.HealthReport, result.HealthError
 	if failure != nil || report.GetEntities()[0].GetGpu().GetBusId() != "0000:53:00.0" || native.initCalls.Load() != 2 || native.cleanupCalls.Load() != 1 {
 		t.Fatalf("next cycle did not replace the session and recover PCI enrichment: %v, %v", report, failure)
 	}

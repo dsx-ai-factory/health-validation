@@ -28,12 +28,6 @@ var errClosed = errors.New("DCGM source is closed")
 // This process-wide lock prevents another call from entering DCGM while a
 // timed-out cgo call may still be running. go-dcgm already coordinates
 // Init and Shutdown, so this package does not add another reference count.
-//
-// TODO: Before adding another DCGM sensor, move native-call and watch ownership
-// to each sensor's collection path. Independent sensors should not block each
-// other, and sensors that need GPU identities should share one immutable
-// inventory snapshot per collection cycle. DCGM initialization and shutdown
-// must remain coordinated process-wide.
 var defaultNativeCallMu sync.Mutex
 
 // go-dcgm ignores the mode and address of every Init while an earlier Init is
@@ -104,21 +98,25 @@ type Source struct {
 	// Production sources share this lock and fail fast when it is held. The lock
 	// protects native calls and the source state changed by those calls.
 	nativeCallMu               *sync.Mutex
-	clientCleanup              func() error
-	metricWatchCleanup         func() error
-	metricWatchError           error
-	healthWatch                healthWatch
-	connectionFailure          error
-	connectionFailureCycle     *collect.Cycle
+	session                    *clientSession
 	initializationFailure      error
 	initializationFailureCycle *collect.Cycle
 	processMode                *sessionMode
 	metricWatchSignals         []string
 	healthSystems              uint64
 	watchRegistrationFrozen    atomic.Bool
-	ready                      bool
 	closed                     atomic.Bool
 	mode                       sessionMode
+}
+
+// clientSession owns the client reference and watches for one successful Init.
+type clientSession struct {
+	metricWatchError       error
+	healthWatch            healthWatch
+	connectionFailure      error
+	clientCleanup          func() error
+	metricWatchCleanup     func() error
+	connectionFailureCycle *collect.Cycle
 }
 
 // NewStandaloneSource creates a source connected to an external DCGM
@@ -199,7 +197,6 @@ func (source *Source) AddMetricsToWatch(signalIDs []string) error {
 	}
 	if len(registered) > 0 {
 		source.metricWatchSignals = append(source.metricWatchSignals, registered...)
-		source.metricWatchError = nil
 	}
 	return nil
 }
@@ -233,7 +230,7 @@ func (source *Source) ensureInitialized(cycle *collect.Cycle) error {
 	if source.closed.Load() {
 		return errClosed
 	}
-	if source.ready {
+	if source.session != nil {
 		return nil
 	}
 	if source.initializationFailure != nil {
@@ -262,27 +259,26 @@ func (source *Source) ensureInitialized(cycle *collect.Cycle) error {
 	if source.processMode != nil && *source.processMode == 0 {
 		*source.processMode = source.mode
 	}
-	source.clientCleanup = clientCleanup
-	source.ready = true
+	source.session = &clientSession{clientCleanup: clientCleanup}
 	return nil
 }
 
 // ensureMetricWatch creates the metric watch for the current session. Setup
 // failure disables metrics; confirmed connection loss permits session recovery.
-func (source *Source) ensureMetricWatch() error {
+func (source *Source) ensureMetricWatch(session *clientSession) error {
 	if source.closed.Load() {
 		return errClosed
 	}
-	if source.metricWatchCleanup != nil {
+	if session.metricWatchCleanup != nil {
 		return nil
 	}
-	if source.metricWatchError != nil {
-		return source.metricWatchError
+	if session.metricWatchError != nil {
+		return session.metricWatchError
 	}
 	groups, err := source.native.MetricWatchGroups(source.metricWatchSignals)
 	if err != nil {
 		// No native watch was attempted; inventory and health remain usable.
-		source.metricWatchError = err
+		session.metricWatchError = err
 		return err
 	}
 	metricWatchCleanup, err := source.native.WatchMetrics(groups)
@@ -292,13 +288,13 @@ func (source *Source) ensureMetricWatch() error {
 	if err != nil {
 		// Native setup already attempted rollback. A combined source retains
 		// its client for health; metric-only sources keep their close behavior.
-		source.metricWatchError = err
+		session.metricWatchError = err
 		if source.healthSystems != 0 || errors.Is(err, errConnectionNotValid) {
 			return err
 		}
 		return errors.Join(err, source.closeLocked())
 	}
-	source.metricWatchCleanup = metricWatchCleanup
+	session.metricWatchCleanup = metricWatchCleanup
 	return nil
 }
 
@@ -321,30 +317,31 @@ func (source *Source) Close() error {
 	return source.closeLocked()
 }
 
-// closeLocked consumes both feature cleanups once before releasing the client.
-// The caller must hold the native-call gate.
-func (source *Source) closeLocked() (result error) {
+// closeLocked stops further reads and releases the session under the native gate.
+func (source *Source) closeLocked() error {
 	source.closed.Store(true)
-	metricWatchCleanup := source.metricWatchCleanup
-	source.metricWatchCleanup = nil
-	health := source.healthWatch
-	source.healthWatch = nil
-	clientCleanup := source.clientCleanup
-	source.clientCleanup = nil
-	source.ready = false
-	if source.connectionFailure != nil {
-		// These handles belong to the invalid session and must not be reused.
-		metricWatchCleanup = nil
-		health = nil
+	return source.releaseSession()
+}
+
+// releaseSession consumes valid watch cleanups before releasing the client.
+// The caller must hold the native-call gate.
+func (source *Source) releaseSession() (result error) {
+	session := source.session
+	source.session = nil
+	if session == nil {
+		return nil
 	}
-	if clientCleanup != nil {
+	if clientCleanup := session.clientCleanup; clientCleanup != nil {
 		defer func() { result = errors.Join(result, clientCleanup()) }()
 	}
+	if session.connectionFailure != nil {
+		return nil
+	}
 	var metricError, healthError error
-	if metricWatchCleanup != nil {
+	if metricWatchCleanup := session.metricWatchCleanup; metricWatchCleanup != nil {
 		metricError = metricWatchCleanup()
 	}
-	if health != nil {
+	if health := session.healthWatch; health != nil {
 		healthError = health.Close()
 	}
 	return errors.Join(metricError, healthError)

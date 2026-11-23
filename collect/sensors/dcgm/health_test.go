@@ -25,14 +25,9 @@ import (
 type fakeHealthSource struct {
 	metricWatchError error
 	healthWatchError error
-	*fakeInventorySource
-	healthFailure       *observation.CollectionError
-	report              *observation.DCGMHealthReport
-	calls               []string
+	fakeCollectionSource
 	metricWatch         []string
-	metricRequests      [][]string
 	healthWatch         uint64
-	healthReads         int
 	metricRegistrations int
 	healthRegistrations int
 }
@@ -56,46 +51,14 @@ func (source *fakeHealthSource) AddHealthToWatch(systems uint64) error {
 	return nil
 }
 
-func (source *fakeHealthSource) GPUIndices(ctx context.Context, cycle *collect.Cycle) ([]uint, *observation.CollectionError) {
-	source.calls = append(source.calls, "indices")
-	return source.fakeInventorySource.GPUIndices(ctx, cycle)
-}
-
-func (source *fakeHealthSource) GPUUUIDs(ctx context.Context, cycle *collect.Cycle, indices []uint) []dcgmsource.GPUIdentityEntry {
-	source.calls = append(source.calls, "uuid")
-	return source.fakeInventorySource.GPUUUIDs(ctx, cycle, indices)
-}
-
-func (source *fakeHealthSource) ReadGPUMetrics(ctx context.Context, cycle *collect.Cycle, gpu uint, ids []string) map[string]dcgmsource.FieldValue {
-	source.calls = append(source.calls, "metrics")
-	source.metricRequests = append(source.metricRequests, slices.Clone(ids))
-	return source.fakeInventorySource.ReadGPUMetrics(ctx, cycle, gpu, ids)
-}
-
-func (source *fakeHealthSource) ReadHealth(context.Context, *collect.Cycle) (*observation.DCGMHealthReport, *observation.CollectionError) {
-	source.calls = append(source.calls, "health")
-	source.healthReads++
-	if source.healthFailure != nil {
-		return nil, source.healthFailure
-	}
-	return source.report, nil
-}
-
-func (source *fakeHealthSource) GPUInventory(ctx context.Context, cycle *collect.Cycle, identities []dcgmsource.GPUIdentityEntry) *observation.GPUInventorySnapshot {
-	source.calls = append(source.calls, "inventory")
-	return source.fakeInventorySource.GPUInventory(ctx, cycle, identities)
-}
-
 func newFakeHealthSource() *fakeHealthSource {
-	return &fakeHealthSource{
-		fakeInventorySource: &fakeInventorySource{
-			identities: []dcgmsource.GPUIdentityEntry{{Index: 7, UUID: "GPU-7"}},
-			snapshot: &observation.GPUInventorySnapshot{
-				Source:  dcgmsource.Name,
-				Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: &observation.GPUInventory{}},
-			},
+	return &fakeHealthSource{fakeCollectionSource: fakeCollectionSource{result: dcgmsource.CollectionResult{
+		GPUs: []dcgmsource.CollectedGPU{sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 7, UUID: "GPU-7"})},
+		Inventory: &observation.GPUInventorySnapshot{
+			Source:  dcgmsource.Name,
+			Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: &observation.GPUInventory{}},
 		},
-		report: &observation.DCGMHealthReport{
+		HealthReport: &observation.DCGMHealthReport{
 			GroupId:          proto.Uint64(40),
 			RequestedSystems: dcgmhealth.KnownSystems,
 			Entities: []*observation.ObservationTarget{
@@ -110,7 +73,7 @@ func newFakeHealthSource() *fakeHealthSource {
 			MonitoredSince:           timestamppb.New(time.Unix(100, 0)),
 			CollectionId:             "native-collection-1",
 		},
-	}
+	}}}
 }
 
 func rawHealthTarget(kind, id uint32) *observation.ObservationTarget {
@@ -232,27 +195,31 @@ func TestDisabledHealthDoesNotRegisterOrRead(t *testing.T) {
 					wantHealthRegistrations = 1
 				}
 				source.healthWatchError = errors.New("disabled health must not register")
-				source.report = nil
-				source.healthFailure = &observation.CollectionError{Category: observation.CollectionErrorCategorySourceError}
+				source.result.HealthReport = nil
+				source.result.HealthError = &observation.CollectionError{Category: observation.CollectionErrorCategorySourceError}
 				disabled, err := newHealthSensor(source, 0, metrics)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if disabled.(*sensor).health != nil || !slices.Equal(disabled.Signals().IDs(), metrics) || source.healthRegistrations != wantHealthRegistrations {
+				if !slices.Equal(disabled.Signals().IDs(), metrics) || source.healthRegistrations != wantHealthRegistrations {
 					t.Fatalf("disabled configuration: signals=%v health registrations=%d", disabled.Signals().IDs(), source.healthRegistrations)
 				}
 				batch := measureHealthSensor(t, disabled)
-				if len(batch.Observations) != len(metrics) || source.healthReads != 0 || source.metricReads != len(metrics) || source.enumerationReads != len(metrics) {
-					t.Fatalf("disabled collection: observations=%v reads=%v", batch.Observations, source.calls)
+				if len(batch.Observations) != len(metrics) {
+					t.Fatalf("disabled collection: observations=%v", batch.Observations)
 				}
-				if len(metrics) > 0 && batch.Observations[0].GetValue().GetDoubleValue() != 100 {
-					t.Fatalf("disabled health suppressed explicit metrics: %v", batch)
+				var requests []dcgmsource.CollectionRequest
+				if len(metrics) > 0 {
+					requests = append(requests, dcgmsource.CollectionRequest{Metrics: metrics})
+					if batch.Observations[0].GetValue().GetDoubleValue() != 100 {
+						t.Fatalf("disabled health suppressed explicit metrics: %v", batch)
+					}
 				}
-				enumerationReads := source.enumerationReads
 				batch = measureHealthSensor(t, disabled, collect.WithSignalID(), collect.WithGPUInventory())
-				if len(batch.Observations) != 0 || len(batch.GetInventory().GetGpuSnapshots()) != 1 || source.inventoryReads != 1 || source.enumerationReads != enumerationReads+1 || source.metricReads != len(metrics) || source.healthReads != 0 {
-					t.Fatalf("inventory-only collection: batch=%v reads=%v", batch, source.calls)
+				if len(batch.Observations) != 0 || len(batch.GetInventory().GetGpuSnapshots()) != 1 {
+					t.Fatalf("inventory-only collection: %v", batch)
 				}
+				source.assertRequests(t, append(requests, dcgmsource.CollectionRequest{Inventory: true})...)
 			})
 		}
 	}
@@ -349,18 +316,13 @@ func TestNewWithHealthSourceModesAndMasks(t *testing.T) {
 	}
 }
 
-func TestMeasureHealthOnceBetweenMetricsAndInventory(t *testing.T) {
+func TestMeasureRequestsMetricsHealthAndInventoryTogether(t *testing.T) {
 	source := newFakeHealthSource()
 	sensor := configuredHealthSensor(t, source, gpusignals.PowerDraw.ID(), gpusignals.PowerDraw.ID())
 	batch := measureHealthSensor(t, sensor, collect.WithGPUInventory())
-	if !slices.Equal(source.calls, []string{"indices", "uuid", "metrics", "health", "inventory"}) {
-		t.Fatalf("collection order = %v", source.calls)
-	}
-	if source.healthReads != 1 || source.enumerationReads != 1 || len(batch.Observations) != 2 {
-		t.Fatalf("reads health=%d identities=%d observations=%d", source.healthReads, source.enumerationReads, len(batch.Observations))
-	}
-	if !slices.Equal(source.metricRequests[0], []string{gpusignals.PowerDraw.ID()}) {
-		t.Fatalf("metric request = %v", source.metricRequests)
+	source.assertRequests(t, dcgmsource.CollectionRequest{Metrics: []string{gpusignals.PowerDraw.ID()}, Health: true, Inventory: true})
+	if len(batch.Observations) != 2 || len(batch.GetInventory().GetGpuSnapshots()) != 1 {
+		t.Fatalf("metrics, health, and inventory collection: %v", batch)
 	}
 	if batch.Observations[0].GetValue().GetDoubleValue() != 100 || batch.Observations[0].GetSignalId() != gpusignals.PowerDraw.ID() {
 		t.Fatalf("metric result = %v", batch.Observations[0])
@@ -369,7 +331,7 @@ func TestMeasureHealthOnceBetweenMetricsAndInventory(t *testing.T) {
 	if _, ok := current.GetTarget().GetKind().(*observation.ObservationTarget_Node); !ok {
 		t.Fatalf("health target = %v", current.GetTarget())
 	}
-	if current.GetSignalId() != dcgmhealth.Report.ID() || current.Unit != nil || !proto.Equal(current.GetValue().GetDcgmHealthReport(), source.report) {
+	if current.GetSignalId() != dcgmhealth.Report.ID() || current.Unit != nil || !proto.Equal(current.GetValue().GetDcgmHealthReport(), source.result.HealthReport) {
 		t.Fatalf("aggregate result = %v", current)
 	}
 }
@@ -394,16 +356,16 @@ func TestMeasureHealthPerCallSelectionDoesNotChangeWatches(t *testing.T) {
 	source := newFakeHealthSource()
 	sensor := configuredHealthSensor(t, source, gpusignals.PowerDraw.ID())
 	batch := measureHealthSensor(t, sensor, collect.WithSignalID(dcgmhealth.Report.ID()))
-	if len(batch.Observations) != 1 || source.healthReads != 1 || source.enumerationReads != 0 || source.metricReads != 0 {
-		t.Fatalf("health-only reads=%v observations=%v", source.calls, batch.Observations)
+	if len(batch.Observations) != 1 || batch.Observations[0].GetSignalId() != dcgmhealth.Report.ID() {
+		t.Fatalf("health-only observations: %v", batch.Observations)
 	}
 	batch = measureHealthSensor(t, sensor, collect.WithSignalID(gpusignals.PowerDraw.ID()))
-	if len(batch.Observations) != 1 || source.healthReads != 1 || source.metricReads != 1 {
-		t.Fatalf("metric-only reads=%v observations=%v", source.calls, batch.Observations)
+	if len(batch.Observations) != 1 || batch.Observations[0].GetSignalId() != gpusignals.PowerDraw.ID() {
+		t.Fatalf("metric-only observations: %v", batch.Observations)
 	}
 	batch = measureHealthSensor(t, sensor, collect.WithSignalID())
-	if len(batch.Observations) != 0 || source.healthReads != 1 {
-		t.Fatalf("empty selection reads=%v observations=%v", source.calls, batch.Observations)
+	if len(batch.Observations) != 0 {
+		t.Fatalf("empty selection observations: %v", batch.Observations)
 	}
 	if source.metricRegistrations != 1 || source.healthRegistrations != 1 || source.healthWatch != dcgmhealth.KnownSystems {
 		t.Fatal("per-call selection changed registered watches")
@@ -413,14 +375,15 @@ func TestMeasureHealthPerCallSelectionDoesNotChangeWatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = sensor.Measure(context.Background(), collect.WithCycle(cycle), collect.WithSignalID("dcgm.health.memory"))
-	if err == nil || source.healthReads != 1 || source.metricReads != 1 {
-		t.Fatalf("per-area selection error=%v calls=%v", err, source.calls)
+	if err == nil {
+		t.Fatal("per-area selection unexpectedly succeeded")
 	}
+	source.assertRequests(t, dcgmsource.CollectionRequest{Health: true}, dcgmsource.CollectionRequest{Metrics: []string{gpusignals.PowerDraw.ID()}})
 }
 
 func TestAggregateHealthPreservesAllNativeFindingsAndOwnsClones(t *testing.T) {
 	source := newFakeHealthSource()
-	raw := source.report
+	raw := source.result.HealthReport
 	raw.NativeGroupOverallHealth = observation.DCGMHealthResult(-91).Enum()
 	raw.SystemsWithoutTargets = dcgmhealth.NVSwitchSystems
 	raw.Entities = append(raw.Entities, rawHealthTarget(77, 0xffffffff))
@@ -470,22 +433,22 @@ func TestAggregateHealthAvailabilityOutcomes(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			source := newFakeHealthSource()
-			source.report.RequestedSystems = test.requested
-			source.report.SystemsWithoutTargets = test.missing
-			source.report.MonitoredSince = timestamppb.New(time.Unix(200, 0))
+			source.result.HealthReport.RequestedSystems = test.requested
+			source.result.HealthReport.SystemsWithoutTargets = test.missing
+			source.result.HealthReport.MonitoredSince = timestamppb.New(time.Unix(200, 0))
 			if test.incident {
-				source.report.Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), Entity: source.report.Entities[0]}}
+				source.result.HealthReport.Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), Entity: source.result.HealthReport.Entities[0]}}
 			}
 			batch := measureHealthSensor(t, configuredHealthSensor(t, source))
-			if source.healthReads != 1 || len(batch.Observations) != 1 {
-				t.Fatalf("first read produced %d observations after %d source reads", len(batch.Observations), source.healthReads)
+			if len(batch.Observations) != 1 {
+				t.Fatalf("health collection observations: %v", batch.Observations)
 			}
 			current := batch.Observations[0]
 			if test.wantNoValue != observation.NoValueReasonUnspecified {
 				if current.GetValue() != nil || current.GetNoValue().GetReason() != test.wantNoValue || current.GetTarget() != nil {
 					t.Fatalf("availability observation = %v", current)
 				}
-			} else if report := current.GetValue().GetDcgmHealthReport(); !proto.Equal(report, source.report) {
+			} else if report := current.GetValue().GetDcgmHealthReport(); !proto.Equal(report, source.result.HealthReport) {
 				t.Fatalf("usable aggregate facts changed or synthetic incidents appeared: %v", current)
 			} else if _, ok := current.GetTarget().GetKind().(*observation.ObservationTarget_Node); !ok {
 				t.Fatalf("usable health report lost its node target: %v", current)
@@ -496,56 +459,50 @@ func TestAggregateHealthAvailabilityOutcomes(t *testing.T) {
 
 func TestHealthAPIErrorPreservesMetricObservations(t *testing.T) {
 	source := newFakeHealthSource()
-	source.healthFailure = &observation.CollectionError{
+	source.result.HealthError = &observation.CollectionError{
 		Operation: "health setup", Category: observation.CollectionErrorCategoryUnavailable, Detail: "native API failed", SourceError: "-3",
 	}
 	batch := measureHealthSensor(t, configuredHealthSensor(t, source, gpusignals.PowerDraw.ID()))
-	if batch.Observations[0].GetValue().GetDoubleValue() != 100 || batch.Observations[0].GetTarget().GetGpu().GetUuid() != "GPU-7" || len(batch.Observations) != 2 || source.healthReads != 1 {
+	if len(batch.Observations) != 2 || batch.Observations[0].GetValue().GetDoubleValue() != 100 || batch.Observations[0].GetTarget().GetGpu().GetUuid() != "GPU-7" {
 		t.Fatalf("partial metric batch = %v", batch)
 	}
-	expected := proto.Clone(source.healthFailure).(*observation.CollectionError)
+	expected := proto.Clone(source.result.HealthError).(*observation.CollectionError)
 	expected.Source = dcgmsource.Name
 	current := batch.Observations[1]
 	if current.GetValue() != nil || !proto.Equal(current.GetCollectionError(), expected) {
 		t.Fatalf("health API failure became hardware findings: %v", current)
 	}
 	current.GetCollectionError().Detail = "changed"
-	if source.healthFailure.GetDetail() != "native API failed" {
+	if source.result.HealthError.GetDetail() != "native API failed" {
 		t.Fatal("health failure observation shares a mutable source error")
 	}
 }
 
-func TestHealthReadSurvivesGPUIdentityFailure(t *testing.T) {
-	source := newFakeHealthSource()
-	source.enumerationFailure = &observation.CollectionError{Operation: "identity", Category: observation.CollectionErrorCategoryUnavailable, Detail: "GPU enumeration failed"}
-	batch := measureHealthSensor(t, configuredHealthSensor(t, source, gpusignals.PowerDraw.ID()), collect.WithGPUInventory())
-	if source.healthReads != 1 || source.metricReads != 0 || source.inventoryReads != 0 || !slices.Equal(source.calls, []string{"indices", "health"}) {
-		t.Fatalf("identity failure calls = %v", source.calls)
-	}
-	if len(batch.Observations) != 2 || batch.Observations[0].GetCollectionError() == nil || batch.Observations[1].GetValue().GetDcgmHealthReport() == nil || batch.Inventory.GpuSnapshots[0].GetCollectionError() == nil {
-		t.Fatalf("identity failure suppressed separate health result: %v", batch)
-	}
-}
-
-func TestHealthReadPrecedesOptionalInventoryDiscovery(t *testing.T) {
-	source := newFakeHealthSource()
-	source.enumerationFailure = &observation.CollectionError{
-		Operation: "identity", Category: observation.CollectionErrorCategoryUnavailable, Detail: "GPU enumeration failed",
-	}
-	batch := measureHealthSensor(t, configuredHealthSensor(t, source), collect.WithGPUInventory())
-	if !slices.Equal(source.calls, []string{"health", "indices"}) {
-		t.Fatalf("optional inventory discovery preceded health: %v", source.calls)
-	}
-	if len(batch.Observations) != 1 || batch.Observations[0].GetValue().GetDcgmHealthReport() == nil ||
-		batch.GetInventory().GetGpuSnapshots()[0].GetCollectionError() == nil {
-		t.Fatalf("optional inventory failure suppressed health: %v", batch)
+func TestMeasurePreservesHealthAlongsideGPUDiscoveryFailure(t *testing.T) {
+	for _, metrics := range [][]string{nil, {gpusignals.PowerDraw.ID()}} {
+		source := newFakeHealthSource()
+		failure := &observation.CollectionError{
+			Source: dcgmsource.Name, Operation: "identity", Category: observation.CollectionErrorCategoryUnavailable, Detail: "GPU enumeration failed",
+		}
+		source.result.DiscoveryError = failure
+		source.result.GPUs = nil
+		source.result.Inventory.Outcome = &observation.GPUInventorySnapshot_CollectionError{CollectionError: failure}
+		batch := measureHealthSensor(t, configuredHealthSensor(t, source, metrics...), collect.WithGPUInventory())
+		if len(batch.Observations) != len(metrics)+1 || batch.Observations[len(metrics)].GetValue().GetDcgmHealthReport() == nil ||
+			batch.GetInventory().GetGpuSnapshots()[0].GetCollectionError() == nil {
+			t.Fatalf("GPU discovery failure suppressed health: %v", batch)
+		}
+		if len(metrics) > 0 && batch.Observations[0].GetCollectionError() == nil {
+			t.Fatalf("missing metric discovery error: %v", batch)
+		}
+		source.assertRequests(t, dcgmsource.CollectionRequest{Metrics: metrics, Health: true, Inventory: true})
 	}
 }
 
 func TestHealthSourceFailureAndEmptyReport(t *testing.T) {
 	source := newFakeHealthSource()
-	source.report = nil
-	source.healthFailure = &observation.CollectionError{
+	source.result.HealthReport = nil
+	source.result.HealthError = &observation.CollectionError{
 		Category: observation.CollectionErrorCategorySourceError,
 		Detail:   "DCGM health check returned no report",
 	}
@@ -553,8 +510,8 @@ func TestHealthSourceFailureAndEmptyReport(t *testing.T) {
 	if len(batch.Observations) != 1 || batch.Observations[0].GetCollectionError().GetCategory() != observation.CollectionErrorCategorySourceError {
 		t.Fatalf("missing report = %v", batch)
 	}
-	source.report = &observation.DCGMHealthReport{}
-	source.healthFailure = nil
+	source.result.HealthReport = &observation.DCGMHealthReport{}
+	source.result.HealthError = nil
 	batch = measureHealthSensor(t, configuredHealthSensor(t, source))
 	if len(batch.Observations) != 1 || batch.Observations[0].GetValue().GetDcgmHealthReport() == nil || batch.Observations[0].GetCollectionError() != nil {
 		t.Fatalf("empty report must remain a value: %v", batch)

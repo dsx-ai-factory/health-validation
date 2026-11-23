@@ -294,7 +294,7 @@ func TestNativeWatchPolicyUnsupportedOverrideFailsBeforeWatch(t *testing.T) {
 	}
 	values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "unsupported-policy"), 0, []string{signalPowerDraw})
 	failure := values[signalPowerDraw].CollectionError
-	if failure == nil || !strings.Contains(failure.Detail, "unsupported.signal") || initCalls != 1 || !source.ready || source.closed.Load() {
+	if failure == nil || !strings.Contains(failure.Detail, "unsupported.signal") || initCalls != 1 || source.session == nil || source.closed.Load() {
 		t.Fatalf("unsupported override failure = %v, Init calls = %d", failure, initCalls)
 	}
 }
@@ -318,7 +318,7 @@ func TestNativeWatchPolicyUnsupportedSignalFailsBeforeWatch(t *testing.T) {
 	}
 	values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "unsupported-signal"), 0, []string{"unsupported.signal"})
 	failure := values["unsupported.signal"].CollectionError
-	if failure == nil || failure.Category != observation.CollectionErrorCategoryUnsupported || !strings.Contains(failure.Detail, "unsupported.signal") || initCalls != 1 || !source.ready || source.closed.Load() {
+	if failure == nil || failure.Category != observation.CollectionErrorCategoryUnsupported || !strings.Contains(failure.Detail, "unsupported.signal") || initCalls != 1 || source.session == nil || source.closed.Load() {
 		t.Fatalf("unsupported signal failure = %v, Init calls = %d", failure, initCalls)
 	}
 }

@@ -18,6 +18,11 @@
 // collection cycle for each read. Native initialization and watch setup are
 // lazy. Per-call signal selection filters output without reconfiguring watches.
 // Close the Source when collection is finished.
+// Measure passes the selected metric IDs, health, and inventory to one Source
+// collection. Those paths remain independently selectable and share one client
+// session for the measurement. Concurrent measurements may interleave native
+// operations, but an existing measurement cannot follow a recovered session.
+// Results completed before a session failure remain in its batch.
 //
 // When health is selected, Measure makes one health read. Consumers needing
 // the same findings can share the returned batch.
@@ -51,8 +56,8 @@
 //
 // # Implementation
 //
-// sensor.go defines the shared sensor, New, and the Measure flow, including
-// metric observations and optional inventory. health.go adds NewWithHealth and
-// health-report handling to that sensor. signals.go holds supported metric
+// sensor.go defines the shared sensor, New, and formatting of the Source's
+// composed collection result. health.go adds NewWithHealth and health-report
+// formatting to that sensor. signals.go holds supported metric
 // definitions and the metric resolver shared by both constructors.
 package dcgm

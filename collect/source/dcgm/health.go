@@ -10,7 +10,6 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/collect/signals/dcgmhealth"
 )
@@ -42,14 +41,19 @@ func (source *Source) AddHealthToWatch(systems uint64) error {
 	return nil
 }
 
-// ReadHealth performs a fresh health read with lazy setup and optional GPU identity
-// enrichment. Sensors call it once when health is selected for Measure.
-// Success returns a nonnil report whose CollectionId is the cycle's collection ID.
-// Successful reports with no incidents are returned immediately.
-// No registered systems returns NotConfigured without native setup.
-// Runtime setup failures retry on a later read, retaining unfinished cleanup.
-// Connection loss requires a fresh session in a later collection cycle.
-func (source *Source) ReadHealth(ctx context.Context, currentCycle *collect.Cycle) (*observation.DCGMHealthReport, *observation.CollectionError) {
+// readHealth keeps the native report if optional identity lookup fails.
+func (reader *collectionReader) readHealth(ctx context.Context) (*observation.DCGMHealthReport, *observation.CollectionError) {
+	report, failure := reader.readHealthReport(ctx)
+	if failure != nil {
+		return nil, failure
+	}
+	reader.enrichHealthIdentities(ctx, report)
+	return report, nil
+}
+
+// readHealthReport clones the watch's report before releasing the native gate.
+func (reader *collectionReader) readHealthReport(ctx context.Context) (*observation.DCGMHealthReport, *observation.CollectionError) {
+	source := reader.source
 	source.watchRegistrationFrozen.Store(true)
 	if source.healthSystems == 0 {
 		return nil, &observation.CollectionError{
@@ -58,8 +62,8 @@ func (source *Source) ReadHealth(ctx context.Context, currentCycle *collect.Cycl
 			Detail:   "no DCGM health systems are registered",
 		}
 	}
-	report, err := runNative(ctx, currentCycle, source, func(callContext context.Context) (*observation.DCGMHealthReport, error) {
-		if err := source.ensureHealthWatch(); err != nil {
+	report, err := runNative(ctx, reader, func(callContext context.Context, session *clientSession) (*observation.DCGMHealthReport, error) {
+		if err := source.ensureHealthWatch(session); err != nil {
 			return nil, err
 		}
 		if source.closed.Load() {
@@ -69,7 +73,7 @@ func (source *Source) ReadHealth(ctx context.Context, currentCycle *collect.Cycl
 			return nil, err
 		}
 
-		report, err := source.healthWatch.Read()
+		report, err := session.healthWatch.Read()
 		if err != nil {
 			return nil, err
 		}
@@ -81,9 +85,9 @@ func (source *Source) ReadHealth(ctx context.Context, currentCycle *collect.Cycl
 		}
 		report = proto.Clone(report).(*observation.DCGMHealthReport)
 		report.RequestedSystems = source.healthSystems
-		report.CollectionId = currentCycle.CollectionID()
+		report.CollectionId = reader.cycle.CollectionID()
 		for _, failure := range report.SystemErrors {
-			source.recordFieldFailure(currentCycle, failure)
+			session.recordFieldFailure(reader.cycle, failure)
 		}
 		return report, nil
 	})
@@ -93,13 +97,12 @@ func (source *Source) ReadHealth(ctx context.Context, currentCycle *collect.Cycl
 		failure.Operation = "health"
 		return nil, &failure
 	}
-	source.enrichHealthIdentities(ctx, currentCycle, report)
 	return report, nil
 }
 
 // enrichHealthIdentities adds available UUIDs and PCI addresses without discarding the report on
 // lookup failure. Its separate native call uses the shared timeout gate.
-func (source *Source) enrichHealthIdentities(ctx context.Context, currentCycle *collect.Cycle, report *observation.DCGMHealthReport) {
+func (reader *collectionReader) enrichHealthIdentities(ctx context.Context, report *observation.DCGMHealthReport) {
 	entities := slices.Clone(report.Entities)
 	for _, incident := range report.Incidents {
 		entities = append(entities, incident.GetEntity())
@@ -116,7 +119,7 @@ func (source *Source) enrichHealthIdentities(ctx context.Context, currentCycle *
 	if len(gpuIDs) == 0 {
 		return
 	}
-	identities := source.GPUUUIDs(ctx, currentCycle, gpuIDs)
+	identities := reader.gpuUUIDs(ctx, gpuIDs)
 	byIndex := make(map[uint]GPUIdentityEntry, len(identities))
 	for _, identity := range identities {
 		byIndex[identity.Index] = identity
@@ -138,14 +141,14 @@ func (source *Source) enrichHealthIdentities(ctx context.Context, currentCycle *
 
 // ensureHealthWatch retains the native watch that owns setup and rollback state.
 // Failed construction owns no resources and may retry on the next read.
-func (source *Source) ensureHealthWatch() error {
+func (source *Source) ensureHealthWatch(session *clientSession) error {
 	if source.closed.Load() {
 		return errClosed
 	}
 	if source.healthConfigurationError != nil {
 		return source.healthConfigurationError
 	}
-	if source.healthWatch != nil {
+	if session.healthWatch != nil {
 		return nil
 	}
 	watch, err := source.native.WatchHealth(source.healthSystems)
@@ -155,6 +158,6 @@ func (source *Source) ensureHealthWatch() error {
 	if err != nil {
 		return err
 	}
-	source.healthWatch = watch
+	session.healthWatch = watch
 	return nil
 }

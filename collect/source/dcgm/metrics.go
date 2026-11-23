@@ -27,12 +27,19 @@ type FieldValue struct {
 // can emit every available observation from the GPU.
 // A native watch-setup failure disables metrics and closes a metric-only source, except
 // for confirmed connection loss, which permits recovery in a later cycle.
+// Use Collect to keep the GPU's identity and metrics on the same session.
 func (source *Source) ReadGPUMetrics(
 	ctx context.Context,
 	currentCycle *collect.Cycle,
 	gpuIndex uint,
 	signalIDs []string,
 ) map[string]FieldValue {
+	return source.newCollectionReader(currentCycle).readGPUMetrics(ctx, gpuIndex, signalIDs)
+}
+
+// readGPUMetrics preserves available fields alongside collection errors.
+func (reader *collectionReader) readGPUMetrics(ctx context.Context, gpuIndex uint, signalIDs []string) map[string]FieldValue {
+	source := reader.source
 	// The first read fixes the field watch. Report signals outside that watch
 	// individually instead of preventing collection of registered signals.
 	source.watchRegistrationFrozen.Store(true)
@@ -54,8 +61,8 @@ func (source *Source) ReadGPUMetrics(
 		return values
 	}
 
-	collected, err := runNative(ctx, currentCycle, source, func(callContext context.Context) (map[string]FieldValue, error) {
-		if err := source.ensureMetricWatch(); err != nil {
+	collected, err := runNative(ctx, reader, func(callContext context.Context, session *clientSession) (map[string]FieldValue, error) {
+		if err := source.ensureMetricWatch(session); err != nil {
 			return nil, err
 		}
 		if source.closed.Load() {
@@ -67,7 +74,7 @@ func (source *Source) ReadGPUMetrics(
 
 		fields, readErr := source.native.ReadGPUMetrics(gpuIndex, watched)
 		for _, field := range fields {
-			source.recordFieldFailure(currentCycle, field.CollectionError)
+			session.recordFieldFailure(reader.cycle, field.CollectionError)
 		}
 		return fields, readErr
 	})

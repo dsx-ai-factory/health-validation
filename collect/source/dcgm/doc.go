@@ -11,15 +11,28 @@
 // reads leave registration open. Then read repeatedly and Close when finished.
 // Native initialization and watches remain lazy. Health and metric setup have
 // independent failure state within the same client lifetime; native calls,
-// timeouts, and connection failures remain shared.
+// timeouts, and connection failures remain shared. WatchPolicy errors detected
+// at construction affect the whole Source, including health registration.
 // Metric field groups are prepared only when metrics are read. Field-mapping
-// errors leave inventory and health collection available.
+// errors found during that setup leave inventory and health available.
+//
+// Collect independently selects metrics, health, and inventory and returns their
+// raw results and partial errors. Selecting nothing performs no native work.
+// A collection binds to the current client session on its first native operation.
+// Many collections reuse that session and may interleave their native operations.
+// Each later operation checks the same session under the native-call gate;
+// a failed or replaced session cannot supply more data to that collection.
+// Completed results remain available. Optional health identity enrichment may
+// fail without discarding the native report. Sensors format the composed result
+// into observations rather than orchestrating separate Source reads.
+//
 // Requested health systems may have no targets when hardware is discovered;
 // reports list those systems separately in SystemsWithoutTargets.
 //
-// A failed client initialization is shared by subsequent DCGM calls in the
-// same cycle. The next cycle may try initialization again without closing the
-// Source or changing its registrations.
+// A failed initialization is shared with same-cycle Source calls until another
+// cycle attempts initialization. Collect retains its own admission error for
+// its entire request, including while an overlapping collection retries.
+// Retrying does not close the Source or change its registrations.
 //
 // Runtime health setup failures retry on the next read. Unfinished group cleanup
 // retains ownership and must succeed before replacement allocation. Discovery
@@ -28,20 +41,23 @@
 // Adding group members or enabling systems affects the shared health group;
 // failure rolls back the group and returns an error for that read.
 //
-// Confirmed connection loss returns an error in the failing collection and
-// replaces the client and both watches lazily in a later cycle. A timed-out
+// Confirmed connection loss invalidates the client session for every collection
+// already using it. A fresh collection in a later cycle may replace the client
+// and both watches; existing collections keep their original session. A timed-out
 // native call must finish before recovery can enter DCGM. Recovery requires
 // this Source to be the process's sole go-dcgm owner: another outstanding Init
 // reference keeps the wrapper's old shared connection alive.
 //
-// ReadHealth performs a fresh read on each call. When health is selected,
-// sensors call it once per measurement. Reports retain the collection ID.
+// Collect performs one fresh health read when selected. Reports retain the
+// collection ID.
 // PossiblyTruncated marks a report that reaches the native incident limit;
 // absent incidents cannot establish that omitted faults have cleared.
 //
-// GPUIndices and GPUUUIDs separate device discovery from optional identity
-// lookup. GPUUUIDs fetches UUIDs and PCI addresses together; either field can
-// succeed independently. GPUIdentities retains their combined convenience flow.
+// GPUIdentities combines discovery and identity lookup on one session. UUIDs and
+// PCI addresses are fetched together; either field can succeed independently.
+// The existing GPUInventory and ReadGPUMetrics methods are standalone reads;
+// supplied IDs and identities must belong to the current session. Use Collect
+// to join metrics, health, and inventory safely across concurrent recovery.
 // UUIDs identify GPUs across collections. PCI addresses describe their location
 // on this node and can help correlate hardware replacements. Native numeric IDs
 // are source-local and must not be treated as persistent hardware identities.
@@ -55,7 +71,7 @@
 // register the desired systems separately. Native systems can enforce different
 // effective settings. Requested retention does not establish complete history
 // for every health rule, including a memory rule that uses a
-// week-old baseline. ReadHealth returns successful native reports immediately.
+// week-old baseline. Collect returns successful native health reports immediately.
 // MonitoredSince records the group's first successful health setup. Systems
 // enabled later can have less history. Elapsed time does not establish native
 // coverage. Consumers choose any startup grace period.
@@ -72,4 +88,6 @@
 // Native health sampling may persist in an external hostengine, including
 // after the final client disconnects. Group ownership does not isolate health
 // watches from other groups using the same native connection.
+// If Close returns ErrInUse, retry after the native call finishes. Other cleanup
+// errors consume their resources and do not require another Close.
 package dcgm
