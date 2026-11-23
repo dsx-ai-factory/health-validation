@@ -359,7 +359,7 @@ Changes to behavior and APIs outside the
   `catalog.WithAllExperimentalChecks` and `catalog.WithExperimentalChecks`.
   `ib_port_state`, the only experimental check so far, is now off unless
   enabled. A check you register with `MaturityLevel: Experimental` is gated the
-  same way, so enable it to keep it running.
+  same way, so enable it to keep it running. ([#323](https://github.com/dsx-ai-factory/health-validation/pull/323))
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.
