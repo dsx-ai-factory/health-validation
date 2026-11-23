@@ -332,6 +332,7 @@ Changes to behavior and APIs outside the
   basis; native health sampling may persist in an external hostengine.
   Native health watches share field sampling with metric watches and can
   request faster updates than a slower metric interval policy.
+  ([#298](https://github.com/dsx-ai-factory/health-validation/pull/298))
 
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
