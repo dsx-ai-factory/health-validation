@@ -189,20 +189,19 @@ func buildLinkFlap(since string, scan linkFlapScan) (infiniband.LinkFlapMeasurem
 				if open == nil {
 					open = transition
 				}
-				continue
+			} else if open != nil {
+				// An up closes the open outage, if there is one; an up with
+				// none open records nothing.
+				seconds := int64(transition.at.Sub(open.at) / time.Second)
+				m.OutageDurations = append(m.OutageDurations, seconds)
+				m.FlapEvents = append(m.FlapEvents, infiniband.LinkFlapEvent{
+					Interface:       iface,
+					DownAt:          open.at.Format(linkFlapTimeLayout),
+					UpAt:            transition.at.Format(linkFlapTimeLayout),
+					DurationSeconds: seconds,
+				})
+				open = nil
 			}
-			if open == nil {
-				continue
-			}
-			seconds := int64(transition.at.Sub(open.at) / time.Second)
-			m.OutageDurations = append(m.OutageDurations, seconds)
-			m.FlapEvents = append(m.FlapEvents, infiniband.LinkFlapEvent{
-				Interface:       iface,
-				DownAt:          open.at.Format(linkFlapTimeLayout),
-				UpAt:            transition.at.Format(linkFlapTimeLayout),
-				DurationSeconds: seconds,
-			})
-			open = nil
 		}
 	}
 	return m, nil
