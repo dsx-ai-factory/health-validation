@@ -1,0 +1,51 @@
+name: Stale issues and pull requests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "21 4 * * *"
+
+permissions: {}
+
+concurrency:
+  group: stale-issues-and-pull-requests
+  cancel-in-progress: false
+
+jobs:
+  stale:
+    if: github.repository == 'dsx-ai-factory/health-validation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Mark and close inactive issues and pull requests
+        uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-issue-stale: 90
+          days-before-issue-close: 30
+          stale-issue-label: lifecycle/stale
+          exempt-issue-labels: lifecycle/frozen
+          stale-issue-message: >-
+            This issue has had no activity for 90 days and is now marked stale.
+            It will be closed after another 30 days without activity.
+            To keep it open, add a comment or apply the lifecycle/frozen label.
+          close-issue-message: >-
+            This issue was automatically closed after 30 additional days of
+            inactivity. If it is still relevant, please reopen it with an update.
+          remove-issue-stale-when-updated: true
+          days-before-pr-stale: 90
+          days-before-pr-close: 30
+          stale-pr-label: lifecycle/stale
+          exempt-pr-labels: lifecycle/frozen
+          stale-pr-message: >-
+            This pull request has had no activity for 90 days and is now marked stale.
+            It will be closed after another 30 days without activity.
+            To keep it open, add a comment or apply the lifecycle/frozen label.
+          close-pr-message: >-
+            This pull request was automatically closed after 30 additional days of
+            inactivity. If it is still relevant, please reopen it with an update.
+          remove-pr-stale-when-updated: true
+          operations-per-run: 1000
