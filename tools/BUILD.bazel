@@ -46,3 +46,13 @@ py_test(
     tags = ["local"],
     deps = ["@rules_python//python/runfiles"],
 )
+
+py_test(
+    name = "check_changelog_test",
+    size = "small",
+    srcs = [
+        "check_changelog.py",
+        "check_changelog_test.py",
+    ],
+    main = "check_changelog_test.py",
+)
