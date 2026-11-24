@@ -247,7 +247,6 @@ func TestPortState_SkipsOffArchitecture(t *testing.T) {
 	cat := catalog.New(
 		catalog.WithArchitecture("A100"),
 		catalog.WithExecutionContext(health.OperatorInfra),
-		catalog.WithExperimentalChecks("ib_port_state"),
 	)
 	v, err := cat.Evaluate("ib_port_state", port("DOWN", "Polling"))
 	if err != nil {

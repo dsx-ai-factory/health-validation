@@ -184,6 +184,16 @@ func TestExperimentalChecks_EnablingDoesNotOverrideOtherSkips(t *testing.T) {
 	}
 }
 
+// Applicability resolves before the experimental gate, so a check that is both
+// off by default and wrong for this node reports the wrong node.
+func TestExperimentalChecks_WrongNodeBeatsNotEnabled(t *testing.T) {
+	defs := []health.CheckDefinition{expFixture("experimental_elsewhere", health.Experimental, "another_arch")}
+	_, skipped := expOutcome(t, expCatalog(defs))
+	if got := skipped["experimental_elsewhere"].SkipReason; got != health.ArchitectureUnsupported {
+		t.Errorf("SkipReason = %v, want SIGNAL_UNAVAILABLE_ARCHITECTURE", got)
+	}
+}
+
 // The zero value is Stable, so a check that never mentions maturity runs
 // without being enabled.
 func TestExperimentalChecks_UnsetMaturityIsStable(t *testing.T) {
