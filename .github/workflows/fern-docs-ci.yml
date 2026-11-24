@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Validates Fern docs configuration on pull requests that touch docs or fern/.
+# Validates Fern docs configuration on pull requests. The job runs on every pull
+# request so its check can be required, and skips the validation steps when the
+# pull request does not touch docs or fern/.
 
 name: Fern Docs CI
 
@@ -23,13 +25,6 @@ on:
   push:
     branches:
       - "pull-request/[0-9]+"
-    paths:
-      - 'docs/**'
-      - 'fern/**'
-      - 'tools/check-docs-mdx'
-      - 'tools/check-docs-paths'
-      - 'tools/fern_docs_versions.py'
-      - '.github/workflows/fern-docs-ci.yml'
   workflow_dispatch: {}
 
 permissions:
@@ -45,9 +40,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
+      - name: Detect docs changes
+        id: changes
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]] ||
+             git diff --name-only origin/main...HEAD |
+               grep -qE '^(docs/|fern/|tools/check-docs-mdx$|tools/check-docs-paths$|tools/fern_docs_versions\.py$|\.github/workflows/fern-docs-ci\.yml$)'; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs=false" >> "$GITHUB_OUTPUT"
+            echo "No docs changes; skipping Fern validation."
+          fi
+
       - name: Check markdown filename conventions
+        if: steps.changes.outputs.docs == 'true'
         run: |
           BAD=$(find docs/ -name '*.md' | grep -E '[A-Z_]' || true)
           if [ -n "$BAD" ]; then
@@ -57,6 +66,7 @@ jobs:
           fi
 
       - name: Check docs paths stay inside docs
+        if: steps.changes.outputs.docs == 'true'
         # Fern reads any file a page names, and the publish and preview jobs run
         # it with FERN_TOKEN. fern/generators.yml points at collect/proto by design.
         run: >-
@@ -67,30 +77,37 @@ jobs:
           docs fern
 
       - name: Setup Node.js
+        if: steps.changes.outputs.docs == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
       - name: Install Fern CLI
+        if: steps.changes.outputs.docs == 'true'
         # Intentionally unpinned: Fern ships often with no LTS channel and the
         # NVIDIA global theme tracks the latest CLI, so a pin goes stale and
         # breaks more than it protects. Do not pin.
         run: npm install -g fern-api@latest
 
       - name: Check MDX safety
+        if: steps.changes.outputs.docs == 'true'
         # developer.md is GitHub-only and not in docs/index.yml.
         run: python3 tools/check-docs-mdx --exclude 'docs/developer.md' docs fern
 
       - name: Fern check
+        if: steps.changes.outputs.docs == 'true'
         run: fern check
 
       - name: Check MDX validity
+        if: steps.changes.outputs.docs == 'true'
         run: fern docs md check
 
       - name: Check broken links
+        if: steps.changes.outputs.docs == 'true'
         run: fern docs broken-links
 
       - name: Check versioned configuration
+        if: steps.changes.outputs.docs == 'true'
         # Publishing replaces the docs.yml version list with ref-backed release
         # versions. Write that list under a local placeholder tag so a docs.yml
         # change that breaks the rewrite, or a list Fern rejects, fails here
