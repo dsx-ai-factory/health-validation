@@ -50,11 +50,11 @@ func TestCollectSelectsOutputsIndependently(t *testing.T) {
 				t.Fatalf("collection produced unrequested outputs: %+v", result)
 			}
 			if len(request.Metrics) != 0 {
-				if len(result.GPUs) != 1 || result.GPUs[0].Identity.UUID != "GPU-0" || result.GPUs[0].Metrics[signalPowerDraw].Value.GetIntValue() != 1 {
+				if len(result.Metrics) != 1 || result.Metrics[0].Identity.UUID != "GPU-0" || result.Metrics[0].Fields[signalPowerDraw].Value.GetIntValue() != 1 {
 					t.Fatalf("metric result lost identity or value: %+v", result)
 				}
-			} else if len(result.GPUs) != 0 {
-				t.Fatalf("unrequested metrics produced GPU results: %+v", result.GPUs)
+			} else if len(result.Metrics) != 0 {
+				t.Fatalf("unrequested metrics produced GPU results: %+v", result.Metrics)
 			}
 			if request.Health && (result.HealthReport.GetCollectionId() != cycle.CollectionID() || len(result.HealthReport.GetIncidents()) != 1 ||
 				result.HealthReport.GetIncidents()[0].GetEntity().GetGpu().GetUuid() != "GPU-0") {
@@ -101,7 +101,7 @@ func TestCollectReusesSessionAndWatchesAcrossRequests(t *testing.T) {
 	request := CollectionRequest{Metrics: []string{signalPowerDraw}, Health: true, Inventory: true}
 	for round := range 3 {
 		result := source.Collect(context.Background(), newTestCycle(t, fmt.Sprintf("reuse-%d", round)), request)
-		if result.DiscoveryError != nil || result.HealthError != nil || len(result.GPUs) != 1 || result.GPUs[0].Metrics[signalPowerDraw].Value == nil ||
+		if result.DiscoveryError != nil || result.HealthError != nil || len(result.Metrics) != 1 || result.Metrics[0].Fields[signalPowerDraw].Value == nil ||
 			result.HealthReport == nil || len(result.Inventory.GetInventory().GetEntries()) != 1 {
 			t.Fatalf("request %d failed: %+v", round, result)
 		}
@@ -205,11 +205,11 @@ func TestCollectFeatureFailurePreservesOtherOutputs(t *testing.T) {
 			result := source.Collect(context.Background(), newTestCycle(t, failedFeature), CollectionRequest{
 				Metrics: []string{signalPowerDraw}, Health: true, Inventory: true,
 			})
-			if result.DiscoveryError != nil || len(result.GPUs) != 1 || len(result.Inventory.GetInventory().GetEntries()) != 1 ||
+			if result.DiscoveryError != nil || len(result.Metrics) != 1 || len(result.Inventory.GetInventory().GetEntries()) != 1 ||
 				result.Inventory.GetInventory().GetEntries()[0].GetCollectionError() != nil {
 				t.Fatalf("feature failure discarded discovery or inventory: %+v", result)
 			}
-			metric := result.GPUs[0].Metrics[signalPowerDraw]
+			metric := result.Metrics[0].Fields[signalPowerDraw]
 			if failedFeature == "metrics" {
 				if metric.CollectionError == nil || result.HealthError != nil || result.HealthReport == nil {
 					t.Fatalf("metric failure discarded health: %+v", result)
@@ -391,9 +391,9 @@ func TestCollectMetricTimeoutKeepsEarlierIdentityAndValue(t *testing.T) {
 		}
 		time.Sleep(timeout)
 		result := <-finished
-		if result.DiscoveryError != nil || len(result.GPUs) != 2 || result.GPUs[0].Identity.UUID != "GPU-0" ||
-			result.GPUs[0].Metrics[signalPowerDraw].Value.GetIntValue() != 1 || result.GPUs[0].Metrics[signalPowerDraw].CollectionError != nil ||
-			result.GPUs[1].Identity.UUID != "GPU-1" || result.GPUs[1].Metrics[signalPowerDraw].CollectionError.GetCategory() != observation.CollectionErrorCategoryTimeout {
+		if result.DiscoveryError != nil || len(result.Metrics) != 2 || result.Metrics[0].Identity.UUID != "GPU-0" ||
+			result.Metrics[0].Fields[signalPowerDraw].Value.GetIntValue() != 1 || result.Metrics[0].Fields[signalPowerDraw].CollectionError != nil ||
+			result.Metrics[1].Identity.UUID != "GPU-1" || result.Metrics[1].Fields[signalPowerDraw].CollectionError.GetCategory() != observation.CollectionErrorCategoryTimeout {
 			t.Fatalf("later timeout discarded earlier results: %+v", result)
 		}
 		if !slices.Equal(native.calls, []string{"discovery", "identity", "metrics 0", "metrics 1"}) {

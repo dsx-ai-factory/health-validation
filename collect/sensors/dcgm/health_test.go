@@ -53,7 +53,7 @@ func (source *fakeHealthSource) AddHealthToWatch(systems uint64) error {
 
 func newFakeHealthSource() *fakeHealthSource {
 	return &fakeHealthSource{fakeCollectionSource: fakeCollectionSource{result: dcgmsource.CollectionResult{
-		GPUs: []dcgmsource.CollectedGPU{sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 7, UUID: "GPU-7"})},
+		Metrics: []dcgmsource.GPUMetrics{sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 7, UUID: "GPU-7"})},
 		Inventory: &observation.GPUInventorySnapshot{
 			Source:  dcgmsource.Name,
 			Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: &observation.GPUInventory{}},
@@ -485,7 +485,7 @@ func TestMeasurePreservesHealthAlongsideGPUDiscoveryFailure(t *testing.T) {
 			Source: dcgmsource.Name, Operation: "identity", Category: observation.CollectionErrorCategoryUnavailable, Detail: "GPU enumeration failed",
 		}
 		source.result.DiscoveryError = failure
-		source.result.GPUs = nil
+		source.result.Metrics = nil
 		source.result.Inventory.Outcome = &observation.GPUInventorySnapshot_CollectionError{CollectionError: failure}
 		batch := measureHealthSensor(t, configuredHealthSensor(t, source, metrics...), collect.WithGPUInventory())
 		if len(batch.Observations) != len(metrics)+1 || batch.Observations[len(metrics)].GetValue().GetDcgmHealthReport() == nil ||

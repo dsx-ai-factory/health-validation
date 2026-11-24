@@ -39,10 +39,10 @@ func (source *fakeCollectionSource) assertRequests(t *testing.T, want ...dcgmsou
 	}
 }
 
-func sampleGPUMetrics(identity dcgmsource.GPUIdentityEntry) dcgmsource.CollectedGPU {
-	return dcgmsource.CollectedGPU{
+func sampleGPUMetrics(identity dcgmsource.GPUIdentityEntry) dcgmsource.GPUMetrics {
+	return dcgmsource.GPUMetrics{
 		Identity: identity,
-		Metrics: map[string]dcgmsource.FieldValue{
+		Fields: map[string]dcgmsource.FieldValue{
 			gpusignals.PowerDraw.ID(): {Value: &observation.Value{Kind: &observation.Value_DoubleValue{DoubleValue: 100}}},
 		},
 	}
@@ -99,7 +99,7 @@ func TestMeasureMetricsDoNotReturnInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := &fakeCollectionSource{result: dcgmsource.CollectionResult{
-		GPUs: []dcgmsource.CollectedGPU{sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 1, UUID: "GPU-1"})},
+		Metrics: []dcgmsource.GPUMetrics{sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 1, UUID: "GPU-1"})},
 	}}
 	sensor := &sensor{source: source, signals: supportedSignals}
 
@@ -123,7 +123,7 @@ func TestMeasureRequestsMetricsAndInventoryTogether(t *testing.T) {
 	}
 	gpuUUID := "GPU-1"
 	source := &fakeCollectionSource{result: dcgmsource.CollectionResult{
-		GPUs: []dcgmsource.CollectedGPU{sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 1, UUID: gpuUUID})},
+		Metrics: []dcgmsource.GPUMetrics{sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 1, UUID: gpuUUID})},
 		Inventory: &observation.GPUInventorySnapshot{
 			Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: &observation.GPUInventory{
 				Entries: []*observation.GPUInventoryEntry{{SourceIndex: 1, Gpu: &observation.GPUDevice{Uuid: &gpuUUID}}},
@@ -231,7 +231,7 @@ func TestMeasurePartialInventoryDoesNotBlockMetrics(t *testing.T) {
 			entry.FieldErrors = map[string]*observation.CollectionError{"serial": failure}
 		}
 		source := &fakeCollectionSource{result: dcgmsource.CollectionResult{
-			GPUs: []dcgmsource.CollectedGPU{
+			Metrics: []dcgmsource.GPUMetrics{
 				sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 1, UUID: gpuUUID}),
 				sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 2, UUIDError: failure}),
 			},
@@ -350,7 +350,7 @@ func TestMeasureNoGPUsPreservesEmptyInventory(t *testing.T) {
 func TestMeasureMetricsWithoutUUID(t *testing.T) {
 	failure := &observation.CollectionError{Operation: "identity", Category: observation.CollectionErrorCategoryUnavailable}
 	source := &fakeCollectionSource{result: dcgmsource.CollectionResult{
-		GPUs: []dcgmsource.CollectedGPU{sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 7, UUIDError: failure})},
+		Metrics: []dcgmsource.GPUMetrics{sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 7, UUIDError: failure})},
 	}}
 	cycle, err := collect.NewCycle("metrics-without-uuid", time.Now())
 	if err != nil {
@@ -381,16 +381,16 @@ func TestMeasureMetricsWithoutUUID(t *testing.T) {
 
 func TestMeasurePreservesMetricsAndTargetsAfterLaterFailure(t *testing.T) {
 	first := sampleGPUMetrics(dcgmsource.GPUIdentityEntry{Index: 0, UUID: "GPU-0"})
-	second := dcgmsource.CollectedGPU{
+	second := dcgmsource.GPUMetrics{
 		Identity: dcgmsource.GPUIdentityEntry{Index: 1, UUID: "GPU-1"},
-		Metrics: map[string]dcgmsource.FieldValue{
+		Fields: map[string]dcgmsource.FieldValue{
 			gpusignals.PowerDraw.ID(): {CollectionError: &observation.CollectionError{
 				Category: observation.CollectionErrorCategoryTimeout,
 				Detail:   "timed out reading GPU 1",
 			}},
 		},
 	}
-	source := &fakeCollectionSource{result: dcgmsource.CollectionResult{GPUs: []dcgmsource.CollectedGPU{first, second}}}
+	source := &fakeCollectionSource{result: dcgmsource.CollectionResult{Metrics: []dcgmsource.GPUMetrics{first, second}}}
 	cycle, err := collect.NewCycle("partial-metrics", time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -446,9 +446,9 @@ func TestMeasureIncompleteFirstSampleFailsClosed(t *testing.T) {
 	}
 	sampledAt := time.Unix(1_700_000_000, 0).UTC()
 	source := &fakeCollectionSource{result: dcgmsource.CollectionResult{
-		GPUs: []dcgmsource.CollectedGPU{{
+		Metrics: []dcgmsource.GPUMetrics{{
 			Identity: dcgmsource.GPUIdentityEntry{Index: 0, UUID: "GPU-0"},
-			Metrics: map[string]dcgmsource.FieldValue{
+			Fields: map[string]dcgmsource.FieldValue{
 				gpusignals.PowerDraw.ID():          {CollectionError: noTimestamp},
 				gpusignals.PowerLimitEnforced.ID(): {ObservedAt: sampledAt, Value: &observation.Value{Kind: &observation.Value_DoubleValue{DoubleValue: 700}}},
 			},

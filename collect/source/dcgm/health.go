@@ -41,7 +41,8 @@ func (source *Source) AddHealthToWatch(systems uint64) error {
 	return nil
 }
 
-// readHealth keeps the native report if optional identity lookup fails.
+// readHealth obtains findings before optional identity lookup so enrichment
+// failures cannot prevent or discard the native report.
 func (reader *collectionReader) readHealth(ctx context.Context) (*observation.DCGMHealthReport, *observation.CollectionError) {
 	report, failure := reader.readHealthReport(ctx)
 	if failure != nil {
@@ -100,8 +101,8 @@ func (reader *collectionReader) readHealthReport(ctx context.Context) (*observat
 	return report, nil
 }
 
-// enrichHealthIdentities adds available UUIDs and PCI addresses without discarding the report on
-// lookup failure. Its separate native call uses the shared timeout gate.
+// enrichHealthIdentities adds UUIDs and PCI addresses using the report's session.
+// Failed lookups leave native IDs and findings intact.
 func (reader *collectionReader) enrichHealthIdentities(ctx context.Context, report *observation.DCGMHealthReport) {
 	entities := slices.Clone(report.Entities)
 	for _, incident := range report.Incidents {
@@ -109,6 +110,8 @@ func (reader *collectionReader) enrichHealthIdentities(ctx context.Context, repo
 	}
 	var gpuIDs []uint
 	seen := make(map[uint32]bool)
+	// Members and incidents may reference the same GPU. Look up each DCGM GPU
+	// once, including GPUs mentioned only in incidents.
 	for _, entity := range entities {
 		native := entity.GetGpu().GetNative()
 		if native.GetSource() == Name && native.GetEntityKind() == gpuEntityKind && !seen[native.GetEntityId()] {

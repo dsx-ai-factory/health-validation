@@ -22,9 +22,9 @@ type configurableSource interface {
 }
 
 // NewWithHealth creates a sensor with optional passive DCGM health and metrics.
-// A nonzero systems mask includes dcgmhealth.Report automatically. A zero mask
-// disables health registration, output, and reads, even when another sensor has
-// registered health on the same source. Report IDs are not metric inputs.
+// A nonzero systems mask includes dcgmhealth.Report automatically.
+// A zero mask disables health collection for this sensor.
+// Report IDs are not metric inputs.
 //
 // metricSignalIDs selects only explicitly requested metrics. With no metric IDs,
 // a nonzero systems mask collects health only, while zero selects no outputs.
@@ -62,14 +62,14 @@ func newHealthSensor(source configurableSource, systems uint64, metricSignalIDs 
 			return nil, fmt.Errorf("configure DCGM health watch: %w", err)
 		}
 	}
-	result, err := newSensor(source, metrics)
+	sensor, err := newSensor(source, metrics)
 	if err != nil {
 		return nil, err
 	}
 	if systems != 0 {
-		result.signals = append(result.signals, dcgmhealth.Report)
+		sensor.signals = append(sensor.signals, dcgmhealth.Report)
 	}
-	return result, nil
+	return sensor, nil
 }
 
 // splitSignals separates metric definitions from selection of the aggregate report.

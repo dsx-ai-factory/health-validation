@@ -22,9 +22,9 @@ type CollectionRequest struct {
 	Inventory bool
 }
 
-// CollectedGPU pairs one GPU's identity with its requested metrics.
-type CollectedGPU struct {
-	Metrics  map[string]FieldValue
+// GPUMetrics pairs one GPU's identity with its requested metric fields.
+type GPUMetrics struct {
+	Fields   map[string]FieldValue
 	Identity GPUIdentityEntry
 }
 
@@ -38,15 +38,17 @@ type CollectionResult struct {
 	HealthReport *observation.DCGMHealthReport
 	// Inventory includes a failure snapshot when requested discovery fails.
 	Inventory *observation.GPUInventorySnapshot
-	// GPUs contains metric results in GPU discovery order.
-	GPUs []CollectedGPU
+	// Metrics contains per-GPU metric results in GPU discovery order.
+	Metrics []GPUMetrics
 }
 
+// collectionReader binds one collection round (Cycle) to a client session.
+// The native-call gate protects session and admissionError.
 type collectionReader struct {
-	source *Source
-	cycle  *collect.Cycle
-	// The source's native-call gate protects session and admissionError.
-	session        *clientSession
+	source  *Source
+	cycle   *collect.Cycle
+	session *clientSession
+	// admissionError retains failure to obtain this collection's initial session.
 	admissionError error
 }
 
@@ -62,11 +64,13 @@ func (source *Source) Collect(ctx context.Context, cycle *collect.Cycle, request
 	var result CollectionResult
 	var identities []GPUIdentityEntry
 	if len(request.Metrics) > 0 {
+		// Resolve identities first so a later metric timeout cannot strip labels
+		// from values already collected for other GPUs.
 		identities, result.DiscoveryError = reader.gpuIdentities(ctx)
 		for _, identity := range identities {
-			result.GPUs = append(result.GPUs, CollectedGPU{
+			result.Metrics = append(result.Metrics, GPUMetrics{
 				Identity: identity,
-				Metrics:  reader.readGPUMetrics(ctx, identity.Index, request.Metrics),
+				Fields:   reader.readGPUMetrics(ctx, identity.Index, request.Metrics),
 			})
 		}
 	}
@@ -76,7 +80,8 @@ func (source *Source) Collect(ctx context.Context, cycle *collect.Cycle, request
 	if !request.Inventory {
 		return result
 	}
-	// Inventory-only discovery follows any selected health read.
+	// Reuse metric discovery for inventory. Without metrics, discover after
+	// health so an inventory discovery failure cannot block the native report.
 	if len(request.Metrics) == 0 {
 		identities, result.DiscoveryError = reader.gpuIdentities(ctx)
 	}

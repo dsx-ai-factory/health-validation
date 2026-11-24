@@ -245,7 +245,7 @@ func TestNativeHealthStatusConversion(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			watch := &nativeHealthWatch{
-				owned: true, configured: true, systems: dcgmhealth.SystemMemory, configuredSystems: dcgmhealth.SystemMemory,
+				ownsGroup: true, configured: true, systems: dcgmhealth.SystemMemory, configuredSystems: dcgmhealth.SystemMemory,
 				ops: healthWatchOperations{
 					entities: func(godcgm.Field_Entity_Group) ([]uint, error) { return []uint{0}, nil },
 					info: func(godcgm.GroupHandle) (*godcgm.GroupInfo, error) {
@@ -484,7 +484,7 @@ func TestNativeHealthFailedRollbackRetainsGroupUntilDestructionSucceeds(t *testi
 				t.Fatalf("setup lost joined failures: report=%v err=%v", report, readErr)
 			}
 			native := watch.(*nativeHealthWatch)
-			if !native.owned || native.configured || !native.monitoredSince.IsZero() || fixture.count("destroy") != 1 {
+			if !native.ownsGroup || native.configured || !native.monitoredSince.IsZero() || fixture.count("destroy") != 1 {
 				t.Fatalf("failed rollback lost group ownership: watch=%+v calls=%v", native, fixture.calls)
 			}
 			previousCalls := len(fixture.calls)
@@ -497,7 +497,7 @@ func TestNativeHealthFailedRollbackRetainsGroupUntilDestructionSucceeds(t *testi
 			}
 			delete(fixture.failures, "destroy")
 			report, err := watch.Read()
-			if err != nil || report.GetGroupId() != 2 || !native.owned || !native.configured || fixture.count("destroy") != 3 || fixture.count("create") != 2 {
+			if err != nil || report.GetGroupId() != 2 || !native.ownsGroup || !native.configured || fixture.count("destroy") != 3 || fixture.count("create") != 2 {
 				t.Fatalf("pending rollback did not recover: report=%v err=%v calls=%v", report, err, fixture.calls)
 			}
 		})
@@ -726,7 +726,7 @@ func TestNativeHealthAllMembersRejectedFailsAndCleansGroup(t *testing.T) {
 	}
 	native := watch.(*nativeHealthWatch)
 	if fixture.count("add") != 2 || fixture.count("set") != 0 || fixture.count("check") != 0 || fixture.count("destroy") != 1 ||
-		native.owned || native.configured || !native.monitoredSince.IsZero() {
+		native.ownsGroup || native.configured || !native.monitoredSince.IsZero() {
 		t.Fatalf("empty rejected group retained configuration: watch=%+v calls=%v", native, fixture.calls)
 	}
 }
@@ -756,7 +756,7 @@ func TestNativeHealthMemberDisappearsBeforeFirstSetup(t *testing.T) {
 	}
 	native := watch.(*nativeHealthWatch)
 	if fixture.count("create") != 1 || fixture.count("add") != 1 || fixture.count("destroy") != 1 ||
-		fixture.count("set") != 0 || fixture.count("check") != 0 || native.owned || native.configured || !native.monitoredSince.IsZero() {
+		fixture.count("set") != 0 || fixture.count("check") != 0 || native.ownsGroup || native.configured || !native.monitoredSince.IsZero() {
 		t.Fatalf("empty initial group was configured or retained: watch=%+v calls=%v", native, fixture.calls)
 	}
 	recovered, err := watch.Read()
@@ -841,7 +841,7 @@ func TestNativeHealthMembershipVerificationFailureRollsBack(t *testing.T) {
 	if report, readErr := watch.Read(); report != nil || !errors.Is(readErr, failure) {
 		t.Fatalf("unverified membership returned findings: report=%v err=%v", report, readErr)
 	}
-	if fixture.count("destroy") != 1 || fixture.count("set") != 1 || fixture.count("check") != 1 || watch.(*nativeHealthWatch).owned {
+	if fixture.count("destroy") != 1 || fixture.count("set") != 1 || fixture.count("check") != 1 || watch.(*nativeHealthWatch).ownsGroup {
 		t.Fatalf("unverified new members retained configured group: %v", fixture.calls)
 	}
 	failVerification = false
@@ -865,7 +865,7 @@ func TestNativeHealthSetFailureAfterPartialAdditionRollsBack(t *testing.T) {
 	if report, readErr := watch.Read(); report != nil || !errors.Is(readErr, failure) {
 		t.Fatalf("failed configuration returned partial findings: report=%v err=%v", report, readErr)
 	}
-	if fixture.count("add") != 2 || fixture.count("set") != 1 || fixture.count("destroy") != 1 || fixture.count("check") != 0 || watch.(*nativeHealthWatch).owned {
+	if fixture.count("add") != 2 || fixture.count("set") != 1 || fixture.count("destroy") != 1 || fixture.count("check") != 0 || watch.(*nativeHealthWatch).ownsGroup {
 		t.Fatalf("failed configuration retained partially added group: %v", fixture.calls)
 	}
 }
@@ -923,8 +923,8 @@ func TestNativeHealthAlreadyAbsentRollbackGroupAllowsRetry(t *testing.T) {
 			if report, readErr := watch.Read(); report != nil || !errors.Is(readErr, failure) {
 				t.Fatalf("setup failure: report=%v err=%v", report, readErr)
 			}
-			if watch.(*nativeHealthWatch).owned != pending {
-				t.Fatalf("rollback ownership=%t, pending=%t", watch.(*nativeHealthWatch).owned, pending)
+			if watch.(*nativeHealthWatch).ownsGroup != pending {
+				t.Fatalf("rollback ownership=%t, pending=%t", watch.(*nativeHealthWatch).ownsGroup, pending)
 			}
 			delete(fixture.failures, "set")
 			fixture.failures["destroy"] = &godcgm.Error{Code: godcgm.DCGM_ST_NOT_CONFIGURED}
@@ -956,7 +956,7 @@ func TestNativeHealthCloseAcceptsAlreadyAbsentGroup(t *testing.T) {
 			t.Fatalf("already absent group failed cleanup: %v", err)
 		}
 	}
-	if watch.(*nativeHealthWatch).owned || fixture.count("destroy") != 1 {
+	if watch.(*nativeHealthWatch).ownsGroup || fixture.count("destroy") != 1 {
 		t.Fatalf("absent group retained ownership or repeated destruction: %v", fixture.calls)
 	}
 }
@@ -1091,7 +1091,7 @@ func TestNativeHealthMembershipRepairSetFailureRebuildsGroup(t *testing.T) {
 		if report, readErr := watch.Read(); report != nil || !errors.Is(readErr, failure) {
 			t.Fatalf("repair failure did not roll back: report=%v err=%v", report, readErr)
 		}
-		if fixture.count("destroy") != 1 || fixture.count("create") != 1 || fixture.count("check") != 1 || watch.(*nativeHealthWatch).owned {
+		if fixture.count("destroy") != 1 || fixture.count("create") != 1 || fixture.count("check") != 1 || watch.(*nativeHealthWatch).ownsGroup {
 			t.Fatalf("repair failure retained a readable group: %v", fixture.calls)
 		}
 		delete(fixture.failures, "set")
@@ -1253,7 +1253,7 @@ func TestNativeHealthAbsentEstablishedGroupRebuildsOnNextRead(t *testing.T) {
 			t.Fatalf("missing group returned findings: report=%v err=%v", report, readErr)
 		}
 		native := watch.(*nativeHealthWatch)
-		if native.owned || native.configured || !native.monitoredSince.IsZero() || fixture.count("create") != 1 || fixture.count("destroy") != 1 ||
+		if native.ownsGroup || native.configured || !native.monitoredSince.IsZero() || fixture.count("create") != 1 || fixture.count("destroy") != 1 ||
 			fixture.count("set") != 1 || fixture.count("check") != 1 {
 			t.Fatalf("confirmed absent group retained setup: watch=%+v calls=%v", native, fixture.calls)
 		}
@@ -1349,7 +1349,7 @@ func TestNativeHealthReconfigurationSetFailureRebuildsGroup(t *testing.T) {
 		if report, readErr := watch.Read(); report != nil || !errors.Is(readErr, failure) {
 			t.Fatalf("reconfiguration failure: report=%v err=%v", report, readErr)
 		}
-		if fixture.count("destroy") != 1 || fixture.count("create") != 1 || watch.(*nativeHealthWatch).owned {
+		if fixture.count("destroy") != 1 || fixture.count("create") != 1 || watch.(*nativeHealthWatch).ownsGroup {
 			t.Fatalf("failed reconfiguration retained a usable group: %v", fixture.calls)
 		}
 		delete(fixture.failures, "set")
@@ -1415,7 +1415,7 @@ func TestNativeHealthPreservesUnknownIncidentsAndEntityIDs(t *testing.T) {
 	var group godcgm.GroupHandle
 	group.SetHandle(42)
 	watch := &nativeHealthWatch{
-		group: group, systems: dcgmhealth.SystemMemory, owned: true, configured: true, configuredSystems: dcgmhealth.SystemMemory,
+		group: group, systems: dcgmhealth.SystemMemory, ownsGroup: true, configured: true, configuredSystems: dcgmhealth.SystemMemory,
 		ops: healthWatchOperations{
 			entities: func(godcgm.Field_Entity_Group) ([]uint, error) { return []uint{0}, nil },
 			info: func(godcgm.GroupHandle) (*godcgm.GroupInfo, error) {

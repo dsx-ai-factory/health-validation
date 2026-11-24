@@ -102,7 +102,7 @@ func (sensor *sensor) Measure(
 	})
 	startedAt := currentCycle.StartedAt()
 	if len(metrics) > 0 {
-		sensor.appendMetrics(batch, metrics, startedAt, result.GPUs, result.DiscoveryError)
+		sensor.appendMetrics(batch, metrics, startedAt, result.Metrics, result.DiscoveryError)
 	}
 	if health {
 		sensor.appendHealth(batch, startedAt, result.HealthReport, result.HealthError)
@@ -118,21 +118,21 @@ func (sensor *sensor) appendMetrics(
 	batch *observation.ObservationBatch,
 	metrics collect.Signals,
 	startedAt time.Time,
-	gpus []dcgmsource.CollectedGPU,
+	gpuMetrics []dcgmsource.GPUMetrics,
 	discoveryError *observation.CollectionError,
 ) {
 	if discoveryError != nil {
 		sensor.appendErrors(batch, metrics, nil, startedAt, discoveryError.Operation, discoveryError)
 		return
 	}
-	if len(gpus) == 0 {
+	if len(gpuMetrics) == 0 {
 		sensor.appendNoTargetObservations(batch, metrics, startedAt)
 		return
 	}
-	for _, gpu := range gpus {
-		target := identityEntryTarget(gpu.Identity)
+	for _, result := range gpuMetrics {
+		target := identityEntryTarget(result.Identity)
 		for _, definition := range metrics {
-			field, exists := gpu.Metrics[definition.ID()]
+			field, exists := result.Fields[definition.ID()]
 			if !exists {
 				sensor.appendError(batch, definition, target, startedAt, "metrics",
 					&observation.CollectionError{

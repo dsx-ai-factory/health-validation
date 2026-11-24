@@ -29,6 +29,8 @@ func runNative[T any](ctx context.Context, reader *collectionReader, call func(c
 		if err = callContext.Err(); err != nil {
 			return value, err
 		}
+		// A failed session admission ends native work for this collection, even
+		// if an overlapping collection has since initialized successfully.
 		if reader.admissionError != nil {
 			return value, reader.admissionError
 		}
@@ -54,10 +56,12 @@ func runNative[T any](ctx context.Context, reader *collectionReader, call func(c
 	})
 }
 
-// bindSession can recover only before a collection has started using a session.
-// go-dcgm uses a shared handle, so the check must precede all native work.
+// bindSession keeps samples and identity lookups on one session. A restarted
+// hostengine can assign the same numeric GPU ID to a different device.
+// go-dcgm shares its native handle, so binding is checked under the native gate.
 func (reader *collectionReader) bindSession(ctx context.Context) error {
 	source := reader.source
+	// An already-bound collection must keep its original session or stop.
 	if reader.session != nil {
 		if failure := reader.session.connectionFailure; failure != nil {
 			return failure
@@ -68,13 +72,18 @@ func (reader *collectionReader) bindSession(ctx context.Context) error {
 		return nil
 	}
 	if session := source.session; session != nil && session.connectionFailure != nil {
+		// Standalone Source calls can create multiple readers for one Cycle.
+		// Preserve a connection failure already observed in that collection.
 		if session.connectionFailureCycle == reader.cycle {
 			reader.session = session
 			return session.connectionFailure
 		}
+		// This reader has not used a session, so it can recover from another
+		// collection's failure, including an overlapping collection's failure.
 		if err := source.releaseSession(); err != nil && !errors.Is(err, errConnectionNotValid) {
 			return fmt.Errorf("release invalid DCGM session: %w", err)
 		}
+		// Cleanup can outlast the deadline; avoid opening a replacement then.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
