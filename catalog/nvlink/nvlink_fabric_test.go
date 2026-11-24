@@ -56,6 +56,24 @@ func TestNVLinkFabric(t *testing.T) {
 			wantMessageParts: []string{"GPU-0"},
 		},
 		{
+			name:         "healthy on VR",
+			cat:          func() *catalog.Catalog { return fabricCatalog(catalog.WithArchitecture("VR")) },
+			measurement:  healthyFabric,
+			wantSeverity: health.Pass,
+		},
+		{
+			name: "registration incomplete on VR",
+			cat:  func() *catalog.Catalog { return fabricCatalog(catalog.WithArchitecture("VR")) },
+			measurement: func() nvlink.NVLinkMeasurement {
+				m := healthyFabric()
+				m.FabricRegistrationIncomplete = true
+				return m
+			},
+			wantSeverity:     health.Critical,
+			wantAction:       health.GenericDrain(),
+			wantMessageParts: []string{"GPU-0"},
+		},
+		{
 			name: "skipped on wrong architecture",
 			cat: func() *catalog.Catalog {
 				return catalog.New(
