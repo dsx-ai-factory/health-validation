@@ -555,7 +555,7 @@ Six metrics are defined, all published on every run.
 | `health_validation.node.severity` | gauge | `1`/`0` | `severity` |
 | `health_validation.domain.severity` | gauge | `1`/`0` | `severity`, `category` |
 | `health_validation.check.severity` | gauge | `1`/`0` | `severity`, `check_id`, `category`, `condition_scope`, `maturity_level`, `nvidia_endorsed` |
-| `health_validation.check.skipped` | gauge | `1`/`0` | `check_id`, `category`, `skip_reason` |
+| `health_validation.check.skipped` | gauge | `1`/`0` | `check_id`, `category`, `maturity_level`, `skip_reason` |
 | `health_validation.check.affected_entities` | gauge | Count of distinct entities a check named, `0` included | `check_id`, `category` |
 | `health_validation.runs` | counter (delta) | `1` | `severity` |
 
