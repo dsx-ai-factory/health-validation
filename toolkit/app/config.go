@@ -311,7 +311,7 @@ func (cfg *Config) ExperimentalCheckIDs(cat *catalog.Catalog) ([]string, error) 
 			return nil, fmt.Errorf("config: experimental.checks contains empty entry")
 		}
 		if _, err := cat.Get(checkID); err != nil {
-			return nil, fmt.Errorf("config: unknown check %q", checkID)
+			return nil, fmt.Errorf("config: experimental.checks: unknown check %q", checkID)
 		}
 		enabled = append(enabled, checkID)
 	}

@@ -4,6 +4,8 @@
 package app
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +15,8 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog"
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
+	"github.com/dsx-ai-factory/health-validation/collect"
+	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
 // portCheck is the experimental check these tests lean on.
@@ -74,10 +78,11 @@ func TestExperimentalCheckIDs(t *testing.T) {
 		name, wantErr string
 		checks        []string
 	}{
-		{"unknown check", `unknown check "no_such_check"`, []string{"no_such_check"}},
+		// Both lists can hold the typo, so the error names the one it is in.
+		{"unknown check", `experimental.checks: unknown check "no_such_check"`, []string{"no_such_check"}},
 		{"empty entry", "experimental.checks contains empty entry", []string{""}},
 		{"whitespace-only entry", "experimental.checks contains empty entry", []string{"   "}},
-		{"valid entry beside an unknown one", `unknown check "no_such_check"`, []string{portCheck, "no_such_check"}},
+		{"valid entry beside an unknown one", `experimental.checks: unknown check "no_such_check"`, []string{portCheck, "no_such_check"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := (&Config{Experimental: ExperimentalConfig{Checks: tc.checks}}).ExperimentalCheckIDs(cat)
@@ -214,8 +219,9 @@ func TestCollectionCategoriesLeaveOutExperimentalChecksThatAreOff(t *testing.T) 
 			}
 			wanted, err := collectionCategories(cat, tc.cfg)
 			if tc.wantErr {
-				if err == nil || !strings.Contains(err.Error(), "selects no checks") {
-					t.Fatalf("collectionCategories = %v, %v; want the no-checks error", wanted, err)
+				// The error says why the selection came to nothing, not only that it did.
+				if err == nil || !strings.Contains(err.Error(), "selects no checks") || !strings.Contains(err.Error(), portCheck) {
+					t.Fatalf("collectionCategories = %v, %v; want the no-checks error naming %s", wanted, err, portCheck)
 				}
 				return
 			}
@@ -293,4 +299,84 @@ func TestRunExperimentalCheckOffUnlessConfigured(t *testing.T) {
 			t.Errorf("skip = %+v, want the operator disable", skipped)
 		}
 	})
+}
+
+// countingIBSensor is the healthy port sensor, counting how often it is read.
+type countingIBSensor struct{ calls *int }
+
+func (countingIBSensor) ID() string               { return "test.infiniband" }
+func (countingIBSensor) Signals() collect.Signals { return healthyIBSensor{}.Signals() }
+
+func (s countingIBSensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
+	*s.calls++
+	return healthyIBSensor{}.Measure(ctx, opts...)
+}
+
+// A check that does not run must not cost a collection: the port sensor is
+// read only when the config enables the check that needs it.
+func TestExperimentalCheckOffReadsNothing(t *testing.T) {
+	for _, tc := range []struct {
+		name, config string
+		wantReads    int
+	}{
+		{name: "default", wantReads: 0},
+		{name: "enabled by ID", config: "experimental:\n  checks:\n    - " + portCheck + "\n", wantReads: 1},
+		{name: "enabled for all", config: "experimental:\n  enabled: true\n", wantReads: 1},
+		{name: "enabled but disabled", config: "disabled_checks:\n  - " + portCheck + "\nexperimental:\n  enabled: true\n", wantReads: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reads := 0
+			a := New().WithProgramName("test")
+			a.host = fakeHost{b: spyBackend{called: new(bool)}}
+			withCleanXid(withCleanLinkFlap(withCPU(a, healthyCPU())))
+			a.WithCollect(countingIBSensor{calls: &reads}, healthyIBSensor{}.Signals().IDs()...)
+
+			args := []string{"--node-id", testNodeID}
+			if tc.config != "" {
+				args = append(args, "--config", writeExperimentalConfig(t, tc.config))
+			}
+			var stdout, stderr bytes.Buffer
+			if code := a.runCommand(args, &stdout, &stderr); code == exitError {
+				t.Fatalf("runCommand exit = %d; stderr = %q", code, stderr.String())
+			}
+			if reads != tc.wantReads {
+				t.Errorf("port sensor read %d times, want %d", reads, tc.wantReads)
+			}
+		})
+	}
+}
+
+// The catalog gate and the config-side copy the `collect` command uses must
+// agree, or `collect` would read hardware for a check that never evaluates, or
+// skip one that does.
+func TestExperimentalOffAgreesWithTheCatalog(t *testing.T) {
+	for name, cfg := range map[string]*Config{
+		"default":     {},
+		"all":         {Experimental: ExperimentalConfig{Enabled: true}},
+		"one":         {Experimental: ExperimentalConfig{Checks: []string{portCheck}}},
+		"custom":      {Experimental: ExperimentalConfig{Checks: []string{"custom_experimental"}}},
+		"padded list": {Experimental: ExperimentalConfig{Checks: []string{"  " + portCheck + "  "}}},
+		"all and one": {Experimental: ExperimentalConfig{Enabled: true, Checks: []string{portCheck}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cat, _, err := buildCatalog(cfg, []health.CheckDefinition{experimentalCustomCheck()}, "GB200", health.DriverVersion{}, health.TenantGuest)
+			if err != nil {
+				t.Fatalf("buildCatalog: %v", err)
+			}
+			runnable := runnableIDs(t, cat)
+			checked := 0
+			for _, cd := range cat.List(catalog.Filter{}) {
+				if cd.MaturityLevel != health.Experimental {
+					continue
+				}
+				checked++
+				if runs, off := slices.Contains(runnable, cd.ID), cfg.experimentalOff(cd); runs == off {
+					t.Errorf("%s: catalog runs it = %v but config says it is off = %v", cd.ID, runs, off)
+				}
+			}
+			if checked < 2 {
+				t.Fatalf("compared %d experimental checks, want the port check and the custom one", checked)
+			}
+		})
+	}
 }

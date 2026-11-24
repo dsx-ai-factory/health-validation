@@ -577,13 +577,19 @@ func collectionCategories(cat *catalog.Catalog, cfg *Config) (map[health.Categor
 		disabled[strings.TrimSpace(id)] = true
 	}
 	wanted := make(map[health.Category]bool)
+	var notEnabled []string
 	if len(cfg.Checks) == 0 {
 		for _, check := range cat.List(catalog.Filter{}) {
+			if disabled[check.ID] {
+				continue
+			}
 			// An experimental check the config leaves off will not run, so it
 			// must not pull its sensor in either.
-			if !disabled[check.ID] && !cfg.experimentalOff(check) {
-				wanted[check.Category] = true
+			if cfg.experimentalOff(check) {
+				notEnabled = append(notEnabled, check.ID)
+				continue
 			}
+			wanted[check.Category] = true
 		}
 	} else {
 		for _, checkID := range sortedKeys(cfg.Checks) {
@@ -595,12 +601,18 @@ func collectionCategories(cat *catalog.Catalog, cfg *Config) (map[health.Categor
 				return nil, err
 			}
 			if cfg.experimentalOff(check) {
+				notEnabled = append(notEnabled, checkID)
 				continue
 			}
 			wanted[check.Category] = true
 		}
 	}
 	if len(wanted) == 0 {
+		if len(notEnabled) > 0 {
+			// Name the cause: the selection is not empty, its checks are off.
+			return nil, fmt.Errorf("config selects no checks to collect (experimental checks not enabled: %s; enable them under experimental in the config)",
+				strings.Join(notEnabled, ", "))
+		}
 		return nil, fmt.Errorf("config selects no checks to collect")
 	}
 	return wanted, nil

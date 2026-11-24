@@ -311,7 +311,11 @@ func writeProperties(b *strings.Builder, c check) {
 	row("Condition scope", tcode(c.ConditionScope))
 	row("Execution class", tcode(c.ExecutionClass))
 	row("Scheduling cadence", tcode(c.Cadence))
-	row("Maturity", tcode(c.MaturityLevel))
+	maturity := tcode(c.MaturityLevel)
+	if c.MaturityLevel == "experimental" {
+		maturity += " (off unless enabled in the config)"
+	}
+	row("Maturity", maturity)
 	row("Execution contexts", tcodeList(c.Contexts))
 	row("Architectures", tcodeList(c.Architectures))
 	row("Required signals", tcodeList(c.Signals))
