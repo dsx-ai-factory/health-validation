@@ -219,7 +219,7 @@ The catalog includes these check families:
 | `numa_node_count` | cpu | Whether the node brought online the expected number of NUMA nodes | `expected_numa_node_count` |
 | `gpu_average_power_draw` | gpu | Whether each GPU's one-second average power draw is within the configured range | `min_power_w`, `max_power_w` |
 | `gpu_power_limit` | gpu | Whether each GPU's power limit matches the expected value | `expected_power_limit_w` |
-| `gpu_power_state` | gpu | Whether each GPU is in the expected power state | `expected_gpu_pstate`, `idle_gpu_pstate` |
+| `gpu_performance_state` | gpu | Whether each GPU is within the accepted performance state range | `max_performance_pstate`, `min_performance_pstate` |
 | `gpu_sensor_throttle` | gpu | Whether any GPU is being clamped by hardware slowdown, thermal, or power-brake protection | None |
 | `gpu_compute_apps` | gpu | Whether any compute process still holds a GPU | None |
 | `gpu_count` | node | Number of GPUs present on the node | `expected_gpu_count` |
@@ -470,7 +470,7 @@ checks:
     fatal_occurrences: 1
     nonfatal_occurrences: 5
 disabled_checks:
-  - gpu_power_state
+  - gpu_performance_state
 ```
 
 Xid occurrence thresholds count per GPU: `occurrences: 2` fires on a GPU that

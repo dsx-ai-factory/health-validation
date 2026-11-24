@@ -71,7 +71,7 @@ func (h sharedInventoryHost) gpuInventory() *gpuinventory.Inventory { return h.i
 // the node GPU count reuses discovery's snapshot instead of reading NVML again.
 func TestStalledNativeSourceFailsOnlyItsChecks(t *testing.T) {
 	fedBy := map[string][]string{
-		"dcgm": {"gpu_average_power_draw", "gpu_power_limit", "gpu_power_state", "gpu_sensor_throttle"},
+		"dcgm": {"gpu_average_power_draw", "gpu_power_limit", "gpu_performance_state", "gpu_sensor_throttle"},
 		"nvml": {"gpu_compute_apps"},
 	}
 	config := filepath.Join(t.TempDir(), "config.yaml")

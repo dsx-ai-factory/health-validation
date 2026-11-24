@@ -72,10 +72,10 @@ func fixtureCases() []fixtureCase {
 		},
 		{
 			name: "override and disabled check", node: with(healthyGB200(), func(f *nodeFixture) {
-				f.config = "checks:\n  gpu_power_limit:\n    expected_power_limit_w: 1000\ndisabled_checks:\n  - gpu_power_state\n"
+				f.config = "checks:\n  gpu_power_limit:\n    expected_power_limit_w: 1000\ndisabled_checks:\n  - gpu_performance_state\n"
 			}), exit: exitUnhealthy,
 			want:  perGPU("gpu_power_limit", "GPU-0", "GPU-1", "GPU-2", "GPU-3"),
-			skips: map[string]health.SkipReason{"gpu_power_state": health.CheckDisabled},
+			skips: map[string]health.SkipReason{"gpu_performance_state": health.CheckDisabled},
 		},
 		{name: "Xid 79", node: xid(xid79Line), exit: exitUnhealthy, want: []fixtureResult{xid79}},
 		{name: "Xid 48", node: xid(xid48Line), exit: exitUnhealthy, want: []fixtureResult{xid48}},
@@ -96,7 +96,7 @@ func fixtureCases() []fixtureCase {
 				{check: "gpu_compute_apps", severity: health.Critical, action: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired), entities: []string{"GPU-3"}},
 			},
 			perGPU("gpu_power_limit", "GPU-3"),
-			perGPU("gpu_power_state", "GPU-2"),
+			perGPU("gpu_performance_state", "GPU-2"),
 			perGPU("gpu_sensor_throttle", "GPU-0", "GPU-1", "GPU-2"),
 			[]fixtureResult{{check: "numa_node_count", severity: health.Critical, action: hardware}},
 		)},
@@ -104,7 +104,7 @@ func fixtureCases() []fixtureCase {
 			{check: "gpu_count", severity: health.Critical, action: hardware},
 		}},
 		{name: "one GPU's pstate unreadable", node: with(healthyGB200(), func(f *nodeFixture) { f.gpus[2].pstateFails = true }), exit: exitUnhealthy, want: []fixtureResult{
-			{check: "gpu_power_state", severity: health.Unknown, action: collection, entities: []string{"GPU-2"}},
+			{check: "gpu_performance_state", severity: health.Unknown, action: collection, entities: []string{"GPU-2"}},
 		}},
 		{name: "inactive NVLink", node: with(healthyGB200(), func(f *nodeFixture) { f.gpus[1].inactive = 1 }), exit: exitUnhealthy, want: perGPU("nvlink_active", "GPU-1")},
 		{name: "fatal link flap", node: with(healthyGB200(), func(f *nodeFixture) { f.linkFlaps = []string{linkDown, linkUp} }), exit: exitUnhealthy, want: []fixtureResult{

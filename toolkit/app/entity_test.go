@@ -123,11 +123,11 @@ func TestRunKeepsSameSlotFromTwoSourcesDistinct(t *testing.T) {
 	}
 	var entities []string
 	for _, v := range verdict.CheckResults {
-		if v.CheckID == "gpu_power_state" {
+		if v.CheckID == "gpu_performance_state" {
 			entities = append(entities, v.AffectedEntities...)
 		}
 	}
 	if !slices.Equal(entities, []string{"nvml-index-0", "dcgm-index-0"}) {
-		t.Fatalf("gpu_power_state entities = %v, want one failure per source slot", entities)
+		t.Fatalf("gpu_performance_state entities = %v, want one failure per source slot", entities)
 	}
 }

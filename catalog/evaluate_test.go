@@ -1301,7 +1301,7 @@ func TestEvaluateAll_LostGPUNamesGPUCount(t *testing.T) {
 		}
 	}
 	for _, id := range []string{
-		"gpu_average_power_draw", "gpu_power_limit", "gpu_power_state", "gpu_sensor_throttle",
+		"gpu_average_power_draw", "gpu_power_limit", "gpu_performance_state", "gpu_sensor_throttle",
 		"nvlink_active", "nvlink_bandwidth_count_speed", "nvlink_capabilities",
 		"nvlink_fabric", "nvlink_fabric_health", "nvlink_p2p",
 	} {

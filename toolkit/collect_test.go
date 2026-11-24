@@ -92,8 +92,8 @@ func TestCollectWithOptions_ContinuousCadenceSkipsPrologChecks(t *testing.T) {
 			t.Errorf("%s skip reason = %v, want CADENCE_MISMATCH", id, skipped[id])
 		}
 	}
-	if _, ok := skipped["gpu_power_state"]; ok {
-		t.Error("CONTINUOUS Collect unexpectedly skipped Continuous check gpu_power_state")
+	if _, ok := skipped["gpu_performance_state"]; ok {
+		t.Error("CONTINUOUS Collect unexpectedly skipped Continuous check gpu_performance_state")
 	}
 }
 
