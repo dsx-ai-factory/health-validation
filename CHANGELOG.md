@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Features
+
+- Checks for the Rubin-only Xids, on VR only: 177 (memory bank marked for
+  remapping) and 180 (RIST error) reset the GPU, and 182 (PCIe reset failure)
+  needs service. ([#329](https://github.com/dsx-ai-factory/health-validation/pull/329))
+
 ## [v0.4.0] - 2026-11-25
 
 Covers everything since `catalog/v0.3.2` and `toolkit/v0.3.2`. Build, CI,
