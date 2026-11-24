@@ -8,11 +8,10 @@ import "github.com/dsx-ai-factory/health-validation/catalog/health"
 // GPUPowerState returns the check definition that verifies each GPU is
 // operating at the expected performance state (pstate).
 //
-// The check fires Critical when a GPU's pstate differs from
-// expected_gpu_pstate or, where idle_gpu_pstate is set, falls outside the
-// range from expected_gpu_pstate to idle_gpu_pstate. Each is the numeric
-// level N in P<N> (0 = P0, maximum performance); idle_gpu_pstate is -1
-// (none) except on VR, which moves between P0 and P5 with load.
+// The check fires Critical when a GPU's pstate falls outside the range
+// from expected_gpu_pstate (busy) to idle_gpu_pstate (idle). Each is the
+// numeric level N in P<N> (0 = P0, maximum performance). Both are P0
+// except on VR, which idles at P5.
 func GPUPowerState() health.CheckDefinition {
 	return health.CheckDefinition{
 		ID:          "gpu_power_state",
@@ -54,33 +53,28 @@ func GPUPowerState() health.CheckDefinition {
 			// VR moves between P0 (busy) and P5 (idle) with load, and this
 			// check runs continuously, so any state in between passes.
 			"idle_gpu_pstate": {
-				Value: int64(-1),
+				Value: int64(0),
 				PerArchitecture: map[string]any{
-					"GB200": int64(-1),
-					"GB300": int64(-1),
-					"B200":  int64(-1),
-					"B300":  int64(-1),
-					"H100":  int64(-1),
-					"A100":  int64(-1),
+					"GB200": int64(0),
+					"GB300": int64(0),
+					"B200":  int64(0),
+					"B300":  int64(0),
+					"H100":  int64(0),
+					"A100":  int64(0),
 					"VR":    int64(5),
 				},
 				ValueType:   health.ThresholdInt64,
-				ValueMin:    int64(-1),
+				ValueMin:    int64(0),
 				ValueMax:    int64(15),
 				Category:    health.DefaultThreshold,
-				Description: "Lowest-power state an idle GPU may drop to, as the numeric level N in P<N>, or -1 for none. When set, any state from expected_gpu_pstate to this one passes. 5 (P5) on VR, -1 on every other GPU. Override per fleet.",
+				Description: "Performance state an idle GPU settles in, as the numeric level N in P<N>. Any state from expected_gpu_pstate to this one passes. 5 (P5) on VR, 0 (P0) on every other GPU. Override per fleet.",
 				Unit:        "pstate",
 			},
 		},
 
 		Rules: []health.Rule{
 			{
-				Expression: "idle_gpu_pstate < 0 && gpu_pstate != expected_gpu_pstate",
-				Severity:   health.Critical,
-				Message:    "GPU ${gpu_id}: performance state P${gpu_pstate}, expected P${expected_gpu_pstate}.",
-			},
-			{
-				Expression: "idle_gpu_pstate >= 0 && !((gpu_pstate >= expected_gpu_pstate && gpu_pstate <= idle_gpu_pstate) || (gpu_pstate >= idle_gpu_pstate && gpu_pstate <= expected_gpu_pstate))",
+				Expression: "!((gpu_pstate >= expected_gpu_pstate && gpu_pstate <= idle_gpu_pstate) || (gpu_pstate >= idle_gpu_pstate && gpu_pstate <= expected_gpu_pstate))",
 				Severity:   health.Critical,
 				Message:    "GPU ${gpu_id}: performance state P${gpu_pstate}, expected P${expected_gpu_pstate} to P${idle_gpu_pstate}.",
 			},

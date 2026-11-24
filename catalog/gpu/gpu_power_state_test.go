@@ -76,9 +76,17 @@ func TestGPUPowerState(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
-			name:         "no longer matches default pstate once overridden",
+			// The pass range runs from expected_gpu_pstate to idle_gpu_pstate,
+			// so overriding expected to P8 passes P0 through P8.
+			name:         "range from default idle to overridden expected passes",
 			cat:          func() *catalog.Catalog { return overriddenPstateCatalog(8) },
 			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
+			wantSeverity: health.Pass,
+		},
+		{
+			name:         "outside the overridden range fails",
+			cat:          func() *catalog.Catalog { return overriddenPstateCatalog(8) },
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 9},
 			wantSeverity: health.Critical,
 		},
 		{
@@ -116,15 +124,7 @@ func TestGPUPowerState(t *testing.T) {
 			wantMessageParts: []string{"GPU-0", "P6"},
 		},
 		{
-			// -1 means "no idle state", so it must never match a reading.
-			name:             "pstate -1 still fails on GB200",
-			cat:              func() *catalog.Catalog { return newCatalog() },
-			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: -1},
-			wantSeverity:     health.Critical,
-			wantMessageParts: []string{"GPU-0", "expected P0."},
-		},
-		{
-			// Only VR has an idle state; other GPUs still fail at P5.
+			// Only VR idles at P5; other GPUs still fail there.
 			name:             "P5 still fails on GB200",
 			cat:              func() *catalog.Catalog { return newCatalog() },
 			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 5},
