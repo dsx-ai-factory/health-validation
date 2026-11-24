@@ -100,8 +100,8 @@ These can change in any release, and a change to them is never listed as
 breaking. The changelog still records notable changes, under Changes.
 
 - **Check behavior.** Severities, messages, recommended actions and
-  remediation sequences, which checks are registered or run by default, and
-  default thresholds. Downstream systems follow remediation as published.
+  remediation sequences, which checks run by default, and default thresholds.
+  Downstream systems follow remediation as published.
 - **Verdict content that is not part of the schema's contract.** The contents
   of `observed_values` and `diagnostic` text.
 - **The rest of the toolkit's collection wiring.** `toolkit.Collect`, the

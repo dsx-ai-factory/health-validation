@@ -1,8 +1,8 @@
 # Collection and verdict APIs
 
 > [!NOTE]
-> `collect` and `agentkit` remain experimental (v0), outside the project's support
-> lifecycle. Their APIs may change.
+> `agentkit` remains experimental (v0), outside the project's support
+> lifecycle. Its API may change.
 
 Choose the result your integration needs:
 
