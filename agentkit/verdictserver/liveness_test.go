@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -184,23 +185,50 @@ func TestHealthWatchSendsOnChange(t *testing.T) {
 
 func TestHealthWatchUnknownServiceStaysOpen(t *testing.T) {
 	service := &healthService{period: time.Millisecond, check: func() Liveness { return Liveness{OK: true} }}
-	ctx, cancel := context.WithCancel(context.Background())
+	base, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	waiting := make(chan struct{})
+	ctx := &doneSignalContext{Context: base, signal: waiting}
 	stream := &watchStream{ctx: ctx, sent: make(chan healthgrpc.HealthCheckResponse_ServingStatus, 4)}
 	done := make(chan error, 1)
 	go func() { done <- service.Watch(&healthgrpc.HealthCheckRequest{Service: "other"}, stream) }()
-	if got := <-stream.sent; got != healthgrpc.HealthCheckResponse_SERVICE_UNKNOWN {
-		t.Fatalf("status=%v, want SERVICE_UNKNOWN", got)
-	}
 	select {
+	case got := <-stream.sent:
+		if got != healthgrpc.HealthCheckResponse_SERVICE_UNKNOWN {
+			t.Fatalf("status=%v, want SERVICE_UNKNOWN", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Watch did not send SERVICE_UNKNOWN")
+	}
+	// Watch must reach its cancellation wait; an early return fails here.
+	select {
+	case <-waiting:
 	case err := <-done:
-		t.Fatalf("Watch returned before cancellation: %v", err)
-	case <-time.After(20 * time.Millisecond):
+		t.Fatalf("Watch returned before waiting for cancellation: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Watch never waited for cancellation")
 	}
 	cancel()
-	if err := <-done; status.Code(err) != codes.Canceled {
-		t.Fatalf("Watch end: %v", err)
+	select {
+	case err := <-done:
+		if status.Code(err) != codes.Canceled {
+			t.Fatalf("Watch end: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Watch did not return after cancellation")
 	}
+}
+
+// doneSignalContext closes signal the first time Done is read.
+type doneSignalContext struct {
+	context.Context
+	signal chan struct{}
+	once   sync.Once
+}
+
+func (c *doneSignalContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.signal) })
+	return c.Context.Done()
 }
 
 type watchStream struct {
