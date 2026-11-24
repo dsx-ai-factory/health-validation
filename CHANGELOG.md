@@ -377,6 +377,9 @@ Changes to behavior and APIs outside the
     ([#313](https://github.com/dsx-ai-factory/health-validation/pull/313)). Discovery recognizes any GPU whose name contains `VR`
     ([#238](https://github.com/dsx-ai-factory/health-validation/pull/238), [#288](https://github.com/dsx-ai-factory/health-validation/pull/288)). A GPU that reports a generic name stays
     `unknown`.
+  - VR on `gpu_power_state`: a VR GPU passes anywhere from P0 to P5, the states
+    it moves between with load, set by the new `idle_gpu_pstate` threshold.
+    Other GPUs are unchanged. ([#327](https://github.com/dsx-ai-factory/health-validation/pull/327))
   - The Xid checks cover H100, H200, and A100. ([#194](https://github.com/dsx-ai-factory/health-validation/pull/194))
 - Xid additions:
   - Per-subtype `gpu_xid_149_<hex>` checks for the Xid 149
