@@ -38,6 +38,7 @@ func TestDCGMHealthReportRoundTrip(t *testing.T) {
 		EntityResults: []*DCGMHealthEntityResult{
 			healthEntityResult(gpuEntity, true, &DCGMHealthIncident{
 				System: 16, NativeHealth: DCGMHealthResultWarn.Enum(), ErrorCode: 1, Message: "memory finding",
+				NativeErrorSeverity: proto.Uint32(0), NativeErrorCategory: proto.Uint32(math.MaxUint32), Suggestion: proto.String(""),
 			}),
 			healthEntityResult(unknownEntity, false, &DCGMHealthIncident{System: 0xffffffff, NativeHealth: DCGMHealthResult(-123).Enum(), ErrorCode: math.MaxUint64, Message: "unknown native status"}),
 			healthEntityResult(switchEntity, true, &DCGMHealthIncident{System: 1 << 63, NativeHealth: DCGMHealthResult(math.MaxInt32).Enum(), ErrorCode: 0}),
@@ -283,6 +284,9 @@ func TestDCGMHealthIncidentAbsentAndPassStatus(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			incident := &DCGMHealthIncident{NativeHealth: test.status}
+			if test.status != nil {
+				incident.NativeErrorSeverity, incident.NativeErrorCategory, incident.Suggestion = proto.Uint32(0), proto.Uint32(0), proto.String("")
+			}
 			jsonData, err := protojson.Marshal(incident)
 			if err != nil {
 				t.Fatal(err)
@@ -294,6 +298,11 @@ func TestDCGMHealthIncidentAbsentAndPassStatus(t *testing.T) {
 			_, present := fields["nativeHealth"]
 			if present != (test.status != nil) || present && string(fields["nativeHealth"]) != `"PASS"` {
 				t.Fatalf("JSON changed native status presence: %s", jsonData)
+			}
+			for _, field := range []string{"nativeErrorSeverity", "nativeErrorCategory", "suggestion"} {
+				if _, present := fields[field]; present != (test.status != nil) {
+					t.Fatalf("JSON changed metadata presence for %s: %s", field, jsonData)
+				}
 			}
 			binaryData, err := proto.Marshal(incident)
 			if err != nil {

@@ -1542,6 +1542,53 @@ func TestNativeHealthReportMarksIncidentCapacity(t *testing.T) {
 	}
 }
 
+func TestNativeHealthIncidentMetadataPreservesNativeValuesAndUnknownCodes(t *testing.T) {
+	fixture := newNativeHealthFixture()
+	for _, code := range []godcgm.HealthCheckErrorCode{1, 2, 99999} {
+		fixture.response.Incidents = append(fixture.response.Incidents, godcgm.Incident{
+			System: godcgm.DCGM_HEALTH_WATCH_MEM, Health: godcgm.DCGM_HEALTH_RESULT_FAIL,
+			EntityInfo: godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 7},
+			Error:      godcgm.DiagErrorDetail{Code: code, Message: "native fault"},
+		})
+	}
+	ops := fixture.operations()
+	var lookups []godcgm.HealthCheckErrorCode
+	ops.errorMeta = func(code godcgm.HealthCheckErrorCode) *godcgm.ErrorMeta {
+		lookups = append(lookups, code)
+		switch code {
+		case 1:
+			return &godcgm.ErrorMeta{}
+		case 2:
+			return &godcgm.ErrorMeta{Severity: godcgm.ErrorSeverity(777), Category: godcgm.ErrorCategory(888), Suggestion: "native suggestion"}
+		default:
+			return nil
+		}
+	}
+	watch, err := startHealthWatch("incident-metadata", dcgmhealth.SystemMemory, ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watch.Close()
+	report, err := watch.Read()
+	result := nativeHealthResult(report, godcgm.FE_GPU, 7)
+	incidents := result.GetIncidents()
+	if err != nil || len(incidents) != 3 || !slices.Equal(lookups, []godcgm.HealthCheckErrorCode{1, 2, 99999}) {
+		t.Fatalf("incident metadata lookup changed findings: report=%v err=%v lookups=%v", report, err, lookups)
+	}
+	zero, known, unknown := incidents[0], incidents[1], incidents[2]
+	if zero.NativeErrorSeverity == nil || zero.GetNativeErrorSeverity() != 0 || zero.NativeErrorCategory == nil || zero.GetNativeErrorCategory() != 0 ||
+		zero.Suggestion == nil || zero.GetSuggestion() != "" {
+		t.Fatalf("zero metadata values lost presence: %v", zero)
+	}
+	if known.GetNativeErrorSeverity() != 777 || known.GetNativeErrorCategory() != 888 || known.GetSuggestion() != "native suggestion" {
+		t.Fatalf("native metadata was normalized or lost: %v", known)
+	}
+	if unknown.GetErrorCode() != 99999 || unknown.GetMessage() != "native fault" || result.GetEntity().GetGpu().GetNative().GetEntityId() != 7 ||
+		unknown.NativeErrorSeverity != nil || unknown.NativeErrorCategory != nil || unknown.Suggestion != nil {
+		t.Fatalf("missing metadata changed or discarded an incident: %v", unknown)
+	}
+}
+
 func TestNativeHealthGroupsFindingsAndErrorsByNativeEntity(t *testing.T) {
 	fixture := newNativeHealthFixture()
 	fixture.entities[godcgm.FE_GPU] = []uint{2, 7}

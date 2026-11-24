@@ -2488,11 +2488,17 @@ type DcgmHealthIncident struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	System uint64                 `protobuf:"varint,1,opt,name=system,proto3" json:"system,omitempty"`
 	// Absent when the producer did not supply a native result.
-	NativeHealth  *DcgmHealthReport_HealthResult `protobuf:"varint,2,opt,name=native_health,json=nativeHealth,proto3,enum=health.v1.DcgmHealthReport_HealthResult,oneof" json:"native_health,omitempty"`
-	ErrorCode     uint64                         `protobuf:"varint,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
-	Message       string                         `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	NativeHealth *DcgmHealthReport_HealthResult `protobuf:"varint,2,opt,name=native_health,json=nativeHealth,proto3,enum=health.v1.DcgmHealthReport_HealthResult,oneof" json:"native_health,omitempty"`
+	ErrorCode    uint64                         `protobuf:"varint,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	Message      string                         `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	// Metadata from the client library's dcgmGetErrorMeta, absent for unknown codes.
+	// These native numeric values are separate from the incident's health result
+	// and from Health Validation verdict severities.
+	NativeErrorSeverity *uint32 `protobuf:"varint,6,opt,name=native_error_severity,json=nativeErrorSeverity,proto3,oneof" json:"native_error_severity,omitempty"`
+	NativeErrorCategory *uint32 `protobuf:"varint,7,opt,name=native_error_category,json=nativeErrorCategory,proto3,oneof" json:"native_error_category,omitempty"`
+	Suggestion          *string `protobuf:"bytes,8,opt,name=suggestion,proto3,oneof" json:"suggestion,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *DcgmHealthIncident) Reset() {
@@ -2549,6 +2555,27 @@ func (x *DcgmHealthIncident) GetErrorCode() uint64 {
 func (x *DcgmHealthIncident) GetMessage() string {
 	if x != nil {
 		return x.Message
+	}
+	return ""
+}
+
+func (x *DcgmHealthIncident) GetNativeErrorSeverity() uint32 {
+	if x != nil && x.NativeErrorSeverity != nil {
+		return *x.NativeErrorSeverity
+	}
+	return 0
+}
+
+func (x *DcgmHealthIncident) GetNativeErrorCategory() uint32 {
+	if x != nil && x.NativeErrorCategory != nil {
+		return *x.NativeErrorCategory
+	}
+	return 0
+}
+
+func (x *DcgmHealthIncident) GetSuggestion() string {
+	if x != nil && x.Suggestion != nil {
+		return *x.Suggestion
 	}
 	return ""
 }
@@ -2889,14 +2916,22 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\r_group_member\"q\n" +
 	"\x15DcgmHealthEntityError\x12\x18\n" +
 	"\asystems\x18\x02 \x01(\x04R\asystems\x120\n" +
-	"\x05error\x18\x03 \x01(\v2\x1a.health.v1.CollectionErrorR\x05errorJ\x04\b\x01\x10\x02R\x06entity\"\xd9\x01\n" +
+	"\x05error\x18\x03 \x01(\v2\x1a.health.v1.CollectionErrorR\x05errorJ\x04\b\x01\x10\x02R\x06entity\"\xb3\x03\n" +
 	"\x12DcgmHealthIncident\x12\x16\n" +
 	"\x06system\x18\x01 \x01(\x04R\x06system\x12R\n" +
 	"\rnative_health\x18\x02 \x01(\x0e2(.health.v1.DcgmHealthReport.HealthResultH\x00R\fnativeHealth\x88\x01\x01\x12\x1d\n" +
 	"\n" +
 	"error_code\x18\x03 \x01(\x04R\terrorCode\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessageB\x10\n" +
-	"\x0e_native_healthJ\x04\b\x05\x10\x06R\x06entity\"\xc2\x01\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x127\n" +
+	"\x15native_error_severity\x18\x06 \x01(\rH\x01R\x13nativeErrorSeverity\x88\x01\x01\x127\n" +
+	"\x15native_error_category\x18\a \x01(\rH\x02R\x13nativeErrorCategory\x88\x01\x01\x12#\n" +
+	"\n" +
+	"suggestion\x18\b \x01(\tH\x03R\n" +
+	"suggestion\x88\x01\x01B\x10\n" +
+	"\x0e_native_healthB\x18\n" +
+	"\x16_native_error_severityB\x18\n" +
+	"\x16_native_error_categoryB\r\n" +
+	"\v_suggestionJ\x04\b\x05\x10\x06R\x06entity\"\xc2\x01\n" +
 	"\x0fCollectionError\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x1c\n" +
 	"\toperation\x18\x02 \x01(\tR\toperation\x12!\n" +

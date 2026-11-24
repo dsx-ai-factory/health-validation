@@ -116,6 +116,12 @@ the native ID and error. If every candidate is rejected, the report contains
 these errors without a native overall result. If the incident limit is reached,
 `possiblyTruncated` marks the result as potentially incomplete.
 
+Incidents include `nativeErrorSeverity`, `nativeErrorCategory`, and `suggestion`
+when the installed DCGM client library has metadata for the incident's code.
+These are DCGM values, independent of the incident's native health result and
+Health Validation verdict severity. Unknown codes retain their incidents with
+those metadata fields absent.
+
 The sensor emits one node-wide `dcgm.health` observation when health is selected.
 Its report retains every incident under its entity and the native overall result
 for the enabled group. Overall health, `monitoredSince`, and `possiblyTruncated`

@@ -18,13 +18,14 @@ import (
 )
 
 type healthWatchOperations struct {
-	entities func(godcgm.Field_Entity_Group) ([]uint, error)
-	create   func(string) (godcgm.GroupHandle, error)
-	add      func(godcgm.GroupHandle, godcgm.Field_Entity_Group, uint) error
-	set      func(godcgm.GroupHandle, godcgm.HealthSystem) error
-	info     func(godcgm.GroupHandle) (*godcgm.GroupInfo, error)
-	check    func(godcgm.GroupHandle) (godcgm.HealthResponse, error)
-	destroy  func(godcgm.GroupHandle) error
+	entities  func(godcgm.Field_Entity_Group) ([]uint, error)
+	create    func(string) (godcgm.GroupHandle, error)
+	add       func(godcgm.GroupHandle, godcgm.Field_Entity_Group, uint) error
+	set       func(godcgm.GroupHandle, godcgm.HealthSystem) error
+	info      func(godcgm.GroupHandle) (*godcgm.GroupInfo, error)
+	check     func(godcgm.GroupHandle) (godcgm.HealthResponse, error)
+	errorMeta func(godcgm.HealthCheckErrorCode) *godcgm.ErrorMeta
+	destroy   func(godcgm.GroupHandle) error
 }
 
 type nativeHealthWatch struct {
@@ -69,9 +70,10 @@ func (library *nativeLibrary) WatchHealth(systems uint64) (healthWatch, error) {
 		set: func(group godcgm.GroupHandle, systems godcgm.HealthSystem) error {
 			return library.healthSet(group, systems, options.UpdateInterval, options.MaxKeepAge)
 		},
-		info:    godcgm.GetGroupInfo,
-		check:   godcgm.HealthCheck,
-		destroy: godcgm.DestroyGroup,
+		info:      godcgm.GetGroupInfo,
+		check:     godcgm.HealthCheck,
+		errorMeta: godcgm.GetErrorMeta,
+		destroy:   godcgm.DestroyGroup,
 	})
 }
 
@@ -162,6 +164,14 @@ func (watch *nativeHealthWatch) Read() (*observation.DCGMHealthReport, error) {
 			NativeHealth: observation.DCGMHealthResult(incident.Health).Enum(),
 			ErrorCode:    uint64(incident.Error.Code),
 			Message:      incident.Error.Message,
+		}
+		if watch.ops.errorMeta != nil {
+			if metadata := watch.ops.errorMeta(incident.Error.Code); metadata != nil {
+				severity, category := uint32(metadata.Severity), uint32(metadata.Category)
+				suggestion := metadata.Suggestion
+				finding.NativeErrorSeverity, finding.NativeErrorCategory = &severity, &category
+				finding.Suggestion = &suggestion
+			}
 		}
 		result := healthEntityResult(report, results, incident.EntityInfo)
 		result.Incidents = append(result.Incidents, finding)

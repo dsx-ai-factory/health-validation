@@ -323,6 +323,8 @@ Changes to behavior and APIs outside the
   Rejected GPU or NVSwitch additions preserve findings from usable members,
   record errors under the affected entity result, and retry on the next read.
   Unattributed discovery failures appear in `system_errors`.
+  Incidents include native error severity, category, and suggestions when the
+  DCGM client library provides them.
   Source `Collect` keeps independently selected metrics, health, and inventory
   on one client session while allowing concurrent collections to interleave.
   Recovery replaces failed sessions only for fresh collections; existing

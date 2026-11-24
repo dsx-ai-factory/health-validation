@@ -322,6 +322,12 @@ message DcgmHealthIncident {
   optional DcgmHealthReport.HealthResult native_health = 2;
   uint64 error_code = 3;
   string message = 4;
+  // Metadata from the client library's dcgmGetErrorMeta, absent for unknown codes.
+  // These native numeric values are separate from the incident's health result
+  // and from Health Validation verdict severities.
+  optional uint32 native_error_severity = 6;
+  optional uint32 native_error_category = 7;
+  optional string suggestion = 8;
 }
 
 // CollectionError records why a signal could not be collected. It keeps the

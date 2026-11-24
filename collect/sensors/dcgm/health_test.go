@@ -387,7 +387,7 @@ func TestAggregateHealthPreservesAllNativeFindingsAndOwnsClones(t *testing.T) {
 	raw.NativeGroupOverallHealth = observation.DCGMHealthResult(-91).Enum()
 	raw.SystemsWithoutTargets = dcgmhealth.NVSwitchSystems
 	raw.EntityResults[0].Incidents = []*observation.DCGMHealthIncident{
-		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 100, Message: "first memory fault"},
+		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 100, Message: "first memory fault", NativeErrorSeverity: proto.Uint32(0), NativeErrorCategory: proto.Uint32(1 << 20), Suggestion: proto.String("Inspect the GPU")},
 		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultWarn.Enum(), ErrorCode: 101, Message: "second memory fault"},
 		{System: dcgmhealth.SystemPCIe, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 102},
 	}
@@ -427,6 +427,9 @@ func TestAggregateHealthPreservesAllNativeFindingsAndOwnsClones(t *testing.T) {
 	first.EntityResults[1].Entity.GetNvSwitch().Native.EntityId = 98
 	first.EntityResults[2].Entity.GetNativeEntity().EntityKind = 97
 	first.EntityResults[0].Incidents[0].Message = "changed"
+	*first.EntityResults[0].Incidents[0].NativeErrorSeverity = 99
+	*first.EntityResults[0].Incidents[0].NativeErrorCategory = 98
+	*first.EntityResults[0].Incidents[0].Suggestion = "changed"
 	first.EntityResults[0].Entity.GetGpu().Native.Source = "changed"
 	first.EntityResults[3].Entity.GetNativeEntity().EntityId = 96
 	first.EntityResults[4].Entity.GetGpu().Uuid = "changed"
