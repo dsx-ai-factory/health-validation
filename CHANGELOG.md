@@ -352,7 +352,8 @@ Changes to behavior and APIs outside the
 - Experimental checks (`maturity_level: experimental`) are off by default. One
   that is not enabled is skipped with `skip_reason: CHECK_DISABLED` and a
   `skip_detail` naming the cause, so it never affects `overall_severity` or the
-  exit code and nothing is collected for it. The config enables them with
+  exit code and `run` and `serve` collect nothing for it (`collect` still gathers
+  whole categories). The config enables them with
   `experimental.enabled: true` (all of them, including ones a later release
   adds) or by ID under `experimental.checks`, validated like `disabled_checks`;
   `disabled_checks` still wins. Library consumers use the new
@@ -362,8 +363,9 @@ Changes to behavior and APIs outside the
   same way, so enable it to keep it running. A check that is off by default
   and does not apply to the node (cadence, architecture, execution context)
   reports that reason instead. The `health_validation.check.skipped` metric
-  gains a `maturity_level` attribute, so default-off checks are separable from
-  operator-disabled ones. ([#323](https://github.com/dsx-ai-factory/health-validation/pull/323))
+  gains a `maturity_level` attribute. It does not separate default-off checks
+  from operator-disabled ones: both record `skip_reason=CHECK_DISABLED`, and
+  only `skip_detail` in the JSON verdict names the cause. ([#323](https://github.com/dsx-ai-factory/health-validation/pull/323))
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.

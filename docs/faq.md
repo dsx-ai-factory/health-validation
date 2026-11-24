@@ -59,7 +59,7 @@ The equivalent for a consumer building their own binary is `catalog.WithDisabled
 
 ## Why didn't an experimental check run?
 
-Checks with `maturity_level: experimental` are off by default: they are still under evaluation and may change or be withdrawn. One that has not been enabled appears in `skipped_checks` with `skip_reason: CHECK_DISABLED` and a `skip_detail` that says it is experimental. It never affects `overall_severity` or the exit code, and nothing is collected for it.
+Checks with `maturity_level: experimental` are off by default: they are still under evaluation and may change or be withdrawn. One that has not been enabled appears in `skipped_checks` with `skip_reason: CHECK_DISABLED` and a `skip_detail` that says it is experimental. It never affects `overall_severity` or the exit code, and `run` and `serve` collect nothing for it. `collect` gathers whole categories, so an enabled sibling check in the same category can still pull its signals in.
 
 Enable them in the config file passed to `--config`, either all at once or by ID:
 

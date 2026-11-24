@@ -534,7 +534,8 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	// Whole categories, not runnable signals: a batch may be evaluated later
-	// under a different cadence or config.
+	// under a different cadence or config. So a disabled experimental check's
+	// signals are still read when an enabled check keeps its category selected.
 	required := make(requiredSignals, len(categories))
 	for category := range categories {
 		required[category] = nil

@@ -502,7 +502,9 @@ A check whose `maturity_level` is `experimental` is still under evaluation and
 may change or be withdrawn, so it does not run unless you turn it on. Until you
 do, it appears in `skipped_checks` with `skip_reason: CHECK_DISABLED` and a
 detail saying it is experimental, it never affects `overall_severity` or the
-exit code, and nothing is collected for it. Stable checks are unaffected.
+exit code, and `run` and `serve` collect nothing for it. `collect` gathers whole
+categories, so a sibling check that is enabled can still pull in its signals.
+Stable checks are unaffected.
 
 Enable every experimental check, or only the ones you name:
 
