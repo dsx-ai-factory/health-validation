@@ -378,9 +378,9 @@ Changes to behavior and APIs outside the
     ([#238](https://github.com/dsx-ai-factory/health-validation/pull/238), [#288](https://github.com/dsx-ai-factory/health-validation/pull/288)). A GPU that reports a generic name stays
     `unknown`.
   - VR on `gpu_power_state`: a GPU now passes anywhere from `expected_gpu_pstate`
-    to the new `idle_gpu_pstate`. VR idles at P5, so it passes P0 to P5. Other
-    GPUs keep P0 for both, so they still pass only at P0, unless a fleet
-    overrides one of them. ([#327](https://github.com/dsx-ai-factory/health-validation/pull/327))
+    to the new `idle_gpu_pstate`, which is assumed to be the same or higher.
+    VR idles at P5, so it passes P0 to P5. Other GPUs keep P0 for both, so
+    they still pass only at P0. ([#327](https://github.com/dsx-ai-factory/health-validation/pull/327))
   - The Xid checks cover H100, H200, and A100. ([#194](https://github.com/dsx-ai-factory/health-validation/pull/194))
 - Xid additions:
   - Per-subtype `gpu_xid_149_<hex>` checks for the Xid 149

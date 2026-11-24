@@ -76,17 +76,12 @@ func TestGPUPowerState(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
-			// The pass range runs from expected_gpu_pstate to idle_gpu_pstate,
-			// so overriding expected to P8 passes P0 through P8.
-			name:         "range from default idle to overridden expected passes",
+			// idle_gpu_pstate is assumed >= expected_gpu_pstate. Overriding
+			// only expected to P8 leaves idle at P0, so only P8 passes, as
+			// before idle_gpu_pstate existed.
+			name:         "no longer matches default pstate once overridden",
 			cat:          func() *catalog.Catalog { return overriddenPstateCatalog(8) },
 			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
-			wantSeverity: health.Pass,
-		},
-		{
-			name:         "outside the overridden range fails",
-			cat:          func() *catalog.Catalog { return overriddenPstateCatalog(8) },
-			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 9},
 			wantSeverity: health.Critical,
 		},
 		{

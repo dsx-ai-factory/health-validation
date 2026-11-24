@@ -115,11 +115,11 @@ Verifies each GPU is operating at the expected performance state.
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
 | <nobr>`expected_gpu_pstate`</nobr> | 0 | pstate | <nobr>`DEFAULT`</nobr> | Performance state every GPU must be in, as the numeric level N in P&lt;N> (0 = P0, maximum performance). Override per fleet. |
-| <nobr>`idle_gpu_pstate`</nobr> | A100: 0, B200: 0, B300: 0, GB200: 0, GB300: 0, H100: 0, VR: 5, other: 0 | pstate | <nobr>`DEFAULT`</nobr> | Performance state an idle GPU settles in, as the numeric level N in P&lt;N>. Any state from expected_gpu_pstate to this one passes. 5 (P5) on VR, 0 (P0) on every other GPU. Override per fleet. |
+| <nobr>`idle_gpu_pstate`</nobr> | A100: 0, B200: 0, B300: 0, GB200: 0, GB300: 0, H100: 0, VR: 5, other: 0 | pstate | <nobr>`DEFAULT`</nobr> | Performance state an idle GPU settles in, as the numeric level N in P&lt;N>; must be >= expected_gpu_pstate. Any state from expected_gpu_pstate to this one passes. 5 (P5) on VR, 0 (P0) on every other GPU. Override per fleet. |
 
 **Rules**
 
-- **CRITICAL** when `!((gpu_pstate >= expected_gpu_pstate && gpu_pstate <= idle_gpu_pstate) \|\| (gpu_pstate >= idle_gpu_pstate && gpu_pstate <= expected_gpu_pstate))`
+- **CRITICAL** when `gpu_pstate != expected_gpu_pstate && !(gpu_pstate >= expected_gpu_pstate && gpu_pstate <= idle_gpu_pstate)`
   - Message: GPU $\{gpu_id\}: performance state P$\{gpu_pstate\}, expected P$\{expected_gpu_pstate\} to P$\{idle_gpu_pstate\}.
 
 **Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
