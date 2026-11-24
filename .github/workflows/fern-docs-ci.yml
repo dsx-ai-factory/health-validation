@@ -46,14 +46,16 @@ jobs:
       - name: Detect docs changes
         id: changes
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]] ||
-             git diff --name-only --no-renames -z origin/main...HEAD |
-               grep -zqE '^(docs/|fern/|tools/check-docs-mdx$|tools/check-docs-paths$|tools/fern_docs_versions\.py$|\.github/workflows/fern-docs-ci\.yml$)'; then
-            echo "docs=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "docs=false" >> "$GITHUB_OUTPUT"
-            echo "No docs changes; skipping Fern validation."
+          docs=true
+          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+            changed="$RUNNER_TEMP/changed-files"
+            git diff --name-only --no-renames -z origin/main...HEAD > "$changed"
+            if ! grep -zqE '^(docs/|fern/|collect/proto/|tools/check-docs-mdx$|tools/check-docs-paths$|tools/fern_docs_versions\.py$|\.github/workflows/fern-docs-ci\.yml$)' "$changed"; then
+              docs=false
+              echo "No docs changes; skipping Fern validation."
+            fi
           fi
+          echo "docs=$docs" >> "$GITHUB_OUTPUT"
 
       - name: Check markdown filename conventions
         if: steps.changes.outputs.docs == 'true'
