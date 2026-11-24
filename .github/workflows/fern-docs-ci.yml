@@ -47,8 +47,8 @@ jobs:
         id: changes
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]] ||
-             git diff --name-only origin/main...HEAD |
-               grep -qE '^(docs/|fern/|tools/check-docs-mdx$|tools/check-docs-paths$|tools/fern_docs_versions\.py$|\.github/workflows/fern-docs-ci\.yml$)'; then
+             git diff --name-only --no-renames -z origin/main...HEAD |
+               grep -zqE '^(docs/|fern/|tools/check-docs-mdx$|tools/check-docs-paths$|tools/fern_docs_versions\.py$|\.github/workflows/fern-docs-ci\.yml$)'; then
             echo "docs=true" >> "$GITHUB_OUTPUT"
           else
             echo "docs=false" >> "$GITHUB_OUTPUT"
