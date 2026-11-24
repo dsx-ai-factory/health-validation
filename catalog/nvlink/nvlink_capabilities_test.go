@@ -46,6 +46,23 @@ func TestNVLinkCapabilities(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
+			name:         "healthy on VR",
+			cat:          func() *catalog.Catalog { return fabricCatalog(catalog.WithArchitecture("VR")) },
+			measurement:  healthyCapabilities,
+			wantSeverity: health.Pass,
+		},
+		{
+			name: "P2P unsupported on VR",
+			cat:  func() *catalog.Catalog { return fabricCatalog(catalog.WithArchitecture("VR")) },
+			measurement: func() nvlink.NVLinkMeasurement {
+				m := healthyCapabilities()
+				m.AllLinksSupportP2P = false
+				return m
+			},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "P2P"},
+		},
+		{
 			name: "skipped on wrong architecture",
 			cat: func() *catalog.Catalog {
 				return catalog.New(
