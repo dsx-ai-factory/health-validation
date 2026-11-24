@@ -75,7 +75,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changes
 
 Changes to behavior and APIs outside the
-[compatibility guarantees](RELEASE.md).
+[compatibility guarantees](RELEASE.md#compatibility).
 
 - Monitor recommendations can carry remediation steps and appear in the
   node-level summary. Consumers must inspect `operational_state` before treating

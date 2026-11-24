@@ -1,7 +1,7 @@
 name: Changelog
 
 # Requires a CHANGELOG.md entry on pull requests that change what users see.
-# The rules live in tools/check_changelog.py and RELEASE.md.
+# The rules live in tools/check_changelog.py and RELEASE.md#compatibility.
 #
 # pull_request_target, not pull_request, for the reason commit-lint.yml gives:
 # the workflow and the script it runs come from the default branch, so a pull

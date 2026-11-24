@@ -10,7 +10,7 @@ and that the base's CHANGELOG.md does not already have: the head must link the
 pull request more times than the base does, so a link the base already carries,
 such as a forward reference, does not count. A "!" pull request needs one under
 "Breaking Changes", and a pull request that puts an entry under "Breaking
-Changes" must carry "!". See RELEASE.md.
+Changes" must carry "!". See RELEASE.md#compatibility.
 
 Pull requests of other types, reverts, and pull requests labeled
 "skip-changelog" need nothing. Neither the label nor a revert exempts a "!"
@@ -106,12 +106,12 @@ def check(
                 f'under "{BREAKING}" linking /pull/{pr}. List only the parts of the '
                 f"pull request that break a public surface there, each with what a "
                 f"consumer must change, and the other parts under Changes, Features, or "
-                f"Fixes. See RELEASE.md."
+                f"Fixes. See RELEASE.md#compatibility."
             )
     elif breaking_new:
         errors.append(
             f'CHANGELOG.md lists /pull/{pr} under "{BREAKING}", but the title has no "!". '
-            f"Add ! to the title, or move the entry. See RELEASE.md."
+            f"Add ! to the title, or move the entry. See RELEASE.md#compatibility."
         )
 
     if needs_entry and not credited and not errors:
