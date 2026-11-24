@@ -103,13 +103,24 @@ systems. Returning devices can rejoin an existing group while its current
 members retain their history. GPU inventory can also include detached devices
 unavailable to health watches.
 `systemsWithoutTargets` identifies requested systems whose targets are absent.
-`systemErrors` records discovery or membership failures, which can accompany
-findings from usable members. If the incident limit is reached,
+`systemErrors` records discovery failures that cannot be attributed to a specific
+device. `entityResults` groups each entity's identity, incidents, and
+`collectionErrors`. Each collection error names the affected `systems` and keeps
+its source status. Discovery and entity collection errors indicate incomplete
+coverage and can accompany findings from usable members.
+`groupMember` explicitly records whether the entity belongs to this read's native
+group; it does not establish sample coverage. Rejected targets and entities
+mentioned only in incidents also have results, with `groupMember: false`.
+GPU UUIDs and PCI addresses are added when available; failed enrichment retains
+the native ID and error. If every candidate is rejected, the report contains
+these errors without a native overall result. If the incident limit is reached,
 `possiblyTruncated` marks the result as potentially incomplete.
 
 The sensor emits one node-wide `dcgm.health` observation when health is selected.
-Its report retains individual incident entities and the native overall result
-for the enabled group. That result does not establish coverage for systems with
+Its report retains every incident under its entity and the native overall result
+for the enabled group. Overall health, `monitoredSince`, and `possiblyTruncated`
+describe the shared native group, rather than individual entity results.
+The native overall result does not establish coverage for systems with
 discovery or membership errors. If every requested system has no targets and
 there are no incidents, the sensor emits a `NO_TARGETS` outcome without an
 observation target. Consumers enabling health need a schema that supports

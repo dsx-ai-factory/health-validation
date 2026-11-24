@@ -43,7 +43,9 @@ type (
 	JournalEntryRef         = healthv1.JournalEntryRef
 	Value                   = healthv1.Value
 	DCGMHealthReport        = healthv1.DcgmHealthReport
+	DCGMHealthEntityResult  = healthv1.DcgmHealthEntityResult
 	DCGMHealthIncident      = healthv1.DcgmHealthIncident
+	DCGMHealthEntityError   = healthv1.DcgmHealthEntityError
 	DCGMHealthResult        = healthv1.DcgmHealthReport_HealthResult
 	CollectionError         = healthv1.CollectionError
 	CollectionErrorCategory = healthv1.CollectionErrorCategory

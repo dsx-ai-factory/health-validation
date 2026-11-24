@@ -97,7 +97,14 @@ func (sensor *sensor) appendHealth(
 		sensor.appendError(batch, definition, observation.NodeTarget(""), observedAt, "health", failure)
 		return
 	}
-	if len(report.GetIncidents()) == 0 && report.GetRequestedSystems() != 0 && report.GetSystemsWithoutTargets() == report.GetRequestedSystems() {
+	hasIncidents := false
+	for _, result := range report.GetEntityResults() {
+		if len(result.GetIncidents()) != 0 {
+			hasIncidents = true
+			break
+		}
+	}
+	if !hasIncidents && report.GetRequestedSystems() != 0 && report.GetSystemsWithoutTargets() == report.GetRequestedSystems() {
 		sensor.appendHealthNoValue(batch, definition, observedAt, observation.NoValueReasonNoTargets,
 			"No targets detected for the requested DCGM health systems")
 		return

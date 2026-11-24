@@ -257,8 +257,9 @@ func TestNativeHealthStatusConversion(t *testing.T) {
 				},
 			}
 			report, err := watch.Read()
+			incidents := nativeHealthResult(report, godcgm.Field_Entity_Group(0), 0).GetIncidents()
 			if err != nil || report.NativeGroupOverallHealth == nil || report.GetNativeGroupOverallHealth() != test.portable ||
-				len(report.Incidents) != 1 || report.Incidents[0].NativeHealth == nil || report.Incidents[0].GetNativeHealth() != test.portable {
+				len(incidents) != 1 || incidents[0].NativeHealth == nil || incidents[0].GetNativeHealth() != test.portable {
 				t.Fatalf("native status %v converted to %v, %v", test.native, report, err)
 			}
 		})
@@ -412,7 +413,7 @@ func TestNativeHealthNoTargetsDoesNotReportPassOrCreateGroup(t *testing.T) {
 	}
 	report, err := watch.Read()
 	if err != nil || report.NativeGroupOverallHealth != nil || report.GroupId != nil || report.MonitoredSince != nil ||
-		len(report.Entities) != 0 || report.GetSystemsWithoutTargets() != dcgmhealth.KnownSystems || len(report.GetSystemErrors()) != 0 {
+		len(report.EntityResults) != 0 || report.GetSystemsWithoutTargets() != dcgmhealth.KnownSystems || len(report.GetSystemErrors()) != 0 {
 		t.Fatalf("no-target report=%v err=%v", report, err)
 	}
 	if !reflect.DeepEqual(kinds, []godcgm.Field_Entity_Group{godcgm.FE_GPU, godcgm.FE_SWITCH}) {
@@ -434,7 +435,13 @@ func TestNativeHealthSetupFailuresRetryOnNextRead(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer watch.Close()
-			if report, err := watch.Read(); report != nil || !errors.Is(err, failure) {
+			if operation == "add" {
+				report, readErr := watch.Read()
+				if readErr != nil || nativeHealthErrorCount(report) != 1 || len(report.GetSystemErrors()) != 0 || report.NativeGroupOverallHealth != nil ||
+					nativeHealthResult(report, godcgm.FE_GPU, 7).GetCollectionErrors()[0].GetError().GetSourceError() != "DCGM_ST_NO_DATA" {
+					t.Fatalf("membership failure returned report=%v err=%v", report, readErr)
+				}
+			} else if report, err := watch.Read(); report != nil || !errors.Is(err, failure) {
 				t.Fatalf("setup failure returned report=%v err=%v", report, err)
 			} else if detail := collectionError(err); detail.SourceError != "DCGM_ST_NO_DATA" {
 				t.Fatalf("setup failure lost native status: %v", &detail)
@@ -453,7 +460,7 @@ func TestNativeHealthSetupFailuresRetryOnNextRead(t *testing.T) {
 			for range 2 {
 				report, err := watch.Read()
 				if err != nil || report.GetNativeGroupOverallHealth() != observation.DCGMHealthResultPass ||
-					report.NativeGroupOverallHealth == nil || report.MonitoredSince == nil || len(report.Entities) != 1 {
+					report.NativeGroupOverallHealth == nil || report.MonitoredSince == nil || len(report.EntityResults) != 1 {
 					t.Fatalf("setup did not recover: report=%v err=%v", report, err)
 				}
 			}
@@ -515,7 +522,7 @@ func TestNativeHealthPartialDiscoveryRecoversWithoutReconfiguringKnownTargets(t 
 	}
 	defer watch.Close()
 	first, err := watch.Read()
-	if err != nil || len(first.GetEntities()) != 1 || len(first.GetSystemErrors()) != 2 ||
+	if err != nil || len(first.GetEntityResults()) != 1 || len(first.GetSystemErrors()) != 2 ||
 		first.GetRequestedSystems() != requested || first.GetSystemsWithoutTargets() != 0 || first.NativeGroupOverallHealth == nil {
 		t.Fatalf("partial discovery report=%v err=%v", first, err)
 	}
@@ -535,7 +542,7 @@ func TestNativeHealthPartialDiscoveryRecoversWithoutReconfiguringKnownTargets(t 
 	delete(fixture.discoveryErrors, godcgm.FE_SWITCH)
 	for range 2 {
 		report, err := watch.Read()
-		if err != nil || len(report.GetEntities()) != 2 || len(report.GetSystemErrors()) != 0 || report.GetSystemsWithoutTargets() != 0 ||
+		if err != nil || len(report.GetEntityResults()) != 2 || len(report.GetSystemErrors()) != 0 || report.GetSystemsWithoutTargets() != 0 ||
 			report.GetGroupId() != first.GetGroupId() || !report.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) {
 			t.Fatalf("discovery recovery report=%v err=%v", report, err)
 		}
@@ -558,7 +565,7 @@ func TestNativeHealthRetriesKnownEmptyEntityKinds(t *testing.T) {
 	var groupID uint64
 	for range 2 {
 		report, readErr := watch.Read()
-		if readErr != nil || report.GetSystemsWithoutTargets() != dcgmhealth.NVSwitchSystems || len(report.GetSystemErrors()) != 0 || len(report.GetEntities()) != 1 {
+		if readErr != nil || report.GetSystemsWithoutTargets() != dcgmhealth.NVSwitchSystems || len(report.GetSystemErrors()) != 0 || len(report.GetEntityResults()) != 1 {
 			t.Fatalf("known empty kind report=%v err=%v", report, readErr)
 		}
 		groupID = report.GetGroupId()
@@ -568,26 +575,58 @@ func TestNativeHealthRetriesKnownEmptyEntityKinds(t *testing.T) {
 	}
 	fixture.entities[godcgm.FE_SWITCH] = []uint{12}
 	report, err := watch.Read()
-	if err != nil || report.GetSystemsWithoutTargets() != 0 || len(report.GetEntities()) != 2 || report.GetGroupId() != groupID || fixture.count("set") != 2 {
+	if err != nil || report.GetSystemsWithoutTargets() != 0 || len(report.GetEntityResults()) != 2 || report.GetGroupId() != groupID || fixture.count("set") != 2 {
 		t.Fatalf("new targets were not configured: report=%v err=%v calls=%v", report, err, fixture.calls)
 	}
 }
 
 func requireNativeHealthMembers(t *testing.T, report *observation.DCGMHealthReport, want ...godcgm.GroupEntityPair) {
 	t.Helper()
-	if len(report.GetEntities()) != len(want) {
-		t.Fatalf("health members = %v, want %v", report.GetEntities(), want)
-	}
-	for position, target := range report.GetEntities() {
+	var members []godcgm.GroupEntityPair
+	for _, result := range report.GetEntityResults() {
+		if result.GroupMember == nil {
+			t.Fatalf("entity result lacks membership: %v", result)
+		}
+		if !result.GetGroupMember() {
+			continue
+		}
+		target := result.GetEntity()
 		native := target.GetGpu().GetNative()
 		if target.GetNvSwitch() != nil {
 			native = target.GetNvSwitch().GetNative()
 		}
-		member := godcgm.GroupEntityPair{EntityGroupId: godcgm.Field_Entity_Group(native.GetEntityKind()), EntityId: uint(native.GetEntityId())}
-		if native.GetSource() != Name || member != want[position] {
-			t.Fatalf("health member %d = %v, want %v", position, target, want[position])
+		if native.GetSource() != Name {
+			t.Fatalf("health member lost source: %v", result)
+		}
+		members = append(members, godcgm.GroupEntityPair{EntityGroupId: godcgm.Field_Entity_Group(native.GetEntityKind()), EntityId: uint(native.GetEntityId())})
+	}
+	if !slices.Equal(members, want) {
+		t.Fatalf("health members = %v, want %v", members, want)
+	}
+}
+
+func nativeHealthResult(report *observation.DCGMHealthReport, kind godcgm.Field_Entity_Group, id uint) *observation.DCGMHealthEntityResult {
+	for _, result := range report.GetEntityResults() {
+		target := result.GetEntity()
+		native := target.GetNativeEntity()
+		if target.GetGpu() != nil {
+			native = target.GetGpu().GetNative()
+		} else if target.GetNvSwitch() != nil {
+			native = target.GetNvSwitch().GetNative()
+		}
+		if native.GetSource() == Name && native.GetEntityKind() == uint32(kind) && native.GetEntityId() == uint32(id) {
+			return result
 		}
 	}
+	return nil
+}
+
+func nativeHealthErrorCount(report *observation.DCGMHealthReport) int {
+	var count int
+	for _, result := range report.GetEntityResults() {
+		count += len(result.GetCollectionErrors())
+	}
+	return count
 }
 
 func TestNativeHealthRejectedMembersPreserveCoverageAndRetry(t *testing.T) {
@@ -644,21 +683,23 @@ func TestNativeHealthRejectedMembersPreserveCoverageAndRetry(t *testing.T) {
 			var first *observation.DCGMHealthReport
 			for read := range 3 {
 				report, readErr := watch.Read()
+				incidents := nativeHealthResult(report, test.members[0].EntityGroupId, test.members[0].EntityId).GetIncidents()
 				if readErr != nil || report.GetNativeGroupOverallHealth() != observation.DCGMHealthResultFail || report.NativeGroupOverallHealth == nil ||
-					report.GetSystemsWithoutTargets() != 0 || len(report.GetIncidents()) != 1 || report.GetIncidents()[0].GetErrorCode() != 37 {
+					report.GetSystemsWithoutTargets() != 0 || len(incidents) != 1 || incidents[0].GetErrorCode() != 37 {
 					t.Fatalf("rejected member discarded usable coverage: report=%v err=%v", report, readErr)
 				}
 				requireNativeHealthMembers(t, report, test.members...)
-				var failed uint64
-				for system, failure := range report.GetSystemErrors() {
-					failed |= system
-					if system == 0 || system&(system-1) != 0 || failure.GetSource() != Name || failure.GetSourceError() != "DCGM_ST_BADPARAM" ||
-						!strings.Contains(failure.GetDetail(), fmt.Sprint(test.rejected.EntityId)) {
-						t.Fatalf("membership error lost rejected member or native status: system=%#x failure=%v", system, failure)
-					}
+				if nativeHealthErrorCount(report) != 1 || len(report.GetSystemErrors()) != 0 {
+					t.Fatalf("membership error lacks rejected entity: %v", report)
 				}
-				if failed != test.failed {
-					t.Fatalf("unavailable systems = %#x, want %#x", failed, test.failed)
+				rejected := nativeHealthResult(report, test.rejected.EntityGroupId, test.rejected.EntityId)
+				if rejected == nil || rejected.GroupMember == nil || rejected.GetGroupMember() || len(rejected.GetCollectionErrors()) != 1 {
+					t.Fatalf("rejected entity lost its membership state or error: %v", rejected)
+				}
+				failure := rejected.GetCollectionErrors()[0]
+				if failure.GetSystems() != test.failed || failure.GetError().GetSourceError() != "DCGM_ST_BADPARAM" ||
+					failure.GetError().GetOperation() != "health membership" {
+					t.Fatalf("membership error lost target, systems or status: %v", rejected)
 				}
 				if read == 0 {
 					first = report
@@ -673,14 +714,14 @@ func TestNativeHealthRejectedMembersPreserveCoverageAndRetry(t *testing.T) {
 			delete(fixture.addErrors, test.rejected)
 			for range 2 {
 				report, readErr := watch.Read()
-				if readErr != nil || len(report.GetSystemErrors()) != 0 || report.GetSystemsWithoutTargets() != 0 ||
-					report.GetGroupId() != first.GetGroupId() || !report.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) || len(report.GetIncidents()) != 1 {
+				if readErr != nil || len(report.GetSystemErrors()) != 0 || nativeHealthErrorCount(report) != 0 || report.GetSystemsWithoutTargets() != 0 ||
+					report.GetGroupId() != first.GetGroupId() || !report.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) || len(nativeHealthResult(report, test.members[0].EntityGroupId, test.members[0].EntityId).GetIncidents()) != 1 {
 					t.Fatalf("rejected member did not recover in its existing group: report=%v err=%v", report, readErr)
 				}
 				requireNativeHealthMembers(t, report, append(slices.Clone(test.members), test.rejected)...)
 			}
 			if fixture.count("create") != 1 || fixture.count("destroy") != 0 || fixture.count("set") != 2 || fixture.count("add") != len(test.members)+4 ||
-				!slices.Equal(fixture.masks, []godcgm.HealthSystem{godcgm.HealthSystem(test.enabled), godcgm.HealthSystem(test.requested)}) || len(first.GetSystemErrors()) == 0 {
+				!slices.Equal(fixture.masks, []godcgm.HealthSystem{godcgm.HealthSystem(test.enabled), godcgm.HealthSystem(test.requested)}) || nativeHealthErrorCount(first) != 1 {
 				t.Fatalf("recovery repeated setup or mutated earlier report: calls=%v masks=%v", fixture.calls, fixture.masks)
 			}
 		})
@@ -698,20 +739,80 @@ func TestNativeHealthMembershipErrorsPreserveEveryRejectedID(t *testing.T) {
 	}
 	defer watch.Close()
 	report, err := watch.Read()
-	if err != nil || len(report.GetSystemErrors()) != 2 || report.GetSystemsWithoutTargets() != 0 || fixture.count("check") != 1 {
+	if err != nil || len(report.GetSystemErrors()) != 0 || report.GetSystemsWithoutTargets() != 0 || fixture.count("check") != 1 {
 		t.Fatalf("multiple rejected members: report=%v err=%v calls=%v", report, err, fixture.calls)
 	}
 	requireNativeHealthMembers(t, report, godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 2})
-	for system, failure := range report.GetSystemErrors() {
-		for _, detail := range []string{"70", "90", "DCGM_ST_BADPARAM", "DCGM_ST_NO_PERMISSION"} {
-			if !strings.Contains(failure.GetDetail(), detail) {
-				t.Fatalf("system %#x lost rejection %q: %v", system, detail, failure)
-			}
+	if nativeHealthErrorCount(report) != 2 {
+		t.Fatalf("membership errors were merged across targets: %v", report)
+	}
+	for index, want := range []struct {
+		status string
+		id     uint32
+	}{
+		{status: "DCGM_ST_BADPARAM", id: 70},
+		{status: "DCGM_ST_NO_PERMISSION", id: 90},
+	} {
+		result := nativeHealthResult(report, godcgm.FE_GPU, uint(want.id))
+		if result == nil || result.GroupMember == nil || result.GetGroupMember() || len(result.GetCollectionErrors()) != 1 {
+			t.Fatalf("rejected GPU %d lost membership state or error: %v", want.id, result)
+		}
+		failure := result.GetCollectionErrors()[0]
+		if failure.GetError().GetSourceError() != want.status ||
+			failure.GetSystems() != dcgmhealth.SystemMemory|dcgmhealth.SystemPCIe {
+			t.Fatalf("membership error %d mixed targets or statuses: %v", index, failure)
 		}
 	}
 }
 
-func TestNativeHealthAllMembersRejectedFailsAndCleansGroup(t *testing.T) {
+func TestNativeHealthSeparatesDiscoveryAndMembershipFailures(t *testing.T) {
+	fixture := newNativeHealthFixture()
+	fixture.entities[godcgm.FE_GPU] = []uint{2, 7}
+	rejected := godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 7}
+	fixture.addErrors[rejected] = &godcgm.Error{Code: godcgm.DCGM_ST_BADPARAM}
+	fixture.discoveryErrors[godcgm.FE_SWITCH] = &godcgm.Error{Code: godcgm.DCGM_ST_NOT_SUPPORTED}
+	fixture.response = godcgm.HealthResponse{OverallHealth: godcgm.DCGM_HEALTH_RESULT_FAIL, Incidents: []godcgm.Incident{{
+		System: godcgm.DCGM_HEALTH_WATCH_MEM, Health: godcgm.DCGM_HEALTH_RESULT_FAIL,
+		EntityInfo: godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 2},
+		Error:      godcgm.DiagErrorDetail{Code: godcgm.HealthCheckErrorCode(37)},
+	}}}
+	const gpuSystems = dcgmhealth.SystemMemory | dcgmhealth.SystemPCIe
+	watch, err := startHealthWatch("separate-error-scope", gpuSystems|dcgmhealth.NVSwitchSystems, fixture.operations())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watch.Close()
+	report, err := watch.Read()
+	incidents := nativeHealthResult(report, godcgm.FE_GPU, 2).GetIncidents()
+	if err != nil || len(report.GetSystemErrors()) != 2 || nativeHealthErrorCount(report) != 1 || report.GetSystemsWithoutTargets() != 0 ||
+		report.NativeGroupOverallHealth == nil || len(incidents) != 1 || incidents[0].GetErrorCode() != 37 {
+		t.Fatalf("mixed failures lost coverage or error scope: report=%v err=%v", report, err)
+	}
+	requireNativeHealthMembers(t, report, godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 2})
+	for system, failure := range report.GetSystemErrors() {
+		if system&dcgmhealth.NVSwitchSystems == 0 || failure.GetOperation() != "health discovery" || failure.GetSourceError() != "DCGM_ST_NOT_SUPPORTED" {
+			t.Fatalf("discovery failure attributed to GPU membership: system=%#x error=%v", system, failure)
+		}
+	}
+	rejectedResult := nativeHealthResult(report, godcgm.FE_GPU, 7)
+	if rejectedResult == nil || rejectedResult.GroupMember == nil || rejectedResult.GetGroupMember() || len(rejectedResult.GetCollectionErrors()) != 1 {
+		t.Fatalf("rejected GPU lost its membership state or error: %v", rejectedResult)
+	}
+	failure := rejectedResult.GetCollectionErrors()[0]
+	if failure.GetSystems() != gpuSystems ||
+		failure.GetError().GetSource() != Name || failure.GetError().GetOperation() != "health membership" || failure.GetError().GetSourceError() != "DCGM_ST_BADPARAM" {
+		t.Fatalf("GPU membership failure attributed to switch discovery: %v", failure)
+	}
+	clear(fixture.addErrors)
+	clear(fixture.discoveryErrors)
+	recovered, err := watch.Read()
+	if err != nil || len(recovered.GetSystemErrors()) != 0 || nativeHealthErrorCount(recovered) != 0 || len(recovered.GetEntityResults()) != 3 ||
+		recovered.GetGroupId() != report.GetGroupId() || len(nativeHealthResult(recovered, godcgm.FE_GPU, 2).GetIncidents()) != 1 || fixture.count("create") != 1 || fixture.count("set") != 2 {
+		t.Fatalf("mixed failures did not recover in the existing group: report=%v err=%v calls=%v", recovered, err, fixture.calls)
+	}
+}
+
+func TestNativeHealthAllMembersRejectedReportsTargetsAndCleansGroup(t *testing.T) {
 	fixture := newNativeHealthFixture()
 	gpuErr, switchErr := errors.New("GPU 7 rejected"), errors.New("switch 12 rejected")
 	fixture.addErrors[godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 7}] = gpuErr
@@ -721,13 +822,41 @@ func TestNativeHealthAllMembersRejectedFailsAndCleansGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer watch.Close()
-	if report, readErr := watch.Read(); report != nil || !errors.Is(readErr, gpuErr) || !errors.Is(readErr, switchErr) {
-		t.Fatalf("all rejected members returned no-target or healthy report: report=%v err=%v", report, readErr)
+	report, readErr := watch.Read()
+	if readErr != nil || nativeHealthErrorCount(report) != 2 || len(report.GetEntityResults()) != 2 || len(report.GetSystemErrors()) != 0 ||
+		report.GetSystemsWithoutTargets() != 0 || report.GroupId != nil || report.MonitoredSince != nil || report.NativeGroupOverallHealth != nil {
+		t.Fatalf("all rejected members lost errors or reported coverage: report=%v err=%v", report, readErr)
+	}
+	for index, want := range []struct {
+		detail string
+		id     uint32
+	}{
+		{detail: gpuErr.Error(), id: 7},
+		{detail: switchErr.Error(), id: 12},
+	} {
+		kind := godcgm.FE_GPU
+		if index == 1 {
+			kind = godcgm.FE_SWITCH
+		}
+		result := nativeHealthResult(report, kind, uint(want.id))
+		if result == nil || result.GroupMember == nil || result.GetGroupMember() || len(result.GetCollectionErrors()) != 1 {
+			t.Fatalf("rejected target lost its membership state or error: %v", result)
+		}
+		failure := result.GetCollectionErrors()[0]
+		if !strings.Contains(failure.GetError().GetDetail(), want.detail) {
+			t.Fatalf("all rejected members lost target error: %v", failure)
+		}
 	}
 	native := watch.(*nativeHealthWatch)
 	if fixture.count("add") != 2 || fixture.count("set") != 0 || fixture.count("check") != 0 || fixture.count("destroy") != 1 ||
 		native.ownsGroup || native.configured || !native.monitoredSince.IsZero() {
 		t.Fatalf("empty rejected group retained configuration: watch=%+v calls=%v", native, fixture.calls)
+	}
+	clear(fixture.addErrors)
+	recovered, err := watch.Read()
+	if err != nil || nativeHealthErrorCount(recovered) != 0 || len(recovered.GetSystemErrors()) != 0 || recovered.NativeGroupOverallHealth == nil ||
+		len(recovered.GetEntityResults()) != 2 || fixture.count("create") != 2 || fixture.count("set") != 1 || fixture.count("check") != 1 {
+		t.Fatalf("rejected targets did not recover on the next read: report=%v err=%v calls=%v", recovered, err, fixture.calls)
 	}
 }
 
@@ -751,7 +880,7 @@ func TestNativeHealthMemberDisappearsBeforeFirstSetup(t *testing.T) {
 	defer watch.Close()
 	report, err := watch.Read()
 	if err != nil || report.GetSystemsWithoutTargets() != dcgmhealth.SystemMemory || report.GroupId != nil ||
-		report.MonitoredSince != nil || report.NativeGroupOverallHealth != nil || len(report.GetEntities()) != 0 || len(report.GetSystemErrors()) != 0 {
+		report.MonitoredSince != nil || report.NativeGroupOverallHealth != nil || len(report.GetEntityResults()) != 0 || len(report.GetSystemErrors()) != 0 {
 		t.Fatalf("disappearing GPU returned usable or unknown coverage: report=%v err=%v", report, err)
 	}
 	native := watch.(*nativeHealthWatch)
@@ -846,7 +975,7 @@ func TestNativeHealthMembershipVerificationFailureRollsBack(t *testing.T) {
 	}
 	failVerification = false
 	report, err := watch.Read()
-	if err != nil || report.GetGroupId() != 2 || len(report.GetEntities()) != 2 || fixture.count("set") != 2 || fixture.count("check") != 2 {
+	if err != nil || report.GetGroupId() != 2 || len(report.GetEntityResults()) != 2 || fixture.count("set") != 2 || fixture.count("check") != 2 {
 		t.Fatalf("unverified membership did not recover: report=%v err=%v calls=%v", report, err, fixture.calls)
 	}
 }
@@ -888,7 +1017,7 @@ func TestNativeHealthRejectedReturningGPUPreservesExistingGroup(t *testing.T) {
 	for range 2 {
 		report, readErr := watch.Read()
 		if readErr != nil || report.GetGroupId() != first.GetGroupId() || !report.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) ||
-			len(report.GetSystemErrors()) != 1 || report.GetSystemsWithoutTargets() != 0 || report.NativeGroupOverallHealth == nil {
+			len(report.GetSystemErrors()) != 0 || nativeHealthErrorCount(report) != 1 || report.GetSystemsWithoutTargets() != 0 || report.NativeGroupOverallHealth == nil {
 			t.Fatalf("rejected returning GPU interrupted established group: report=%v err=%v", report, readErr)
 		}
 		requireNativeHealthMembers(t, report, godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 2})
@@ -899,7 +1028,7 @@ func TestNativeHealthRejectedReturningGPUPreservesExistingGroup(t *testing.T) {
 	delete(fixture.addErrors, returning)
 	report, err := watch.Read()
 	if err != nil || report.GetGroupId() != first.GetGroupId() || !report.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) ||
-		len(report.GetSystemErrors()) != 0 || fixture.count("set") != 2 || fixture.count("create") != 1 || fixture.count("destroy") != 0 {
+		len(report.GetSystemErrors()) != 0 || nativeHealthErrorCount(report) != 0 || fixture.count("set") != 2 || fixture.count("create") != 1 || fixture.count("destroy") != 0 {
 		t.Fatalf("returning GPU failed to rejoin established group: report=%v err=%v calls=%v", report, err, fixture.calls)
 	}
 	requireNativeHealthMembers(t, report, godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 2}, returning)
@@ -987,9 +1116,10 @@ func TestNativeHealthRestoresGPUMembershipAfterSeveralAbsentReads(t *testing.T) 
 			fixture.members = []godcgm.GroupEntityPair{gpu, switchMember}
 			for range 3 {
 				report, readErr := watch.Read()
+				incidents := nativeHealthResult(report, godcgm.FE_GPU, 2).GetIncidents()
 				if readErr != nil || report.GetGroupId() != first.GetGroupId() ||
 					!report.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) || report.GetSystemsWithoutTargets() != 0 ||
-					len(report.GetIncidents()) != 1 || report.GetIncidents()[0].GetErrorCode() != 37 {
+					len(incidents) != 1 || incidents[0].GetErrorCode() != 37 {
 					t.Fatalf("partial absence interrupted existing coverage: report=%v err=%v", report, readErr)
 				}
 				requireNativeHealthMembers(t, report, gpu, switchMember)
@@ -1010,7 +1140,7 @@ func TestNativeHealthRestoresGPUMembershipAfterSeveralAbsentReads(t *testing.T) 
 				fixture.discoveryCalls[godcgm.FE_GPU] != 6 || fixture.discoveryCalls[godcgm.FE_SWITCH] != 6 {
 				t.Fatalf("membership repair repeated setup or skipped fresh discovery: %v", fixture.calls)
 			}
-			if len(first.GetEntities()) != 3 {
+			if len(first.GetEntityResults()) != 3 {
 				t.Fatal("membership repair mutated an earlier report")
 			}
 		})
@@ -1032,7 +1162,7 @@ func TestNativeHealthRestoresAnEmptyOwnedGroup(t *testing.T) {
 	for range 3 {
 		report, readErr := watch.Read()
 		if readErr != nil || report.GetGroupId() != first.GetGroupId() || report.GetSystemsWithoutTargets() != dcgmhealth.SystemMemory ||
-			len(report.GetEntities()) != 0 || report.NativeGroupOverallHealth != nil || !report.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) {
+			len(report.GetEntityResults()) != 0 || report.NativeGroupOverallHealth != nil || !report.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) {
 			t.Fatalf("empty owned group report=%v err=%v", report, readErr)
 		}
 	}
@@ -1124,9 +1254,10 @@ func TestNativeHealthDiscoveryFailureRetainsConfiguredMembersAndIncidents(t *tes
 	}
 	fixture.discoveryErrors[godcgm.FE_SWITCH] = &godcgm.Error{Code: godcgm.DCGM_ST_NOT_SUPPORTED}
 	report, err := watch.Read()
+	incidents := nativeHealthResult(report, godcgm.FE_GPU, 7).GetIncidents()
 	if err != nil || report.GetGroupId() != first.GetGroupId() || report.GetSystemsWithoutTargets() != 0 ||
 		len(report.GetSystemErrors()) != 1 || report.GetSystemErrors()[dcgmhealth.SystemNVSwitchFatal].GetSourceError() != "DCGM_ST_NOT_SUPPORTED" ||
-		len(report.GetIncidents()) != 1 || report.GetIncidents()[0].GetErrorCode() != 37 || report.NativeGroupOverallHealth == nil {
+		len(incidents) != 1 || incidents[0].GetErrorCode() != 37 || report.NativeGroupOverallHealth == nil {
 		t.Fatalf("discovery failure discarded configured members or findings: report=%v err=%v", report, err)
 	}
 	requireNativeHealthMembers(t, report, godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 7}, godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_SWITCH, EntityId: 12})
@@ -1166,9 +1297,10 @@ func TestNativeHealthAllDiscoveryFailuresRetainConfiguredCoverage(t *testing.T) 
 			fixture.discoveryErrors[godcgm.FE_GPU] = &godcgm.Error{Code: godcgm.DCGM_ST_NO_DATA}
 			fixture.discoveryErrors[godcgm.FE_SWITCH] = &godcgm.Error{Code: godcgm.DCGM_ST_NOT_SUPPORTED}
 			report, err := watch.Read()
+			incidents := nativeHealthResult(report, godcgm.FE_GPU, 7).GetIncidents()
 			if err != nil || report.GetGroupId() != first.GetGroupId() || !report.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) ||
 				report.GetSystemsWithoutTargets() != 0 || report.NativeGroupOverallHealth == nil || report.GetNativeGroupOverallHealth() != observation.DCGMHealthResultFail ||
-				len(report.GetIncidents()) != 1 || report.GetIncidents()[0].GetErrorCode() != 37 {
+				len(incidents) != 1 || incidents[0].GetErrorCode() != 37 {
 				t.Fatalf("all discovery failures discarded known findings: report=%v err=%v", report, err)
 			}
 			members := []godcgm.GroupEntityPair{{EntityGroupId: godcgm.FE_GPU, EntityId: 7}}
@@ -1197,7 +1329,7 @@ func TestNativeHealthAllDiscoveryFailuresRetainConfiguredCoverage(t *testing.T) 
 			clear(fixture.discoveryErrors)
 			recovered, err := watch.Read()
 			if err != nil || len(recovered.GetSystemErrors()) != 0 || recovered.GetGroupId() != first.GetGroupId() ||
-				!recovered.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) || len(recovered.GetIncidents()) != 1 ||
+				!recovered.GetMonitoredSince().AsTime().Equal(first.GetMonitoredSince().AsTime()) || len(nativeHealthResult(recovered, godcgm.FE_GPU, 7).GetIncidents()) != 1 ||
 				len(report.GetSystemErrors()) == 0 || len(first.GetSystemErrors()) != 0 || fixture.count("create") != 1 || fixture.count("add") != len(members) ||
 				fixture.count("set") != 1 || fixture.count("destroy") != 0 || fixture.count("check") != 3 || fixture.discoveryCalls[godcgm.FE_GPU] != 3 {
 				t.Fatalf("discovery recovery restarted checks or mutated earlier reports: report=%v err=%v calls=%v", recovered, err, fixture.calls)
@@ -1355,7 +1487,7 @@ func TestNativeHealthReconfigurationSetFailureRebuildsGroup(t *testing.T) {
 		delete(fixture.failures, "set")
 		time.Sleep(time.Second)
 		report, err := watch.Read()
-		if err != nil || report.GetGroupId() == first.GetGroupId() || len(report.GetEntities()) != 2 || len(report.GetSystemErrors()) != 0 ||
+		if err != nil || report.GetGroupId() == first.GetGroupId() || len(report.GetEntityResults()) != 2 || len(report.GetSystemErrors()) != 0 ||
 			report.GetSystemsWithoutTargets() != 0 || !report.GetMonitoredSince().AsTime().After(first.GetMonitoredSince().AsTime()) {
 			t.Fatalf("group was not rebuilt: report=%v err=%v", report, err)
 		}
@@ -1404,9 +1536,59 @@ func TestNativeHealthReportMarksIncidentCapacity(t *testing.T) {
 		}
 		report, err := watch.Read()
 		closeErr := watch.Close()
-		if err != nil || closeErr != nil || len(report.GetIncidents()) != count || report.GetPossiblyTruncated() != (count == maxNativeHealthIncidents) {
+		if err != nil || closeErr != nil || len(nativeHealthResult(report, godcgm.Field_Entity_Group(0), 0).GetIncidents()) != count || report.GetPossiblyTruncated() != (count == maxNativeHealthIncidents) {
 			t.Fatalf("incident count %d: report=%v err=%v close=%v", count, report, err, closeErr)
 		}
+	}
+}
+
+func TestNativeHealthGroupsFindingsAndErrorsByNativeEntity(t *testing.T) {
+	fixture := newNativeHealthFixture()
+	fixture.entities[godcgm.FE_GPU] = []uint{2, 7}
+	fixture.entities[godcgm.FE_SWITCH] = []uint{2}
+	gpu := godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 2}
+	switchEntity := godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_SWITCH, EntityId: 2}
+	rejected := godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 7}
+	incidentOnly := godcgm.GroupEntityPair{EntityGroupId: godcgm.FE_GPU, EntityId: 9}
+	unknown := godcgm.GroupEntityPair{EntityGroupId: godcgm.Field_Entity_Group(71), EntityId: 2}
+	fixture.addErrors[rejected] = &godcgm.Error{Code: godcgm.DCGM_ST_BADPARAM}
+	for index, entity := range []godcgm.GroupEntityPair{gpu, switchEntity, gpu, incidentOnly, rejected, unknown} {
+		fixture.response.Incidents = append(fixture.response.Incidents, godcgm.Incident{
+			System: godcgm.HealthSystem(1 << 30), Health: godcgm.DCGM_HEALTH_RESULT_FAIL, EntityInfo: entity,
+			Error: godcgm.DiagErrorDetail{Code: 37, Message: fmt.Sprintf("incident %d", index)},
+		})
+	}
+	watch, err := startHealthWatch("entity-grouping", dcgmhealth.SystemMemory|dcgmhealth.SystemNVSwitchFatal, fixture.operations())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watch.Close()
+	report, err := watch.Read()
+	if err != nil || len(report.GetEntityResults()) != 5 || len(report.GetSystemErrors()) != 0 {
+		t.Fatalf("native entity grouping lost targets: report=%v err=%v", report, err)
+	}
+	requireNativeHealthMembers(t, report, gpu, switchEntity)
+	var incidentCount int
+	for _, entity := range []godcgm.GroupEntityPair{gpu, switchEntity, rejected, incidentOnly, unknown} {
+		result := nativeHealthResult(report, entity.EntityGroupId, entity.EntityId)
+		if result == nil || result.GroupMember == nil || result.GetGroupMember() != (entity == gpu || entity == switchEntity) {
+			t.Fatalf("entity %v lost membership state: %v", entity, result)
+		}
+		incidentCount += len(result.GetIncidents())
+		for _, incident := range result.GetIncidents() {
+			if incident.GetSystem() != 1<<30 || incident.GetErrorCode() != 37 || incident.GetNativeHealth() != observation.DCGMHealthResultFail {
+				t.Fatalf("entity %v lost native incident values: %v", entity, incident)
+			}
+		}
+	}
+	gpuResult := nativeHealthResult(report, gpu.EntityGroupId, gpu.EntityId)
+	if incidentCount != 6 || len(gpuResult.GetIncidents()) != 2 || gpuResult.Incidents[0].GetMessage() != "incident 0" || gpuResult.Incidents[1].GetMessage() != "incident 2" {
+		t.Fatalf("repeated incidents were deduplicated or reordered: %v", report)
+	}
+	rejectedResult := nativeHealthResult(report, rejected.EntityGroupId, rejected.EntityId)
+	if len(rejectedResult.GetIncidents()) != 1 || rejectedResult.Incidents[0].GetMessage() != "incident 4" || len(rejectedResult.GetCollectionErrors()) != 1 ||
+		rejectedResult.CollectionErrors[0].GetSystems() != dcgmhealth.SystemMemory || rejectedResult.CollectionErrors[0].GetError().GetSourceError() != "DCGM_ST_BADPARAM" {
+		t.Fatalf("rejected target did not retain both finding and membership error: %v", rejectedResult)
 	}
 }
 
@@ -1444,13 +1626,17 @@ func TestNativeHealthPreservesUnknownIncidentsAndEntityIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.GetGroupId() != 42 || report.GetNativeGroupOverallHealth() != 20 || len(report.Entities) != 2 {
+	if report.GetGroupId() != 42 || report.GetNativeGroupOverallHealth() != 20 || len(report.EntityResults) != 3 {
 		t.Fatalf("group metadata=%v", report)
 	}
-	incident := report.Incidents[0]
+	result := nativeHealthResult(report, godcgm.Field_Entity_Group(123), 99)
+	if result == nil || result.GroupMember == nil || result.GetGroupMember() || len(result.GetIncidents()) != 1 {
+		t.Fatalf("incident-only entity lost its membership state or finding: %v", result)
+	}
+	incident := result.Incidents[0]
+	native := result.GetEntity().GetNativeEntity()
 	if incident.System != 1<<30 || incident.GetNativeHealth() != 71 || incident.ErrorCode != 123456 ||
-		incident.Message != "future incident" || incident.Entity.GetNativeEntity().GetSource() != Name ||
-		incident.Entity.GetNativeEntity().GetEntityKind() != 123 || incident.Entity.GetNativeEntity().GetEntityId() != 99 {
+		incident.Message != "future incident" || native.GetSource() != Name || native.GetEntityKind() != 123 || native.GetEntityId() != 99 {
 		t.Fatalf("incident lost native details: %v", incident)
 	}
 	if err := watch.Close(); err == nil {

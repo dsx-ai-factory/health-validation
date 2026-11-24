@@ -13,6 +13,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/collect/signals/dcgmhealth"
@@ -20,10 +22,12 @@ import (
 
 func collectionIncidentReport() *observation.DCGMHealthReport {
 	return &observation.DCGMHealthReport{
-		Entities: []*observation.ObservationTarget{healthTestGPUTarget(0)},
-		Incidents: []*observation.DCGMHealthIncident{{
-			System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(),
-			ErrorCode: 37, Message: "memory fault", Entity: healthTestGPUTarget(0),
+		EntityResults: []*observation.DCGMHealthEntityResult{{
+			Entity: healthTestGPUTarget(0), GroupMember: proto.Bool(true),
+			Incidents: []*observation.DCGMHealthIncident{{
+				System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(),
+				ErrorCode: 37, Message: "memory fault",
+			}},
 		}},
 		NativeGroupOverallHealth: observation.DCGMHealthResultFail.Enum(),
 	}
@@ -56,8 +60,9 @@ func TestCollectSelectsOutputsIndependently(t *testing.T) {
 			} else if len(result.Metrics) != 0 {
 				t.Fatalf("unrequested metrics produced GPU results: %+v", result.Metrics)
 			}
-			if request.Health && (result.HealthReport.GetCollectionId() != cycle.CollectionID() || len(result.HealthReport.GetIncidents()) != 1 ||
-				result.HealthReport.GetIncidents()[0].GetEntity().GetGpu().GetUuid() != "GPU-0") {
+			entities := result.HealthReport.GetEntityResults()
+			if request.Health && (result.HealthReport.GetCollectionId() != cycle.CollectionID() || len(entities) != 1 ||
+				len(entities[0].GetIncidents()) != 1 || !entities[0].GetGroupMember() || entities[0].GetEntity().GetGpu().GetUuid() != "GPU-0") {
 				t.Fatalf("health result lost identity, incident, or collection: %v", result.HealthReport)
 			}
 			if request.Inventory {
@@ -222,7 +227,7 @@ func TestCollectFeatureFailurePreservesOtherOutputs(t *testing.T) {
 }
 
 func TestCollectionReadersDoNotCrossSessionRecovery(t *testing.T) {
-	for _, failedRead := range []string{"metric call", "metric field", "health call", "health system"} {
+	for _, failedRead := range []string{"metric call", "metric field", "health call", "health system", "health entity"} {
 		t.Run(failedRead, func(t *testing.T) {
 			native := &recoveryNative{healthLifecycleNative: &healthLifecycleNative{health: &fakeHealthWatch{report: collectionIncidentReport()}}}
 			native.gpuUUIDs = map[uint]string{0: "GPU-old"}
@@ -237,7 +242,8 @@ func TestCollectionReadersDoNotCrossSessionRecovery(t *testing.T) {
 			}
 			values := first.readGPUMetrics(ctx, 0, []string{signalPowerDraw})
 			report, failure := first.readHealthReport(ctx)
-			if failure != nil || values[signalPowerDraw].Value == nil || len(report.GetIncidents()) != 1 {
+			entities := report.GetEntityResults()
+			if failure != nil || values[signalPowerDraw].Value == nil || len(entities) != 1 || len(entities[0].GetIncidents()) != 1 {
 				t.Fatalf("first collection failed before interleaving: metrics=%v report=%v failure=%v", values, report, failure)
 			}
 			second := source.newCollectionReader(newTestCycle(t, "second"))
@@ -260,6 +266,14 @@ func TestCollectionReadersDoNotCrossSessionRecovery(t *testing.T) {
 				_, _ = second.readHealthReport(ctx)
 			case "health system":
 				native.health.report = &observation.DCGMHealthReport{SystemErrors: map[uint64]*observation.CollectionError{dcgmhealth.SystemMemory: connectionFailure}}
+				_, _ = second.readHealthReport(ctx)
+			case "health entity":
+				native.health.report = &observation.DCGMHealthReport{
+					EntityResults: []*observation.DCGMHealthEntityResult{{
+						Entity: healthTestGPUTarget(0), GroupMember: proto.Bool(false),
+						CollectionErrors: []*observation.DCGMHealthEntityError{{Systems: dcgmhealth.SystemMemory, Error: connectionFailure}},
+					}},
+				}
 				_, _ = second.readHealthReport(ctx)
 			}
 			if oldSession.connectionFailure == nil {
@@ -296,8 +310,10 @@ func TestCollectionReadersDoNotCrossSessionRecovery(t *testing.T) {
 				native.readCalls.Load() != beforeMetrics || native.inventoryCalls.Load() != beforeInventory || source.session != fresh.session || fresh.session.connectionFailure != nil {
 				t.Fatal("stale collection touched or invalidated the replacement session")
 			}
+			entities = report.GetEntityResults()
 			if identities[0].UUID != "GPU-old" || values[signalPowerDraw].Value.GetIntValue() != 1 || values[signalPowerDraw].CollectionError != nil ||
-				len(report.GetIncidents()) != 1 || report.GetIncidents()[0].GetErrorCode() != 37 || report.GetIncidents()[0].GetEntity().GetGpu().GetUuid() != "" {
+				len(entities) != 1 || len(entities[0].GetIncidents()) != 1 || entities[0].GetIncidents()[0].GetErrorCode() != 37 ||
+				entities[0].GetEntity().GetGpu().GetUuid() != "" {
 				t.Fatalf("completed old-session results were changed: identities=%v metrics=%v report=%v", identities, values, report)
 			}
 			if field := fresh.readGPUMetrics(ctx, 0, []string{signalPowerDraw})[signalPowerDraw]; field.Value == nil {
@@ -368,7 +384,8 @@ func TestCollectReadsHealthBeforeInventoryOnlyDiscovery(t *testing.T) {
 	registerMetricAndHealth(t, source)
 	t.Cleanup(func() { _ = source.Close() })
 	result := source.Collect(context.Background(), newTestCycle(t, "health-before-inventory"), CollectionRequest{Health: true, Inventory: true})
-	if result.HealthReport == nil || result.HealthError != nil || len(result.HealthReport.GetIncidents()) != 1 || result.DiscoveryError == nil ||
+	entities := result.HealthReport.GetEntityResults()
+	if result.HealthError != nil || len(entities) != 1 || len(entities[0].GetIncidents()) != 1 || result.DiscoveryError == nil ||
 		result.Inventory.GetCollectionError() == nil || !slices.Equal(native.calls, []string{"health", "identity", "discovery"}) {
 		t.Fatalf("inventory discovery discarded or preceded health: result=%+v calls=%v", result, native.calls)
 	}

@@ -251,6 +251,9 @@ message Value {
 // DcgmHealthReport preserves one Source health read and its coverage limitations.
 // An empty incident list means only that no incidents were reported.
 message DcgmHealthReport {
+  reserved 4, 6, 13;
+  reserved "entities", "incidents", "entity_errors";
+
   // Values match DCGM; unknown numeric results remain valid source data.
   enum HealthResult {
     PASS = 0;
@@ -263,39 +266,62 @@ message DcgmHealthReport {
   uint64 requested_systems = 2;
   // Absent when no native group was created.
   optional uint64 group_id = 3;
-  repeated ObservationTarget entities = 4;
-  // The result returned for the native group's enabled systems. System errors
-  // and systems without targets limit coverage of the requested systems.
+  // The result returned for the native group's enabled systems. Discovery and
+  // entity collection errors and systems without targets limit requested coverage.
   // Absent when no native check was performed; unknown numbers are preserved.
   optional HealthResult native_group_overall_health = 5;
-  repeated DcgmHealthIncident incidents = 6;
   // First successful health setup for this group. Systems or members added
   // later may have less history; this timestamp does not establish coverage.
   google.protobuf.Timestamp monitored_since = 7;
   // Collection cycle that produced this report, including standalone reads.
   string collection_id = 8;
-  // Requested systems with no relevant GPU or NVSwitch members.
+  // Requested systems with no relevant GPU or NVSwitch targets.
   // Unrequested systems are excluded. This does not describe native support
   // or sample coverage.
   uint64 systems_without_targets = 10;
-  // Discovery or member-add failures keyed by one requested subsystem bit each.
-  // Coverage is incomplete; usable members and their incidents may still be
-  // present. These systems are excluded from systems_without_targets.
+  // Discovery failures without a specific target, keyed by one requested
+  // subsystem bit each. Usable members and their incidents may still be present.
+  // These systems are excluded from systems_without_targets.
   map<uint64, CollectionError> system_errors = 11;
   // The native incident limit may have been reached. The omitted count is
   // unknown, and an absent incident cannot establish that a fault cleared.
   bool possibly_truncated = 12;
+  // Groups membership, findings, and collection errors by native entity.
+  // Includes rejected targets and entities mentioned only in incidents.
+  repeated DcgmHealthEntityResult entity_results = 14;
+}
+
+// DcgmHealthEntityResult describes one entity without inferring a health verdict.
+message DcgmHealthEntityResult {
+  ObservationTarget entity = 1;
+  // Verified membership in this read's native group, supplied even when false.
+  // Membership does not establish that every enabled rule had usable samples.
+  optional bool group_member = 2;
+  repeated DcgmHealthIncident incidents = 3;
+  repeated DcgmHealthEntityError collection_errors = 4;
+}
+
+// DcgmHealthEntityError limits the enclosing entity's requested coverage.
+message DcgmHealthEntityError {
+  reserved 1;
+  reserved "entity";
+
+  // Requested systems affected by this target's failure.
+  uint64 systems = 2;
+  CollectionError error = 3;
 }
 
 // DcgmHealthIncident is source data, not a Health Validation verdict.
 // Native numeric values remain open to values added by newer DCGM versions.
 message DcgmHealthIncident {
+  reserved 5;
+  reserved "entity";
+
   uint64 system = 1;
   // Absent when the producer did not supply a native result.
   optional DcgmHealthReport.HealthResult native_health = 2;
   uint64 error_code = 3;
   string message = 4;
-  ObservationTarget entity = 5;
 }
 
 // CollectionError records why a signal could not be collected. It keeps the

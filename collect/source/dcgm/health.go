@@ -6,7 +6,6 @@ package dcgm
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"google.golang.org/protobuf/proto"
 
@@ -90,6 +89,11 @@ func (reader *collectionReader) readHealthReport(ctx context.Context) (*observat
 		for _, failure := range report.SystemErrors {
 			session.recordFieldFailure(reader.cycle, failure)
 		}
+		for _, result := range report.EntityResults {
+			for _, failure := range result.GetCollectionErrors() {
+				session.recordFieldFailure(reader.cycle, failure.GetError())
+			}
+		}
 		return report, nil
 	})
 	if err != nil {
@@ -104,16 +108,10 @@ func (reader *collectionReader) readHealthReport(ctx context.Context) (*observat
 // enrichHealthIdentities adds UUIDs and PCI addresses using the report's session.
 // Failed lookups leave native IDs and findings intact.
 func (reader *collectionReader) enrichHealthIdentities(ctx context.Context, report *observation.DCGMHealthReport) {
-	entities := slices.Clone(report.Entities)
-	for _, incident := range report.Incidents {
-		entities = append(entities, incident.GetEntity())
-	}
 	var gpuIDs []uint
 	seen := make(map[uint32]bool)
-	// Members and incidents may reference the same GPU. Look up each DCGM GPU
-	// once, including GPUs mentioned only in incidents.
-	for _, entity := range entities {
-		native := entity.GetGpu().GetNative()
+	for _, result := range report.EntityResults {
+		native := result.GetEntity().GetGpu().GetNative()
 		if native.GetSource() == Name && native.GetEntityKind() == gpuEntityKind && !seen[native.GetEntityId()] {
 			seen[native.GetEntityId()] = true
 			gpuIDs = append(gpuIDs, uint(native.GetEntityId()))
@@ -127,8 +125,8 @@ func (reader *collectionReader) enrichHealthIdentities(ctx context.Context, repo
 	for _, identity := range identities {
 		byIndex[identity.Index] = identity
 	}
-	for _, entity := range entities {
-		gpu := entity.GetGpu()
+	for _, result := range report.EntityResults {
+		gpu := result.GetEntity().GetGpu()
 		native := gpu.GetNative()
 		if native.GetSource() == Name && native.GetEntityKind() == gpuEntityKind {
 			identity := byIndex[uint(native.GetEntityId())]

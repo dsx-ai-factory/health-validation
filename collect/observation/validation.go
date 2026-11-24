@@ -46,29 +46,37 @@ func validateDCGMHealthValue(value *Value) error {
 			return fmt.Errorf("DCGM health report monitored since: %w", err)
 		}
 	}
-	for index, entity := range report.GetEntities() {
-		if entity == nil {
-			return fmt.Errorf("DCGM health report entity %d is required", index)
+	for index, result := range report.GetEntityResults() {
+		if result == nil || result.GetEntity() == nil {
+			return fmt.Errorf("DCGM health report entity result %d requires an entity", index)
 		}
-		if err := validateDCGMHealthTarget(entity); err != nil {
-			return fmt.Errorf("DCGM health report entity %d: %w", index, err)
+		if err := validateDCGMHealthTarget(result.GetEntity()); err != nil {
+			return fmt.Errorf("DCGM health report entity result %d: %w", index, err)
 		}
-	}
-	for index, incident := range report.GetIncidents() {
-		if incident == nil {
-			return fmt.Errorf("DCGM health report incident %d is required", index)
+		if result.GroupMember == nil {
+			return fmt.Errorf("DCGM health report entity result %d requires group membership", index)
 		}
-		if incident.GetEntity() == nil {
-			return fmt.Errorf("DCGM health report incident %d entity is required", index)
+		for _, failure := range result.GetCollectionErrors() {
+			if failure == nil || failure.GetError() == nil {
+				return fmt.Errorf("DCGM health report entity result %d requires a collection error", index)
+			}
+			if failure.GetSystems() == 0 || failure.GetSystems()&requestedSystems != failure.GetSystems() {
+				return fmt.Errorf("DCGM health report entity result %d error must identify requested systems", index)
+			}
+			if failure.GetSystems()&systemsWithoutTargets != 0 {
+				return fmt.Errorf("DCGM health report entity result %d error cannot also have no targets", index)
+			}
 		}
-		if err := validateDCGMHealthTarget(incident.GetEntity()); err != nil {
-			return fmt.Errorf("DCGM health report incident %d entity: %w", index, err)
+		for _, incident := range result.GetIncidents() {
+			if incident == nil {
+				return fmt.Errorf("DCGM health report entity result %d has an empty incident", index)
+			}
 		}
 	}
 	return nil
 }
 
-// validateDCGMHealthTarget checks a report member or incident's entity reference.
+// validateDCGMHealthTarget checks a report's entity reference.
 func validateDCGMHealthTarget(target *ObservationTarget) error {
 	switch target.GetKind().(type) {
 	case *ObservationTarget_GPU, *ObservationTarget_NVSwitch, *ObservationTarget_NativeEntity:

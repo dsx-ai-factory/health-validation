@@ -6,6 +6,7 @@ package dcgm
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -261,7 +262,7 @@ func TestHealthEmptyReportReturnsImmediatelyAndKeepsWatchTimestamp(t *testing.T)
 	monitoredSince := timestamppb.New(time.Unix(100, 0))
 	raw := &observation.DCGMHealthReport{
 		GroupId: proto.Uint64(23), NativeGroupOverallHealth: observation.DCGMHealthResultPass.Enum(),
-		Entities:              []*observation.ObservationTarget{healthTestGPUTarget(2)},
+		EntityResults:         []*observation.DCGMHealthEntityResult{{Entity: healthTestGPUTarget(2), GroupMember: proto.Bool(true)}},
 		MonitoredSince:        monitoredSince,
 		SystemsWithoutTargets: dcgmhealth.SystemNVSwitchFatal,
 	}
@@ -279,12 +280,13 @@ func TestHealthEmptyReportReturnsImmediatelyAndKeepsWatchTimestamp(t *testing.T)
 		cycle := newTestCycle(t, cycleID)
 		result := source.Collect(context.Background(), cycle, CollectionRequest{Health: true})
 		report, failure := result.HealthReport, result.HealthError
-		if failure != nil || report == nil || len(report.GetIncidents()) != 0 {
+		if failure != nil || report == nil || len(report.GetEntityResults()) != 1 || len(report.EntityResults[0].GetIncidents()) != 0 {
 			t.Fatalf("empty health report = %v, %v", report, failure)
 		}
+		gpu := report.EntityResults[0].GetEntity().GetGpu()
 		if report.GetGroupId() != 23 || report.GetNativeGroupOverallHealth() != observation.DCGMHealthResultPass ||
 			report.GetRequestedSystems() != systems || report.GetSystemsWithoutTargets() != dcgmhealth.SystemNVSwitchFatal ||
-			report.GetEntities()[0].GetGpu().GetUuid() != "GPU-2" || report.GetEntities()[0].GetGpu().GetNative().GetEntityId() != 2 ||
+			gpu.GetUuid() != "GPU-2" || gpu.GetNative().GetEntityId() != 2 || !report.EntityResults[0].GetGroupMember() ||
 			report.GetCollectionId() != cycle.CollectionID() || !proto.Equal(report.GetMonitoredSince(), monitoredSince) {
 			t.Fatalf("empty health report lost metadata: %v", report)
 		}
@@ -292,7 +294,7 @@ func TestHealthEmptyReportReturnsImmediatelyAndKeepsWatchTimestamp(t *testing.T)
 	if native.healthWatchCalls.Load() != 1 || native.health.readCalls.Load() != 2 || native.initCalls.Load() != 1 {
 		t.Fatal("repeated empty reads did not retain the original health watch")
 	}
-	if !proto.Equal(raw.GetMonitoredSince(), monitoredSince) || raw.GetCollectionId() != "" || raw.GetEntities()[0].GetGpu().GetUuid() != "" {
+	if !proto.Equal(raw.GetMonitoredSince(), monitoredSince) || raw.GetCollectionId() != "" || raw.EntityResults[0].GetEntity().GetGpu().GetUuid() != "" {
 		t.Fatal("empty health read mutated the native-owned report")
 	}
 }
@@ -302,14 +304,25 @@ func TestHealthReportMetadataAndSharedClient(t *testing.T) {
 	monitoredSince := time.Unix(100, 0)
 	raw := &observation.DCGMHealthReport{
 		GroupId: proto.Uint64(23), RequestedSystems: 999, NativeGroupOverallHealth: observation.DCGMHealthResult(987).Enum(),
-		Entities:       []*observation.ObservationTarget{{Kind: &observation.ObservationTarget_NativeEntity{NativeEntity: &observation.NativeEntityRef{Source: Name, EntityKind: 51, EntityId: 17}}}},
-		Incidents:      []*observation.DCGMHealthIncident{{System: 9999, NativeHealth: observation.DCGMHealthResult(777).Enum(), ErrorCode: 1234, Message: "native detail"}},
+		EntityResults: []*observation.DCGMHealthEntityResult{
+			{
+				Entity:      &observation.ObservationTarget{Kind: &observation.ObservationTarget_NativeEntity{NativeEntity: &observation.NativeEntityRef{Source: Name, EntityKind: 51, EntityId: 17}}},
+				GroupMember: proto.Bool(true),
+				Incidents:   []*observation.DCGMHealthIncident{{System: 9999, NativeHealth: observation.DCGMHealthResult(777).Enum(), ErrorCode: 1234, Message: "native detail"}},
+			},
+			{
+				Entity:           &observation.ObservationTarget{Kind: &observation.ObservationTarget_NativeEntity{NativeEntity: &observation.NativeEntityRef{Source: Name, EntityKind: 51, EntityId: 18}}},
+				GroupMember:      proto.Bool(false),
+				CollectionErrors: []*observation.DCGMHealthEntityError{{Systems: dcgmhealth.SystemMemory, Error: &observation.CollectionError{Source: Name, Operation: "health membership", Detail: "member rejected"}}},
+			},
+		},
 		MonitoredSince: timestamppb.New(monitoredSince),
 		SystemErrors: map[uint64]*observation.CollectionError{
 			dcgmhealth.SystemPCIe: {Source: Name, Operation: "health discovery", Category: observation.CollectionErrorCategoryUnavailable, Detail: "PCIe discovery failed"},
 		},
 		PossiblyTruncated: true,
 	}
+	original := proto.Clone(raw).(*observation.DCGMHealthReport)
 	native := &healthLifecycleNative{health: &fakeHealthWatch{report: raw}, cleanupNative: cleanupNative{nativeCallGate: gate}}
 	source := newSource(native, gate)
 	t.Cleanup(func() { _ = source.Close() })
@@ -324,22 +337,18 @@ func TestHealthReportMetadataAndSharedClient(t *testing.T) {
 	}
 	result := source.Collect(context.Background(), cycle, CollectionRequest{Health: true})
 	first := result.HealthReport
-	if result.HealthError != nil || first == nil {
-		t.Fatalf("health collection = %+v, %v", first, result.HealthError)
+	expected := proto.Clone(raw).(*observation.DCGMHealthReport)
+	expected.RequestedSystems = dcgmhealth.SystemMemory | dcgmhealth.SystemPCIe
+	expected.CollectionId = cycle.CollectionID()
+	if result.HealthError != nil || !proto.Equal(first, expected) {
+		t.Fatalf("raw report information changed: %v, %v", first, result.HealthError)
 	}
-	if first.GetRequestedSystems() != dcgmhealth.SystemMemory|dcgmhealth.SystemPCIe ||
-		first.GetGroupId() != raw.GetGroupId() || first.GetNativeGroupOverallHealth() != 987 ||
-		!proto.Equal(first.GetEntities()[0], raw.GetEntities()[0]) || !proto.Equal(first.GetIncidents()[0], raw.GetIncidents()[0]) ||
-		!first.GetMonitoredSince().AsTime().Equal(monitoredSince) ||
-		!proto.Equal(first.GetSystemErrors()[dcgmhealth.SystemPCIe], raw.GetSystemErrors()[dcgmhealth.SystemPCIe]) || !first.GetPossiblyTruncated() {
-		t.Fatalf("raw report information changed: %v", first)
-	}
-	if raw.GetCollectionId() != "" || !raw.GetMonitoredSince().AsTime().Equal(monitoredSince) || raw.GetRequestedSystems() != 999 {
+	if !proto.Equal(raw, original) {
 		t.Fatal("Source mutated native-owned report")
 	}
 	result = source.Collect(context.Background(), cycle, CollectionRequest{Health: true})
 	second := result.HealthReport
-	if result.HealthError != nil || first.GetCollectionId() != cycle.CollectionID() || !proto.Equal(first, second) {
+	if result.HealthError != nil || !proto.Equal(second, expected) {
 		t.Fatalf("second read = %+v, %v", second, result.HealthError)
 	}
 	nextCycle := newTestCycle(t, "next-cycle")
@@ -351,20 +360,20 @@ func TestHealthReportMetadataAndSharedClient(t *testing.T) {
 	if native.initCalls.Load() != 1 || native.watchCalls.Load() != 1 || native.healthWatchCalls.Load() != 1 || native.health.readCalls.Load() != 3 || native.health.outsideGate.Load() {
 		t.Fatal("metric and health did not share one initialized, gated lifetime")
 	}
-	first.Incidents[0].Message = "consumer edit"
-	first.GetEntities()[0].GetNativeEntity().EntityId = 42
+	first.EntityResults[0].Incidents[0].Message = "consumer edit"
+	first.EntityResults[0].Entity.GetNativeEntity().EntityId = 42
+	*first.EntityResults[0].GroupMember = false
 	*first.GroupId = 45
 	first.MonitoredSince.Seconds++
 	first.SystemErrors[dcgmhealth.SystemPCIe].Detail = "consumer edit"
 	delete(first.SystemErrors, dcgmhealth.SystemPCIe)
+	first.EntityResults[1].CollectionErrors[0].Error.Detail = "consumer edit"
+	first.EntityResults[1].Entity.GetNativeEntity().EntityId = 43
 	first.PossiblyTruncated = false
-	if second.GetIncidents()[0].GetMessage() != "native detail" || second.GetEntities()[0].GetNativeEntity().GetEntityId() != 17 ||
-		second.GetGroupId() != 23 || !second.GetMonitoredSince().AsTime().Equal(monitoredSince) ||
-		second.GetSystemErrors()[dcgmhealth.SystemPCIe].GetDetail() != "PCIe discovery failed" || !second.GetPossiblyTruncated() {
+	if !proto.Equal(second, expected) {
 		t.Fatal("reports from distinct reads alias each other")
 	}
-	if raw.GetIncidents()[0].GetMessage() != "native detail" || raw.GetEntities()[0].GetNativeEntity().GetEntityId() != 17 || raw.GetGroupId() != 23 ||
-		!raw.GetMonitoredSince().AsTime().Equal(monitoredSince) || raw.GetSystemErrors()[dcgmhealth.SystemPCIe].GetDetail() != "PCIe discovery failed" || !raw.GetPossiblyTruncated() {
+	if !proto.Equal(raw, original) {
 		t.Fatal("returned report aliases native-owned data")
 	}
 }
@@ -391,13 +400,14 @@ func TestHealthReportPreservesNativeAvailability(t *testing.T) {
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			raw := &observation.DCGMHealthReport{
-				Entities: test.entities, SystemsWithoutTargets: test.missing, SystemErrors: test.failures,
-				Incidents: []*observation.DCGMHealthIncident{{
-					System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(),
-					Entity: healthTestGPUTarget(99),
-				}},
+			raw := &observation.DCGMHealthReport{SystemsWithoutTargets: test.missing, SystemErrors: test.failures}
+			for _, entity := range test.entities {
+				raw.EntityResults = append(raw.EntityResults, &observation.DCGMHealthEntityResult{Entity: entity, GroupMember: proto.Bool(true)})
 			}
+			raw.EntityResults = append(raw.EntityResults, &observation.DCGMHealthEntityResult{
+				Entity: healthTestGPUTarget(99), GroupMember: proto.Bool(false),
+				Incidents: []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum()}},
+			})
 			native := &healthLifecycleNative{health: &fakeHealthWatch{report: raw}}
 			source := newSource(native, &sync.Mutex{})
 			t.Cleanup(func() { _ = source.Close() })
@@ -405,9 +415,13 @@ func TestHealthReportPreservesNativeAvailability(t *testing.T) {
 				t.Fatal(err)
 			}
 			report, failure := source.newCollectionReader(newTestCycle(t, "targets-"+test.name)).readHealth(context.Background())
-			if failure != nil || report.GetSystemsWithoutTargets() != test.missing || len(report.GetIncidents()) != 1 ||
+			if failure != nil || report.GetSystemsWithoutTargets() != test.missing || len(report.GetEntityResults()) != len(test.entities)+1 ||
 				!proto.Equal(report.GetMonitoredSince(), raw.GetMonitoredSince()) || len(report.GetSystemErrors()) != len(test.failures) {
 				t.Fatalf("health collection = %v, %v; want missing %#x with native incident", report, failure, test.missing)
+			}
+			last := report.EntityResults[len(test.entities)]
+			if last.GetGroupMember() || len(last.GetIncidents()) != 1 || last.Entity.GetGpu().GetUuid() != "GPU-99" {
+				t.Fatalf("incident-only entity changed: %v", last)
 			}
 			for system, want := range test.failures {
 				if !proto.Equal(report.GetSystemErrors()[system], want) {
@@ -575,7 +589,7 @@ func TestHealthReadFailureCanRetryAndKeepsMetrics(t *testing.T) {
 			native.health.readError = nil
 			native.health.missingReport = false
 			recovered, failure := source.newCollectionReader(cycle).readHealth(context.Background())
-			if failure != nil || recovered == nil || len(recovered.GetIncidents()) != 0 {
+			if failure != nil || recovered == nil || len(recovered.GetEntityResults()) != 0 {
 				t.Fatalf("recovered empty health report = %v, %v", recovered, failure)
 			}
 			if native.healthWatchCalls.Load() != 1 || native.health.readCalls.Load() != 2 || native.health.cleanupCalls.Load() != 0 || native.cleanupCalls.Load() != 0 {
@@ -619,14 +633,16 @@ func TestCloseAttemptsBothFeatureCleanupsBeforeClient(t *testing.T) {
 }
 
 func TestHealthUUIDEnrichmentPreservesNativeIdentity(t *testing.T) {
-	report := &observation.DCGMHealthReport{
-		Entities: []*observation.ObservationTarget{healthTestGPUTarget(2), {Kind: &observation.ObservationTarget_NVSwitch{NvSwitch: &observation.NVSwitchRef{Native: &observation.NativeEntityRef{Source: Name, EntityKind: 3, EntityId: 7}}}}},
-		Incidents: []*observation.DCGMHealthIncident{
-			{Entity: healthTestGPUTarget(9)},
-			{Entity: &observation.ObservationTarget{Kind: &observation.ObservationTarget_NativeEntity{NativeEntity: &observation.NativeEntityRef{Source: Name, EntityKind: 71, EntityId: 9}}}},
-		},
-	}
+	report := &observation.DCGMHealthReport{EntityResults: []*observation.DCGMHealthEntityResult{
+		{Entity: healthTestGPUTarget(2), GroupMember: proto.Bool(true)},
+		{Entity: &observation.ObservationTarget{Kind: &observation.ObservationTarget_NVSwitch{NvSwitch: &observation.NVSwitchRef{Native: &observation.NativeEntityRef{Source: Name, EntityKind: 3, EntityId: 7}}}}, GroupMember: proto.Bool(true)},
+		{Entity: healthTestGPUTarget(9), GroupMember: proto.Bool(false), Incidents: []*observation.DCGMHealthIncident{{Message: "incident only"}}},
+		{Entity: &observation.ObservationTarget{Kind: &observation.ObservationTarget_NativeEntity{NativeEntity: &observation.NativeEntityRef{Source: Name, EntityKind: 71, EntityId: 9}}}, GroupMember: proto.Bool(false), Incidents: []*observation.DCGMHealthIncident{{Message: "unknown entity"}}},
+		{Entity: healthTestGPUTarget(2), GroupMember: proto.Bool(true)},
+		{Entity: healthTestGPUTarget(3), GroupMember: proto.Bool(false), CollectionErrors: []*observation.DCGMHealthEntityError{{Systems: dcgmhealth.SystemMemory, Error: &observation.CollectionError{Detail: "membership failure"}}}},
+	}}
 	native := &healthLifecycleNative{health: &fakeHealthWatch{report: report}}
+	native.uuidReadIndices = make(chan []uint, 1)
 	source := newSource(native, &sync.Mutex{})
 	registerMetricAndHealth(t, source)
 	t.Cleanup(func() { _ = source.Close() })
@@ -634,21 +650,124 @@ func TestHealthUUIDEnrichmentPreservesNativeIdentity(t *testing.T) {
 	if failure != nil {
 		t.Fatal(failure)
 	}
-	if result.Entities[0].GetGpu().GetUuid() != "GPU-2" || result.Incidents[0].Entity.GetGpu().GetUuid() != "GPU-9" ||
-		result.Entities[1].GetGpu().GetUuid() != "" || result.Incidents[1].Entity.GetGpu().GetUuid() != "" {
-		t.Fatalf("UUID enrichment rewrote native identities: %v", result)
+	for index, want := range []string{"GPU-2", "", "GPU-9", "", "GPU-2", "GPU-3"} {
+		entry := result.EntityResults[index]
+		if entry.Entity.GetGpu().GetUuid() != want || !proto.Equal(entry.Entity.GetGpu().GetNative(), report.EntityResults[index].Entity.GetGpu().GetNative()) {
+			t.Fatalf("UUID enrichment rewrote entity %d: %v", index, entry)
+		}
+		if report.EntityResults[index].Entity.GetGpu().GetUuid() != "" {
+			t.Fatal("enrichment mutated the native-owned report")
+		}
 	}
-	if report.Entities[0].GetGpu().GetUuid() != "" || report.Incidents[0].Entity.GetGpu().GetUuid() != "" || native.uuidCalls.Load() != 1 {
-		t.Fatal("enrichment mutated native report or queried UUIDs repeatedly")
+	if native.uuidCalls.Load() != 1 {
+		t.Fatal("enrichment queried UUIDs repeatedly")
 	}
-	if result.Entities[0].GetGpu().GetSourceLocalId() != "" ||
-		!proto.Equal(result.Entities[0].GetGpu().GetNative(), report.Entities[0].GetGpu().GetNative()) ||
-		!proto.Equal(result.Entities[1], report.Entities[1]) || !proto.Equal(result.Incidents[1].Entity, report.Incidents[1].Entity) {
+	if ids := <-native.uuidReadIndices; !slices.Equal(ids, []uint{2, 9, 3}) {
+		t.Fatalf("identity lookup IDs = %v, want each report GPU once", ids)
+	}
+	if result.EntityResults[0].Entity.GetGpu().GetSourceLocalId() != "" ||
+		!proto.Equal(result.EntityResults[1], report.EntityResults[1]) || !proto.Equal(result.EntityResults[3], report.EntityResults[3]) {
 		t.Fatal("UUID enrichment added redundant identity metadata or changed native identity")
 	}
-	result.Entities[0].GetGpu().Native.EntityId = 33
-	if report.Entities[0].GetGpu().GetNative().GetEntityId() != 2 {
+	result.EntityResults[0].Entity.GetGpu().Native.EntityId = 33
+	result.EntityResults[5].Entity.GetGpu().Native.EntityId = 34
+	if report.EntityResults[0].Entity.GetGpu().GetNative().GetEntityId() != 2 || report.EntityResults[5].Entity.GetGpu().GetNative().GetEntityId() != 3 {
 		t.Fatal("returned report aliases native identity metadata")
+	}
+}
+
+func TestHealthMembershipErrorIdentityEnrichment(t *testing.T) {
+	unavailable := &observation.CollectionError{Source: Name, Operation: "identity", Category: observation.CollectionErrorCategoryUnavailable}
+	for _, test := range []struct {
+		lookupError error
+		name        string
+		identity    GPUIdentityEntry
+	}{
+		{name: "UUID and PCI address", identity: GPUIdentityEntry{UUID: "GPU-3", BusID: "0000:53:00.0"}},
+		{name: "UUID unavailable", identity: GPUIdentityEntry{UUIDError: unavailable, BusID: "0000:53:00.0"}},
+		{name: "PCI address unavailable", identity: GPUIdentityEntry{UUID: "GPU-3", BusIDError: unavailable}},
+		{name: "lookup failed", lookupError: errors.New("identity lookup failed")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			raw := &observation.DCGMHealthReport{EntityResults: []*observation.DCGMHealthEntityResult{{
+				Entity: healthTestGPUTarget(3), GroupMember: proto.Bool(false),
+				CollectionErrors: []*observation.DCGMHealthEntityError{{
+					Systems: dcgmhealth.SystemMemory | dcgmhealth.SystemPCIe,
+					Error:   &observation.CollectionError{Source: Name, Operation: "health membership", SourceError: "DCGM_ST_GPU_IS_LOST", Detail: "GPU rejected"},
+				}},
+			}}}
+			native := &healthLifecycleNative{health: &fakeHealthWatch{report: raw}}
+			native.uuidEntries, native.uuidErr = map[uint]GPUIdentityEntry{3: test.identity}, test.lookupError
+			source := newSource(native, &sync.Mutex{})
+			t.Cleanup(func() { _ = source.Close() })
+			if err := source.AddHealthToWatch(dcgmhealth.SystemMemory | dcgmhealth.SystemPCIe); err != nil {
+				t.Fatal(err)
+			}
+			result := source.Collect(context.Background(), newTestCycle(t, test.name), CollectionRequest{Health: true})
+			if result.HealthError != nil || len(result.HealthReport.GetEntityResults()) != 1 || len(result.HealthReport.EntityResults[0].GetCollectionErrors()) != 1 {
+				t.Fatalf("membership error report lost during identity lookup: %+v", result)
+			}
+			entry := result.HealthReport.EntityResults[0]
+			gpu := entry.GetEntity().GetGpu()
+			if gpu.GetUuid() != test.identity.UUID || gpu.GetBusId() != test.identity.BusID || entry.GetGroupMember() ||
+				!proto.Equal(gpu.GetNative(), raw.EntityResults[0].Entity.GetGpu().GetNative()) ||
+				!proto.Equal(entry.CollectionErrors[0], raw.EntityResults[0].CollectionErrors[0]) {
+				t.Fatalf("membership error or native identity changed: %v", entry)
+			}
+			if native.uuidCalls.Load() != 1 || native.enumerationCalls.Load() != 0 ||
+				raw.EntityResults[0].Entity.GetGpu().GetUuid() != "" || raw.EntityResults[0].Entity.GetGpu().GetBusId() != "" {
+				t.Fatal("error-only enrichment queried discovery or mutated the native-owned report")
+			}
+		})
+	}
+}
+
+func TestHealthEntityErrorConnectionLossPreservesReportAndRecovers(t *testing.T) {
+	raw := &observation.DCGMHealthReport{EntityResults: []*observation.DCGMHealthEntityResult{
+		{
+			Entity: healthTestGPUTarget(2), GroupMember: proto.Bool(true),
+			Incidents: []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemMemory, ErrorCode: 123, Message: "memory fault"}},
+		},
+		{
+			Entity: healthTestGPUTarget(3), GroupMember: proto.Bool(false),
+			CollectionErrors: []*observation.DCGMHealthEntityError{{
+				Systems: dcgmhealth.SystemMemory,
+				Error: &observation.CollectionError{
+					Source: Name, Operation: "health membership", SourceError: connectionNotValidStatus,
+					Category: observation.CollectionErrorCategoryUnavailable, Detail: "connection lost adding member",
+				},
+			}},
+		},
+	}}
+	native := &healthLifecycleNative{health: &fakeHealthWatch{report: raw}}
+	source := newSource(native, &sync.Mutex{})
+	registerMetricAndHealth(t, source)
+	t.Cleanup(func() { _ = source.Close() })
+	cycle := newTestCycle(t, "member-connection-loss")
+	result := source.Collect(context.Background(), cycle, CollectionRequest{Health: true, Inventory: true})
+	if result.HealthError != nil || result.HealthReport == nil || len(result.HealthReport.GetSystemErrors()) != 0 ||
+		len(result.HealthReport.GetEntityResults()) != 2 ||
+		!proto.Equal(result.HealthReport.EntityResults[0], raw.EntityResults[0]) ||
+		!proto.Equal(result.HealthReport.EntityResults[1], raw.EntityResults[1]) {
+		t.Fatalf("entity connection error discarded the completed health report: %+v", result)
+	}
+	if result.DiscoveryError.GetSourceError() != connectionNotValidStatus ||
+		result.Inventory.GetCollectionError().GetSourceError() != connectionNotValidStatus {
+		t.Fatalf("later inventory read ignored the failed session: %+v", result)
+	}
+	values := source.ReadGPUMetrics(context.Background(), cycle, 2, []string{signalPowerDraw})
+	if values[signalPowerDraw].CollectionError.GetSourceError() != connectionNotValidStatus || native.initCalls.Load() != 1 ||
+		native.uuidCalls.Load() != 0 || native.enumerationCalls.Load() != 0 || native.inventoryCalls.Load() != 0 || native.readCalls.Load() != 0 {
+		t.Fatal("entity connection failure allowed enrichment or further native work in the failed collection")
+	}
+	native.health.report = &observation.DCGMHealthReport{EntityResults: []*observation.DCGMHealthEntityResult{{Entity: healthTestGPUTarget(2), GroupMember: proto.Bool(true)}}}
+	recovered := source.Collect(context.Background(), newTestCycle(t, "after-member-connection-loss"), CollectionRequest{Health: true, Inventory: true})
+	if recovered.HealthError != nil || recovered.DiscoveryError != nil || recovered.Inventory.GetCollectionError() != nil ||
+		len(recovered.HealthReport.GetEntityResults()) != 1 ||
+		recovered.HealthReport.EntityResults[0].Entity.GetGpu().GetUuid() != "GPU-2" || len(recovered.HealthReport.EntityResults[0].GetCollectionErrors()) != 0 ||
+		native.initCalls.Load() != 2 || native.cleanupCalls.Load() != 1 || native.healthWatchCalls.Load() != 2 ||
+		native.health.readCalls.Load() != 2 || native.inventoryCalls.Load() != 1 {
+		t.Fatalf("fresh collection did not recover after structured member failure: %+v", recovered)
 	}
 }
 
@@ -664,14 +783,14 @@ func TestHealthUUIDEnrichmentRequiresTypedDCGMGPUIdentity(t *testing.T) {
 		{name: "switch", target: &observation.ObservationTarget{Kind: &observation.ObservationTarget_NVSwitch{NvSwitch: &observation.NVSwitchRef{Native: &observation.NativeEntityRef{Source: Name, EntityKind: 3, EntityId: 2}}}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			native := &healthLifecycleNative{health: &fakeHealthWatch{report: &observation.DCGMHealthReport{Entities: []*observation.ObservationTarget{test.target}}}}
+			native := &healthLifecycleNative{health: &fakeHealthWatch{report: &observation.DCGMHealthReport{EntityResults: []*observation.DCGMHealthEntityResult{{Entity: test.target, GroupMember: proto.Bool(true)}}}}}
 			source := newSource(native, &sync.Mutex{})
 			t.Cleanup(func() { _ = source.Close() })
 			if err := source.AddHealthToWatch(dcgmhealth.KnownSystems); err != nil {
 				t.Fatal(err)
 			}
 			report, failure := source.newCollectionReader(newTestCycle(t, "skip-uuid-"+test.name)).readHealth(context.Background())
-			if failure != nil || native.uuidCalls.Load() != 0 || !proto.Equal(report.Entities[0], test.target) {
+			if failure != nil || native.uuidCalls.Load() != 0 || !proto.Equal(report.EntityResults[0].Entity, test.target) {
 				t.Fatalf("health collection = %v, %v; UUID calls = %d", report, failure, native.uuidCalls.Load())
 			}
 		})
@@ -682,10 +801,11 @@ func TestHealthUUIDCancellationPreservesIncidentsAndNativeGate(t *testing.T) {
 	gate := &sync.Mutex{}
 	native := &healthLifecycleNative{
 		health: &fakeHealthWatch{report: &observation.DCGMHealthReport{
-			Entities: []*observation.ObservationTarget{healthTestGPUTarget(2)},
-			Incidents: []*observation.DCGMHealthIncident{{
-				System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 123, Message: "memory incident",
-				Entity: healthTestGPUTarget(2),
+			EntityResults: []*observation.DCGMHealthEntityResult{{
+				Entity: healthTestGPUTarget(2), GroupMember: proto.Bool(true),
+				Incidents: []*observation.DCGMHealthIncident{{
+					System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 123, Message: "memory incident",
+				}},
 			}},
 		}},
 	}
@@ -715,8 +835,8 @@ func TestHealthUUIDCancellationPreservesIncidentsAndNativeGate(t *testing.T) {
 		t.Fatal("health read did not return after UUID enrichment cancellation")
 	}
 	result, failure := collected.HealthReport, collected.HealthError
-	if failure != nil || len(result.GetIncidents()) != 1 || result.Incidents[0].GetMessage() != "memory incident" ||
-		result.Incidents[0].Entity.GetGpu().GetNative().GetEntityId() != 2 || result.Incidents[0].Entity.GetGpu().GetUuid() != "" {
+	if failure != nil || len(result.GetEntityResults()) != 1 || len(result.EntityResults[0].GetIncidents()) != 1 || result.EntityResults[0].Incidents[0].GetMessage() != "memory incident" ||
+		result.EntityResults[0].Entity.GetGpu().GetNative().GetEntityId() != 2 || result.EntityResults[0].Entity.GetGpu().GetUuid() != "" {
 		t.Fatalf("optional cancellation lost native report: %v, %v", result, failure)
 	}
 	if native.uuidCalls.Load() != 1 || native.health.readCalls.Load() != 1 {

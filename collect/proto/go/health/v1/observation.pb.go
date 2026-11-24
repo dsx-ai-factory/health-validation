@@ -2236,31 +2236,32 @@ type DcgmHealthReport struct {
 	// This mask does not guarantee native support or sample coverage.
 	RequestedSystems uint64 `protobuf:"varint,2,opt,name=requested_systems,json=requestedSystems,proto3" json:"requested_systems,omitempty"`
 	// Absent when no native group was created.
-	GroupId  *uint64              `protobuf:"varint,3,opt,name=group_id,json=groupId,proto3,oneof" json:"group_id,omitempty"`
-	Entities []*ObservationTarget `protobuf:"bytes,4,rep,name=entities,proto3" json:"entities,omitempty"`
-	// The result returned for the native group's enabled systems. System errors
-	// and systems without targets limit coverage of the requested systems.
+	GroupId *uint64 `protobuf:"varint,3,opt,name=group_id,json=groupId,proto3,oneof" json:"group_id,omitempty"`
+	// The result returned for the native group's enabled systems. Discovery and
+	// entity collection errors and systems without targets limit requested coverage.
 	// Absent when no native check was performed; unknown numbers are preserved.
 	NativeGroupOverallHealth *DcgmHealthReport_HealthResult `protobuf:"varint,5,opt,name=native_group_overall_health,json=nativeGroupOverallHealth,proto3,enum=health.v1.DcgmHealthReport_HealthResult,oneof" json:"native_group_overall_health,omitempty"`
-	Incidents                []*DcgmHealthIncident          `protobuf:"bytes,6,rep,name=incidents,proto3" json:"incidents,omitempty"`
 	// First successful health setup for this group. Systems or members added
 	// later may have less history; this timestamp does not establish coverage.
 	MonitoredSince *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=monitored_since,json=monitoredSince,proto3" json:"monitored_since,omitempty"`
 	// Collection cycle that produced this report, including standalone reads.
 	CollectionId string `protobuf:"bytes,8,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	// Requested systems with no relevant GPU or NVSwitch members.
+	// Requested systems with no relevant GPU or NVSwitch targets.
 	// Unrequested systems are excluded. This does not describe native support
 	// or sample coverage.
 	SystemsWithoutTargets uint64 `protobuf:"varint,10,opt,name=systems_without_targets,json=systemsWithoutTargets,proto3" json:"systems_without_targets,omitempty"`
-	// Discovery or member-add failures keyed by one requested subsystem bit each.
-	// Coverage is incomplete; usable members and their incidents may still be
-	// present. These systems are excluded from systems_without_targets.
+	// Discovery failures without a specific target, keyed by one requested
+	// subsystem bit each. Usable members and their incidents may still be present.
+	// These systems are excluded from systems_without_targets.
 	SystemErrors map[uint64]*CollectionError `protobuf:"bytes,11,rep,name=system_errors,json=systemErrors,proto3" json:"system_errors,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// The native incident limit may have been reached. The omitted count is
 	// unknown, and an absent incident cannot establish that a fault cleared.
 	PossiblyTruncated bool `protobuf:"varint,12,opt,name=possibly_truncated,json=possiblyTruncated,proto3" json:"possibly_truncated,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Groups membership, findings, and collection errors by native entity.
+	// Includes rejected targets and entities mentioned only in incidents.
+	EntityResults []*DcgmHealthEntityResult `protobuf:"bytes,14,rep,name=entity_results,json=entityResults,proto3" json:"entity_results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DcgmHealthReport) Reset() {
@@ -2307,25 +2308,11 @@ func (x *DcgmHealthReport) GetGroupId() uint64 {
 	return 0
 }
 
-func (x *DcgmHealthReport) GetEntities() []*ObservationTarget {
-	if x != nil {
-		return x.Entities
-	}
-	return nil
-}
-
 func (x *DcgmHealthReport) GetNativeGroupOverallHealth() DcgmHealthReport_HealthResult {
 	if x != nil && x.NativeGroupOverallHealth != nil {
 		return *x.NativeGroupOverallHealth
 	}
 	return DcgmHealthReport_PASS
-}
-
-func (x *DcgmHealthReport) GetIncidents() []*DcgmHealthIncident {
-	if x != nil {
-		return x.Incidents
-	}
-	return nil
 }
 
 func (x *DcgmHealthReport) GetMonitoredSince() *timestamppb.Timestamp {
@@ -2363,6 +2350,138 @@ func (x *DcgmHealthReport) GetPossiblyTruncated() bool {
 	return false
 }
 
+func (x *DcgmHealthReport) GetEntityResults() []*DcgmHealthEntityResult {
+	if x != nil {
+		return x.EntityResults
+	}
+	return nil
+}
+
+// DcgmHealthEntityResult describes one entity without inferring a health verdict.
+type DcgmHealthEntityResult struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Entity *ObservationTarget     `protobuf:"bytes,1,opt,name=entity,proto3" json:"entity,omitempty"`
+	// Verified membership in this read's native group, supplied even when false.
+	// Membership does not establish that every enabled rule had usable samples.
+	GroupMember      *bool                    `protobuf:"varint,2,opt,name=group_member,json=groupMember,proto3,oneof" json:"group_member,omitempty"`
+	Incidents        []*DcgmHealthIncident    `protobuf:"bytes,3,rep,name=incidents,proto3" json:"incidents,omitempty"`
+	CollectionErrors []*DcgmHealthEntityError `protobuf:"bytes,4,rep,name=collection_errors,json=collectionErrors,proto3" json:"collection_errors,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *DcgmHealthEntityResult) Reset() {
+	*x = DcgmHealthEntityResult{}
+	mi := &file_health_v1_observation_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DcgmHealthEntityResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DcgmHealthEntityResult) ProtoMessage() {}
+
+func (x *DcgmHealthEntityResult) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DcgmHealthEntityResult.ProtoReflect.Descriptor instead.
+func (*DcgmHealthEntityResult) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *DcgmHealthEntityResult) GetEntity() *ObservationTarget {
+	if x != nil {
+		return x.Entity
+	}
+	return nil
+}
+
+func (x *DcgmHealthEntityResult) GetGroupMember() bool {
+	if x != nil && x.GroupMember != nil {
+		return *x.GroupMember
+	}
+	return false
+}
+
+func (x *DcgmHealthEntityResult) GetIncidents() []*DcgmHealthIncident {
+	if x != nil {
+		return x.Incidents
+	}
+	return nil
+}
+
+func (x *DcgmHealthEntityResult) GetCollectionErrors() []*DcgmHealthEntityError {
+	if x != nil {
+		return x.CollectionErrors
+	}
+	return nil
+}
+
+// DcgmHealthEntityError limits the enclosing entity's requested coverage.
+type DcgmHealthEntityError struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Requested systems affected by this target's failure.
+	Systems       uint64           `protobuf:"varint,2,opt,name=systems,proto3" json:"systems,omitempty"`
+	Error         *CollectionError `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DcgmHealthEntityError) Reset() {
+	*x = DcgmHealthEntityError{}
+	mi := &file_health_v1_observation_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DcgmHealthEntityError) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DcgmHealthEntityError) ProtoMessage() {}
+
+func (x *DcgmHealthEntityError) ProtoReflect() protoreflect.Message {
+	mi := &file_health_v1_observation_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DcgmHealthEntityError.ProtoReflect.Descriptor instead.
+func (*DcgmHealthEntityError) Descriptor() ([]byte, []int) {
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *DcgmHealthEntityError) GetSystems() uint64 {
+	if x != nil {
+		return x.Systems
+	}
+	return 0
+}
+
+func (x *DcgmHealthEntityError) GetError() *CollectionError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
 // DcgmHealthIncident is source data, not a Health Validation verdict.
 // Native numeric values remain open to values added by newer DCGM versions.
 type DcgmHealthIncident struct {
@@ -2372,14 +2491,13 @@ type DcgmHealthIncident struct {
 	NativeHealth  *DcgmHealthReport_HealthResult `protobuf:"varint,2,opt,name=native_health,json=nativeHealth,proto3,enum=health.v1.DcgmHealthReport_HealthResult,oneof" json:"native_health,omitempty"`
 	ErrorCode     uint64                         `protobuf:"varint,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	Message       string                         `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
-	Entity        *ObservationTarget             `protobuf:"bytes,5,opt,name=entity,proto3" json:"entity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DcgmHealthIncident) Reset() {
 	*x = DcgmHealthIncident{}
-	mi := &file_health_v1_observation_proto_msgTypes[27]
+	mi := &file_health_v1_observation_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2391,7 +2509,7 @@ func (x *DcgmHealthIncident) String() string {
 func (*DcgmHealthIncident) ProtoMessage() {}
 
 func (x *DcgmHealthIncident) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[27]
+	mi := &file_health_v1_observation_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2404,7 +2522,7 @@ func (x *DcgmHealthIncident) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DcgmHealthIncident.ProtoReflect.Descriptor instead.
 func (*DcgmHealthIncident) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{27}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *DcgmHealthIncident) GetSystem() uint64 {
@@ -2435,13 +2553,6 @@ func (x *DcgmHealthIncident) GetMessage() string {
 	return ""
 }
 
-func (x *DcgmHealthIncident) GetEntity() *ObservationTarget {
-	if x != nil {
-		return x.Entity
-	}
-	return nil
-}
-
 // CollectionError records why a signal could not be collected. It keeps the
 // source's symbolic error next to the normalized category, because collapsing
 // them loses information the catalog needs.
@@ -2460,7 +2571,7 @@ type CollectionError struct {
 
 func (x *CollectionError) Reset() {
 	*x = CollectionError{}
-	mi := &file_health_v1_observation_proto_msgTypes[28]
+	mi := &file_health_v1_observation_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2472,7 +2583,7 @@ func (x *CollectionError) String() string {
 func (*CollectionError) ProtoMessage() {}
 
 func (x *CollectionError) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[28]
+	mi := &file_health_v1_observation_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2485,7 +2596,7 @@ func (x *CollectionError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectionError.ProtoReflect.Descriptor instead.
 func (*CollectionError) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{28}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CollectionError) GetSource() string {
@@ -2537,7 +2648,7 @@ type NoValue struct {
 
 func (x *NoValue) Reset() {
 	*x = NoValue{}
-	mi := &file_health_v1_observation_proto_msgTypes[29]
+	mi := &file_health_v1_observation_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2549,7 +2660,7 @@ func (x *NoValue) String() string {
 func (*NoValue) ProtoMessage() {}
 
 func (x *NoValue) ProtoReflect() protoreflect.Message {
-	mi := &file_health_v1_observation_proto_msgTypes[29]
+	mi := &file_health_v1_observation_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2562,7 +2673,7 @@ func (x *NoValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NoValue.ProtoReflect.Descriptor instead.
 func (*NoValue) Descriptor() ([]byte, []int) {
-	return file_health_v1_observation_proto_rawDescGZIP(), []int{29}
+	return file_health_v1_observation_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *NoValue) GetReason() NoValueReason {
@@ -2748,19 +2859,18 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\n" +
 	"uint_value\x18\x05 \x01(\x04H\x00R\tuintValue\x12K\n" +
 	"\x12dcgm_health_report\x18\x06 \x01(\v2\x1b.health.v1.DcgmHealthReportH\x00R\x10dcgmHealthReportB\x06\n" +
-	"\x04kind\"\xa1\x06\n" +
+	"\x04kind\"\xaa\x06\n" +
 	"\x10DcgmHealthReport\x12+\n" +
 	"\x11requested_systems\x18\x02 \x01(\x04R\x10requestedSystems\x12\x1e\n" +
-	"\bgroup_id\x18\x03 \x01(\x04H\x00R\agroupId\x88\x01\x01\x128\n" +
-	"\bentities\x18\x04 \x03(\v2\x1c.health.v1.ObservationTargetR\bentities\x12l\n" +
-	"\x1bnative_group_overall_health\x18\x05 \x01(\x0e2(.health.v1.DcgmHealthReport.HealthResultH\x01R\x18nativeGroupOverallHealth\x88\x01\x01\x12;\n" +
-	"\tincidents\x18\x06 \x03(\v2\x1d.health.v1.DcgmHealthIncidentR\tincidents\x12C\n" +
+	"\bgroup_id\x18\x03 \x01(\x04H\x00R\agroupId\x88\x01\x01\x12l\n" +
+	"\x1bnative_group_overall_health\x18\x05 \x01(\x0e2(.health.v1.DcgmHealthReport.HealthResultH\x01R\x18nativeGroupOverallHealth\x88\x01\x01\x12C\n" +
 	"\x0fmonitored_since\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x0emonitoredSince\x12#\n" +
 	"\rcollection_id\x18\b \x01(\tR\fcollectionId\x126\n" +
 	"\x17systems_without_targets\x18\n" +
 	" \x01(\x04R\x15systemsWithoutTargets\x12R\n" +
 	"\rsystem_errors\x18\v \x03(\v2-.health.v1.DcgmHealthReport.SystemErrorsEntryR\fsystemErrors\x12-\n" +
-	"\x12possibly_truncated\x18\f \x01(\bR\x11possiblyTruncated\x1a[\n" +
+	"\x12possibly_truncated\x18\f \x01(\bR\x11possiblyTruncated\x12H\n" +
+	"\x0eentity_results\x18\x0e \x03(\v2!.health.v1.DcgmHealthEntityResultR\rentityResults\x1a[\n" +
 	"\x11SystemErrorsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x120\n" +
 	"\x05value\x18\x02 \x01(\v2\x1a.health.v1.CollectionErrorR\x05value:\x028\x01\",\n" +
@@ -2770,15 +2880,23 @@ const file_health_v1_observation_proto_rawDesc = "" +
 	"\x12\b\n" +
 	"\x04FAIL\x10\x14B\v\n" +
 	"\t_group_idB\x1e\n" +
-	"\x1c_native_group_overall_health\"\x81\x02\n" +
+	"\x1c_native_group_overall_healthJ\x04\b\x04\x10\x05J\x04\b\x06\x10\aJ\x04\b\r\x10\x0eR\bentitiesR\tincidentsR\rentity_errors\"\x93\x02\n" +
+	"\x16DcgmHealthEntityResult\x124\n" +
+	"\x06entity\x18\x01 \x01(\v2\x1c.health.v1.ObservationTargetR\x06entity\x12&\n" +
+	"\fgroup_member\x18\x02 \x01(\bH\x00R\vgroupMember\x88\x01\x01\x12;\n" +
+	"\tincidents\x18\x03 \x03(\v2\x1d.health.v1.DcgmHealthIncidentR\tincidents\x12M\n" +
+	"\x11collection_errors\x18\x04 \x03(\v2 .health.v1.DcgmHealthEntityErrorR\x10collectionErrorsB\x0f\n" +
+	"\r_group_member\"q\n" +
+	"\x15DcgmHealthEntityError\x12\x18\n" +
+	"\asystems\x18\x02 \x01(\x04R\asystems\x120\n" +
+	"\x05error\x18\x03 \x01(\v2\x1a.health.v1.CollectionErrorR\x05errorJ\x04\b\x01\x10\x02R\x06entity\"\xd9\x01\n" +
 	"\x12DcgmHealthIncident\x12\x16\n" +
 	"\x06system\x18\x01 \x01(\x04R\x06system\x12R\n" +
 	"\rnative_health\x18\x02 \x01(\x0e2(.health.v1.DcgmHealthReport.HealthResultH\x00R\fnativeHealth\x88\x01\x01\x12\x1d\n" +
 	"\n" +
 	"error_code\x18\x03 \x01(\x04R\terrorCode\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessage\x124\n" +
-	"\x06entity\x18\x05 \x01(\v2\x1c.health.v1.ObservationTargetR\x06entityB\x10\n" +
-	"\x0e_native_health\"\xc2\x01\n" +
+	"\amessage\x18\x04 \x01(\tR\amessageB\x10\n" +
+	"\x0e_native_healthJ\x04\b\x05\x10\x06R\x06entity\"\xc2\x01\n" +
 	"\x0fCollectionError\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x1c\n" +
 	"\toperation\x18\x02 \x01(\tR\toperation\x12!\n" +
@@ -2817,7 +2935,7 @@ func file_health_v1_observation_proto_rawDescGZIP() []byte {
 
 var (
 	file_health_v1_observation_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 32)
+	file_health_v1_observation_proto_msgTypes  = make([]protoimpl.MessageInfo, 34)
 	file_health_v1_observation_proto_goTypes   = []any{
 		(CollectionErrorCategory)(0),       // 0: health.v1.CollectionErrorCategory
 		(NoValueReason)(0),                 // 1: health.v1.NoValueReason
@@ -2849,12 +2967,14 @@ var (
 		(*JournalEntryRef)(nil),            // 27: health.v1.JournalEntryRef
 		(*Value)(nil),                      // 28: health.v1.Value
 		(*DcgmHealthReport)(nil),           // 29: health.v1.DcgmHealthReport
-		(*DcgmHealthIncident)(nil),         // 30: health.v1.DcgmHealthIncident
-		(*CollectionError)(nil),            // 31: health.v1.CollectionError
-		(*NoValue)(nil),                    // 32: health.v1.NoValue
-		nil,                                // 33: health.v1.GpuInventoryEntry.FieldErrorsEntry
-		nil,                                // 34: health.v1.DcgmHealthReport.SystemErrorsEntry
-		(*timestamppb.Timestamp)(nil),      // 35: google.protobuf.Timestamp
+		(*DcgmHealthEntityResult)(nil),     // 30: health.v1.DcgmHealthEntityResult
+		(*DcgmHealthEntityError)(nil),      // 31: health.v1.DcgmHealthEntityError
+		(*DcgmHealthIncident)(nil),         // 32: health.v1.DcgmHealthIncident
+		(*CollectionError)(nil),            // 33: health.v1.CollectionError
+		(*NoValue)(nil),                    // 34: health.v1.NoValue
+		nil,                                // 35: health.v1.GpuInventoryEntry.FieldErrorsEntry
+		nil,                                // 36: health.v1.DcgmHealthReport.SystemErrorsEntry
+		(*timestamppb.Timestamp)(nil),      // 37: google.protobuf.Timestamp
 	}
 )
 
@@ -2862,20 +2982,20 @@ var file_health_v1_observation_proto_depIdxs = []int32{
 	9,  // 0: health.v1.ObservationBatch.observations:type_name -> health.v1.Observation
 	4,  // 1: health.v1.ObservationBatch.inventory:type_name -> health.v1.HardwareInventory
 	5,  // 2: health.v1.HardwareInventory.gpu_snapshots:type_name -> health.v1.GpuInventorySnapshot
-	35, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
+	37, // 3: health.v1.GpuInventorySnapshot.collected_at:type_name -> google.protobuf.Timestamp
 	6,  // 4: health.v1.GpuInventorySnapshot.inventory:type_name -> health.v1.GpuInventory
-	31, // 5: health.v1.GpuInventorySnapshot.collection_error:type_name -> health.v1.CollectionError
+	33, // 5: health.v1.GpuInventorySnapshot.collection_error:type_name -> health.v1.CollectionError
 	7,  // 6: health.v1.GpuInventory.entries:type_name -> health.v1.GpuInventoryEntry
 	8,  // 7: health.v1.GpuInventoryEntry.gpu:type_name -> health.v1.GpuDevice
-	31, // 8: health.v1.GpuInventoryEntry.collection_error:type_name -> health.v1.CollectionError
-	33, // 9: health.v1.GpuInventoryEntry.field_errors:type_name -> health.v1.GpuInventoryEntry.FieldErrorsEntry
+	33, // 8: health.v1.GpuInventoryEntry.collection_error:type_name -> health.v1.CollectionError
+	35, // 9: health.v1.GpuInventoryEntry.field_errors:type_name -> health.v1.GpuInventoryEntry.FieldErrorsEntry
 	10, // 10: health.v1.Observation.target:type_name -> health.v1.ObservationTarget
-	35, // 11: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
+	37, // 11: health.v1.Observation.observed_at:type_name -> google.protobuf.Timestamp
 	28, // 12: health.v1.Observation.value:type_name -> health.v1.Value
-	31, // 13: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
-	32, // 14: health.v1.Observation.no_value:type_name -> health.v1.NoValue
-	35, // 15: health.v1.Observation.sample_started_at:type_name -> google.protobuf.Timestamp
-	35, // 16: health.v1.Observation.sample_ended_at:type_name -> google.protobuf.Timestamp
+	33, // 13: health.v1.Observation.collection_error:type_name -> health.v1.CollectionError
+	34, // 14: health.v1.Observation.no_value:type_name -> health.v1.NoValue
+	37, // 15: health.v1.Observation.sample_started_at:type_name -> google.protobuf.Timestamp
+	37, // 16: health.v1.Observation.sample_ended_at:type_name -> google.protobuf.Timestamp
 	11, // 17: health.v1.ObservationTarget.node:type_name -> health.v1.NodeRef
 	12, // 18: health.v1.ObservationTarget.gpu:type_name -> health.v1.GpuRef
 	15, // 19: health.v1.ObservationTarget.nv_link_endpoint:type_name -> health.v1.NvLinkEndpointRef
@@ -2902,22 +3022,24 @@ var file_health_v1_observation_proto_depIdxs = []int32{
 	12, // 40: health.v1.GpuProcessRef.gpu:type_name -> health.v1.GpuRef
 	20, // 41: health.v1.GpuProcessRef.process:type_name -> health.v1.ProcessRef
 	29, // 42: health.v1.Value.dcgm_health_report:type_name -> health.v1.DcgmHealthReport
-	10, // 43: health.v1.DcgmHealthReport.entities:type_name -> health.v1.ObservationTarget
-	2,  // 44: health.v1.DcgmHealthReport.native_group_overall_health:type_name -> health.v1.DcgmHealthReport.HealthResult
-	30, // 45: health.v1.DcgmHealthReport.incidents:type_name -> health.v1.DcgmHealthIncident
-	35, // 46: health.v1.DcgmHealthReport.monitored_since:type_name -> google.protobuf.Timestamp
-	34, // 47: health.v1.DcgmHealthReport.system_errors:type_name -> health.v1.DcgmHealthReport.SystemErrorsEntry
-	2,  // 48: health.v1.DcgmHealthIncident.native_health:type_name -> health.v1.DcgmHealthReport.HealthResult
-	10, // 49: health.v1.DcgmHealthIncident.entity:type_name -> health.v1.ObservationTarget
-	0,  // 50: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
-	1,  // 51: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
-	31, // 52: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
-	31, // 53: health.v1.DcgmHealthReport.SystemErrorsEntry.value:type_name -> health.v1.CollectionError
-	54, // [54:54] is the sub-list for method output_type
-	54, // [54:54] is the sub-list for method input_type
-	54, // [54:54] is the sub-list for extension type_name
-	54, // [54:54] is the sub-list for extension extendee
-	0,  // [0:54] is the sub-list for field type_name
+	2,  // 43: health.v1.DcgmHealthReport.native_group_overall_health:type_name -> health.v1.DcgmHealthReport.HealthResult
+	37, // 44: health.v1.DcgmHealthReport.monitored_since:type_name -> google.protobuf.Timestamp
+	36, // 45: health.v1.DcgmHealthReport.system_errors:type_name -> health.v1.DcgmHealthReport.SystemErrorsEntry
+	30, // 46: health.v1.DcgmHealthReport.entity_results:type_name -> health.v1.DcgmHealthEntityResult
+	10, // 47: health.v1.DcgmHealthEntityResult.entity:type_name -> health.v1.ObservationTarget
+	32, // 48: health.v1.DcgmHealthEntityResult.incidents:type_name -> health.v1.DcgmHealthIncident
+	31, // 49: health.v1.DcgmHealthEntityResult.collection_errors:type_name -> health.v1.DcgmHealthEntityError
+	33, // 50: health.v1.DcgmHealthEntityError.error:type_name -> health.v1.CollectionError
+	2,  // 51: health.v1.DcgmHealthIncident.native_health:type_name -> health.v1.DcgmHealthReport.HealthResult
+	0,  // 52: health.v1.CollectionError.category:type_name -> health.v1.CollectionErrorCategory
+	1,  // 53: health.v1.NoValue.reason:type_name -> health.v1.NoValueReason
+	33, // 54: health.v1.GpuInventoryEntry.FieldErrorsEntry.value:type_name -> health.v1.CollectionError
+	33, // 55: health.v1.DcgmHealthReport.SystemErrorsEntry.value:type_name -> health.v1.CollectionError
+	56, // [56:56] is the sub-list for method output_type
+	56, // [56:56] is the sub-list for method input_type
+	56, // [56:56] is the sub-list for extension type_name
+	56, // [56:56] is the sub-list for extension extendee
+	0,  // [0:56] is the sub-list for field type_name
 }
 
 func init() { file_health_v1_observation_proto_init() }
@@ -2964,13 +3086,14 @@ func file_health_v1_observation_proto_init() {
 	}
 	file_health_v1_observation_proto_msgTypes[26].OneofWrappers = []any{}
 	file_health_v1_observation_proto_msgTypes[27].OneofWrappers = []any{}
+	file_health_v1_observation_proto_msgTypes[29].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_health_v1_observation_proto_rawDesc), len(file_health_v1_observation_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   32,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -61,13 +61,13 @@ func newFakeHealthSource() *fakeHealthSource {
 		HealthReport: &observation.DCGMHealthReport{
 			GroupId:          proto.Uint64(40),
 			RequestedSystems: dcgmhealth.KnownSystems,
-			Entities: []*observation.ObservationTarget{
-				{Kind: &observation.ObservationTarget_GPU{Gpu: &observation.GPURef{
+			EntityResults: []*observation.DCGMHealthEntityResult{
+				{Entity: &observation.ObservationTarget{Kind: &observation.ObservationTarget_GPU{Gpu: &observation.GPURef{
 					Uuid: "GPU-7", Native: &observation.NativeEntityRef{Source: dcgmsource.Name, EntityKind: 1, EntityId: 7},
-				}}},
-				{Kind: &observation.ObservationTarget_NVSwitch{NvSwitch: &observation.NVSwitchRef{
+				}}}, GroupMember: proto.Bool(true)},
+				{Entity: &observation.ObservationTarget{Kind: &observation.ObservationTarget_NVSwitch{NvSwitch: &observation.NVSwitchRef{
 					Native: &observation.NativeEntityRef{Source: dcgmsource.Name, EntityKind: 3, EntityId: 12},
-				}}},
+				}}}, GroupMember: proto.Bool(true)},
 			},
 			NativeGroupOverallHealth: observation.DCGMHealthResultFail.Enum(),
 			MonitoredSince:           timestamppb.New(time.Unix(100, 0)),
@@ -340,7 +340,7 @@ func TestMetricsAndHealthUseSharedGPUReferences(t *testing.T) {
 	source := newFakeHealthSource()
 	batch := measureHealthSensor(t, configuredHealthSensor(t, source, gpusignals.PowerDraw.ID()))
 	metricGPU := batch.Observations[0].GetTarget().GetGpu()
-	healthGPU := batch.Observations[1].GetValue().GetDcgmHealthReport().GetEntities()[0].GetGpu()
+	healthGPU := batch.Observations[1].GetValue().GetDcgmHealthReport().GetEntityResults()[0].GetEntity().GetGpu()
 	if metricGPU == nil || healthGPU == nil || metricGPU.GetUuid() != "GPU-7" || healthGPU.GetUuid() != metricGPU.GetUuid() {
 		t.Fatalf("metric GPU=%v health GPU=%v", metricGPU, healthGPU)
 	}
@@ -386,30 +386,55 @@ func TestAggregateHealthPreservesAllNativeFindingsAndOwnsClones(t *testing.T) {
 	raw := source.result.HealthReport
 	raw.NativeGroupOverallHealth = observation.DCGMHealthResult(-91).Enum()
 	raw.SystemsWithoutTargets = dcgmhealth.NVSwitchSystems
-	raw.Entities = append(raw.Entities, rawHealthTarget(77, 0xffffffff))
-	raw.Incidents = []*observation.DCGMHealthIncident{
-		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 100, Message: "first memory fault", Entity: raw.Entities[0]},
-		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultWarn.Enum(), ErrorCode: 101, Message: "second memory fault", Entity: raw.Entities[0]},
-		{System: dcgmhealth.SystemPCIe, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 102, Entity: raw.Entities[0]},
-		{System: dcgmhealth.SystemAll, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 103, Entity: rawHealthTarget(0, 0)},
-		{System: 0, NativeHealth: observation.DCGMHealthResult(-38).Enum(), ErrorCode: 104, Entity: rawHealthTarget(0, 0)},
-		{System: 1 << 40, NativeHealth: observation.DCGMHealthResult(39).Enum(), ErrorCode: 1 << 61, Entity: raw.Entities[2]},
-		{System: dcgmhealth.SystemThermal | 1<<41, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 106, Entity: raw.Entities[1]},
+	raw.EntityResults[0].Incidents = []*observation.DCGMHealthIncident{
+		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 100, Message: "first memory fault"},
+		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultWarn.Enum(), ErrorCode: 101, Message: "second memory fault"},
+		{System: dcgmhealth.SystemPCIe, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 102},
 	}
+	raw.EntityResults[1].Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemThermal | 1<<41, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 106}}
+	raw.EntityResults = append(raw.EntityResults,
+		&observation.DCGMHealthEntityResult{
+			Entity: rawHealthTarget(77, 0xffffffff), GroupMember: proto.Bool(true),
+			Incidents: []*observation.DCGMHealthIncident{{System: 1 << 40, NativeHealth: observation.DCGMHealthResult(39).Enum(), ErrorCode: 1 << 61}},
+		},
+		&observation.DCGMHealthEntityResult{
+			Entity: rawHealthTarget(0, 0), GroupMember: proto.Bool(false),
+			Incidents: []*observation.DCGMHealthIncident{
+				{System: dcgmhealth.SystemAll, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 103},
+				{System: 0, NativeHealth: observation.DCGMHealthResult(-38).Enum(), ErrorCode: 104},
+			},
+		},
+		&observation.DCGMHealthEntityResult{
+			Entity: &observation.ObservationTarget{Kind: &observation.ObservationTarget_GPU{Gpu: &observation.GPURef{
+				Uuid: "GPU-8", BusId: "0000:53:00.0", Native: &observation.NativeEntityRef{Source: dcgmsource.Name, EntityKind: 1, EntityId: 8},
+			}}},
+			GroupMember: proto.Bool(false),
+			CollectionErrors: []*observation.DCGMHealthEntityError{{
+				Systems: dcgmhealth.SystemMemory,
+				Error:   &observation.CollectionError{Source: dcgmsource.Name, Operation: "health membership", SourceError: "DCGM_ST_GPU_IS_LOST", Detail: "member rejected"},
+			}},
+		},
+	)
 	expected := proto.Clone(raw).(*observation.DCGMHealthReport)
 	sensor := configuredHealthSensor(t, source)
 	first := measureHealthSensor(t, sensor).Observations[0].GetValue().GetDcgmHealthReport()
 	second := measureHealthSensor(t, sensor).Observations[0].GetValue().GetDcgmHealthReport()
-	if !proto.Equal(first, raw) || !proto.Equal(second, raw) || len(first.Incidents) != 7 {
+	if !proto.Equal(first, raw) || !proto.Equal(second, raw) || len(first.EntityResults) != 5 || len(first.EntityResults[0].Incidents) != 3 {
 		t.Fatalf("aggregate report lost native findings or metadata: %v", first)
 	}
-	first.Entities[0].GetGpu().Uuid = "changed"
-	first.Entities[0].GetGpu().Native.EntityId = 99
-	first.Entities[1].GetNvSwitch().Native.EntityId = 98
-	first.Entities[2].GetNativeEntity().EntityKind = 97
-	first.Incidents[0].Message = "changed"
-	first.Incidents[0].GetEntity().GetGpu().Native.Source = "changed"
-	first.Incidents[3].GetEntity().GetNativeEntity().EntityId = 96
+	first.EntityResults[0].Entity.GetGpu().Uuid = "changed"
+	first.EntityResults[0].Entity.GetGpu().Native.EntityId = 99
+	first.EntityResults[1].Entity.GetNvSwitch().Native.EntityId = 98
+	first.EntityResults[2].Entity.GetNativeEntity().EntityKind = 97
+	first.EntityResults[0].Incidents[0].Message = "changed"
+	first.EntityResults[0].Entity.GetGpu().Native.Source = "changed"
+	first.EntityResults[3].Entity.GetNativeEntity().EntityId = 96
+	first.EntityResults[4].Entity.GetGpu().Uuid = "changed"
+	first.EntityResults[4].Entity.GetGpu().BusId = "changed"
+	first.EntityResults[4].Entity.GetGpu().Native.EntityId = 95
+	first.EntityResults[4].CollectionErrors[0].Systems = dcgmhealth.SystemPCIe
+	first.EntityResults[4].CollectionErrors[0].Error.Detail = "changed"
+	*first.EntityResults[4].GroupMember = true
 	*first.NativeGroupOverallHealth = observation.DCGMHealthResultPass
 	if !proto.Equal(raw, expected) || !proto.Equal(second, expected) {
 		t.Fatal("emitted reports alias the source report or one another")
@@ -422,6 +447,7 @@ func TestAggregateHealthAvailabilityOutcomes(t *testing.T) {
 		missing     uint64
 		requested   uint64
 		incident    bool
+		rejected    bool
 		wantNoValue observation.NoValueReason
 	}{
 		{name: "all targets absent", requested: dcgmhealth.KnownSystems, missing: dcgmhealth.KnownSystems, wantNoValue: observation.NoValueReasonNoTargets},
@@ -430,14 +456,33 @@ func TestAggregateHealthAvailabilityOutcomes(t *testing.T) {
 		{name: "zero requested mask is not all targets absent"},
 		{name: "incident is preserved", requested: dcgmhealth.KnownSystems, incident: true},
 		{name: "incident survives no targets", requested: dcgmhealth.KnownSystems, missing: dcgmhealth.KnownSystems, incident: true},
+		{name: "all GPU additions rejected", requested: dcgmhealth.SystemMemory, rejected: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			source := newFakeHealthSource()
-			source.result.HealthReport.RequestedSystems = test.requested
-			source.result.HealthReport.SystemsWithoutTargets = test.missing
-			source.result.HealthReport.MonitoredSince = timestamppb.New(time.Unix(200, 0))
+			report := source.result.HealthReport
+			target := report.EntityResults[0].Entity
+			report.RequestedSystems = test.requested
+			report.SystemsWithoutTargets = test.missing
+			report.MonitoredSince = timestamppb.New(time.Unix(200, 0))
+			if test.missing == test.requested && test.requested != 0 {
+				report.EntityResults = nil
+			}
 			if test.incident {
-				source.result.HealthReport.Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), Entity: source.result.HealthReport.Entities[0]}}
+				if len(report.EntityResults) == 0 {
+					report.EntityResults = []*observation.DCGMHealthEntityResult{{Entity: target, GroupMember: proto.Bool(false)}}
+				}
+				report.EntityResults[0].Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum()}}
+			}
+			if test.rejected {
+				failure := &observation.CollectionError{Source: dcgmsource.Name, Operation: "health membership", SourceError: "DCGM_ST_GPU_IS_LOST", Detail: "member rejected"}
+				source.result.HealthReport = &observation.DCGMHealthReport{
+					RequestedSystems: test.requested,
+					EntityResults: []*observation.DCGMHealthEntityResult{{
+						Entity: target, GroupMember: proto.Bool(false),
+						CollectionErrors: []*observation.DCGMHealthEntityError{{Systems: test.requested, Error: failure}},
+					}},
+				}
 			}
 			batch := measureHealthSensor(t, configuredHealthSensor(t, source))
 			if len(batch.Observations) != 1 {
