@@ -21,6 +21,7 @@ import (
 	"github.com/soheilhy/cmux"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -49,6 +50,7 @@ type AfterResponse func(context.Context, *healthv1.EvaluateRequest, *healthv1.No
 
 type verdictOptions struct {
 	afterResponse       AfterResponse
+	liveness            LivenessFunc
 	shutdownTimeout     time.Duration
 	maxInFlightRequests int
 }
@@ -104,8 +106,17 @@ func ServeListener(ctx context.Context, listener net.Listener, handler Handler, 
 	httpListener := multiplexer.Match(cmux.HTTP1Fast())
 	grpcServer := grpc.NewServer(grpc.StatsHandler(&responseStats{after: settings.afterResponse}), grpc.UnaryInterceptor(limit.intercept))
 	healthv1.RegisterVerdictServiceServer(grpcServer, service)
+	var root http.Handler = limit.httpHandler(verdictHTTPHandler(service, settings.afterResponse))
+	if settings.liveness != nil {
+		healthgrpc.RegisterHealthServer(grpcServer, &healthService{check: settings.liveness, period: livenessWatchPeriod})
+		// Probes must not share the verdict limiter or they fail under load.
+		routes := http.NewServeMux()
+		routes.Handle(healthzPath, healthzHandler(settings.liveness))
+		routes.Handle("/", root)
+		root = routes
+	}
 	httpServer := &http.Server{
-		Handler:           limit.httpHandler(verdictHTTPHandler(service, settings.afterResponse)),
+		Handler:           root,
 		ReadHeaderTimeout: httpReadHeaderTimeout,
 		ReadTimeout:       httpReadTimeout,
 		// Start the write deadline after evaluation so collection has its full budget.
@@ -191,7 +202,10 @@ func (limit requestLimit) httpHandler(next http.Handler) http.Handler {
 	})
 }
 
-func (limit requestLimit) intercept(ctx context.Context, request any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+func (limit requestLimit) intercept(ctx context.Context, request any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	if info != nil && info.FullMethod == healthCheckMethod {
+		return handler(ctx, request)
+	}
 	response, ok := ctx.Value(responseKey{}).(*responseState)
 	if !ok {
 		return nil, status.Error(codes.Internal, "missing RPC response state")

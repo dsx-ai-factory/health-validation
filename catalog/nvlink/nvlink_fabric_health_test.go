@@ -41,6 +41,22 @@ func TestNVLinkFabricHealth(t *testing.T) {
 			checkNVIDIAEndorsed: true,
 		},
 		{
+			name:         "healthy on VR",
+			cat:          func() *catalog.Catalog { return fabricCatalog(catalog.WithArchitecture("VR")) },
+			measurement:  healthyFabric,
+			wantSeverity: health.Pass,
+		},
+		{
+			name: "route unhealthy on VR",
+			cat:  func() *catalog.Catalog { return fabricCatalog(catalog.WithArchitecture("VR")) },
+			measurement: func() nvlink.NVLinkMeasurement {
+				m := healthyFabric()
+				m.FabricRouteUnhealthy = true
+				return m
+			},
+			wantSeverity: health.Critical,
+		},
+		{
 			name: "bandwidth degraded",
 			cat:  func() *catalog.Catalog { return fabricCatalog() },
 			measurement: func() nvlink.NVLinkMeasurement {

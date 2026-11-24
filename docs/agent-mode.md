@@ -2,8 +2,9 @@
 
 > [!NOTE]
 > Agentkit and its verdict API are experimental (v0), outside the project's
-> support lifecycle. Health/readiness endpoints are a separate follow-up and
-> are not provided by this API.
+> support lifecycle. A liveness signal for stuck native calls is provided (see
+> [Liveness](#liveness)); readiness endpoints are a separate follow-up and are
+> not provided by this API.
 
 `health-validation serve` keeps the node's collectors available and evaluates
 health on request. Every request starts a fresh collection cycle and runs the
@@ -47,6 +48,7 @@ listener must be trusted.
 | --- | --- | --- |
 | `--address` | `127.0.0.1:8080` | One listener for HTTP/1 and gRPC |
 | `--request-timeout` | `2m` | Admission and evaluation budget; must exceed `collection_timeout_seconds` |
+| `--stuck-call-deadline` | `10m` | Liveness fails after a source call runs this long; must exceed `--request-timeout` |
 | `--node-id` | App-configured identifier, otherwise system hostname | Optional `node_id` replaces it for one request; whitespace-only values fail |
 | `--cadence` | Omitted: all registered checks | Optional `cadence` selects `CONTINUOUS`, `PROLOG`, or `MAINTENANCE` |
 | `--execution-context` | `TENANT_GUEST` | Optional `execution_context` selects `OPERATOR_INFRA`, `TENANT_GUEST`, or `OUT_OF_BAND` |
@@ -190,6 +192,34 @@ The service evaluates only on demand. It provides no polling schedule, streaming
 telemetry, cross-node analysis, cached readiness, or remediation. A PASS verdict
 is a point-in-time result; request another evaluation before the next dispatch.
 
+## Liveness
+
+A native DCGM or NVML call that never returns keeps admission closed, so every
+request gets `collection_source_busy` until the process restarts. The process
+still accepts connections, so a TCP probe passes. `serve` reports this state
+through two liveness endpoints on the same port:
+
+- `GET /healthz` returns 200 `{"status":"ok"}`, or 503
+  `{"status":"unhealthy","stuck_calls":[{"source":"…","since":"…"}]}`.
+- The standard `grpc.health.v1.Health` service (service name `""`). `Check`
+  returns SERVING or NOT_SERVING; `Watch` polls about once a second and sends on
+  change. For other service names, `Check` returns NOT_FOUND and `Watch` reports
+  SERVICE_UNKNOWN and stays open.
+
+Liveness is unhealthy once a call has been unfinished past its source watchdog
+and has run longer than `--stuck-call-deadline`, measured from the call's start.
+It recovers by itself when the call returns; there is no latch. It is healthy
+while idle. Probes never take the admission gate and are exempt from the
+in-flight request limit, so they answer during overload (no 429). One warning is
+logged per transition, not per probe.
+
+This is liveness only. A healthy response says the process is not wedged behind
+a native call, not that the node is healthy or that a verdict is ready. Restart
+policy belongs to the supervisor: set the deadline well above `--request-timeout`
+and add restart-loop protection, since a deadline set too low restarts a slow
+but working call. For systemd, `serve` does not exit on its own; use a
+watchdog or a probe script that curls `/healthz`.
+
 ## Metrics and logging
 
 When `metrics.enabled` is configured, the agent attempts to publish each
@@ -254,8 +284,20 @@ a `serve` launcher.
 For Kubernetes, reuse the GPU allocation and journal mounts or journalctl shim
 from the integration guide and change the container arguments to `serve`.
 The caller must share the service's network namespace; a sidecar in the same
-pod can use loopback. No readiness or liveness endpoint is
-provided; `/verdict` performs a full health evaluation.
+pod can use loopback. Use `/healthz` for a liveness probe (see
+[Liveness](#liveness)). No readiness endpoint is provided; `/verdict` performs a
+full health evaluation, so do not use it as a probe.
+
+```yaml
+livenessProbe:
+  httpGet: {path: /healthz, port: 8080, host: 127.0.0.1}
+  periodSeconds: 30
+  failureThreshold: 3
+```
+
+The kubelet's `httpGet` probe connects from the node, so it reaches the
+loopback listener only with `hostNetwork: true`. Otherwise use an `exec` probe
+that requests `/healthz` from inside the pod's network namespace.
 
 ## Run under systemd
 

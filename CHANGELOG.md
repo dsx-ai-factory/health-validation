@@ -290,6 +290,12 @@ Changes to behavior and APIs outside the
 
 ### Features
 
+- `serve` exposes a liveness signal for stuck native calls: `GET /healthz` and
+  the standard gRPC health service (`grpc.health.v1.Health`, empty service name)
+  report unhealthy once a source call has run longer than the new
+  `--stuck-call-deadline` (default `10m`, must exceed `--request-timeout`), so a
+  supervisor can restart the process. Probes bypass the in-flight request limit.
+  This is liveness only; readiness is still not provided. ([#326](https://github.com/dsx-ai-factory/health-validation/pull/326), [#319](https://github.com/dsx-ai-factory/health-validation/issues/319))
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.
@@ -370,13 +376,18 @@ Changes to behavior and APIs outside the
   own thresholds where they differ.
   - B200 ([#225](https://github.com/dsx-ai-factory/health-validation/pull/225)) and B300 ([#296](https://github.com/dsx-ai-factory/health-validation/pull/296)), the HGX parts. B300 is
     recognized by its product name and shares B200's Xid scope.
-  - VR200: `gpu_power_limit` ([#239](https://github.com/dsx-ai-factory/health-validation/pull/239)), `gpu_count` ([#240](https://github.com/dsx-ai-factory/health-validation/pull/240)),
+  - VR: `gpu_power_limit` ([#239](https://github.com/dsx-ai-factory/health-validation/pull/239)), `gpu_count` ([#240](https://github.com/dsx-ai-factory/health-validation/pull/240)),
     `gpu_sensor_throttle` ([#243](https://github.com/dsx-ai-factory/health-validation/pull/243)), the NVLink active and
     count/speed checks ([#244](https://github.com/dsx-ai-factory/health-validation/pull/244)), `rdma_linkflap_fatal`
-    ([#245](https://github.com/dsx-ai-factory/health-validation/pull/245)), `numa_node_count` ([#310](https://github.com/dsx-ai-factory/health-validation/pull/310)), and `gpu_compute_apps`
-    ([#313](https://github.com/dsx-ai-factory/health-validation/pull/313)). Discovery recognizes any GPU whose name contains `VR`
+    ([#245](https://github.com/dsx-ai-factory/health-validation/pull/245)), `numa_node_count` ([#310](https://github.com/dsx-ai-factory/health-validation/pull/310)), `gpu_compute_apps`
+    ([#313](https://github.com/dsx-ai-factory/health-validation/pull/313)), and `nvlink_capabilities`, `nvlink_fabric`, and
+    `nvlink_fabric_health` ([#325](https://github.com/dsx-ai-factory/health-validation/pull/325)). Discovery recognizes any GPU whose name contains `VR`
     ([#238](https://github.com/dsx-ai-factory/health-validation/pull/238), [#288](https://github.com/dsx-ai-factory/health-validation/pull/288)). A GPU that reports a generic name stays
     `unknown`.
+  - VR on `gpu_power_state`: a GPU now passes anywhere from `expected_gpu_pstate`
+    to the new `idle_gpu_pstate`, which is assumed to be the same or higher.
+    VR idles at P5, so it passes P0 to P5. Other GPUs keep P0 for both, so
+    they still pass only at P0. ([#327](https://github.com/dsx-ai-factory/health-validation/pull/327))
   - The Xid checks cover H100, H200, and A100. ([#194](https://github.com/dsx-ai-factory/health-validation/pull/194))
 - Xid additions:
   - Per-subtype `gpu_xid_149_<hex>` checks for the Xid 149
