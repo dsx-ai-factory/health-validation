@@ -315,6 +315,18 @@ type collectionOrderNative struct {
 	blockedGPU    uint
 }
 
+// NewMetricTimeoutSourceForTest returns a source whose GPU 1 metric read blocks.
+func NewMetricTimeoutSourceForTest(started, release chan struct{}) *Source {
+	native := &collectionOrderNative{
+		healthLifecycleNative: &healthLifecycleNative{},
+		metricStarted:         started,
+		releaseMetric:         release,
+		blockedGPU:            1,
+	}
+	native.gpuIndices = []uint{0, 1}
+	return newSource(native, &sync.Mutex{})
+}
+
 func (native *collectionOrderNative) AllGPUIndices() ([]uint, error) {
 	native.calls = append(native.calls, "discovery")
 	return native.healthLifecycleNative.AllGPUIndices()
@@ -334,7 +346,7 @@ func (native *collectionOrderNative) ReadGPUMetrics(gpu uint, signals []string) 
 	}
 	values := make(map[string]FieldValue, len(signals))
 	for _, signal := range signals {
-		values[signal] = FieldValue{Value: &observation.Value{Kind: &observation.Value_IntValue{IntValue: 1}}}
+		values[signal] = FieldValue{Value: &observation.Value{Kind: &observation.Value_DoubleValue{DoubleValue: 100}}}
 	}
 	return values, nil
 }
@@ -392,7 +404,7 @@ func TestCollectMetricTimeoutKeepsEarlierIdentityAndValue(t *testing.T) {
 		time.Sleep(timeout)
 		result := <-finished
 		if result.DiscoveryError != nil || len(result.Metrics) != 2 || result.Metrics[0].Identity.UUID != "GPU-0" ||
-			result.Metrics[0].Fields[signalPowerDraw].Value.GetIntValue() != 1 || result.Metrics[0].Fields[signalPowerDraw].CollectionError != nil ||
+			result.Metrics[0].Fields[signalPowerDraw].Value.GetDoubleValue() != 100 || result.Metrics[0].Fields[signalPowerDraw].CollectionError != nil ||
 			result.Metrics[1].Identity.UUID != "GPU-1" || result.Metrics[1].Fields[signalPowerDraw].CollectionError.GetCategory() != observation.CollectionErrorCategoryTimeout {
 			t.Fatalf("later timeout discarded earlier results: %+v", result)
 		}

@@ -47,6 +47,7 @@ go_test(
     name = "dcgm_test",
     srcs = [
         "cleanup_source_test.go",
+        "collection_sensor_test.go",
         "collection_test.go",
         "errors_linux_test.go",
         "errors_test.go",
@@ -69,6 +70,7 @@ go_test(
     deps = [
         "//collect",
         "//collect/observation",
+        "//collect/sensors/dcgm",
         "//collect/signals/dcgmhealth",
         "//collect/signals/gpu",
         "@org_golang_google_protobuf//proto",
