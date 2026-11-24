@@ -13,7 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   thresholds are renamed to match the range it enforces, in NVML's terms (P0 is
   maximum performance): `expected_gpu_pstate` is now `max_performance_pstate`,
   and the unreleased `idle_gpu_pstate` is now `min_performance_pstate`. Update `checks:` overrides and `disabled_checks` entries
-  in cluster config, and any consumer that matches the check ID in a verdict.
+  in cluster config, and any consumer that matches the check ID in a verdict. ([#342](https://github.com/dsx-ai-factory/health-validation/pull/342))
 - `CheckDefinition.Validate`, and so `Register`, rejects rules below `UNKNOWN`
   that recommend `drain`. Recommend `monitor` for them instead; any severity
   may. The verdict `schema_version` is now `0.7` (`0.3` in v0.3.x). ([#209](https://github.com/dsx-ai-factory/health-validation/issues/209), [#227](https://github.com/dsx-ai-factory/health-validation/issues/227))
