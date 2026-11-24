@@ -61,6 +61,37 @@ Fails when any compute process still holds a GPU.
 
 **Recommended action:** operational state `drain`, then `restart_os` → `service_required`
 
+## GPU Performance State
+
+`gpu_performance_state`
+
+Verifies each GPU is operating within the accepted performance state range.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`B300`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr>, <nobr>`VR`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`gpu_pstate`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`max_performance_pstate`</nobr> | 0 | pstate | <nobr>`DEFAULT`</nobr> | Highest-performance state a GPU may be in, as the numeric level N in P&lt;N> (0 = P0, maximum performance), so the numerically lowest accepted level. Override per fleet. |
+| <nobr>`min_performance_pstate`</nobr> | A100: 0, B200: 0, B300: 0, GB200: 0, GB300: 0, H100: 0, VR: 5, other: 0 | pstate | <nobr>`DEFAULT`</nobr> | Lowest-performance state a GPU may be in, as the numeric level N in P&lt;N>, so the numerically highest accepted level; must be >= max_performance_pstate. Any state from max_performance_pstate to this one passes. 5 (P5) on VR, 0 (P0) on every other GPU. Override per fleet. |
+
+**Rules**
+
+- **CRITICAL** when `gpu_pstate != max_performance_pstate && !(gpu_pstate >= max_performance_pstate && gpu_pstate <= min_performance_pstate)`
+  - Message: GPU $\{gpu_id\}: performance state P$\{gpu_pstate\}, expected P$\{max_performance_pstate\} to P$\{min_performance_pstate\}.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+
 ## GPU Power Limit
 
 `gpu_power_limit`
@@ -90,37 +121,6 @@ Verifies each GPU's current and enforced power limits.
   - Message: GPU $\{gpu_id\}: current power limit $\{power_limit_w\} W, expected $\{expected_power_limit_w\} W.
 - **CRITICAL** when `enforced_power_limit_w != expected_power_limit_w`
   - Message: GPU $\{gpu_id\}: enforced power limit $\{enforced_power_limit_w\} W, expected $\{expected_power_limit_w\} W.
-
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
-
-## GPU Power State
-
-`gpu_power_state`
-
-Verifies each GPU is operating at the expected performance state.
-
-| Property | Value |
-|---|---|
-| Provenance | <nobr>`nvidia`</nobr> |
-| Condition scope | <nobr>`NODE`</nobr> |
-| Execution class | <nobr>`PASSIVE`</nobr> |
-| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
-| Maturity | <nobr>`stable`</nobr> |
-| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`B300`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr>, <nobr>`VR`</nobr> |
-| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`gpu_pstate`</nobr> |
-
-**Thresholds**
-
-| Name | Value | Unit | Category | Description |
-|---|---|---|---|---|
-| <nobr>`expected_gpu_pstate`</nobr> | 0 | pstate | <nobr>`DEFAULT`</nobr> | Performance state every GPU must be in, as the numeric level N in P&lt;N> (0 = P0, maximum performance). Override per fleet. |
-| <nobr>`idle_gpu_pstate`</nobr> | A100: 0, B200: 0, B300: 0, GB200: 0, GB300: 0, H100: 0, VR: 5, other: 0 | pstate | <nobr>`DEFAULT`</nobr> | Performance state an idle GPU settles in, as the numeric level N in P&lt;N>; must be >= expected_gpu_pstate. Any state from expected_gpu_pstate to this one passes. 5 (P5) on VR, 0 (P0) on every other GPU. Override per fleet. |
-
-**Rules**
-
-- **CRITICAL** when `gpu_pstate != expected_gpu_pstate && !(gpu_pstate >= expected_gpu_pstate && gpu_pstate <= idle_gpu_pstate)`
-  - Message: GPU $\{gpu_id\}: performance state P$\{gpu_pstate\}, expected P$\{expected_gpu_pstate\} to P$\{idle_gpu_pstate\}.
 
 **Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
 

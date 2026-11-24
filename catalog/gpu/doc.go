@@ -3,7 +3,7 @@
 
 // Package gpu defines the per-GPU measurement type ([GPUMeasurement])
 // and the GPU-category check definitions that evaluate it
-// ([GPUAveragePowerDraw], [GPUPowerLimit], [GPUPowerState],
+// ([GPUAveragePowerDraw], [GPUPowerLimit], [GPUPerformanceState],
 // [GPUSensorThrottle], [GPUComputeApps]).
 //
 // XID-driven GPU checks live in [catalog/xid] and node-wide checks

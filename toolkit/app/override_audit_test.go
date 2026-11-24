@@ -223,7 +223,7 @@ func TestRunCommandAuditFailureWritesNoVerdict(t *testing.T) {
 }
 
 func TestRunCommandWithoutOverridesSkipsJournal(t *testing.T) {
-	a, _, args := auditApp(t, "disabled_checks:\n  - gpu_power_state\n")
+	a, _, args := auditApp(t, "disabled_checks:\n  - gpu_performance_state\n")
 	a.openJournal = func() (io.WriteCloser, error) {
 		t.Error("journal opened with no overrides")
 		return nil, errors.New("unexpected")
@@ -466,7 +466,7 @@ func TestServeAuditFailurePreventsListening(t *testing.T) {
 }
 
 func TestServeWithoutOverridesSkipsJournal(t *testing.T) {
-	a, _, args := auditApp(t, "disabled_checks:\n  - gpu_power_state\n")
+	a, _, args := auditApp(t, "disabled_checks:\n  - gpu_performance_state\n")
 	a.host = auditNoDiscoveryHost{}
 	a.openJournal = func() (io.WriteCloser, error) {
 		t.Error("opened journal without overrides")

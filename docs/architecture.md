@@ -7,7 +7,7 @@
 | <nobr>`catalog/health`</nobr> | Shared vocabulary and node-verdict aggregation. Defines all domain types: `CheckDefinition`, `CheckVerdict`, `NodeVerdict`, the `Measurement` interface, and all enums. It depends on the module's leaf `internal/version` package for verdict provenance and does not import check-domain or evaluation packages. |
 | <nobr>`catalog`</nobr> | Check registry and evaluation entry point. `Catalog` is a thread-safe registry that holds check definitions and exposes `EvaluateAll(measurements...)` plus per-run configuration through `EvaluateAllWithOptions`. Built-in checks are registered in `checks.go`. |
 | <nobr>`catalog/cpu`</nobr> | `cpu.CPUMeasurement` and the host-wide `CPUCount` and `NUMANodeCount` check definitions. |
-| <nobr>`catalog/gpu`</nobr> | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPowerState` check definitions. |
+| <nobr>`catalog/gpu`</nobr> | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPerformanceState` check definitions. |
 | <nobr>`catalog/node`</nobr> | `node.NodeMeasurement` struct and the node-level `GPUCount` check definition. |
 | <nobr>`catalog/nvlink`</nobr> | `nvlink.NVLinkMeasurement` struct and its NVLink check definitions (`NVLinkActive`, `NVLinkFabricHealth`, `NVLinkFabric`, `NVLinkBandwidthCountSpeed`, `NVLinkCapabilities`, `NVLinkP2P`). |
 | <nobr>`catalog/infiniband`</nobr> | `infiniband.LinkFlapMeasurement` (journal link flaps) with the `RDMALinkFlapFatal` check, and `infiniband.PortMeasurement` (one sysfs port) with the `PortState` check; the two types share category `infiniband` with disjoint signals. |

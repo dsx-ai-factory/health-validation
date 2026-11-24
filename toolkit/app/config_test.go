@@ -174,7 +174,7 @@ func TestOverridesRejectsBadConfig(t *testing.T) {
 		},
 		{
 			name:    "above maximum",
-			checks:  map[string]map[string]any{"gpu_power_state": {"expected_gpu_pstate": 16}},
+			checks:  map[string]map[string]any{"gpu_performance_state": {"max_performance_pstate": 16}},
 			wantErr: `above the maximum 15`,
 		},
 	}
@@ -213,7 +213,7 @@ func TestLoadConfigParsesNestedChecks(t *testing.T) {
 // independently of checks: a config may both tune and disable.
 func TestLoadConfigParsesDisabledChecks(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	contents := "checks:\n  gpu_count:\n    expected_gpu_count: 4\ndisabled_checks:\n  - gpu_power_state\n"
+	contents := "checks:\n  gpu_count:\n    expected_gpu_count: 4\ndisabled_checks:\n  - gpu_performance_state\n"
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestLoadConfigParsesDisabledChecks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if want := []string{"gpu_power_state"}; !slices.Equal(cfg.DisabledChecks, want) {
+	if want := []string{"gpu_performance_state"}; !slices.Equal(cfg.DisabledChecks, want) {
 		t.Errorf("DisabledChecks = %#v, want %#v", cfg.DisabledChecks, want)
 	}
 	if got := cfg.Checks["gpu_count"]["expected_gpu_count"]; got != 4 {

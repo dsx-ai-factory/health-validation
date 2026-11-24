@@ -21,13 +21,13 @@ func newCatalog(opts ...catalog.Option) *catalog.Catalog {
 	return catalog.New(append(defaults, opts...)...)
 }
 
-// expected_gpu_pstate is a DefaultThreshold so fleets that idle at a
-// different state can override it. The rule is an equality, so the
-// override moves the passing state rather than widening a budget.
+// max_performance_pstate is a DefaultThreshold so fleets that run at a
+// different state can override it. With min_performance_pstate left below
+// it, only that state passes.
 func overriddenPstateCatalog(pstate int64) *catalog.Catalog {
 	return newCatalog(catalog.WithOverrides(catalog.NewOverrideSet(catalog.Override{
-		CheckID:       "gpu_power_state",
-		ThresholdName: "expected_gpu_pstate",
+		CheckID:       "gpu_performance_state",
+		ThresholdName: "max_performance_pstate",
 		Value:         pstate,
 	})))
 }
@@ -44,7 +44,7 @@ func wrongArchitectureCatalog() *catalog.Catalog {
 	)
 }
 
-func TestGPUPowerState(t *testing.T) {
+func TestGPUPerformanceState(t *testing.T) {
 	tests := []struct {
 		cat              func() *catalog.Catalog
 		name             string
@@ -76,9 +76,9 @@ func TestGPUPowerState(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
-			// idle_gpu_pstate is assumed >= expected_gpu_pstate. Overriding
-			// only expected to P8 leaves idle at P0, so only P8 passes, as
-			// before idle_gpu_pstate existed.
+			// min_performance_pstate is assumed >= max_performance_pstate.
+			// Overriding only max_performance_pstate to P8 leaves
+			// min_performance_pstate at P0, so only P8 passes.
 			name:         "no longer matches default pstate once overridden",
 			cat:          func() *catalog.Catalog { return overriddenPstateCatalog(8) },
 			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
@@ -146,7 +146,7 @@ func TestGPUPowerState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			v, err := tt.cat().Evaluate("gpu_power_state", tt.measurement)
+			v, err := tt.cat().Evaluate("gpu_performance_state", tt.measurement)
 			if err != nil {
 				t.Fatalf("Evaluate: %v", err)
 			}

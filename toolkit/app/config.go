@@ -41,7 +41,7 @@ import (
 //	  nvlink_active:
 //	    max_inactive_nvlinks: 0
 //	disabled_checks:
-//	  - gpu_power_state
+//	  - gpu_performance_state
 //	metrics:
 //	  enabled: true
 //	  endpoint: http://127.0.0.1:44318

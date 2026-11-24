@@ -235,7 +235,7 @@ func checks() []health.CheckDefinition {
 	return []health.CheckDefinition{
 		cataloggpu.GPUAveragePowerDraw(),
 		cataloggpu.GPUPowerLimit(),
-		cataloggpu.GPUPowerState(),
+		cataloggpu.GPUPerformanceState(),
 		cataloggpu.GPUSensorThrottle(),
 		catalognvlink.NVLinkFabric(),
 		catalognvlink.NVLinkFabricHealth(),

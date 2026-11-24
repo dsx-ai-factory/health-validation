@@ -303,8 +303,8 @@ func TestToMeasurementsLimitsNeutralUnsupportedToToolkitSignals(t *testing.T) {
 	if got := m.UnsupportedSignals(); !slices.Equal(got, []string{gpu.SignalHWSlowdown}) {
 		t.Fatalf("unsupported signals = %v, want only %s", got, gpu.SignalHWSlowdown)
 	}
-	if got := evaluate(t, "H100", []health.Measurement{m}, gpu.GPUPowerState())["gpu_power_state"]; got != health.Unknown {
-		t.Fatalf("gpu_power_state = %v, want UNKNOWN", got)
+	if got := evaluate(t, "H100", []health.Measurement{m}, gpu.GPUPerformanceState())["gpu_performance_state"]; got != health.Unknown {
+		t.Fatalf("gpu_performance_state = %v, want UNKNOWN", got)
 	}
 
 	want := []string{
