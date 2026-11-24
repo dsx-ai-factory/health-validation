@@ -280,6 +280,9 @@ func TestXidErrors_NewArchitectureSpecificChecks(t *testing.T) {
 		{name: "Xid 54 on A100", architecture: "A100", checkID: "gpu_xid_54", code: 54, wantSeverity: health.Critical, wantAction: health.Drain(health.RemediationActionServiceRequired)},
 		{name: "Xid 80 on H200", architecture: "H200", checkID: "gpu_xid_80", code: 80, wantSeverity: health.Warning, wantAction: health.MonitorWith(health.RemediationActionRestartApp)},
 		{name: "Xid 136 on H100", architecture: "H100", checkID: "gpu_xid_136", code: 136, wantSeverity: health.Critical, wantAction: resetAndServiceForTest()},
+		{name: "Xid 177 on VR", architecture: "VR", checkID: "gpu_xid_177", code: 177, wantSeverity: health.Critical, wantAction: resetAndServiceForTest()},
+		{name: "Xid 180 on VR", architecture: "VR", checkID: "gpu_xid_180", code: 180, wantSeverity: health.Critical, wantAction: resetAndServiceForTest()},
+		{name: "Xid 182 on VR", architecture: "VR", checkID: "gpu_xid_182", code: 182, wantSeverity: health.Critical, wantAction: health.Drain(health.RemediationActionServiceRequired)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1134,12 +1137,23 @@ func TestXidErrors_B300(t *testing.T) {
 	}
 }
 
+// vrOnlyChecks are the codes NVIDIA's Xid catalog lists only for Rubin.
+var vrOnlyChecks = []string{"gpu_xid_177", "gpu_xid_180", "gpu_xid_182"}
+
 // NVIDIA's Xid catalog marks every Xid that applies to GB-x00 as
-// applying to Rubin too, so VR runs exactly the checks GB300 runs.
+// applying to Rubin too, so VR runs the checks GB300 runs, plus the
+// Rubin-only ones in vrOnlyChecks.
 func TestXidErrors_VRFollowsGB300(t *testing.T) {
 	for _, def := range xid.Checks() {
 		gb300 := slices.Contains(def.Architectures, "GB300")
-		if vr := slices.Contains(def.Architectures, "VR"); vr != gb300 {
+		vr := slices.Contains(def.Architectures, "VR")
+		if slices.Contains(vrOnlyChecks, def.ID) {
+			if !vr || gb300 || len(def.Architectures) != 1 {
+				t.Errorf("%s: architectures = %v, want only VR", def.ID, def.Architectures)
+			}
+			continue
+		}
+		if vr != gb300 {
 			t.Errorf("%s: VR listed = %v, GB300 listed = %v; want the same", def.ID, vr, gb300)
 		}
 	}
@@ -1161,6 +1175,9 @@ func TestXidErrors_VR(t *testing.T) {
 		{name: "an informational code is info", checkID: informationalID, measurement: measurementFor(14), wantSeverity: health.Info},
 		{name: "HGX-only Xid 54 is skipped", checkID: "gpu_xid_54", measurement: measurementFor(54), wantSkipped: true},
 		{name: "Hopper-only Xid 136 is skipped", checkID: "gpu_xid_136", measurement: measurementFor(136), wantSkipped: true},
+		{name: "Xid 177 is critical", checkID: "gpu_xid_177", measurement: measurementFor(177), wantSeverity: health.Critical},
+		{name: "Xid 180 is critical", checkID: "gpu_xid_180", measurement: measurementFor(180), wantSeverity: health.Critical},
+		{name: "Xid 182 is critical", checkID: "gpu_xid_182", measurement: measurementFor(182), wantSeverity: health.Critical},
 	}
 
 	for _, tt := range tests {
@@ -1188,5 +1205,29 @@ func TestXidErrors_VR(t *testing.T) {
 				t.Errorf("%s severity = %v, want %v", tt.checkID, v.Severity, tt.wantSeverity)
 			}
 		})
+	}
+}
+
+// The Rubin-only Xids have their own checks now, so on GB300 they skip
+// rather than fall to gpu_xid_unknown; the catalog lists them for Rubin only.
+func TestXidErrors_VROnlyCodesSkipOnGB300(t *testing.T) {
+	for _, code := range []int64{177, 180, 182} {
+		nv, err := xidCatalogFor(t, "GB300").EvaluateAll(measurementFor(code))
+		if err != nil {
+			t.Fatalf("EvaluateAll: %v", err)
+		}
+		checkID := fmt.Sprintf("gpu_xid_%d", code)
+		skipped := false
+		for _, v := range nv.SkippedChecks {
+			if v.CheckID == checkID && v.SkipReason == health.ArchitectureUnsupported {
+				skipped = true
+			}
+		}
+		if !skipped {
+			t.Errorf("%s not skipped on GB300", checkID)
+		}
+		if v, ok := checkResult(nv, unknownID); ok && v.Severity != health.Pass {
+			t.Errorf("Xid %d on GB300: %s severity = %v, want PASS", code, unknownID, v.Severity)
+		}
 	}
 }
