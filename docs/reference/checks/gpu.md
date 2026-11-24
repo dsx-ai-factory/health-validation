@@ -107,7 +107,7 @@ Verifies each GPU is operating at the expected performance state.
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`B300`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`B300`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr>, <nobr>`VR`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`gpu_pstate`</nobr> |
 
 **Thresholds**
@@ -115,11 +115,14 @@ Verifies each GPU is operating at the expected performance state.
 | Name | Value | Unit | Category | Description |
 |---|---|---|---|---|
 | <nobr>`expected_gpu_pstate`</nobr> | 0 | pstate | <nobr>`DEFAULT`</nobr> | Performance state every GPU must be in, as the numeric level N in P&lt;N> (0 = P0, maximum performance). Override per fleet. |
+| <nobr>`idle_gpu_pstate`</nobr> | A100: -1, B200: -1, B300: -1, GB200: -1, GB300: -1, H100: -1, VR: 5, other: -1 | pstate | <nobr>`DEFAULT`</nobr> | Lowest-power state an idle GPU may drop to, as the numeric level N in P&lt;N>, or -1 for none. When set, any state from expected_gpu_pstate to this one passes. 5 (P5) on VR, -1 on every other GPU. Override per fleet. |
 
 **Rules**
 
-- **CRITICAL** when `gpu_pstate != expected_gpu_pstate`
+- **CRITICAL** when `idle_gpu_pstate < 0 && gpu_pstate != expected_gpu_pstate`
   - Message: GPU $\{gpu_id\}: performance state P$\{gpu_pstate\}, expected P$\{expected_gpu_pstate\}.
+- **CRITICAL** when `idle_gpu_pstate >= 0 && !((gpu_pstate >= expected_gpu_pstate && gpu_pstate <= idle_gpu_pstate) \|\| (gpu_pstate >= idle_gpu_pstate && gpu_pstate <= expected_gpu_pstate))`
+  - Message: GPU $\{gpu_id\}: performance state P$\{gpu_pstate\}, expected P$\{expected_gpu_pstate\} to P$\{idle_gpu_pstate\}.
 
 **Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
 

@@ -63,7 +63,7 @@ This file provides guidance to AI coding agents when working with code in this r
 | `numa_node_count` | cpu | Online NUMA node count ≠ `expected_numa_node_count` | None |
 | `gpu_average_power_draw` | gpu | One-second average power draw is outside the configured range | None |
 | `gpu_power_limit` | gpu | Current or enforced power limit ≠ expected (arch default or override) | None |
-| `gpu_power_state` | gpu | GPU pstate ≠ `expected_gpu_pstate` | None |
+| `gpu_power_state` | gpu | GPU pstate ≠ `expected_gpu_pstate`, or outside `expected_gpu_pstate`–`idle_gpu_pstate` when that is set | None |
 | `gpu_sensor_throttle` | gpu | Any hardware/thermal/power-brake slowdown reason asserted | None |
 | `gpu_compute_apps` | gpu | Any compute (CUDA) process still holds the GPU | None |
 | `gpu_count` | node | GPU count ≠ `expected_gpu_count` | None |

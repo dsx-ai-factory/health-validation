@@ -32,6 +32,11 @@ func overriddenPstateCatalog(pstate int64) *catalog.Catalog {
 	})))
 }
 
+// A VR GPU moves between P0 (busy) and P5 (idle), so VR passes anywhere in that range.
+func vrCatalog() *catalog.Catalog {
+	return newCatalog(catalog.WithArchitecture("VR"))
+}
+
 func wrongArchitectureCatalog() *catalog.Catalog {
 	return catalog.New(
 		catalog.WithArchitecture("V100"),
@@ -75,6 +80,56 @@ func TestGPUPowerState(t *testing.T) {
 			cat:          func() *catalog.Catalog { return overriddenPstateCatalog(8) },
 			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
 			wantSeverity: health.Critical,
+		},
+		{
+			name:         "VR idle at P5",
+			cat:          vrCatalog,
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 5},
+			wantSeverity: health.Pass,
+		},
+		{
+			name:         "VR busy at P0",
+			cat:          vrCatalog,
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
+			wantSeverity: health.Pass,
+		},
+		{
+			// A VR GPU can pass through P1-P4 as load changes.
+			name:         "VR between P0 and P5",
+			cat:          vrCatalog,
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 2},
+			wantSeverity: health.Pass,
+		},
+		{
+			name:             "VR below P5",
+			cat:              vrCatalog,
+			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 8},
+			wantSeverity:     health.Critical,
+			wantAction:       health.GenericDrain(),
+			wantMessageParts: []string{"GPU-0", "P8", "expected P0 to P5"},
+		},
+		{
+			name:             "VR just below P5",
+			cat:              vrCatalog,
+			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 6},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "P6"},
+		},
+		{
+			// -1 means "no idle state", so it must never match a reading.
+			name:             "pstate -1 still fails on GB200",
+			cat:              func() *catalog.Catalog { return newCatalog() },
+			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: -1},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "expected P0."},
+		},
+		{
+			// Only VR has an idle state; other GPUs still fail at P5.
+			name:             "P5 still fails on GB200",
+			cat:              func() *catalog.Catalog { return newCatalog() },
+			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 5},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "P5", "expected P0"},
 		},
 		{
 			name:           "skipped on wrong architecture",
