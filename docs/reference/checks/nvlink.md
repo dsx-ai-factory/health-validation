@@ -81,7 +81,7 @@ Verifies every NVLink on each GPU reports the capabilities required for multi-GP
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`B300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`B300`</nobr>, <nobr>`VR`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`all_links_support_p2p`</nobr>, <nobr>`all_links_support_sysmem_access`</nobr>, <nobr>`all_links_support_p2p_atomics`</nobr>, <nobr>`all_links_support_sysmem_atomics`</nobr>, <nobr>`all_links_support_sli`</nobr>, <nobr>`all_links_support_link`</nobr> |
 
 **Rules**
@@ -115,7 +115,7 @@ Verifies each GPU has completed NVLink fabric registration with a successful sta
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`VR`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`fabric_registration_incomplete`</nobr>, <nobr>`fabric_registration_failed`</nobr> |
 
 **Rules**
@@ -141,7 +141,7 @@ Monitors per-GPU NVLink fabric health flags from NVML. Degraded bandwidth, in-pr
 | Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
 | Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
-| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr> |
+| Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`VR`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`fabric_bandwidth_degraded`</nobr>, <nobr>`fabric_route_recovery_in_progress`</nobr>, <nobr>`fabric_route_unhealthy`</nobr>, <nobr>`fabric_access_timeout_recovery`</nobr> |
 
 **Rules**
