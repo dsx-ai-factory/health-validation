@@ -50,7 +50,7 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	address := fs.String("address", "127.0.0.1:8080", "TCP address for the local gRPC and HTTP verdict API")
 	requestTimeout := fs.Duration("request-timeout", defaultRequestTimeout, "admission and evaluation timeout; must exceed the source collection timeout")
-	stuckCallDeadline := fs.Duration("stuck-call-deadline", defaultStuckCallDeadline, "liveness fails once a native source call has run this long past its watchdog; must exceed --request-timeout")
+	stuckCallDeadline := fs.Duration("stuck-call-deadline", defaultStuckCallDeadline, "liveness fails once a native source call has been running this long; must exceed --request-timeout")
 	configPath := fs.String("config", "", "path to a YAML configuration file")
 	nodeID := fs.String("node-id", a.nodeID, "default node identifier")
 	cadenceFlag := fs.String("cadence", "", "default cadence window (CONTINUOUS, PROLOG, MAINTENANCE)")

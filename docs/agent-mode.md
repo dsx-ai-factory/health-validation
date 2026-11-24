@@ -203,7 +203,8 @@ through two liveness endpoints on the same port:
   `{"status":"unhealthy","stuck_calls":[{"source":"…","since":"…"}]}`.
 - The standard `grpc.health.v1.Health` service (service name `""`). `Check`
   returns SERVING or NOT_SERVING; `Watch` polls about once a second and sends on
-  change. Other service names return NOT_FOUND.
+  change. For other service names, `Check` returns NOT_FOUND and `Watch` reports
+  SERVICE_UNKNOWN and stays open.
 
 Liveness is unhealthy once a call has been unfinished past its source watchdog
 and has run longer than `--stuck-call-deadline`, measured from the call's start.

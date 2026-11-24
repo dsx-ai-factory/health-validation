@@ -295,7 +295,7 @@ Changes to behavior and APIs outside the
   report unhealthy once a source call has run longer than the new
   `--stuck-call-deadline` (default `10m`, must exceed `--request-timeout`), so a
   supervisor can restart the process. Probes bypass the in-flight request limit.
-  This is liveness only; readiness is still not provided. ([#319](https://github.com/dsx-ai-factory/health-validation/issues/319))
+  This is liveness only; readiness is still not provided. ([#326](https://github.com/dsx-ai-factory/health-validation/pull/326), [#319](https://github.com/dsx-ai-factory/health-validation/issues/319))
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.

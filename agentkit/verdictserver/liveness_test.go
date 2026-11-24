@@ -112,41 +112,49 @@ func TestHealthRoutesAbsentWithoutLiveness(t *testing.T) {
 }
 
 func TestLivenessBypassesSaturatedLimiter(t *testing.T) {
-	var down atomic.Bool
-	address, rpc := startLivenessServer(t, &down, time.Time{}, WithMaxInFlightRequests(1))
+	entered := make(chan struct{})
+	address, _, _ := startVerdictServer(t, func(ctx context.Context, _ *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
+		close(entered)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}, WithMaxInFlightRequests(1), WithLiveness(func() Liveness { return Liveness{OK: true} }))
+	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	rpc := healthgrpc.NewHealthClient(connection)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	// The handler blocks until its context ends, so this holds the only slot.
-	held, stop := context.WithCancel(ctx)
-	defer stop()
-	go func() {
-		request, _ := http.NewRequestWithContext(held, http.MethodGet, "http://"+address+"/verdict", nil)
-		if response, err := http.DefaultClient.Do(request); err == nil {
-			response.Body.Close()
+	get := func(path string) int {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+address+path, nil)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		response, err := http.Get("http://" + address + "/verdict")
+		response, err := http.DefaultClient.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
 		response.Body.Close()
-		if response.StatusCode == http.StatusTooManyRequests {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("limiter never saturated")
-		}
-		time.Sleep(time.Millisecond)
+		return response.StatusCode
 	}
-	response, err := http.Get("http://" + address + "/healthz")
-	if err != nil {
-		t.Fatal(err)
+	// The first request holds the only slot until its context ends.
+	go func() {
+		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+address+"/verdict", nil)
+		if response, err := http.DefaultClient.Do(request); err == nil {
+			response.Body.Close()
+		}
+	}()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("holding request never reached the handler")
 	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("/healthz under saturation: %d", response.StatusCode)
+	if code := get("/verdict"); code != http.StatusTooManyRequests {
+		t.Fatalf("/verdict under saturation: %d, want 429", code)
+	}
+	if code := get("/healthz"); code != http.StatusOK {
+		t.Fatalf("/healthz under saturation: %d", code)
 	}
 	if got, err := rpc.Check(ctx, &healthgrpc.HealthCheckRequest{}); err != nil || got.Status != healthgrpc.HealthCheckResponse_SERVING {
 		t.Fatalf("Check under saturation: %v, %v", got, err)
@@ -167,6 +175,27 @@ func TestHealthWatchSendsOnChange(t *testing.T) {
 	down.Store(true)
 	if got := <-stream.sent; got != healthgrpc.HealthCheckResponse_NOT_SERVING {
 		t.Fatalf("second=%v", got)
+	}
+	cancel()
+	if err := <-done; status.Code(err) != codes.Canceled {
+		t.Fatalf("Watch end: %v", err)
+	}
+}
+
+func TestHealthWatchUnknownServiceStaysOpen(t *testing.T) {
+	service := &healthService{period: time.Millisecond, check: func() Liveness { return Liveness{OK: true} }}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := &watchStream{ctx: ctx, sent: make(chan healthgrpc.HealthCheckResponse_ServingStatus, 4)}
+	done := make(chan error, 1)
+	go func() { done <- service.Watch(&healthgrpc.HealthCheckRequest{Service: "other"}, stream) }()
+	if got := <-stream.sent; got != healthgrpc.HealthCheckResponse_SERVICE_UNKNOWN {
+		t.Fatalf("status=%v, want SERVICE_UNKNOWN", got)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("Watch returned before cancellation: %v", err)
+	case <-time.After(20 * time.Millisecond):
 	}
 	cancel()
 	if err := <-done; status.Code(err) != codes.Canceled {

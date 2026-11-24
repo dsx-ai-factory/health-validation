@@ -102,7 +102,12 @@ func (service *healthService) Check(_ context.Context, request *healthgrpc.Healt
 // Watch sends the current status, then polls and sends on each change.
 func (service *healthService) Watch(request *healthgrpc.HealthCheckRequest, stream healthgrpc.Health_WatchServer) error {
 	if request.GetService() != "" {
-		return status.Error(codes.NotFound, "unknown service")
+		// The health protocol keeps the stream open for an unknown service.
+		if err := stream.Send(&healthgrpc.HealthCheckResponse{Status: healthgrpc.HealthCheckResponse_SERVICE_UNKNOWN}); err != nil {
+			return status.Error(codes.Canceled, "stream closed")
+		}
+		<-stream.Context().Done()
+		return status.FromContextError(stream.Context().Err()).Err()
 	}
 	ticker := time.NewTicker(service.period)
 	defer ticker.Stop()
