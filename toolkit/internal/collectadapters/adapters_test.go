@@ -21,6 +21,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
+	pcisignals "github.com/dsx-ai-factory/health-validation/collect/signals/pci"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -28,12 +29,12 @@ import (
 
 func TestDomainAdaptersPreserveExistingMappings(t *testing.T) {
 	obs := append(healthyGPUObservations(), healthyNVLinkObservations()...)
-	for _, a := range []*domainAdapter{GPU(), NVLink()} {
+	width := valueObservation(pcisignals.MaxLinkWidth.ID(), &observation.Value{Kind: &observation.Value_IntValue{IntValue: 16}})
+	width.Unit = pcisignals.MaxLinkWidth.Unit()
+	obs = append(obs, width)
+	for _, a := range []*domainAdapter{GPU(), PCIe(), NVLink()} {
 		t.Run(a.Name(), func(t *testing.T) {
-			category := health.GPU
-			if a.Name() == "nvlink" {
-				category = health.NVLink
-			}
+			category := a.Category()
 			var expected []health.Measurement
 			for _, m := range observations.ToMeasurements(obs) {
 				if m.Category() == category {
@@ -94,7 +95,7 @@ func TestDomainAdaptersNamespaceFailedSourceLocalSlots(t *testing.T) {
 // A whole-domain failure names no GPU, so it is keyed by its source rather
 // than taking its "gpu" label as a GPU identity.
 func TestDomainAdaptersKeyDomainFailureBySource(t *testing.T) {
-	for _, a := range []*domainAdapter{GPU(), NVLink()} {
+	for _, a := range []*domainAdapter{GPU(), NVLink(), PCIe()} {
 		got := a.Errored(errors.New("unavailable"))
 		if len(got) != 1 || health.KeyOf(got[0]) != health.SourceEntity(adapterSource(a.Category())) {
 			t.Fatalf("%s: Errored = %v keyed %v, want one source-level measurement", a.Name(), got, health.KeyOf(got[0]))
@@ -343,7 +344,7 @@ func TestCPUAdapterMergesSources(t *testing.T) {
 
 func TestAdapterRequestsMatchConverterMappings(t *testing.T) {
 	var got []string
-	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU(), Node(), XID(nil).domainAdapter, InfiniBand()} {
+	for _, adapter := range []*domainAdapter{GPU(), NVLink(), CPU(), Node(), PCIe(), XID(nil).domainAdapter, InfiniBand()} {
 		got = slices.AppendSeq(got, maps.Keys(adapter.Signals()))
 	}
 	want := observations.MappedSignals()

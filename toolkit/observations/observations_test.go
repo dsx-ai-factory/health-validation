@@ -17,11 +17,13 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
+	pcisignals "github.com/dsx-ai-factory/health-validation/collect/signals/pci"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -481,6 +483,7 @@ func noValueObservation(signalID string, reason observation.NoValueReason) *obse
 	return o
 }
 
+// TestMappedSignalsFor verifies that domain feeds partition the canonical observation mappings.
 func TestMappedSignalsFor(t *testing.T) {
 	gpuIDs := []string{
 		gpusignals.PowerDraw.ID(),
@@ -492,6 +495,9 @@ func TestMappedSignalsFor(t *testing.T) {
 		gpusignals.HardwarePowerBrakeSlowdownActive.ID(),
 		gpusignals.ProcessCount.ID(),
 		gpusignals.ProcessCmdline.ID(),
+	}
+	if got := MappedSignalsFor(health.PCIe); !slices.Equal(got, []string{pcisignals.MaxLinkWidth.ID(), pcisignals.MaxLinkGeneration.ID()}) {
+		t.Fatalf("PCIe signals = %v", got)
 	}
 	nvlinkIDs := []string{
 		gpusignals.NVLinkFabricBandwidthDegraded.ID(),
@@ -565,7 +571,7 @@ func TestMappedSignalsFor(t *testing.T) {
 		}
 	}
 	// Every mapped signal belongs to exactly one domain.
-	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.Node), MappedSignalsFor(health.GPU),
+	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.Node), MappedSignalsFor(health.PCIe), MappedSignalsFor(health.GPU),
 		MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid), MappedSignalsFor(health.InfiniBand))
 	slices.Sort(perDomain)
 	if all := slices.Sorted(slices.Values(MappedSignals())); !slices.Equal(perDomain, all) {
@@ -592,5 +598,80 @@ func TestToMeasurementsRejectsMixedXidForms(t *testing.T) {
 	}
 	if len(xids) != 1 || len(xids[0].Errors()) != 1 || !slices.Equal(xids[0].Errors()[0].FailedSignals(), xid.MeasurementSignals()) {
 		t.Fatalf("mixed Xid forms = %+v, want one errored measurement", xids)
+	}
+}
+
+// TestPCIeAvailability distinguishes deployment limitations from absent or failed reads.
+func TestPCIeAvailability(t *testing.T) {
+	for _, context := range []health.ExecutionContext{health.OperatorInfra, health.TenantGuest} {
+		for _, tc := range []struct {
+			width      *observation.Observation
+			generation *observation.Observation
+			name       string
+			want       health.Severity
+		}{
+			{name: "matching", width: valueObservation(pcisignals.MaxLinkWidth.ID(), intValue(16)), generation: valueObservation(pcisignals.MaxLinkGeneration.ID(), intValue(5)), want: health.Pass},
+			{name: "mismatch", width: valueObservation(pcisignals.MaxLinkWidth.ID(), intValue(8)), generation: valueObservation(pcisignals.MaxLinkGeneration.ID(), intValue(5)), want: health.Critical},
+			{name: "unsupported width", width: noValueObservation(pcisignals.MaxLinkWidth.ID(), observation.NoValueReasonNotSupported), generation: valueObservation(pcisignals.MaxLinkGeneration.ID(), intValue(5)), want: health.Info},
+			{name: "unsupported generation", width: valueObservation(pcisignals.MaxLinkWidth.ID(), intValue(16)), generation: noValueObservation(pcisignals.MaxLinkGeneration.ID(), observation.NoValueReasonNotSupported), want: health.Info},
+			{name: "both unsupported", width: noValueObservation(pcisignals.MaxLinkWidth.ID(), observation.NoValueReasonNotSupported), generation: noValueObservation(pcisignals.MaxLinkGeneration.ID(), observation.NoValueReasonNotSupported), want: health.Info},
+			{name: "missing width", generation: valueObservation(pcisignals.MaxLinkGeneration.ID(), intValue(5)), want: health.Unknown},
+			{name: "unsupported and missing", width: noValueObservation(pcisignals.MaxLinkWidth.ID(), observation.NoValueReasonNotSupported), want: health.Unknown},
+			{name: "unsupported and read failure", width: noValueObservation(pcisignals.MaxLinkWidth.ID(), observation.NoValueReasonNotSupported), generation: failedObservation(pcisignals.MaxLinkGeneration.ID(), &observation.CollectionError{Category: observation.CollectionErrorCategorySourceError}), want: health.Unknown},
+			{name: "unsupported collection error", width: failedObservation(pcisignals.MaxLinkWidth.ID(), &observation.CollectionError{Category: observation.CollectionErrorCategoryUnsupported}), generation: valueObservation(pcisignals.MaxLinkGeneration.ID(), intValue(5)), want: health.Unknown},
+		} {
+			t.Run(context.String()+"/"+tc.name, func(t *testing.T) {
+				obs := healthyGPUObservations()
+				for _, o := range []*observation.Observation{tc.width, tc.generation} {
+					if o != nil {
+						o.Unit = pcisignals.MaxLinkWidth.Unit()
+						obs = append(obs, o)
+					}
+				}
+				m := only[pcie.PCIeMeasurement](t, ToMeasurements(obs))
+				cat := catalog.New(catalog.WithArchitecture("H100"), catalog.WithExecutionContext(context))
+				for _, roundtrip := range []bool{false, true} {
+					if roundtrip {
+						exported, err := FromMeasurements("test", "node", timestamppb.Now().AsTime(), m)
+						if err != nil {
+							t.Fatal(err)
+						}
+						m = only[pcie.PCIeMeasurement](t, ToMeasurements(exported))
+					}
+					v, err := cat.Evaluate("gpu_pcie_max_link", m)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if v.Skipped || v.Severity != tc.want {
+						t.Fatalf("roundtrip=%v: verdict = %+v", roundtrip, v)
+					}
+					if tc.want == health.Info && !v.RecommendedAction.Equal(health.NoAction) {
+						t.Fatalf("unsupported verdict = %+v, want INFO without remediation", v)
+					}
+				}
+			})
+		}
+	}
+}
+
+// TestPCIeConversionRequiresGPUIdentity rejects unresolved PCI addresses.
+func TestPCIeConversionRequiresGPUIdentity(t *testing.T) {
+	for _, target := range []*observation.ObservationTarget{observation.PCITarget("0000:65:00.0"), observation.GPUTarget("GPU-0")} {
+		obs := []*observation.Observation{
+			valueObservation(pcisignals.MaxLinkWidth.ID(), intValue(16)),
+			valueObservation(pcisignals.MaxLinkGeneration.ID(), intValue(5)),
+		}
+		for _, o := range obs {
+			o.Target = target
+			o.Unit = pcisignals.MaxLinkWidth.Unit()
+		}
+		m := only[pcie.PCIeMeasurement](t, ToMeasurements(obs))
+		if target.GetPci() != nil {
+			if len(m.Errors()) == 0 || !health.KeyOf(m).SourceLevel() || !strings.Contains(m.Errors()[0].Err().Error(), "does not identify a GPU target") {
+				t.Fatalf("unresolved PCI identity accepted: %+v", m)
+			}
+		} else if len(m.Errors()) != 0 || m.GPUID != "GPU-0" {
+			t.Fatalf("resolved GPU identity rejected: %+v", m)
+		}
 	}
 }

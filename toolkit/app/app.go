@@ -310,7 +310,7 @@ func (a *App) sensors(cycle *collect.Cycle, required requiredSignals, xidJournal
 }
 
 func (a *App) sensorsContext(ctx context.Context, cycle *collect.Cycle, required requiredSignals, xidJournal collect.Sensor) ([]toolkit.Sensor, error) {
-	builtinSources, builtinAdapters := a.builtinCollect(cycle)
+	builtinSources, builtinAdapters := a.builtinCollect(ctx, cycle)
 	if xidJournal != nil {
 		for i, source := range builtinSources {
 			if source.ID() == xidsensor.ID {

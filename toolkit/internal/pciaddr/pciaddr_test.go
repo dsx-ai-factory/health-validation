@@ -51,3 +51,21 @@ func TestNormalize(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeBDF(t *testing.T) {
+	for input, want := range map[string]string{
+		"0000:41:00":       "0000:41:00.0",
+		"0000:41:00.0":     "0000:41:00.0",
+		"0000:41:00.4":     "0000:41:00.4",
+		"00000000:41:00.4": "0000:41:00.4",
+		"0001000F:A1:00.7": "1000f:a1:00.7",
+		"0000:41:00.8":     "",
+		"0000:41:00.00":    "",
+		"0000:41:00.":      "",
+		"0000:41:20.0":     "",
+	} {
+		if got := NormalizeBDF(input); got != want {
+			t.Errorf("NormalizeBDF(%q) = %q, want %q", input, got, want)
+		}
+	}
+}

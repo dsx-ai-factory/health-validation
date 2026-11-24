@@ -290,6 +290,14 @@ Changes to behavior and APIs outside the
 
 ### Features
 
+- Add `gpu_pcie_max_link` to check each GPU's maximum PCIe width and
+  minimum generation in operator and guest contexts. The CLI matches PCI
+  sysfs readings to the GPU inventory. Missing data reports UNKNOWN, and
+  explicitly unsupported capabilities retain their status when exported and
+  replayed. Consumers replacing the built-in PCI signals
+  `pci.link.width.max` and `pci.link.generation.max` claim them with
+  `WithCollect`. ([#279](https://github.com/dsx-ai-factory/health-validation/pull/279))
+
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.

@@ -13,6 +13,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	"github.com/dsx-ai-factory/health-validation/toolkit/observations"
 )
@@ -46,6 +47,11 @@ func Node() *domainAdapter {
 // GPU builds the stock CLI's GPU domain.
 func GPU() *domainAdapter {
 	return newDomainAdapter(health.GPU, erroredGPU)
+}
+
+// PCIe builds the stock CLI's PCI Express domain.
+func PCIe() *domainAdapter {
+	return newDomainAdapter(health.PCIe, erroredPCIe)
 }
 
 // NVLink builds the stock CLI's NVLink domain.
@@ -98,6 +104,13 @@ func erroredNode(err error) []health.Measurement {
 func erroredGPU(err error) []health.Measurement {
 	m := gpu.ErroredGPU(sourceLevelGPU, err, gpu.MeasurementSignals()...)
 	m.SetEntityKey(health.SourceEntity(adapterSource(health.GPU)))
+	return []health.Measurement{m}
+}
+
+// erroredPCIe keeps a whole-source failure distinct from a verified GPU.
+func erroredPCIe(err error) []health.Measurement {
+	m := pcie.ErroredPCIe(health.PCIe.String(), err)
+	m.SetEntityKey(health.SourceEntity(adapterSource(health.PCIe)))
 	return []health.Measurement{m}
 }
 

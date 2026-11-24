@@ -291,7 +291,14 @@ func fixtureApp(f nodeFixture) *App {
 	// Without a port claim the port check would read the host's sysfs.
 	healthyInfiniBand(a)
 	a.host = host
-	return a
+	maxSpeedGTs := 32
+	switch gpuinventory.ArchitectureFromName(f.model) {
+	case "A100":
+		maxSpeedGTs = 16
+	case "GB200", "GB300", "VR":
+		maxSpeedGTs = 64
+	}
+	return withPCI(a, len(f.gpus), maxSpeedGTs)
 }
 
 // runFixture runs the CLI over f and returns its normalized verdict and exit
