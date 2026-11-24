@@ -75,8 +75,7 @@ breaking, however large its effect on a verdict.
   exits `0` for PASS, INFO, and WARNING, `1` for CRITICAL and UNKNOWN, and `2`
   when no verdict could be produced. `collect` produces no verdict: it exits
   `0` once it has written the observation batch, and `2` when it could not.
-- **Check IDs.** Renaming or removing a check ID is breaking. Adding a check is
-  not.
+- **Check IDs.** Renaming a check ID is breaking. Adding a check is not.
 - **Configuration.** The config file's keys, `checks.<id>.<param>` threshold
   names and types, and the `metrics:` block. Removing or renaming one is
   breaking.
