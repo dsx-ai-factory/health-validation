@@ -48,6 +48,11 @@ func TestParse(t *testing.T) {
 			want:    Event{PCIAddress: "0000:05:00", Code: 79},
 		},
 		{
+			name:  "74 NVLink register dump",
+			input: "NVRM: Xid (PCI:0000:01:00): 74, pid='<unknown>', name=<unknown>, NVLink: fatal error detected on link 14(0x0, 0x0, 0x0, 0x40000, 0x0, 0x0, 0x0)",
+			want:  Event{PCIAddress: "0000:01:00", Code: 74},
+		},
+		{
 			name:  "numeric pid unknown name",
 			input: "NVRM: Xid (PCI:0000:01:00): 79, pid=42, name=<unknown>, x",
 			want:  Event{PCIAddress: "0000:01:00", Code: 79, PID: 42, HasPID: true},

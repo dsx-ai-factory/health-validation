@@ -30,6 +30,9 @@ const (
 	SignalRecoveryActionCounts = "recovery_action_counts"
 	SignalSince                = "since"
 	SignalEventCount           = "event_count"
+	// SignalNVLinkErrorCounts counts Xid 74 reports per decoded register
+	// group; it is derived from the event messages.
+	SignalNVLinkErrorCounts = "nvlink_error_counts"
 )
 
 var measurementSignals = []string{
@@ -42,6 +45,7 @@ var measurementSignals = []string{
 	SignalUnknownXidCounts,
 	SignalInformationalXidCounts,
 	SignalRecoveryActionCounts,
+	SignalNVLinkErrorCounts,
 	SignalSince,
 	SignalEventCount,
 }
