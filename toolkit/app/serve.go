@@ -35,6 +35,10 @@ import (
 // Match the raw Check API's HTTP write budget.
 const defaultRequestTimeout = 2 * time.Minute
 
+// defaultStuckCallDeadline is well above the request timeout so only a call
+// that cannot be a slow-but-working collection fails liveness.
+const defaultStuckCallDeadline = 10 * time.Minute
+
 func (a *App) serveCommand(args []string, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -46,6 +50,7 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	address := fs.String("address", "127.0.0.1:8080", "TCP address for the local gRPC and HTTP verdict API")
 	requestTimeout := fs.Duration("request-timeout", defaultRequestTimeout, "admission and evaluation timeout; must exceed the source collection timeout")
+	stuckCallDeadline := fs.Duration("stuck-call-deadline", defaultStuckCallDeadline, "liveness fails once a native source call has run this long past its watchdog; must exceed --request-timeout")
 	configPath := fs.String("config", "", "path to a YAML configuration file")
 	nodeID := fs.String("node-id", a.nodeID, "default node identifier")
 	cadenceFlag := fs.String("cadence", "", "default cadence window (CONTINUOUS, PROLOG, MAINTENANCE)")
@@ -83,6 +88,9 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	if *requestTimeout <= collectionTimeout(cfg) {
 		return fail(fmt.Errorf("--request-timeout must exceed collection_timeout_seconds (%s)", collectionTimeout(cfg)))
 	}
+	if *stuckCallDeadline <= *requestTimeout {
+		return fail(fmt.Errorf("--stuck-call-deadline (%s) must exceed --request-timeout (%s)", *stuckCallDeadline, *requestTimeout))
+	}
 	cat, _, err := buildCatalog(cfg, a.customChecks, "", health.DriverVersion{}, defaults.ExecutionContext)
 	if err != nil {
 		return fail(err)
@@ -95,8 +103,9 @@ func (a *App) serve(ctx context.Context, args []string, stderr io.Writer) int {
 	}
 	agent := a.newVerdictAgent(cfg, defaults, xidJournal)
 	agent.requestTimeout = *requestTimeout
+	agent.stuckCallDeadline = *stuckCallDeadline
 	defer agent.closeWhenIdle()
-	if err := verdictserver.ServeContext(ctx, *address, agent.evaluate, verdictserver.WithAfterResponse(agent.afterResponse)); err != nil {
+	if err := verdictserver.ServeContext(ctx, *address, agent.evaluate, verdictserver.WithAfterResponse(agent.afterResponse), verdictserver.WithLiveness(agent.liveness)); err != nil {
 		return fail(err)
 	}
 	return exitOK
@@ -136,19 +145,22 @@ func validateListenAddress(address string) error {
 }
 
 type verdictAgent struct {
-	journal        collect.Sensor
-	app            *App
-	cfg            *Config
-	gate           chan struct{}
-	tracker        *collect.CallTracker
-	changed        chan struct{}
-	defaults       evaluationRequest
-	requestTimeout time.Duration
-	stateMu        sync.Mutex
+	journal           collect.Sensor
+	app               *App
+	cfg               *Config
+	gate              chan struct{}
+	tracker           *collect.CallTracker
+	changed           chan struct{}
+	now               func() time.Time
+	defaults          evaluationRequest
+	requestTimeout    time.Duration
+	stuckCallDeadline time.Duration
+	stateMu           sync.Mutex
+	livenessDown      bool
 }
 
 func (a *App) newVerdictAgent(cfg *Config, defaults evaluationRequest, journal collect.Sensor) *verdictAgent {
-	return &verdictAgent{app: a, cfg: cfg, defaults: defaults, journal: journal, gate: make(chan struct{}, 1), changed: make(chan struct{}), requestTimeout: defaultRequestTimeout}
+	return &verdictAgent{app: a, cfg: cfg, defaults: defaults, journal: journal, gate: make(chan struct{}, 1), changed: make(chan struct{}), requestTimeout: defaultRequestTimeout, stuckCallDeadline: defaultStuckCallDeadline, now: time.Now}
 }
 
 func (agent *verdictAgent) closeWhenIdle() {
@@ -380,4 +392,35 @@ func (agent *verdictAgent) admit(ctx context.Context, nodeID string) (*healthv1.
 			return nil, status.FromContextError(ctx.Err()).Err()
 		}
 	}
+}
+
+// liveness never touches the admission gate, so it answers while a request is
+// stuck behind a native call. It measures from the call's start.
+func (agent *verdictAgent) liveness() verdictserver.Liveness {
+	agent.stateMu.Lock()
+	tracker := agent.tracker
+	agent.stateMu.Unlock()
+	var stuck []verdictserver.StuckCall
+	if tracker != nil {
+		calls, _ := tracker.StuckCalls()
+		now := agent.now()
+		for _, call := range calls {
+			if now.Sub(call.Since) > agent.stuckCallDeadline {
+				stuck = append(stuck, verdictserver.StuckCall{Source: call.Source, Since: call.Since})
+			}
+		}
+	}
+	ok := len(stuck) == 0
+	agent.stateMu.Lock()
+	changed := agent.livenessDown == ok
+	agent.livenessDown = !ok
+	agent.stateMu.Unlock()
+	if changed {
+		if ok {
+			slog.Info("liveness recovered: stuck source call returned")
+		} else {
+			slog.Warn("liveness failing: source call exceeded the stuck-call deadline", "source", stuck[0].Source, "since", stuck[0].Since, "deadline", agent.stuckCallDeadline)
+		}
+	}
+	return verdictserver.Liveness{OK: ok, StuckCalls: stuck}
 }

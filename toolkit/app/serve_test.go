@@ -913,3 +913,15 @@ func TestAgentXidWindowsOverHTTPAndGRPC(t *testing.T) {
 		})
 	}
 }
+
+func TestServeRejectsStuckCallDeadlineNotAboveRequestTimeout(t *testing.T) {
+	for _, deadline := range []string{"3m", "150s", "0s"} {
+		a := cadenceRunApp()
+		a.host = panicHost{}
+		var stderr bytes.Buffer
+		code := a.serve(context.Background(), []string{"--address", "127.0.0.1:0", "--request-timeout", "3m", "--stuck-call-deadline", deadline}, &stderr)
+		if code != exitError || !strings.Contains(stderr.String(), "--stuck-call-deadline") {
+			t.Fatalf("deadline %s: exit=%d: %s", deadline, code, &stderr)
+		}
+	}
+}

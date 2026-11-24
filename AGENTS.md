@@ -263,8 +263,10 @@ Every produced verdict, including a CRITICAL discovery-failure verdict, is a
 successful response. Invalid requests use gRPC INVALID_ARGUMENT / HTTP 400;
 request deadlines use DEADLINE_EXCEEDED / HTTP 504; inability to produce a
 verdict uses a server error. `serve` returns exit 0 for clean shutdown and 2 for
-startup/server failure, independently of per-request verdict severity. No
-health/readiness endpoint is promised in v1.
+startup/server failure, independently of per-request verdict severity. A
+liveness-only signal (`GET /healthz` and `grpc.health.v1`, failing once a source
+call exceeds `--stuck-call-deadline`) bypasses admission and the in-flight
+limit; no readiness endpoint is promised in v1.
 
 The converter lives in `toolkit/verdictproto`; catalog must not import proto.
 The wire contract mirrors the current schema **0.7**, including ordered
@@ -276,7 +278,7 @@ values fail conversion.
 Metrics publish best-effort only after a successful response is written and
 retain the ManualReader/export-once/no-retry/timeout invariants of `run`.
 See [docs/agent-mode.md](docs/agent-mode.md) for the operating contract and test
-matrix. Keep agentkit experimental (v0); readiness remains a separate follow-up.
+matrix. Keep agentkit experimental (v0); readiness remains a separate follow-up (liveness is not readiness).
 
 ### Conventions
 
