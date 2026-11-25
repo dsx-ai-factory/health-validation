@@ -230,7 +230,7 @@ The catalog includes these check families:
 | `nvlink_capabilities` | nvlink | Whether each GPU reports its expected NVLink capabilities | None |
 | `nvlink_p2p` | nvlink | Peer GPUs reachable over NVLink P2P | `max_unhealthy_p2p_peers` |
 | `rdma_linkflap_fatal` | infiniband | mlx5 RDMA link outages that stayed down past a window | `min_outage_seconds`, `fatal_flap_threshold` |
-| `ib_port_state` | infiniband | Whether every InfiniBand or RoCE port is ACTIVE with its link up | `excluded_link_layers`, `expected_ib_state`, `expected_ib_physical_state` |
+| `ib_port_state` | infiniband | Whether every InfiniBand or RoCE port is ACTIVE with its link up. Experimental: off unless enabled | `excluded_link_layers`, `expected_ib_state`, `expected_ib_physical_state` |
 | `gpu_xid_<code>` | xid | One check per Xid code seen in the journal, with catalog-defined severity and action | `occurrences`; Xids 144–150 use `fatal_occurrences`, `nonfatal_occurrences` |
 | `gpu_xid_149_<hex>` | xid | One check per Xid 149 NETIR_LINK_EVT/NETIR_LINK_DOWN subtype NVIDIA's decode table distinguishes | `occurrences` |
 | `gpu_xid_154` | xid | The recovery action Xid 154 last reported per GPU (CRITICAL for a reset, reboot, or P2P drain; WARNING for an action the catalog does not map or an unreadable transition; INFO for none; `occurrences` counts reports per action) | `occurrences` |
@@ -242,7 +242,7 @@ Each check definition carries:
 - `execution_contexts`: where the check can run (OPERATOR_INFRA, TENANT_GUEST)
 - `category`: the hardware domain (cpu, gpu, node, nvlink, pcie, infiniband, storage, xid)
 - `provenance`: `nvidia` for all built-in checks
-- `maturity_level`: stable or experimental
+- `maturity_level`: stable or experimental. Experimental checks run only when the config enables them; see [Experimental checks](#experimental-checks)
 - `condition_scope`: how far the condition reaches (NODE, DOMAIN, CLUSTER)
 
 > **GB300 support.** Most checks in the catalog declare support for both GB200 and GB300 in their `Architectures` field. GB200 support has been validated; GB300 support has not yet completed the same validation pass. Treat GB300 results as directionally correct but experimental and subject to change until this note is removed.
@@ -455,6 +455,16 @@ cat := catalog.New(
 
 Disabled checks appear in `skipped_checks` with `skip_reason: CHECK_DISABLED`.
 
+Experimental checks are off unless you enable them; see
+[Experimental checks](#experimental-checks):
+
+```go
+cat := catalog.New(
+    catalog.WithArchitecture("GB200"),
+    catalog.WithExperimentalChecks("ib_port_state"), // or WithAllExperimentalChecks()
+)
+```
+
 Override a Default threshold or disable a check via config file:
 
 ```yaml
@@ -485,6 +495,36 @@ to know what actually ran.
 Each threshold override is also recorded in the host's systemd journal, and the
 run exits `2` if it cannot be. See
 [docs/integration.md](docs/integration.md#audit-trail-for-overrides).
+
+### Experimental checks
+
+A check whose `maturity_level` is `experimental` is still under evaluation and
+may change or be withdrawn, so it does not run unless you turn it on. Until you
+do, it appears in `skipped_checks` with `skip_reason: CHECK_DISABLED` and a
+detail saying it is experimental, it never affects `overall_severity` or the
+exit code, and `run` and `serve` collect nothing for it. `collect` gathers whole
+categories, so a sibling check that is enabled can still pull in its signals.
+Stable checks are unaffected.
+
+Enable every experimental check, or only the ones you name:
+
+```yaml
+# operator.yaml
+experimental:
+  enabled: true          # every experimental check, including ones later releases add
+  checks:                # or only these
+    - ib_port_state
+```
+
+The two settings add up: `enabled: true` runs every experimental check, so a list
+beside it adds nothing, and `checks` never narrows `enabled`. Leave `enabled` off
+and name the checks if you want an upgrade never to start running a new
+experimental check, since `enabled: true` also covers ones a later release adds.
+The list is validated either way. An ID that matches no
+registered check is an error, like `disabled_checks`. Naming a check that has
+since become stable is not, so a config keeps working when a check graduates. A
+check listed under `disabled_checks` stays off however it is enabled. Read
+`skipped_checks` to see which experimental checks did not run.
 
 ### Publishing metrics
 
@@ -517,7 +557,7 @@ Six metrics are defined, all published on every run.
 | `health_validation.node.severity` | gauge | `1`/`0` | `severity` |
 | `health_validation.domain.severity` | gauge | `1`/`0` | `severity`, `category` |
 | `health_validation.check.severity` | gauge | `1`/`0` | `severity`, `check_id`, `category`, `condition_scope`, `maturity_level`, `nvidia_endorsed` |
-| `health_validation.check.skipped` | gauge | `1`/`0` | `check_id`, `category`, `skip_reason` |
+| `health_validation.check.skipped` | gauge | `1`/`0` | `check_id`, `category`, `maturity_level`, `skip_reason` |
 | `health_validation.check.affected_entities` | gauge | Count of distinct entities a check named, `0` included | `check_id`, `category` |
 | `health_validation.runs` | counter (delta) | `1` | `severity` |
 

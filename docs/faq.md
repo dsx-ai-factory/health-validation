@@ -36,7 +36,7 @@ The check did not execute. The `skip_reason` field says why:
 | SENSOR_MISSING | The check's whole domain supplied no measurement: the sensor is absent, unconfigured, or its backend was never constructed. | Confirm the domain's sensor ran. A sensor that ran and reported a collection failure produces UNKNOWN results for applicable checks requiring the failed signals. |
 | SIGNAL_UNAVAILABLE_ARCHITECTURE | The check does not apply to this GPU architecture. | None. The check will never run in this environment. |
 | SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL | The check requires a different execution context. | Check `skip_detail` for the required context, then set `--execution-context` to match. |
-| CHECK_DISABLED | An operator disabled this check, through `disabled_checks:` in the config or `catalog.WithDisabledChecks`. | Intentional, but the verdict does not record which config file disabled it. |
+| CHECK_DISABLED | An operator disabled this check, through `disabled_checks:` in the config or `catalog.WithDisabledChecks`, or it is an experimental check that was not enabled (`skip_detail` says so). | Intentional, but the verdict does not record which config file disabled it. To run an experimental check, enable it under `experimental:` in the config. |
 | INSUFFICIENT_HISTORY | Time-window data is not yet available. No currently registered check uses this reason. | Re-run after the window accumulates. |
 | THRESHOLD_UNCONFIGURED | A required-override threshold (one the operator must supply, with no universal default) was not configured. | Set it in the config file for this fleet; `skip_detail` names the threshold. |
 | CADENCE_MISMATCH | The check is not scheduled for the requested run window. | None. The check belongs to another cadence. |
@@ -56,6 +56,21 @@ disabled_checks:
 Each ID is validated against the registered checks, so a typo is an error rather than a check that silently keeps running. Disabled checks appear in `skipped_checks` with `skip_reason: CHECK_DISABLED` and are excluded from `overall_severity` — a disable lowers the bar the node is measured against, so it is worth reviewing what is in that list.
 
 The equivalent for a consumer building their own binary is `catalog.WithDisabledChecks()` at catalog construction time. There is still no positive filter (no "run only these"); disabling is subtractive.
+
+## Why didn't an experimental check run?
+
+Checks with `maturity_level: experimental` are off by default: they are still under evaluation and may change or be withdrawn. One that has not been enabled appears in `skipped_checks` with `skip_reason: CHECK_DISABLED` and a `skip_detail` that says it is experimental. It never affects `overall_severity` or the exit code, and `run` and `serve` collect nothing for it. `collect` gathers whole categories, so an enabled sibling check in the same category can still pull its signals in.
+
+Enable them in the config file passed to `--config`, either all at once or by ID:
+
+```yaml
+experimental:
+  enabled: true        # every experimental check
+  checks:              # or only these
+    - ib_port_state
+```
+
+The two settings add up: `enabled: true` runs every experimental check, so a list beside it adds nothing, and `checks` never narrows `enabled`. An ID that matches no registered check is an error whichever way it is enabled. A check listed under `disabled_checks` stays off however it is enabled. `enabled: true` also turns on experimental checks that later releases add, so leave it off and name the checks if an upgrade should never start running a new one. Library consumers use `catalog.WithExperimentalChecks()` or `catalog.WithAllExperimentalChecks()`.
 
 To select checks by scheduling cadence, use the optional `--cadence` flag. Each check declares a `SchedulingCadence` (CONTINUOUS, PROLOG, or MAINTENANCE), and the windows nest (CONTINUOUS ⊂ PROLOG ⊂ MAINTENANCE): PROLOG runs the CONTINUOUS and PROLOG checks, and MAINTENANCE runs every check. Checks outside the requested window appear in `skipped_checks` with `skip_reason: CADENCE_MISMATCH`. **Omit the flag and every registered check still runs**, including Prolog checks such as `gpu_power_limit`. Job-time integrators that must not run Prolog checks pass `--cadence=CONTINUOUS`. Cadence is not a YAML config field: one cluster config can serve every window.
 

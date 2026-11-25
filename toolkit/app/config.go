@@ -30,7 +30,8 @@ import (
 // values are validated but not evaluated during collection.
 // DisabledChecks lists check IDs to exclude. During `run`, they are reported
 // as skipped with [health.CheckDisabled] and excluded from the node-level
-// severity. CollectionTimeoutSeconds optionally bounds each sensor's
+// severity. Experimental checks are skipped the same way unless the config
+// enables them. CollectionTimeoutSeconds optionally bounds each sensor's
 // collection (0 = use the built-in default). Metrics optionally pushes the
 // verdict `run` produces to an OTLP/HTTP endpoint:
 //
@@ -42,14 +43,38 @@ import (
 //	    max_inactive_nvlinks: 0
 //	disabled_checks:
 //	  - gpu_performance_state
+//	experimental:
+//	  checks:
+//	    - ib_port_state
 //	metrics:
 //	  enabled: true
 //	  endpoint: http://127.0.0.1:44318
 type Config struct {
 	Checks                   map[string]map[string]any `yaml:"checks"`
 	DisabledChecks           []string                  `yaml:"disabled_checks"`
+	Experimental             ExperimentalConfig        `yaml:"experimental"`
 	Metrics                  MetricsConfig             `yaml:"metrics"`
 	CollectionTimeoutSeconds int                       `yaml:"collection_timeout_seconds"`
+}
+
+// ExperimentalConfig opts in to experimental checks, which are off by default
+// because they are still under evaluation and may change or be withdrawn.
+// Enabled turns on every experimental check, including ones a later release
+// adds; Checks turns on only the ones it names. They add up: Checks never
+// narrows Enabled, so a list beside enabled: true changes nothing, though it is
+// still validated:
+//
+//	experimental:
+//	  enabled: true     # every experimental check
+//	  checks:           # or just these
+//	    - ib_port_state
+//
+// A check listed in disabled_checks stays off whichever way it is enabled. A
+// stable check may be listed and is simply unaffected, so a check that
+// graduates keeps working in a config that already names it.
+type ExperimentalConfig struct {
+	Checks  []string `yaml:"checks"`
+	Enabled bool     `yaml:"enabled"`
 }
 
 // MetricsConfig configures the OTLP/HTTP metrics push performed after a run
@@ -269,6 +294,40 @@ func (cfg *Config) DisabledCheckIDs(cat *catalog.Catalog) ([]string, error) {
 		disabledChecks = append(disabledChecks, checkID)
 	}
 	return disabledChecks, nil
+}
+
+// ExperimentalCheckIDs validates experimental.checks against the catalog's
+// check definitions and returns the trimmed IDs to enable.
+//
+// It rejects a check ID with no matching registered check, and an empty entry,
+// for the same reason as [Config.DisabledCheckIDs]: a typo'd ID must not read
+// as an enabled check that never runs. A stable check is accepted.
+func (cfg *Config) ExperimentalCheckIDs(cat *catalog.Catalog) ([]string, error) {
+	var enabled []string
+
+	for _, checkID := range cfg.Experimental.Checks {
+		checkID = strings.TrimSpace(checkID)
+		if checkID == "" {
+			return nil, fmt.Errorf("config: experimental.checks contains empty entry")
+		}
+		if _, err := cat.Get(checkID); err != nil {
+			return nil, fmt.Errorf("config: experimental.checks: unknown check %q", checkID)
+		}
+		enabled = append(enabled, checkID)
+	}
+	return enabled, nil
+}
+
+// experimentalOff reports whether check is experimental and this config leaves
+// it off. It is the config-side counterpart of the catalog's gate, for code
+// that decides what to collect before a catalog evaluates anything.
+func (cfg *Config) experimentalOff(check *health.CheckDefinition) bool {
+	if check.MaturityLevel != health.Experimental || cfg.Experimental.Enabled {
+		return false
+	}
+	return !slices.ContainsFunc(cfg.Experimental.Checks, func(id string) bool {
+		return strings.TrimSpace(id) == check.ID
+	})
 }
 
 // sortedKeys returns the keys of m in sorted order for deterministic

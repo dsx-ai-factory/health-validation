@@ -134,6 +134,11 @@ var (
 	xid79    = fixtureResult{check: "gpu_xid_79", severity: health.Critical, action: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired), entities: []string{"0000:01:00"}}
 )
 
+// experimentalOffByDefault is the skip a GB200 or GB300 fixture reports
+// without a config that enables the experimental port check. Other
+// architectures report the architecture skip instead.
+var experimentalOffByDefault = map[string]health.SkipReason{"ib_port_state": health.CheckDisabled}
+
 // Each fixture node reports exactly its expected non-PASS results, passes
 // every other check it runs, and skips only checks its architecture, cadence,
 // execution context, or config rules out. A collection regression therefore
@@ -168,8 +173,13 @@ func TestRunFixtureVerdicts(t *testing.T) {
 					skipped[s.CheckID] = s.SkipReason
 				}
 			}
-			if !maps.Equal(skipped, tc.skips) {
-				t.Errorf("skips = %v, want %v", skipped, tc.skips)
+			wantSkips := map[string]health.SkipReason{}
+			if strings.Contains(tc.node.model, "NVIDIA GB") {
+				wantSkips = maps.Clone(experimentalOffByDefault)
+			}
+			maps.Copy(wantSkips, tc.skips)
+			if !maps.Equal(skipped, wantSkips) {
+				t.Errorf("skips = %v, want %v", skipped, wantSkips)
 			}
 		})
 	}

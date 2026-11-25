@@ -161,12 +161,13 @@ func verdict() health.NodeVerdict {
 		},
 		SkippedChecks: []health.CheckVerdict{
 			{
-				Timestamp:  now,
-				CheckID:    "nvlink_active",
-				Category:   health.NVLink,
-				Skipped:    true,
-				SkipReason: health.SensorMissing,
-				Severity:   health.Pass,
+				Timestamp:     now,
+				CheckID:       "nvlink_active",
+				Category:      health.NVLink,
+				Skipped:       true,
+				SkipReason:    health.SensorMissing,
+				Severity:      health.Pass,
+				MaturityLevel: health.Experimental,
 			},
 		},
 	}
@@ -403,6 +404,13 @@ func TestPublishReportsSkipsAndEntities(t *testing.T) {
 	for _, id := range []string{"gpu_ecc_errors", "gpu_count"} {
 		if got := activeSkipReasons(t, skipped[id], id); len(got) != 0 {
 			t.Errorf("%s skip reasons at 1 = %v, want none: the check ran", id, got)
+		}
+	}
+	for id, want := range map[string]string{"gpu_count": "STABLE", "nvlink_active": "EXPERIMENTAL"} {
+		for _, dp := range skipped[id] {
+			if got := attrs(dp.GetAttributes())["maturity_level"]; !strings.EqualFold(got, want) {
+				t.Errorf("%s maturity_level = %q, want %s", id, got, want)
+			}
 		}
 	}
 	if got := activeSkipReasons(t, skipped["nvlink_active"], "nvlink_active"); !slices.Equal(got, []string{health.SensorMissing.String()}) {

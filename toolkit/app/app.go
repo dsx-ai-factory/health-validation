@@ -534,7 +534,8 @@ func (a *App) collectCommand(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	// Whole categories, not runnable signals: a batch may be evaluated later
-	// under a different cadence or config.
+	// under a different cadence or config. So a disabled experimental check's
+	// signals are still read when an enabled check keeps its category selected.
 	required := make(requiredSignals, len(categories))
 	for category := range categories {
 		required[category] = nil
@@ -577,11 +578,19 @@ func collectionCategories(cat *catalog.Catalog, cfg *Config) (map[health.Categor
 		disabled[strings.TrimSpace(id)] = true
 	}
 	wanted := make(map[health.Category]bool)
+	var notEnabled []string
 	if len(cfg.Checks) == 0 {
 		for _, check := range cat.List(catalog.Filter{}) {
-			if !disabled[check.ID] {
-				wanted[check.Category] = true
+			if disabled[check.ID] {
+				continue
 			}
+			// An experimental check the config leaves off will not run, so it
+			// must not pull its sensor in either.
+			if cfg.experimentalOff(check) {
+				notEnabled = append(notEnabled, check.ID)
+				continue
+			}
+			wanted[check.Category] = true
 		}
 	} else {
 		for _, checkID := range sortedKeys(cfg.Checks) {
@@ -592,10 +601,19 @@ func collectionCategories(cat *catalog.Catalog, cfg *Config) (map[health.Categor
 			if err != nil {
 				return nil, err
 			}
+			if cfg.experimentalOff(check) {
+				notEnabled = append(notEnabled, checkID)
+				continue
+			}
 			wanted[check.Category] = true
 		}
 	}
 	if len(wanted) == 0 {
+		if len(notEnabled) > 0 {
+			// Name the cause: the selection is not empty, its checks are off.
+			return nil, fmt.Errorf("config selects no checks to collect (experimental checks not enabled: %s; enable them under experimental in the config)",
+				strings.Join(notEnabled, ", "))
+		}
 		return nil, fmt.Errorf("config selects no checks to collect")
 	}
 	return wanted, nil
@@ -703,6 +721,17 @@ func buildCatalog(cfg *Config, customChecks []health.CheckDefinition, arch strin
 		return nil, 0, err
 	}
 	opts = append(opts, catalog.WithDisabledChecks(disabledCheckIDs...))
+
+	// Experimental checks stay off unless the config opts in, validated the
+	// same way so a typo'd ID is an error rather than a check that never runs.
+	experimentalIDs, err := cfg.ExperimentalCheckIDs(validation)
+	if err != nil {
+		return nil, 0, err
+	}
+	opts = append(opts, catalog.WithExperimentalChecks(experimentalIDs...))
+	if cfg.Experimental.Enabled {
+		opts = append(opts, catalog.WithAllExperimentalChecks())
+	}
 
 	final := catalog.New(append([]catalog.Option{catalog.WithOverrides(overrides)}, opts...)...)
 	if err = register(final); err != nil {

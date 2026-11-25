@@ -124,7 +124,7 @@ func TestBuiltinCollectNarrowsInfiniBandToPortChecks(t *testing.T) {
 // End to end through the stock wiring: sysfs ports become per-port verdicts
 // that name the failing port, RoCE ports included, and a healthy fleet passes.
 func TestBuiltinCollectInfiniBandPortVerdicts(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
+	cat, _, err := buildCatalog(ibPortConfig(), nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,6 +161,12 @@ func TestBuiltinCollectInfiniBandPortVerdicts(t *testing.T) {
 	if !downPort {
 		t.Fatalf("want ib_port_state CRITICAL naming mlx5_2/1: %+v", verdict.CheckResults)
 	}
+}
+
+// ibPortConfig enables the experimental port check the way an operator does,
+// through the config, since it is off otherwise.
+func ibPortConfig() *Config {
+	return &Config{Experimental: ExperimentalConfig{Checks: []string{"ib_port_state"}}}
 }
 
 // collectInfiniBandPorts runs the stock InfiniBand wiring over fsys as
@@ -200,7 +206,7 @@ func collectInfiniBandPorts(t *testing.T, runnable []*health.CheckDefinition, fs
 // a missing driver produces the first. Each reports the port check UNKNOWN
 // without naming a port rather than letting the run report PASS.
 func TestBuiltinCollectInfiniBandAbsenceFails(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
+	cat, _, err := buildCatalog(ibPortConfig(), nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +274,7 @@ func TestBuiltinCollectInfiniBandAbsenceFails(t *testing.T) {
 // drops the renamed device and the same host passes, which is why the CLI
 // does not use it.
 func TestBuiltinCollectInfiniBandRenamedDevice(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
+	cat, _, err := buildCatalog(ibPortConfig(), nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatal(err)
 	}
