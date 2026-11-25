@@ -50,7 +50,7 @@ Fails when any compute process still holds a GPU.
 | Execution class | <nobr>`PASSIVE`</nobr> |
 | Scheduling cadence | <nobr>`PROLOG`</nobr> |
 | Maturity | <nobr>`stable`</nobr> |
-| Execution contexts | <nobr>`TENANT_GUEST`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
 | Architectures | <nobr>`GB200`</nobr>, <nobr>`GB300`</nobr>, <nobr>`B200`</nobr>, <nobr>`B300`</nobr>, <nobr>`H100`</nobr>, <nobr>`A100`</nobr>, <nobr>`VR`</nobr> |
 | Required signals | <nobr>`gpu_id`</nobr>, <nobr>`compute_process_count`</nobr>, <nobr>`compute_process_cmdlines`</nobr> |
 
