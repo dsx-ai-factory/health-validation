@@ -5,6 +5,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-11-25
+
+Covers everything since `catalog/v0.3.2` and `toolkit/v0.3.2`. Build, CI,
+test, and documentation-only changes are omitted.
+
 ### Breaking Changes
 
 - The `gpu_power_state` check is renamed `gpu_performance_state`, and
@@ -12,7 +17,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   reads the GPU's performance state (P-state), not a power state. Its
   thresholds are renamed to match the range it enforces, in NVML's terms (P0 is
   maximum performance): `expected_gpu_pstate` is now `max_performance_pstate`,
-  and the unreleased `idle_gpu_pstate` is now `min_performance_pstate`. Update `checks:` overrides and `disabled_checks` entries
+  and the `idle_gpu_pstate` threshold added since v0.3 is now
+  `min_performance_pstate`. Update `checks:` overrides and `disabled_checks` entries
   in cluster config, and any consumer that matches the check ID in a verdict. ([#342](https://github.com/dsx-ai-factory/health-validation/pull/342))
 - `CheckDefinition.Validate`, and so `Register`, rejects rules below `UNKNOWN`
   that recommend `drain`. Recommend `monitor` for them instead; any severity
@@ -30,7 +36,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `…/catalog`, `…/toolkit`, `…/collect`, and `…/agentkit` with one require on the root module
   at the first `vX.Y.Z` release. Releases are tagged `vX.Y.Z` instead of
   `catalog/vX.Y.Z` and `toolkit/vX.Y.Z`, and the verdict's `catalog_version`
-  equals the CLI version. ([#216](https://github.com/dsx-ai-factory/health-validation/pull/216))
+  equals the CLI version. The per-module versions are retracted, so
+  `go install <package>@latest` resolves to the root module; see
+  [`RELEASE.md`](RELEASE.md#retired-per-module-tags). ([#216](https://github.com/dsx-ai-factory/health-validation/pull/216), [#280](https://github.com/dsx-ai-factory/health-validation/issues/280))
 - The public `catalog/version` package is removed. Read the version from a
   verdict's `catalog_version`. In unstamped builds, `health-validation version`
   now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`. ([#223](https://github.com/dsx-ai-factory/health-validation/pull/223))
@@ -526,6 +534,25 @@ Changes to behavior and APIs outside the
   could not be read, instead of reporting a bare read failure.
   ([#292](https://github.com/dsx-ai-factory/health-validation/pull/292))
 
+## [catalog/v0.3.2] and [toolkit/v0.3.2] - 2026-11-05
+
+Patch release on the v0.3 line, following v0.3.1.
+
+### Security
+
+- Build with Go 1.27.3, which carries the latest Go security fixes. The
+  `go` directive in every module is raised to match. ([#203](https://github.com/dsx-ai-factory/health-validation/pull/203))
+
+## [catalog/v0.3.1] and [toolkit/v0.3.1] - 2026-10-13
+
+Patch release on the v0.3 line.
+
+### Security
+
+- Build with Go 1.27.2 and `golang.org/x/net` 0.60.0. ([#159](https://github.com/dsx-ai-factory/health-validation/pull/159))
+- The container image uses an Ubuntu base with the `libssl3t64`
+  3.0.13-0ubuntu3.16 update. ([#162](https://github.com/dsx-ai-factory/health-validation/pull/162))
+
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
 Covers everything since `catalog/v0.2.0` and `toolkit/v0.2.0`. Build, CI,
@@ -654,7 +681,12 @@ and documentation-only changes are omitted.
 - Operator CLI (`health-validation run`) producing structured JSON verdicts.
 - CEL-based rule evaluation engine with operator-configurable threshold overrides.
 
-[Unreleased]: https://github.com/dsx-ai-factory/health-validation/compare/toolkit/v0.3.1...main
+[Unreleased]: https://github.com/dsx-ai-factory/health-validation/compare/v0.4.0...main
+[v0.4.0]: https://github.com/dsx-ai-factory/health-validation/tree/v0.4.0
+[catalog/v0.3.2]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.2
+[toolkit/v0.3.2]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.2
+[catalog/v0.3.1]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.1
+[toolkit/v0.3.1]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.1
 [catalog/v0.3.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.0
 [toolkit/v0.3.0]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.0
 [catalog/v0.2.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.2.0
