@@ -33,7 +33,8 @@ var (
 	hgxBlackwellArchitectures   = []string{"B200", "B300"}
 	blackwellArchitectures      = slices.Concat(graceBlackwellArchitectures, hgxBlackwellArchitectures)
 	// rubinArchitectures is added wherever GB300 is: NVIDIA's Xid catalog
-	// marks every Xid that applies to GB-x00 as applying to Rubin too.
+	// marks every Xid that applies to GB-x00 as applying to Rubin too. It is
+	// also used alone for the Rubin-only Xids 177, 180 and 182.
 	rubinArchitectures = []string{"VR"}
 
 	allArchitectures                  = slices.Concat(blackwellArchitectures, hopperArchitectures, ampereArchitectures, rubinArchitectures)
@@ -160,6 +161,11 @@ var criticalXids = []criticalXid{
 		description:   "CHI non-data error",
 		message:       "GPU Xid 159 detected: CHI non-data error. NVIDIA's CHECK_UVM guidance is to reset the GPU if UVM or vGPU is in use; otherwise ignore the error. Health Validation cannot determine whether either was in use when this error occurred, so it recommends a GPU reset as a conservative default.",
 	},
+	// 177, 180 and 182 are reported only by Rubin. 177 resets right away:
+	// NVIDIA's updated guidance is RESET_GPU, as the remap applies on reset.
+	{code: 177, action: resetAndService(), architectures: rubinArchitectures, description: "memory bank marked for remapping"},
+	{code: 180, action: resetAndService(), architectures: rubinArchitectures, description: "RIST error"},
+	{code: 182, action: health.Drain(health.RemediationActionServiceRequired), architectures: rubinArchitectures, description: "PCIe function-level reset failure"},
 }
 
 // nvlink5Xid is one Xid code in the NVLink5/NVSwitch fault family

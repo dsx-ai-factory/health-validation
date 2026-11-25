@@ -606,6 +606,96 @@ Detects NVRM Xid 154 in the system journal within the collection window and repo
 - **INFO** when `"0x0" in recovery_action_counts && recovery_action_counts["0x0"] >= occurrences`
   - Message: GPU Xid 154: the driver requested no recovery action (None) for at least one GPU. Correlate with the accompanying Xid.
 
+## GPU Xid 177 (memory bank marked for remapping)
+
+`gpu_xid_177`
+
+Detects NVRM Xid 177 in the system journal within the collection window.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`VR`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
+
+**Rules**
+
+- **CRITICAL** when `177 in xid_counts && xid_counts[177] >= occurrences`
+  - Message: GPU Xid 177 detected: memory bank marked for remapping.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
+
+## GPU Xid 180 (RIST error)
+
+`gpu_xid_180`
+
+Detects NVRM Xid 180 in the system journal within the collection window.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`VR`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
+
+**Rules**
+
+- **CRITICAL** when `180 in xid_counts && xid_counts[180] >= occurrences`
+  - Message: GPU Xid 180 detected: RIST error.
+
+**Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
+
+## GPU Xid 182 (PCIe function-level reset failure)
+
+`gpu_xid_182`
+
+Detects NVRM Xid 182 in the system journal within the collection window.
+
+| Property | Value |
+|---|---|
+| Provenance | <nobr>`nvidia`</nobr> |
+| Condition scope | <nobr>`NODE`</nobr> |
+| Execution class | <nobr>`PASSIVE`</nobr> |
+| Scheduling cadence | <nobr>`CONTINUOUS`</nobr> |
+| Maturity | <nobr>`stable`</nobr> |
+| Execution contexts | <nobr>`OPERATOR_INFRA`</nobr>, <nobr>`TENANT_GUEST`</nobr> |
+| Architectures | <nobr>`VR`</nobr> |
+| Required signals | <nobr>`gpu_id`</nobr>, <nobr>`pci_address`</nobr>, <nobr>`xid_counts`</nobr>, <nobr>`events`</nobr> |
+
+**Thresholds**
+
+| Name | Value | Unit | Category | Description |
+|---|---|---|---|---|
+| <nobr>`occurrences`</nobr> | 1 | count | <nobr>`DEFAULT`</nobr> | Number of matching Xid occurrences on one GPU within the collection window that causes the check to fire. |
+
+**Rules**
+
+- **CRITICAL** when `182 in xid_counts && xid_counts[182] >= occurrences`
+  - Message: GPU Xid 182 detected: PCIe function-level reset failure.
+
+**Recommended action:** operational state `drain`, then `service_required`
+
 ## GPU Xid with no resolution in the catalog
 
 `gpu_xid_informational`
