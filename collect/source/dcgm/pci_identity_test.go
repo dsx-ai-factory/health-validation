@@ -30,11 +30,14 @@ func TestHealthIdentityEnrichmentPreservesIndependentFields(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			raw := &observation.DCGMHealthReport{
-				EntityResults: []*observation.DCGMHealthEntityResult{{
-					Entity: healthTestGPUTarget(7), GroupMember: proto.Bool(true),
-					Incidents: []*observation.DCGMHealthIncident{{
-						System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(),
-						ErrorCode: 123, Message: "memory fault",
+				GroupResults: []*observation.DCGMHealthGroupResult{{
+					EntityKind: gpuEntityKind, Systems: dcgmhealth.SystemMemory, NativeOverallHealth: observation.DCGMHealthResultFail.Enum(),
+					EntityResults: []*observation.DCGMHealthEntityResult{{
+						Entity: healthTestGPUTarget(7), GroupMember: proto.Bool(true),
+						Incidents: []*observation.DCGMHealthIncident{{
+							System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(),
+							ErrorCode: 123, Message: "memory fault",
+						}},
 					}},
 				}},
 			}
@@ -51,7 +54,7 @@ func TestHealthIdentityEnrichmentPreservesIndependentFields(t *testing.T) {
 			}
 			result := source.Collect(context.Background(), newTestCycle(t, test.name), CollectionRequest{Health: true})
 			report, failure := result.HealthReport, result.HealthError
-			entities := report.GetEntityResults()
+			entities := report.GetGroupResults()[0].GetEntityResults()
 			if failure != nil || len(entities) != 1 || !entities[0].GetGroupMember() {
 				t.Fatalf("optional identity lookup discarded the health result: %v, %v", report, failure)
 			}
@@ -66,7 +69,7 @@ func TestHealthIdentityEnrichmentPreservesIndependentFields(t *testing.T) {
 			if native.uuidCalls.Load() != 1 || native.enumerationCalls.Load() != 0 {
 				t.Fatalf("identity enrichment repeated the lookup or enumerated GPUs: lookups=%d enumeration=%d", native.uuidCalls.Load(), native.enumerationCalls.Load())
 			}
-			rawGPU := raw.GetEntityResults()[0].GetEntity().GetGpu()
+			rawGPU := raw.GetGroupResults()[0].GetEntityResults()[0].GetEntity().GetGpu()
 			if rawGPU.GetUuid() != "" || rawGPU.GetBusId() != "" {
 				t.Fatal("identity enrichment changed the native-owned report")
 			}
@@ -77,7 +80,10 @@ func TestHealthIdentityEnrichmentPreservesIndependentFields(t *testing.T) {
 func TestPCIIdentityConnectionLossRecoversOnNextCycle(t *testing.T) {
 	native := &healthLifecycleNative{
 		health: &fakeHealthWatch{report: &observation.DCGMHealthReport{
-			EntityResults: []*observation.DCGMHealthEntityResult{{Entity: healthTestGPUTarget(7), GroupMember: proto.Bool(true)}},
+			GroupResults: []*observation.DCGMHealthGroupResult{{
+				EntityKind: gpuEntityKind, Systems: dcgmhealth.SystemMemory, NativeOverallHealth: observation.DCGMHealthResultPass.Enum(),
+				EntityResults: []*observation.DCGMHealthEntityResult{{Entity: healthTestGPUTarget(7), GroupMember: proto.Bool(true)}},
+			}},
 		}},
 		cleanupNative: cleanupNative{fakeNative: fakeNative{uuidEntries: map[uint]GPUIdentityEntry{7: {
 			UUID: "GPU-7", BusIDError: &observation.CollectionError{
@@ -94,7 +100,7 @@ func TestPCIIdentityConnectionLossRecoversOnNextCycle(t *testing.T) {
 	cycle := newTestCycle(t, "PCI-identity-connection-loss")
 	result := source.Collect(context.Background(), cycle, CollectionRequest{Health: true})
 	report, failure := result.HealthReport, result.HealthError
-	entities := report.GetEntityResults()
+	entities := report.GetGroupResults()[0].GetEntityResults()
 	if failure != nil || len(entities) != 1 || entities[0].GetEntity().GetGpu().GetUuid() != "GPU-7" || entities[0].GetEntity().GetGpu().GetBusId() != "" {
 		t.Fatalf("PCI field error discarded a successful UUID or health read: %v, %v", report, failure)
 	}
@@ -107,7 +113,7 @@ func TestPCIIdentityConnectionLossRecoversOnNextCycle(t *testing.T) {
 	native.uuidEntries[7] = GPUIdentityEntry{UUID: "GPU-7", BusID: "0000:53:00.0"}
 	result = source.Collect(context.Background(), newTestCycle(t, "PCI-identity-recovered"), CollectionRequest{Health: true})
 	report, failure = result.HealthReport, result.HealthError
-	entities = report.GetEntityResults()
+	entities = report.GetGroupResults()[0].GetEntityResults()
 	if failure != nil || len(entities) != 1 || entities[0].GetEntity().GetGpu().GetBusId() != "0000:53:00.0" ||
 		native.initCalls.Load() != 2 || native.cleanupCalls.Load() != 1 {
 		t.Fatalf("next cycle did not replace the session and recover PCI enrichment: %v, %v", report, failure)

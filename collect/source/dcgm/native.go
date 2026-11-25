@@ -12,6 +12,7 @@ type nativeAPI interface {
 	MetricWatchGroups([]string) ([]metricWatchGroup, error)
 	Init() (func() error, error)
 	AllGPUIndices() ([]uint, error)
+	HealthGPUIndices() ([]uint, error)
 	ReadGPUUUIDs([]uint) (map[uint]GPUIdentityEntry, error)
 	// ReadGPUInventory returns fresh entries owned by the caller for enrichment.
 	ReadGPUInventory([]uint) (map[uint]*observation.GPUInventoryEntry, error)
@@ -21,15 +22,22 @@ type nativeAPI interface {
 	ReadGPUMetrics(uint, []string) (map[string]FieldValue, error)
 	// WatchHealth constructs a configured watch; Read creates its native group
 	// lazily and retains ownership when failed setup needs later cleanup.
-	WatchHealth(uint64) (healthWatch, error)
+	WatchHealth(uint64, *uint) (healthWatch, error)
 }
 
 // healthWatch manages an optional native health group separately from the shared client.
 type healthWatch interface {
 	// Read sets up monitoring lazily and returns the native result and coverage.
-	Read() (*observation.DCGMHealthReport, error)
+	Read() (*healthGroupRead, error)
 	// Close stops new reads and attempts group destruction without releasing the client.
+	// Failed destruction retains ownership for a later cleanup attempt.
 	Close() error
+}
+
+type healthGroupRead struct {
+	group                 *observation.DCGMHealthGroupResult
+	systemErrors          map[uint64]*observation.CollectionError
+	systemsWithoutTargets uint64
 }
 
 // sessionMode selects how a source starts DCGM. The zero value is unset.

@@ -310,16 +310,22 @@ Changes to behavior and APIs outside the
   Reports preserve all native incidents, group metadata, readable health statuses,
   monitoring start time, and missing-target facts. Entities reuse shared GPU
   and NVSwitch references with optional source-native identity metadata.
-  Each `entity_results` entry keeps its identity, verified group membership,
+  Each group's `entity_results` keeps identities, verified group membership,
   incidents, and scoped collection errors together. GPU references include
   available UUIDs and PCI bus addresses from one lookup.
+  Each GPU has its own native health group; NVSwitches share a separate group
+  on the same session, with
+  independent check errors, native overall health, start times, truncation flags,
+  and entity results in `group_results`. Native group handles stay internal.
+  A later group failure preserves completed results.
   Unknown native entity kinds are preserved. Existing metric-only constructors
   and defaults are unchanged.
   Source `HealthWatch` options configure the health update interval and retention
   independently of metric `WatchPolicy`, keeping 30 seconds and 10 minutes as
   defaults.
-  Health reads rediscover devices and restore missing group members after
-  GPU reattachment, reusing the group and existing watches when unchanged.
+  Health reads discover GPUs once per collection and reuse their groups while
+  present. Missing GPUs' groups are queued for cleanup before new groups are allocated;
+  failed cleanup is retained for retry. Discovery failures preserve known groups.
   Rejected GPU or NVSwitch additions preserve findings from usable members,
   record errors under the affected entity result, and retry on the next read.
   Unattributed discovery failures appear in `system_errors`.

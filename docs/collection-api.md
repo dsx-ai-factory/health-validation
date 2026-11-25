@@ -98,23 +98,42 @@ DCGM may enforce subsystem-specific minimum intervals and retention.
 The hostengine shares samples per entity and field across watches. Other watches
 can increase the effective sampling rate or retention for a shared field.
 
-Health reads refresh discovery for each entity kind required by the requested
-systems. Returning devices can rejoin an existing group while its current
-members retain their history. GPU inventory can also include detached devices
-unavailable to health watches.
+Health reads discover active GPUs once per collection and reuse one native
+health group per GPU. NVSwitches share a separate group on the same session.
+After successful discovery, cleanup of missing GPUs' groups runs before new
+groups are allocated. Failed cleanup stays pending for retry. Returning GPUs
+receive new groups and monitoring start times. Discovery failures preserve known
+groups and their findings. GPU inventory can also include detached devices
+unavailable to health watches. These entity groups share the hostengine's group
+limit with other clients; allocation failures are reported for the affected GPU
+while other usable groups continue.
 `systemsWithoutTargets` identifies requested systems whose targets are absent.
 `systemErrors` records discovery failures that cannot be attributed to a specific
-device. `entityResults` groups each entity's identity, incidents, and
-`collectionErrors`. Each collection error names the affected `systems` and keeps
-its source status. Discovery and entity collection errors indicate incomplete
-coverage and can accompany findings from usable members.
-`groupMember` explicitly records whether the entity belongs to this read's native
-group; it does not establish sample coverage. Rejected targets and entities
-mentioned only in incidents also have results, with `groupMember: false`.
+device. Each `groupResults` entry contains its own `entityResults`, keeping each
+entity's identity, incidents, and `collectionErrors` with the native check that
+produced them. Each entity collection error names the affected `systems` within
+that group and keeps its source status. Discovery and entity collection errors
+indicate incomplete coverage and can accompany findings from usable members.
+`groupMember` records verified membership in the enclosing group's read; it does
+not establish sample coverage. It is absent when a group failure prevented
+verification. Rejected targets and entities mentioned only in incidents also
+have results, with `groupMember: false`.
 GPU UUIDs and PCI addresses are added when available; failed enrichment retains
-the native ID and error. If every candidate is rejected, the report contains
-these errors without a native overall result. If the incident limit is reached,
-`possiblyTruncated` marks the result as potentially incomplete.
+the native ID and findings. If every candidate is rejected, the report contains
+these errors without a native overall result.
+
+`groupResults` holds each group's target `entityKind`, requested `systems`,
+`nativeOverallHealth`, `monitoredSince`, and `possiblyTruncated` flag alongside
+its entities. Consumers should iterate the results without assuming one group
+per kind. Native group handles stay internal. A group without a completed check
+has no native overall result. Setup, group-membership query, check, and cleanup
+failures appear in that group's `collectionError`; discovery failures
+remain in `systemErrors`. Each group is read through a separate timed native
+operation, so an error or timeout in a later group preserves earlier
+completed group results. Connection failure still stops unfinished reads on the
+shared session. Known GPU targets retain their group errors even when every
+GPU check fails. Health collection emits a source-level error when no known
+target or native partial report is available.
 
 Incidents include `nativeErrorSeverity`, `nativeErrorCategory`, and `suggestion`
 when the installed DCGM client library has metadata for the incident's code.
@@ -123,11 +142,12 @@ Health Validation verdict severity. Unknown codes retain their incidents with
 those metadata fields absent.
 
 The sensor emits one node-wide `dcgm.health` observation when health is selected.
-Its report retains every incident under its entity and the native overall result
-for the enabled group. Overall health, `monitoredSince`, and `possiblyTruncated`
-describe the shared native group, rather than individual entity results.
-The native overall result does not establish coverage for systems with
-discovery or membership errors. If every requested system has no targets and
+Its report retains every incident under its entity. Each group's overall health,
+`monitoredSince`, and `possiblyTruncated` describe that native group, rather than
+individual entity results. Reaching a group's incident limit means its response
+may be incomplete; the omitted count is unknown. A group's native overall result
+does not establish coverage for systems with discovery or membership errors.
+If every requested system has no targets and
 there are no incidents, the sensor emits a `NO_TARGETS` outcome without an
 observation target. Consumers enabling health need a schema that supports
 `DcgmHealthReport`.
@@ -136,7 +156,7 @@ DCGM can report incidents on the first check, and the source returns successful
 native reports immediately. When a report has no incidents, some health rules
 may still have had no usable samples. The report provides no per-rule readiness
 signal.
-`monitoredSince` records the group's first successful setup. It provides no
+Each group's `monitoredSince` records its first successful setup. It provides no
 measure of history for individual rules or for members added later. For
 example, a memory rule can need a week-old baseline. Consumers decide what
 evidence they require before treating an absent incident as cleared.

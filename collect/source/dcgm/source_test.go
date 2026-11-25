@@ -24,28 +24,31 @@ var (
 )
 
 type fakeNative struct {
-	uuidErr           error
-	inventoryErr      error
-	enumerationErr    error
-	initErr           error
-	gpuUUIDs          map[uint]string
-	uuidEntries       map[uint]GPUIdentityEntry
-	readStarted       chan struct{}
-	uuidStarted       chan struct{}
-	uuidReadIndices   chan []uint
-	inventoryStarted  chan struct{}
-	inventory         map[uint]*observation.GPUDevice
-	inventoryEntries  map[uint]*observation.GPUInventoryEntry
-	releaseRead       chan struct{}
-	gpuIndices        []uint
-	enumerationCalls  atomic.Int32
-	cleanupCalls      atomic.Int32
-	initCalls         atomic.Int32
-	inventoryCalls    atomic.Int32
-	uuidCalls         atomic.Int32
-	readCalls         atomic.Int32
-	watchCleanupCalls atomic.Int32
-	watchCalls        atomic.Int32
+	healthEnumerationErr   error
+	uuidErr                error
+	inventoryErr           error
+	enumerationErr         error
+	initErr                error
+	gpuUUIDs               map[uint]string
+	uuidEntries            map[uint]GPUIdentityEntry
+	readStarted            chan struct{}
+	uuidStarted            chan struct{}
+	uuidReadIndices        chan []uint
+	inventoryStarted       chan struct{}
+	inventory              map[uint]*observation.GPUDevice
+	inventoryEntries       map[uint]*observation.GPUInventoryEntry
+	releaseRead            chan struct{}
+	healthIndices          []uint
+	gpuIndices             []uint
+	healthEnumerationCalls atomic.Int32
+	enumerationCalls       atomic.Int32
+	cleanupCalls           atomic.Int32
+	initCalls              atomic.Int32
+	inventoryCalls         atomic.Int32
+	uuidCalls              atomic.Int32
+	readCalls              atomic.Int32
+	watchCleanupCalls      atomic.Int32
+	watchCalls             atomic.Int32
 	// The watch cleanup needs the DCGM client the client cleanup releases.
 	watchCleanedAfterClient atomic.Bool
 }
@@ -75,6 +78,17 @@ func (native *fakeNative) AllGPUIndices() ([]uint, error) {
 	}
 	if native.gpuIndices != nil {
 		return native.gpuIndices, nil
+	}
+	return []uint{0}, nil
+}
+
+func (native *fakeNative) HealthGPUIndices() ([]uint, error) {
+	native.healthEnumerationCalls.Add(1)
+	if native.healthEnumerationErr != nil {
+		return nil, native.healthEnumerationErr
+	}
+	if native.healthIndices != nil {
+		return slices.Clone(native.healthIndices), nil
 	}
 	return []uint{0}, nil
 }
@@ -155,7 +169,7 @@ func (native *fakeNative) ReadGPUMetrics(_ uint, signalIDs []string) (map[string
 	return values, nil
 }
 
-func (native *fakeNative) WatchHealth(uint64) (healthWatch, error) {
+func (native *fakeNative) WatchHealth(uint64, *uint) (healthWatch, error) {
 	return &fakeHealthWatch{native: native}, nil
 }
 

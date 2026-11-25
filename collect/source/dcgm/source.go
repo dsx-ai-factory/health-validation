@@ -111,12 +111,14 @@ type Source struct {
 
 // clientSession owns the client reference and watches for one successful Init.
 type clientSession struct {
-	metricWatchError       error
-	healthWatch            healthWatch
-	connectionFailure      error
-	clientCleanup          func() error
-	metricWatchCleanup     func() error
-	connectionFailureCycle *collect.Cycle
+	metricWatchError        error
+	connectionFailure       error
+	gpuHealthWatches        map[uint]healthWatch
+	pendingGPUHealthCleanup map[uint]healthWatch
+	switchHealthWatch       healthWatch
+	clientCleanup           func() error
+	metricWatchCleanup      func() error
+	connectionFailureCycle  *collect.Cycle
 }
 
 // NewStandaloneSource creates a source connected to an external DCGM
@@ -299,7 +301,7 @@ func (source *Source) ensureMetricWatch(session *clientSession) error {
 }
 
 // Closed reports whether the source has stopped accepting native work.
-// A failed watch setup closes the source. Cleanup may still be pending.
+// Cleanup may still be pending.
 func (source *Source) Closed() bool { return source.closed.Load() }
 
 // Close stops new native work and attempts metric cleanup and health-group
@@ -337,12 +339,18 @@ func (source *Source) releaseSession() (result error) {
 	if session.connectionFailure != nil {
 		return nil
 	}
-	var metricError, healthError error
+	var failures []error
 	if metricWatchCleanup := session.metricWatchCleanup; metricWatchCleanup != nil {
-		metricError = metricWatchCleanup()
+		failures = append(failures, metricWatchCleanup())
 	}
-	if health := session.healthWatch; health != nil {
-		healthError = health.Close()
+	for _, health := range session.gpuHealthWatches {
+		failures = append(failures, health.Close())
 	}
-	return errors.Join(metricError, healthError)
+	for _, health := range session.pendingGPUHealthCleanup {
+		failures = append(failures, health.Close())
+	}
+	if health := session.switchHealthWatch; health != nil {
+		failures = append(failures, health.Close())
+	}
+	return errors.Join(failures...)
 }

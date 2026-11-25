@@ -95,6 +95,15 @@ func (*nativeLibrary) AllGPUIndices() ([]uint, error) {
 	return gpuIndices, nil
 }
 
+// HealthGPUIndices excludes detached GPUs, which reject health watches.
+func (library *nativeLibrary) HealthGPUIndices() ([]uint, error) {
+	ids, err := library.healthGPUIndices()
+	if err != nil {
+		return nil, dcgmErrorFromError(err)
+	}
+	return ids, nil
+}
+
 // MetricWatchGroups resolves signals and checks limits before metric-watch setup.
 func (library *nativeLibrary) MetricWatchGroups(signalIDs []string) ([]metricWatchGroup, error) {
 	if policy := library.options.WatchPolicy; policy != nil {

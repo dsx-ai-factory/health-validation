@@ -50,23 +50,33 @@ var healthEntitySelections = [...]struct {
 
 const maxNativeHealthIncidents = 1024
 
-// WatchHealth prepares a watch whose native setup occurs during Read.
-func (library *nativeLibrary) WatchHealth(systems uint64) (healthWatch, error) {
+// WatchHealth prepares one GPU's watch, or an NVSwitch watch when gpuID is nil.
+func (library *nativeLibrary) WatchHealth(systems uint64, gpuID *uint) (healthWatch, error) {
+	if gpuID == nil && systems&dcgmhealth.GPUSystems != 0 {
+		return nil, fmt.Errorf("DCGM GPU health systems require a GPU target")
+	}
+	if gpuID != nil && systems&dcgmhealth.NVSwitchSystems != 0 {
+		return nil, fmt.Errorf("DCGM NVSwitch health systems do not accept a GPU target")
+	}
 	options, err := freezeHealthWatchOptions(library.options.HealthWatch)
 	if err != nil {
 		return nil, err
 	}
+	entities := godcgm.GetEntityGroupEntities
+	if gpuID != nil {
+		id := *gpuID
+		entities = func(kind godcgm.Field_Entity_Group) ([]uint, error) {
+			if kind != godcgm.FE_GPU {
+				return nil, fmt.Errorf("DCGM GPU health watch cannot discover entity kind %d", kind)
+			}
+			return []uint{id}, nil
+		}
+	}
 	name := metricWatchName(library.options.GroupNamePrefix, os.Getpid(), metricWatchSequence.Add(1)) + "-health"
 	return startHealthWatch(name, systems, healthWatchOperations{
-		entities: func(kind godcgm.Field_Entity_Group) ([]uint, error) {
-			if kind == godcgm.FE_GPU {
-				// General enumeration includes detached GPUs, which reject watches.
-				return library.healthGPUIndices()
-			}
-			return godcgm.GetEntityGroupEntities(kind)
-		},
-		create: godcgm.CreateGroup,
-		add:    godcgm.AddEntityToGroup,
+		entities: entities,
+		create:   godcgm.CreateGroup,
+		add:      godcgm.AddEntityToGroup,
 		set: func(group godcgm.GroupHandle, systems godcgm.HealthSystem) error {
 			return library.healthSet(group, systems, options.UpdateInterval, options.MaxKeepAge)
 		},
@@ -89,7 +99,8 @@ func startHealthWatch(name string, systems uint64, ops healthWatchOperations) (h
 
 // Read returns group membership and the complete native health response.
 // A group without targets has no native overall result.
-func (watch *nativeHealthWatch) Read() (*observation.DCGMHealthReport, error) {
+// A failed native check preserves verified members and group metadata with its error.
+func (watch *nativeHealthWatch) Read() (*healthGroupRead, error) {
 	if watch.closed {
 		return nil, errClosed
 	}
@@ -100,8 +111,15 @@ func (watch *nativeHealthWatch) Read() (*observation.DCGMHealthReport, error) {
 			return nil, err
 		}
 	}
-	report := &observation.DCGMHealthReport{RequestedSystems: watch.systems}
-	targets, discoveryErr := watch.discoverTargets(report)
+	groupResult := &observation.DCGMHealthGroupResult{Systems: watch.systems}
+	for _, selection := range healthEntitySelections {
+		if watch.systems&selection.systems == watch.systems {
+			groupResult.EntityKind = uint32(selection.entityKind)
+			break
+		}
+	}
+	read := &healthGroupRead{group: groupResult}
+	targets, discoveryErr := watch.discoverTargets(read)
 	if errors.Is(discoveryErr, errConnectionNotValid) {
 		return nil, discoveryErr
 	}
@@ -119,45 +137,43 @@ func (watch *nativeHealthWatch) Read() (*observation.DCGMHealthReport, error) {
 	// Failed discovery cannot invalidate known members. Without any successful
 	// discovery or existing members, there is no usable health coverage to read.
 	if len(targets) == 0 && len(members) == 0 && discoveryErr != nil {
-		return nil, discoveryErr
+		return read, nil
 	}
 	results := make(map[godcgm.GroupEntityPair]*observation.DCGMHealthEntityResult)
-	members, err = watch.configureGroup(targets, members, report, results)
+	members, err = watch.configureGroup(targets, members, groupResult, results)
 	if err != nil {
 		return nil, err
 	}
 	// Discovery or membership errors leave coverage incomplete, not target-free.
-	report.SystemsWithoutTargets = watch.systems &^ healthSystemsForEntities(watch.systems, members)
-	for system := range report.SystemErrors {
-		report.SystemsWithoutTargets &^= system
+	read.systemsWithoutTargets = watch.systems &^ healthSystemsForEntities(watch.systems, members)
+	for system := range read.systemErrors {
+		read.systemsWithoutTargets &^= system
 	}
-	for _, result := range report.EntityResults {
+	for _, result := range groupResult.EntityResults {
 		for _, failure := range result.CollectionErrors {
-			report.SystemsWithoutTargets &^= failure.GetSystems()
+			read.systemsWithoutTargets &^= failure.GetSystems()
 		}
 	}
 	for _, entity := range members {
 		member := true
-		healthEntityResult(report, results, entity).GroupMember = &member
+		healthEntityResult(groupResult, results, entity).GroupMember = &member
 	}
 	if !watch.ownsGroup {
 		// No available targets means no native check or overall health result.
-		return report, nil
+		return read, nil
 	}
-	groupID := uint64(watch.group.GetHandle())
-	report.GroupId = &groupID
-	report.MonitoredSince = timestamppb.New(watch.monitoredSince)
+	groupResult.MonitoredSince = timestamppb.New(watch.monitoredSince)
 	if len(members) == 0 {
-		return report, nil
+		return read, nil
 	}
 	response, err := watch.ops.check(watch.group)
 	if err != nil {
-		return nil, fmt.Errorf("check DCGM health: %w", dcgmErrorFromError(err))
+		return read, fmt.Errorf("check DCGM health: %w", dcgmErrorFromError(err))
 	}
 	nativeHealth := observation.DCGMHealthResult(response.OverallHealth)
-	report.NativeGroupOverallHealth = &nativeHealth
+	groupResult.NativeOverallHealth = &nativeHealth
 	// A full native response may omit more incidents without reporting their count.
-	report.PossiblyTruncated = len(response.Incidents) >= maxNativeHealthIncidents
+	groupResult.PossiblyTruncated = len(response.Incidents) >= maxNativeHealthIncidents
 	for _, incident := range response.Incidents {
 		finding := &observation.DCGMHealthIncident{
 			System:       uint64(incident.System),
@@ -173,15 +189,15 @@ func (watch *nativeHealthWatch) Read() (*observation.DCGMHealthReport, error) {
 				finding.Suggestion = &suggestion
 			}
 		}
-		result := healthEntityResult(report, results, incident.EntityInfo)
+		result := healthEntityResult(groupResult, results, incident.EntityInfo)
 		result.Incidents = append(result.Incidents, finding)
 	}
-	return report, nil
+	return read, nil
 }
 
 // discoverTargets refreshes every requested kind so returning devices can rejoin.
-// Successful empty discoveries remain in targets; failures are also added to report.
-func (watch *nativeHealthWatch) discoverTargets(report *observation.DCGMHealthReport) (map[godcgm.Field_Entity_Group][]uint, error) {
+// Successful empty discoveries remain in targets. Discovery failures limit coverage.
+func (watch *nativeHealthWatch) discoverTargets(read *healthGroupRead) (map[godcgm.Field_Entity_Group][]uint, error) {
 	targets := make(map[godcgm.Field_Entity_Group][]uint, len(healthEntitySelections))
 	var failures []error
 	for _, selection := range healthEntitySelections {
@@ -197,7 +213,7 @@ func (watch *nativeHealthWatch) discoverTargets(report *observation.DCGMHealthRe
 				return nil, failure
 			}
 			failures = append(failures, failure)
-			recordHealthDiscoveryError(report, selected, failure)
+			recordHealthDiscoveryError(read, selected, failure)
 			continue
 		}
 		targets[selection.entityKind] = ids
@@ -206,15 +222,15 @@ func (watch *nativeHealthWatch) discoverTargets(report *observation.DCGMHealthRe
 }
 
 // recordHealthDiscoveryError marks incomplete coverage without hiding usable members.
-func recordHealthDiscoveryError(report *observation.DCGMHealthReport, systems uint64, failure error) {
-	if report.SystemErrors == nil {
-		report.SystemErrors = make(map[uint64]*observation.CollectionError)
+func recordHealthDiscoveryError(read *healthGroupRead, systems uint64, failure error) {
+	if read.systemErrors == nil {
+		read.systemErrors = make(map[uint64]*observation.CollectionError)
 	}
 	for system := uint64(1); system != 0; system <<= 1 {
 		if systems&system != 0 {
 			detail := collectionError(failure)
 			detail.Source, detail.Operation = Name, "health discovery"
-			report.SystemErrors[system] = &detail
+			read.systemErrors[system] = &detail
 		}
 	}
 }
@@ -246,7 +262,7 @@ func healthSystemsForEntities(requested uint64, entities []godcgm.GroupEntityPai
 
 // configureGroup repairs membership before enabling watches for new members.
 // Rejected members limit coverage but leave usable members and their history intact.
-func (watch *nativeHealthWatch) configureGroup(targets map[godcgm.Field_Entity_Group][]uint, members []godcgm.GroupEntityPair, report *observation.DCGMHealthReport, results map[godcgm.GroupEntityPair]*observation.DCGMHealthEntityResult) ([]godcgm.GroupEntityPair, error) {
+func (watch *nativeHealthWatch) configureGroup(targets map[godcgm.Field_Entity_Group][]uint, members []godcgm.GroupEntityPair, groupResult *observation.DCGMHealthGroupResult, results map[godcgm.GroupEntityPair]*observation.DCGMHealthEntityResult) ([]godcgm.GroupEntityPair, error) {
 	// True means an original member; false deduplicates a new discovery without
 	// claiming that it has joined the group.
 	wasMember := make(map[godcgm.GroupEntityPair]bool, len(members))
@@ -308,7 +324,7 @@ func (watch *nativeHealthWatch) configureGroup(targets map[godcgm.Field_Entity_G
 		if failure := addFailures[entity]; failure != nil {
 			detail := collectionError(failure)
 			detail.Source, detail.Operation = Name, "health membership"
-			result := healthEntityResult(report, results, entity)
+			result := healthEntityResult(groupResult, results, entity)
 			result.CollectionErrors = append(result.CollectionErrors, &observation.DCGMHealthEntityError{
 				Systems: healthSystemsForEntities(watch.systems, []godcgm.GroupEntityPair{entity}),
 				Error:   &detail,
@@ -350,14 +366,14 @@ func (watch *nativeHealthWatch) configureGroup(targets map[godcgm.Field_Entity_G
 	return members, nil
 }
 
-func healthEntityResult(report *observation.DCGMHealthReport, results map[godcgm.GroupEntityPair]*observation.DCGMHealthEntityResult, entity godcgm.GroupEntityPair) *observation.DCGMHealthEntityResult {
+func healthEntityResult(group *observation.DCGMHealthGroupResult, results map[godcgm.GroupEntityPair]*observation.DCGMHealthEntityResult, entity godcgm.GroupEntityPair) *observation.DCGMHealthEntityResult {
 	if result := results[entity]; result != nil {
 		return result
 	}
 	member := false
 	result := &observation.DCGMHealthEntityResult{Entity: healthEntity(entity), GroupMember: &member}
 	results[entity] = result
-	report.EntityResults = append(report.EntityResults, result)
+	group.EntityResults = append(group.EntityResults, result)
 	return result
 }
 
@@ -387,13 +403,9 @@ func healthEntity(entity godcgm.GroupEntityPair) *observation.ObservationTarget 
 	}
 }
 
-// Close attempts owned group destruction once. Native health sampling may
-// persist in an external hostengine even after the client disconnects.
+// Close stops reads and destroys the owned group; later calls retry failed cleanup.
+// Native health sampling may persist after the client disconnects.
 func (watch *nativeHealthWatch) Close() error {
-	if watch.closed {
-		return nil
-	}
-	// Close is terminal; failed destruction is retried only during setup rollback.
 	watch.closed = true
 	return watch.destroyOwnedGroup()
 }

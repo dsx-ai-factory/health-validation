@@ -32,28 +32,36 @@ func TestDCGMHealthReportRoundTrip(t *testing.T) {
 	gpuEntity := &ObservationTarget{Kind: &ObservationTarget_GPU{Gpu: &GPURef{Uuid: "GPU-enriched", Native: &NativeEntityRef{Source: "dcgm", EntityKind: 1}}}}
 	switchEntity := &ObservationTarget{Kind: &ObservationTarget_NVSwitch{NvSwitch: &NVSwitchRef{Native: &NativeEntityRef{Source: "dcgm", EntityKind: 3, EntityId: 17}}}}
 	batch := healthReportBatch(&DCGMHealthReport{
-		RequestedSystems:         math.MaxUint64,
-		GroupId:                  proto.Uint64(0),
-		NativeGroupOverallHealth: DCGMHealthResult(-987).Enum(),
-		EntityResults: []*DCGMHealthEntityResult{
-			healthEntityResult(gpuEntity, true, &DCGMHealthIncident{
-				System: 16, NativeHealth: DCGMHealthResultWarn.Enum(), ErrorCode: 1, Message: "memory finding",
-				NativeErrorSeverity: proto.Uint32(0), NativeErrorCategory: proto.Uint32(math.MaxUint32), Suggestion: proto.String(""),
-			}),
-			healthEntityResult(unknownEntity, false, &DCGMHealthIncident{System: 0xffffffff, NativeHealth: DCGMHealthResult(-123).Enum(), ErrorCode: math.MaxUint64, Message: "unknown native status"}),
-			healthEntityResult(switchEntity, true, &DCGMHealthIncident{System: 1 << 63, NativeHealth: DCGMHealthResult(math.MaxInt32).Enum(), ErrorCode: 0}),
-			{Entity: GPUTarget("GPU-rejected"), GroupMember: proto.Bool(false), CollectionErrors: []*DCGMHealthEntityError{{
-				Systems: 16, Error: &CollectionError{Source: "dcgm", Operation: "health membership", SourceError: "FUTURE_STATUS", Category: CollectionErrorCategoryUnavailable},
-			}}},
+		RequestedSystems: math.MaxUint64,
+		GroupResults: []*DCGMHealthGroupResult{
+			{
+				EntityKind: 1, Systems: 17, NativeOverallHealth: DCGMHealthResult(-987).Enum(),
+				MonitoredSince: timestamppb.New(time.Unix(1_790_000_000, 123)), PossiblyTruncated: true,
+				EntityResults: []*DCGMHealthEntityResult{
+					healthEntityResult(gpuEntity, true, &DCGMHealthIncident{
+						System: 16, NativeHealth: DCGMHealthResultWarn.Enum(), ErrorCode: 1, Message: "memory finding",
+						NativeErrorSeverity: proto.Uint32(0), NativeErrorCategory: proto.Uint32(math.MaxUint32), Suggestion: proto.String(""),
+					}),
+					healthEntityResult(unknownEntity, false, &DCGMHealthIncident{System: 0xffffffff, NativeHealth: DCGMHealthResult(-123).Enum(), ErrorCode: math.MaxUint64, Message: "unknown native status"}),
+					{Entity: GPUTarget("GPU-rejected"), GroupMember: proto.Bool(false), CollectionErrors: []*DCGMHealthEntityError{{
+						Systems: 16, Error: &CollectionError{Source: "dcgm", Operation: "health membership", SourceError: "FUTURE_STATUS", Category: CollectionErrorCategoryUnavailable},
+					}}},
+				},
+			},
+			{
+				EntityKind: 3, Systems: 3072,
+				CollectionError: &CollectionError{Source: "dcgm", Operation: "health", Category: CollectionErrorCategoryUnsupported, Detail: "switch health unavailable"},
+				EntityResults: []*DCGMHealthEntityResult{
+					healthEntityResult(switchEntity, true, &DCGMHealthIncident{System: 1 << 63, NativeHealth: DCGMHealthResult(math.MaxInt32).Enum(), ErrorCode: 0}),
+				},
+			},
 		},
-		MonitoredSince:        timestamppb.New(time.Unix(1_790_000_000, 123)),
 		CollectionId:          "shared-collection",
 		SystemsWithoutTargets: 1 << 62,
 		SystemErrors: map[uint64]*CollectionError{
 			1:       {Source: "dcgm", Operation: "health discovery", Category: CollectionErrorCategoryUnavailable, Detail: "PCIe discovery failed"},
 			1 << 61: {Source: "dcgm", Operation: "health discovery", SourceError: "FUTURE_STATUS", Category: CollectionErrorCategoryUnavailable, Detail: "future system unavailable"},
 		},
-		PossiblyTruncated: true,
 	})
 	if err := ValidateBatch(batch); err != nil {
 		t.Fatalf("ValidateBatch() error = %v", err)
@@ -93,18 +101,21 @@ func TestDCGMHealthReportRoundTrip(t *testing.T) {
 
 func TestDCGMHealthPartialCoveragePreservesFindings(t *testing.T) {
 	batch := healthReportBatch(&DCGMHealthReport{
-		RequestedSystems:         1 | 16 | 1<<10,
-		GroupId:                  proto.Uint64(3),
-		NativeGroupOverallHealth: DCGMHealthResultFail.Enum(),
-		EntityResults: []*DCGMHealthEntityResult{healthEntityResult(GPUTarget("GPU-0"), true, &DCGMHealthIncident{
-			System: 16, NativeHealth: DCGMHealthResultFail.Enum(), ErrorCode: 42,
-			Message: "memory finding",
-		})},
+		RequestedSystems: 1 | 16 | 1<<10,
+		GroupResults: []*DCGMHealthGroupResult{
+			{
+				EntityKind: 1, Systems: 16, NativeOverallHealth: DCGMHealthResultFail.Enum(), PossiblyTruncated: true,
+				EntityResults: []*DCGMHealthEntityResult{healthEntityResult(GPUTarget("GPU-0"), true, &DCGMHealthIncident{
+					System: 16, NativeHealth: DCGMHealthResultFail.Enum(), ErrorCode: 42,
+					Message: "memory finding",
+				})},
+			},
+			{EntityKind: 3, Systems: 1 << 10},
+		},
 		SystemsWithoutTargets: 1 << 10,
 		SystemErrors: map[uint64]*CollectionError{
 			1: {Source: "dcgm", Operation: "health discovery", Category: CollectionErrorCategoryUnavailable, Detail: "PCIe unavailable"},
 		},
-		PossiblyTruncated: true,
 	})
 	if err := ValidateBatch(batch); err != nil {
 		t.Fatalf("partial health report rejected: %v", err)
@@ -118,10 +129,16 @@ func TestDCGMHealthPartialCoveragePreservesFindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := decoded.GetObservations()[0].GetValue().GetDcgmHealthReport()
-	if len(report.GetEntityResults()) != 1 || !report.EntityResults[0].GetGroupMember() ||
-		report.EntityResults[0].GetEntity().GetGpu().GetUuid() != "GPU-0" || len(report.EntityResults[0].GetIncidents()) != 1 ||
-		report.EntityResults[0].Incidents[0].GetMessage() != "memory finding" ||
-		report.GetSystemErrors()[1].GetDetail() != "PCIe unavailable" || report.GetSystemsWithoutTargets() != 1<<10 || !report.GetPossiblyTruncated() {
+	groups := report.GetGroupResults()
+	if len(groups) != 2 {
+		t.Fatalf("partial health report lost groups: %v", report)
+	}
+	entities := groups[0].GetEntityResults()
+	if len(entities) != 1 || !entities[0].GetGroupMember() ||
+		entities[0].GetEntity().GetGpu().GetUuid() != "GPU-0" || len(entities[0].GetIncidents()) != 1 ||
+		entities[0].GetIncidents()[0].GetMessage() != "memory finding" ||
+		report.GetSystemErrors()[1].GetDetail() != "PCIe unavailable" || report.GetSystemsWithoutTargets() != 1<<10 || !groups[0].GetPossiblyTruncated() ||
+		groups[1].NativeOverallHealth != nil {
 		t.Fatalf("partial health report lost findings or coverage limits: %v", report)
 	}
 }
@@ -129,7 +146,8 @@ func TestDCGMHealthPartialCoveragePreservesFindings(t *testing.T) {
 func TestDCGMHealthAbsentAndZeroNativeResults(t *testing.T) {
 	for _, report := range []*DCGMHealthReport{
 		{},
-		{GroupId: proto.Uint64(0), NativeGroupOverallHealth: DCGMHealthResultPass.Enum()},
+		{RequestedSystems: 16, GroupResults: []*DCGMHealthGroupResult{{EntityKind: 1, Systems: 16}}},
+		{RequestedSystems: 16, GroupResults: []*DCGMHealthGroupResult{{EntityKind: 1, Systems: 16, NativeOverallHealth: DCGMHealthResultPass.Enum()}}},
 	} {
 		batch := healthReportBatch(report)
 		if err := ValidateBatch(batch); err != nil {
@@ -139,7 +157,7 @@ func TestDCGMHealthAbsentAndZeroNativeResults(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := strings.Contains(string(jsonData), `"nativeGroupOverallHealth"`); got != (report.NativeGroupOverallHealth != nil) {
+		if got := strings.Contains(string(jsonData), `"nativeOverallHealth"`); got != (len(report.GroupResults) != 0 && report.GroupResults[0].NativeOverallHealth != nil) {
 			t.Fatalf("JSON lost optional native status presence: %s", jsonData)
 		}
 		binaryData, err := proto.Marshal(batch)
@@ -158,8 +176,10 @@ func TestDCGMHealthAbsentAndZeroNativeResults(t *testing.T) {
 				if !proto.Equal(batch, got) {
 					t.Fatalf("optional zero/absent result changed: got %v, want %v", got, batch)
 				}
-				if len(got.GetObservations()[0].GetValue().GetDcgmHealthReport().GetEntityResults()) != 0 {
-					t.Fatal("empty report gained an entity result")
+				for _, group := range got.GetObservations()[0].GetValue().GetDcgmHealthReport().GetGroupResults() {
+					if len(group.GetEntityResults()) != 0 {
+						t.Fatal("empty group gained an entity result")
+					}
 				}
 			})
 		}
@@ -167,6 +187,12 @@ func TestDCGMHealthAbsentAndZeroNativeResults(t *testing.T) {
 }
 
 func TestValidateDCGMHealthReportStructure(t *testing.T) {
+	withEntities := func(entities ...*DCGMHealthEntityResult) *Value_DCGMHealthReport {
+		return &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{
+			RequestedSystems: 16,
+			GroupResults:     []*DCGMHealthGroupResult{{EntityKind: 1, Systems: 16, EntityResults: entities}},
+		}}
+	}
 	tests := []struct {
 		name      string
 		kind      *Value_DCGMHealthReport
@@ -174,11 +200,26 @@ func TestValidateDCGMHealthReportStructure(t *testing.T) {
 	}{
 		{name: "typed nil wrapper", wantError: "empty DCGM health report"},
 		{name: "missing report", kind: &Value_DCGMHealthReport{}, wantError: "empty DCGM health report"},
-		{name: "missing entity result", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{nil}}}, wantError: "requires an entity"},
-		{name: "missing incident", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{healthEntityResult(GPUTarget("GPU-0"), true, nil)}}}, wantError: "empty incident"},
-		{name: "missing entity identity", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{{GroupMember: proto.Bool(false)}}}}, wantError: "requires an entity"},
-		{name: "missing membership", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{{Entity: GPUTarget("GPU-0")}}}}, wantError: "requires group membership"},
-		{name: "invalid setup timestamp", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{MonitoredSince: &timestamppb.Timestamp{Nanos: -1}}}, wantError: "monitored since"},
+		{name: "missing entity result", kind: withEntities(nil), wantError: "group 0 entity result 0 requires an entity"},
+		{name: "missing incident", kind: withEntities(healthEntityResult(GPUTarget("GPU-0"), true, nil)), wantError: "empty incident"},
+		{name: "missing entity identity", kind: withEntities(&DCGMHealthEntityResult{GroupMember: proto.Bool(false)}), wantError: "requires an entity"},
+		{name: "missing membership", kind: withEntities(&DCGMHealthEntityResult{Entity: GPUTarget("GPU-0")}), wantError: "requires group membership"},
+		{
+			name: "unknown membership after group failure",
+			kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{
+				RequestedSystems: 16,
+				GroupResults: []*DCGMHealthGroupResult{{
+					EntityKind: 1, Systems: 16,
+					CollectionError: &CollectionError{Source: "dcgm", Operation: "health setup", Category: CollectionErrorCategorySourceError},
+					EntityResults:   []*DCGMHealthEntityResult{{Entity: GPUTarget("GPU-0")}},
+				}},
+			}},
+		},
+		{name: "invalid setup timestamp", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, GroupResults: []*DCGMHealthGroupResult{{Systems: 16, MonitoredSince: &timestamppb.Timestamp{Nanos: -1}}}}}, wantError: "monitored since"},
+		{name: "missing group", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{GroupResults: []*DCGMHealthGroupResult{nil}}}, wantError: "group result 0 is required"},
+		{name: "empty group systems", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, GroupResults: []*DCGMHealthGroupResult{{}}}}, wantError: "must identify requested systems"},
+		{name: "unrequested group systems", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, GroupResults: []*DCGMHealthGroupResult{{Systems: 17}}}}, wantError: "must identify requested systems"},
+		{name: "failed group without targets", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemsWithoutTargets: 16, GroupResults: []*DCGMHealthGroupResult{{Systems: 16, CollectionError: &CollectionError{}}}}}, wantError: "cannot also have no targets"},
 		{name: "unrequested no-target system", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemsWithoutTargets: 1}}, wantError: "systems_without_targets includes unrequested systems"},
 		{name: "unknown requested system without targets", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 1 << 63, SystemsWithoutTargets: 1 << 63}}},
 		{name: "zero failed system", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemErrors: map[uint64]*CollectionError{0: {}}}}, wantError: "key must identify one subsystem"},
@@ -187,14 +228,94 @@ func TestValidateDCGMHealthReportStructure(t *testing.T) {
 		{name: "missing system error", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemErrors: map[uint64]*CollectionError{16: nil}}}, wantError: "requires an error for each system"},
 		{name: "failed system without targets", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemsWithoutTargets: 16, SystemErrors: map[uint64]*CollectionError{16: {}}}}, wantError: "failed system cannot also have no targets"},
 		{name: "unknown requested failed system", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 1 << 63, SystemErrors: map[uint64]*CollectionError{1 << 63: {}}}}},
-		{name: "missing entity error", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{{Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false), CollectionErrors: []*DCGMHealthEntityError{nil}}}}}, wantError: "requires a collection error"},
-		{name: "missing entity error detail", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{{Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false), CollectionErrors: []*DCGMHealthEntityError{{Systems: 16}}}}}}, wantError: "requires a collection error"},
-		{name: "invalid entity target", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{healthEntityResult(NodeTarget(""), false)}}}, wantError: "health entity must identify"},
-		{name: "unrequested entity error systems", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, EntityResults: []*DCGMHealthEntityResult{{Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false), CollectionErrors: []*DCGMHealthEntityError{{Systems: 17, Error: &CollectionError{}}}}}}}, wantError: "must identify requested systems"},
-		{name: "empty entity error systems", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, EntityResults: []*DCGMHealthEntityResult{{Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false), CollectionErrors: []*DCGMHealthEntityError{{Error: &CollectionError{}}}}}}}, wantError: "must identify requested systems"},
-		{name: "failed entity without targets", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 16, SystemsWithoutTargets: 16, EntityResults: []*DCGMHealthEntityResult{{Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false), CollectionErrors: []*DCGMHealthEntityError{{Systems: 16, Error: &CollectionError{}}}}}}}, wantError: "cannot also have no targets"},
-		{name: "entity error without usable members", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{RequestedSystems: 17, EntityResults: []*DCGMHealthEntityResult{{Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false), CollectionErrors: []*DCGMHealthEntityError{{Systems: 17, Error: &CollectionError{}}}}}}}},
-		{name: "unknown and zero native identity", kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{healthEntityResult(&ObservationTarget{Kind: &ObservationTarget_NativeEntity{NativeEntity: &NativeEntityRef{Source: "dcgm"}}}, false, &DCGMHealthIncident{})}}}},
+		{
+			name: "missing entity error",
+			kind: withEntities(&DCGMHealthEntityResult{
+				Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false), CollectionErrors: []*DCGMHealthEntityError{nil},
+			}),
+			wantError: "requires a collection error",
+		},
+		{
+			name: "missing entity error detail",
+			kind: withEntities(&DCGMHealthEntityResult{
+				Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false), CollectionErrors: []*DCGMHealthEntityError{{Systems: 16}},
+			}),
+			wantError: "requires a collection error",
+		},
+		{name: "invalid entity target", kind: withEntities(healthEntityResult(NodeTarget(""), false)), wantError: "health entity must identify"},
+		{
+			name: "unrequested entity error systems",
+			kind: withEntities(&DCGMHealthEntityResult{
+				Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false),
+				CollectionErrors: []*DCGMHealthEntityError{{Systems: 17, Error: &CollectionError{}}},
+			}),
+			wantError: "error must identify requested systems in its group",
+		},
+		{
+			name: "empty entity error systems",
+			kind: withEntities(&DCGMHealthEntityResult{
+				Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false),
+				CollectionErrors: []*DCGMHealthEntityError{{Error: &CollectionError{}}},
+			}),
+			wantError: "error must identify requested systems in its group",
+		},
+		{
+			name: "entity error system outside group",
+			kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{
+				RequestedSystems: 17,
+				GroupResults: []*DCGMHealthGroupResult{{
+					EntityKind: 1, Systems: 16,
+					EntityResults: []*DCGMHealthEntityResult{{
+						Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false),
+						CollectionErrors: []*DCGMHealthEntityError{{Systems: 1, Error: &CollectionError{}}},
+					}},
+				}},
+			}},
+			wantError: "error must identify requested systems in its group",
+		},
+		{
+			name: "failed entity without targets",
+			kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{
+				RequestedSystems: 16, SystemsWithoutTargets: 16,
+				GroupResults: []*DCGMHealthGroupResult{{
+					EntityKind: 1, Systems: 16,
+					EntityResults: []*DCGMHealthEntityResult{{
+						Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false),
+						CollectionErrors: []*DCGMHealthEntityError{{Systems: 16, Error: &CollectionError{}}},
+					}},
+				}},
+			}},
+			wantError: "cannot also have no targets",
+		},
+		{
+			name: "entity error without usable members",
+			kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{
+				RequestedSystems: 17,
+				GroupResults: []*DCGMHealthGroupResult{{
+					EntityKind: 1, Systems: 17,
+					EntityResults: []*DCGMHealthEntityResult{{
+						Entity: GPUTarget("GPU-0"), GroupMember: proto.Bool(false),
+						CollectionErrors: []*DCGMHealthEntityError{{Systems: 17, Error: &CollectionError{}}},
+					}},
+				}},
+			}},
+		},
+		{
+			name: "repeated entity kind",
+			kind: &Value_DCGMHealthReport{DcgmHealthReport: &DCGMHealthReport{
+				RequestedSystems: 16,
+				GroupResults: []*DCGMHealthGroupResult{
+					{EntityKind: 1, Systems: 16, EntityResults: []*DCGMHealthEntityResult{healthEntityResult(GPUTarget("GPU-0"), true)}},
+					{EntityKind: 1, Systems: 16, EntityResults: []*DCGMHealthEntityResult{healthEntityResult(GPUTarget("GPU-1"), true)}},
+				},
+			}},
+		},
+		{
+			name: "unknown and zero native identity",
+			kind: withEntities(healthEntityResult(&ObservationTarget{
+				Kind: &ObservationTarget_NativeEntity{NativeEntity: &NativeEntityRef{Source: "dcgm"}},
+			}, false, &DCGMHealthIncident{})),
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -226,8 +347,11 @@ func TestDCGMHealthResultEncoding(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.result.String(), func(t *testing.T) {
 			report := &DCGMHealthReport{
-				NativeGroupOverallHealth: test.result.Enum(),
-				EntityResults:            []*DCGMHealthEntityResult{healthEntityResult(GPUTarget("GPU-0"), true, &DCGMHealthIncident{NativeHealth: test.result.Enum()})},
+				RequestedSystems: 16,
+				GroupResults: []*DCGMHealthGroupResult{{
+					EntityKind: 1, Systems: 16, NativeOverallHealth: test.result.Enum(),
+					EntityResults: []*DCGMHealthEntityResult{healthEntityResult(GPUTarget("GPU-0"), true, &DCGMHealthIncident{NativeHealth: test.result.Enum()})},
+				}},
 			}
 			jsonData, err := protojson.Marshal(report)
 			if err != nil {
@@ -237,13 +361,20 @@ func TestDCGMHealthResultEncoding(t *testing.T) {
 			if err = json.Unmarshal(jsonData, &fields); err != nil {
 				t.Fatal(err)
 			}
-			if got := string(fields["nativeGroupOverallHealth"]); got != test.wantJSON {
+			if _, present := fields["entityResults"]; present || strings.Contains(string(jsonData), `"groupId"`) {
+				t.Fatalf("JSON contains a removed field: %s", jsonData)
+			}
+			var groups []map[string]json.RawMessage
+			if err = json.Unmarshal(fields["groupResults"], &groups); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(groups[0]["nativeOverallHealth"]); got != test.wantJSON {
 				t.Fatalf("native group JSON = %s, want %s", got, test.wantJSON)
 			}
 			var entities []struct {
 				Incidents []map[string]json.RawMessage `json:"incidents"`
 			}
-			if err = json.Unmarshal(fields["entityResults"], &entities); err != nil {
+			if err = json.Unmarshal(groups[0]["entityResults"], &entities); err != nil {
 				t.Fatal(err)
 			}
 			if got := string(entities[0].Incidents[0]["nativeHealth"]); got != test.wantJSON {

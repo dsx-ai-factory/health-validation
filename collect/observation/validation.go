@@ -41,35 +41,46 @@ func validateDCGMHealthValue(value *Value) error {
 			return fmt.Errorf("DCGM health report system_errors requires an error for each system")
 		}
 	}
-	if since := report.GetMonitoredSince(); since != nil {
-		if err := since.CheckValid(); err != nil {
-			return fmt.Errorf("DCGM health report monitored since: %w", err)
+	for index, group := range report.GetGroupResults() {
+		if group == nil {
+			return fmt.Errorf("DCGM health report group result %d is required", index)
 		}
-	}
-	for index, result := range report.GetEntityResults() {
-		if result == nil || result.GetEntity() == nil {
-			return fmt.Errorf("DCGM health report entity result %d requires an entity", index)
+		if group.GetSystems() == 0 || group.GetSystems()&requestedSystems != group.GetSystems() {
+			return fmt.Errorf("DCGM health report group result %d must identify requested systems", index)
 		}
-		if err := validateDCGMHealthTarget(result.GetEntity()); err != nil {
-			return fmt.Errorf("DCGM health report entity result %d: %w", index, err)
+		if group.GetCollectionError() != nil && group.GetSystems()&systemsWithoutTargets != 0 {
+			return fmt.Errorf("DCGM health report failed group %d cannot also have no targets", index)
 		}
-		if result.GroupMember == nil {
-			return fmt.Errorf("DCGM health report entity result %d requires group membership", index)
-		}
-		for _, failure := range result.GetCollectionErrors() {
-			if failure == nil || failure.GetError() == nil {
-				return fmt.Errorf("DCGM health report entity result %d requires a collection error", index)
-			}
-			if failure.GetSystems() == 0 || failure.GetSystems()&requestedSystems != failure.GetSystems() {
-				return fmt.Errorf("DCGM health report entity result %d error must identify requested systems", index)
-			}
-			if failure.GetSystems()&systemsWithoutTargets != 0 {
-				return fmt.Errorf("DCGM health report entity result %d error cannot also have no targets", index)
+		if since := group.GetMonitoredSince(); since != nil {
+			if err := since.CheckValid(); err != nil {
+				return fmt.Errorf("DCGM health report group result %d monitored since: %w", index, err)
 			}
 		}
-		for _, incident := range result.GetIncidents() {
-			if incident == nil {
-				return fmt.Errorf("DCGM health report entity result %d has an empty incident", index)
+		for entityIndex, result := range group.GetEntityResults() {
+			if result == nil || result.GetEntity() == nil {
+				return fmt.Errorf("DCGM health report group %d entity result %d requires an entity", index, entityIndex)
+			}
+			if err := validateDCGMHealthTarget(result.GetEntity()); err != nil {
+				return fmt.Errorf("DCGM health report group %d entity result %d: %w", index, entityIndex, err)
+			}
+			if result.GroupMember == nil && group.GetCollectionError() == nil {
+				return fmt.Errorf("DCGM health report group %d entity result %d requires group membership", index, entityIndex)
+			}
+			for _, failure := range result.GetCollectionErrors() {
+				if failure == nil || failure.GetError() == nil {
+					return fmt.Errorf("DCGM health report group %d entity result %d requires a collection error", index, entityIndex)
+				}
+				if failure.GetSystems() == 0 || failure.GetSystems()&group.GetSystems() != failure.GetSystems() {
+					return fmt.Errorf("DCGM health report group %d entity result %d error must identify requested systems in its group", index, entityIndex)
+				}
+				if failure.GetSystems()&systemsWithoutTargets != 0 {
+					return fmt.Errorf("DCGM health report group %d entity result %d error cannot also have no targets", index, entityIndex)
+				}
+			}
+			for _, incident := range result.GetIncidents() {
+				if incident == nil {
+					return fmt.Errorf("DCGM health report group %d entity result %d has an empty incident", index, entityIndex)
+				}
 			}
 		}
 	}

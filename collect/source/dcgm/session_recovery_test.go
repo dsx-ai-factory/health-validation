@@ -94,7 +94,9 @@ func TestInitializationFailureSuppressesNativeWorkForCycle(t *testing.T) {
 				checkFailure("same-cycle inventory", entries[0].GetCollectionError())
 				_, failure = source.newCollectionReader(cycle).gpuIndices(context.Background())
 				checkFailure("same-cycle enumeration", failure)
-				if native.initCalls.Load() != 1 || native.cleanupCalls.Load() != 0 || native.watchCalls.Load() != 0 || native.healthWatchCalls.Load() != 0 || native.readCalls.Load() != 0 || native.uuidCalls.Load() != 0 || native.inventoryCalls.Load() != 0 || native.enumerationCalls.Load() != 0 {
+				if native.initCalls.Load() != 1 || native.cleanupCalls.Load() != 0 || native.watchCalls.Load() != 0 || native.healthWatchCalls.Load() != 0 ||
+					native.readCalls.Load() != 0 || native.uuidCalls.Load() != 0 || native.inventoryCalls.Load() != 0 ||
+					native.enumerationCalls.Load() != 0 || native.healthEnumerationCalls.Load() != 0 {
 					t.Fatal("initialization failure allowed more native work in its cycle")
 				}
 				if source.closed.Load() || source.session != nil {
@@ -121,7 +123,9 @@ func TestInitializationFailureSuppressesNativeWorkForCycle(t *testing.T) {
 				if indices, failure := source.newCollectionReader(next).gpuIndices(context.Background()); failure != nil || len(indices) != 1 {
 					t.Fatalf("next-cycle enumeration did not recover: %v, %v", indices, failure)
 				}
-				if native.initCalls.Load() != 2 || native.cleanupCalls.Load() != 0 || native.watchCalls.Load() != 1 || native.healthWatchCalls.Load() != 1 || native.readCalls.Load() != 1 || native.uuidCalls.Load() != 1 || native.inventoryCalls.Load() != 1 || native.enumerationCalls.Load() != 1 {
+				if native.initCalls.Load() != 2 || native.cleanupCalls.Load() != 0 || native.watchCalls.Load() != 1 || native.healthWatchCalls.Load() != 1 ||
+					native.readCalls.Load() != 1 || native.uuidCalls.Load() != 1 || native.inventoryCalls.Load() != 1 ||
+					native.enumerationCalls.Load() != 1 || native.healthEnumerationCalls.Load() != 1 {
 					t.Fatal("next cycle did not initialize once and collect every requested operation")
 				}
 				if err := source.Close(); err != nil || native.cleanupCalls.Load() != 1 {
@@ -245,34 +249,45 @@ func TestConnectionLossRebuildsBothFeaturesOnNextCycle(t *testing.T) {
 	if field := source.ReadGPUMetrics(context.Background(), first, 0, []string{signalPowerDraw})[signalPowerDraw]; field.Value == nil {
 		t.Fatalf("initial metric read failed: %v", field)
 	}
-	if _, failure := source.newCollectionReader(first).readHealth(context.Background()); failure.GetSourceError() != connectionNotValidStatus {
-		t.Fatalf("connection error was lost: %v", failure)
+	report, failure := source.newCollectionReader(first).readHealth(context.Background())
+	groups := report.GetGroupResults()
+	if failure != nil || len(groups) != 1 || groups[0].GetCollectionError().GetSourceError() != connectionNotValidStatus {
+		t.Fatalf("health read lost its group connection error: report=%v error=%v", report, failure)
+	}
+	entities := groups[0].GetEntityResults()
+	if len(entities) != 1 || entities[0].GroupMember != nil {
+		t.Fatalf("failed health read did not preserve one GPU with unknown membership: %v", groups[0])
+	}
+	gpu := entities[0].GetEntity().GetGpu()
+	if native := gpu.GetNative(); native.GetSource() != Name || native.GetEntityKind() != gpuEntityKind || native.GetEntityId() != 0 || gpu.GetUuid() != "" {
+		t.Fatalf("failed health read changed the native GPU identity: %v", gpu)
 	}
 	if native.initCalls.Load() != 1 || native.cleanupCalls.Load() != 0 {
 		t.Fatal("failing read retried initialization or released the session")
 	}
 	for range 2 {
-		if _, failure := source.newCollectionReader(first).readHealth(context.Background()); failure.GetSourceError() != connectionNotValidStatus {
-			t.Fatalf("same-cycle health read lost connection failure: %v", failure)
+		if sameReport, sameFailure := source.newCollectionReader(first).readHealth(context.Background()); sameReport != nil || sameFailure.GetSourceError() != connectionNotValidStatus {
+			t.Fatalf("same-cycle health read lost connection failure: report=%v error=%v", sameReport, sameFailure)
 		}
 		field := source.ReadGPUMetrics(context.Background(), first, 0, []string{signalPowerDraw})[signalPowerDraw]
 		if field.CollectionError.GetSourceError() != connectionNotValidStatus {
 			t.Fatalf("same-cycle metric read lost connection failure: %v", field)
 		}
 	}
-	if oldWatch.readCalls.Load() != 1 || native.readCalls.Load() != 1 || native.initCalls.Load() != 1 {
+	if oldWatch.readCalls.Load() != 1 || native.readCalls.Load() != 1 || native.initCalls.Load() != 1 || native.healthEnumerationCalls.Load() != 1 {
 		t.Fatal("another operation entered the failed session")
 	}
 	monitoredSince := timestamppb.New(time.Unix(200, 0))
-	newWatch := &fakeHealthWatch{report: &observation.DCGMHealthReport{MonitoredSince: monitoredSince}}
+	newWatch := &fakeHealthWatch{report: &observation.DCGMHealthReport{GroupResults: []*observation.DCGMHealthGroupResult{{MonitoredSince: monitoredSince}}}}
 	native.health = newWatch
 	// Cycle identity, rather than a reused correlation string, bounds a session.
 	next := newTestCycle(t, "session-recovery")
 	if field := source.ReadGPUMetrics(context.Background(), next, 0, []string{signalPowerDraw})[signalPowerDraw]; field.Value == nil {
 		t.Fatalf("metrics did not recover: %v", field)
 	}
-	report, failure := source.newCollectionReader(next).readHealth(context.Background())
-	if failure != nil || report.GetMonitoredSince().AsTime() != monitoredSince.AsTime() {
+	report, failure = source.newCollectionReader(next).readHealth(context.Background())
+	groups = report.GetGroupResults()
+	if failure != nil || len(groups) != 1 || groups[0].GetCollectionError() != nil || groups[0].GetMonitoredSince().AsTime() != monitoredSince.AsTime() {
 		t.Fatalf("health did not recover with native monitoring epoch: %v, %v", report, failure)
 	}
 	if native.initCalls.Load() != 2 || native.cleanupCalls.Load() != 1 || native.watchCalls.Load() != 2 || native.healthWatchCalls.Load() != 2 {

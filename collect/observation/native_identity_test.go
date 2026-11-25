@@ -56,6 +56,16 @@ func TestExistingGPURefEncodingUnchanged(t *testing.T) {
 	}
 }
 
+func healthIdentityBatch(target *ObservationTarget, member bool, incidents ...*DCGMHealthIncident) *ObservationBatch {
+	return healthReportBatch(&DCGMHealthReport{
+		RequestedSystems: 16,
+		GroupResults: []*DCGMHealthGroupResult{{
+			Systems:       16,
+			EntityResults: []*DCGMHealthEntityResult{healthEntityResult(target, member, incidents...)},
+		}},
+	})
+}
+
 func TestSharedNativeEntityTargetsRoundTrip(t *testing.T) {
 	targets := map[string]*ObservationTarget{
 		"GPU native only":                     {Kind: &ObservationTarget_GPU{Gpu: &GPURef{Native: &NativeEntityRef{Source: "dcgm", EntityKind: 1}}}},
@@ -72,9 +82,7 @@ func TestSharedNativeEntityTargetsRoundTrip(t *testing.T) {
 	}
 	for name, target := range targets {
 		t.Run(name, func(t *testing.T) {
-			batch := healthReportBatch(&DCGMHealthReport{
-				EntityResults: []*DCGMHealthEntityResult{healthEntityResult(target, true, &DCGMHealthIncident{NativeHealth: DCGMHealthResultFail.Enum()})},
-			})
+			batch := healthIdentityBatch(target, true, &DCGMHealthIncident{NativeHealth: DCGMHealthResultFail.Enum()})
 			batch.Observations = append(batch.Observations, extendedObservation(target))
 			if err := ValidateBatch(batch); err != nil {
 				t.Fatal(err)
@@ -126,19 +134,19 @@ func TestNativeEntityTargetValidation(t *testing.T) {
 			if err := ValidateBatch(&ObservationBatch{Observations: []*Observation{extendedObservation(target)}}); err == nil {
 				t.Fatal("invalid native target accepted")
 			}
-			if err := ValidateBatch(healthReportBatch(&DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{healthEntityResult(target, true)}})); err == nil {
+			if err := ValidateBatch(healthIdentityBatch(target, true)); err == nil {
 				t.Fatal("invalid health membership accepted")
 			}
-			if err := ValidateBatch(healthReportBatch(&DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{healthEntityResult(target, false, &DCGMHealthIncident{})}})); err == nil {
+			if err := ValidateBatch(healthIdentityBatch(target, false, &DCGMHealthIncident{})); err == nil {
 				t.Fatal("invalid incident identity accepted")
 			}
 		})
 	}
 	for _, target := range []*ObservationTarget{NodeTarget("node"), NVLinkEndpointTarget("GPU-0", 1), GPUPairTarget("GPU-0", "GPU-1")} {
-		if err := ValidateBatch(healthReportBatch(&DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{healthEntityResult(target, true)}})); err == nil {
+		if err := ValidateBatch(healthIdentityBatch(target, true)); err == nil {
 			t.Fatalf("inappropriate health member accepted: %v", target)
 		}
-		if err := ValidateBatch(healthReportBatch(&DCGMHealthReport{EntityResults: []*DCGMHealthEntityResult{healthEntityResult(target, false, &DCGMHealthIncident{})}})); err == nil {
+		if err := ValidateBatch(healthIdentityBatch(target, false, &DCGMHealthIncident{})); err == nil {
 			t.Fatalf("inappropriate incident identity accepted: %v", target)
 		}
 	}

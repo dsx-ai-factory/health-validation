@@ -98,10 +98,13 @@ func (sensor *sensor) appendHealth(
 		return
 	}
 	hasIncidents := false
-	for _, result := range report.GetEntityResults() {
-		if len(result.GetIncidents()) != 0 {
-			hasIncidents = true
-			break
+groups:
+	for _, group := range report.GetGroupResults() {
+		for _, result := range group.GetEntityResults() {
+			if len(result.GetIncidents()) != 0 {
+				hasIncidents = true
+				break groups
+			}
 		}
 	}
 	if !hasIncidents && report.GetRequestedSystems() != 0 && report.GetSystemsWithoutTargets() == report.GetRequestedSystems() {

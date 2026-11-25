@@ -59,19 +59,28 @@ func newFakeHealthSource() *fakeHealthSource {
 			Outcome: &observation.GPUInventorySnapshot_Inventory{Inventory: &observation.GPUInventory{}},
 		},
 		HealthReport: &observation.DCGMHealthReport{
-			GroupId:          proto.Uint64(40),
 			RequestedSystems: dcgmhealth.KnownSystems,
-			EntityResults: []*observation.DCGMHealthEntityResult{
-				{Entity: &observation.ObservationTarget{Kind: &observation.ObservationTarget_GPU{Gpu: &observation.GPURef{
-					Uuid: "GPU-7", Native: &observation.NativeEntityRef{Source: dcgmsource.Name, EntityKind: 1, EntityId: 7},
-				}}}, GroupMember: proto.Bool(true)},
-				{Entity: &observation.ObservationTarget{Kind: &observation.ObservationTarget_NVSwitch{NvSwitch: &observation.NVSwitchRef{
-					Native: &observation.NativeEntityRef{Source: dcgmsource.Name, EntityKind: 3, EntityId: 12},
-				}}}, GroupMember: proto.Bool(true)},
+			CollectionId:     "native-collection-1",
+			GroupResults: []*observation.DCGMHealthGroupResult{
+				{
+					EntityKind: dcgmGPUEntityKind, Systems: dcgmhealth.GPUSystems,
+					NativeOverallHealth: observation.DCGMHealthResultPass.Enum(), MonitoredSince: timestamppb.New(time.Unix(100, 0)),
+					EntityResults: []*observation.DCGMHealthEntityResult{{
+						Entity: &observation.ObservationTarget{Kind: &observation.ObservationTarget_GPU{Gpu: &observation.GPURef{
+							Uuid: "GPU-7", Native: &observation.NativeEntityRef{Source: dcgmsource.Name, EntityKind: 1, EntityId: 7},
+						}}}, GroupMember: proto.Bool(true),
+					}},
+				},
+				{
+					EntityKind: 3, Systems: dcgmhealth.NVSwitchSystems,
+					NativeOverallHealth: observation.DCGMHealthResultFail.Enum(), MonitoredSince: timestamppb.New(time.Unix(101, 0)),
+					EntityResults: []*observation.DCGMHealthEntityResult{{
+						Entity: &observation.ObservationTarget{Kind: &observation.ObservationTarget_NVSwitch{NvSwitch: &observation.NVSwitchRef{
+							Native: &observation.NativeEntityRef{Source: dcgmsource.Name, EntityKind: 3, EntityId: 12},
+						}}}, GroupMember: proto.Bool(true),
+					}},
+				},
 			},
-			NativeGroupOverallHealth: observation.DCGMHealthResultFail.Enum(),
-			MonitoredSince:           timestamppb.New(time.Unix(100, 0)),
-			CollectionId:             "native-collection-1",
 		},
 	}}}
 }
@@ -340,7 +349,8 @@ func TestMetricsAndHealthUseSharedGPUReferences(t *testing.T) {
 	source := newFakeHealthSource()
 	batch := measureHealthSensor(t, configuredHealthSensor(t, source, gpusignals.PowerDraw.ID()))
 	metricGPU := batch.Observations[0].GetTarget().GetGpu()
-	healthGPU := batch.Observations[1].GetValue().GetDcgmHealthReport().GetEntityResults()[0].GetEntity().GetGpu()
+	health := batch.Observations[1].GetValue().GetDcgmHealthReport()
+	healthGPU := health.GetGroupResults()[0].GetEntityResults()[0].GetEntity().GetGpu()
 	if metricGPU == nil || healthGPU == nil || metricGPU.GetUuid() != "GPU-7" || healthGPU.GetUuid() != metricGPU.GetUuid() {
 		t.Fatalf("metric GPU=%v health GPU=%v", metricGPU, healthGPU)
 	}
@@ -384,15 +394,16 @@ func TestMeasureHealthPerCallSelectionDoesNotChangeWatches(t *testing.T) {
 func TestAggregateHealthPreservesAllNativeFindingsAndOwnsClones(t *testing.T) {
 	source := newFakeHealthSource()
 	raw := source.result.HealthReport
-	raw.NativeGroupOverallHealth = observation.DCGMHealthResult(-91).Enum()
-	raw.SystemsWithoutTargets = dcgmhealth.NVSwitchSystems
-	raw.EntityResults[0].Incidents = []*observation.DCGMHealthIncident{
+	gpuGroup, switchGroup := raw.GroupResults[0], raw.GroupResults[1]
+	gpuGroup.PossiblyTruncated = true
+	switchGroup.NativeOverallHealth = observation.DCGMHealthResult(-91).Enum()
+	gpuGroup.EntityResults[0].Incidents = []*observation.DCGMHealthIncident{
 		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 100, Message: "first memory fault", NativeErrorSeverity: proto.Uint32(0), NativeErrorCategory: proto.Uint32(1 << 20), Suggestion: proto.String("Inspect the GPU")},
 		{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultWarn.Enum(), ErrorCode: 101, Message: "second memory fault"},
 		{System: dcgmhealth.SystemPCIe, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 102},
 	}
-	raw.EntityResults[1].Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemThermal | 1<<41, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 106}}
-	raw.EntityResults = append(raw.EntityResults,
+	switchGroup.EntityResults[0].Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemThermal | 1<<41, NativeHealth: observation.DCGMHealthResultFail.Enum(), ErrorCode: 106}}
+	gpuGroup.EntityResults = append(gpuGroup.EntityResults,
 		&observation.DCGMHealthEntityResult{
 			Entity: rawHealthTarget(77, 0xffffffff), GroupMember: proto.Bool(true),
 			Incidents: []*observation.DCGMHealthIncident{{System: 1 << 40, NativeHealth: observation.DCGMHealthResult(39).Enum(), ErrorCode: 1 << 61}},
@@ -419,26 +430,31 @@ func TestAggregateHealthPreservesAllNativeFindingsAndOwnsClones(t *testing.T) {
 	sensor := configuredHealthSensor(t, source)
 	first := measureHealthSensor(t, sensor).Observations[0].GetValue().GetDcgmHealthReport()
 	second := measureHealthSensor(t, sensor).Observations[0].GetValue().GetDcgmHealthReport()
-	if !proto.Equal(first, raw) || !proto.Equal(second, raw) || len(first.EntityResults) != 5 || len(first.EntityResults[0].Incidents) != 3 {
+	if !proto.Equal(first, expected) || !proto.Equal(second, expected) {
 		t.Fatalf("aggregate report lost native findings or metadata: %v", first)
 	}
-	first.EntityResults[0].Entity.GetGpu().Uuid = "changed"
-	first.EntityResults[0].Entity.GetGpu().Native.EntityId = 99
-	first.EntityResults[1].Entity.GetNvSwitch().Native.EntityId = 98
-	first.EntityResults[2].Entity.GetNativeEntity().EntityKind = 97
-	first.EntityResults[0].Incidents[0].Message = "changed"
-	*first.EntityResults[0].Incidents[0].NativeErrorSeverity = 99
-	*first.EntityResults[0].Incidents[0].NativeErrorCategory = 98
-	*first.EntityResults[0].Incidents[0].Suggestion = "changed"
-	first.EntityResults[0].Entity.GetGpu().Native.Source = "changed"
-	first.EntityResults[3].Entity.GetNativeEntity().EntityId = 96
-	first.EntityResults[4].Entity.GetGpu().Uuid = "changed"
-	first.EntityResults[4].Entity.GetGpu().BusId = "changed"
-	first.EntityResults[4].Entity.GetGpu().Native.EntityId = 95
-	first.EntityResults[4].CollectionErrors[0].Systems = dcgmhealth.SystemPCIe
-	first.EntityResults[4].CollectionErrors[0].Error.Detail = "changed"
-	*first.EntityResults[4].GroupMember = true
-	*first.NativeGroupOverallHealth = observation.DCGMHealthResultPass
+	gpuGroup, switchGroup = first.GroupResults[0], first.GroupResults[1]
+	gpuResults := gpuGroup.EntityResults
+	gpu := gpuResults[0].Entity.GetGpu()
+	gpu.Uuid, gpu.Native.Source, gpu.Native.EntityId = "changed", "changed", 99
+	switchGroup.EntityResults[0].Entity.GetNvSwitch().Native.EntityId = 98
+	gpuResults[1].Entity.GetNativeEntity().EntityKind = 97
+	incident := gpuResults[0].Incidents[0]
+	incident.Message = "changed"
+	*incident.NativeErrorSeverity = 99
+	*incident.NativeErrorCategory = 98
+	*incident.Suggestion = "changed"
+	gpuResults[2].Entity.GetNativeEntity().EntityId = 96
+	rejected := gpuResults[3]
+	rejectedGPU := rejected.Entity.GetGpu()
+	rejectedGPU.Uuid, rejectedGPU.BusId, rejectedGPU.Native.EntityId = "changed", "changed", 95
+	rejected.CollectionErrors[0].Systems = dcgmhealth.SystemPCIe
+	rejected.CollectionErrors[0].Error.Detail = "changed"
+	*rejected.GroupMember = true
+	*gpuGroup.NativeOverallHealth = observation.DCGMHealthResultFail
+	gpuGroup.MonitoredSince.Seconds++
+	gpuGroup.PossiblyTruncated = false
+	*switchGroup.NativeOverallHealth = observation.DCGMHealthResultPass
 	if !proto.Equal(raw, expected) || !proto.Equal(second, expected) {
 		t.Fatal("emitted reports alias the source report or one another")
 	}
@@ -451,39 +467,61 @@ func TestAggregateHealthAvailabilityOutcomes(t *testing.T) {
 		requested   uint64
 		incident    bool
 		rejected    bool
+		switchError bool
 		wantNoValue observation.NoValueReason
 	}{
 		{name: "all targets absent", requested: dcgmhealth.KnownSystems, missing: dcgmhealth.KnownSystems, wantNoValue: observation.NoValueReasonNoTargets},
 		{name: "partial targets", requested: dcgmhealth.KnownSystems, missing: dcgmhealth.NVSwitchSystems},
 		{name: "first report has no incidents", requested: dcgmhealth.KnownSystems},
+		{name: "switch group failed", requested: dcgmhealth.KnownSystems, switchError: true},
 		{name: "zero requested mask is not all targets absent"},
 		{name: "incident is preserved", requested: dcgmhealth.KnownSystems, incident: true},
-		{name: "incident survives no targets", requested: dcgmhealth.KnownSystems, missing: dcgmhealth.KnownSystems, incident: true},
+		{name: "later group incident survives no targets", requested: dcgmhealth.KnownSystems, missing: dcgmhealth.KnownSystems, incident: true},
 		{name: "all GPU additions rejected", requested: dcgmhealth.SystemMemory, rejected: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			source := newFakeHealthSource()
 			report := source.result.HealthReport
-			target := report.EntityResults[0].Entity
+			gpuTarget := report.GroupResults[0].EntityResults[0].Entity
+			switchTarget := report.GroupResults[1].EntityResults[0].Entity
 			report.RequestedSystems = test.requested
 			report.SystemsWithoutTargets = test.missing
-			report.MonitoredSince = timestamppb.New(time.Unix(200, 0))
-			if test.missing == test.requested && test.requested != 0 {
-				report.EntityResults = nil
+			switch {
+			case test.requested == 0:
+				report.GroupResults = nil
+			case test.missing == test.requested:
+				report.GroupResults = []*observation.DCGMHealthGroupResult{
+					{EntityKind: dcgmGPUEntityKind, Systems: dcgmhealth.GPUSystems},
+					{EntityKind: 3, Systems: dcgmhealth.NVSwitchSystems},
+				}
+			case test.missing == dcgmhealth.NVSwitchSystems || test.switchError:
+				report.GroupResults[1] = &observation.DCGMHealthGroupResult{EntityKind: 3, Systems: dcgmhealth.NVSwitchSystems}
+			}
+			if test.switchError {
+				report.GroupResults[1].CollectionError = &observation.CollectionError{
+					Source: dcgmsource.Name, Operation: "health", Category: observation.CollectionErrorCategoryUnavailable, Detail: "native switch check failed",
+				}
 			}
 			if test.incident {
-				if len(report.EntityResults) == 0 {
-					report.EntityResults = []*observation.DCGMHealthEntityResult{{Entity: target, GroupMember: proto.Bool(false)}}
+				if test.missing == test.requested {
+					report.GroupResults[1].EntityResults = []*observation.DCGMHealthEntityResult{{
+						Entity: switchTarget, GroupMember: proto.Bool(false),
+						Incidents: []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemNVSwitchFatal, NativeHealth: observation.DCGMHealthResultFail.Enum()}},
+					}}
+				} else {
+					report.GroupResults[0].EntityResults[0].Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum()}}
 				}
-				report.EntityResults[0].Incidents = []*observation.DCGMHealthIncident{{System: dcgmhealth.SystemMemory, NativeHealth: observation.DCGMHealthResultFail.Enum()}}
 			}
 			if test.rejected {
 				failure := &observation.CollectionError{Source: dcgmsource.Name, Operation: "health membership", SourceError: "DCGM_ST_GPU_IS_LOST", Detail: "member rejected"}
 				source.result.HealthReport = &observation.DCGMHealthReport{
 					RequestedSystems: test.requested,
-					EntityResults: []*observation.DCGMHealthEntityResult{{
-						Entity: target, GroupMember: proto.Bool(false),
-						CollectionErrors: []*observation.DCGMHealthEntityError{{Systems: test.requested, Error: failure}},
+					GroupResults: []*observation.DCGMHealthGroupResult{{
+						EntityKind: dcgmGPUEntityKind, Systems: test.requested,
+						EntityResults: []*observation.DCGMHealthEntityResult{{
+							Entity: gpuTarget, GroupMember: proto.Bool(false),
+							CollectionErrors: []*observation.DCGMHealthEntityError{{Systems: test.requested, Error: failure}},
+						}},
 					}},
 				}
 			}
