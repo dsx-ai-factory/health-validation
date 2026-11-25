@@ -55,18 +55,27 @@ func (native *preflightNative) MetricWatchGroups([]string) ([]metricWatchGroup, 
 	return nil, native.failure
 }
 
-func TestWatchPreflightPrecedesClientInit(t *testing.T) {
+func TestMetricPreparationFailureKeepsInventoryAvailable(t *testing.T) {
 	failure := errors.New("watch configuration rejected")
 	native := &preflightNative{failure: failure}
 	source := newSource(native, &sync.Mutex{})
+	t.Cleanup(func() { _ = source.Close() })
 	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
 		t.Fatal(err)
 	}
-	if _, result := source.GPUIdentities(context.Background(), newTestCycle(t, "preflight")); result == nil || result.GetDetail() != failure.Error() {
-		t.Fatalf("preflight result: %v", result)
+	identities, result := source.GPUIdentities(context.Background(), newTestCycle(t, "inventory-before-metrics"))
+	if result != nil {
+		t.Fatal(result)
 	}
-	if native.initCalls.Load() != 0 || native.enumerationCalls.Load() != 0 {
-		t.Fatal("preflight happened after native setup")
+	values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "metric-preparation"), 0, []string{signalPowerDraw})
+	if result := values[signalPowerDraw].CollectionError; result.GetDetail() != failure.Error() {
+		t.Fatalf("metric preparation error = %v", result)
+	}
+	if entries := source.GPUInventory(context.Background(), newTestCycle(t, "inventory-after-metrics"), identities).GetInventory().GetEntries(); len(entries) != 1 || entries[0].GetCollectionError() != nil {
+		t.Fatalf("inventory after failed metric preparation = %v", entries)
+	}
+	if native.initCalls.Load() != 1 || native.watchCalls.Load() != 0 || native.readCalls.Load() != 0 || source.closed.Load() {
+		t.Fatal("metric preparation failure created watches, repeated Init, or closed the Source")
 	}
 }
 
@@ -87,7 +96,7 @@ func (native *watchPreparationNative) MetricWatchGroups(signalIDs []string) ([]m
 	return native.groups, nil
 }
 
-func (native *watchPreparationNative) Init() (func(), error) {
+func (native *watchPreparationNative) Init() (func() error, error) {
 	native.calls = append(native.calls, "init")
 	return native.fakeNative.Init()
 }
@@ -98,7 +107,7 @@ func (native *watchPreparationNative) WatchMetrics(groups []metricWatchGroup) (f
 	return native.fakeNative.WatchMetrics(groups)
 }
 
-func TestMetricWatchPreparationPrecedesInitAndIsReused(t *testing.T) {
+func TestMetricWatchPreparationIsLazyAndReused(t *testing.T) {
 	groups := []metricWatchGroup{{fieldIDs: []uint16{11, 12}, interval: time.Second}}
 	native := &watchPreparationNative{groups: groups}
 	source := newSource(native, &sync.Mutex{})
@@ -110,11 +119,11 @@ func TestMetricWatchPreparationPrecedesInitAndIsReused(t *testing.T) {
 	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
 		t.Fatal(err)
 	}
-	if _, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "prepare-before-init")); failure != nil {
+	if _, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "inventory-before-metrics")); failure != nil {
 		t.Fatal(failure)
 	}
-	if !slices.Equal(native.calls, []string{"prepare", "init"}) {
-		t.Fatalf("setup calls = %v, want preparation before Init and no watch", native.calls)
+	if !slices.Equal(native.calls, []string{"init"}) {
+		t.Fatalf("inventory setup calls = %v, want only client initialization", native.calls)
 	}
 
 	for _, cycleID := range []string{"first-metric-read", "second-metric-read"} {
@@ -123,7 +132,7 @@ func TestMetricWatchPreparationPrecedesInitAndIsReused(t *testing.T) {
 			t.Fatalf("ReadGPUMetrics() = %+v", values)
 		}
 	}
-	if !slices.Equal(native.calls, []string{"prepare", "init", "watch"}) {
+	if !slices.Equal(native.calls, []string{"init", "prepare", "watch"}) {
 		t.Fatalf("setup calls across reads = %v, want one preparation, Init, and watch", native.calls)
 	}
 	if !reflect.DeepEqual(native.watchedGroups, [][]metricWatchGroup{groups}) {
@@ -134,9 +143,8 @@ func TestMetricWatchPreparationPrecedesInitAndIsReused(t *testing.T) {
 	}
 }
 
-func TestMetricWatchPreparationSurvivesInitRetries(t *testing.T) {
-	groups := []metricWatchGroup{{fieldIDs: []uint16{11}, interval: time.Second}}
-	native := &watchPreparationNative{groups: groups, fakeNative: fakeNative{initErr: errNoHostengine}}
+func TestMetricWatchPreparationWaitsForInitialization(t *testing.T) {
+	native := &watchPreparationNative{fakeNative: fakeNative{initErr: errNoHostengine}}
 	source := newSource(native, &sync.Mutex{})
 	t.Cleanup(func() {
 		if err := source.Close(); err != nil {
@@ -146,86 +154,96 @@ func TestMetricWatchPreparationSurvivesInitRetries(t *testing.T) {
 	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
 		t.Fatal(err)
 	}
-	if _, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "first-init-failure")); failure == nil {
-		t.Fatal("GPUIdentities() succeeded despite failed Init")
+	for _, cycleID := range []string{"first-init-failure", "second-init-failure"} {
+		values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, cycleID), 0, []string{signalPowerDraw})
+		if values[signalPowerDraw].CollectionError == nil {
+			t.Fatalf("metric collection succeeded despite failed Init: %v", values)
+		}
 	}
-	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
-		t.Fatalf("duplicate registration after failed Init: %v", err)
+	if !slices.Equal(native.calls, []string{"init", "init"}) {
+		t.Fatalf("failed initialization prepared metric watches: %v", native.calls)
 	}
-	native.groups = []metricWatchGroup{{fieldIDs: []uint16{99}, interval: 2 * time.Second}}
-	if _, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "second-init-failure")); failure == nil {
-		t.Fatal("GPUIdentities() retry succeeded despite failed Init")
-	}
+	groups := []metricWatchGroup{{fieldIDs: []uint16{99}, interval: 2 * time.Second}}
+	native.groups = groups
 	native.initErr = nil
 	values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "successful-init-retry"), 0, []string{signalPowerDraw})
 	if values[signalPowerDraw].Value == nil {
 		t.Fatalf("ReadGPUMetrics() = %+v", values)
 	}
-	if !slices.Equal(native.calls, []string{"prepare", "init", "init", "init", "watch"}) {
-		t.Fatalf("retry setup calls = %v, want preparation reused across Init attempts", native.calls)
+	if !slices.Equal(native.calls, []string{"init", "init", "init", "prepare", "watch"}) {
+		t.Fatalf("retry setup calls = %v, want preparation only after successful Init", native.calls)
 	}
 	if !reflect.DeepEqual(native.watchedGroups, [][]metricWatchGroup{groups}) {
-		t.Fatalf("watched groups = %+v, want original prepared groups %+v", native.watchedGroups, groups)
+		t.Fatalf("watched groups = %+v, want current prepared groups %+v", native.watchedGroups, groups)
 	}
 }
 
-func TestAddingMetricAfterFailedInitRepreparesWatch(t *testing.T) {
-	for _, test := range []struct {
-		name           string
-		initialSignals []string
-	}{
-		{name: "inventory only"},
-		{name: "existing metric", initialSignals: []string{signalPowerDraw}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			native := &watchPreparationNative{
-				groups:     []metricWatchGroup{{fieldIDs: []uint16{11}, interval: time.Second}},
-				fakeNative: fakeNative{initErr: errNoHostengine},
-			}
-			source := newSource(native, &sync.Mutex{})
-			t.Cleanup(func() {
-				if err := source.Close(); err != nil {
-					t.Error(err)
+func TestMetricsRegisteredAfterInventoryReachFirstWatch(t *testing.T) {
+	for _, stage := range []string{"successful", "failed"} {
+		for _, test := range []struct {
+			name           string
+			initialSignals []string
+		}{
+			{name: "inventory only"},
+			{name: "existing metric", initialSignals: []string{signalPowerDraw}},
+		} {
+			t.Run(stage+"/"+test.name, func(t *testing.T) {
+				native := &watchPreparationNative{
+					groups: []metricWatchGroup{{fieldIDs: []uint16{11}, interval: time.Second}},
+				}
+				if stage == "failed" {
+					native.initErr = errNoHostengine
+				}
+				source := newSource(native, &sync.Mutex{})
+				t.Cleanup(func() {
+					if err := source.Close(); err != nil {
+						t.Error(err)
+					}
+				})
+				if len(test.initialSignals) != 0 {
+					if err := source.AddMetricsToWatch(test.initialSignals); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "inventory-init")); (failure != nil) != (stage == "failed") {
+					t.Fatalf("inventory initialization = %v", failure)
+				}
+				signalIDs := []string{signalPowerDraw, signalTemperature}
+				if err := source.AddMetricsToWatch(signalIDs); err != nil {
+					t.Fatalf("new registration after inventory: %v", err)
+				}
+				groups := []metricWatchGroup{
+					{fieldIDs: []uint16{21}, interval: time.Second},
+					{fieldIDs: []uint16{22}, interval: 2 * time.Second},
+				}
+				native.groups = groups
+				native.initErr = nil
+				values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "updated-metric-watch"), 0, signalIDs)
+				for _, signalID := range signalIDs {
+					if values[signalID].Value == nil {
+						t.Fatalf("ReadGPUMetrics() for %s = %+v", signalID, values[signalID])
+					}
+				}
+				if !reflect.DeepEqual(native.preparedSignals, [][]string{signalIDs}) {
+					t.Fatalf("prepared signals = %v, want only the complete registration %v", native.preparedSignals, signalIDs)
+				}
+				wantCalls := []string{"init"}
+				if stage == "failed" {
+					wantCalls = append(wantCalls, "init")
+				}
+				wantCalls = append(wantCalls, "prepare", "watch")
+				if !slices.Equal(native.calls, wantCalls) {
+					t.Fatalf("setup calls after registration = %v, want %v", native.calls, wantCalls)
+				}
+				if !reflect.DeepEqual(native.watchedGroups, [][]metricWatchGroup{groups}) {
+					t.Fatalf("watched groups = %+v, want updated prepared groups %+v", native.watchedGroups, groups)
 				}
 			})
-			if len(test.initialSignals) != 0 {
-				if err := source.AddMetricsToWatch(test.initialSignals); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if _, failure := source.GPUIdentities(context.Background(), newTestCycle(t, "failed-inventory-init")); failure == nil {
-				t.Fatal("GPUIdentities() succeeded despite failed Init")
-			}
-			signalIDs := []string{signalPowerDraw, signalTemperature}
-			if err := source.AddMetricsToWatch(signalIDs); err != nil {
-				t.Fatalf("new registration after failed Init: %v", err)
-			}
-			groups := []metricWatchGroup{
-				{fieldIDs: []uint16{21}, interval: time.Second},
-				{fieldIDs: []uint16{22}, interval: 2 * time.Second},
-			}
-			native.groups = groups
-			native.initErr = nil
-			values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "updated-metric-watch"), 0, signalIDs)
-			for _, signalID := range signalIDs {
-				if values[signalID].Value == nil {
-					t.Fatalf("ReadGPUMetrics() for %s = %+v", signalID, values[signalID])
-				}
-			}
-			if !reflect.DeepEqual(native.preparedSignals, [][]string{test.initialSignals, signalIDs}) {
-				t.Fatalf("prepared signals = %v, want new preparation for %v", native.preparedSignals, signalIDs)
-			}
-			if !slices.Equal(native.calls, []string{"prepare", "init", "prepare", "init", "watch"}) {
-				t.Fatalf("setup calls after registration = %v, want new preparation before retrying Init", native.calls)
-			}
-			if !reflect.DeepEqual(native.watchedGroups, [][]metricWatchGroup{groups}) {
-				t.Fatalf("watched groups = %+v, want updated prepared groups %+v", native.watchedGroups, groups)
-			}
-		})
+		}
 	}
 }
 
-func TestInventoryWithoutMetricsReusesPreparationAndDoesNotWatch(t *testing.T) {
+func TestInventoryDoesNotPrepareOrCreateMetricWatches(t *testing.T) {
 	native := &watchPreparationNative{fakeNative: fakeNative{initErr: errNoHostengine}}
 	source := newSource(native, &sync.Mutex{})
 	t.Cleanup(func() {
@@ -249,11 +267,11 @@ func TestInventoryWithoutMetricsReusesPreparationAndDoesNotWatch(t *testing.T) {
 			t.Fatalf("GPUInventory() = %+v", snapshot)
 		}
 	}
-	if !slices.Equal(native.calls, []string{"prepare", "init", "init", "init"}) {
-		t.Fatalf("inventory setup calls = %v, want preparation reused without a watch", native.calls)
+	if !slices.Equal(native.calls, []string{"init", "init", "init"}) {
+		t.Fatalf("inventory setup calls = %v, want only client initialization", native.calls)
 	}
-	if len(native.preparedSignals) != 1 || len(native.preparedSignals[0]) != 0 {
-		t.Fatalf("prepared signals = %v, want one preparation with no metrics", native.preparedSignals)
+	if len(native.preparedSignals) != 0 {
+		t.Fatalf("inventory prepared metric watches: %v", native.preparedSignals)
 	}
 	if got := native.inventoryCalls.Load(); got != 2 {
 		t.Fatalf("inventory reads = %d, want 2", got)

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
 
@@ -27,12 +28,6 @@ var errClosed = errors.New("DCGM source is closed")
 // This process-wide lock prevents another call from entering DCGM while a
 // timed-out cgo call may still be running. go-dcgm already coordinates
 // Init and Shutdown, so this package does not add another reference count.
-//
-// TODO: Before adding another DCGM sensor, move native-call and watch ownership
-// to each sensor's collection path. Independent sensors should not block each
-// other, and sensors that need GPU identities should share one immutable
-// inventory snapshot per collection cycle. DCGM initialization and shutdown
-// must remain coordinated process-wide.
 var defaultNativeCallMu sync.Mutex
 
 // go-dcgm ignores the mode and address of every Init while an earlier Init is
@@ -52,11 +47,15 @@ type StandaloneOptions struct {
 	// 30-second watch and its cache settings. The policy is copied now; invalid
 	// intervals fail metric registration or collection before native setup.
 	WatchPolicy *WatchPolicy
+	// HealthWatch optionally configures health sampling and retention. Nil uses
+	// 30 seconds and 10 minutes. Invalid values affect only health registration.
+	HealthWatch *HealthWatchOptions
 	// Address is the hostengine endpoint. Empty defaults to localhost.
 	Address string
-	// GroupNamePrefix identifies this consumer in DCGM field-group listings.
+	// GroupNamePrefix identifies this consumer in DCGM group listings.
 	// The source appends the process ID, a process-local sequence, and an
-	// optional policy group index before the "-fields" suffix. Empty uses "shared-signal-collection".
+	// optional policy group index before the "-fields" suffix for metrics,
+	// or "-health" for its health group. Empty uses "shared-signal-collection".
 	GroupNamePrefix string
 	// IsSocket indicates that Address is a Unix domain socket path.
 	IsSocket bool
@@ -72,10 +71,12 @@ type StandaloneOptions struct {
 type EmbeddedOptions struct {
 	// WatchPolicy optionally sets sampling intervals, as in StandaloneOptions.
 	WatchPolicy *WatchPolicy
-	// GroupNamePrefix names this source's DCGM field group. An embedded engine
+	// HealthWatch configures health sampling and retention, as in StandaloneOptions.
+	HealthWatch *HealthWatchOptions
+	// GroupNamePrefix names this source's DCGM groups. An embedded engine
 	// opens no listener, so no other process can list the group. The source
 	// appends the process ID and a process-local sequence before the "-fields"
-	// suffix. Empty uses "shared-signal-collection".
+	// or "-health" suffix. Empty uses "shared-signal-collection".
 	GroupNamePrefix string
 }
 
@@ -91,21 +92,33 @@ func metricWatchName(prefix string, processID int, sequence uint64) string {
 // reference-counts Init/Shutdown process-wide; each successful Init returns
 // one balanced cleanup function retained here.
 type Source struct {
-	native             nativeAPI
-	configurationError error
+	native                   nativeAPI
+	configurationError       error
+	healthConfigurationError error
 	// Production sources share this lock and fail fast when it is held. The lock
 	// protects native calls and the source state changed by those calls.
-	nativeCallMu       *sync.Mutex
-	clientCleanup      func()
-	metricWatchCleanup func() error
-	processMode        *sessionMode
-	metricWatchSignals []string
-	// Nil means groups have not been computed; empty means inventory-only.
-	metricWatchGroups []metricWatchGroup
-	metricWatchFrozen atomic.Bool
-	ready             bool
-	closed            atomic.Bool
-	mode              sessionMode
+	nativeCallMu               *sync.Mutex
+	session                    *clientSession
+	initializationFailure      error
+	initializationFailureCycle *collect.Cycle
+	processMode                *sessionMode
+	metricWatchSignals         []string
+	healthSystems              uint64
+	watchRegistrationFrozen    atomic.Bool
+	closed                     atomic.Bool
+	mode                       sessionMode
+}
+
+// clientSession owns the client reference and watches for one successful Init.
+type clientSession struct {
+	metricWatchError        error
+	connectionFailure       error
+	gpuHealthWatches        map[uint]healthWatch
+	pendingGPUHealthCleanup map[uint]healthWatch
+	switchHealthWatch       healthWatch
+	clientCleanup           func() error
+	metricWatchCleanup      func() error
+	connectionFailureCycle  *collect.Cycle
 }
 
 // NewStandaloneSource creates a source connected to an external DCGM
@@ -116,8 +129,11 @@ func NewStandaloneSource(options StandaloneOptions) *Source {
 	}
 	policy, err := freezeWatchPolicy(options.WatchPolicy)
 	options.WatchPolicy = policy
+	healthOptions, healthErr := freezeHealthWatchOptions(options.HealthWatch)
+	options.HealthWatch = healthOptions
 	source := newSource(newNative(options, standaloneMode), &defaultNativeCallMu)
 	source.configurationError = err
+	source.healthConfigurationError = healthErr
 	source.mode = standaloneMode
 	source.processMode = &defaultProcessMode
 	return source
@@ -130,8 +146,10 @@ func NewStandaloneSource(options StandaloneOptions) *Source {
 // DCGM in one mode, so a source of the other mode reports NOT_CONFIGURED.
 func NewEmbeddedSource(options EmbeddedOptions) *Source {
 	policy, err := freezeWatchPolicy(options.WatchPolicy)
-	source := newSource(newNative(StandaloneOptions{GroupNamePrefix: options.GroupNamePrefix, WatchPolicy: policy}, embeddedMode), &defaultNativeCallMu)
+	healthOptions, healthErr := freezeHealthWatchOptions(options.HealthWatch)
+	source := newSource(newNative(StandaloneOptions{GroupNamePrefix: options.GroupNamePrefix, WatchPolicy: policy, HealthWatch: healthOptions}, embeddedMode), &defaultNativeCallMu)
 	source.configurationError = err
+	source.healthConfigurationError = healthErr
 	source.mode = embeddedMode
 	source.processMode = &defaultProcessMode
 	return source
@@ -144,9 +162,10 @@ func newSource(native nativeAPI, nativeCallMu *sync.Mutex) *Source {
 // ID identifies this source to sensors and observations.
 func (*Source) ID() string { return Name }
 
-// AddMetricsToWatch registers metrics before collection begins. Sensors may
-// call it more than once during setup; duplicate signals are ignored. The
-// first ReadGPUMetrics call freezes the set and creates the DCGM watch lazily.
+// AddMetricsToWatch registers metrics for lazy watch setup. Sensors may call
+// it more than once during setup; duplicate signals are ignored. The
+// first metric or health read freezes registration; inventory reads leave it
+// open. Metric and health watches are created lazily.
 //
 // AddMetricsToWatch must not run concurrently with collection or Close.
 func (source *Source) AddMetricsToWatch(signalIDs []string) error {
@@ -156,7 +175,7 @@ func (source *Source) AddMetricsToWatch(signalIDs []string) error {
 	if source.configurationError != nil {
 		return source.configurationError
 	}
-	if source.metricWatchFrozen.Load() || source.ready || source.metricWatchCleanup != nil {
+	if source.registrationFrozen() {
 		return fmt.Errorf("DCGM source collection already started")
 	}
 	if len(signalIDs) == 0 {
@@ -180,9 +199,14 @@ func (source *Source) AddMetricsToWatch(signalIDs []string) error {
 	}
 	if len(registered) > 0 {
 		source.metricWatchSignals = append(source.metricWatchSignals, registered...)
-		source.metricWatchGroups = nil
 	}
 	return nil
+}
+
+// registrationFrozen reports whether a metric or health read has fixed the
+// requested signals and health systems for this source's lifetime.
+func (source *Source) registrationFrozen() bool {
+	return source.watchRegistrationFrozen.Load()
 }
 
 // startNativeCall enters DCGM without waiting. After it succeeds, the caller
@@ -203,13 +227,20 @@ func (source *Source) finishNativeCall() {
 	source.nativeCallMu.Unlock()
 }
 
-// ensureInitialized opens the DCGM client on the first native operation.
-func (source *Source) ensureInitialized() error {
+// ensureInitialized attempts client initialization once per cycle after failure.
+func (source *Source) ensureInitialized(cycle *collect.Cycle) error {
 	if source.closed.Load() {
 		return errClosed
 	}
-	if source.ready {
+	if source.session != nil {
 		return nil
+	}
+	if source.initializationFailure != nil {
+		if source.initializationFailureCycle == cycle {
+			return source.initializationFailure
+		}
+		source.initializationFailure = nil
+		source.initializationFailureCycle = nil
 	}
 	if source.configurationError != nil {
 		return source.configurationError
@@ -221,53 +252,62 @@ func (source *Source) ensureInitialized() error {
 				*source.processMode, source.mode),
 		}
 	}
-	if source.metricWatchGroups == nil {
-		groups, err := source.native.MetricWatchGroups(source.metricWatchSignals)
-		if err != nil {
-			return err
-		}
-		source.metricWatchGroups = groups
-	}
 	clientCleanup, err := source.native.Init()
 	if err != nil {
+		source.initializationFailure = err
+		source.initializationFailureCycle = cycle
 		return err
 	}
 	if source.processMode != nil && *source.processMode == 0 {
 		*source.processMode = source.mode
 	}
-	source.clientCleanup = clientCleanup
-	source.ready = true
+	source.session = &clientSession{clientCleanup: clientCleanup}
 	return nil
 }
 
-// ensureMetricWatch creates the configured DCGM watch on its first call.
-func (source *Source) ensureMetricWatch() error {
+// ensureMetricWatch creates the metric watch for the current session. Setup
+// failure disables metrics; confirmed connection loss permits session recovery.
+func (source *Source) ensureMetricWatch(session *clientSession) error {
 	if source.closed.Load() {
 		return errClosed
 	}
-	if source.metricWatchCleanup != nil {
+	if session.metricWatchCleanup != nil {
 		return nil
 	}
-	metricWatchCleanup, err := source.native.WatchMetrics(source.metricWatchGroups)
+	if session.metricWatchError != nil {
+		return session.metricWatchError
+	}
+	groups, err := source.native.MetricWatchGroups(source.metricWatchSignals)
+	if err != nil {
+		// No native watch was attempted; inventory and health remain usable.
+		session.metricWatchError = err
+		return err
+	}
+	metricWatchCleanup, err := source.native.WatchMetrics(groups)
 	if err == nil && metricWatchCleanup == nil {
 		err = fmt.Errorf("DCGM metric watch returned no cleanup function")
 	}
 	if err != nil {
-		// Native setup already attempted rollback. Close this source rather than
-		// allocate more groups after cleanup may have failed.
+		// Native setup already attempted rollback. A combined source retains
+		// its client for health; metric-only sources keep their close behavior.
+		session.metricWatchError = err
+		if source.healthSystems != 0 || errors.Is(err, errConnectionNotValid) {
+			return err
+		}
 		return errors.Join(err, source.closeLocked())
 	}
-	source.metricWatchCleanup = metricWatchCleanup
+	session.metricWatchCleanup = metricWatchCleanup
 	return nil
 }
 
 // Closed reports whether the source has stopped accepting native work.
-// A failed watch setup closes the source. Cleanup may still be pending.
+// Cleanup may still be pending.
 func (source *Source) Closed() bool { return source.closed.Load() }
 
-// Close stops new native work and attempts all owned watch and field-group
-// cleanup before releasing the client reference. Cleanup errors are returned
-// without retry. ErrInUse requires another Close after the native call finishes.
+// Close stops new native work and attempts metric cleanup and health-group
+// destruction before releasing the client reference. Native health sampling may
+// remain in an external hostengine. Cleanup errors are returned without retry;
+// ErrInUse requires another Close after the native call finishes.
 func (source *Source) Close() error {
 	// A busy close is still a close request. The in-flight call may finish,
 	// but subsequent operations must not enter DCGM.
@@ -279,19 +319,38 @@ func (source *Source) Close() error {
 	return source.closeLocked()
 }
 
-// closeLocked performs final cleanup while the native-call gate is held.
+// closeLocked stops further reads and releases the session under the native gate.
 func (source *Source) closeLocked() error {
 	source.closed.Store(true)
-	metricWatchCleanup := source.metricWatchCleanup
-	source.metricWatchCleanup = nil
-	clientCleanup := source.clientCleanup
-	source.clientCleanup = nil
-	source.ready = false
-	if clientCleanup != nil {
-		defer clientCleanup()
+	return source.releaseSession()
+}
+
+// releaseSession consumes valid watch cleanups before releasing the client.
+// The caller must hold the native-call gate.
+func (source *Source) releaseSession() (result error) {
+	session := source.session
+	source.session = nil
+	if session == nil {
+		return nil
 	}
-	if metricWatchCleanup != nil {
-		return metricWatchCleanup()
+	if clientCleanup := session.clientCleanup; clientCleanup != nil {
+		defer func() { result = errors.Join(result, clientCleanup()) }()
 	}
-	return nil
+	if session.connectionFailure != nil {
+		return nil
+	}
+	var failures []error
+	if metricWatchCleanup := session.metricWatchCleanup; metricWatchCleanup != nil {
+		failures = append(failures, metricWatchCleanup())
+	}
+	for _, health := range session.gpuHealthWatches {
+		failures = append(failures, health.Close())
+	}
+	for _, health := range session.pendingGPUHealthCleanup {
+		failures = append(failures, health.Close())
+	}
+	if health := session.switchHealthWatch; health != nil {
+		failures = append(failures, health.Close())
+	}
+	return errors.Join(failures...)
 }

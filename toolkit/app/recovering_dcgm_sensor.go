@@ -23,7 +23,6 @@ type recoveringDCGMSensor struct {
 	sourceClosed func() bool
 	signals      collect.Signals
 	mu           sync.Mutex
-	disconnected bool
 }
 
 func (*recoveringDCGMSensor) ID() string                 { return sensorids.DCGM }
@@ -37,12 +36,12 @@ func (s *recoveringDCGMSensor) Measure(ctx context.Context, opts ...collect.OpOp
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if s.disconnected || (s.sourceClosed != nil && s.sourceClosed()) {
+	if s.sourceClosed != nil && s.sourceClosed() {
 		if err := s.closeLocked(); err != nil {
 			if errors.Is(err, dcgmsource.ErrInUse) {
 				return nil, err
 			}
-			slog.Warn("DCGM session cleanup before reopening failed", "error", err)
+			slog.Warn("DCGM source cleanup before reopening failed", "error", err)
 		}
 	}
 	if s.sensor == nil {
@@ -52,14 +51,7 @@ func (s *recoveringDCGMSensor) Measure(ctx context.Context, opts ...collect.OpOp
 		}
 		s.sensor, s.closeSession, s.sourceClosed = sensor, cleanup, closed
 	}
-	batch, err := s.sensor.Measure(ctx, opts...)
-	for _, current := range batch.GetObservations() {
-		if current.GetCollectionError().GetSourceError() == "DCGM_ST_CONNECTION_NOT_VALID" {
-			s.disconnected = true
-			break
-		}
-	}
-	return batch, err
+	return s.sensor.Measure(ctx, opts...)
 }
 
 func (s *recoveringDCGMSensor) Close() error {
@@ -70,7 +62,7 @@ func (s *recoveringDCGMSensor) Close() error {
 	return s.closeLocked()
 }
 
-// Keep a busy session until its native calls and final cleanup have finished.
+// Keep a busy source until its native calls and final cleanup have finished.
 func (s *recoveringDCGMSensor) closeLocked() error {
 	if s.closeSession == nil {
 		return nil
@@ -79,6 +71,6 @@ func (s *recoveringDCGMSensor) closeLocked() error {
 	if errors.Is(err, dcgmsource.ErrInUse) {
 		return err
 	}
-	s.sensor, s.closeSession, s.sourceClosed, s.disconnected = nil, nil, nil, false
+	s.sensor, s.closeSession, s.sourceClosed = nil, nil, nil
 	return err
 }

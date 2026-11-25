@@ -25,16 +25,24 @@ type FieldValue struct {
 // ReadGPUMetrics reads the requested fields for one GPU in a single DCGM call.
 // It returns field-level failures alongside successful fields so the sensor
 // can emit every available observation from the GPU.
-// A native watch-setup failure closes the source; construct a new source to retry.
+// A native watch-setup failure disables metrics and closes a metric-only source, except
+// for confirmed connection loss, which permits recovery in a later cycle.
+// Use Collect to keep the GPU's identity and metrics on the same session.
 func (source *Source) ReadGPUMetrics(
 	ctx context.Context,
 	currentCycle *collect.Cycle,
 	gpuIndex uint,
 	signalIDs []string,
 ) map[string]FieldValue {
+	return source.newCollectionReader(currentCycle).readGPUMetrics(ctx, gpuIndex, signalIDs)
+}
+
+// readGPUMetrics preserves available fields alongside collection errors.
+func (reader *collectionReader) readGPUMetrics(ctx context.Context, gpuIndex uint, signalIDs []string) map[string]FieldValue {
+	source := reader.source
 	// The first read fixes the field watch. Report signals outside that watch
 	// individually instead of preventing collection of registered signals.
-	source.metricWatchFrozen.Store(true)
+	source.watchRegistrationFrozen.Store(true)
 	values := make(map[string]FieldValue, len(signalIDs))
 	watched := make([]string, 0, len(signalIDs))
 	for _, signalID := range signalIDs {
@@ -53,16 +61,8 @@ func (source *Source) ReadGPUMetrics(
 		return values
 	}
 
-	collected, err := collect.Run(ctx, currentCycle, Name, func(callContext context.Context) (map[string]FieldValue, error) {
-		if err := source.startNativeCall(); err != nil {
-			return nil, err
-		}
-		defer source.finishNativeCall()
-
-		if err := source.ensureInitialized(); err != nil {
-			return nil, err
-		}
-		if err := source.ensureMetricWatch(); err != nil {
+	collected, err := runNative(ctx, reader, func(callContext context.Context, session *clientSession) (map[string]FieldValue, error) {
+		if err := source.ensureMetricWatch(session); err != nil {
 			return nil, err
 		}
 		if source.closed.Load() {
@@ -72,14 +72,22 @@ func (source *Source) ReadGPUMetrics(
 			return nil, err
 		}
 
-		return source.native.ReadGPUMetrics(gpuIndex, watched)
+		fields, readErr := source.native.ReadGPUMetrics(gpuIndex, watched)
+		for _, field := range fields {
+			session.recordFieldFailure(reader.cycle, field.CollectionError)
+		}
+		return fields, readErr
 	})
 	if err != nil {
 		// One failure message is shared by every watched signal: the content
 		// is identical and observations treat it as read-only.
 		failure := collectionError(err)
 		for _, signalID := range watched {
-			values[signalID] = FieldValue{CollectionError: &failure}
+			if field, exists := collected[signalID]; exists {
+				values[signalID] = field
+			} else {
+				values[signalID] = FieldValue{CollectionError: &failure}
+			}
 		}
 		return values
 	}

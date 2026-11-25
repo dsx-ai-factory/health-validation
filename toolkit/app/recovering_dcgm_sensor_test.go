@@ -29,7 +29,7 @@ func dcgmFailureBatch(code string) *observation.ObservationBatch {
 	}}}
 }
 
-func TestDCGMDisconnectRecreatesSessionAndWatchesNextCollection(t *testing.T) {
+func TestDCGMConnectionFailureKeepsSource(t *testing.T) {
 	healthy := &observation.ObservationBatch{CollectionId: "healthy"}
 	failed := dcgmFailureBatch("DCGM_ST_CONNECTION_NOT_VALID")
 	var disconnected bool
@@ -41,7 +41,7 @@ func TestDCGMDisconnectRecreatesSessionAndWatchesNextCollection(t *testing.T) {
 				return failed, nil
 			}
 			return healthy, nil
-		}), func() error { closes++; return nil }, nil, nil
+		}), func() error { closes++; return nil }, func() bool { return false }, nil
 	}}
 	if got, err := sensor.Measure(context.Background()); err != nil || got != healthy {
 		t.Fatalf("initial read = %v, %v", got, err)
@@ -51,7 +51,7 @@ func TestDCGMDisconnectRecreatesSessionAndWatchesNextCollection(t *testing.T) {
 		t.Fatalf("failed read was hidden: %v, %v", got, err)
 	}
 	if opens != 1 || closes != 0 {
-		t.Fatalf("reconnected inside failed collection: opens=%d closes=%d", opens, closes)
+		t.Fatalf("connection failure replaced source: opens=%d closes=%d", opens, closes)
 	}
 	disconnected = false
 	for range 2 {
@@ -59,16 +59,16 @@ func TestDCGMDisconnectRecreatesSessionAndWatchesNextCollection(t *testing.T) {
 			t.Fatalf("recovered read = %v, %v", got, err)
 		}
 	}
-	if opens != 2 || closes != 1 {
-		t.Fatalf("session/watch setup opens=%d cleanup=%d, want 2/1", opens, closes)
+	if opens != 1 || closes != 0 {
+		t.Fatalf("recovery replaced source: opens=%d closes=%d, want 1/0", opens, closes)
 	}
 	for range 2 {
 		if err := sensor.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if closes != 2 {
-		t.Fatalf("close calls=%d, want one per session", closes)
+	if closes != 1 {
+		t.Fatalf("close calls=%d, want one for the reused source", closes)
 	}
 }
 
@@ -129,23 +129,31 @@ func TestDCGMOtherErrorsKeepSession(t *testing.T) {
 	}
 }
 
-func TestDCGMReconnectWaitsForBusyCleanup(t *testing.T) {
+func TestDCGMClosedSourceWaitsForBusyCleanup(t *testing.T) {
 	opens, cleanupCalls := 0, 0
 	busy := true
+	failed := dcgmFailureBatch("DCGM_ST_NO_PERMISSION")
+	healthy := &observation.ObservationBatch{CollectionId: "recovered"}
 	sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, func() bool, error) {
 		opens++
+		firstSource := opens == 1
+		closed := false
 		return dcgmSensorFunc(func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
-				return dcgmFailureBatch("DCGM_ST_CONNECTION_NOT_VALID"), nil
+				if firstSource {
+					closed = true
+					return failed, nil
+				}
+				return healthy, nil
 			}), func() error {
 				cleanupCalls++
 				if busy {
 					return dcgmsource.ErrInUse
 				}
 				return nil
-			}, nil, nil
+			}, func() bool { return closed }, nil
 	}}
-	if _, err := sensor.Measure(context.Background()); err != nil {
-		t.Fatal(err)
+	if got, err := sensor.Measure(context.Background()); err != nil || got != failed {
+		t.Fatalf("failed setup = %v, %v", got, err)
 	}
 	if _, err := sensor.Measure(context.Background()); !errors.Is(err, dcgmsource.ErrInUse) {
 		t.Fatalf("busy cleanup = %v", err)
@@ -154,18 +162,18 @@ func TestDCGMReconnectWaitsForBusyCleanup(t *testing.T) {
 		t.Fatal("opened a replacement before old native work finished")
 	}
 	busy = false
-	if _, err := sensor.Measure(context.Background()); err != nil {
-		t.Fatal(err)
+	if got, err := sensor.Measure(context.Background()); err != nil || got != healthy {
+		t.Fatalf("read after cleanup = %v, %v", got, err)
 	}
 	if opens != 2 || cleanupCalls != 2 {
-		t.Fatalf("reconnect opens=%d cleanup=%d", opens, cleanupCalls)
+		t.Fatalf("replacement opens=%d cleanup=%d, want 2/2", opens, cleanupCalls)
 	}
 	if err := sensor.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestDCGMDoesNotReplaceSessionWhileTimedOutCallRuns(t *testing.T) {
+func TestDCGMCanceledReadKeepsSource(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	defer func() {
 		select {
@@ -175,16 +183,18 @@ func TestDCGMDoesNotReplaceSessionWhileTimedOutCallRuns(t *testing.T) {
 		}
 	}()
 	opens, closes := 0, 0
+	firstRead := true
+	healthy := &observation.ObservationBatch{CollectionId: "recovered"}
 	sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, func() bool, error) {
 		opens++
-		session := opens
 		return dcgmSensorFunc(func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
-			if session == 1 {
+			if firstRead {
+				firstRead = false
 				close(started)
 				<-release
 				return dcgmFailureBatch("DCGM_ST_CONNECTION_NOT_VALID"), nil
 			}
-			return &observation.ObservationBatch{}, nil
+			return healthy, nil
 		}), func() error { closes++; return nil }, nil, nil
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -215,44 +225,51 @@ func TestDCGMDoesNotReplaceSessionWhileTimedOutCallRuns(t *testing.T) {
 		t.Fatalf("second read overlapped: %v", err)
 	}
 	if opens != 1 || closes != 0 {
-		t.Fatal("session was replaced while native work was active")
+		t.Fatal("source was replaced while native work was active")
 	}
 	close(release)
 	tracker.Wait()
-	if _, err := sensor.Measure(context.Background()); err != nil {
-		t.Fatal(err)
+	if got, err := sensor.Measure(context.Background()); err != nil || got != healthy {
+		t.Fatalf("read after cancellation = %v, %v", got, err)
 	}
-	if opens != 2 || closes != 1 {
-		t.Fatalf("recovery opens=%d closes=%d", opens, closes)
+	if opens != 1 || closes != 0 {
+		t.Fatalf("late connection failure replaced source: opens=%d closes=%d, want 1/0", opens, closes)
 	}
 	if err := sensor.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestDCGMReconnectSurvivesStaleWatchCleanupFailure(t *testing.T) {
-	opens := 0
+func TestDCGMReopensAfterClosedSourceCleanupFailure(t *testing.T) {
+	opens, closes := 0, 0
+	failed := dcgmFailureBatch("DCGM_ST_NO_PERMISSION")
+	healthy := &observation.ObservationBatch{CollectionId: "recovered"}
 	sensor := &recoveringDCGMSensor{open: func() (collect.Sensor, func() error, func() bool, error) {
 		opens++
-		session := opens
+		firstSource := opens == 1
+		closed := false
 		return dcgmSensorFunc(func(context.Context, ...collect.OpOption) (*observation.ObservationBatch, error) {
-				if session == 1 {
-					return dcgmFailureBatch("DCGM_ST_CONNECTION_NOT_VALID"), nil
+				if firstSource {
+					closed = true
+					return failed, nil
 				}
-				return &observation.ObservationBatch{CollectionId: "recovered"}, nil
+				return healthy, nil
 			}), func() error {
-				if session == 1 {
+				closes++
+				if firstSource {
 					return errors.New("old hostengine watch no longer exists")
 				}
 				return nil
-			}, nil, nil
+			}, func() bool { return closed }, nil
 	}}
-	if _, err := sensor.Measure(context.Background()); err != nil {
-		t.Fatal(err)
+	if got, err := sensor.Measure(context.Background()); err != nil || got != failed {
+		t.Fatalf("failed setup = %v, %v", got, err)
 	}
-	got, err := sensor.Measure(context.Background())
-	if err != nil || got.GetCollectionId() != "recovered" || opens != 2 {
-		t.Fatalf("recovery = %v, %v; opens=%d", got, err, opens)
+	if got, err := sensor.Measure(context.Background()); err != nil || got != healthy {
+		t.Fatalf("read after cleanup failure = %v, %v", got, err)
+	}
+	if opens != 2 || closes != 1 {
+		t.Fatalf("replacement opens=%d closes=%d, want 2/1", opens, closes)
 	}
 	if err := sensor.Close(); err != nil {
 		t.Fatal(err)

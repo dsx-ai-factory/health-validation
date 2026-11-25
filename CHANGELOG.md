@@ -307,6 +307,48 @@ Changes to behavior and APIs outside the
   `--stuck-call-deadline` (default `10m`, must exceed `--request-timeout`), so a
   supervisor can restart the process. Probes bypass the in-flight request limit.
   This is liveness only; readiness is still not provided. ([#326](https://github.com/dsx-ai-factory/health-validation/pull/326), [#319](https://github.com/dsx-ai-factory/health-validation/issues/319))
+- Add opt-in passive DCGM health collection through `dcgm.NewWithHealth`, with
+  an explicit selection of nine health systems, optional metric signals,
+  and one `dcgm.health` report. A zero systems mask skips health collection;
+  omit metric signals to request only health when the mask is nonzero.
+  Reports preserve all native incidents, group metadata, readable health statuses,
+  monitoring start time, and missing-target facts. Entities reuse shared GPU
+  and NVSwitch references with optional source-native identity metadata.
+  Each group's `entity_results` keeps identities, verified group membership,
+  incidents, and scoped collection errors together. GPU references include
+  available UUIDs and PCI bus addresses from one lookup.
+  Each GPU has its own native health group; NVSwitches share a separate group
+  on the same session, with
+  independent check errors, native overall health, start times, truncation flags,
+  and entity results in `group_results`. Native group handles stay internal.
+  A later group failure preserves completed results.
+  Unknown native entity kinds are preserved. Existing metric-only constructors
+  and defaults are unchanged.
+  Source `HealthWatch` options configure the health update interval and retention
+  independently of metric `WatchPolicy`, keeping 30 seconds and 10 minutes as
+  defaults.
+  Health reads discover GPUs once per collection and reuse their groups while
+  present. Missing GPUs' groups are queued for cleanup before new groups are allocated;
+  failed cleanup is retained for retry. Discovery failures preserve known groups.
+  Rejected GPU or NVSwitch additions preserve findings from usable members,
+  record errors under the affected entity result, and retry on the next read.
+  Unattributed discovery failures appear in `system_errors`.
+  Incidents include native error severity, category, and suggestions when the
+  DCGM client library provides them.
+  Source `Collect` keeps independently selected metrics, health, and inventory
+  on one client session while allowing concurrent collections to interleave.
+  Recovery replaces failed sessions only for fresh collections; existing
+  collections preserve completed results without using replacement identities.
+  Driver health monitors GPU recovery actions reported by the driver.
+  Successful native reports are available immediately, including empty incident
+  lists; absent incidents do not establish healthy status or complete coverage.
+  Consumers choose any startup grace period.
+  Cleanup destroys the owned group and releases the client on a best-effort
+  basis; native health sampling may persist in an external hostengine.
+  Native health watches share field sampling with metric watches and can
+  request faster updates than a slower metric interval policy.
+  ([#298](https://github.com/dsx-ai-factory/health-validation/pull/298))
+
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.

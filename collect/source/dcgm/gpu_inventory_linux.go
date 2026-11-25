@@ -46,7 +46,7 @@ func (library *nativeLibrary) ReadGPUInventory(gpuIndices []uint) (map[uint]*obs
 				entry.CollectionError = &failure
 			}
 		}
-		return entries, nil
+		return entries, err
 	}
 	decoded := decodeGPUInventoryFields(gpuIndices, inventoryFields, values)
 	for gpuIndex, entry := range decoded {
@@ -70,8 +70,8 @@ func gpuInventoryStatusError(gpuIndex uint, status godcgm.EntityStatus) *observa
 	}
 }
 
-func (*nativeLibrary) ReadGPUUUIDs(gpuIndices []uint) (map[uint]GPUIdentityEntry, error) {
-	values, err := readGPUFields(gpuIndices, []godcgm.Short{godcgm.DCGM_FI_DEV_UUID})
+func (library *nativeLibrary) ReadGPUUUIDs(gpuIndices []uint) (map[uint]GPUIdentityEntry, error) {
+	values, err := library.readFields(gpuIndices, []godcgm.Short{godcgm.DCGM_FI_DEV_UUID, godcgm.DCGM_FI_DEV_PCI_BUSID})
 	if err != nil {
 		return nil, err
 	}
@@ -79,28 +79,17 @@ func (*nativeLibrary) ReadGPUUUIDs(gpuIndices []uint) (map[uint]GPUIdentityEntry
 }
 
 func decodeGPUUUIDs(gpuIndices []uint, values []godcgm.FieldValue_v2) map[uint]GPUIdentityEntry {
-	byGPU := make(map[uint]*godcgm.FieldValue_v2, len(gpuIndices))
-	for i := range values {
-		field := &values[i]
-		if field.EntityGroupId == godcgm.FE_GPU && field.FieldID == godcgm.DCGM_FI_DEV_UUID {
-			byGPU[field.EntityID] = field
-		}
-	}
+	decoded := decodeGPUInventoryFields(gpuIndices, []godcgm.Short{godcgm.DCGM_FI_DEV_UUID, godcgm.DCGM_FI_DEV_PCI_BUSID}, values)
 	identities := make(map[uint]GPUIdentityEntry, len(gpuIndices))
 	for _, gpuIndex := range gpuIndices {
-		var uuid string
-		var failure *observation.CollectionError
-		if field := byGPU[gpuIndex]; field != nil {
-			uuid, failure = decodeGPUString(field)
-		} else {
-			missing := fieldErrorFromStatus(godcgm.DCGM_ST_NO_DATA, fmt.Sprintf("DCGM returned no UUID for GPU index %d", gpuIndex))
-			failure = &missing
-		}
-		if failure != nil {
-			failure.Source = Name
+		entry := decoded[gpuIndex]
+		for _, failure := range entry.FieldErrors {
 			failure.Operation = "identity"
 		}
-		identities[gpuIndex] = GPUIdentityEntry{Index: gpuIndex, UUID: uuid, UUIDError: failure}
+		identities[gpuIndex] = GPUIdentityEntry{
+			Index: gpuIndex, UUID: entry.Gpu.GetUuid(), BusID: entry.Gpu.GetBusId(),
+			UUIDError: entry.FieldErrors["uuid"], BusIDError: entry.FieldErrors["bus_id"],
+		}
 	}
 	return identities
 }
