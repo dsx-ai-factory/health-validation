@@ -66,9 +66,13 @@ func fixtureCases() []fixtureCase {
 		},
 		{name: "prolog cadence", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--cadence", "PROLOG"} }), exit: exitOK},
 		{name: "maintenance cadence", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--cadence", "MAINTENANCE"} }), exit: exitOK},
+		{name: "operator infra", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--execution-context", "OPERATOR_INFRA"} }), exit: exitOK},
 		{
-			name: "operator infra", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--execution-context", "OPERATOR_INFRA"} }), exit: exitOK,
-			skips: map[string]health.SkipReason{"gpu_compute_apps": health.DeploymentUnsupported},
+			name: "operator infra with a leftover compute process", node: with(healthyGB200(), func(f *nodeFixture) {
+				f.args = []string{"--execution-context", "OPERATOR_INFRA"}
+				f.gpus[1].cmdlines = []string{"/usr/bin/python bench.py"}
+			}), exit: exitUnhealthy,
+			want: []fixtureResult{{check: "gpu_compute_apps", severity: health.Critical, action: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired), entities: []string{"GPU-1"}}},
 		},
 		{
 			name: "override and disabled check", node: with(healthyGB200(), func(f *nodeFixture) {
