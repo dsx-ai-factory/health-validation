@@ -30,8 +30,8 @@ for the JSON contract. For the field's place in the wider verdict shape, see
 ## How to consume a remediation sequence
 
 `remediation_actions` is ordered from the most preferred (least disruptive) step to the least.
-Each failing check retains its own recommendation; drain recommendations carry
-an ordered sequence. `NodeVerdict.recommended_action` also surfaces one complete
+Each failing check retains its own recommendation; `drain` and `monitor`
+recommendations can carry an ordered sequence. `NodeVerdict.recommended_action` also surfaces one complete
 sequence as the node-level recommendation. Re-run the **whole suite**
 after every remediation step so the recommendation is recalculated from the
 checks that still fail:
@@ -61,9 +61,7 @@ checks that still fail:
    recommend `reset_gpu` first). Re-deriving the failing set and priority each
    time, rather than planning up front, keeps you from spending a more
    disruptive step on a check that another check's remediation already fixed.
-7. If a check's `remediation_actions` is exhausted and it's still failing,
-   treat it the same as reaching a `service_required` step: escalate, don't
-   keep retrying.
+7. If a check's `remediation_actions` is exhausted and it's still failing, stop retrying and escalate it to the appropriate owner for investigation. For example, a warning-class Xid that persists after `restart_app` may need investigation by the application owner.
 
 **Do not** perform every action in a sequence unconditionally, and do not
 skip the whole-suite re-run between steps — later actions are more disruptive
