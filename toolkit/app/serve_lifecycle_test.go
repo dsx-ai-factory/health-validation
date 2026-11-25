@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	healthv1 "github.com/dsx-ai-factory/health-validation/proto/go/health/v1"
+	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
 
 type cycleReleaseHost struct {
@@ -143,6 +145,76 @@ func TestAgentReportsBusyWhileResourceReleaseIsStuck(t *testing.T) {
 		verdict, err := agent.evaluate(context.Background(), request)
 		if err != nil || verdict.GetOverallSeverity() != healthv1.Severity_PASS {
 			t.Fatalf("collection did not resume after release: %v, %v", verdict, err)
+		}
+		waitForAgentIdle(t, agent)
+	})
+}
+
+func TestAgentReportsBusyWhileInventoryReadIsStuck(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var entered atomic.Int32
+		reader := gatedReader{
+			gate:    new(sync.Mutex),
+			entered: &entered,
+			release: make(chan struct{}),
+			done:    make(chan struct{}),
+		}
+		release := sync.OnceFunc(func() { close(reader.release) })
+		defer release()
+
+		a := cadenceRunApp()
+		host := fakeHost{b: spyBackend{called: new(bool)}}
+		a.host = sharedInventoryHost{
+			fakeHost:  host,
+			inventory: gpuinventory.New(func() (gpuinventory.Reader, error) { return reader, nil }),
+			gpu:       host.gpuSensors(),
+		}
+		agent := a.newVerdictAgent(&Config{CollectionTimeoutSeconds: 1}, evaluationRequest{NodeID: testNodeID, ExecutionContext: health.TenantGuest}, nil)
+		ctx := context.Background()
+		request := &healthv1.EvaluateRequest{}
+		evaluateFailure := func(id string, severity healthv1.Severity, steps ...string) *healthv1.CheckVerdict {
+			t.Helper()
+			verdict, err := agent.evaluate(ctx, request)
+			checks := verdict.GetCheckResults()
+			if err != nil || verdict.GetOverallSeverity() != severity || len(checks) != 1 ||
+				checks[0].GetCheckId() != id || checks[0].GetSeverity() != severity {
+				t.Fatalf("verdict = %v, err = %v, want one %s result with severity %v", verdict, err, id, severity)
+			}
+			check := checks[0]
+			for _, action := range []*healthv1.RecommendedAction{verdict.GetRecommendedAction(), check.GetRecommendedAction()} {
+				if action.GetOperationalState() != healthv1.OperationalState_drain || !slices.Equal(action.GetRemediationActions(), steps) {
+					t.Fatalf("%s action = %v, want drain with %v", id, action, steps)
+				}
+			}
+			return check
+		}
+
+		evaluateFailure("architecture_discovery", healthv1.Severity_CRITICAL, "reset_gpu", "restart_os", "service_required")
+		if n := entered.Load(); n != 1 {
+			t.Fatalf("inventory reads after timeout = %d, want 1", n)
+		}
+
+		busy := evaluateFailure("collection_source_busy", healthv1.Severity_UNKNOWN, "retry_collection")
+		if source := busy.GetObservedValues()["source"].GetStringValue(); source != "nvml" {
+			t.Fatalf("busy source = %q, want nvml", source)
+		}
+		if n := entered.Load(); n != 1 {
+			t.Fatalf("inventory reads while busy = %d, want 1", n)
+		}
+
+		release()
+		waitForAgentIdle(t, agent)
+		recovered, err := agent.evaluate(ctx, request)
+		if err != nil || recovered.GetOverallSeverity() != healthv1.Severity_PASS {
+			t.Fatalf("collection after release = %v, %v, want PASS", recovered, err)
+		}
+		for _, check := range recovered.GetCheckResults() {
+			if check.GetCheckId() == "collection_source_busy" {
+				t.Fatal("busy verdict remained after inventory read returned")
+			}
+		}
+		if n := entered.Load(); n != 2 {
+			t.Fatalf("inventory reads after recovery = %d, want 2", n)
 		}
 		waitForAgentIdle(t, agent)
 	})

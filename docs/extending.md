@@ -326,6 +326,20 @@ func main() {
 }
 ```
 
+If an NVML call times out during GPU architecture discovery, `run` reports a
+`CRITICAL` `architecture_discovery` verdict with the generic drain sequence.
+The native call can keep running and hold the NVML gate. If a later `App.Run`
+in the same process finds NVML busy during discovery, it reports `UNKNOWN` for
+`architecture_discovery` with `operational_state` set to `drain` and
+`retry_collection` as the only remediation step. Both runs return exit code
+`1`. Each invocation of the stock `health-validation run` command starts a
+fresh process with its own NVML gate.
+
+In `serve`, later requests get an `UNKNOWN` `collection_source_busy` verdict
+with `drain` and `retry_collection` while the timed-out inventory call blocks
+admission. Fresh evaluation resumes after the native work and GPU resource
+release finish.
+
 Registration errors, such as a field name the measurement does not have or a
 signal claimed by two sensors, exit `2` before anything is collected. The
 first comes back from `GPUAdapter` before `Run` starts, so the example exits
