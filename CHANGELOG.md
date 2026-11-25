@@ -84,6 +84,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 Changes to behavior and APIs outside the
 [compatibility guarantees](RELEASE.md#compatibility).
 
+- `gpu_compute_apps` also runs under `OPERATOR_INFRA`, for operators who run
+  it on the host before and after their own jobs. Where jobs run in a tenant
+  VM, keep running it in that guest: the host cannot see the VM's processes.
+  ([#352](https://github.com/dsx-ai-factory/health-validation/pull/352))
 - Monitor recommendations can carry remediation steps and appear in the
   node-level summary. Consumers must inspect `operational_state` before treating
   a sequence as a drain workflow; application actions still require context
