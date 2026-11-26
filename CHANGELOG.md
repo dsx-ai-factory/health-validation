@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Features
+
+- The verdict gRPC server serves gRPC reflection, so a client can read the
+  verdict schema from the running service instead of keeping a copy of
+  `verdict.proto`. `docs/agent-mode.md` describes it.
+
 ## [v0.4.0] - 2026-11-25
 
 Covers everything since `catalog/v0.3.2` and `toolkit/v0.3.2`. Build, CI,

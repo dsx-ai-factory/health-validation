@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -106,6 +107,10 @@ func ServeListener(ctx context.Context, listener net.Listener, handler Handler, 
 	httpListener := multiplexer.Match(cmux.HTTP1Fast())
 	grpcServer := grpc.NewServer(grpc.StatsHandler(&responseStats{after: settings.afterResponse}), grpc.UnaryInterceptor(limit.intercept))
 	healthv1.RegisterVerdictServiceServer(grpcServer, service)
+	// Reflection lets a client read the verdict schema from the server it talks
+	// to, so it does not need a copy of verdict.proto that can drift. It is a
+	// stream, so it bypasses the unary verdict limiter above.
+	reflection.Register(grpcServer)
 	var root http.Handler = limit.httpHandler(verdictHTTPHandler(service, settings.afterResponse))
 	if settings.liveness != nil {
 		healthgrpc.RegisterHealthServer(grpcServer, &healthService{check: settings.liveness, period: livenessWatchPeriod})
