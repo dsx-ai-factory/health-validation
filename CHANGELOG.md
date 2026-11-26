@@ -10,6 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The verdict gRPC server serves gRPC reflection, so a client can read the
   verdict schema from the running service instead of keeping a copy of
   `verdict.proto`. `docs/agent-mode.md` describes it.
+  ([#370](https://github.com/dsx-ai-factory/health-validation/pull/370))
 
 ## [v0.4.0] - 2026-11-25
 
