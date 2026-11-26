@@ -110,9 +110,28 @@ func ParseACS(config []byte) (*ACS, error) {
 //
 // Read returns errors for unknown signal IDs, a nil context, concurrent use
 // (ErrInUse), or failure to resolve or list Root. Context errors checked before
-// enumeration are returned directly; later ones and per-device read or parse
-// errors are stored in Reading.Failure. Unsupported values use Reading.NoValue.
+// or between devices are returned directly; per-device read or parse errors
+// are stored in Reading.Failure. Unsupported values use Reading.NoValue.
 func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading, error) {
+	return s.read(ctx, selected, false, nil)
+}
+
+// ReadGPUs reads properties only for NVIDIA GPU-class PCI devices.
+// Classification failures are reported per device.
+func (s *Source) ReadGPUs(ctx context.Context, selected collect.Signals) ([]Reading, error) {
+	return s.read(ctx, selected, true, nil)
+}
+
+// ReadDevices reads PCI properties at the given sysfs device names. An empty
+// list produces NoTargets without scanning the bus.
+func (s *Source) ReadDevices(ctx context.Context, selected collect.Signals, addresses []string) ([]Reading, error) {
+	if addresses == nil {
+		addresses = []string{}
+	}
+	return s.read(ctx, selected, false, addresses)
+}
+
+func (s *Source) read(ctx context.Context, selected collect.Signals, gpuOnly bool, addresses []string) ([]Reading, error) {
 	selected, err := collect.NewOp(collect.WithSignalID(selected.IDs()...)).Signals(pcisignals.All())
 	if err != nil || len(selected) == 0 {
 		return nil, err
@@ -127,23 +146,49 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, ctxErr
 	}
-	root, err := s.resolve(Root)
-	if err != nil {
-		return nil, err
-	}
-	devices, err := fs.ReadDir(s.files, root)
-	if err != nil {
-		return nil, err
+	root := Root
+	if addresses == nil {
+		root, err = s.resolve(Root)
+		if err != nil {
+			return nil, err
+		}
+		devices, err := fs.ReadDir(s.files, root)
+		if err != nil {
+			return nil, err
+		}
+		addresses = make([]string, 0, len(devices))
+		for _, device := range devices {
+			addresses = append(addresses, device.Name())
+		}
 	}
 	var readings []Reading
-	for _, device := range devices {
-		if !addressPattern.MatchString(device.Name()) {
+	seen := make(map[string]bool)
+	for _, name := range addresses {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if !addressPattern.MatchString(name) || seen[name] {
 			continue
 		}
-		address := strings.ToLower(device.Name())
+		seen[name] = true
+		address := strings.ToLower(name)
 		target := observation.PCITarget(address)
-		base := path.Join(root, device.Name())
+		base := path.Join(root, name)
 		cache := make(map[string]numericResult)
+		if gpuOnly {
+			gpu, err := s.isGPU(base, cache)
+			if err != nil {
+				for _, signal := range selected {
+					failure := Failure(fmt.Errorf("classify PCI device %s: %w", address, err))
+					failure.Operation = base
+					readings = append(readings, Reading{Signal: signal, Target: target, Path: base, Failure: failure})
+				}
+				continue
+			}
+			if !gpu {
+				continue
+			}
+		}
 		properties := make(map[string]propertyResult)
 		var acs *ACS
 		var acsErr error
@@ -193,15 +238,10 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 					err = nil
 				}
 			case pcisignals.GPUPresent.ID():
-				reading.Path = path.Join(base, "class")
-				var class, vendor uint64
-				class, err = s.number(reading.Path, 24, cache)
-				if err == nil && (class>>8 == 0x0300 || class>>8 == 0x0302 || class>>16 == 0x12) {
-					reading.Path = path.Join(base, "vendor")
-					vendor, err = s.number(reading.Path, 16, cache)
-				}
+				var gpu bool
+				gpu, err = s.isGPU(base, cache)
 				if err == nil {
-					reading.Value = &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: vendor == 0x10de && (class>>8 == 0x0300 || class>>8 == 0x0302 || class>>16 == 0x12)}}
+					reading.Value = &observation.Value{Kind: &observation.Value_BoolValue{BoolValue: gpu}}
 				}
 			case pcisignals.LinkSpeed.ID(), pcisignals.MaxLinkSpeed.ID(), pcisignals.LinkWidth.ID(), pcisignals.MaxLinkWidth.ID(), pcisignals.LinkGeneration.ID(), pcisignals.MaxLinkGeneration.ID():
 				err = s.property(base, &reading, properties)
@@ -238,6 +278,9 @@ func (s *Source) Read(ctx context.Context, selected collect.Signals) ([]Reading,
 			}
 			readings = append(readings, reading)
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	if len(readings) == 0 {
 		for _, signal := range selected {
@@ -305,21 +348,11 @@ func (s *Source) resolve(name string) (string, error) {
 			continue
 		}
 		candidate := path.Join(append(resolved, part)...)
-		entries, err := fs.ReadDir(s.files, path.Dir(candidate))
+		mode, err := s.entryMode(candidate)
 		if err != nil {
 			return "", err
 		}
-		var entry fs.DirEntry
-		for _, current := range entries {
-			if current.Name() == part {
-				entry = current
-				break
-			}
-		}
-		if entry == nil {
-			return "", &fs.PathError{Op: "resolve", Path: candidate, Err: fs.ErrNotExist}
-		}
-		if entry.Type()&fs.ModeSymlink == 0 {
+		if mode&fs.ModeSymlink == 0 {
 			resolved = append(resolved, part)
 			continue
 		}
@@ -337,6 +370,27 @@ func (s *Source) resolve(name string) (string, error) {
 		pending = append(strings.Split(link, "/"), pending...)
 	}
 	return path.Join(resolved...), nil
+}
+
+func (s *Source) entryMode(name string) (fs.FileMode, error) {
+	if files, ok := s.files.(fs.ReadLinkFS); ok {
+		info, err := files.Lstat(name)
+		if err != nil {
+			return 0, err
+		}
+		return info.Mode(), nil
+	}
+	// A wrapper without Lstat can still expose symlinks through ReadDir.
+	entries, err := fs.ReadDir(s.files, path.Dir(name))
+	if err != nil {
+		return 0, err
+	}
+	for _, entry := range entries {
+		if entry.Name() == path.Base(name) {
+			return entry.Type(), nil
+		}
+	}
+	return 0, &fs.PathError{Op: "resolve", Path: name, Err: fs.ErrNotExist}
 }
 
 func text(value string) *observation.Value {
@@ -362,4 +416,17 @@ func Failure(err error) *observation.CollectionError {
 		category = observation.CollectionErrorCategoryUnavailable
 	}
 	return &observation.CollectionError{Category: category, Detail: err.Error()}
+}
+
+// isGPU applies the same NVIDIA vendor/class predicate to presence and GPU-only filtering.
+func (s *Source) isGPU(base string, cache map[string]numericResult) (bool, error) {
+	class, err := s.number(path.Join(base, "class"), 24, cache)
+	if err != nil {
+		return false, err
+	}
+	if class>>8 != 0x0300 && class>>8 != 0x0302 && class>>16 != 0x12 {
+		return false, nil
+	}
+	vendor, err := s.number(path.Join(base, "vendor"), 16, cache)
+	return vendor == 0x10de, err
 }

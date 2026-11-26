@@ -458,11 +458,13 @@ type inventoryReader struct {
 
 func (inventoryReader) ID() string { return "fake" }
 
+// Read gives synthetic GPUs stable PCI addresses for joins across collection sources.
 func (r inventoryReader) Read(context.Context) (*observation.GPUInventorySnapshot, error) {
 	inventory := &observation.GPUInventory{}
 	for i := range r.gpus {
 		uuid, model := fmt.Sprintf("GPU-%d", i), r.model
-		entry := &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model}}
+		busID := fmt.Sprintf("0000:%02x:00.0", i+1)
+		entry := &observation.GPUInventoryEntry{SourceIndex: uint32(i), Gpu: &observation.GPUDevice{Uuid: &uuid, Model: &model, BusId: &busID}}
 		if r.driver != "" {
 			driver := r.driver
 			entry.Gpu.DriverVersion = &driver
@@ -479,7 +481,6 @@ func (panicHost) gpuSensors() []collect.Sensor          { panic("unexpected GPU 
 func (panicHost) gpuInventory() *gpuinventory.Inventory { panic("unexpected GPU inventory access") }
 func (panicHost) releaseCycle() error                   { panic("unexpected host cycle release") }
 func (panicHost) close() error                          { panic("unexpected host backend close") }
-
 func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -518,6 +519,7 @@ func TestRunCommandRejectsInvalidNodeID(t *testing.T) {
 	}
 }
 
+// TestRunCommandDefaultsNodeIDToHostname uses the normalized hostname when no node ID is supplied.
 func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 	const hostname = "nvl72d014-T02"
 	hostnameCalls := 0
@@ -527,6 +529,7 @@ func TestRunCommandDefaultsNodeIDToHostname(t *testing.T) {
 		return "  " + hostname + "  ", nil
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withPCI(a, spyGPUs, 64)
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 	healthyInfiniBand(a)
@@ -622,12 +625,14 @@ func TestRunCommandRejectsUnexpectedArguments(t *testing.T) {
 	}
 }
 
+// TestRunCommandNodeIDFlagOverridesBuilder gives an explicit flag precedence without hostname lookup.
 func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 	a := New().WithProgramName("test").WithNodeID("builder-node")
 	a.hostname = func() (string, error) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withPCI(a, spyGPUs, 64)
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 	healthyInfiniBand(a)
@@ -646,12 +651,14 @@ func TestRunCommandNodeIDFlagOverridesBuilder(t *testing.T) {
 	}
 }
 
+// TestRunNodeIDFlagOverridesHostname exercises flag precedence through the public CLI entry point.
 func TestRunNodeIDFlagOverridesHostname(t *testing.T) {
 	a := New().WithProgramName("test")
 	a.hostname = func() (string, error) {
 		panic("unexpected hostname lookup")
 	}
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withPCI(a, spyGPUs, 64)
 	withCleanLinkFlap(a)
 	withCleanXid(withCPU(a, healthyCPU()))
 	healthyInfiniBand(a)
@@ -681,6 +688,7 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 	}
 	a.host = fakeHost{b: spyBackend{called: &hostGPUCalled}}
 	healthyInfiniBand(withCPU(a, healthyCPU()))
+	withPCI(a, spyGPUs, 64)
 
 	var stdout, stderr bytes.Buffer
 	// This asserts which backend was read; the verdict severity is irrelevant, so
@@ -702,10 +710,12 @@ func TestDefaultUsesHostBackend(t *testing.T) {
 	}
 }
 
+// TestWithCollectReplacesSysfsCPU verifies an explicit claim replaces CPU sysfs reads.
 func TestWithCollectReplacesSysfsCPU(t *testing.T) {
 	cpuCalls := 0
 	a := New()
 	a.host = fakeHost{b: spyBackend{called: new(bool)}}
+	withPCI(a, spyGPUs, 64)
 	withCleanXid(withCPU(a, cpuAppSensor{calls: &cpuCalls, possible: 8, online: 8, numa: 34}))
 	withCleanLinkFlap(a)
 	healthyInfiniBand(a)

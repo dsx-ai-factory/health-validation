@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsx-ai-factory/health-validation/collect"
@@ -18,12 +19,43 @@ import (
 
 const ID = pcisource.Name
 
-type sensor struct{ source *pcisource.Source }
+var nextSensorID atomic.Uint64
 
-func New(files fs.FS) collect.Sensor     { return &sensor{source: pcisource.New(files)} }
+type sensor struct {
+	addresses func(context.Context, *collect.Cycle) []string
+	source    *pcisource.Source
+	cycleKey  string
+	gpuOnly   bool
+}
+
+func New(files fs.FS) collect.Sensor { return newSensor(files, false) }
+
+// NewGPUs returns a sensor that reads only NVIDIA GPU-class PCI devices.
+func NewGPUs(files fs.FS) collect.Sensor { return newSensor(files, true) }
+
+// NewForAddresses reads PCI properties only at the sysfs device names supplied
+// for the current cycle. An empty address list does not access sysfs.
+func NewForAddresses(files fs.FS, addresses func(context.Context, *collect.Cycle) []string) collect.Sensor {
+	if addresses == nil {
+		addresses = func(context.Context, *collect.Cycle) []string { return nil }
+	}
+	s := newSensor(files, false)
+	s.addresses = addresses
+	return s
+}
+
+func newSensor(files fs.FS, gpuOnly bool) *sensor {
+	return &sensor{
+		source:   pcisource.New(files),
+		cycleKey: fmt.Sprintf("%s.%d", ID, nextSensorID.Add(1)),
+		gpuOnly:  gpuOnly,
+	}
+}
+
 func (*sensor) ID() string               { return ID }
 func (*sensor) Signals() collect.Signals { return pcisignals.All() }
 
+// Measure emits selected PCI observations with per-device failures and the cycle timeout.
 func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observation.ObservationBatch, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("collection context is required")
@@ -46,11 +78,21 @@ func (s *sensor) Measure(ctx context.Context, opts ...collect.OpOption) (*observ
 		now = cycle.StartedAt()
 	}
 	observedAt := timestamppb.New(now)
+	read := s.source.Read
+	if s.gpuOnly {
+		read = s.source.ReadGPUs
+	}
+	if s.addresses != nil {
+		addresses := s.addresses(ctx, cycle)
+		read = func(ctx context.Context, signals collect.Signals) ([]pcisource.Reading, error) {
+			return s.source.ReadDevices(ctx, signals, addresses)
+		}
+	}
 	var readings []pcisource.Reading
 	if cycle == nil {
-		readings, err = s.source.Read(ctx, selected)
+		readings, err = read(ctx, selected)
 	} else {
-		readings, err = collect.Run(ctx, cycle, ID, func(ctx context.Context) ([]pcisource.Reading, error) { return s.source.Read(ctx, selected) })
+		readings, err = collect.Run(ctx, cycle, s.cycleKey, func(ctx context.Context) ([]pcisource.Reading, error) { return read(ctx, selected) })
 	}
 	if err != nil {
 		for _, signal := range selected {

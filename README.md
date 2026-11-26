@@ -187,7 +187,7 @@ The verdict JSON is a versioned contract. [`catalog/health/node-verdict.schema.j
 Sensor.Measure() --> []Measurement --> Catalog.EvaluateAll() --> NodeVerdict
 ```
 
-Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The CLI reads GPUs and NVLink through DCGM and NVML, CPU through Linux sysfs, and Xid and RDMA link flap through the kernel journal, all as `collect` sensors whose observations the toolkit adapts into measurements. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
+Sensors collect typed measurements from hardware. A sensor can produce one measurement per device or one host-wide measurement. The CLI reads GPUs and NVLink through DCGM and NVML, CPU and PCIe link capabilities through Linux sysfs, and Xid and RDMA link flap through the kernel journal, all as `collect` sensors whose observations the toolkit adapts into measurements. Sensors that cannot observe their source return an errored measurement rather than failing the whole run; the catalog decides per-check whether to surface an UNKNOWN verdict or skip.
 
 The CPU sensor counts the logical CPUs in `/sys/devices/system/cpu/possible` and `/sys/devices/system/cpu/online`, and the NUMA nodes in `/sys/devices/system/node/online`. The `cpu_count` check requires no operator configuration and reports CRITICAL when a kernel-possible CPU is not online. It assumes the target platform does not advertise intentionally unused CPU hotplug capacity and does not validate an exact VM or machine-SKU count, process affinity, or cgroup CPU limits.
 
@@ -229,6 +229,7 @@ The catalog includes these check families:
 | `nvlink_bandwidth_count_speed` | nvlink | Per-GPU NVLink count and per-link speed | `expected_link_count`, `expected_speed_mbytes_per_sec` |
 | `nvlink_capabilities` | nvlink | Whether each GPU reports its expected NVLink capabilities | None |
 | `nvlink_p2p` | nvlink | Peer GPUs reachable over NVLink P2P | `max_unhealthy_p2p_peers` |
+| `gpu_pcie_max_link` | pcie | Whether each GPU's maximum PCIe width matches exactly and its maximum generation meets the minimum | `expected_pcie_max_link_width`, `expected_pcie_max_link_generation` |
 | `rdma_linkflap_fatal` | infiniband | mlx5 RDMA link outages that stayed down past a window | `min_outage_seconds`, `fatal_flap_threshold` |
 | `ib_port_state` | infiniband | Whether every InfiniBand or RoCE port is ACTIVE with its link up. Experimental: off unless enabled | `excluded_link_layers`, `expected_ib_state`, `expected_ib_physical_state` |
 | `gpu_xid_<code>` | xid | One check per Xid code seen in the journal, with catalog-defined severity and action | `occurrences`; Xids 144–150 use `fatal_occurrences`, `nonfatal_occurrences` |
@@ -236,6 +237,12 @@ The catalog includes these check families:
 | `gpu_xid_154` | xid | The recovery action Xid 154 last reported per GPU (CRITICAL for a reset, reboot, or P2P drain; WARNING for an action the catalog does not map or an unreadable transition; INFO for none; `occurrences` counts reports per action) | `occurrences` |
 | `gpu_xid_informational` | xid | A logged Xid code that NVIDIA's Xid catalog marks Unused, IGNORE or gives no resolution, and no registered check covers (INFO, no action) | `occurrences` |
 | `gpu_xid_unknown` | xid | A logged Xid code that no registered check covers and that is not informational (WARNING, monitor) | `occurrences` |
+
+The PCIe check runs in both `OPERATOR_INFRA` and `TENANT_GUEST`. It checks
+maximum capabilities. PCI sysfs supplies the link values, and NVML supplies
+GPU identity. Missing readings or GPU bus IDs report UNKNOWN. The `collect`
+output uses `pcie.max_link_width` and `pcie.max_link_generation`, with unsupported
+values represented as `NoValue` / `NOT_SUPPORTED`.
 
 Each check definition carries:
 
@@ -262,7 +269,7 @@ Warning-class Xids are individual `gpu_xid_<code>` checks.
 
 - go 1.27.3
 - Linux sysfs exposing `/sys/devices/system/cpu/{possible,online}` and `/sys/devices/system/node/online` (required for CPU collection)
-- NVIDIA driver with NVML (libnvidia-ml), for GPU inventory, compute processes, and NVLink (not required if you supply measurements directly)
+- NVIDIA driver with NVML (libnvidia-ml), for GPU inventory, compute processes, NVLink, and PCIe device matching (not required if you supply measurements directly)
 - For the CLI's GPU power, power-limit, pstate, and throttle checks, and `nvlink_fabric`: a running DCGM hostengine (`nv-hostengine`) on the node and the DCGM 4 client library (`libdcgm.so.4`). Without them those checks fail with a collection error.
 
 OS: Linux (x86_64, aarch64). CPU collection reads sysfs directly without sudo or an external executable. The toolkit GPU sensor is Linux-only; the catalog package compiles and runs on any platform.

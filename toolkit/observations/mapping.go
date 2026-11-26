@@ -25,12 +25,14 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
+	pcisignals "github.com/dsx-ai-factory/health-validation/collect/signals/pci"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 )
@@ -49,6 +51,8 @@ type mapping struct {
 	// unit, when set, is the unit the observation must carry.
 	unit    string
 	catalog []string
+	// derived lists additional check inputs computed by the measurement.
+	derived []string
 	// unsupportedIsNeutral leaves the fields at their zero value, marked
 	// unsupported, when the source reports the signal unsupported, instead
 	// of failing the checks that read them.
@@ -64,6 +68,8 @@ var mappings = []mapping{
 	{signal: cpusignals.OnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalOnlineCPUCount}, unit: "1"},
 	{signal: cpusignals.NUMANodeOnlineCount, measurement: cpu.CPUMeasurement{}, catalog: []string{cpu.SignalNUMANodeCount}, unit: "1"},
 	{signal: gpuinventory.GPUCount, measurement: node.NodeMeasurement{}, catalog: []string{node.SignalGPUCount}, unit: "1"},
+	{signal: pcisignals.MaxLinkWidth, unsupportedIsNeutral: true, measurement: pcie.PCIeMeasurement{}, catalog: []string{pcie.SignalPCIeMaxLinkWidth}, derived: []string{pcie.SignalPCIeMaxLinkWidthSupported}, unit: "1"},
+	{signal: pcisignals.MaxLinkGeneration, unsupportedIsNeutral: true, measurement: pcie.PCIeMeasurement{}, catalog: []string{pcie.SignalPCIeMaxLinkGeneration}, derived: []string{pcie.SignalPCIeMaxLinkGenerationSupported}, unit: "1"},
 	// An average only on some architectures (instantaneous on GA100 and
 	// older); the CLI's GPU adapter turns other readings into NOT_SUPPORTED.
 	{signal: gpusignals.PowerDraw, measurement: gpu.GPUMeasurement{}, catalog: []string{gpu.SignalAveragePowerDrawW}, unit: "watts"},
@@ -180,7 +186,7 @@ func MappedSignalsFor(category health.Category) []string {
 func MappedFeeds(category health.Category) map[string][]string {
 	feeds := make(map[string][]string)
 	for _, mapped := range mappingsFor(category) {
-		feeds[mapped.signal.ID()] = slices.Clone(mapped.catalog)
+		feeds[mapped.signal.ID()] = slices.Concat(mapped.catalog, mapped.derived)
 	}
 	for _, family := range canonicalFamilies {
 		if family.category != category {

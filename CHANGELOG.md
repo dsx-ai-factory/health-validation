@@ -5,6 +5,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Features
+
+- Add `gpu_pcie_max_link` to check each GPU's maximum PCIe width and
+  minimum generation in operator and guest contexts. The CLI matches PCI
+  sysfs readings to the GPU inventory. Missing data reports UNKNOWN, and
+  explicitly unsupported capabilities retain their status when exported and
+  replayed. Consumers replacing the built-in PCI signals
+  `pci.link.width.max` and `pci.link.generation.max` claim them with
+  `WithCollect`. ([#279](https://github.com/dsx-ai-factory/health-validation/pull/279))
+
 ## [v0.4.0] - 2026-11-25
 
 Covers everything since `catalog/v0.3.2` and `toolkit/v0.3.2`. Build, CI,

@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package pciaddr parses and formats a GPU's PCI address in the form the
-// driver prints in Xid lines.
+// Package pciaddr parses PCI addresses for device matching and Xid lookup.
 package pciaddr
 
 import (
@@ -27,6 +26,20 @@ func Normalize(s string) string {
 		return addr.String()
 	}
 	return s
+}
+
+// NormalizeBDF canonicalizes a PCI address while preserving the function.
+// An address without a function refers to function 0. Invalid addresses return an empty string.
+func NormalizeBDF(s string) string {
+	device, function, present := strings.Cut(s, ".")
+	if !present {
+		function = "0"
+	}
+	address, ok := Parse(device)
+	if !ok || len(function) != 1 || function[0] < '0' || function[0] > '7' {
+		return ""
+	}
+	return address.String() + "." + function
 }
 
 // Parse reads "dddd:bb:dd" with a domain of 4 to 8 hex digits.

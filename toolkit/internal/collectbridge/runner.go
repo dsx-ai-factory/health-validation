@@ -22,8 +22,11 @@ import (
 
 // Binding captures adapter metadata and callbacks for one collection run.
 type Binding struct {
-	Build    func([]*observation.Observation) []health.Measurement
-	Errored  func(error) []health.Measurement
+	Build   func([]*observation.Observation) []health.Measurement
+	Errored func(error) []health.Measurement
+
+	// Prepare performs any additional bounded collection before Build's watchdog starts.
+	Prepare  func([]*observation.Observation) []*observation.Observation
 	Name     string
 	Signals  []string
 	Category health.Category
@@ -251,17 +254,22 @@ func collectFailure(s collect.Signal, source string, err error) *observation.Obs
 	return o
 }
 
-// Sensor exposes a binding through the toolkit's collection interface. Its
-// Measure reads batches cached by [Runner.Collect].
+// Sensor exposes a binding through the toolkit's collection interface.
+// Preparation uses the cached observations from [Runner.Collect].
 func (r *Runner) Sensor(binding Binding) *Sensor {
 	binding.Signals = slices.Clone(binding.Signals)
-	return &Sensor{runner: r, binding: binding}
+	s := &Sensor{runner: r, binding: binding}
+	if binding.Prepare != nil {
+		s.prepared = &observation.ObservationBatch{Observations: binding.Prepare(r.Observe(binding.Signals...))}
+	}
+	return s
 }
 
 // Sensor adapts cached observations to the toolkit collection interface.
 type Sensor struct {
-	runner  *Runner
-	binding Binding
+	runner   *Runner
+	prepared *observation.ObservationBatch
+	binding  Binding
 }
 
 func (s *Sensor) Name() string { return s.binding.Name }
@@ -270,6 +278,9 @@ func (s *Sensor) Name() string { return s.binding.Name }
 func (s *Sensor) Category() health.Category { return s.binding.Category }
 
 func (s *Sensor) Measure(context.Context) ([]health.Measurement, error) {
+	if s.prepared != nil {
+		return s.binding.Build(proto.CloneOf(s.prepared).GetObservations()), nil
+	}
 	return s.binding.Build(s.runner.Observe(s.binding.Signals...)), nil
 }
 

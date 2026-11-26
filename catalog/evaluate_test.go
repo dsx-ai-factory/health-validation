@@ -16,6 +16,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/health"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 )
 
@@ -1286,6 +1287,7 @@ func TestEvaluateAll_LostGPUNamesGPUCount(t *testing.T) {
 		node.NodeMeasurement{GPUCount: 3},
 		healthyGPU("GPU-0"), healthyGPU("GPU-1"), healthyGPU("GPU-2"),
 		gpu.ErroredGPU("", cause, gpu.MeasurementSignals()...),
+		pcie.ErroredPCIe("", cause),
 		nvlink.NVLinkMeasurement{GPUID: "GPU-0"},
 		nvlink.ErroredNVLink("", cause, nvlink.MeasurementSignals()...),
 	)
@@ -1307,7 +1309,7 @@ func TestEvaluateAll_LostGPUNamesGPUCount(t *testing.T) {
 		}
 	}
 	for _, id := range []string{
-		"gpu_average_power_draw", "gpu_power_limit", "gpu_performance_state", "gpu_sensor_throttle",
+		"gpu_average_power_draw", "gpu_pcie_max_link", "gpu_power_limit", "gpu_performance_state", "gpu_sensor_throttle",
 		"nvlink_active", "nvlink_bandwidth_count_speed", "nvlink_capabilities",
 		"nvlink_fabric", "nvlink_fabric_health", "nvlink_p2p",
 	} {

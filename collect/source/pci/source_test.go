@@ -188,3 +188,139 @@ func TestACSAfterPlaceholder(t *testing.T) {
 		}
 	}
 }
+
+// TestReadGPUsFiltersDeviceTypes excludes NICs and other vendors before link reads.
+func TestReadGPUsFiltersDeviceTypes(t *testing.T) {
+	files := fstest.MapFS{
+		Root + "/0000:01:00.0/class":          {Data: []byte("0x030200")},
+		Root + "/0000:01:00.0/vendor":         {Data: []byte("0x10de")},
+		Root + "/0000:01:00.0/max_link_width": {Data: []byte("16")},
+		Root + "/0000:02:00.0/class":          {Data: []byte("0x020000")},
+		Root + "/0000:03:00.0/class":          {Data: []byte("0x030000")},
+		Root + "/0000:03:00.0/vendor":         {Data: []byte("0x1002")},
+	}
+	readings, err := New(files).ReadGPUs(context.Background(), collect.Signals{pcisignals.MaxLinkWidth})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(readings) != 1 {
+		t.Fatalf("got %d readings, want one NVIDIA GPU", len(readings))
+	}
+	if readings[0].Target.GetPci().GetAddress() != "0000:01:00.0" || readings[0].Failure != nil {
+		t.Fatalf("GPU reading = %+v", readings[0])
+	}
+}
+
+// TestReadGPUsClassificationFailureIsPerDevice preserves readings before and after a malformed device.
+func TestReadGPUsClassificationFailureIsPerDevice(t *testing.T) {
+	for _, tc := range []struct{ name, field, value string }{
+		{"malformed class", "class", "invalid"},
+		{"missing class", "class", ""},
+		{"malformed vendor", "vendor", "invalid"},
+		{"missing vendor", "vendor", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := make(fstest.MapFS)
+			for _, address := range []string{"0000:01:00.0", "0000:02:00.0", "0000:03:00.0"} {
+				base := Root + "/" + address + "/"
+				for field, value := range map[string]string{"class": "0x030200", "vendor": "0x10de", "max_link_width": "16", "max_link_speed": "32.0 GT/s PCIe"} {
+					files[base+field] = &fstest.MapFile{Data: []byte(value)}
+				}
+			}
+			bad := Root + "/0000:02:00.0/" + tc.field
+			if tc.value == "" {
+				delete(files, bad)
+			} else {
+				files[bad] = &fstest.MapFile{Data: []byte(tc.value)}
+			}
+			readings, err := New(files).ReadGPUs(context.Background(), collect.Signals{pcisignals.MaxLinkWidth, pcisignals.MaxLinkGeneration})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(readings) != 6 {
+				t.Fatalf("got %d readings, want 6", len(readings))
+			}
+			pairs := pciReadingPairs(t, readings, []string{"0000:01:00.0", "0000:02:00.0", "0000:03:00.0"}, collect.Signals{pcisignals.MaxLinkWidth, pcisignals.MaxLinkGeneration})
+			for key, reading := range pairs {
+				if key[0] == "0000:02:00.0" {
+					if reading.Failure == nil || reading.Value != nil || reading.NoValue != nil {
+						t.Fatalf("unclassified device reading = %+v, want failure", reading)
+					}
+				} else {
+					want := uint64(16)
+					if key[1] == pcisignals.MaxLinkGeneration.ID() {
+						want = 5
+					}
+					if reading.Failure != nil || reading.Value == nil || reading.NoValue != nil || reading.Value.GetUintValue() != want {
+						t.Fatalf("healthy device %v reading = %+v, want %d", key, reading, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+// pciReadingPairs requires exactly one reading for each expected device and signal.
+func pciReadingPairs(t *testing.T, readings []Reading, addresses []string, signals collect.Signals) map[[2]string]Reading {
+	t.Helper()
+	expected := make(map[[2]string]bool)
+	for _, address := range addresses {
+		for _, signal := range signals {
+			expected[[2]string{address, signal.ID()}] = true
+		}
+	}
+	pairs := make(map[[2]string]Reading)
+	for _, reading := range readings {
+		key := [2]string{reading.Target.GetPci().GetAddress(), reading.Signal.ID()}
+		if !expected[key] {
+			t.Fatalf("unexpected or duplicate reading for %v", key)
+		}
+		delete(expected, key)
+		pairs[key] = reading
+	}
+	if len(expected) != 0 {
+		t.Fatalf("missing PCI readings: %v", expected)
+	}
+	return pairs
+}
+
+type observingPCIFS struct {
+	fs.FS
+	onOpen func(string)
+}
+
+// Open observes filesystem accesses before forwarding them to the fixture.
+func (f observingPCIFS) Open(name string) (fs.File, error) {
+	f.onOpen(name)
+	return f.FS.Open(name)
+}
+
+// TestReadGPUsCancellationStopsClassification checks cancellation during a
+// non-GPU scan, including cancellation on the last enumerated device.
+func TestReadGPUsCancellationStopsClassification(t *testing.T) {
+	for _, addresses := range [][]string{{"0000:01:00.0"}, {"0000:01:00.0", "0000:02:00.0"}} {
+		files := make(fstest.MapFS)
+		for _, address := range addresses {
+			files[Root+"/"+address+"/class"] = &fstest.MapFile{Data: []byte("0x020000")}
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		opened := 0
+		source := New(observingPCIFS{FS: files, onOpen: func(name string) {
+			for _, address := range addresses {
+				if name == Root+"/"+address+"/class" {
+					opened++
+					cancel()
+				}
+			}
+		}})
+		readings, err := source.ReadGPUs(ctx, collect.Signals{pcisignals.MaxLinkWidth})
+		if !errors.Is(err, context.Canceled) || len(readings) != 0 || opened != 1 {
+			t.Fatalf("readings=%v err=%v class reads=%d", readings, err, opened)
+		}
+		readings, err = New(files).ReadGPUs(context.Background(), collect.Signals{pcisignals.MaxLinkWidth})
+		if err != nil || len(readings) != 1 || readings[0].NoValue.GetReason() != observation.NoValueReasonNoTargets {
+			t.Fatalf("completed NIC scan=%v, %v", readings, err)
+		}
+	}
+}

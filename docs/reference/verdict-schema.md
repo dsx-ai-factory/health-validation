@@ -215,7 +215,7 @@ Category groups related checks by the hardware or interconnect domain they monit
 |---|---|---|
 | <nobr>`GPU`</nobr> | <nobr>`gpu`</nobr> | GPU covers GPU device health: driver-reported events (XID), thermal state, driver status, power, and clock behavior. |
 | <nobr>`NVLink`</nobr> | <nobr>`nvlink`</nobr> | NVLink covers NVLink interconnect health: replay counters, link errors, and fabric state. |
-| <nobr>`PCIe`</nobr> | <nobr>`pcie`</nobr> | PCIe covers PCI Express bus health: link width, speed degradation, and error counters. |
+| <nobr>`PCIe`</nobr> | <nobr>`pcie`</nobr> | PCIe covers PCI Express link capabilities. The registered GPU check validates maximum width and generation, not negotiated speed or error counters. |
 | <nobr>`InfiniBand`</nobr> | <nobr>`infiniband`</nobr> | InfiniBand covers InfiniBand network health: port state, error rates, and link integrity. |
 | <nobr>`Storage`</nobr> | <nobr>`storage`</nobr> | Storage covers storage health in NVIDIA-validated configurations: NVMe state, SMART counters. |
 | <nobr>`Node`</nobr> | <nobr>`node`</nobr> | Node covers host-wide GPU-system signals that are not bound to any single device — GPU count, driver version, and similar inventory checks. |

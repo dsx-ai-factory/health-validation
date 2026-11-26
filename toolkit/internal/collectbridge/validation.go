@@ -15,6 +15,7 @@ import (
 	cpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/cpu"
 	gpusignals "github.com/dsx-ai-factory/health-validation/collect/signals/gpu"
 	ibsignals "github.com/dsx-ai-factory/health-validation/collect/signals/infiniband"
+	pcisignals "github.com/dsx-ai-factory/health-validation/collect/signals/pci"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
 	"github.com/dsx-ai-factory/health-validation/toolkit/internal/gpuinventory"
 	"google.golang.org/protobuf/proto"
@@ -22,6 +23,7 @@ import (
 
 // Target kinds a canonical signal's observations may describe.
 const (
+	targetPCI            = "PCI"
 	targetNode           = "node"
 	targetGPU            = "GPU"
 	targetNVLinkEndpoint = "NVLink endpoint"
@@ -45,6 +47,7 @@ const (
 // per run, so the ID is not part of a measurement's identity. Output that must
 // name the node stamps the run's node ID, as observations.FromMeasurements does.
 var canonicalTargets = []canonicalTarget{
+	{kind: targetPCI, signals: collect.Signals{pcisignals.MaxLinkWidth, pcisignals.MaxLinkGeneration}},
 	{kind: targetGPU, signals: gpusignals.All()},
 	{kind: targetNode, signals: cpusignals.All()},
 	{kind: targetNode, signals: collect.Signals{gpuinventory.GPUCount}},
@@ -86,6 +89,8 @@ func canonicalIndex(entries []canonicalTarget) map[string]canonicalRule {
 // targetKind names the kind of a typed target, or "" for none.
 func targetKind(target *observation.ObservationTarget) string {
 	switch target.GetKind().(type) {
+	case *observation.ObservationTarget_PCI:
+		return targetPCI
 	case *observation.ObservationTarget_Node:
 		return targetNode
 	case *observation.ObservationTarget_GPU:
@@ -217,7 +222,7 @@ func validateCollectObservation(o *observation.Observation, s collect.Signal) er
 	case *observation.Observation_NoValue:
 		switch outcome.NoValue.GetReason() {
 		case observation.NoValueReasonNoTargets:
-			if o.GetTarget() != nil && !parentOutcome(o, s) {
+			if o.GetTarget() != nil && !parentOutcome(o, s) && !pciSourceOutcome(o, canonical[s.ID()]) {
 				return fmt.Errorf("NO_TARGETS must be source-scoped or identify an entity family's parent (a GPU, or an InfiniBand device)")
 			}
 		case observation.NoValueReasonNotSupported:
@@ -230,7 +235,7 @@ func validateCollectObservation(o *observation.Observation, s collect.Signal) er
 	default:
 		return fmt.Errorf("observation outcome is required")
 	}
-	if rule, ok := canonical[s.ID()]; ok && o.GetTarget() != nil && targetKind(o.GetTarget()) != rule.target && !parentOutcome(o, s) {
+	if rule, ok := canonical[s.ID()]; ok && o.GetTarget() != nil && targetKind(o.GetTarget()) != rule.target && !parentOutcome(o, s) && !pciSourceOutcome(o, rule) {
 		return fmt.Errorf("signal %q requires a %s target", s.ID(), rule.target)
 	}
 	return nil
@@ -293,4 +298,9 @@ func parentOutcome(o *observation.Observation, s collect.Signal) bool {
 		return false
 	}
 	return targetKind(o.GetTarget()) == parent && (o.GetCollectionError() != nil || o.GetNoValue() != nil)
+}
+
+// pciSourceOutcome permits node-scoped PCI failures when enumeration cannot identify a device.
+func pciSourceOutcome(o *observation.Observation, rule canonicalRule) bool {
+	return rule.target == targetPCI && targetKind(o.GetTarget()) == targetNode && (o.GetCollectionError() != nil || o.GetNoValue().GetReason() == observation.NoValueReasonNoTargets)
 }

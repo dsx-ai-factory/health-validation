@@ -19,6 +19,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 )
@@ -85,6 +86,7 @@ func TestFromMeasurementsExportsEveryField(t *testing.T) {
 	for _, m := range []health.Measurement{
 		gpu.GPUMeasurement{GPUID: "GPU-0"},
 		nvlink.NVLinkMeasurement{GPUID: "GPU-0"},
+		pcie.PCIeMeasurement{GPUID: "GPU-0"},
 		cpu.CPUMeasurement{},
 		node.NodeMeasurement{},
 		xid.XidMeasurement{},

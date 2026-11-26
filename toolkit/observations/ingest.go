@@ -19,6 +19,7 @@ import (
 	"github.com/dsx-ai-factory/health-validation/catalog/infiniband"
 	"github.com/dsx-ai-factory/health-validation/catalog/node"
 	"github.com/dsx-ai-factory/health-validation/catalog/nvlink"
+	"github.com/dsx-ai-factory/health-validation/catalog/pcie"
 	"github.com/dsx-ai-factory/health-validation/catalog/xid"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
 	xidsignals "github.com/dsx-ai-factory/health-validation/collect/signals/xid"
@@ -59,6 +60,10 @@ var errNoObservation = errors.New("no observation was collected for these signal
 // or fed twice, is reported failed rather than left at its zero value, so
 // its checks cannot pass on data that was never collected. A domain with no
 // observations yields no measurement, so its checks are skipped as missing.
+//
+// PCIe observations must already identify a GPU by UUID or source-local slot.
+// PCI targets are rejected: callers resolve PCI addresses using their inventory
+// before conversion, as the stock CLI's PCIe adapter does.
 func ToMeasurements(observations []*observation.Observation) []health.Measurement {
 	b := &builder{entities: make(map[entityKey]*entity), schemas: schemas()}
 	var xidObservations, linkFlapObservations []*observation.Observation
@@ -114,6 +119,7 @@ func withCanonical(out, canonical []health.Measurement, failed func(error) healt
 // <domain>.<field> signal still identifies its type.
 var measurementTypes = []health.Measurement{
 	gpu.GPUMeasurement{},
+	pcie.PCIeMeasurement{},
 	nvlink.NVLinkMeasurement{},
 	cpu.CPUMeasurement{},
 	node.NodeMeasurement{},
@@ -220,8 +226,7 @@ func schemaForField(domain, field string) *schema {
 // neutralFields returns the <domain>.<field> signals whose unsupported
 // NoValue leaves the field at its zero value: the catalog fields of the
 // mapped signals marked unsupportedIsNeutral, which are the signals the
-// toolkit's sensors treat as neutral. Any other unsupported field fails, so
-// a batch from another producer cannot pass a check on a missing value.
+// toolkit's sensors treat as neutral. Other unsupported fields fail collection on replay.
 var neutralFields = sync.OnceValue(func() map[string]bool {
 	out := make(map[string]bool)
 	for _, mapped := range mappings {

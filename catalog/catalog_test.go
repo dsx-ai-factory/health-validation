@@ -130,6 +130,7 @@ func TestCatalog_B300Coverage(t *testing.T) {
 		"gpu_average_power_draw",
 		"gpu_compute_apps",
 		"gpu_count",
+		"gpu_pcie_max_link",
 		"gpu_performance_state",
 		"gpu_sensor_throttle",
 		"nvlink_active",
