@@ -821,7 +821,7 @@ func TestVerdictServesSchemaOverReflection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := stream.Send(&reflectionv1.ServerReflectionRequest{MessageRequest: &reflectionv1.ServerReflectionRequest_FileContainingSymbol{FileContainingSymbol: "health.verdict.v1.VerdictService"}}); err != nil {
+	if err = stream.Send(&reflectionv1.ServerReflectionRequest{MessageRequest: &reflectionv1.ServerReflectionRequest_FileContainingSymbol{FileContainingSymbol: "health.verdict.v1.VerdictService"}}); err != nil {
 		t.Fatal(err)
 	}
 	response, err := stream.Recv()
