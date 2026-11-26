@@ -533,6 +533,10 @@ Changes to behavior and APIs outside the
 - `nvlink_bandwidth_count_speed` names an inactive link as the reason a speed
   could not be read, instead of reporting a bare read failure.
   ([#292](https://github.com/dsx-ai-factory/health-validation/pull/292))
+- `rdma_linkflap_fatal` no longer pairs a repeated `Link down` with the `Link
+  up` of a later, separate outage, or counts a repeated `Link up` as a second
+  outage. Either could turn short flaps into a long outage and a false
+  CRITICAL. ([#321](https://github.com/dsx-ai-factory/health-validation/pull/321))
 
 ## [catalog/v0.3.2] and [toolkit/v0.3.2] - 2026-11-05
 
