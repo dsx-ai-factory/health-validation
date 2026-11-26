@@ -36,6 +36,13 @@ a `NodeVerdict`. Generate clients from
 Generated Go types are in
 `github.com/dsx-ai-factory/health-validation/proto/go/health/v1`.
 
+The gRPC server also serves [gRPC reflection](https://grpc.io/docs/guides/reflection/)
+(`grpc.reflection.v1`). A client can read the verdict schema from the running
+service instead of keeping a copy of `verdict.proto`, for example `grpcurl
+-plaintext 127.0.0.1:8080 describe health.verdict.v1.VerdictService`. The
+schema it returns is the one of the build that is running, so a client that
+reads it never differs from the service it calls.
+
 The default address is `127.0.0.1:8080`. The listener requires a numeric loopback
 IP such as `127.0.0.1` or `::1`. Wildcard addresses, remote IPs, and hostnames
 are rejected. Callers must share the service's network namespace. This version

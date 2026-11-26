@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	reflectionv1 "google.golang.org/grpc/reflection/grpc_reflection_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -800,5 +801,35 @@ func TestClassificationClearsWriteDeadlineForBothProtocols(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+// A client can read the verdict schema from the server through gRPC reflection,
+// including the files the verdict proto imports.
+func TestVerdictServesSchemaOverReflection(t *testing.T) {
+	address, _, _ := startVerdictServer(t, func(context.Context, *healthv1.EvaluateRequest) (*healthv1.NodeVerdict, error) {
+		return testVerdict(t), nil
+	})
+	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	ctx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stop()
+	stream, err := reflectionv1.NewServerReflectionClient(connection).ServerReflectionInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = stream.Send(&reflectionv1.ServerReflectionRequest{MessageRequest: &reflectionv1.ServerReflectionRequest_FileContainingSymbol{FileContainingSymbol: "health.verdict.v1.VerdictService"}}); err != nil {
+		t.Fatal(err)
+	}
+	response, err := stream.Recv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := response.GetFileDescriptorResponse().GetFileDescriptorProto()
+	if len(files) < 2 {
+		t.Fatalf("reflection returned %d files, want the verdict file and its imports", len(files))
 	}
 }
