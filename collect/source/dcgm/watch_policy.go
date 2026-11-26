@@ -17,7 +17,9 @@ const (
 
 // WatchPolicy configures DCGM sampling intervals for a source. The policy is
 // copied during construction; changing it afterward does not reconfigure a
-// running source. Intervals must be positive whole microseconds.
+// running source. Intervals must be positive whole microseconds. Other native
+// watches for the same entity and field, including health watches, can cause
+// DCGM to sample faster than these requests.
 type WatchPolicy struct {
 	// SignalIntervals overrides DefaultInterval by canonical signal ID.
 	// When signals share a native field, its fastest requested interval wins.

@@ -7,7 +7,7 @@
 | <nobr>`catalog/health`</nobr> | Shared vocabulary and node-verdict aggregation. Defines all domain types: `CheckDefinition`, `CheckVerdict`, `NodeVerdict`, the `Measurement` interface, and all enums. It depends on the module's leaf `internal/version` package for verdict provenance and does not import check-domain or evaluation packages. |
 | <nobr>`catalog`</nobr> | Check registry and evaluation entry point. `Catalog` is a thread-safe registry that holds check definitions and exposes `EvaluateAll(measurements...)` plus per-run configuration through `EvaluateAllWithOptions`. Built-in checks are registered in `checks.go`. |
 | <nobr>`catalog/cpu`</nobr> | `cpu.CPUMeasurement` and the host-wide `CPUCount` and `NUMANodeCount` check definitions. |
-| <nobr>`catalog/gpu`</nobr> | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPowerState` check definitions. |
+| <nobr>`catalog/gpu`</nobr> | `gpu.GPUMeasurement` struct consumed by GPU-category checks, plus the `GPUPowerLimit` and `GPUPerformanceState` check definitions. |
 | <nobr>`catalog/node`</nobr> | `node.NodeMeasurement` struct and the node-level `GPUCount` check definition. |
 | <nobr>`catalog/nvlink`</nobr> | `nvlink.NVLinkMeasurement` struct and its NVLink check definitions (`NVLinkActive`, `NVLinkFabricHealth`, `NVLinkFabric`, `NVLinkBandwidthCountSpeed`, `NVLinkCapabilities`, `NVLinkP2P`). |
 | <nobr>`catalog/infiniband`</nobr> | `infiniband.LinkFlapMeasurement` (journal link flaps) with the `RDMALinkFlapFatal` check, and `infiniband.PortMeasurement` (one sysfs port) with the `PortState` check; the two types share category `infiniband` with disjoint signals. |
@@ -86,6 +86,8 @@ The bridge is the production adapter layer between `collect` and the catalog. Ex
 | <nobr>`catalog.WithDriverVersion(v)`</nobr> | Records the host's NVIDIA driver version (a `health.DriverVersion`) for derived signals that depend on it. Leave it unset when the version is unknown. |
 | <nobr>`catalog.WithExecutionContext(health.OperatorInfra)`</nobr> | Checks that don't list this context are skipped with `SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL`. |
 | <nobr>`catalog.WithDisabledChecks("check_id", ...)`</nobr> | Named checks are skipped with `CHECK_DISABLED`. Built from a config file's `disabled_checks:` via `Config.DisabledCheckIDs()`. |
+| <nobr>`catalog.WithExperimentalChecks("check_id", ...)`</nobr> | Enables the named experimental checks. An experimental check is otherwise skipped with `CHECK_DISABLED`; naming a stable check has no effect. Built from a config file's `experimental.checks:` via `Config.ExperimentalCheckIDs()`. |
+| <nobr>`catalog.WithAllExperimentalChecks()`</nobr> | Enables every experimental check. Built from a config file's `experimental.enabled: true`. |
 | <nobr>`catalog.WithOverrides(overrides)`</nobr> | Applies operator threshold overrides. Built from a config file via `Config.Overrides()`. |
 
 Scheduling cadence is not a construction option. Set `Cadence` in per-run `catalog.EvaluationOptions` or `toolkit.CollectionOptions`; either zero value evaluates every registered check, and zero-value collection options also use the default timeout. Checks outside the requested window are reported with `CADENCE_MISMATCH`. One catalog can serve Continuous, Prolog, and Maintenance windows.
@@ -170,7 +172,7 @@ Severity is ordered PASS < INFO < WARNING < UNKNOWN < CRITICAL.
 | NOT_SKIPPED | The check ran normally. |
 | SIGNAL_UNAVAILABLE_ARCHITECTURE | The check does not apply to this GPU architecture. |
 | SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL | The check requires a different execution context. |
-| CHECK_DISABLED | An operator disabled this check. |
+| CHECK_DISABLED | An operator disabled this check, or it is experimental and was not enabled. |
 | INSUFFICIENT_HISTORY | Time-window data has not yet accumulated. Applies only to checks that evaluate over a window; no currently registered check uses it. |
 | CADENCE_MISMATCH | The check is not scheduled for the requested `--cadence` window. |
 | THRESHOLD_UNCONFIGURED | A threshold the operator must supply was not configured. |

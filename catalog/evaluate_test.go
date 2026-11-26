@@ -217,6 +217,12 @@ func TestEvaluateAll_AbsentCategoryChecksSkipSensorMissing(t *testing.T) {
 					v.CheckID, v.SkipDetail)
 			}
 		case health.DeploymentUnsupported:
+		case health.CheckDisabled:
+			// Nothing here is disabled by the operator, so this is the
+			// experimental gate, decided before any sensor question.
+			if cd, err := cat.Get(v.CheckID); err != nil || cd.MaturityLevel != health.Experimental {
+				t.Errorf("CheckID %q skipped CHECK_DISABLED but is not an experimental check", v.CheckID)
+			}
 		default:
 			t.Errorf("CheckID %q (category %v) skip reason = %v, want SENSOR_MISSING",
 				v.CheckID, v.Category, v.SkipReason)
@@ -1303,7 +1309,7 @@ func TestEvaluateAll_LostGPUNamesGPUCount(t *testing.T) {
 		}
 	}
 	for _, id := range []string{
-		"gpu_average_power_draw", "gpu_pcie_max_link", "gpu_power_limit", "gpu_power_state", "gpu_sensor_throttle",
+		"gpu_average_power_draw", "gpu_pcie_max_link", "gpu_power_limit", "gpu_performance_state", "gpu_sensor_throttle",
 		"nvlink_active", "nvlink_bandwidth_count_speed", "nvlink_capabilities",
 		"nvlink_fabric", "nvlink_fabric_health", "nvlink_p2p",
 	} {

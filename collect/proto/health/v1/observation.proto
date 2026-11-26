@@ -127,6 +127,8 @@ message ObservationTarget {
     FuseConnectionRef fuse_connection = 13;
     PstoreRecordRef pstore_record = 14;
     JournalEntryRef journal_entry = 15;
+    NvSwitchRef nv_switch = 16;
+    NativeEntityRef native_entity = 17;
   }
 }
 
@@ -139,6 +141,24 @@ message NodeRef {
 message GpuRef {
   string uuid = 1;
   string source_local_id = 2;
+  NativeEntityRef native = 3;
+  // Optional PCI address on this node; not a persistent hardware identity.
+  string bus_id = 4;
+}
+
+// NvSwitchRef retains native identity when a hardware UUID is unavailable.
+message NvSwitchRef {
+  string uuid = 1;
+  NativeEntityRef native = 2;
+}
+
+// NativeEntityRef names an entity within one node and source lifetime.
+// Kind and ID are interpreted within source, not as stable hardware identity.
+message NativeEntityRef {
+  // Required source namespace; numeric kinds and IDs may be zero or unknown.
+  string source = 1;
+  uint32 entity_kind = 2;
+  uint32 entity_id = 3;
 }
 
 // NvLinkEndpointRef identifies one local NVLink endpoint on a physical GPU.
@@ -224,7 +244,100 @@ message Value {
     string string_value = 3;
     bool bool_value = 4;
     uint64 uint_value = 5;
+    DcgmHealthReport dcgm_health_report = 6;
   }
+}
+
+// DcgmHealthReport preserves one Source health read and its coverage limitations.
+// An empty incident list means only that no incidents were reported.
+message DcgmHealthReport {
+  reserved 3, 4, 5, 6, 7, 12, 13, 14;
+  reserved "group_id", "entities", "native_group_overall_health", "incidents",
+      "monitored_since", "possibly_truncated", "entity_errors", "entity_results";
+
+  // Values match DCGM; unknown numeric results remain valid source data.
+  enum HealthResult {
+    PASS = 0;
+    WARN = 10;
+    FAIL = 20;
+  }
+
+  // Systems requested before target discovery; some may have no targets.
+  // This mask does not guarantee native support or sample coverage.
+  uint64 requested_systems = 2;
+  // Collection cycle that produced this report, including standalone reads.
+  string collection_id = 8;
+  // Requested systems with no relevant GPU or NVSwitch targets.
+  // Unrequested systems are excluded. This does not describe native support
+  // or sample coverage.
+  uint64 systems_without_targets = 10;
+  // Discovery failures without a specific target, keyed by one requested
+  // subsystem bit each. Usable members and their incidents may still be present.
+  // These systems are excluded from systems_without_targets.
+  map<uint64, CollectionError> system_errors = 11;
+  // Each native check keeps its entities, result, and history together.
+  repeated DcgmHealthGroupResult group_results = 15;
+}
+
+// DcgmHealthGroupResult describes the native check for one requested entity kind.
+message DcgmHealthGroupResult {
+  reserved 3;
+  reserved "group_id";
+
+  // DCGM entity kind: GPU=1 or NVSwitch=3; future native values remain valid.
+  uint32 entity_kind = 1;
+  // The requested health-system mask assigned to this group.
+  uint64 systems = 2;
+  // Absent when the check did not return a native result. Unknown values survive.
+  optional DcgmHealthReport.HealthResult native_overall_health = 4;
+  // First successful setup; later members may have less history. Not readiness.
+  google.protobuf.Timestamp monitored_since = 5;
+  // This group's incident limit may have been reached; the omitted count is unknown.
+  bool possibly_truncated = 6;
+  // Collection failure affecting this group's systems.
+  CollectionError collection_error = 7;
+  // Membership, findings, and collection errors from this group's read.
+  // Includes rejected targets and entities mentioned only in incidents.
+  repeated DcgmHealthEntityResult entity_results = 8;
+}
+
+// DcgmHealthEntityResult describes one entity without inferring a health verdict.
+message DcgmHealthEntityResult {
+  ObservationTarget entity = 1;
+  // Verified membership in this read's native group. Absent when a group
+  // failure prevented verification. Membership does not establish sample coverage.
+  optional bool group_member = 2;
+  repeated DcgmHealthIncident incidents = 3;
+  repeated DcgmHealthEntityError collection_errors = 4;
+}
+
+// DcgmHealthEntityError limits the enclosing entity's requested coverage.
+message DcgmHealthEntityError {
+  reserved 1;
+  reserved "entity";
+
+  // Requested systems affected by this target's failure.
+  uint64 systems = 2;
+  CollectionError error = 3;
+}
+
+// DcgmHealthIncident is source data, not a Health Validation verdict.
+// Native numeric values remain open to values added by newer DCGM versions.
+message DcgmHealthIncident {
+  reserved 5;
+  reserved "entity";
+
+  uint64 system = 1;
+  // Absent when the producer did not supply a native result.
+  optional DcgmHealthReport.HealthResult native_health = 2;
+  uint64 error_code = 3;
+  string message = 4;
+  // Metadata from the client library's dcgmGetErrorMeta, absent for unknown codes.
+  // These native numeric values are separate from the incident's health result
+  // and from Health Validation verdict severities.
+  optional uint32 native_error_severity = 6;
+  optional uint32 native_error_category = 7;
+  optional string suggestion = 8;
 }
 
 // CollectionError records why a signal could not be collected. It keeps the

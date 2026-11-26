@@ -258,6 +258,7 @@ func (p *Publisher) record(ctx context.Context, nv health.NodeVerdict) {
 			p.checkSkipped.Record(ctx, value, metric.WithAttributes(
 				attribute.String("check_id", s.checkID),
 				attribute.String("category", s.category.String()),
+				attribute.String("maturity_level", s.maturity.String()),
 				attribute.String("skip_reason", reason.String()),
 			))
 		}
@@ -288,6 +289,7 @@ type skipSummary struct {
 	reasons  map[health.SkipReason]struct{}
 	checkID  string
 	category health.Category
+	maturity health.MaturityLevel
 }
 
 // aggregateSkips folds a run's executed and skipped verdicts into one entry
@@ -307,6 +309,7 @@ func aggregateSkips(nv health.NodeVerdict) []skipSummary {
 				reasons:  map[health.SkipReason]struct{}{},
 				checkID:  cv.CheckID,
 				category: cv.Category,
+				maturity: cv.MaturityLevel,
 			}
 			byID[cv.CheckID] = s
 			order = append(order, cv.CheckID)

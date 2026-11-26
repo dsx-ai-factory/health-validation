@@ -66,16 +66,20 @@ func fixtureCases() []fixtureCase {
 		},
 		{name: "prolog cadence", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--cadence", "PROLOG"} }), exit: exitOK},
 		{name: "maintenance cadence", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--cadence", "MAINTENANCE"} }), exit: exitOK},
+		{name: "operator infra", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--execution-context", "OPERATOR_INFRA"} }), exit: exitOK},
 		{
-			name: "operator infra", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--execution-context", "OPERATOR_INFRA"} }), exit: exitOK,
-			skips: map[string]health.SkipReason{"gpu_compute_apps": health.DeploymentUnsupported},
+			name: "operator infra with a leftover compute process", node: with(healthyGB200(), func(f *nodeFixture) {
+				f.args = []string{"--execution-context", "OPERATOR_INFRA"}
+				f.gpus[1].cmdlines = []string{"/usr/bin/python bench.py"}
+			}), exit: exitUnhealthy,
+			want: []fixtureResult{{check: "gpu_compute_apps", severity: health.Critical, action: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired), entities: []string{"GPU-1"}}},
 		},
 		{
 			name: "override and disabled check", node: with(healthyGB200(), func(f *nodeFixture) {
-				f.config = "checks:\n  gpu_power_limit:\n    expected_power_limit_w: 1000\ndisabled_checks:\n  - gpu_power_state\n"
+				f.config = "checks:\n  gpu_power_limit:\n    expected_power_limit_w: 1000\ndisabled_checks:\n  - gpu_performance_state\n"
 			}), exit: exitUnhealthy,
 			want:  perGPU("gpu_power_limit", "GPU-0", "GPU-1", "GPU-2", "GPU-3"),
-			skips: map[string]health.SkipReason{"gpu_power_state": health.CheckDisabled},
+			skips: map[string]health.SkipReason{"gpu_performance_state": health.CheckDisabled},
 		},
 		{name: "Xid 79", node: xid(xid79Line), exit: exitUnhealthy, want: []fixtureResult{xid79}},
 		{name: "Xid 48", node: xid(xid48Line), exit: exitUnhealthy, want: []fixtureResult{xid48}},
@@ -96,7 +100,7 @@ func fixtureCases() []fixtureCase {
 				{check: "gpu_compute_apps", severity: health.Critical, action: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired), entities: []string{"GPU-3"}},
 			},
 			perGPU("gpu_power_limit", "GPU-3"),
-			perGPU("gpu_power_state", "GPU-2"),
+			perGPU("gpu_performance_state", "GPU-2"),
 			perGPU("gpu_sensor_throttle", "GPU-0", "GPU-1", "GPU-2"),
 			[]fixtureResult{{check: "numa_node_count", severity: health.Critical, action: hardware}},
 		)},
@@ -104,7 +108,7 @@ func fixtureCases() []fixtureCase {
 			{check: "gpu_count", severity: health.Critical, action: hardware},
 		}},
 		{name: "one GPU's pstate unreadable", node: with(healthyGB200(), func(f *nodeFixture) { f.gpus[2].pstateFails = true }), exit: exitUnhealthy, want: []fixtureResult{
-			{check: "gpu_power_state", severity: health.Unknown, action: collection, entities: []string{"GPU-2"}},
+			{check: "gpu_performance_state", severity: health.Unknown, action: collection, entities: []string{"GPU-2"}},
 		}},
 		{name: "inactive NVLink", node: with(healthyGB200(), func(f *nodeFixture) { f.gpus[1].inactive = 1 }), exit: exitUnhealthy, want: perGPU("nvlink_active", "GPU-1")},
 		{name: "fatal link flap", node: with(healthyGB200(), func(f *nodeFixture) { f.linkFlaps = []string{linkDown, linkUp} }), exit: exitUnhealthy, want: []fixtureResult{
@@ -130,6 +134,11 @@ var (
 	xid48    = fixtureResult{check: "gpu_xid_48", severity: health.Critical, action: resetGPU, entities: []string{"GPU-0"}}
 	xid79    = fixtureResult{check: "gpu_xid_79", severity: health.Critical, action: health.Drain(health.RemediationActionRestartOS, health.RemediationActionServiceRequired), entities: []string{"GPU-0"}}
 )
+
+// experimentalOffByDefault is the skip a GB200 or GB300 fixture reports
+// without a config that enables the experimental port check. Other
+// architectures report the architecture skip instead.
+var experimentalOffByDefault = map[string]health.SkipReason{"ib_port_state": health.CheckDisabled}
 
 // Each fixture node reports exactly its expected non-PASS results, passes
 // every other check it runs, and skips only checks its architecture, cadence,
@@ -165,8 +174,13 @@ func TestRunFixtureVerdicts(t *testing.T) {
 					skipped[s.CheckID] = s.SkipReason
 				}
 			}
-			if !maps.Equal(skipped, tc.skips) {
-				t.Errorf("skips = %v, want %v", skipped, tc.skips)
+			wantSkips := map[string]health.SkipReason{}
+			if strings.Contains(tc.node.model, "NVIDIA GB") {
+				wantSkips = maps.Clone(experimentalOffByDefault)
+			}
+			maps.Copy(wantSkips, tc.skips)
+			if !maps.Equal(skipped, wantSkips) {
+				t.Errorf("skips = %v, want %v", skipped, wantSkips)
 			}
 		})
 	}

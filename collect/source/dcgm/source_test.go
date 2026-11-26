@@ -24,26 +24,31 @@ var (
 )
 
 type fakeNative struct {
-	uuidErr           error
-	inventoryErr      error
-	enumerationErr    error
-	initErr           error
-	gpuUUIDs          map[uint]string
-	readStarted       chan struct{}
-	uuidStarted       chan struct{}
-	inventoryStarted  chan struct{}
-	inventory         map[uint]*observation.GPUDevice
-	inventoryEntries  map[uint]*observation.GPUInventoryEntry
-	releaseRead       chan struct{}
-	gpuIndices        []uint
-	enumerationCalls  atomic.Int32
-	cleanupCalls      atomic.Int32
-	initCalls         atomic.Int32
-	inventoryCalls    atomic.Int32
-	uuidCalls         atomic.Int32
-	readCalls         atomic.Int32
-	watchCleanupCalls atomic.Int32
-	watchCalls        atomic.Int32
+	healthEnumerationErr   error
+	uuidErr                error
+	inventoryErr           error
+	enumerationErr         error
+	initErr                error
+	gpuUUIDs               map[uint]string
+	uuidEntries            map[uint]GPUIdentityEntry
+	readStarted            chan struct{}
+	uuidStarted            chan struct{}
+	uuidReadIndices        chan []uint
+	inventoryStarted       chan struct{}
+	inventory              map[uint]*observation.GPUDevice
+	inventoryEntries       map[uint]*observation.GPUInventoryEntry
+	releaseRead            chan struct{}
+	healthIndices          []uint
+	gpuIndices             []uint
+	healthEnumerationCalls atomic.Int32
+	enumerationCalls       atomic.Int32
+	cleanupCalls           atomic.Int32
+	initCalls              atomic.Int32
+	inventoryCalls         atomic.Int32
+	uuidCalls              atomic.Int32
+	readCalls              atomic.Int32
+	watchCleanupCalls      atomic.Int32
+	watchCalls             atomic.Int32
 	// The watch cleanup needs the DCGM client the client cleanup releases.
 	watchCleanedAfterClient atomic.Bool
 }
@@ -55,12 +60,15 @@ func (*fakeNative) MetricWatchGroups(signalIDs []string) ([]metricWatchGroup, er
 	return []metricWatchGroup{{fieldIDs: []uint16{1}}}, nil
 }
 
-func (native *fakeNative) Init() (func(), error) {
+func (native *fakeNative) Init() (func() error, error) {
 	native.initCalls.Add(1)
 	if native.initErr != nil {
 		return nil, native.initErr
 	}
-	return func() { native.cleanupCalls.Add(1) }, nil
+	return func() error {
+		native.cleanupCalls.Add(1)
+		return nil
+	}, nil
 }
 
 func (native *fakeNative) AllGPUIndices() ([]uint, error) {
@@ -74,14 +82,31 @@ func (native *fakeNative) AllGPUIndices() ([]uint, error) {
 	return []uint{0}, nil
 }
 
+func (native *fakeNative) HealthGPUIndices() ([]uint, error) {
+	native.healthEnumerationCalls.Add(1)
+	if native.healthEnumerationErr != nil {
+		return nil, native.healthEnumerationErr
+	}
+	if native.healthIndices != nil {
+		return slices.Clone(native.healthIndices), nil
+	}
+	return []uint{0}, nil
+}
+
 func (native *fakeNative) ReadGPUUUIDs(gpuIndices []uint) (map[uint]GPUIdentityEntry, error) {
 	native.uuidCalls.Add(1)
 	if native.uuidStarted != nil {
 		close(native.uuidStarted)
 		<-native.releaseRead
 	}
+	if native.uuidReadIndices != nil {
+		native.uuidReadIndices <- slices.Clone(gpuIndices)
+	}
 	if native.uuidErr != nil {
 		return nil, native.uuidErr
+	}
+	if native.uuidEntries != nil {
+		return native.uuidEntries, nil
 	}
 	gpuUUIDs := make(map[uint]GPUIdentityEntry, len(gpuIndices))
 	for _, gpuIndex := range gpuIndices {
@@ -100,11 +125,8 @@ func (native *fakeNative) ReadGPUInventory(gpuIndices []uint) (map[uint]*observa
 		close(native.inventoryStarted)
 		<-native.releaseRead
 	}
-	if native.inventoryErr != nil {
-		return nil, native.inventoryErr
-	}
-	if native.inventoryEntries != nil {
-		return native.inventoryEntries, nil
+	if native.inventoryEntries != nil || native.inventoryErr != nil {
+		return native.inventoryEntries, native.inventoryErr
 	}
 	gpus := make(map[uint]*observation.GPUInventoryEntry, len(gpuIndices))
 	for _, gpuIndex := range gpuIndices {
@@ -145,6 +167,10 @@ func (native *fakeNative) ReadGPUMetrics(_ uint, signalIDs []string) (map[string
 		}}
 	}
 	return values, nil
+}
+
+func (native *fakeNative) WatchHealth(uint64, *uint) (healthWatch, error) {
+	return &fakeHealthWatch{native: native}, nil
 }
 
 func newSourceInMode(native nativeAPI, gate *sync.Mutex, processMode *sessionMode, mode sessionMode) *Source {
@@ -220,6 +246,145 @@ func TestInventoryUsesOneRead(t *testing.T) {
 		GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot},
 	}}); err != nil {
 		t.Fatalf("inventory snapshot is invalid: %v", err)
+	}
+}
+
+func TestGPUIndicesSkipsUUIDEnrichment(t *testing.T) {
+	native := &fakeNative{gpuIndices: []uint{7, 2}}
+	source := newSource(native, &sync.Mutex{})
+	t.Cleanup(func() { _ = source.Close() })
+	indices, failure := source.newCollectionReader(newTestCycle(t, "indices-only")).gpuIndices(context.Background())
+	if failure != nil || !slices.Equal(indices, []uint{7, 2}) {
+		t.Fatalf("GPUIndices() = %v, %v", indices, failure)
+	}
+	if native.enumerationCalls.Load() != 1 || native.uuidCalls.Load() != 0 || native.inventoryCalls.Load() != 0 {
+		t.Fatalf("indices-only reads: enumeration=%d UUID=%d inventory=%d", native.enumerationCalls.Load(), native.uuidCalls.Load(), native.inventoryCalls.Load())
+	}
+}
+
+func TestGPUUUIDsPreservesRequestedIDsAndPartialResults(t *testing.T) {
+	fieldFailure := &observation.CollectionError{Source: Name, Operation: "identity", Category: observation.CollectionErrorCategoryUnavailable}
+	for _, test := range []struct {
+		err     error
+		entries map[uint]GPUIdentityEntry
+		name    string
+	}{
+		{
+			name: "partial lookup",
+			entries: map[uint]GPUIdentityEntry{
+				0: {UUID: "GPU-0", Index: 99},
+				7: {UUIDError: fieldFailure},
+			},
+		},
+		{name: "whole lookup fails", err: errors.New("UUID lookup failed")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			native := &fakeNative{uuidEntries: test.entries, uuidErr: test.err}
+			source := newSource(native, &sync.Mutex{})
+			t.Cleanup(func() { _ = source.Close() })
+			requested := []uint{7, 0, 2}
+			entries := source.newCollectionReader(newTestCycle(t, "UUIDs-only")).gpuUUIDs(context.Background(), requested)
+			if len(entries) != len(requested) {
+				t.Fatalf("GPUUUIDs() = %v", entries)
+			}
+			for i, entry := range entries {
+				if entry.Index != requested[i] {
+					t.Fatalf("GPUUUIDs() reordered IDs: %v", entries)
+				}
+				if test.err == nil && entry.Index == 0 {
+					if entry.UUID != "GPU-0" || entry.UUIDError != nil {
+						t.Fatalf("available UUID lost: %+v", entry)
+					}
+				} else if entry.UUID != "" || entry.UUIDError.GetOperation() != "identity" {
+					t.Fatalf("missing UUID has no attributed failure: %+v", entry)
+				}
+			}
+			if test.err == nil && entries[0].UUIDError != fieldFailure {
+				t.Fatalf("native per-GPU UUID failure replaced: %v", entries[0].UUIDError)
+			}
+			if native.enumerationCalls.Load() != 0 || native.uuidCalls.Load() != 1 || native.inventoryCalls.Load() != 0 {
+				t.Fatalf("UUID-only reads: enumeration=%d UUID=%d inventory=%d", native.enumerationCalls.Load(), native.uuidCalls.Load(), native.inventoryCalls.Load())
+			}
+		})
+	}
+}
+
+func TestGPUUUIDsEmptyRequestSkipsNativeWork(t *testing.T) {
+	native := &fakeNative{}
+	source := newSource(native, &sync.Mutex{})
+	if entries := source.newCollectionReader(nil).gpuUUIDs(context.Background(), nil); len(entries) != 0 {
+		t.Fatalf("GPUUUIDs(empty) = %v", entries)
+	}
+	if native.initCalls.Load() != 0 || native.enumerationCalls.Load() != 0 || native.uuidCalls.Load() != 0 {
+		t.Fatal("empty UUID request entered DCGM")
+	}
+}
+
+func TestGPUUUIDsCancellationPreservesIDsAndNativeGate(t *testing.T) {
+	gate := &sync.Mutex{}
+	native := &fakeNative{}
+	source := newSource(native, gate)
+	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
+		t.Fatal(err)
+	}
+	cycle := newTestCycle(t, "UUIDs-after-metrics")
+	values := source.ReadGPUMetrics(context.Background(), cycle, 2, []string{signalPowerDraw})
+	if values[signalPowerDraw].Value == nil {
+		t.Fatal("metric read failed before optional enrichment")
+	}
+	native.uuidStarted, native.releaseRead = make(chan struct{}), make(chan struct{})
+	native.uuidReadIndices = make(chan []uint, 1)
+	release := sync.OnceFunc(func() { close(native.releaseRead) })
+	t.Cleanup(release)
+	requested := []uint{2, 7}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	uuidResult := make(chan []GPUIdentityEntry, 1)
+	go func() { uuidResult <- source.newCollectionReader(cycle).gpuUUIDs(ctx, requested) }()
+	select {
+	case <-native.uuidStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("UUID read did not start")
+	}
+	cancel()
+	var entries []GPUIdentityEntry
+	select {
+	case entries = <-uuidResult:
+	case <-time.After(5 * time.Second):
+		t.Fatal("UUID read did not return after cancellation")
+	}
+	if len(entries) != 2 || entries[0].Index != 2 || entries[1].Index != 7 {
+		t.Fatalf("UUID cancellation lost IDs: %v", entries)
+	}
+	for _, entry := range entries {
+		if entry.UUIDError.GetOperation() != "identity" || entry.UUIDError.GetCategory() != observation.CollectionErrorCategoryUnavailable {
+			t.Fatalf("UUID cancellation failure = %v", entry.UUIDError)
+		}
+	}
+	for _, nextCycle := range []*collect.Cycle{cycle, newTestCycle(t, "after-UUID-cancellation")} {
+		if result := source.ReadGPUMetrics(context.Background(), nextCycle, 2, []string{signalPowerDraw}); result[signalPowerDraw].CollectionError == nil {
+			t.Fatal("native work reentered during unfinished UUID lookup")
+		}
+	}
+	if native.readCalls.Load() != 1 || values[signalPowerDraw].Value == nil {
+		t.Fatal("optional enrichment discarded a value or allowed native reentry")
+	}
+	if err := source.Close(); !errors.Is(err, ErrInUse) {
+		t.Fatalf("Close() during UUID lookup = %v", err)
+	}
+	requested[0] = 99
+	release()
+	waitForNativeGate(t, gate)
+	select {
+	case readIDs := <-native.uuidReadIndices:
+		if !slices.Equal(readIDs, []uint{2, 7}) {
+			t.Fatalf("native lookup retained caller-owned IDs after cancellation: %v", readIDs)
+		}
+	default:
+		t.Fatal("native UUID lookup did not capture the requested IDs")
+	}
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -441,6 +606,93 @@ func TestInventoryReportsQueryFailure(t *testing.T) {
 	}
 	if native.enumerationCalls.Load() != 1 || native.uuidCalls.Load() != 1 || entries[0].GetGpu().GetUuid() != "GPU-2" || entries[1].GetGpu().GetUuid() != "GPU-7" {
 		t.Fatalf("inventory did not preserve original identities: %+v", entries)
+	}
+}
+
+func TestInventoryPreservesPartialDataOnConnectionLoss(t *testing.T) {
+	for _, status := range []string{"DcgmEntityStatusLost", "DcgmEntityStatusUnsupported"} {
+		t.Run(status, func(t *testing.T) {
+			model, serial := "H100", "serial-7"
+			entityFailure := &observation.CollectionError{
+				Source: Name, Operation: "inventory", SourceError: status,
+				Category: observation.CollectionErrorCategoryUnavailable,
+			}
+			if status == "DcgmEntityStatusUnsupported" {
+				entityFailure.Category = observation.CollectionErrorCategoryUnsupported
+			}
+			serialFailure := &observation.CollectionError{
+				Source: Name, Operation: "inventory", SourceError: "DCGM_ST_NOT_SUPPORTED",
+				Category: observation.CollectionErrorCategoryUnsupported,
+			}
+			busFailure := &observation.CollectionError{
+				Source: Name, Operation: "inventory", SourceError: "DCGM_ST_NO_PERMISSION",
+				Category: observation.CollectionErrorCategoryPermissionDenied,
+			}
+			native := &fakeNative{
+				inventoryErr: connectionLoss(),
+				inventoryEntries: map[uint]*observation.GPUInventoryEntry{
+					2: {
+						Gpu: &observation.GPUDevice{Model: &model}, CollectionError: entityFailure,
+						FieldErrors: map[string]*observation.CollectionError{"serial": serialFailure, "bus_id": busFailure},
+					},
+					7: {Gpu: &observation.GPUDevice{Serial: &serial}},
+				},
+			}
+			source := newSource(native, &sync.Mutex{})
+			t.Cleanup(func() { _ = source.Close() })
+			cycle := newTestCycle(t, "partial-inventory")
+			identities := []GPUIdentityEntry{{Index: 2, UUID: "GPU-2"}, {Index: 7, UUID: "GPU-7"}}
+			snapshot := source.GPUInventory(context.Background(), cycle, identities)
+			entries := snapshot.GetInventory().GetEntries()
+			if len(entries) != len(identities) {
+				t.Fatalf("membership discarded: %v", snapshot)
+			}
+			for position, entry := range entries {
+				identity := identities[position]
+				if entry.GetSourceIndex() != uint32(identity.Index) || entry.GetGpu().GetUuid() != identity.UUID {
+					t.Fatalf("partial data lost its identity: %v", entry)
+				}
+			}
+			if entries[0].GetCollectionError().GetSourceError() != status || entries[0].GetCollectionError().GetCategory() != entityFailure.Category || entries[0].GetGpu().GetModel() != model {
+				t.Fatalf("entity status or partial attributes overwritten: %v", entries[0])
+			}
+			if failures := entries[0].GetFieldErrors(); len(failures) != 2 || failures["serial"].GetSourceError() != serialFailure.SourceError || failures["bus_id"].GetSourceError() != busFailure.SourceError {
+				t.Fatalf("specific field errors changed or query failure repeated: %v", entries[0])
+			}
+			if entries[1].GetCollectionError().GetSourceError() != connectionNotValidStatus || entries[1].GetGpu().GetSerial() != serial || len(entries[1].GetFieldErrors()) != 0 {
+				t.Fatalf("partial attributes discarded after query failure: %v", entries[1])
+			}
+			if err := observation.ValidateBatch(&observation.ObservationBatch{Inventory: &observation.HardwareInventory{
+				GpuSnapshots: []*observation.GPUInventorySnapshot{snapshot},
+			}}); err != nil {
+				t.Fatalf("partial inventory is invalid: %v", err)
+			}
+			if _, failure := source.newCollectionReader(cycle).gpuIndices(context.Background()); failure.GetSourceError() != connectionNotValidStatus {
+				t.Fatalf("inventory failure did not invalidate the session: %v", failure)
+			}
+			if native.initCalls.Load() != 1 || native.cleanupCalls.Load() != 0 || native.enumerationCalls.Load() != 0 {
+				t.Fatal("failing collection reset or reused its session")
+			}
+			native.inventoryErr = nil
+			native.inventoryEntries = nil
+			recovered := source.GPUInventory(context.Background(), newTestCycle(t, "recovered-inventory"), identities)
+			recoveredEntries := recovered.GetInventory().GetEntries()
+			if recovered.GetCollectionError() != nil || len(recoveredEntries) != len(identities) {
+				t.Fatalf("recovered inventory lost requested GPUs: %v", recovered)
+			}
+			for position, entry := range recoveredEntries {
+				identity := identities[position]
+				if entry.GetSourceIndex() != uint32(identity.Index) || entry.GetGpu().GetUuid() != identity.UUID {
+					t.Fatalf("recovered inventory lost GPU identity: %v", entry)
+				}
+				if entry.GetCollectionError() != nil || len(entry.GetFieldErrors()) != 0 {
+					t.Fatalf("inventory did not recover: %v", recovered)
+				}
+			}
+			if native.initCalls.Load() != 2 || native.cleanupCalls.Load() != 1 || native.inventoryCalls.Load() != 2 {
+				t.Fatal("next collection did not replace the failed session exactly once")
+			}
+		})
 	}
 }
 

@@ -42,12 +42,7 @@ fixes in a Maintenance release.
 
 The module follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
-- **MAJOR** — a breaking change to the module's public Go API or the CLI's
-  behavior/flags. For the verdict JSON contract
-  specifically, `schema_version` (documented in
-  [`catalog/health/node-verdict.schema.json`](catalog/health/node-verdict.schema.json))
-  is the authoritative breaking-change signal, independent of the module's own
-  semver.
+- **MAJOR** — a breaking change to a [guaranteed surface](#compatibility).
 - **MINOR** — backward-compatible additions (a new check, a new optional field,
   a new exported function).
 - **PATCH** — backward-compatible bug fixes.
@@ -59,6 +54,77 @@ public API must document a migration path and keep the deprecated API until a
 later breaking release removes it. See
 [`docs/developer.md`](docs/developer.md#versioning-and-releases) for the full
 policy.
+
+## Compatibility
+
+A change is **breaking** only if it makes previously valid use of a guaranteed
+surface fail or change meaning, measured against the latest release. An API
+that has not shipped in a release can change freely until it does. Anything
+else, including a behavior change to something listed as not guaranteed, is not
+breaking, however large its effect on a verdict.
+
+### Guaranteed surfaces
+
+- **Verdict JSON.** Its shape and the meaning of its fields and enum values,
+  versioned by `schema_version`
+  ([`node-verdict.schema.json`](catalog/health/node-verdict.schema.json)).
+  Every change to the schema bumps `schema_version`. Removing or renaming a
+  field or enum value, or changing a field's type or meaning, is breaking.
+  Adding an optional field or an enum value is not.
+- **CLI.** Subcommand and flag names and values, and the exit codes. `run`
+  exits `0` for PASS, INFO, and WARNING, `1` for CRITICAL and UNKNOWN, and `2`
+  when no verdict could be produced. `collect` produces no verdict: it exits
+  `0` once it has written the observation batch, and `2` when it could not.
+- **Check IDs.** Renaming a check ID is breaking. Adding a check is not.
+- **Configuration.** The config file's keys, `checks.<id>.<param>` threshold
+  names and types, and the `metrics:` block. Removing or renaming one is
+  breaking.
+- **Published metrics.** The names and attributes of the OTLP metrics the CLI
+  pushes.
+- **Go API of the catalog.** The documented exported API of `catalog`,
+  `catalog/health`, and the per-domain check packages, which is the intended
+  integration and extension surface.
+- **Collection extension seams.** `WithCollect`, `WithCollectAdapters`,
+  `WithChecks`, and `GPUAdapter` in `toolkit/app`, and the lifecycle they need,
+  `app.New`, `App.Run`, and `App.Close`, with the types they take:
+  `collect.Sensor`, its signal IDs, the observation types it emits, and the
+  `CollectAdapter` interface. `GPUAdapter` is registered through
+  `WithCollectAdapters`, so the two are guaranteed together. Removing or
+  changing the meaning of a built-in signal ID, or tightening what
+  registration accepts, is breaking. Adding a sensor or a signal is not.
+
+### Not guaranteed
+
+These can change in any release, and a change to them is never listed as
+breaking. The changelog still records notable changes, under Changes.
+
+- **Check behavior.** Severities, messages, recommended actions and
+  remediation sequences, which checks run by default, and default thresholds.
+  Downstream systems follow remediation as published.
+- **Verdict content that is not part of the schema's contract.** The contents
+  of `observed_values` and `diagnostic` text.
+- **The rest of the toolkit's collection wiring.** `toolkit.Collect`, the
+  collect bridge, the built-in adapters, and `toolkit/observations` are
+  reference implementations, as is the rest of `toolkit/app` beyond the seams
+  and lifecycle above.
+- **`agentkit`.** This package is experimental.
+- **Everything under `internal/`**, build and CI configuration, container
+  image contents, and log and stderr text.
+
+### Making and announcing a breaking change
+
+- Before 1.0, a breaking change ships in a MINOR release. From 1.0 it ships in
+  a MAJOR release and is announced in advance. See
+  [SUPPORT.md](SUPPORT.md#interface-compatibility).
+- A pull request that makes a breaking change marks its title with `!`, as in
+  `feat(catalog)!: ...`. Use `!` only for a change to a guaranteed surface.
+  Do not use it for a behavior change to something not guaranteed.
+- A pull request with several changes lists only its breaking parts under
+  **Breaking Changes** in [`CHANGELOG.md`](CHANGELOG.md), each saying what a
+  consumer must change. Its other changes get their own entries under Changes
+  (behavior or APIs that are not guaranteed), Features, or Fixes, so one pull
+  request can have entries in more than one section.
+- Deprecate before removing where practical, and say what replaces it.
 
 ## Branch naming and tagging
 
@@ -86,6 +152,59 @@ A minor release goes through QA as an RC, without freezing `main`:
 
 Because the module lives at the repository root, `go get
 github.com/dsx-ai-factory/health-validation@vX.Y.Z` resolves the tag directly.
+
+## Retired per-module tags
+
+`catalog/vX.Y.Z`, `collect/vX.Y.Z`, and `toolkit/vX.Y.Z` tags belong to the
+modules that were merged into the root module. They remain on the Go module
+proxy, and Go prefers the longest matching module path, so they would otherwise
+shadow the root module: `go install …/toolkit/cmd/health-validation@latest`
+picks `toolkit@v0.3.2`, whose `go.mod` has `replace` directives that
+`go install` rejects.
+
+One final version of each retired module retracts every earlier version:
+`catalog/v0.3.99`, `collect/v0.3.99`, and `toolkit/v0.3.99`. Each tag points at
+a commit outside `main` and every release branch, holding only that module's
+`go.mod` and no `.github/` directory:
+
+```text
+// Deprecated: merged into github.com/dsx-ai-factory/health-validation; depend on that module instead.
+module github.com/dsx-ai-factory/health-validation/toolkit
+
+// No code here; 1.16 is the minimum that supports retract.
+go 1.16
+
+// Merged into github.com/dsx-ai-factory/health-validation.
+retract [v0.0.0-0, v0.3.99]
+```
+
+`catalog` and `collect` use their own module paths.
+
+The tags are `v0.3.99`, not the next patch number, because Go reads retractions
+from a module's highest version. A real `toolkit/v0.3.N` patch tagged above the
+retraction would be `@latest` and carry no `retract`, bringing the failure back.
+Patches on `release/v0.3` stay below `v0.3.99`, so the retraction stays
+authoritative, and they fall inside the retracted range. Never require a
+`v0.3.99` version from `release/v0.3`: it holds no code.
+
+Do not add a `go.mod` under `catalog/`, `collect/`, or `toolkit/` on `main` or a
+release branch: it would split the root module again. `release/v0.3` already
+carries them, since it predates the merge. The retraction tags match
+`release/v0.3`'s `catalog/v*` and `toolkit/v*` CI triggers, which publish an
+image on `toolkit/v*`. Workflows run from the tagged commit, so the commit must
+not contain `.github/`.
+
+Retraction does not break builds that pin a retired version, including patches
+of the `v0.3` line; it only flags them and stops `@latest` and `go get -u` from
+choosing them. Consumers who stay on the `v0.3` line must request each patch by
+its explicit version (`go get …/toolkit@v0.3.4`) or move to the root module.
+Those patches carry the "Merged into …" retraction notice even though they are
+supported releases.
+
+Retraction does not affect explicit revision queries. `go install …@main` still
+resolves `…/toolkit` to a pre-merge pseudo-version, so it cannot be fixed this
+way, and tagging a root release does not change it. Install the tip by pinning
+the root module's version, as the README shows.
 
 ## Who can trigger a release
 

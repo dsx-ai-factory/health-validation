@@ -129,7 +129,7 @@ func TestBuiltinCollectNarrowsInfiniBandToPortChecks(t *testing.T) {
 // End to end through the stock wiring: sysfs ports become per-port verdicts
 // that name the failing port, RoCE ports included, and a healthy fleet passes.
 func TestBuiltinCollectInfiniBandPortVerdicts(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
+	cat, _, err := buildCatalog(ibPortConfig(), nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,6 +166,12 @@ func TestBuiltinCollectInfiniBandPortVerdicts(t *testing.T) {
 	if !downPort {
 		t.Fatalf("want ib_port_state CRITICAL naming mlx5_2/1: %+v", verdict.CheckResults)
 	}
+}
+
+// ibPortConfig enables the experimental port check the way an operator does,
+// through the config, since it is off otherwise.
+func ibPortConfig() *Config {
+	return &Config{Experimental: ExperimentalConfig{Checks: []string{"ib_port_state"}}}
 }
 
 // collectInfiniBandPorts runs the stock InfiniBand wiring over fsys as
@@ -205,7 +211,7 @@ func collectInfiniBandPorts(t *testing.T, runnable []*health.CheckDefinition, fs
 // a missing driver produces the first. Each reports the port check UNKNOWN
 // without naming a port rather than letting the run report PASS.
 func TestBuiltinCollectInfiniBandAbsenceFails(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
+	cat, _, err := buildCatalog(ibPortConfig(), nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +279,7 @@ func TestBuiltinCollectInfiniBandAbsenceFails(t *testing.T) {
 // drops the renamed device and the same host passes, which is why the CLI
 // does not use it.
 func TestBuiltinCollectInfiniBandRenamedDevice(t *testing.T) {
-	cat, _, err := buildCatalog(nil, nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
+	cat, _, err := buildCatalog(ibPortConfig(), nil, "GB200", health.DriverVersion{}, health.OperatorInfra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1103,7 +1109,7 @@ func TestWithCollectCombinesGPUObservationsFromTwoSensors(t *testing.T) {
 		}
 	}
 	cat := catalog.NewEmpty(catalog.WithArchitecture("H100"), catalog.WithExecutionContext(health.OperatorInfra))
-	for _, check := range []health.CheckDefinition{gpu.GPUPowerLimit(), gpu.GPUPowerState(), gpu.GPUSensorThrottle()} {
+	for _, check := range []health.CheckDefinition{gpu.GPUPowerLimit(), gpu.GPUPerformanceState(), gpu.GPUSensorThrottle()} {
 		if err = cat.Register(check); err != nil {
 			t.Fatal(err)
 		}
@@ -1253,7 +1259,7 @@ func TestWithCollectWrongScalarFailsOnlyDependentChecks(t *testing.T) {
 	}
 	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
 	for _, check := range []health.CheckDefinition{
-		gpu.GPUPowerState(), gpu.GPUPowerLimit(), gpu.GPUSensorThrottle(),
+		gpu.GPUPerformanceState(), gpu.GPUPowerLimit(), gpu.GPUSensorThrottle(),
 		nvlink.NVLinkFabric(), nvlink.NVLinkFabricHealth(),
 	} {
 		if err = cat.Register(check); err != nil {
@@ -1268,8 +1274,8 @@ func TestWithCollectWrongScalarFailsOnlyDependentChecks(t *testing.T) {
 		t.Fatalf("calls=%d verdict=%+v", source.calls, verdict)
 	}
 	failing := map[string]string{
-		"gpu_power_state": gpusignals.PerformanceState.ID(),
-		"nvlink_fabric":   gpusignals.FabricManagerStatus.ID(),
+		"gpu_performance_state": gpusignals.PerformanceState.ID(),
+		"nvlink_fabric":         gpusignals.FabricManagerStatus.ID(),
 	}
 	for _, check := range verdict.CheckResults {
 		signal, wantFail := failing[check.CheckID]
@@ -1314,7 +1320,7 @@ func TestWithCollectFailsOnlyTheGPUWithoutAUUID(t *testing.T) {
 		t.Fatal(err)
 	}
 	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
-	for _, check := range []health.CheckDefinition{gpu.GPUPowerState(), nvlink.NVLinkFabric()} {
+	for _, check := range []health.CheckDefinition{gpu.GPUPerformanceState(), nvlink.NVLinkFabric()} {
 		if err = cat.Register(check); err != nil {
 			t.Fatal(err)
 		}
@@ -1327,7 +1333,7 @@ func TestWithCollectFailsOnlyTheGPUWithoutAUUID(t *testing.T) {
 	for _, result := range verdict.CheckResults {
 		severities[result.CheckID] = append(severities[result.CheckID], result.Severity)
 	}
-	for _, check := range []string{"gpu_power_state", "nvlink_fabric"} {
+	for _, check := range []string{"gpu_performance_state", "nvlink_fabric"} {
 		got := severities[check]
 		slices.Sort(got)
 		if !slices.Equal(got, []health.Severity{health.Pass, health.Unknown}) {
@@ -1400,7 +1406,7 @@ func TestGPUAdapterRunsAlongsideBuiltinGPUChecks(t *testing.T) {
 	for _, v := range verdict.SkippedChecks {
 		skipped[v.CheckID] = v.SkipReason
 	}
-	for _, check := range []string{"ecc_at_full_performance", "gpu_power_state", "gpu_sensor_throttle"} {
+	for _, check := range []string{"ecc_at_full_performance", "gpu_performance_state", "gpu_sensor_throttle"} {
 		if perGPU[check] != len(gpus) {
 			t.Errorf("%s verdicts = %d, want one per GPU (skip reason %q)", check, perGPU[check], skipped[check])
 		}
@@ -1452,7 +1458,7 @@ func TestWithCollectRegistersReusableDomainAdapters(t *testing.T) {
 		t.Fatalf("bridged sensors=%d, want 2", len(sensors))
 	}
 	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
-	for _, check := range []health.CheckDefinition{gpu.GPUPowerState(), nvlink.NVLinkFabric()} {
+	for _, check := range []health.CheckDefinition{gpu.GPUPerformanceState(), nvlink.NVLinkFabric()} {
 		if err = cat.Register(check); err != nil {
 			t.Fatal(err)
 		}
@@ -1595,7 +1601,7 @@ func TestCollectSensorsRequestsOnlyRunnableCheckSignals(t *testing.T) {
 		{name: "one check runs", runnable: []health.CheckDefinition{cpu.NUMANodeCount()}, want: [][]string{{
 			cpusignals.NUMANodeOnlineCount.ID(),
 		}}, bridged: 1},
-		{name: "no domain check runs", runnable: []health.CheckDefinition{gpu.GPUPowerState()}},
+		{name: "no domain check runs", runnable: []health.CheckDefinition{gpu.GPUPerformanceState()}},
 		{name: "check needs an unmapped signal", runnable: []health.CheckDefinition{
 			cpu.NUMANodeCount(), {ID: "custom", Category: health.CPU, RequiredSignals: []string{"unmapped"}},
 		}, want: [][]string{{cpusignals.NUMANodeOnlineCount.ID()}}, bridged: 1},

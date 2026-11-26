@@ -18,9 +18,11 @@ import (
 )
 
 type nativeLibrary struct {
-	readFields func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error)
-	gpuStatus  func(uint) godcgm.EntityStatus
-	dcgmInit   func(sessionMode, ...string) (func(), error)
+	readFields       func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error)
+	gpuStatus        func(uint) godcgm.EntityStatus
+	healthGPUIndices func() ([]uint, error)
+	dcgmInit         func(sessionMode, ...string) (func() error, error)
+	healthSet        func(godcgm.GroupHandle, godcgm.HealthSystem, time.Duration, time.Duration) error
 	// Embedded mode ignores options.Address and options.IsSocket.
 	options StandaloneOptions
 	mode    sessionMode
@@ -31,29 +33,42 @@ var metricWatchSequence atomic.Uint64
 
 func newNative(options StandaloneOptions, mode sessionMode) nativeAPI {
 	return &nativeLibrary{
-		options:    options,
-		mode:       mode,
-		readFields: readGPUFields,
-		gpuStatus:  godcgm.GetGPUStatus,
-		dcgmInit:   initDCGM,
+		options:          options,
+		mode:             mode,
+		readFields:       readGPUFields,
+		gpuStatus:        godcgm.GetGPUStatus,
+		healthGPUIndices: godcgm.GetSupportedDevices,
+		dcgmInit:         newDCGMInitializer(godcgm.Init, godcgm.Shutdown, godcgm.Embedded, godcgm.Standalone),
+		healthSet:        godcgm.HealthSetWithParams,
 	}
 }
 
-// Tests replace goDCGMInit to check the go-dcgm mode, whose type is unexported.
-var goDCGMInit = godcgm.Init
-
-func initDCGM(mode sessionMode, args ...string) (func(), error) {
-	switch mode {
-	case embeddedMode:
-		return goDCGMInit(godcgm.Embedded)
-	case standaloneMode:
-		return goDCGMInit(godcgm.Standalone, args...)
-	default:
-		return nil, fmt.Errorf("unknown DCGM session mode %d", mode)
+// newDCGMInitializer adapts go-dcgm's unexported mode and supplies a release
+// function that returns Shutdown errors.
+func newDCGMInitializer[M any](
+	initialize func(M, ...string) (func(), error),
+	shutdown func() error,
+	embedded, standalone M,
+) func(sessionMode, ...string) (func() error, error) {
+	return func(mode sessionMode, args ...string) (func() error, error) {
+		var err error
+		switch mode {
+		case embeddedMode:
+			_, err = initialize(embedded)
+		case standaloneMode:
+			_, err = initialize(standalone, args...)
+		default:
+			return nil, fmt.Errorf("unknown DCGM session mode %d", mode)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return func() error { return dcgmErrorFromError(shutdown()) }, nil
 	}
 }
 
-func (library *nativeLibrary) Init() (func(), error) {
+// Init opens the configured client and preserves native initialization failures.
+func (library *nativeLibrary) Init() (func() error, error) {
 	var args []string
 	if library.mode == standaloneMode {
 		isSocket := "0"
@@ -62,8 +77,8 @@ func (library *nativeLibrary) Init() (func(), error) {
 		}
 		args = []string{library.options.Address, isSocket}
 	}
-	// go-dcgm already reference-counts Init and Shutdown. Keep its cleanup
-	// function with this source instead of adding another counter.
+	// go-dcgm already reference-counts Init and Shutdown. Keep one balanced
+	// release with this source instead of adding another counter.
 	cleanup, err := library.dcgmInit(library.mode, args...)
 	if err != nil {
 		return nil, dcgmErrorFromError(err)
@@ -80,7 +95,16 @@ func (*nativeLibrary) AllGPUIndices() ([]uint, error) {
 	return gpuIndices, nil
 }
 
-// MetricWatchGroups resolves signals and checks field-group limits before Init.
+// HealthGPUIndices excludes detached GPUs, which reject health watches.
+func (library *nativeLibrary) HealthGPUIndices() ([]uint, error) {
+	ids, err := library.healthGPUIndices()
+	if err != nil {
+		return nil, dcgmErrorFromError(err)
+	}
+	return ids, nil
+}
+
+// MetricWatchGroups resolves signals and checks limits before metric-watch setup.
 func (library *nativeLibrary) MetricWatchGroups(signalIDs []string) ([]metricWatchGroup, error) {
 	if policy := library.options.WatchPolicy; policy != nil {
 		signalOverrides := make([]string, 0, len(policy.SignalIntervals))

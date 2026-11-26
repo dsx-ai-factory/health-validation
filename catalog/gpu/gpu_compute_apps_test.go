@@ -135,8 +135,44 @@ func TestGPUComputeApps_ErroredSignal(t *testing.T) {
 	}
 }
 
-func TestGPUComputeApps_OperatorInfraSkipped(t *testing.T) {
+// Operators run the check on the host before and after their own jobs, so
+// OPERATOR_INFRA evaluates the same rule as the guest.
+func TestGPUComputeApps_OperatorInfra(t *testing.T) {
 	cat := computeAppsCatalog(catalog.WithExecutionContext(health.OperatorInfra))
+	tests := []struct {
+		name string
+		m    gpu.GPUMeasurement
+		want health.Severity
+	}{
+		{name: "free GPU passes", m: gpu.GPUMeasurement{GPUID: "GPU-0"}, want: health.Pass},
+		{
+			name: "leftover process fails",
+			m: gpu.GPUMeasurement{
+				GPUID:                  "GPU-0",
+				ComputeProcessCmdlines: "pid=12345 /usr/bin/python bench.py",
+				ComputeProcessCount:    1,
+			},
+			want: health.Critical,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := cat.Evaluate("gpu_compute_apps", tt.m)
+			if err != nil {
+				t.Fatalf("Evaluate: %v", err)
+			}
+			if v.Skipped {
+				t.Fatalf("skipped with reason %v, want evaluated under OPERATOR_INFRA", v.SkipReason)
+			}
+			if v.Severity != tt.want {
+				t.Errorf("Severity = %v, want %v", v.Severity, tt.want)
+			}
+		})
+	}
+}
+
+func TestGPUComputeApps_OutOfBandSkipped(t *testing.T) {
+	cat := computeAppsCatalog(catalog.WithExecutionContext(health.OutOfBand))
 	v, err := cat.Evaluate("gpu_compute_apps", gpu.GPUMeasurement{GPUID: "GPU-0"})
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)

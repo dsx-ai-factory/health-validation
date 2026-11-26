@@ -71,7 +71,7 @@ func (h sharedInventoryHost) gpuInventory() *gpuinventory.Inventory { return h.i
 // the node GPU count reuses discovery's snapshot instead of reading NVML again.
 func TestStalledNativeSourceFailsOnlyItsChecks(t *testing.T) {
 	fedBy := map[string][]string{
-		"dcgm": {"gpu_average_power_draw", "gpu_power_limit", "gpu_power_state", "gpu_sensor_throttle"},
+		"dcgm": {"gpu_average_power_draw", "gpu_power_limit", "gpu_performance_state", "gpu_sensor_throttle"},
 		"nvml": {"gpu_compute_apps"},
 	}
 	config := filepath.Join(t.TempDir(), "config.yaml")
@@ -152,7 +152,7 @@ func (s stalledIBSensor) Measure(ctx context.Context, opts ...collect.OpOption) 
 // identity, is what ib_port_state reports: UNKNOWN with retry_collection.
 func TestStalledInfiniBandSourceRecommendsRetry(t *testing.T) {
 	config := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(config, []byte("collection_timeout_seconds: 1\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("collection_timeout_seconds: 1\nexperimental:\n  checks:\n    - ib_port_state\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	release := make(chan struct{})

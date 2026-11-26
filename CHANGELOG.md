@@ -5,8 +5,31 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Features
+
+- Add `gpu_pcie_max_link` to check each GPU's maximum PCIe width and
+  minimum generation in operator and guest contexts. The CLI matches PCI
+  sysfs readings to the GPU inventory. Missing data reports UNKNOWN, and
+  explicitly unsupported capabilities retain their status when exported and
+  replayed. Consumers replacing the built-in PCI signals
+  `pci.link.width.max` and `pci.link.generation.max` claim them with
+  `WithCollect`. ([#279](https://github.com/dsx-ai-factory/health-validation/pull/279))
+
+## [v0.4.0] - 2026-11-25
+
+Covers everything since `catalog/v0.3.2` and `toolkit/v0.3.2`. Build, CI,
+test, and documentation-only changes are omitted.
+
 ### Breaking Changes
 
+- The `gpu_power_state` check is renamed `gpu_performance_state`, and
+  `gpu.GPUPowerState` is now `gpu.GPUPerformanceState`, because the check
+  reads the GPU's performance state (P-state), not a power state. Its
+  thresholds are renamed to match the range it enforces, in NVML's terms (P0 is
+  maximum performance): `expected_gpu_pstate` is now `max_performance_pstate`,
+  and the `idle_gpu_pstate` threshold added since v0.3 is now
+  `min_performance_pstate`. Update `checks:` overrides and `disabled_checks` entries
+  in cluster config, and any consumer that matches the check ID in a verdict. ([#342](https://github.com/dsx-ai-factory/health-validation/pull/342))
 - `CheckDefinition.Validate`, and so `Register`, rejects rules below `UNKNOWN`
   that recommend `drain`. Recommend `monitor` for them instead; any severity
   may. The verdict `schema_version` is now `0.7` (`0.3` in v0.3.x). ([#209](https://github.com/dsx-ai-factory/health-validation/issues/209), [#227](https://github.com/dsx-ai-factory/health-validation/issues/227))
@@ -23,7 +46,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `…/catalog`, `…/toolkit`, `…/collect`, and `…/agentkit` with one require on the root module
   at the first `vX.Y.Z` release. Releases are tagged `vX.Y.Z` instead of
   `catalog/vX.Y.Z` and `toolkit/vX.Y.Z`, and the verdict's `catalog_version`
-  equals the CLI version. ([#216](https://github.com/dsx-ai-factory/health-validation/pull/216))
+  equals the CLI version. The per-module versions are retracted, so
+  `go install <package>@latest` resolves to the root module; see
+  [`RELEASE.md`](RELEASE.md#retired-per-module-tags). ([#216](https://github.com/dsx-ai-factory/health-validation/pull/216), [#280](https://github.com/dsx-ai-factory/health-validation/issues/280))
 - The public `catalog/version` package is removed. Read the version from a
   verdict's `catalog_version`. In unstamped builds, `health-validation version`
   now reports the module version Go embeds, or `dev+<commit>`, instead of `dev`. ([#223](https://github.com/dsx-ai-factory/health-validation/pull/223))
@@ -75,8 +100,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changes
 
 Changes to behavior and APIs outside the
-[compatibility guarantees](RELEASE.md).
+[compatibility guarantees](RELEASE.md#compatibility).
 
+- `gpu_compute_apps` also runs under `OPERATOR_INFRA`, for operators who run
+  it on the host before and after their own jobs. Where jobs run in a tenant
+  VM, keep running it in that guest: the host cannot see the VM's processes.
+  ([#352](https://github.com/dsx-ai-factory/health-validation/pull/352))
 - Monitor recommendations can carry remediation steps and appear in the
   node-level summary. Consumers must inspect `operational_state` before treating
   a sequence as a drain workflow; application actions still require context
@@ -290,14 +319,71 @@ Changes to behavior and APIs outside the
 
 ### Features
 
-- Add `gpu_pcie_max_link` to check each GPU's maximum PCIe width and
-  minimum generation in operator and guest contexts. The CLI matches PCI
-  sysfs readings to the GPU inventory. Missing data reports UNKNOWN, and
-  explicitly unsupported capabilities retain their status when exported and
-  replayed. Consumers replacing the built-in PCI signals
-  `pci.link.width.max` and `pci.link.generation.max` claim them with
-  `WithCollect`. ([#279](https://github.com/dsx-ai-factory/health-validation/pull/279))
+- `serve` exposes a liveness signal for stuck native calls: `GET /healthz` and
+  the standard gRPC health service (`grpc.health.v1.Health`, empty service name)
+  report unhealthy once a source call has run longer than the new
+  `--stuck-call-deadline` (default `10m`, must exceed `--request-timeout`), so a
+  supervisor can restart the process. Probes bypass the in-flight request limit.
+  This is liveness only; readiness is still not provided. ([#326](https://github.com/dsx-ai-factory/health-validation/pull/326), [#319](https://github.com/dsx-ai-factory/health-validation/issues/319))
+- Add opt-in passive DCGM health collection through `dcgm.NewWithHealth`, with
+  an explicit selection of nine health systems, optional metric signals,
+  and one `dcgm.health` report. A zero systems mask skips health collection;
+  omit metric signals to request only health when the mask is nonzero.
+  Reports preserve all native incidents, group metadata, readable health statuses,
+  monitoring start time, and missing-target facts. Entities reuse shared GPU
+  and NVSwitch references with optional source-native identity metadata.
+  Each group's `entity_results` keeps identities, verified group membership,
+  incidents, and scoped collection errors together. GPU references include
+  available UUIDs and PCI bus addresses from one lookup.
+  Each GPU has its own native health group; NVSwitches share a separate group
+  on the same session, with
+  independent check errors, native overall health, start times, truncation flags,
+  and entity results in `group_results`. Native group handles stay internal.
+  A later group failure preserves completed results.
+  Unknown native entity kinds are preserved. Existing metric-only constructors
+  and defaults are unchanged.
+  Source `HealthWatch` options configure the health update interval and retention
+  independently of metric `WatchPolicy`, keeping 30 seconds and 10 minutes as
+  defaults.
+  Health reads discover GPUs once per collection and reuse their groups while
+  present. Missing GPUs' groups are queued for cleanup before new groups are allocated;
+  failed cleanup is retained for retry. Discovery failures preserve known groups.
+  Rejected GPU or NVSwitch additions preserve findings from usable members,
+  record errors under the affected entity result, and retry on the next read.
+  Unattributed discovery failures appear in `system_errors`.
+  Incidents include native error severity, category, and suggestions when the
+  DCGM client library provides them.
+  Source `Collect` keeps independently selected metrics, health, and inventory
+  on one client session while allowing concurrent collections to interleave.
+  Recovery replaces failed sessions only for fresh collections; existing
+  collections preserve completed results without using replacement identities.
+  Driver health monitors GPU recovery actions reported by the driver.
+  Successful native reports are available immediately, including empty incident
+  lists; absent incidents do not establish healthy status or complete coverage.
+  Consumers choose any startup grace period.
+  Cleanup destroys the owned group and releases the client on a best-effort
+  basis; native health sampling may persist in an external hostengine.
+  Native health watches share field sampling with metric watches and can
+  request faster updates than a slower metric interval policy.
+  ([#298](https://github.com/dsx-ai-factory/health-validation/pull/298))
 
+- Experimental checks (`maturity_level: experimental`) are off by default. One
+  that is not enabled is skipped with `skip_reason: CHECK_DISABLED` and a
+  `skip_detail` naming the cause, so it never affects `overall_severity` or the
+  exit code and `run` and `serve` collect nothing for it (`collect` still gathers
+  whole categories). The config enables them with
+  `experimental.enabled: true` (all of them, including ones a later release
+  adds) or by ID under `experimental.checks`, validated like `disabled_checks`;
+  `disabled_checks` still wins. Library consumers use the new
+  `catalog.WithAllExperimentalChecks` and `catalog.WithExperimentalChecks`.
+  `ib_port_state`, the only experimental check so far, is now off unless
+  enabled. A check you register with `MaturityLevel: Experimental` is gated the
+  same way, so enable it to keep it running. A check that is off by default
+  and does not apply to the node (cadence, architecture, execution context)
+  reports that reason instead. The `health_validation.check.skipped` metric
+  gains a `maturity_level` attribute. It does not separate default-off checks
+  from operator-disabled ones: both record `skip_reason=CHECK_DISABLED`, and
+  only `skip_detail` in the JSON verdict names the cause. ([#323](https://github.com/dsx-ai-factory/health-validation/pull/323))
 - `app.GPUAdapter` builds one measurement of your own type per GPU from
   collect signals, for checks added with `WithChecks`, leaving the built-in GPU
   domain in place. `docs/extending.md` describes the wiring.
@@ -378,13 +464,18 @@ Changes to behavior and APIs outside the
   own thresholds where they differ.
   - B200 ([#225](https://github.com/dsx-ai-factory/health-validation/pull/225)) and B300 ([#296](https://github.com/dsx-ai-factory/health-validation/pull/296)), the HGX parts. B300 is
     recognized by its product name and shares B200's Xid scope.
-  - VR200: `gpu_power_limit` ([#239](https://github.com/dsx-ai-factory/health-validation/pull/239)), `gpu_count` ([#240](https://github.com/dsx-ai-factory/health-validation/pull/240)),
+  - VR: `gpu_power_limit` ([#239](https://github.com/dsx-ai-factory/health-validation/pull/239)), `gpu_count` ([#240](https://github.com/dsx-ai-factory/health-validation/pull/240)),
     `gpu_sensor_throttle` ([#243](https://github.com/dsx-ai-factory/health-validation/pull/243)), the NVLink active and
     count/speed checks ([#244](https://github.com/dsx-ai-factory/health-validation/pull/244)), `rdma_linkflap_fatal`
-    ([#245](https://github.com/dsx-ai-factory/health-validation/pull/245)), `numa_node_count` ([#310](https://github.com/dsx-ai-factory/health-validation/pull/310)), and `gpu_compute_apps`
-    ([#313](https://github.com/dsx-ai-factory/health-validation/pull/313)). Discovery recognizes any GPU whose name contains `VR`
+    ([#245](https://github.com/dsx-ai-factory/health-validation/pull/245)), `numa_node_count` ([#310](https://github.com/dsx-ai-factory/health-validation/pull/310)), `gpu_compute_apps`
+    ([#313](https://github.com/dsx-ai-factory/health-validation/pull/313)), and `nvlink_capabilities`, `nvlink_fabric`, and
+    `nvlink_fabric_health` ([#325](https://github.com/dsx-ai-factory/health-validation/pull/325)). Discovery recognizes any GPU whose name contains `VR`
     ([#238](https://github.com/dsx-ai-factory/health-validation/pull/238), [#288](https://github.com/dsx-ai-factory/health-validation/pull/288)). A GPU that reports a generic name stays
     `unknown`.
+  - VR on `gpu_performance_state`: a GPU now passes anywhere from `max_performance_pstate`
+    to the new `min_performance_pstate`, which is assumed to be the same or higher.
+    VR idles at P5, so it passes P0 to P5. Other GPUs keep P0 for both, so
+    they still pass only at P0. ([#327](https://github.com/dsx-ai-factory/health-validation/pull/327))
   - The Xid checks cover H100, H200, and A100. ([#194](https://github.com/dsx-ai-factory/health-validation/pull/194))
 - Xid additions:
   - Per-subtype `gpu_xid_149_<hex>` checks for the Xid 149
@@ -452,6 +543,25 @@ Changes to behavior and APIs outside the
 - `nvlink_bandwidth_count_speed` names an inactive link as the reason a speed
   could not be read, instead of reporting a bare read failure.
   ([#292](https://github.com/dsx-ai-factory/health-validation/pull/292))
+
+## [catalog/v0.3.2] and [toolkit/v0.3.2] - 2026-11-05
+
+Patch release on the v0.3 line, following v0.3.1.
+
+### Security
+
+- Build with Go 1.27.3, which carries the latest Go security fixes. The
+  `go` directive in every module is raised to match. ([#203](https://github.com/dsx-ai-factory/health-validation/pull/203))
+
+## [catalog/v0.3.1] and [toolkit/v0.3.1] - 2026-10-13
+
+Patch release on the v0.3 line.
+
+### Security
+
+- Build with Go 1.27.2 and `golang.org/x/net` 0.60.0. ([#159](https://github.com/dsx-ai-factory/health-validation/pull/159))
+- The container image uses an Ubuntu base with the `libssl3t64`
+  3.0.13-0ubuntu3.16 update. ([#162](https://github.com/dsx-ai-factory/health-validation/pull/162))
 
 ## [catalog/v0.3.0] and [toolkit/v0.3.0] - 2026-10-05
 
@@ -581,7 +691,12 @@ and documentation-only changes are omitted.
 - Operator CLI (`health-validation run`) producing structured JSON verdicts.
 - CEL-based rule evaluation engine with operator-configurable threshold overrides.
 
-[Unreleased]: https://github.com/dsx-ai-factory/health-validation/compare/toolkit/v0.3.1...main
+[Unreleased]: https://github.com/dsx-ai-factory/health-validation/compare/v0.4.0...main
+[v0.4.0]: https://github.com/dsx-ai-factory/health-validation/tree/v0.4.0
+[catalog/v0.3.2]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.2
+[toolkit/v0.3.2]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.2
+[catalog/v0.3.1]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.1
+[toolkit/v0.3.1]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.1
 [catalog/v0.3.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.3.0
 [toolkit/v0.3.0]: https://github.com/dsx-ai-factory/health-validation/tree/toolkit/v0.3.0
 [catalog/v0.2.0]: https://github.com/dsx-ai-factory/health-validation/tree/catalog/v0.2.0

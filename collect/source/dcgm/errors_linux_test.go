@@ -94,6 +94,16 @@ func TestDCGMErrorFromStatusText(t *testing.T) {
 			wantSource:   "DCGM_ST_INIT_ERROR",
 			wantCategory: observation.CollectionErrorCategoryUnavailable,
 		},
+		{
+			err:          "error creating group: Max limit reached for the object",
+			wantSource:   "DCGM_ST_MAX_LIMIT",
+			wantCategory: observation.CollectionErrorCategoryUnavailable,
+		},
+		{
+			err:          "error creating group: error code -24",
+			wantSource:   "DCGM_ST_MAX_LIMIT",
+			wantCategory: observation.CollectionErrorCategoryUnavailable,
+		},
 		{err: "libdcgm.so.4 not found", wantCategory: observation.CollectionErrorCategoryOther},
 	}
 	for _, test := range tests {
@@ -116,6 +126,7 @@ func TestDCGMFailureStatusesRetainOriginalCauses(t *testing.T) {
 		{failure: &godcgm.Error{Code: godcgm.DCGM_ST_CONNECTION_NOT_VALID}, text: "Host engine connection invalid/disconnected"},
 		{failure: &godcgm.Error{Code: godcgm.DCGM_ST_NOT_CONFIGURED}, text: "Setting not configured"},
 		{failure: &godcgm.Error{Code: godcgm.DCGM_ST_NOT_WATCHED}, text: "Field is not being watched"},
+		{failure: &godcgm.Error{Code: godcgm.DCGM_ST_MAX_LIMIT}, text: "Max limit reached for the object"},
 	} {
 		want := dcgmStatusName(int(status.failure.Code))
 		t.Run(want, func(t *testing.T) {
@@ -178,7 +189,7 @@ func TestDCGMStatusNormalizationDoesNotGuessFromOrdinaryErrors(t *testing.T) {
 	if failure := collectionError(dcgmErrorFromError(misleading)); failure.SourceError != "DCGM_ST_NO_DATA" {
 		t.Fatalf("typed native status was overridden by text: %v", &failure)
 	}
-	for _, err := range []error{errors.New("not watched"), errors.New("not configured"), errors.New("connection failed")} {
+	for _, err := range []error{errors.New("not watched"), errors.New("not configured"), errors.New("connection failed"), errors.New("group limit reached")} {
 		if failure := collectionError(dcgmErrorFromError(err)); failure.SourceError != "" {
 			t.Fatalf("generic text was treated as native status: %v", &failure)
 		}

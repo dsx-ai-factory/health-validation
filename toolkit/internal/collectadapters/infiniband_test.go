@@ -284,7 +284,7 @@ func TestInfiniBandAdapterDistinguishesPortsFromEnumerationFailure(t *testing.T)
 		t.Fatalf("keys = %v, want %v", keys, want)
 	}
 
-	cat := catalog.New(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
+	cat := catalog.New(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra), catalog.WithExperimentalChecks("ib_port_state"))
 	verdict, err := cat.EvaluateAll(ms...)
 	if err != nil {
 		t.Fatalf("EvaluateAll: %v, want the three entities told apart", err)

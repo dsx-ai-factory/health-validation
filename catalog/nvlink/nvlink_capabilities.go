@@ -46,7 +46,7 @@ func NVLinkCapabilities() health.CheckDefinition {
 		ExecutionClass:    health.Passive,
 		ExecutionContexts: []health.ExecutionContext{health.OperatorInfra, health.TenantGuest},
 		SchedulingCadence: health.Continuous,
-		Architectures:     []string{"GB200", "GB300", "B200", "B300"},
+		Architectures:     []string{"GB200", "GB300", "B200", "B300", "VR"},
 
 		ConditionScope:    health.NodeScope,
 		Provenance:        health.NVIDIA,

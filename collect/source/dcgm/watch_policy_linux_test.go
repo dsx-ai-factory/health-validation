@@ -273,10 +273,11 @@ func TestNativeWatchPolicyCleanupAttemptsEveryStepOnce(t *testing.T) {
 	}
 }
 
-func TestNativeWatchPolicyUnsupportedOverrideFailsBeforeInit(t *testing.T) {
+func TestNativeWatchPolicyUnsupportedOverrideFailsBeforeWatch(t *testing.T) {
 	source := NewStandaloneSource(StandaloneOptions{WatchPolicy: &WatchPolicy{
 		DefaultInterval: time.Second, SignalIntervals: map[string]time.Duration{"unsupported.signal": time.Second},
 	}})
+	source.processMode = new(sessionMode)
 	t.Cleanup(func() {
 		if err := source.Close(); err != nil {
 			t.Error(err)
@@ -284,22 +285,23 @@ func TestNativeWatchPolicyUnsupportedOverrideFailsBeforeInit(t *testing.T) {
 	})
 	library := source.native.(*nativeLibrary)
 	initCalls := 0
-	library.dcgmInit = func(sessionMode, ...string) (func(), error) {
+	library.dcgmInit = func(sessionMode, ...string) (func() error, error) {
 		initCalls++
-		return nil, errors.New("Init should not run")
+		return func() error { return nil }, nil
 	}
 	if err := source.AddMetricsToWatch([]string{signalPowerDraw}); err != nil {
 		t.Fatal(err)
 	}
 	values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "unsupported-policy"), 0, []string{signalPowerDraw})
 	failure := values[signalPowerDraw].CollectionError
-	if failure == nil || !strings.Contains(failure.Detail, "unsupported.signal") || initCalls != 0 {
+	if failure == nil || !strings.Contains(failure.Detail, "unsupported.signal") || initCalls != 1 || source.session == nil || source.closed.Load() {
 		t.Fatalf("unsupported override failure = %v, Init calls = %d", failure, initCalls)
 	}
 }
 
-func TestNativeWatchPolicyUnsupportedSignalFailsBeforeInit(t *testing.T) {
+func TestNativeWatchPolicyUnsupportedSignalFailsBeforeWatch(t *testing.T) {
 	source := NewStandaloneSource(StandaloneOptions{})
+	source.processMode = new(sessionMode)
 	t.Cleanup(func() {
 		if err := source.Close(); err != nil {
 			t.Error(err)
@@ -307,24 +309,25 @@ func TestNativeWatchPolicyUnsupportedSignalFailsBeforeInit(t *testing.T) {
 	})
 	library := source.native.(*nativeLibrary)
 	initCalls := 0
-	library.dcgmInit = func(sessionMode, ...string) (func(), error) {
+	library.dcgmInit = func(sessionMode, ...string) (func() error, error) {
 		initCalls++
-		return nil, errors.New("Init should not run")
+		return func() error { return nil }, nil
 	}
 	if err := source.AddMetricsToWatch([]string{"unsupported.signal"}); err != nil {
 		t.Fatal(err)
 	}
 	values := source.ReadGPUMetrics(context.Background(), newTestCycle(t, "unsupported-signal"), 0, []string{"unsupported.signal"})
 	failure := values["unsupported.signal"].CollectionError
-	if failure == nil || failure.Category != observation.CollectionErrorCategoryUnsupported || !strings.Contains(failure.Detail, "unsupported.signal") || initCalls != 0 {
+	if failure == nil || failure.Category != observation.CollectionErrorCategoryUnsupported || !strings.Contains(failure.Detail, "unsupported.signal") || initCalls != 1 || source.session == nil || source.closed.Load() {
 		t.Fatalf("unsupported signal failure = %v, Init calls = %d", failure, initCalls)
 	}
 }
 
-func TestNativeWatchPolicyUnsupportedOverrideFailsBeforeInventoryInit(t *testing.T) {
+func TestNativeWatchPolicyUnsupportedOverrideDoesNotBlockInventory(t *testing.T) {
 	source := NewStandaloneSource(StandaloneOptions{WatchPolicy: &WatchPolicy{
 		DefaultInterval: time.Second, SignalIntervals: map[string]time.Duration{"unsupported.signal": time.Second},
 	}})
+	source.processMode = new(sessionMode)
 	t.Cleanup(func() {
 		if err := source.Close(); err != nil {
 			t.Error(err)
@@ -332,18 +335,24 @@ func TestNativeWatchPolicyUnsupportedOverrideFailsBeforeInventoryInit(t *testing
 	})
 	library := source.native.(*nativeLibrary)
 	initCalls := 0
-	library.dcgmInit = func(sessionMode, ...string) (func(), error) {
+	library.dcgmInit = func(sessionMode, ...string) (func() error, error) {
 		initCalls++
-		return nil, errors.New("Init should not run")
+		return func() error { return nil }, nil
 	}
-	snapshot := source.GPUInventory(context.Background(), newTestCycle(t, "unsupported-inventory-policy"), []GPUIdentityEntry{{Index: 0}})
+	library.gpuStatus = func(uint) godcgm.EntityStatus { return godcgm.EntityStatusOk }
+	readCalls := 0
+	library.readFields = func([]uint, []godcgm.Short) ([]godcgm.FieldValue_v2, error) {
+		readCalls++
+		model := "H100"
+		return []godcgm.FieldValue_v2{{EntityGroupId: godcgm.FE_GPU, EntityID: 0, FieldID: godcgm.DCGM_FI_DEV_NAME, FieldType: godcgm.DCGM_FT_STRING, StringValue: &model}}, nil
+	}
+	snapshot := source.GPUInventory(context.Background(), newTestCycle(t, "unsupported-inventory-policy"), []GPUIdentityEntry{{Index: 0, UUID: "GPU-0"}})
 	entries := snapshot.GetInventory().GetEntries()
 	if len(entries) != 1 {
-		t.Fatalf("inventory entries = %v, want one failure", entries)
+		t.Fatalf("inventory entries = %v, want one GPU", entries)
 	}
-	failure := entries[0].CollectionError
-	if failure == nil || !strings.Contains(failure.Detail, "unsupported.signal") || initCalls != 0 {
-		t.Fatalf("unsupported override failure = %v, Init calls = %d", failure, initCalls)
+	if entry := entries[0]; entry.GetCollectionError() != nil || entry.GetGpu().GetModel() != "H100" || entry.GetGpu().GetUuid() != "GPU-0" || initCalls != 1 || readCalls != 1 {
+		t.Fatalf("inventory = %v, Init calls = %d, inventory reads = %d", entry, initCalls, readCalls)
 	}
 }
 

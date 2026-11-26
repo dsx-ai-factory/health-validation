@@ -71,6 +71,7 @@ go_test(
         "discovery_linux_test.go",
         "entity_test.go",
         "evaluation_test.go",
+        "experimental_test.go",
         "fixture_test.go",
         "lifecycle_test.go",
         "linkflap_collect_test.go",

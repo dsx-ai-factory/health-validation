@@ -57,7 +57,7 @@ func TestToMeasurementsSourceTimeoutRecommendsRetry(t *testing.T) {
 		t.Fatalf("failed signals = %v, want gpu_id", failedSignals(m))
 	}
 	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"))
-	if err := cat.Register(gpu.GPUPowerState()); err != nil {
+	if err := cat.Register(gpu.GPUPerformanceState()); err != nil {
 		t.Fatal(err)
 	}
 	verdict, err := cat.EvaluateAll(m)
@@ -78,8 +78,8 @@ func TestToMeasurementsKeepsPerSignalFailure(t *testing.T) {
 			Detail:    "read timed out",
 		}))
 
-	byID := evaluate(t, "H100", ToMeasurements(observations), gpu.GPUPowerLimit(), gpu.GPUPowerState())
-	if byID["gpu_power_limit"] != health.Pass || byID["gpu_power_state"] != health.Unknown {
+	byID := evaluate(t, "H100", ToMeasurements(observations), gpu.GPUPowerLimit(), gpu.GPUPerformanceState())
+	if byID["gpu_power_limit"] != health.Pass || byID["gpu_performance_state"] != health.Unknown {
 		t.Fatalf("unexpected severities %v", byID)
 	}
 	m := only[gpu.GPUMeasurement](t, ToMeasurements(observations))

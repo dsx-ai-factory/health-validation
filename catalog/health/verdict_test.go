@@ -229,7 +229,7 @@ func TestCheckVerdictJSON_ConditionScope(t *testing.T) {
 
 func TestAggregateNodeVerdict_GroupsChecksWithEntities(t *testing.T) {
 	nv := AggregateNodeVerdict([]CheckVerdict{
-		{CheckID: "gpu_power_state", Severity: Warning, Category: GPU, AffectedEntities: []string{"GPU-2"}},
+		{CheckID: "gpu_performance_state", Severity: Warning, Category: GPU, AffectedEntities: []string{"GPU-2"}},
 		{CheckID: "gpu_power_limit", Severity: Critical, Category: GPU, AffectedEntities: []string{"GPU-2"}},
 		{CheckID: "gpu_count", Severity: Critical, Category: GPU},
 		{CheckID: "gpu_power_limit", Severity: Critical, Category: GPU, AffectedEntities: []string{"GPU-1", "GPU-2"}},
@@ -243,8 +243,8 @@ func TestAggregateNodeVerdict_GroupsChecksWithEntities(t *testing.T) {
 	}
 	wantGPU := []AffectedCheck{
 		{CheckID: "gpu_count"},
+		{CheckID: "gpu_performance_state", Entities: []string{"GPU-2"}},
 		{CheckID: "gpu_power_limit", Entities: []string{"GPU-1", "GPU-2"}},
-		{CheckID: "gpu_power_state", Entities: []string{"GPU-2"}},
 	}
 	if !equalChecks(gpu.Checks, wantGPU) {
 		t.Errorf("gpu checks = %+v, want %+v", gpu.Checks, wantGPU)

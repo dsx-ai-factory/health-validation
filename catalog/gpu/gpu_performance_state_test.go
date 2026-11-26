@@ -21,15 +21,20 @@ func newCatalog(opts ...catalog.Option) *catalog.Catalog {
 	return catalog.New(append(defaults, opts...)...)
 }
 
-// expected_gpu_pstate is a DefaultThreshold so fleets that idle at a
-// different state can override it. The rule is an equality, so the
-// override moves the passing state rather than widening a budget.
+// max_performance_pstate is a DefaultThreshold so fleets that run at a
+// different state can override it. With min_performance_pstate left below
+// it, only that state passes.
 func overriddenPstateCatalog(pstate int64) *catalog.Catalog {
 	return newCatalog(catalog.WithOverrides(catalog.NewOverrideSet(catalog.Override{
-		CheckID:       "gpu_power_state",
-		ThresholdName: "expected_gpu_pstate",
+		CheckID:       "gpu_performance_state",
+		ThresholdName: "max_performance_pstate",
 		Value:         pstate,
 	})))
+}
+
+// A VR GPU moves between P0 (busy) and P5 (idle), so VR passes anywhere in that range.
+func vrCatalog() *catalog.Catalog {
+	return newCatalog(catalog.WithArchitecture("VR"))
 }
 
 func wrongArchitectureCatalog() *catalog.Catalog {
@@ -39,7 +44,7 @@ func wrongArchitectureCatalog() *catalog.Catalog {
 	)
 }
 
-func TestGPUPowerState(t *testing.T) {
+func TestGPUPerformanceState(t *testing.T) {
 	tests := []struct {
 		cat              func() *catalog.Catalog
 		name             string
@@ -71,10 +76,55 @@ func TestGPUPowerState(t *testing.T) {
 			wantSeverity: health.Pass,
 		},
 		{
+			// min_performance_pstate is assumed >= max_performance_pstate.
+			// Overriding only max_performance_pstate to P8 leaves
+			// min_performance_pstate at P0, so only P8 passes.
 			name:         "no longer matches default pstate once overridden",
 			cat:          func() *catalog.Catalog { return overriddenPstateCatalog(8) },
 			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
 			wantSeverity: health.Critical,
+		},
+		{
+			name:         "VR idle at P5",
+			cat:          vrCatalog,
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 5},
+			wantSeverity: health.Pass,
+		},
+		{
+			name:         "VR busy at P0",
+			cat:          vrCatalog,
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 0},
+			wantSeverity: health.Pass,
+		},
+		{
+			// A VR GPU can pass through P1-P4 as load changes.
+			name:         "VR between P0 and P5",
+			cat:          vrCatalog,
+			measurement:  gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 2},
+			wantSeverity: health.Pass,
+		},
+		{
+			name:             "VR below P5",
+			cat:              vrCatalog,
+			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 8},
+			wantSeverity:     health.Critical,
+			wantAction:       health.GenericDrain(),
+			wantMessageParts: []string{"GPU-0", "P8", "expected P0 to P5"},
+		},
+		{
+			name:             "VR just below P5",
+			cat:              vrCatalog,
+			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 6},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "P6"},
+		},
+		{
+			// Only VR idles at P5; other GPUs still fail there.
+			name:             "P5 still fails on GB200",
+			cat:              func() *catalog.Catalog { return newCatalog() },
+			measurement:      gpu.GPUMeasurement{GPUID: "GPU-0", GPUPstate: 5},
+			wantSeverity:     health.Critical,
+			wantMessageParts: []string{"GPU-0", "P5", "expected P0"},
 		},
 		{
 			name:           "skipped on wrong architecture",
@@ -96,7 +146,7 @@ func TestGPUPowerState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			v, err := tt.cat().Evaluate("gpu_power_state", tt.measurement)
+			v, err := tt.cat().Evaluate("gpu_performance_state", tt.measurement)
 			if err != nil {
 				t.Fatalf("Evaluate: %v", err)
 			}

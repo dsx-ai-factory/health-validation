@@ -101,7 +101,7 @@ docker run --rm \
 - `--network host`, the `libdcgm.so.4` mounts, and `LD_LIBRARY_PATH` let the
   CLI load the DCGM client and reach the host's DCGM hostengine on
   `localhost` — required for `gpu_average_power_draw`, `gpu_power_limit`,
-  `gpu_power_state`, `gpu_sensor_throttle`, and `nvlink_fabric`. Without them
+  `gpu_performance_state`, `gpu_sensor_throttle`, and `nvlink_fabric`. Without them
   those checks
   report a collection failure. The node must run `nv-hostengine`.
 - `--pid host` lets `gpu_compute_apps` see compute processes that other
@@ -122,7 +122,9 @@ which needs systemd 236 or later; without a readable kernel journal for the
 current boot, `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure
 verdicts. Neither falls back to `/dev/kmsg`, whose ring buffer cannot show
 that nothing was logged in the window.
-`ib_port_state` reads `/sys/class/infiniband`, which the container sees
+`ib_port_state` is experimental, so it runs only once the config enables it (see
+[Experimental checks](#experimental-checks) below). When it does, it reads
+`/sys/class/infiniband`, which the container sees
 through the host's sysfs without extra mounts, and examines every NVIDIA HCA
 there (PCI vendor `0x15b3`), not only `mlx*`-named ones; other vendors' and
 software RDMA devices are not checked. Selection reads each device's own
@@ -133,7 +135,7 @@ a collection failure, not a skip: the check assumes the run sees the node's
 RDMA devices, which holds on a bare-metal host, in a container or Kubernetes
 worker on host sysfs, and in a VM with HCAs or SR-IOV VFs passed through. A
 deployment without InfiniBand, or a tenant guest with no RDMA device assigned,
-lists the check in `disabled_checks`.
+leaves the check unenabled, or lists it in `disabled_checks`.
 
 ### Static binary (bare metal, Slurm)
 
@@ -229,7 +231,7 @@ The NVIDIA device-plugin allocation must expose all node GPUs to the pod for
 the GPU checks:
 
 - `hostNetwork: true`, so the CLI reaches the node's DCGM hostengine on
-  `localhost` (`gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`,
+  `localhost` (`gpu_average_power_draw`, `gpu_power_limit`, `gpu_performance_state`,
   `gpu_sensor_throttle`).
 - The host's `libdcgm.so.4`, and every non-glibc dependency reported by
   `ldd <host libdcgm.so.4 path>`, mounted read-only at the same paths, with
@@ -291,7 +293,7 @@ An operator-approved namespace here means one allowed to use `hostPath`,
 | Kubernetes explicit mounts | The same read-only paths and `LD_LIBRARY_PATH` as the wrapper. `hostNetwork: true`, `hostPID: true`, `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities or `privileged`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
 | Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above, plus the `libdcgm.so.4` mounts and `LD_LIBRARY_PATH` of the explicit profile. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
 | GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | Checks outside the journal can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
-| GPU access but no DCGM | No host network, no `libdcgm.so.4`, or no `nv-hostengine` on the node. | Checks outside DCGM can run; `gpu_average_power_draw`, `gpu_power_limit`, `gpu_power_state`, `gpu_sensor_throttle`, and `nvlink_fabric` return collection-failure verdicts rather than PASS. |
+| GPU access but no DCGM | No host network, no `libdcgm.so.4`, or no `nv-hostengine` on the node. | Checks outside DCGM can run; `gpu_average_power_draw`, `gpu_power_limit`, `gpu_performance_state`, `gpu_sensor_throttle`, and `nvlink_fabric` return collection-failure verdicts rather than PASS. |
 
 The image runs as root by default. An explicitly non-root Docker user or pod
 may be viable only when its host-mapped UID/GID has journal-read permission;
@@ -621,6 +623,18 @@ select it at invocation. To turn a check off entirely, list it under `disabled_c
 (or use `catalog.WithDisabledChecks` when embedding the library). It then
 appears in `skipped_checks` with `skip_reason: CHECK_DISABLED`.
 
+### Experimental checks
+
+Checks with `maturity_level: experimental` are off by default and are reported
+as skipped with `skip_reason: CHECK_DISABLED`, with a `skip_detail` that says they
+are experimental. Turn them on
+in the config with `experimental.enabled: true` (all of them) or by naming them
+under `experimental.checks:`. They then count toward `overall_severity` and the
+exit code like any other check. `enabled: true` also covers experimental checks a
+later release adds, so name the checks if an upgrade should never start running
+a new one. When embedding the library, use `catalog.WithExperimentalChecks` or
+`catalog.WithAllExperimentalChecks`.
+
 ### Audit trail for overrides
 
 Each `health-validation run` records every threshold override from its config
@@ -691,12 +705,16 @@ engine. Two paths:
   backend, and tests.
 
 Either way, the durable surface is the **catalog** (check definitions and the
-evaluation engine); the toolkit's sensor/backend layer that feeds it is a
-reference implementation and may change.
+evaluation engine) and the collection seams (`WithCollect`,
+`WithCollectAdapters`, `WithChecks`, `GPUAdapter`, `CollectAdapter`,
+`collect.Sensor`) and the `app.New`, `App.Run`, and `App.Close` lifecycle they
+need; the rest of the toolkit's collection wiring is a reference
+implementation and may change. See the
+[compatibility policy](https://github.com/dsx-ai-factory/health-validation/blob/main/RELEASE.md#compatibility).
 
 ## Shared raw collection library
 
-Use the experimental `github.com/dsx-ai-factory/health-validation/collect`
+Use the `github.com/dsx-ai-factory/health-validation/collect`
 module when you need raw observations rather than a catalog verdict.
 `collect.Sensor` keeps the same `ID`, `Signals`, and `Measure(ctx, ...OpOption)`
 interface. The packages below collect and normalize source data; they do not

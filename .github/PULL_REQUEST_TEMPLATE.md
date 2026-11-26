@@ -25,6 +25,7 @@
 ## Checklist
 
 - [ ] PR title follows Conventional Commits (`type(scope): subject`)
+- [ ] `!` in the title only if the change breaks a [guaranteed surface](../RELEASE.md#compatibility)
 - [ ] Commit messages are self-contained and describe *why*, not just *what*
 - [ ] Every commit has a DCO `Signed-off-by` trailer
 - [ ] Every commit is cryptographically signed and shows Verified on GitHub

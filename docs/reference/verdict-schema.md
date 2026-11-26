@@ -311,7 +311,7 @@ SkipReason provides a machine-readable code for why a check did not run.
 | <nobr>`NotSkipped`</nobr> | <nobr>`NOT_SKIPPED`</nobr> | Check ran normally. |
 | <nobr>`ArchitectureUnsupported`</nobr> | <nobr>`SIGNAL_UNAVAILABLE_ARCHITECTURE`</nobr> | Wrong GPU architecture. |
 | <nobr>`DeploymentUnsupported`</nobr> | <nobr>`SIGNAL_UNAVAILABLE_DEPLOYMENT_MODEL`</nobr> | Requires different execution context. |
-| <nobr>`CheckDisabled`</nobr> | <nobr>`CHECK_DISABLED`</nobr> | Operator disabled this check. |
+| <nobr>`CheckDisabled`</nobr> | <nobr>`CHECK_DISABLED`</nobr> | Operator disabled this check, or it is experimental and was not enabled. |
 | <nobr>`InsufficientHistory`</nobr> | <nobr>`INSUFFICIENT_HISTORY`</nobr> | Time-window data not yet available. |
 | <nobr>`ThresholdUnconfigured`</nobr> | <nobr>`THRESHOLD_UNCONFIGURED`</nobr> | Required threshold not supplied for this fleet. |
 | <nobr>`NoApplicableMeasurement`</nobr> | <nobr>`NO_APPLICABLE_MEASUREMENT`</nobr> | No supplied measurement carries the check's required signals. |

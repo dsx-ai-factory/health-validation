@@ -51,7 +51,7 @@ func TestNew_FilterByCategory(t *testing.T) {
 func TestNew_RegistersBuiltinCheck(t *testing.T) {
 	ids := []string{
 		"nvlink_active",
-		"gpu_power_state",
+		"gpu_performance_state",
 		"gpu_power_limit",
 		"gpu_average_power_draw",
 		"gpu_compute_apps",
@@ -162,7 +162,7 @@ func TestBuiltinChecks_NVMLCohortDependsOnGPUCount(t *testing.T) {
 	cohort := []string{
 		"gpu_average_power_draw",
 		"gpu_power_limit",
-		"gpu_power_state",
+		"gpu_performance_state",
 		"gpu_sensor_throttle",
 		"nvlink_active",
 		"nvlink_bandwidth_count_speed",

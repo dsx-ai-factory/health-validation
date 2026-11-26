@@ -123,6 +123,8 @@ func dcgmErrorCode(err error) (int, bool) {
 		return godcgm.DCGM_ST_NOT_WATCHED, true
 	case strings.Contains(message, "DCGM initialization error"):
 		return godcgm.DCGM_ST_INIT_ERROR, true
+	case strings.Contains(message, "Max limit reached for the object"):
+		return godcgm.DCGM_ST_MAX_LIMIT, true
 	}
 	matches := dcgmErrorCodePattern.FindStringSubmatch(err.Error())
 	if len(matches) != 2 {
@@ -207,7 +209,7 @@ func categoryFromCode(code int) observation.CollectionErrorCategory {
 	case godcgm.DCGM_ST_INIT_ERROR, godcgm.DCGM_ST_UNINITIALIZED,
 		godcgm.DCGM_ST_NVML_ERROR, godcgm.DCGM_ST_CONNECTION_NOT_VALID,
 		godcgm.DCGM_ST_LIBRARY_NOT_FOUND, godcgm.DCGM_ST_NVML_NOT_LOADED,
-		godcgm.DCGM_ST_NO_DATA, godcgm.DCGM_ST_STALE_DATA:
+		godcgm.DCGM_ST_NO_DATA, godcgm.DCGM_ST_STALE_DATA, godcgm.DCGM_ST_MAX_LIMIT:
 		return observation.CollectionErrorCategoryUnavailable
 	default:
 		return observation.CollectionErrorCategoryOther
@@ -218,6 +220,8 @@ func categoryFromCode(code int) observation.CollectionErrorCategory {
 // codes retain their numeric value so source information is not lost.
 func dcgmStatusName(code int) string {
 	switch code {
+	case godcgm.DCGM_ST_BADPARAM:
+		return "DCGM_ST_BADPARAM"
 	case godcgm.DCGM_ST_NOT_SUPPORTED:
 		return "DCGM_ST_NOT_SUPPORTED"
 	case godcgm.DCGM_ST_INIT_ERROR:
@@ -236,6 +240,8 @@ func dcgmStatusName(code int) string {
 		return "DCGM_ST_NVML_DRIVER_TIMEOUT"
 	case godcgm.DCGM_ST_CONNECTION_NOT_VALID:
 		return "DCGM_ST_CONNECTION_NOT_VALID"
+	case godcgm.DCGM_ST_MAX_LIMIT:
+		return "DCGM_ST_MAX_LIMIT"
 	case godcgm.DCGM_ST_NOT_CONFIGURED:
 		return "DCGM_ST_NOT_CONFIGURED"
 	case godcgm.DCGM_ST_NOT_WATCHED:

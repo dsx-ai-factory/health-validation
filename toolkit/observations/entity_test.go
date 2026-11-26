@@ -22,7 +22,7 @@ import (
 func entityCatalog(t *testing.T) *catalog.Catalog {
 	t.Helper()
 	cat := catalog.NewEmpty(catalog.WithArchitecture("GB200"), catalog.WithExecutionContext(health.OperatorInfra))
-	if err := cat.Register(gpu.GPUPowerState()); err != nil {
+	if err := cat.Register(gpu.GPUPerformanceState()); err != nil {
 		t.Fatal(err)
 	}
 	return cat

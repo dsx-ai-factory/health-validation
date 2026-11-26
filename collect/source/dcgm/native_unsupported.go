@@ -15,8 +15,9 @@ func (unsupportedNative) MetricWatchGroups([]string) ([]metricWatchGroup, error)
 	return []metricWatchGroup{}, nil
 }
 
-func (unsupportedNative) Init() (func(), error)          { return nil, unsupportedError() }
-func (unsupportedNative) AllGPUIndices() ([]uint, error) { return nil, unsupportedError() }
+func (unsupportedNative) Init() (func() error, error)       { return nil, unsupportedError() }
+func (unsupportedNative) AllGPUIndices() ([]uint, error)    { return nil, unsupportedError() }
+func (unsupportedNative) HealthGPUIndices() ([]uint, error) { return nil, unsupportedError() }
 func (unsupportedNative) ReadGPUUUIDs([]uint) (map[uint]GPUIdentityEntry, error) {
 	return nil, unsupportedError()
 }
@@ -30,6 +31,11 @@ func (unsupportedNative) WatchMetrics([]metricWatchGroup) (func() error, error) 
 }
 
 func (unsupportedNative) ReadGPUMetrics(uint, []string) (map[string]FieldValue, error) {
+	return nil, unsupportedError()
+}
+
+// WatchHealth reports that native DCGM health collection is unsupported.
+func (unsupportedNative) WatchHealth(uint64, *uint) (healthWatch, error) {
 	return nil, unsupportedError()
 }
 

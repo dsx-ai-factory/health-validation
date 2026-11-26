@@ -121,8 +121,7 @@ release carries the same version.
 
 This lifecycle takes effect on adoption of this policy. It covers final
 releases available at adoption and subsequent final releases, including pre-1.0
-releases. The experimental `collect` and `agentkit` packages are outside this
-lifecycle.
+releases. The experimental `agentkit` package is outside this lifecycle.
 
 | Stage | Meaning |
 | --- | --- |
@@ -155,6 +154,17 @@ The `v0.1.x` lines are EOL. These lines predate the single-module layout and
 were tagged per module; the first `vX.Y.Z` release replaces this table with
 single-tag lines.
 
+Every version of the per-module `catalog`, `collect`, and `toolkit` modules is
+retracted in favor of the root module. Builds that pin one keep working, but
+`go list -m -u all` warns about it. Retraction excludes versions; it does not
+redirect a module path. `go install <package>@latest` falls through to the root
+module, but a `go.mod` that requires `…/catalog` or `…/toolkit` must be changed
+to require the root module instead. Import paths stay the same.
+
+This includes later `v0.3.x` patches, which are still tagged per module from
+`release/v0.3`. `go get -u` skips them, so request one by its explicit version. See
+[RELEASE.md](./RELEASE.md#retired-per-module-tags).
+
 Maintainers update this table and the release notes when final releases change
 the supported lines. Backport requests should identify the affected supported
 line. Maintainers evaluate security and critical fixes for Maintenance lines
@@ -162,12 +172,15 @@ on a best-effort basis; see [RELEASE.md](./RELEASE.md).
 
 ### Interface compatibility
 
-The module is currently **pre-1.0 (`v0.x`)**. Breaking public API or CLI
-changes may occur in minor releases; compatible fixes use patch releases.
-From 1.0, breaking changes to the catalog's public Go API or the CLI's
-behavior and flags require a major release. Breaking changes are announced
-in advance. A release deprecating a public API must document a migration path
-and retain the API until a later breaking release removes it.
+The module is currently **pre-1.0 (`v0.x`)**. Breaking changes to a guaranteed
+surface may occur in minor releases; compatible fixes use patch releases.
+From 1.0, such changes require a major release and are announced in advance. A
+release deprecating a public API must document a migration path and retain the
+API until a later breaking release removes it.
+
+[RELEASE.md](./RELEASE.md#compatibility) lists the guaranteed surfaces, such
+as the verdict JSON, the CLI, check IDs, configuration, and the catalog's Go
+API, and what is not guaranteed.
 
 Pin the source release tag or commit used for a deployment. Release candidates
 and builds from `main` contain prerelease or development changes. Review the
@@ -175,12 +188,6 @@ and builds from `main` contain prerelease or development changes. Review the
 [release notes](https://github.com/dsx-ai-factory/health-validation/releases),
 and [release policy](./RELEASE.md) before upgrading. Development builds and
 release candidates are outside the finalized-release lifecycle.
-
-The catalog is the intended integration and extension surface, subject to the
-pre-1.0 policy above. Toolkit sensors, backends, collection wiring, and the app
-builder are reference implementations and may change. The `collect` and
-`agentkit` packages are experimental. See the
-[developer guide](./docs/developer.md) and [extension guide](./docs/extending.md).
 
 Verdict JSON is versioned separately through `schema_version`.
 `catalog_version` identifies the catalog compiled into the producer. Validate
@@ -196,9 +203,9 @@ GPU and NVLink sensors backed by DCGM and NVML, an NVML-backed node sensor,
 plus CPU, Xid, and RDMA link-flap sensors.
 
 For integrations using `toolkit.Collect`, prerequisites depend on the supplied
-sensors and backends. With the stock toolkit backends, CPU collection requires
+sensors. With the stock collect sources, CPU collection requires
 Linux sysfs; Xid and RDMA link-flap collection require host journal access
-through `journalctl`. These backend requirements also apply to the stock app.
+through `journalctl`. These requirements also apply to the stock app.
 The catalog can evaluate supplied measurements on other platforms without
 hardware access.
 See the [prerequisites](./README.md#prerequisites) and

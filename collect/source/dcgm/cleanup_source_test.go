@@ -33,14 +33,14 @@ func (native *cleanupNative) recordCleanupGate() {
 	}
 }
 
-func (native *cleanupNative) Init() (func(), error) {
+func (native *cleanupNative) Init() (func() error, error) {
 	cleanup, err := native.fakeNative.Init()
 	if err != nil {
 		return nil, err
 	}
-	return func() {
+	return func() error {
 		native.recordCleanupGate()
-		cleanup()
+		return cleanup()
 	}, nil
 }
 
@@ -185,15 +185,16 @@ type clientReferenceNative struct {
 	cleanupNative
 }
 
-func (native *clientReferenceNative) Init() (func(), error) {
+func (native *clientReferenceNative) Init() (func() error, error) {
 	cleanup, err := native.cleanupNative.Init()
 	if err != nil {
 		return nil, err
 	}
 	native.clientReferences.Add(1)
-	return func() {
-		cleanup()
+	return func() error {
+		err := cleanup()
 		native.clientReferences.Add(-1)
+		return err
 	}, nil
 }
 
@@ -327,7 +328,7 @@ type blockingSetupNative struct {
 	blockWatch bool
 }
 
-func (native *blockingSetupNative) Init() (func(), error) {
+func (native *blockingSetupNative) Init() (func() error, error) {
 	if !native.blockWatch {
 		close(native.started)
 		<-native.release

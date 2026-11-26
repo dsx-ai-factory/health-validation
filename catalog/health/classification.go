@@ -336,7 +336,7 @@ const (
 	NotSkipped              SkipReason = iota // Check ran normally.
 	ArchitectureUnsupported                   // Wrong GPU architecture.
 	DeploymentUnsupported                     // Requires different execution context.
-	CheckDisabled                             // Operator disabled this check.
+	CheckDisabled                             // Operator disabled this check, or it is experimental and was not enabled.
 	InsufficientHistory                       // Time-window data not yet available.
 	ThresholdUnconfigured                     // Required threshold not supplied for this fleet.
 	NoApplicableMeasurement                   // No supplied measurement carries the check's required signals.

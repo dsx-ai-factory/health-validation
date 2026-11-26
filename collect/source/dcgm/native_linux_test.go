@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	godcgm "github.com/NVIDIA/go-dcgm/pkg/dcgm"
 	"github.com/dsx-ai-factory/health-validation/collect/observation"
@@ -51,11 +53,14 @@ func TestNativeInitSelectsMode(t *testing.T) {
 			library := &nativeLibrary{
 				options: test.options,
 				mode:    test.mode,
-				dcgmInit: func(mode sessionMode, args ...string) (func(), error) {
+				dcgmInit: func(mode sessionMode, args ...string) (func() error, error) {
 					calls++
 					gotMode = mode
 					gotArgs = args
-					return func() { cleanups++ }, nil
+					return func() error {
+						cleanups++
+						return nil
+					}, nil
 				},
 			}
 
@@ -67,7 +72,9 @@ func TestNativeInitSelectsMode(t *testing.T) {
 				t.Fatalf("dcgmInit calls = %d, mode = %v, args = %q; want 1, %v, %q",
 					calls, gotMode, gotArgs, test.mode, test.wantArgs)
 			}
-			cleanup()
+			if err := cleanup(); err != nil {
+				t.Fatalf("cleanup() error = %v", err)
+			}
 			if cleanups != 1 {
 				t.Fatalf("cleanup calls = %d, want 1", cleanups)
 			}
@@ -78,7 +85,7 @@ func TestNativeInitSelectsMode(t *testing.T) {
 func TestNativeInitWrapsInitError(t *testing.T) {
 	library := &nativeLibrary{
 		mode: embeddedMode,
-		dcgmInit: func(sessionMode, ...string) (func(), error) {
+		dcgmInit: func(sessionMode, ...string) (func() error, error) {
 			return nil, errors.New("libdcgm.so.4 not found")
 		},
 	}
@@ -106,11 +113,10 @@ func recordGoDCGMInit[M any](_ func(M, ...string) (func(), error), gotMode *any,
 }
 
 func TestInitDCGMPassesGoDCGMMode(t *testing.T) {
-	original := goDCGMInit
-	t.Cleanup(func() { goDCGMInit = original })
 	var gotMode any
 	var gotArgs []string
-	goDCGMInit = recordGoDCGMInit(goDCGMInit, &gotMode, &gotArgs)
+	fakeInit := recordGoDCGMInit(godcgm.Init, &gotMode, &gotArgs)
+	initDCGM := newDCGMInitializer(fakeInit, func() error { return nil }, godcgm.Embedded, godcgm.Standalone)
 
 	for _, test := range []struct {
 		wantMode any
@@ -129,7 +135,40 @@ func TestInitDCGMPassesGoDCGMMode(t *testing.T) {
 	}
 }
 
+func TestInitDCGMCleanupReportsShutdownError(t *testing.T) {
+	var mode any
+	var args []string
+	fakeInit := recordGoDCGMInit(godcgm.Init, &mode, &args)
+	shutdownError := &godcgm.Error{Code: godcgm.DCGM_ST_CONNECTION_NOT_VALID}
+	shutdownCalls := 0
+	shutdown := func() error {
+		shutdownCalls++
+		return shutdownError
+	}
+	initDCGM := newDCGMInitializer(fakeInit, shutdown, godcgm.Embedded, godcgm.Standalone)
+	cleanup, err := initDCGM(standaloneMode, "localhost", "0")
+	if err != nil {
+		t.Fatalf("initDCGM() error = %v", err)
+	}
+	if shutdownCalls != 0 {
+		t.Fatal("initialization released the client before cleanup")
+	}
+	err = cleanup()
+	var original *godcgm.Error
+	if shutdownCalls != 1 || !errors.Is(err, shutdownError) || !errors.As(err, &original) || original != shutdownError {
+		t.Fatalf("cleanup lost shutdown failure: calls=%d error=%v", shutdownCalls, err)
+	}
+	failure := collectionError(err)
+	if failure.SourceError != "DCGM_ST_CONNECTION_NOT_VALID" || failure.Category != observation.CollectionErrorCategoryUnavailable {
+		t.Fatalf("cleanup lost native status: %v", &failure)
+	}
+}
+
 func TestInitDCGMRejectsUnknownMode(t *testing.T) {
+	var gotMode any
+	var gotArgs []string
+	fakeInit := recordGoDCGMInit(godcgm.Init, &gotMode, &gotArgs)
+	initDCGM := newDCGMInitializer(fakeInit, func() error { return nil }, godcgm.Embedded, godcgm.Standalone)
 	for _, mode := range []sessionMode{0, embeddedMode + 1} {
 		cleanup, err := initDCGM(mode)
 		if cleanup != nil {
@@ -140,9 +179,13 @@ func TestInitDCGMRejectsUnknownMode(t *testing.T) {
 			t.Fatalf("initDCGM(%d) error = %v, want %q", mode, err, want)
 		}
 	}
+	if gotMode != nil {
+		t.Fatalf("unsupported session mode initialized go-dcgm with mode %v", gotMode)
+	}
 }
 
 func TestNewStandaloneSourceNativeOptions(t *testing.T) {
+	healthDefaults := &HealthWatchOptions{UpdateInterval: 30 * time.Second, MaxKeepAge: 10 * time.Minute}
 	tests := []struct {
 		name string
 		in   StandaloneOptions
@@ -150,12 +193,12 @@ func TestNewStandaloneSourceNativeOptions(t *testing.T) {
 	}{
 		{
 			name: "defaults",
-			want: StandaloneOptions{Address: "localhost"},
+			want: StandaloneOptions{Address: "localhost", HealthWatch: healthDefaults},
 		},
 		{
 			name: "explicit",
 			in:   StandaloneOptions{Address: "/run/x", GroupNamePrefix: "hv", IsSocket: true, LiveMetrics: true},
-			want: StandaloneOptions{Address: "/run/x", GroupNamePrefix: "hv", IsSocket: true, LiveMetrics: true},
+			want: StandaloneOptions{Address: "/run/x", GroupNamePrefix: "hv", IsSocket: true, LiveMetrics: true, HealthWatch: healthDefaults},
 		},
 	}
 	for _, test := range tests {
@@ -168,7 +211,7 @@ func TestNewStandaloneSourceNativeOptions(t *testing.T) {
 			if !ok {
 				t.Fatalf("native = %T, want *nativeLibrary", source.native)
 			}
-			if library.options != test.want || library.mode != standaloneMode {
+			if !reflect.DeepEqual(library.options, test.want) || library.mode != standaloneMode {
 				t.Fatalf("native options = %+v, mode %v; want %+v, %v", library.options, library.mode, test.want, standaloneMode)
 			}
 			if library.dcgmInit == nil {
@@ -183,7 +226,7 @@ func TestNewEmbeddedSourceNativeOptions(t *testing.T) {
 	if !ok {
 		t.Fatal("embedded source native is not *nativeLibrary")
 	}
-	if want := (StandaloneOptions{GroupNamePrefix: "hv"}); library.options != want || library.mode != embeddedMode {
+	if want := (StandaloneOptions{GroupNamePrefix: "hv", HealthWatch: &HealthWatchOptions{UpdateInterval: 30 * time.Second, MaxKeepAge: 10 * time.Minute}}); !reflect.DeepEqual(library.options, want) || library.mode != embeddedMode {
 		t.Fatalf("native options = %+v, mode %v; want %+v, %v", library.options, library.mode, want, embeddedMode)
 	}
 	if library.dcgmInit == nil {

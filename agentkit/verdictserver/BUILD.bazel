@@ -6,7 +6,10 @@ package(default_visibility = ["//build/visibility:toolkit_consumers"])
 
 go_library(
     name = "verdictserver",
-    srcs = ["verdict.go"],
+    srcs = [
+        "liveness.go",
+        "verdict.go",
+    ],
     importpath = "github.com/dsx-ai-factory/health-validation/agentkit/verdictserver",
     deps = [
         "//proto/go/health/v1:health",
@@ -14,6 +17,7 @@ go_library(
         "@com_github_soheilhy_cmux//:cmux",
         "@org_golang_google_grpc//:grpc",
         "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//health/grpc_health_v1",
         "@org_golang_google_grpc//stats",
         "@org_golang_google_grpc//status",
         "@org_golang_google_protobuf//encoding/protojson",
@@ -24,6 +28,7 @@ go_test(
     name = "verdictserver_test",
     srcs = [
         "admission_test.go",
+        "liveness_test.go",
         "verdict_test.go",
     ],
     embed = [":verdictserver"],
@@ -32,6 +37,7 @@ go_test(
         "@org_golang_google_grpc//:grpc",
         "@org_golang_google_grpc//codes",
         "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//health/grpc_health_v1",
         "@org_golang_google_grpc//stats",
         "@org_golang_google_grpc//status",
         "@org_golang_google_protobuf//encoding/protojson",
