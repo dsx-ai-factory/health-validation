@@ -214,7 +214,7 @@ Detects NVRM Xid 45 in the system journal within the collection window; informat
   - Message: GPU Xid 45 accompanied another Xid; no Xid 45-specific remediation is needed. Follow the accompanying Xid's guidance.
 - **WARNING** when `45 in xid_counts && xid_counts[45] >= occurrences && !xid_counts.exists(c, c != 45 && c != 154)`
   - Message: GPU Xid 45 occurred alone; restart the application. If Xid 45 recurs with no other Xid, report the issue.
-  - Action: operational state `monitor`, then `restart_app`
+  - Action: operational state `monitor`; remediation `restart_app`
 
 ## GPU Xid 54 (auxiliary power is not connected to the GPU board)
 
@@ -244,7 +244,7 @@ Detects NVRM Xid 54 in the system journal within the collection window.
 - **CRITICAL** when `54 in xid_counts && xid_counts[54] >= occurrences`
   - Message: GPU Xid 54 detected: auxiliary power is not connected to the GPU board.
 
-**Recommended action:** operational state `drain`, then `service_required`
+**Recommended action:** operational state `drain`; remediation `service_required`
 
 ## GPU Xid 80 Warning
 
@@ -274,7 +274,7 @@ Detects warning-class NVRM Xid 80 in the system journal within the collection wi
 - **WARNING** when `80 in xid_counts && xid_counts[80] >= occurrences`
   - Message: GPU Xid 80 detected: corrupted data sent to the GPU. Restart the faulting application.
 
-**Recommended action:** operational state `monitor`, then `restart_app`
+**Recommended action:** operational state `monitor`; remediation `restart_app`
 
 ## GPU Xid 136 (link training failed)
 
@@ -304,7 +304,7 @@ Detects NVRM Xid 136 in the system journal within the collection window.
 - **CRITICAL** when `136 in xid_counts && xid_counts[136] >= occurrences`
   - Message: GPU Xid 136 detected: link training failed.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `service_required`
 
 ## GPU Xid 142 (NVENC3 error)
 
@@ -334,7 +334,7 @@ Detects NVRM Xid 142 in the system journal within the collection window.
 - **CRITICAL** when `142 in xid_counts && xid_counts[142] >= occurrences`
   - Message: GPU Xid 142 detected: NVENC3 error.
 
-**Recommended action:** operational state `drain`, then `service_required`
+**Recommended action:** operational state `drain`; remediation `service_required`
 
 ## GPU Xid 144 (NVLink SAW error)
 
@@ -364,7 +364,7 @@ Detects NVRM Xid 144 in the system journal within the collection window, differe
 
 - **CRITICAL** when `144 in fatal_xid_counts && fatal_xid_counts[144] >= fatal_occurrences`
   - Message: GPU Xid 144 detected: NVLink SAW error (Fatal).
-  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+  - Action: operational state `drain`; remediation `reset_gpu` → `service_required`
 - **WARNING** when `144 in xid_counts && xid_counts[144] > (144 in fatal_xid_counts ? fatal_xid_counts[144] : 0) && xid_counts[144] - (144 in fatal_xid_counts ? fatal_xid_counts[144] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 144 detected: NVLink SAW error (Nonfatal).
 
@@ -396,7 +396,7 @@ Detects NVRM Xid 145 in the system journal within the collection window, differe
 
 - **CRITICAL** when `145 in fatal_xid_counts && fatal_xid_counts[145] >= fatal_occurrences`
   - Message: GPU Xid 145 detected: NVLink RLW error (Fatal).
-  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+  - Action: operational state `drain`; remediation `reset_gpu` → `service_required`
 - **WARNING** when `145 in xid_counts && xid_counts[145] > (145 in fatal_xid_counts ? fatal_xid_counts[145] : 0) && xid_counts[145] - (145 in fatal_xid_counts ? fatal_xid_counts[145] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 145 detected: NVLink RLW error (Nonfatal).
 
@@ -428,7 +428,7 @@ Detects NVRM Xid 146 in the system journal within the collection window, differe
 
 - **CRITICAL** when `146 in fatal_xid_counts && fatal_xid_counts[146] >= fatal_occurrences`
   - Message: GPU Xid 146 detected: NVLink TLW error (Fatal).
-  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+  - Action: operational state `drain`; remediation `reset_gpu` → `service_required`
 - **WARNING** when `146 in xid_counts && xid_counts[146] > (146 in fatal_xid_counts ? fatal_xid_counts[146] : 0) && xid_counts[146] - (146 in fatal_xid_counts ? fatal_xid_counts[146] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 146 detected: NVLink TLW error (Nonfatal).
 
@@ -460,7 +460,7 @@ Detects NVRM Xid 147 in the system journal within the collection window, differe
 
 - **CRITICAL** when `147 in fatal_xid_counts && fatal_xid_counts[147] >= fatal_occurrences`
   - Message: GPU Xid 147 detected: NVLink TREX error (Fatal).
-  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+  - Action: operational state `drain`; remediation `reset_gpu` → `service_required`
 - **WARNING** when `147 in xid_counts && xid_counts[147] > (147 in fatal_xid_counts ? fatal_xid_counts[147] : 0) && xid_counts[147] - (147 in fatal_xid_counts ? fatal_xid_counts[147] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 147 detected: NVLink TREX error (Nonfatal).
 
@@ -492,7 +492,7 @@ Detects NVRM Xid 148 in the system journal within the collection window, differe
 
 - **CRITICAL** when `148 in fatal_xid_counts && fatal_xid_counts[148] >= fatal_occurrences`
   - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error (Fatal).
-  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+  - Action: operational state `drain`; remediation `reset_gpu` → `service_required`
 - **WARNING** when `148 in xid_counts && xid_counts[148] > (148 in fatal_xid_counts ? fatal_xid_counts[148] : 0) && xid_counts[148] - (148 in fatal_xid_counts ? fatal_xid_counts[148] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 148 detected: NVLink NVLPW_CTRL error (Nonfatal).
 
@@ -524,7 +524,7 @@ Detects NVRM Xid 149 in the system journal within the collection window, differe
 
 - **CRITICAL** when `149 in fatal_xid_counts && fatal_xid_counts[149] >= fatal_occurrences`
   - Message: GPU Xid 149 detected: NVLink NETIR error (Fatal).
-  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+  - Action: operational state `drain`; remediation `reset_gpu` → `service_required`
 - **WARNING** when `149 in xid_counts && xid_counts[149] > (149 in fatal_xid_counts ? fatal_xid_counts[149] : 0) && xid_counts[149] - (149 in fatal_xid_counts ? fatal_xid_counts[149] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 149 detected: NVLink NETIR error (Nonfatal).
 
@@ -556,7 +556,7 @@ Detects NVRM Xid 150 in the system journal within the collection window, differe
 
 - **CRITICAL** when `150 in fatal_xid_counts && fatal_xid_counts[150] >= fatal_occurrences`
   - Message: GPU Xid 150 detected: NVLink MSE error (Fatal).
-  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+  - Action: operational state `drain`; remediation `reset_gpu` → `service_required`
 - **WARNING** when `150 in xid_counts && xid_counts[150] > (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) && xid_counts[150] - (150 in fatal_xid_counts ? fatal_xid_counts[150] : 0) >= nonfatal_occurrences`
   - Message: GPU Xid 150 detected: NVLink MSE error (Nonfatal).
 
@@ -585,18 +585,18 @@ Detects NVRM Xid 154 in the system journal within the collection window and repo
 
 **Rules**
 
-- **CRITICAL** when `("0x2" in recovery_action_counts && recovery_action_counts["0x2"] >= occurrences) \|\| ("0x6" in recovery_action_counts && recovery_action_counts["0x6"] >= occurrences) \|\| ("0x7" in recovery_action_counts && recovery_action_counts["0x7"] >= occurrences)`
+- **CRITICAL** when `("0x2" in recovery_action_counts && recovery_action_counts["0x2"] >= occurrences) || ("0x6" in recovery_action_counts && recovery_action_counts["0x6"] >= occurrences) || ("0x7" in recovery_action_counts && recovery_action_counts["0x7"] >= occurrences)`
   - Message: GPU Xid 154: the driver requested an OS reboot for at least one GPU.
-  - Action: operational state `drain`, then `restart_os` → `service_required`
+  - Action: operational state `drain`; remediation `restart_os` → `service_required`
 - **CRITICAL** when `("0x1" in recovery_action_counts && recovery_action_counts["0x1"] >= occurrences)`
   - Message: GPU Xid 154: the driver requested a GPU reset for at least one GPU.
-  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+  - Action: operational state `drain`; remediation `reset_gpu` → `service_required`
 - **CRITICAL** when `("0x4" in recovery_action_counts && recovery_action_counts["0x4"] >= occurrences)`
   - Message: GPU Xid 154: the driver requested a drain and reset for at least one GPU. Schedule no new work on the GPU; let unaffected jobs finish or reach a checkpoint, then reset the GPU to regain its full memory capacity.
-  - Action: operational state `drain`, then `reset_gpu` → `service_required`
+  - Action: operational state `drain`; remediation `reset_gpu` → `service_required`
 - **CRITICAL** when `("0x3" in recovery_action_counts && recovery_action_counts["0x3"] >= occurrences)`
   - Message: GPU Xid 154: the driver requested that peer-to-peer traffic be stopped for at least one GPU. Disable new scheduling, stop the processes doing P2P traffic and disable UVM persistence mode, then reset the GPU. If a query of the GPU's recovery action no longer reports Drain P2P after quiescing, the reset can be skipped.
-  - Action: operational state `drain`, then `stop_p2p_traffic` → `reset_gpu` → `service_required`
+  - Action: operational state `drain`; remediation `stop_p2p_traffic` → `reset_gpu` → `service_required`
 - **WARNING** when `recovery_action_counts.exists(k, !(k in ["0x0", "0x2", "0x6", "0x7", "0x1", "0x4", "0x3", "unreadable"]) && recovery_action_counts[k] >= occurrences)`
   - Message: GPU Xid 154: the driver requested a recovery action this catalog does not recognize for at least one GPU. Monitor, investigate the printed transition and the accompanying Xid, and report the action code.
   - Action: operational state `monitor`

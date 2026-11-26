@@ -25,7 +25,7 @@ Verifies every logical CPU in the Linux kernel's possible mask is online and ava
 - **CRITICAL** when `online_cpu_count != possible_cpu_count`
   - Message: Expected all $\{possible_cpu_count\} possible logical CPUs to be online; found $\{online_cpu_count\} online.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 
 ## NUMA Node Count
 
@@ -55,5 +55,5 @@ Verifies a node brought online the expected number of NUMA nodes for its archite
 - **CRITICAL** when `numa_node_count != expected_numa_node_count`
   - Message: Expected $\{expected_numa_node_count\} NUMA nodes online, found $\{numa_node_count\}.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 

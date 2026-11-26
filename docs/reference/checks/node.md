@@ -32,5 +32,5 @@ Verifies a node enumerated the expected number of GPUs for its architecture.
 - **CRITICAL** when `gpu_count != expected_gpu_count`
   - Message: Expected $\{expected_gpu_count\} GPUs, found $\{gpu_count\}.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 

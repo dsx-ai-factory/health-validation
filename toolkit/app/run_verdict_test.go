@@ -62,7 +62,7 @@ func fixtureCases() []fixtureCase {
 		{name: "healthy GB200", node: healthyGB200(), exit: exitOK},
 		{
 			name: "continuous cadence", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--cadence", "CONTINUOUS"} }), exit: exitOK,
-			skips: map[string]health.SkipReason{"gpu_compute_apps": health.CadenceMismatch, "gpu_power_limit": health.CadenceMismatch, "gpu_sensor_throttle": health.CadenceMismatch},
+			skips: map[string]health.SkipReason{"gpu_compute_apps": health.CadenceMismatch, "gpu_power_limit": health.CadenceMismatch, "gpu_sensor_throttle": health.CadenceMismatch, "rdma_topo": health.CadenceMismatch},
 		},
 		{name: "prolog cadence", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--cadence", "PROLOG"} }), exit: exitOK},
 		{name: "maintenance cadence", node: with(healthyGB200(), func(f *nodeFixture) { f.args = []string{"--cadence", "MAINTENANCE"} }), exit: exitOK},

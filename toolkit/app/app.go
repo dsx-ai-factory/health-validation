@@ -21,11 +21,11 @@
 //		os.Exit(a.RunAndClose(os.Args[1:], os.Stdout, os.Stderr))
 //	}
 //
-// The GPU, NVLink, node, CPU, Xid, and RDMA link-flap domains come from collect
-// sensors (DCGM and NVML, the host's NVML GPU inventory, sysfs, and the
-// journal); [App.WithCollect] replaces a built-in source by claiming its
-// signals. Custom checks register alongside the built-ins as a pure
-// pass-through: their author-declared classification (Provenance, …) is
+// The GPU, NVLink, node, CPU, Xid, RDMA link-flap, and rdma_topo measurements
+// come from collect sensors (DCGM and NVML, the host's NVML GPU inventory,
+// sysfs, the journal, and rdma_topo); [App.WithCollect] replaces a built-in
+// source by claiming its signals. Custom checks register alongside the
+// built-ins as a pure pass-through: their author-declared classification (Provenance, …) is
 // honored verbatim. Registration fails only on the catalog's own validation
 // or a duplicate ID.
 package app

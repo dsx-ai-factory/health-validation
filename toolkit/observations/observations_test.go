@@ -566,7 +566,7 @@ func TestMappedSignalsFor(t *testing.T) {
 	}
 	// Every mapped signal belongs to exactly one domain.
 	perDomain := slices.Concat(MappedSignalsFor(health.CPU), MappedSignalsFor(health.Node), MappedSignalsFor(health.GPU),
-		MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid), MappedSignalsFor(health.InfiniBand))
+		MappedSignalsFor(health.NVLink), MappedSignalsFor(health.Xid), MappedSignalsFor(health.InfiniBand), MappedSignalsFor(health.PCIe))
 	slices.Sort(perDomain)
 	if all := slices.Sorted(slices.Values(MappedSignals())); !slices.Equal(perDomain, all) {
 		t.Fatalf("per-domain signals %v do not partition %v", perDomain, all)

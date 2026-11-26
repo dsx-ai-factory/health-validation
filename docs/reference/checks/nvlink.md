@@ -32,7 +32,7 @@ Verifies each GPU has no inactive NVLinks.
 - **CRITICAL** when `inactive_count > max_inactive_nvlinks`
   - Message: GPU $\{gpu_id\}: $\{inactive_count\} inactive NVLinks (allowed: $\{max_inactive_nvlinks\}).
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 
 ## NVLink Bandwidth, Count, and Speed
 
@@ -65,7 +65,7 @@ Verifies each GPU's NVLink link count and per-link speed match expected values.
 - **CRITICAL** when `speed_mbytes_per_sec != expected_speed_mbytes_per_sec`
   - Message: GPU $\{gpu_id\}: expected $\{expected_speed_mbytes_per_sec\} MB/s per NVLink, found $\{speed_mbytes_per_sec\} MB/s.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 
 ## NVLink Capabilities
 
@@ -99,7 +99,7 @@ Verifies every NVLink on each GPU reports the capabilities required for multi-GP
 - **CRITICAL** when `all_links_support_link == false`
   - Message: GPU $\{gpu_id\}: one or more NVLinks are not reported as supported (Link capability).
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 
 ## NVLink Fabric Registration
 
@@ -125,7 +125,7 @@ Verifies each GPU has completed NVLink fabric registration with a successful sta
 - **CRITICAL** when `fabric_registration_failed == true`
   - Message: GPU $\{gpu_id\}: NVLink fabric registration completed with a failure status.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 
 ## NVLink Fabric Health
 
@@ -155,7 +155,7 @@ Monitors per-GPU NVLink fabric health flags from NVML. Degraded bandwidth, in-pr
 - **CRITICAL** when `fabric_access_timeout_recovery == true`
   - Message: GPU $\{gpu_id\}: NVLink fabric access timeout recovery is active.
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `hold`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `hold`
 
 ## NVLink P2P Connectivity
 
@@ -185,5 +185,5 @@ Verifies each GPU has healthy peer-to-peer NVLink connectivity to every other GP
 - **CRITICAL** when `unhealthy_p2p_peer_count > max_unhealthy_p2p_peers`
   - Message: GPU $\{gpu_id\}: $\{unhealthy_p2p_peer_count\} peer GPUs unreachable over NVLink P2P (allowed: $\{max_unhealthy_p2p_peers\}).
 
-**Recommended action:** operational state `drain`, then `reset_gpu` → `restart_os` → `service_required`
+**Recommended action:** operational state `drain`; remediation `reset_gpu` → `restart_os` → `service_required`
 

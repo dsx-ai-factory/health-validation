@@ -71,14 +71,16 @@ scripts/health-validation-run.sh health-validation:latest \
 ```
 
 This requires the host and container base OS to have compatible glibc ABIs.
-For a uniform fleet that is normally the case. The equivalent `docker run`
-command is:
+For a uniform fleet that is normally the case. The following `docker run`
+example also supplies the `rdma_topo` requirements, which the wrapper does not
+provide. It assumes rootful Docker without user-namespace remapping:
 
 ```shell
 docker run --rm \
   --gpus all \
   --network host \
   --pid host \
+  --cap-add=SYS_ADMIN \
   -e NVIDIA_DRIVER_CAPABILITIES=utility \
   -e LD_LIBRARY_PATH=<directory of the host's libdcgm.so.4> \
   -v /run/log/journal:/run/log/journal:ro \
@@ -89,6 +91,9 @@ docker run --rm \
   -v <journalctl ldd dependencies, one -v per .so, excluding libc/libpthread/libm> \
   -v <host libdcgm.so.4 path>:<same path>:ro \
   -v <libdcgm.so.4 ldd dependencies, as for journalctl> \
+  -v <host-python3-binary>:/usr/bin/python3:ro \
+  -v <host-python3-stdlib>:<same-path>:ro \
+  -v <host-rdma_topo>:/usr/local/bin/rdma_topo:ro \
   health-validation:latest \
   run --node-id "$NODE_NAME"
 ```
@@ -114,6 +119,11 @@ docker run --rm \
   thresholds: each override is recorded in the host journal, and the run exits
   `2` if it cannot be. A read-only bind still lets the tool send entries.
   Leave it out when you pass no overrides; `collect` does not need it.
+- The Python and `rdma_topo` mounts supply the check's runtime dependencies.
+  `--cap-add=SYS_ADMIN` provides the required PCI configuration access.
+  Use absolute paths for a compatible Python installation, and mount its
+  shared-library dependencies as for `journalctl`. Missing dependencies result
+  in a collection failure.
 
 The wrapper includes the complete mount set for journal-backed checks;
 `gpu_xid_*` and `rdma_linkflap_fatal` need a systemd journal on the host. The
@@ -136,6 +146,13 @@ RDMA devices, which holds on a bare-metal host, in a container or Kubernetes
 worker on host sysfs, and in a VM with HCAs or SR-IOV VFs passed through. A
 deployment without InfiniBand, or a tenant guest with no RDMA device assigned,
 leaves the check unenabled, or lists it in `disabled_checks`.
+
+The `rdma_topo` sensor runs `rdma_topo check` with automatic mode detection.
+It requires the tool on `PATH`, its Python runtime, and full read access to host
+PCI configuration space (Linux requires `CAP_SYS_ADMIN` in the initial user
+namespace, preserved when launching the tool). Missing PCI read permissions and
+read failures reported by the tool are collection errors. Confirmed findings are
+retained when collection fails; errors are reported separately. See the [upstream help](https://github.com/linux-rdma/rdma-core/blob/master/kernel-boot/rdma_topo).
 
 ### Static binary (bare metal, Slurm)
 
@@ -289,9 +306,9 @@ An operator-approved namespace here means one allowed to use `hostPath`,
 
 | Profile | Host access and security context | Checks with complete coverage |
 | --- | --- | --- |
-| Docker wrapper | Read-only journal, machine-id, `journalctl`, `libdcgm.so.4`, and their `ldd` dependencies; `LD_LIBRARY_PATH`; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; host network and PID namespaces; no `--privileged` or extra capabilities. | All stock CLI checks, provided the container sees all node GPUs and the node runs `nv-hostengine`. |
-| Kubernetes explicit mounts | The same read-only paths and `LD_LIBRARY_PATH` as the wrapper. `hostNetwork: true`, `hostPID: true`, `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities or `privileged`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
-| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above, plus the `libdcgm.so.4` mounts and `LD_LIBRARY_PATH` of the explicit profile. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
+| Docker wrapper | Read-only journal, machine-id, `journalctl`, `libdcgm.so.4`, and their `ldd` dependencies; `LD_LIBRARY_PATH`; `--gpus all` and `NVIDIA_DRIVER_CAPABILITIES=utility`; host network and PID namespaces; no `--privileged` or extra capabilities. | All stock CLI checks except `rdma_topo`, provided the container sees all node GPUs and the node runs `nv-hostengine`. |
+| Kubernetes explicit mounts | The same read-only paths and `LD_LIBRARY_PATH` as the wrapper. `hostNetwork: true`, `hostPID: true`, `runAsUser: 0`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`; no added capabilities or `privileged`. | All stock CLI checks except `rdma_topo`, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
+| Kubernetes host-root chroot | Read-only `/` hostPath at `/host`, plus the shim above, plus the `libdcgm.so.4` mounts and `LD_LIBRARY_PATH` of the explicit profile. The same settings as explicit mounts, except add `SYS_CHROOT`. No `privileged`, `SYS_ADMIN`, or `nsenter`. | All stock CLI checks except `rdma_topo`, provided the pod requests all node GPUs through the NVIDIA device plugin and the node runs `nv-hostengine`. |
 | GPU access but no usable host journal | GPU allocation only, or a journal mount/chroot that `journalctl` cannot read. | Checks outside the journal can run; `gpu_xid_*` and `rdma_linkflap_fatal` return collection-failure verdicts rather than PASS. |
 | GPU access but no DCGM | No host network, no `libdcgm.so.4`, or no `nv-hostengine` on the node. | Checks outside DCGM can run; `gpu_average_power_draw`, `gpu_power_limit`, `gpu_performance_state`, `gpu_sensor_throttle`, and `nvlink_fabric` return collection-failure verdicts rather than PASS. |
 
@@ -738,6 +755,7 @@ Several families share the NVML sensor and its caller-owned instance.
 | Block devices and filesystems | Block identity, metadata, size and parents; mount metadata and eligible filesystem capacity | `sensors/disk.New(fsys, ...source/disk.Option)` |
 | FUSE | Connection waiting/background/congestion counts and mount correlation | `sensors/fuse.New(fsys, ...source/fuse.Option)` |
 | PCI | PCI address, vendor/device/class identity, driver, bound module, raw ACS, and current/maximum link speed, width, and generation | `sensors/pci.New(fsys)` |
+| `rdma_topo` | ACS and IOMMU group findings and invocation evidence | `sensors/rdmatopo.New(nil)` |
 | Persistent crash records | Live and archived pstore paths, text or base64 content, hashes, and root provenance | `sensors/pstore.New(fsys)` or `NewWithRoots(fsys, roots...)` |
 
 GPM profiling is a separate, opt-in NVML sensor:

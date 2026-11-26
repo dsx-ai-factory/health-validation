@@ -137,6 +137,7 @@ func TestCatalog_B300Coverage(t *testing.T) {
 		"nvlink_capabilities",
 		"nvlink_p2p",
 		"rdma_linkflap_fatal",
+		"rdma_topo",
 	}
 	if got := ids("B300", false); !slices.Equal(got, want) {
 		t.Errorf("non-Xid checks on B300 = %v, want %v", got, want)
