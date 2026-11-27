@@ -38,7 +38,7 @@
           "nvlink": "PASS",
           "xid": "PASS"
         },
-        "timestamp": "2026-11-27T11:52:47Z",
+        "timestamp": "2026-11-27T12:40:10Z",
         "truncated": false,
         "version_skew": false
       },
@@ -51,7 +51,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-27T11:52:47Z",
+  "recorded": "2026-11-27T12:40:10Z",
   "scenario": "healthy-gb200-continuous",
   "scenario_claim": "PASS: a GB200 node with 4 GPUs whose GPU, NVLink and Xid checks all run and pass",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"

@@ -51,7 +51,7 @@ test:
 # GOGC=off: the Go runtime's collector crashed under qemu user emulation.
 test-race-amd64:
 	docker run --rm --platform linux/amd64 -e GOGC=off -e GOTOOLCHAIN=local -e GOFLAGS=-mod=mod \
-		-e GOCACHE=/tmp/gocache -v "$(CURDIR)":/src:ro -v "$$(go env GOMODCACHE)":/go/pkg/mod:ro -w /src \
+		-e GOCACHE=/tmp/gocache -v "$(abspath $(CURDIR)/..)":/src:ro -v "$$(go env GOMODCACHE)":/go/pkg/mod:ro -w /src/mcp-server \
 		$(RACE_IMAGE) go test -race -count=1 -timeout 60m ./...
 
 docs:

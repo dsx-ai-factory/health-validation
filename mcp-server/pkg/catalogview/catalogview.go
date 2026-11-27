@@ -233,21 +233,32 @@ func Describe(id string) (*Description, error) {
 	return description, nil
 }
 
-// RuleMessage is the catalog's message for the first rule of a check at a severity. It
-// is the compiled-in catalog's own text, so it is trusted, but its ${} fields are unfilled.
+// RuleMessage is the catalog's message for a check's rules at a severity when they all
+// share one. It is "" when rules at that severity say different things (gpu_xid_154's
+// reset and reboot rules are both CRITICAL), since the severity alone cannot tell which
+// one matched. It is the compiled-in catalog's own text, so it is trusted, but its ${}
+// fields are unfilled.
 func RuleMessage(id, severity string) string {
 	definition, err := Catalog().Get(id)
 	if err != nil {
 		return ""
 	}
 
+	message, found := "", false
+
 	for _, rule := range definition.Rules {
-		if rule.Severity.String() == severity {
-			return rule.Message
+		if rule.Severity.String() != severity {
+			continue
 		}
+
+		if found && rule.Message != message {
+			return ""
+		}
+
+		message, found = rule.Message, true
 	}
 
-	return ""
+	return message
 }
 
 // CheckName is the catalog name of a check, or "" when the compiled-in catalog lacks it.

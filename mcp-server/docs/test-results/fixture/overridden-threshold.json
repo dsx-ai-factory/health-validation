@@ -12,7 +12,7 @@
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:45641",
+        "serve_address": "127.0.0.1:40557",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -47,7 +47,7 @@
           ],
           "scheduling_advice": "DRAIN"
         },
-        "fence_marker": "untrusted-hv-text-99bb9e72dc935008",
+        "fence_marker": "untrusted-hv-text-76f542dac0e8b3d4",
         "findings": [
           {
             "category": "gpu",
@@ -56,12 +56,12 @@
               "GPU-00000000-0000-4000-8000-000000000000"
             ],
             "messages": [
-              "\u003cuntrusted-hv-text-99bb9e72dc935008\u003eGPU GPU-00000000-0000-4000-8000-000000000000: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-99bb9e72dc935008\u003e"
+              "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU GPU-00000000-0000-4000-8000-000000000000: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
             ],
             "name": "GPU Average Power Draw",
             "observed_values": {
               "average_power_draw_w": 600,
-              "gpu_id": "\u003cuntrusted-hv-text-99bb9e72dc935008\u003eGPU-00000000-0000-4000-8000-000000000000\u003c/untrusted-hv-text-99bb9e72dc935008\u003e"
+              "gpu_id": "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU-00000000-0000-4000-8000-000000000000\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
             },
             "operational_state": "drain",
             "remediation_actions": [
@@ -78,12 +78,12 @@
               "GPU-11111111-1111-4111-8111-111111111111"
             ],
             "messages": [
-              "\u003cuntrusted-hv-text-99bb9e72dc935008\u003eGPU GPU-11111111-1111-4111-8111-111111111111: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-99bb9e72dc935008\u003e"
+              "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU GPU-11111111-1111-4111-8111-111111111111: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
             ],
             "name": "GPU Average Power Draw",
             "observed_values": {
               "average_power_draw_w": 600,
-              "gpu_id": "\u003cuntrusted-hv-text-99bb9e72dc935008\u003eGPU-11111111-1111-4111-8111-111111111111\u003c/untrusted-hv-text-99bb9e72dc935008\u003e"
+              "gpu_id": "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU-11111111-1111-4111-8111-111111111111\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
             },
             "operational_state": "drain",
             "remediation_actions": [
@@ -100,12 +100,12 @@
               "GPU-22222222-2222-4222-8222-222222222222"
             ],
             "messages": [
-              "\u003cuntrusted-hv-text-99bb9e72dc935008\u003eGPU GPU-22222222-2222-4222-8222-222222222222: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-99bb9e72dc935008\u003e"
+              "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU GPU-22222222-2222-4222-8222-222222222222: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
             ],
             "name": "GPU Average Power Draw",
             "observed_values": {
               "average_power_draw_w": 600,
-              "gpu_id": "\u003cuntrusted-hv-text-99bb9e72dc935008\u003eGPU-22222222-2222-4222-8222-222222222222\u003c/untrusted-hv-text-99bb9e72dc935008\u003e"
+              "gpu_id": "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU-22222222-2222-4222-8222-222222222222\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
             },
             "operational_state": "drain",
             "remediation_actions": [
@@ -122,12 +122,12 @@
               "GPU-33333333-3333-4333-8333-333333333333"
             ],
             "messages": [
-              "\u003cuntrusted-hv-text-99bb9e72dc935008\u003eGPU GPU-33333333-3333-4333-8333-333333333333: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-99bb9e72dc935008\u003e"
+              "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU GPU-33333333-3333-4333-8333-333333333333: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
             ],
             "name": "GPU Average Power Draw",
             "observed_values": {
               "average_power_draw_w": 600,
-              "gpu_id": "\u003cuntrusted-hv-text-99bb9e72dc935008\u003eGPU-33333333-3333-4333-8333-333333333333\u003c/untrusted-hv-text-99bb9e72dc935008\u003e"
+              "gpu_id": "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU-33333333-3333-4333-8333-333333333333\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
             },
             "operational_state": "drain",
             "remediation_actions": [
@@ -316,7 +316,7 @@
             "reason": "SENSOR_MISSING"
           }
         ],
-        "timestamp": "2026-11-27T11:52:47Z",
+        "timestamp": "2026-11-27T12:40:10Z",
         "truncated": false,
         "version_skew": false
       },
@@ -327,7 +327,8 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-27T11:52:47Z",
+  "recorded": "2026-11-27T12:40:10Z",
   "scenario": "overridden-threshold",
+  "scenario_claim": "CRITICAL gpu_average_power_draw: the site caps max_power_w at 500 W and a GPU draws 600 W, which the catalog default of 1500 W passes",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
 }

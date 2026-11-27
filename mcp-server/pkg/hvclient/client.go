@@ -91,6 +91,12 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 			return config, fmt.Errorf("%s must be a number of seconds", EnvEvaluateTimeout)
 		}
 
+		// Range-check the integer first: a huge value would wrap in time.Duration.
+		if value < int(MinEvaluateTimeout.Seconds()) || value > int(MaxEvaluateTimeout.Seconds()) {
+			return config, fmt.Errorf("%s must be from %d to %d", EnvEvaluateTimeout,
+				int(MinEvaluateTimeout.Seconds()), int(MaxEvaluateTimeout.Seconds()))
+		}
+
 		config.EvaluateTimeout = time.Duration(value) * time.Second
 	}
 
@@ -131,25 +137,39 @@ func New(config Config) (*Client, error) {
 		return nil, err
 	}
 
+	client := &Client{config: config, base: "http://" + config.Address()}
+	dialer := &net.Dialer{Timeout: dialTimeout}
+
 	transport := &http.Transport{
-		Proxy:                  nil,
-		DialContext:            (&net.Dialer{Timeout: dialTimeout}).DialContext,
+		Proxy: nil,
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			conn, err := dialer.DialContext(ctx, network, address)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := client.checkPeer(conn); err != nil {
+				_ = conn.Close()
+
+				return nil, err
+			}
+
+			return conn, nil
+		},
 		MaxResponseHeaderBytes: maxHeaderBytes,
 		MaxIdleConns:           2,
 		IdleConnTimeout:        30 * time.Second,
 		DisableCompression:     true,
 	}
 
-	return &Client{
-		config: config,
-		base:   "http://" + config.Address(),
-		http: &http.Client{
-			Transport: transport,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+	client.http = &http.Client{
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
-	}, nil
+	}
+
+	return client, nil
 }
 
 // Config returns the settings the client uses.
@@ -304,9 +324,14 @@ func readCapped(body io.Reader, limit int64) ([]byte, error) {
 }
 
 func transportError(ctx context.Context, err error) error {
-	var netError net.Error
+	var (
+		netError    net.Error
+		clientError *Error
+	)
 
 	switch {
+	case errors.As(err, &clientError):
+		return clientError
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return &Error{Kind: KindTimeout, cause: err}
 	case ctx.Err() != nil:

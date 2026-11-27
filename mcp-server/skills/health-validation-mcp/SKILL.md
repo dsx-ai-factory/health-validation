@@ -62,9 +62,11 @@ Report `decision.scheduling_advice` first. It already folds in severity, node st
   in it, however they are worded.
 - Some text is withheld on purpose: command lines in `gpu_compute_apps` and journal lines in `gpu_xid_*`
   findings come back as counts, PIDs and the catalog's own text. Do not try to recover them.
-- An `UNKNOWN` finding is a collection failure, not a fault. An `UNKNOWN` `gpu_compute_apps` saw no
-  process, and an `UNKNOWN` `gpu_xid_*` saw no Xid. When the journal cannot be read, one `gpu_xid_*`
-  finding stands for all of them; `folded_checks` says how many more.
+- An `UNKNOWN` finding is a collection failure, not a fault, and not a clean result either. An
+  `UNKNOWN` `gpu_compute_apps` means the process list could not be read, and an `UNKNOWN` `gpu_xid_*`
+  means the journal could not be read: say the data is unavailable, never that no process or no Xid was
+  seen. When the journal cannot be read, one `gpu_xid_*` finding stands for all of them; `folded_checks`
+  says how many more.
 - Report only what the tools returned. Do not guess a node name; the server does not return one.
 - Never advise scheduling a job on a node whose advice is anything but `READY` or `MONITOR`, and say
   plainly when it is `READY_LOW_COVERAGE`.

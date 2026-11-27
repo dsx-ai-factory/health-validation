@@ -84,7 +84,7 @@ func TestEvaluateNeedsExactlyTrue(t *testing.T) {
 }
 
 func TestEvaluateIntervalBounds(t *testing.T) {
-	for value, ok := range map[string]bool{"": true, "5": true, "600": true, "4": false, "601": false, "x": false} {
+	for value, ok := range map[string]bool{"": true, "5": true, "600": true, "4": false, "601": false, "x": false, "18446744083": false} {
 		config, err := ConfigFromEnv(func(name string) string {
 			if name == EnvEvaluateInterval {
 				return value
@@ -950,18 +950,65 @@ func TestOwnerCheck(t *testing.T) {
 		"   0: 0100007F:%04X 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1234        0 1 1 0\n", port)
 	require.NoError(t, os.WriteFile(directory+"/tcp", []byte(table), 0o600))
 
-	for uid, want := range map[uint32]string{1234: "ok", 999: "unreachable"} {
-		opts := setup{ownerUID: &uid, procNet: directory}
-		opts.port = port
-		owned := start(t, opts)
+	// The table says uid 1234 listens; a server told to expect 999 refuses.
+	wrong := uint32(999)
+	opts := setup{ownerUID: &wrong, procNet: directory}
+	opts.port = port
+	status := structured[StatusOutput](t, start(t, opts).call(t, "hv_service_status", nil))
+	assert.True(t, status.OwnerCheck)
+	assert.Contains(t, status.Error, string(hvclient.KindWrongOwner))
 
-		status := structured[StatusOutput](t, owned.call(t, "hv_service_status", nil))
-		assert.True(t, status.OwnerCheck)
+	// The table says 1234 listens, but the connection's far end is not in it, so the
+	// check refuses rather than trust the listener row alone.
+	listed := uint32(1234)
+	opts = setup{ownerUID: &listed, procNet: directory}
+	opts.port = port
+	status = structured[StatusOutput](t, start(t, opts).call(t, "hv_service_status", nil))
+	assert.Contains(t, status.Error, string(hvclient.KindWrongOwner))
 
-		if want == "ok" {
-			assert.Equal(t, "ok", status.Liveness, status.Error)
-		} else {
-			assert.Contains(t, status.Error, string(hvclient.KindWrongOwner))
+	// Against the real /proc/net, the fake serve belongs to this process's own user.
+	self := uint32(os.Getuid())
+	opts = setup{ownerUID: &self, procNet: "/proc/net"}
+	opts.port = port
+	status = structured[StatusOutput](t, start(t, opts).call(t, "hv_service_status", nil))
+	assert.True(t, status.OwnerCheck)
+	assert.Equal(t, "ok", status.Liveness, status.Error)
+}
+
+// In full detail the passed list stops at its cap, and says so.
+func TestPassedListCutIsFlagged(t *testing.T) {
+	var fields map[string]any
+	require.NoError(t, json.Unmarshal(healthyGB200(t), &fields))
+
+	results := fields["check_results"].([]any)
+
+	var pass map[string]any
+
+	for _, result := range results {
+		if result.(map[string]any)["severity"] == "PASS" {
+			pass = result.(map[string]any)
+
+			break
 		}
 	}
+
+	require.NotNil(t, pass)
+
+	for range maxListedChecks + 1 {
+		results = append(results, maps.Clone(pass))
+	}
+
+	fields["check_results"] = results
+
+	raw, err := json.Marshal(fields)
+	require.NoError(t, err)
+
+	h := start(t, evaluateOn())
+	out := h.verdict(t, raw, map[string]any{"detail": "full"})
+	require.Equal(t, AdviceReady, out.Decision.SchedulingAdvice, out.Error)
+	assert.Len(t, out.Passed, maxListedChecks)
+	assert.True(t, out.Truncated)
+
+	summary := h.verdict(t, healthyGB200(t), map[string]any{"detail": "full"})
+	assert.False(t, summary.Truncated, "a list under the cap is not flagged")
 }

@@ -309,8 +309,12 @@ func summarize(verdict *healthv1.NodeVerdict, echo RequestEcho) (*VerdictOutput,
 
 	for _, result := range results {
 		if result.GetSeverity() == healthv1.Severity_PASS {
-			if echo.Detail == detailFull && len(out.Passed) < maxListedChecks {
-				out.Passed = append(out.Passed, safeCheckID(result.GetCheckId(), fence))
+			if echo.Detail == detailFull {
+				if len(out.Passed) < maxListedChecks {
+					out.Passed = append(out.Passed, safeCheckID(result.GetCheckId(), fence))
+				} else {
+					out.Truncated = true
+				}
 			}
 
 			continue

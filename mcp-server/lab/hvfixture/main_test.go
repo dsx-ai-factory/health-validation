@@ -205,7 +205,7 @@ func TestCadenceIsApplied(t *testing.T) {
 func TestHoldEndsWhenTheCallerGoesAway(t *testing.T) {
 	address, events := start(t, settings{address: "127.0.0.1:0", scenario: "healthy-gb200", hold: time.Minute})
 
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+address+"/verdict", strings.NewReader(`{}`))
@@ -213,18 +213,39 @@ func TestHoldEndsWhenTheCallerGoesAway(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if response, err := http.DefaultClient.Do(request); err == nil {
-		_ = response.Body.Close()
+	answered := make(chan error, 1)
+
+	go func() {
+		response, err := http.DefaultClient.Do(request)
+		if err == nil {
+			_ = response.Body.Close()
+		}
+
+		answered <- err
+	}()
+
+	// Cancel only once the fixture holds the call, so a slow start cannot fail the test.
+	waitForEvent(t, events, "evaluate_received")
+	cancel()
+
+	if err := <-answered; err == nil {
 		t.Fatal("the held call answered")
 	}
 
-	deadline := time.Now().Add(10 * time.Second)
-	for !strings.Contains(events.String(), `"msg":"evaluate_cancelled"`) {
+	waitForEvent(t, events, "evaluate_cancelled")
+}
+
+// waitForEvent waits for the fixture to log an event, and fails after a generous watchdog.
+func waitForEvent(t *testing.T, events *lockedBuffer, name string) {
+	t.Helper()
+
+	deadline := time.Now().Add(30 * time.Second)
+	for !strings.Contains(events.String(), `"msg":"`+name+`"`) {
 		if time.Now().After(deadline) {
-			t.Fatalf("no cancellation logged: %s", events.String())
+			t.Fatalf("no %s logged: %s", name, events.String())
 		}
 
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -273,7 +294,13 @@ func start(t *testing.T, config settings) (string, *lockedBuffer) {
 	reader, writer := io.Pipe()
 	done := make(chan error, 1)
 
-	go func() { done <- serve(ctx, config, writer, slog.New(slog.NewJSONHandler(events, nil))) }()
+	go func() {
+		err := serve(ctx, config, writer, slog.New(slog.NewJSONHandler(events, nil)))
+		// Closing the writer frees the readiness read below if serve fails to start, and
+		// the drain after shutdown.
+		_ = writer.CloseWithError(err)
+		done <- err
+	}()
 
 	t.Cleanup(func() {
 		cancel()

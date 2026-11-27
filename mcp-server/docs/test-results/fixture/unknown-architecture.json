@@ -12,7 +12,7 @@
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:38127",
+        "serve_address": "127.0.0.1:44759",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -41,7 +41,7 @@
           "remediation_actions": [],
           "scheduling_advice": "READY_LOW_COVERAGE"
         },
-        "fence_marker": "untrusted-hv-text-540d770ba5fbf802",
+        "fence_marker": "untrusted-hv-text-bdac030f9aaa6f02",
         "findings": [],
         "passed": [
           "cpu_count"
@@ -518,7 +518,7 @@
             "reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE"
           }
         ],
-        "timestamp": "2026-11-27T11:52:47Z",
+        "timestamp": "2026-11-27T12:40:10Z",
         "truncated": false,
         "version_skew": false
       },
@@ -529,8 +529,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-27T11:52:47Z",
+  "recorded": "2026-11-27T12:40:10Z",
   "scenario": "unknown-architecture",
-  "scenario_claim": "PASS where only cpu_count runs: the GPU is not an architecture the catalog knows",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
 }

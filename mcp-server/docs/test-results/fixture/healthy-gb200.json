@@ -12,7 +12,7 @@
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:34525",
+        "serve_address": "127.0.0.1:38721",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -42,7 +42,7 @@
           "remediation_actions": [],
           "scheduling_advice": "READY"
         },
-        "fence_marker": "untrusted-hv-text-a72a91b2dc684f74",
+        "fence_marker": "untrusted-hv-text-daa43a423dc64b95",
         "findings": [],
         "passed": [
           "cpu_count",
@@ -226,7 +226,7 @@
             "reason": "SENSOR_MISSING"
           }
         ],
-        "timestamp": "2026-11-27T11:52:47Z",
+        "timestamp": "2026-11-27T12:40:10Z",
         "truncated": false,
         "version_skew": false
       },
@@ -237,7 +237,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-27T11:52:47Z",
+  "recorded": "2026-11-27T12:40:10Z",
   "scenario": "healthy-gb200",
   "scenario_claim": "PASS: a GB200 node with 4 GPUs whose GPU, NVLink and Xid checks all run and pass",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"

@@ -79,6 +79,12 @@ func ConfigFromEnv(getenv func(string) string, logger *slog.Logger) (Config, err
 			return config, fmt.Errorf("%s must be a number of seconds", EnvEvaluateInterval)
 		}
 
+		// Range-check the integer first: a huge value would wrap in time.Duration.
+		if seconds < int(MinEvaluateInterval.Seconds()) || seconds > int(MaxEvaluateInterval.Seconds()) {
+			return config, fmt.Errorf("%s must be from %d to %d", EnvEvaluateInterval,
+				int(MinEvaluateInterval.Seconds()), int(MaxEvaluateInterval.Seconds()))
+		}
+
 		config.EvaluateInterval = time.Duration(seconds) * time.Second
 	}
 

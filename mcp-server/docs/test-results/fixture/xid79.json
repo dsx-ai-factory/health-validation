@@ -12,7 +12,7 @@
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:33751",
+        "serve_address": "127.0.0.1:37969",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -46,7 +46,7 @@
           ],
           "scheduling_advice": "DRAIN"
         },
-        "fence_marker": "untrusted-hv-text-d112d2033c9572a0",
+        "fence_marker": "untrusted-hv-text-2ccb20160e04f957",
         "findings": [
           {
             "category": "xid",
@@ -305,8 +305,8 @@
             "reason": "SENSOR_MISSING"
           }
         ],
-        "timestamp": "2026-11-27T11:52:47Z",
-        "truncated": false,
+        "timestamp": "2026-11-27T12:40:10Z",
+        "truncated": true,
         "version_skew": false
       },
       "arguments": {
@@ -316,7 +316,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-27T11:52:47Z",
+  "recorded": "2026-11-27T12:40:10Z",
   "scenario": "xid79",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
 }

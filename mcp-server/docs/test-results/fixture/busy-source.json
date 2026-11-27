@@ -7,17 +7,17 @@
         "evaluate_enabled": true,
         "evaluate_interval_seconds": 10,
         "evaluate_running": false,
-        "fence_marker": "untrusted-hv-text-261f5b98e0dbf68d",
+        "fence_marker": "untrusted-hv-text-6684dcd0c485a443",
         "liveness": "unhealthy",
         "note": "Liveness says whether the serve process answers and whether a source call is stuck. It is not node health: hv_get_verdict evaluates the node.",
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:32983",
+        "serve_address": "127.0.0.1:44031",
         "stuck_calls": [
           {
-            "since": "2026-11-27T11:51:17Z",
-            "source": "\u003cuntrusted-hv-text-261f5b98e0dbf68d\u003envml\u003c/untrusted-hv-text-261f5b98e0dbf68d\u003e"
+            "since": "2026-11-27T12:38:40Z",
+            "source": "\u003cuntrusted-hv-text-6684dcd0c485a443\u003envml\u003c/untrusted-hv-text-6684dcd0c485a443\u003e"
           }
         ],
         "stuck_calls_truncated": false
@@ -48,17 +48,17 @@
           ],
           "scheduling_advice": "RETRY_COLLECTION"
         },
-        "fence_marker": "untrusted-hv-text-f0ef230b3f6f7efd",
+        "fence_marker": "untrusted-hv-text-2d993b07415c28e6",
         "findings": [
           {
             "category": "node",
             "check_id": "collection_source_busy",
             "messages": [
-              "\u003cuntrusted-hv-text-f0ef230b3f6f7efd\u003esource \"nvml\" has an unfinished call started at 2026-11-27T11:51:17.539869715Z\u003c/untrusted-hv-text-f0ef230b3f6f7efd\u003e"
+              "\u003cuntrusted-hv-text-2d993b07415c28e6\u003esource \"nvml\" has an unfinished call started at 2026-11-27T12:38:40.306045111Z\u003c/untrusted-hv-text-2d993b07415c28e6\u003e"
             ],
             "observed_values": {
-              "\u003cuntrusted-hv-text-f0ef230b3f6f7efd\u003esince\u003c/untrusted-hv-text-f0ef230b3f6f7efd\u003e": "\u003cuntrusted-hv-text-f0ef230b3f6f7efd\u003e2026-11-27T11:51:17.539869715Z\u003c/untrusted-hv-text-f0ef230b3f6f7efd\u003e",
-              "source": "\u003cuntrusted-hv-text-f0ef230b3f6f7efd\u003envml\u003c/untrusted-hv-text-f0ef230b3f6f7efd\u003e"
+              "\u003cuntrusted-hv-text-2d993b07415c28e6\u003esince\u003c/untrusted-hv-text-2d993b07415c28e6\u003e": "\u003cuntrusted-hv-text-2d993b07415c28e6\u003e2026-11-27T12:38:40.306045111Z\u003c/untrusted-hv-text-2d993b07415c28e6\u003e",
+              "source": "\u003cuntrusted-hv-text-2d993b07415c28e6\u003envml\u003c/untrusted-hv-text-2d993b07415c28e6\u003e"
             },
             "operational_state": "drain",
             "remediation_actions": [
@@ -77,7 +77,7 @@
         "severity_by_domain": {
           "node": "UNKNOWN"
         },
-        "timestamp": "2026-11-27T11:52:47Z",
+        "timestamp": "2026-11-27T12:40:10Z",
         "truncated": false,
         "version_skew": false
       },
@@ -88,7 +88,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-27T11:52:47Z",
+  "recorded": "2026-11-27T12:40:10Z",
   "scenario": "busy-source",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
 }

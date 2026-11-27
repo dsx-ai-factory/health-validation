@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -43,17 +44,18 @@ func TestConfigOnlyAcceptsLoopback(t *testing.T) {
 	require.NotNil(t, six.OwnerUID)
 
 	for name, values := range map[string]map[string]string{
-		"a hostname":       {EnvHost: "localhost"},
-		"another address":  {EnvHost: "10.0.0.1"},
-		"any address":      {EnvHost: "0.0.0.0"},
-		"a URL":            {EnvHost: "http://127.0.0.1"},
-		"a low port":       {EnvPort: "80"},
-		"a high port":      {EnvPort: "65536"},
-		"not a port":       {EnvPort: "8080/evil"},
-		"a negative uid":   {EnvOwnerUID: "-1"},
-		"a short timeout":  {EnvEvaluateTimeout: "9"},
-		"a long timeout":   {EnvEvaluateTimeout: "901"},
-		"timeout not a nr": {EnvEvaluateTimeout: "1m"},
+		"a hostname":         {EnvHost: "localhost"},
+		"another address":    {EnvHost: "10.0.0.1"},
+		"any address":        {EnvHost: "0.0.0.0"},
+		"a URL":              {EnvHost: "http://127.0.0.1"},
+		"a low port":         {EnvPort: "80"},
+		"a high port":        {EnvPort: "65536"},
+		"not a port":         {EnvPort: "8080/evil"},
+		"a negative uid":     {EnvOwnerUID: "-1"},
+		"a short timeout":    {EnvEvaluateTimeout: "9"},
+		"a long timeout":     {EnvEvaluateTimeout: "901"},
+		"a wrapping timeout": {EnvEvaluateTimeout: "18446744083"},
+		"timeout not a nr":   {EnvEvaluateTimeout: "1m"},
 	} {
 		_, err := ConfigFromEnv(env(values))
 		assert.Error(t, err, name)
@@ -231,4 +233,78 @@ func TestListenerOwner(t *testing.T) {
 
 	_, err = client.Evaluate(t.Context(), EvaluateRequest{})
 	assert.Equal(t, KindWrongOwner, KindOf(err), "port 8081 is owned by uid 0")
+}
+
+func TestProcAddress(t *testing.T) {
+	file, text := procAddress(netip.MustParseAddrPort("127.0.0.1:8080"))
+	assert.Equal(t, "tcp", file)
+	assert.Equal(t, "0100007F:1F90", text)
+
+	file, text = procAddress(netip.MustParseAddrPort("[::1]:8080"))
+	assert.Equal(t, "tcp6", file)
+	assert.Equal(t, "00000000000000000000000001000000:1F90", text)
+}
+
+// The request goes only over a connection whose far end the configured user owns, so a
+// listener swapped in after the listener check cannot answer it.
+func TestPeerOwner(t *testing.T) {
+	directory := t.TempDir()
+	header := "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+	row := func(local, remote, state string, uid int) string {
+		return fmt.Sprintf("   0: %s %s %s 00000000:00000000 00:00000000 00000000 %5d        0 1 1 0\n",
+			local, remote, state, uid)
+	}
+
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "tcp"), []byte(header+
+		row("0100007F:1F90", "00000000:0000", "0A", 1000)+
+		row("0100007F:1F90", "0100007F:D431", "01", 1000)+
+		row("0100007F:1F90", "0100007F:D432", "01", 2000)+
+		row("0100007F:D431", "0100007F:1F90", "01", 3000)), 0o600))
+
+	server := netip.MustParseAddrPort("127.0.0.1:8080")
+
+	uid, err := peerOwner(directory, server, netip.MustParseAddrPort("127.0.0.1:54321"))
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1000), uid, "serve's end of the connection, not this client's")
+
+	uid, err = peerOwner(directory, server, netip.MustParseAddrPort("127.0.0.1:54322"))
+	require.NoError(t, err)
+	assert.Equal(t, uint32(2000), uid)
+
+	_, err = peerOwner(directory, server, netip.MustParseAddrPort("127.0.0.1:54323"))
+	assert.Error(t, err, "no row is a refusal, not a pass")
+}
+
+// On Linux, against a real listener, the check passes for this process's own user and
+// refuses any other, through the real /proc/net.
+func TestOwnerCheckOnARealConnection(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the owner check needs Linux")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`{"status":"ok"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	self := uint32(os.Getuid())
+
+	client, err := New(Config{
+		Host: "127.0.0.1", Port: port, EvaluateTimeout: MinEvaluateTimeout, OwnerUID: &self, ProcNet: "/proc/net",
+	})
+	require.NoError(t, err)
+
+	_, err = client.Liveness(t.Context())
+	require.NoError(t, err)
+
+	conn, err := net.Dial("tcp", server.Listener.Addr().String())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+
+	require.NoError(t, client.checkPeer(conn))
+
+	other := self + 1
+	client.config.OwnerUID = &other
+	assert.Equal(t, KindWrongOwner, KindOf(client.checkPeer(conn)))
 }

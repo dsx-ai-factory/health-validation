@@ -19,7 +19,7 @@
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:41283",
+        "serve_address": "127.0.0.1:34679",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -28,7 +28,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-27T11:52:48Z",
+  "recorded": "2026-11-27T12:40:11Z",
   "scenario": "refused-second-call",
   "scenario_claim": "PASS: a GB200 node with 4 GPUs whose GPU, NVLink and Xid checks all run and pass",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
