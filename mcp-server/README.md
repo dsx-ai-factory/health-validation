@@ -124,7 +124,7 @@ health-validation serve --address 127.0.0.1:8080 --execution-context OPERATOR_IN
   stay above it, or this server gives up first and reports `timeout`.
 - Serve has no authentication: any local process can call it, and could also listen on its port if serve
   is down. Set `HV_MCP_SERVE_UID` to the user serve runs as, and this server checks, on Linux, that the
-  listening socket belongs to that user before each call.
+  listening socket and serve's end of each connection belong to that user before a request goes over it.
 - In Kubernetes, run this server as a sidecar in serve's pod, so both share loopback.
 
 Build serve and this server from the same commit, and build this one with `HV_VERSION` set to the

@@ -45,7 +45,7 @@ first proves its detector sees a real listener). Its one outbound target is serv
 | `HTTP_PROXY` and friends are ignored: the transport has no proxy function at all | `TestProxySettingsAreIgnored` |
 | Redirects are refused, not followed | `TestRedirectsAreRefused` |
 | Answers over 4 MiB are refused | `TestBodiesAreCapped` |
-| With `HV_MCP_SERVE_UID` set, the listening socket's owner is read from `/proc/net/tcp` (or `tcp6`) before each call, and another owner is refused | `TestListenerOwner`, `TestOwnerCheck`, `TestOwnerCheck` (e2e) |
+| With `HV_MCP_SERVE_UID` set, the listening socket's owner is read from `/proc/net/tcp` (or `tcp6`) before each call, and every connection to serve is checked before a request goes over it: serve's end of that connection must belong to that uid, so a listener swapped in after the first check cannot answer | `TestListenerOwner`, `TestPeerOwner`, `TestProcAddress`, `TestOwnerCheckOnARealConnection`, `TestOwnerCheck`, `TestOwnerCheck` (e2e) |
 
 The owner check is optional and Linux only. Without it, a local process that takes serve's port while
 serve is down can answer. It can still only return something that decodes as a schema `0.7` verdict (see
