@@ -1,11 +1,10 @@
 # How this server compares with the MCP standards
 
-Checked on 2026-11-26 against spec revision **2026-07-28**, with go-sdk v1.8.0. To check again, start at
+Compared against spec revision **2026-07-28**, with go-sdk v1.8.0. To check again, start at
 [What to re-check](#what-to-re-check). "Tested" names the test that proves it. Tests marked (e2e) are in
 `tests/e2e`: they run the built binary on its real stdio against `lab/hvfixture`, health-validation's real
 verdict server over synthetic measurements ([results](test-results/fixture)). The others are unit or
-in-process tests. `make e2e-serve` ran against a real `health-validation serve` on the build machine and
-the Pi ([build machine](test-results/build-machine), [Pi](test-results/pi5)).
+in-process tests. `make e2e-serve` runs the same tests against your own `health-validation serve`.
 
 ## What the standards are
 
@@ -78,20 +77,19 @@ Details, and what was left out on purpose: [security.md](security.md).
 
 ## Not done or not tested
 
-- **e2e against a real `health-validation serve` on a GPU health-validation knows:** `make e2e-serve` ran
-  against real serve v0.4.0-rc.1 on the build machine (an unknown architecture, `READY_LOW_COVERAGE`) and
-  the Pi (discovery failure, `DRAIN`). No GPU check was proven, and the fixture-only cases (cancel, kill
+- **e2e against a real `health-validation serve` on a GPU health-validation knows:** not yet tested
+  through this server. `make e2e-serve` runs against your own serve, and the fixture-only cases (cancel, kill
   mid-call, second call, owner refusal) did not run against real serve.
-- **e2e through the image:** `make e2e-image` passed once against a locally built image; its SIGTERM
-  test skips, because the signal reaches the docker client, not the server.
+- **e2e through the image:** `make e2e-image` runs the fixture e2e with the server in its image; its
+  SIGTERM test skips, because the signal reaches the docker client, not the server.
 - **[MCP Inspector](https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector.md):** not run. To try it:
   `npx @modelcontextprotocol/inspector --cli health-validation-mcp --method tools/list`
 - **[Conformance suite](https://github.com/modelcontextprotocol/conformance):** not run. Its server mode needs
   an HTTP URL, and this server has no listener by design.
-- **Evaluations:** [docs/evals/evals.xml](evals/evals.xml) has 10 questions in the `mcp-builder` format.
+- **Evaluations:** [docs/evals/evals.xml](evals/evals.xml) has 10 questions, each with one string-comparable answer.
   `make evals` checks each answer through the tools; no model has answered them yet.
-- **Cisco `mcp-scanner`** (YARA and schema): 5 tools, all safe. Trivy, OSV and govulncheck: clean but for
-  one cel-go advisory in code this server never calls. Run by hand with `make scan`, not in CI.
+- **Scans:** `make scan` runs Cisco `mcp-scanner` (YARA and schema), Trivy, OSV and govulncheck by hand,
+  not in CI. govulncheck lists one cel-go advisory in code this server never calls.
 - **Other MCP clients:** only the Go SDK's client has been used.
 
 ## What to re-check
@@ -101,6 +99,5 @@ Details, and what was left out on purpose: [security.md](security.md).
 | Is there a newer revision? | [Latest spec](https://modelcontextprotocol.io/specification/latest), [changelog](https://modelcontextprotocol.io/specification/latest/changelog.md), [deprecated features](https://modelcontextprotocol.io/specification/latest/deprecated.md) |
 | What is new in the docs? | [Docs index](https://modelcontextprotocol.io/llms.txt), [SEPs](https://modelcontextprotocol.io/seps) |
 | Does the SDK support it? | [go-sdk releases](https://github.com/modelcontextprotocol/go-sdk/releases), then `go list -m -u github.com/modelcontextprotocol/go-sdk` |
-| Has the tool guidance moved on? | [`tool-design.md`](https://github.com/anthropics/claude-plugins-official/blob/main/plugins/mcp-server-dev/skills/build-mcp-server/references/tool-design.md) |
 | Has the catalog moved on? | `make docs`, then read the diff |
 | Does it still hold on the wire? | `go test ./cmd/... -run TestItSpeaksTheLatestProtocol` |

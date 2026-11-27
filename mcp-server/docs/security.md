@@ -8,8 +8,8 @@ questions are how little a fooled model can do, and how much it can be fooled by
 A control is listed here only if a test enforces it. Tests named `Test...` are unit tests in `pkg/` and
 `cmd/`, run over a real MCP session against a fake serve. Tests marked (e2e) are in `tests/e2e` and run
 the built binary over stdio against `lab/hvfixture`, which is health-validation's real verdict server and
-catalog over synthetic measurements. `make e2e-serve` also ran against a real `health-validation serve`
-on the build machine and the Pi; neither has a GPU health-validation knows. See [Known limits](#known-limits).
+catalog over synthetic measurements. `make e2e-serve` runs them against your own `health-validation serve`. See
+[Known limits](#known-limits).
 
 ## Threat model
 
@@ -147,7 +147,7 @@ These are properties of the [Dockerfile](../Dockerfile). `make e2e-image` runs t
 the server in a locally built image, with the flags below; no test checks the image's own contents.
 
 - One static binary (`CGO_ENABLED=0`) on `distroless/static-debian13:nonroot`: no shell, package manager or
-  libc. User 65532. About 31 MB, built locally on linux/arm64.
+  libc. User 65532.
 - Bases pinned by digest, Go dependencies by `go.sum`, with `GOTOOLCHAIN=local` so a `go.mod` change cannot
   download a toolchain. `Dockerfile.dockerignore` lets in only the Go sources the build needs.
 - It needs no devices, mounts, journal or GPU access.
@@ -162,8 +162,8 @@ docker run --rm -i --read-only --cap-drop=ALL --security-opt=no-new-privileges \
 
 Use
 `--network=container:<serve container>` when serve runs in a container without host networking. Add
-`-e HV_MCP_ALLOW_EVALUATE=true` only for a client that should evaluate the node. The image is not published. Trivy (0 HIGH or CRITICAL), OSV
-(0) and govulncheck (0 reachable) were run by hand with `make scan`; see the README.
+`-e HV_MCP_ALLOW_EVALUATE=true` only for a client that should evaluate the node. The image is not published.
+Scan it with `make scan`.
 
 ## Left out on purpose
 
@@ -179,16 +179,15 @@ Use
 
 ## Known limits
 
-- **Real serve only on hardware health-validation does not know.** The unit tests use a fake serve built from
+- **No GPU check proven against a real serve.** The unit tests use a fake serve built from
   health-validation's own engine and wire code. The e2e tests run the built binary against
   `lab/hvfixture`, health-validation's real verdict server over synthetic measurements; their results are
-  in [test-results/fixture](test-results/fixture). The real `health-validation serve` v0.4.0-rc.1 runs: [test-results/build-machine](test-results/build-machine) and [test-results/pi5](test-results/pi5);
-  they prove the wire, the decode and the low-coverage and discovery-failure answers, not any GPU check.
-  `make e2e-image` passed once on the Pi against a locally built image, without the SIGTERM test.
+  in [test-results/fixture](test-results/fixture). `make e2e-serve` checks the wire and
+  the decode against a real `health-validation serve`. Under `make e2e-image` the SIGTERM test skips,
+  because the signal reaches the docker client, not the server.
 - A panic in a tool returns only an error, with detail in the log. The guard in `register` names the tool
   and no test triggers it; the guard around all of `tools/call` is tested.
 - The 64 KiB cap on `hv_get_verdict` output is in the code but no test reaches it.
 - The owner check is Linux only, and off unless `HV_MCP_SERVE_UID` is set.
 - Tool annotations are hints: only a client that honours them prompts a human.
 - Fencing lowers the risk from prompt injection but does not remove it.
-- The race detector cannot start on the Pi 5's kernel; it ran in an emulated amd64 container.

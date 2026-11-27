@@ -1,6 +1,5 @@
 <!--
-  Evaluations for health-validation-mcp, in the format of Anthropic's mcp-builder
-  skill (reference/evaluation.md). Each question is read only, needs several tool calls,
+  Evaluations for health-validation-mcp, as qa_pairs. Each question is read only, needs several tool calls,
   and has one answer that a direct string comparison can check.
 
   The comment before each qa_pair names what the server must be pointed at:

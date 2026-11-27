@@ -52,12 +52,12 @@ MCP client --stdio--> pkg/server --> pkg/catalogview --> hv catalog, compiled in
 
 ```shell
 make build lint test   # no node, no serve needed; run all three before a PR
-make test-race-amd64   # the race detector in an emulated amd64 container, where the host kernel cannot run it
+make test-race-amd64   # the race detector in an emulated amd64 container, for hosts whose kernel it cannot run on
 make docs              # regenerate enums_gen.go, docs/tools.md and docs/tools.json
 make e2e               # the built binary over stdio against lab/hvfixture; rewrites docs/test-results/fixture
 make image             # docker build, tagged health-validation-mcp:local
 make e2e-image         # the fixture e2e with the server in its image (IMAGE=<ref>)
-make e2e-serve         # the e2e against a real serve: HV_SERVE_PORT=<port> HV_HOST_LABEL=<label>
+make e2e-serve         # the e2e against your own serve: HV_SERVE_PORT=<port>; writes bin/test-results/serve
 make evals             # check every answer in docs/evals/evals.xml through the built binary
 ```
 
@@ -123,4 +123,4 @@ tests on purpose.
 Follow the repository's [CONTRIBUTING.md](../CONTRIBUTING.md): Conventional Commits with the
 `mcp-server` scope, DCO sign-off and signed commits. Run `make build lint test e2e` from this directory
 before a PR, since the repository's Bazel CI does not build this module. Say what was not tested.
-Never write a host name, node ID or internal domain here or on GitHub: say "the build machine".
+Never write a host name, node ID or internal domain here or on GitHub.

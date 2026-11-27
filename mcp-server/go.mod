@@ -3,7 +3,7 @@ module github.com/dsx-ai-factory/health-validation/mcp-server
 go 1.27.3
 
 require (
-	github.com/dsx-ai-factory/health-validation v0.4.0-rc.1
+	github.com/dsx-ai-factory/health-validation v0.0.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/stretchr/testify v1.12.1

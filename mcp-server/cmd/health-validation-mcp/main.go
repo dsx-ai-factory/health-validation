@@ -53,7 +53,7 @@ Environment:
                                     (default 10)
   HV_MCP_EVALUATE_TIMEOUT_SECONDS   how long to wait for a verdict, 10 to 900 (default 150)
 
-Docs: https://github.com/dsx-ai-factory/health-validation/mcp-server
+Docs: https://github.com/dsx-ai-factory/health-validation/tree/main/mcp-server
 `
 
 func main() {

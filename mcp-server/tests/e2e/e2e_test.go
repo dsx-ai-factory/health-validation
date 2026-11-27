@@ -22,7 +22,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -44,10 +43,7 @@ const (
 	fixtureSource  = "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
 )
 
-var (
-	binary, fixture string
-	labelFormat     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
-)
+var binary, fixture string
 
 func TestMain(m *testing.M) {
 	directory, err := os.MkdirTemp("", "hv-mcp-e2e-")
@@ -361,20 +357,6 @@ func leakFree(t *testing.T, value any) {
 	}
 }
 
-// resultsLabel is where results go under docs/test-results: fixture, or the host label.
-func resultsLabel(t *testing.T) string {
-	t.Helper()
-
-	if !realServe() {
-		return "fixture"
-	}
-
-	label := os.Getenv("HV_HOST_LABEL")
-	require.Regexp(t, labelFormat, label, "HV_HOST_LABEL names the host in the results, such as pi5 or build-machine")
-
-	return label
-}
-
 // record is one saved tool call.
 type record struct {
 	Result    any            `json:"result"`
@@ -395,7 +377,7 @@ func save(t *testing.T, name, claim string, records ...record) {
 
 	source := fixtureSource
 	if realServe() {
-		source = "health-validation serve on " + resultsLabel(t) + ": real measurements from this host"
+		source = "a real health-validation serve: real measurements from this host"
 	}
 
 	document := map[string]any{
@@ -520,8 +502,7 @@ func TestFixtureScenarios(t *testing.T) {
 	}
 }
 
-// The arguments reach serve as the request body the plan fixes: cadence, xid_from, and
-// nothing else.
+// The arguments reach serve as a fixed request body: cadence, xid_from, and nothing else.
 func TestTheRequestServeReceives(t *testing.T) {
 	needFixture(t)
 
@@ -817,10 +798,8 @@ func TestOwnerCheck(t *testing.T) {
 // process so the evaluate rate limit does not stand between them.
 func TestRealServe(t *testing.T) {
 	if !realServe() {
-		t.Skip("set HV_SERVE_PORT (and HV_HOST_LABEL) to run against a real health-validation serve")
+		t.Skip("set HV_SERVE_PORT to run against a real health-validation serve")
 	}
-
-	resultsLabel(t)
 
 	extra := evaluateOn()
 	if uid := os.Getenv("HV_SERVE_UID"); uid != "" {
@@ -940,8 +919,7 @@ func resultOf(t *testing.T, reply map[string]any) map[string]any {
 	return result
 }
 
-// Each check quotes a requirement of the 2026-07-28 revision: see the skill's
-// docs/standards.md. This is the built binary, on its real stdio.
+// Each check quotes a requirement of the 2026-07-28 revision: see docs/mcp-standards.md. This is the built binary, on its real stdio.
 func TestItSpeaksTheLatestProtocol(t *testing.T) {
 	var served *fixtureProcess
 	if !realServe() {

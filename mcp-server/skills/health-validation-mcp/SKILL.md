@@ -7,7 +7,7 @@ description: Read NVIDIA health-validation through the health-validation MCP ser
 # Use the health-validation MCP server
 
 The tools below come from the `health-validation` MCP server. If they are not available, tell the user
-and point them at https://github.com/dsx-ai-factory/health-validation/mcp-server#install. Do not work around a
+and point them at https://github.com/dsx-ai-factory/health-validation/tree/main/mcp-server#build-and-run. Do not work around a
 missing tool by running `health-validation`, `nvidia-smi`, `dcgmi` or `curl` against serve yourself: the
 server's limits and redaction are the point of using it.
 

@@ -156,12 +156,12 @@ second call, a refused port owner, and evaluation left off. **These come from sy
 `lab/hvfixture` runs health-validation's real verdict server and catalog, but feeds it made-up readings,
 not a GPU.
 
-[docs/test-results/build-machine](docs/test-results/build-machine) and
-[docs/test-results/pi5](docs/test-results/pi5) come from `make e2e-serve` against a real
-`health-validation serve` v0.4.0-rc.1, run as a normal user with the socket-owner check on. On the build
-machine (RTX 4080 SUPER, an architecture health-validation does not know) only `cpu_count` ran and 115
-checks were skipped, so the server answers `READY_LOW_COVERAGE`, not healthy. On the Pi (no GPU)
-discovery fails and the server answers `DRAIN`. Neither proves any GPU check.
+`make e2e-serve HV_SERVE_PORT=<port>` runs the same e2e against your own `health-validation serve` on
+the same host, and writes what it returned to `bin/test-results/serve` (set `SERVE_RESULTS` to change
+it). Set `HV_SERVE_HOST=::1` if serve listens on `[::1]`, and `HV_SERVE_UID` to the user serve runs as
+to test the owner check too. Build the server with
+`HV_VERSION` set to serve's version, or the run fails on version skew. The fixture-only cases (cancel,
+kill mid-call, second call, owner refusal) are skipped against a real serve.
 
 [docs/evals/evals.xml](docs/evals/evals.xml) holds 10 questions an operator might ask, each needing
 several tool calls, with one checkable answer each. `make evals` works out every answer through the
@@ -176,19 +176,16 @@ accepts verdict schema `0.7` only; any other version gives `NO_VERDICT`. Report 
 repository's [SECURITY.md](../SECURITY.md) says.
 
 `make scan` runs govulncheck, OSV-scanner, Trivy (with telemetry off) on the image, and Cisco
-`mcp-scanner` (YARA and schema, offline). On this tree, on 2026-11-27: `mcp-scanner` 5 tools, all safe;
-govulncheck 0 reachable (one cel-go advisory in code this server never calls). OSV-scanner (0) and
-Trivy (0 HIGH or CRITICAL) last ran on 2026-11-26, on the same code before it moved here.
+`mcp-scanner` (YARA and schema, offline). The tools must be installed, and no CI runs them, so run
+`make scan` before a change that touches dependencies or tools. govulncheck lists one cel-go advisory
+in code this server never calls.
 
 ## What is not tested
 
-- **A real serve on a GPU health-validation knows.** Real serve ran only on the build machine (unknown
-  architecture: only `cpu_count` runs) and the Pi (no GPU: discovery fails). The fixture-only e2e tests
-  (cancel, kill mid-call, second call, owner refusal) did not run against real serve.
+- **A real serve on a GPU health-validation knows.** No GPU check has been proven through this server
+  against a real serve on a supported GPU.
 - **Any architecture-scoped check**, DCGM signals, NVLink, InfiniBand and P2P checks, real Xid detection
   from a kernel journal, or a hardware-fault CRITICAL from a real node.
 - **A real `collection_source_busy`** verdict, load across a fleet, or a real HTTP 429 from serve.
-- **The race detector on arm64:** it cannot start on the Pi's kernel. It ran in an emulated amd64
-  container (`make test-race-amd64`).
 - **CI:** no pipeline here builds or tests this module yet.
 - **Evaluations run by a model.** `make evals` checks the answers mechanically.
