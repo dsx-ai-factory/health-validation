@@ -1,0 +1,76 @@
+<!--
+  Evaluations for health-validation-mcp, in the format of Anthropic's mcp-builder
+  skill (reference/evaluation.md). Each question is read only, needs several tool calls,
+  and has one answer that a direct string comparison can check.
+
+  The comment before each qa_pair names what the server must be pointed at:
+  "catalog" needs no serve; any other name is a lab/hvfixture scenario, run with
+  `make lab-fixture SCENARIO=<name> PORT=<port>` and HV_MCP_ALLOW_EVALUATE=true.
+  Fixture verdicts come from synthetic measurements, not a GPU.
+
+  Answers hold for the catalog at health-validation v0.4.0; `make evals` fails when one no longer does.
+  `make evals` drives the built binary over stdio, works out each answer with the
+  tools, and fails if any answer here is wrong. Keep the qa_pairs in the same order
+  as the solvers in tests/evals/evals_test.go.
+-->
+<evaluation>
+  <!-- scenario: catalog -->
+  <qa_pair>
+    <question>Our scheduler runs health-validation only in the CONTINUOUS window, between jobs. Which checks in the catalog never run in that window, because they need the PROLOG window or a later one? Give the check IDs sorted as text, separated by ", ".</question>
+    <answer>gpu_compute_apps, gpu_power_limit, gpu_sensor_throttle</answer>
+  </qa_pair>
+
+  <!-- scenario: catalog -->
+  <qa_pair>
+    <question>We are adding H100 nodes to the fleet. Which NVLink checks in the catalog will not run on them, because H100 is not one of their architectures? Give the check IDs sorted as text, separated by ", ".</question>
+    <answer>nvlink_capabilities, nvlink_fabric, nvlink_fabric_health</answer>
+  </qa_pair>
+
+  <!-- scenario: catalog -->
+  <qa_pair>
+    <question>On a GB300 node, by how many watts does the default maximum average power draw in gpu_average_power_draw exceed the power limit that gpu_power_limit expects? Give a number of watts.</question>
+    <answer>100</answer>
+  </qa_pair>
+
+  <!-- scenario: catalog -->
+  <qa_pair>
+    <question>The check gpu_xid_78 recommends one remediation step that no other check in the catalog recommends. Which step is it? Give the step's name as a verdict writes it.</question>
+    <answer>update_swfw</answer>
+  </qa_pair>
+
+  <!-- scenario: unknown-architecture -->
+  <qa_pair>
+    <question>The node reports overall_severity PASS. Can the scheduler treat it as a healthy GPU node? Answer with the scheduling advice the server gives for it.</question>
+    <answer>READY_LOW_COVERAGE</answer>
+  </qa_pair>
+
+  <!-- scenario: discovery-failure -->
+  <qa_pair>
+    <question>No GPU, NVLink or Xid check ran on this node. Should it get the same scheduling advice as a node whose GPU architecture health-validation does not know? Answer with the scheduling advice the server gives for this node.</question>
+    <answer>DRAIN</answer>
+  </qa_pair>
+
+  <!-- scenario: xid79 -->
+  <qa_pair>
+    <question>This node was drained because of an Xid event. With the catalog's default threshold, how many events of that Xid code on one GPU are enough to fire the check that drained it? Give a number.</question>
+    <answer>1</answer>
+  </qa_pair>
+
+  <!-- scenario: overridden-threshold -->
+  <qa_pair>
+    <question>This GB200 node is drained because its GPUs draw more power than the site's configured maximum allows. What maximum average power draw per GPU, in watts, does the catalog itself set for GB200 for that check? Give a number of watts.</question>
+    <answer>1500</answer>
+  </qa_pair>
+
+  <!-- scenario: busy-source -->
+  <qa_pair>
+    <question>The verdict for this node is UNKNOWN and asks for collection to be retried. Which collection source inside health-validation serve has a call that has not returned? Give the source name.</question>
+    <answer>nvml</answer>
+  </qa_pair>
+
+  <!-- scenario: healthy-gb200 -->
+  <qa_pair>
+    <question>This GB200 node passes. Some Xid checks were skipped because they do not apply to its GPU architecture. Which ones? Give the check IDs sorted as text, separated by ", ".</question>
+    <answer>gpu_xid_136, gpu_xid_54, gpu_xid_80</answer>
+  </qa_pair>
+</evaluation>

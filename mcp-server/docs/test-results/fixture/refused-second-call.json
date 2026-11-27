@@ -1,0 +1,35 @@
+{
+  "calls": [
+    {
+      "result": null,
+      "arguments": {},
+      "tool": "hv_get_verdict",
+      "message": "refused: an evaluation is already running; this server does not queue them",
+      "is_error": true
+    },
+    {
+      "result": {
+        "catalog_version": "dev",
+        "evaluate_available_in_seconds": 10,
+        "evaluate_enabled": true,
+        "evaluate_interval_seconds": 10,
+        "evaluate_running": true,
+        "liveness": "ok",
+        "note": "Liveness says whether the serve process answers and whether a source call is stuck. It is not node health: hv_get_verdict evaluates the node.",
+        "owner_check": false,
+        "reachable": true,
+        "schema_version": "0.7",
+        "serve_address": "127.0.0.1:41283",
+        "stuck_calls": [],
+        "stuck_calls_truncated": false
+      },
+      "arguments": {},
+      "tool": "hv_service_status",
+      "is_error": false
+    }
+  ],
+  "recorded": "2026-11-27T11:52:48Z",
+  "scenario": "refused-second-call",
+  "scenario_claim": "PASS: a GB200 node with 4 GPUs whose GPU, NVLink and Xid checks all run and pass",
+  "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
+}

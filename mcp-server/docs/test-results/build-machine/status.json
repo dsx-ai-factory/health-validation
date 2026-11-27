@@ -1,0 +1,27 @@
+{
+  "calls": [
+    {
+      "result": {
+        "catalog_version": "v0.4.0-rc.1",
+        "evaluate_available_in_seconds": 0,
+        "evaluate_enabled": true,
+        "evaluate_interval_seconds": 10,
+        "evaluate_running": false,
+        "liveness": "ok",
+        "note": "Liveness says whether the serve process answers and whether a source call is stuck. It is not node health: hv_get_verdict evaluates the node.",
+        "owner_check": true,
+        "reachable": true,
+        "schema_version": "0.7",
+        "serve_address": "127.0.0.1:18080",
+        "stuck_calls": [],
+        "stuck_calls_truncated": false
+      },
+      "arguments": {},
+      "tool": "hv_service_status",
+      "is_error": false
+    }
+  ],
+  "recorded": "2026-11-26T22:09:41Z",
+  "scenario": "status",
+  "source": "health-validation serve on build-machine: real measurements from this host"
+}

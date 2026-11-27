@@ -1,0 +1,69 @@
+{
+  "calls": [
+    {
+      "result": {
+        "catalog_version": "v0.4.0-rc.1",
+        "coverage": {
+          "checks_run": 1,
+          "checks_skipped": 0,
+          "gpu_checks_run": 0,
+          "low_coverage": true,
+          "low_coverage_reason": "no GPU or NVLink check ran: 1 checks ran (0 of them Xid checks, which only read the journal), 0 were skipped",
+          "nvlink_checks_run": 0,
+          "skipped_by_reason": {},
+          "xid_checks_run": 0
+        },
+        "decision": {
+          "explanation": "Take the node out of scheduling. The remediation steps are recommendations; nothing here performs them.",
+          "operational_state": "drain",
+          "overall_severity": "CRITICAL",
+          "remediation_actions": [
+            "reset_gpu",
+            "restart_os",
+            "service_required"
+          ],
+          "scheduling_advice": "DRAIN"
+        },
+        "fence_marker": "untrusted-hv-text-8465df4c72e32d25",
+        "findings": [
+          {
+            "category": "node",
+            "check_id": "architecture_discovery",
+            "messages": [
+              "\u003cuntrusted-hv-text-8465df4c72e32d25\u003ecould not determine GPU architecture: GPU architecture discovery: Init failed with COLLECTION_ERROR_CATEGORY_UNSUPPORTED: NVML library not found\u003c/untrusted-hv-text-8465df4c72e32d25\u003e"
+            ],
+            "operational_state": "drain",
+            "remediation_actions": [
+              "reset_gpu",
+              "restart_os",
+              "service_required"
+            ],
+            "severity": "CRITICAL"
+          }
+        ],
+        "request": {
+          "cadence": "CONTINUOUS",
+          "detail": "full",
+          "xid_lookback_minutes": 0
+        },
+        "schema_version": "0.7",
+        "server_catalog_version": "v0.4.0-rc.1",
+        "severity_by_domain": {
+          "node": "CRITICAL"
+        },
+        "timestamp": "2026-11-27T11:53:20Z",
+        "truncated": false,
+        "version_skew": false
+      },
+      "arguments": {
+        "cadence": "CONTINUOUS",
+        "detail": "full"
+      },
+      "tool": "hv_get_verdict",
+      "is_error": false
+    }
+  ],
+  "recorded": "2026-11-27T11:53:20Z",
+  "scenario": "verdict-continuous",
+  "source": "health-validation serve on pi5: real measurements from this host"
+}

@@ -149,13 +149,14 @@ This repo is a **hardware health check catalog and evaluation engine** for NVIDI
 
 #### Module layout
 
-The repo is **one Go module** (`github.com/dsx-ai-factory/health-validation`) with a single `go.mod`, a single `go.sum`, and one version: a `vX.Y.Z` tag releases everything. Import paths are the module path plus the directory, so every package below is imported as `github.com/dsx-ai-factory/health-validation/<dir>`. A dependency pin therefore changes the versions linked into every binary built from the repo.
+The repo is **one Go module** (`github.com/dsx-ai-factory/health-validation`) with a single `go.mod`, a single `go.sum`, and one version, apart from `mcp-server/` below: a `vX.Y.Z` tag releases everything. Import paths are the module path plus the directory, so every package below is imported as `github.com/dsx-ai-factory/health-validation/<dir>`. A dependency pin therefore changes the versions linked into every binary built from the repo.
 
 - **`catalog/`** — the check catalog and evaluation engine. Self-contained: `health/` (shared vocabulary), `internal/{celeval,evaluation}/`, the `catalog` package at the directory root, the per-domain check packages (`cpu/`, `gpu/`, `node/`, `nvlink/`, `xid/`), and the catalog-only codegen/dump binaries under `cmd/`. No dependency on the toolkit.
 - **`toolkit/`** — the collect bridge and adapters, and the `health-validation` operator CLI (`cmd/health-validation/`). **Depends on `catalog/`, `collect/`, and `agentkit/`.**
 - **`collect/`** — raw collection library (sensors and sources); no dependency on the catalog or toolkit.
 - **`agentkit/`** — experimental (v0) transports and examples. `server` serves the raw Check API; `verdictserver` serves the verdict proto API. Transport packages must remain independently usable and must not import catalog or toolkit.
 - **`proto/health/v1/`** — verdict wire contract (`health.verdict.v1`), with generated Go under `proto/go/health/v1/`. Raw observations retain their separate `collect/proto` contract.
+- **`mcp-server/`** — a read-only MCP server over `serve`, in its own Go module (`github.com/dsx-ai-factory/health-validation/mcp-server`) that builds against this checkout with `go`, not Bazel. Gazelle excludes it, nothing in the root module imports it, and its dependencies stay out of the root `go.mod`. See `mcp-server/AGENTS.md`.
 
 The dependency direction is strict: `catalog → (nothing)`, `collect → (nothing)`, `toolkit → catalog, collect, agentkit`. Never add a catalog import of toolkit; keep catalog usable without the toolkit's dependencies. Bazel enforces most of this through the package groups in `build/visibility/`: a `catalog` or `collect` target cannot depend on `toolkit`, and a `catalog` target cannot depend on `collect`. `collect → catalog` is not blocked by visibility, and plain `go build` ignores it, so keep to the rule there. Tests are bound by the same rule: a catalog test that needs sensor-style input builds its measurement structs directly rather than importing the toolkit.
 

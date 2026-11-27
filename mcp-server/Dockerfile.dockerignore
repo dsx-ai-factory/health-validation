@@ -1,0 +1,17 @@
+# The build context is the repository root. Only the Go sources the server
+# builds from go in.
+*
+!go.mod
+!go.sum
+!agentkit
+!catalog
+!collect
+!internal
+!proto
+!toolkit
+!mcp-server/go.mod
+!mcp-server/go.sum
+!mcp-server/cmd
+!mcp-server/pkg
+**/*_test.go
+**/BUILD.bazel

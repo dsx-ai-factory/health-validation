@@ -1,0 +1,58 @@
+{
+  "calls": [
+    {
+      "result": {
+        "catalog_version": "dev",
+        "coverage": {
+          "checks_run": 132,
+          "checks_skipped": 8,
+          "gpu_checks_run": 8,
+          "low_coverage": false,
+          "nvlink_checks_run": 24,
+          "skipped_by_reason": {
+            "CADENCE_MISMATCH": 3,
+            "CHECK_DISABLED": 1,
+            "SENSOR_MISSING": 1,
+            "SIGNAL_UNAVAILABLE_ARCHITECTURE": 3
+          },
+          "xid_checks_run": 97
+        },
+        "decision": {
+          "explanation": "Nothing failed among the checks that ran, and GPU or NVLink checks were among them. It is a snapshot: evaluate again before each job.",
+          "overall_severity": "PASS",
+          "remediation_actions": [],
+          "scheduling_advice": "READY"
+        },
+        "findings": [],
+        "request": {
+          "cadence": "CONTINUOUS",
+          "detail": "summary",
+          "xid_lookback_minutes": 60
+        },
+        "schema_version": "0.7",
+        "server_catalog_version": "dev",
+        "severity_by_domain": {
+          "cpu": "PASS",
+          "gpu": "PASS",
+          "node": "PASS",
+          "nvlink": "PASS",
+          "xid": "PASS"
+        },
+        "timestamp": "2026-11-27T11:52:47Z",
+        "truncated": false,
+        "version_skew": false
+      },
+      "arguments": {
+        "cadence": "CONTINUOUS",
+        "detail": "summary",
+        "xid_lookback_minutes": 60
+      },
+      "tool": "hv_get_verdict",
+      "is_error": false
+    }
+  ],
+  "recorded": "2026-11-27T11:52:47Z",
+  "scenario": "healthy-gb200-continuous",
+  "scenario_claim": "PASS: a GB200 node with 4 GPUs whose GPU, NVLink and Xid checks all run and pass",
+  "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
+}
