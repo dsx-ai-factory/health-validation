@@ -80,13 +80,13 @@ lab-fixture:
 e2e: lab-test
 	go vet -tags e2e ./tests/...
 	mkdir -p docs/test-results/fixture
-	E2E_RESULTS=$(CURDIR)/docs/test-results/fixture $(E2E)
+	E2E_RESULTS="$(CURDIR)/docs/test-results/fixture" $(E2E)
 
 e2e-serve:
 	@test -n "$(HV_SERVE_PORT)" || { echo "set HV_SERVE_PORT to the port health-validation serve listens on" >&2; exit 2; }
 	go vet -tags e2e ./tests/...
-	mkdir -p $(SERVE_RESULTS)
-	HV_SERVE_PORT=$(HV_SERVE_PORT) HV_SERVE_UID=$(HV_SERVE_UID) E2E_RESULTS=$(SERVE_RESULTS) $(E2E)
+	mkdir -p "$(SERVE_RESULTS)"
+	HV_SERVE_PORT=$(HV_SERVE_PORT) HV_SERVE_UID=$(HV_SERVE_UID) E2E_RESULTS="$(SERVE_RESULTS)" $(E2E)
 
 e2e-image:
 	E2E_IMAGE=$(IMAGE) $(E2E)

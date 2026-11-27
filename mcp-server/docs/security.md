@@ -8,8 +8,9 @@ questions are how little a fooled model can do, and how much it can be fooled by
 A control is listed here only if a test enforces it. Tests named `Test...` are unit tests in `pkg/` and
 `cmd/`, run over a real MCP session against a fake serve. Tests marked (e2e) are in `tests/e2e` and run
 the built binary over stdio against `lab/hvfixture`, which is health-validation's real verdict server and
-catalog over synthetic measurements. `make e2e-serve` runs them against your own `health-validation serve`. See
-[Known limits](#known-limits).
+catalog over synthetic measurements. `make e2e-serve` runs the real-serve e2e tests against your own
+`health-validation serve`; the fixture-only cases skip there, including cancellation, SIGTERM and the
+owner refusal. See [Known limits](#known-limits).
 
 ## Threat model
 
