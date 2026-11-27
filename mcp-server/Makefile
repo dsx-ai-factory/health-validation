@@ -10,6 +10,8 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 HV_VERSION ?= dev
 # Where make e2e-serve writes what your serve returned.
 SERVE_RESULTS ?= $(CURDIR)/bin/test-results/serve
+# The checkout above, which go.mod's replace points at. $(shell) keeps spaces in it.
+PARENT := $(shell cd .. && pwd)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X github.com/dsx-ai-factory/health-validation/internal/version.version=$(HV_VERSION)
 GOLANGCI_LINT ?= $(shell command -v golangci-lint)
 # The race detector needs a 48-bit address space on arm64. Where the kernel has less (a
@@ -50,8 +52,9 @@ test:
 
 # GOGC=off: the Go runtime's collector crashed under qemu user emulation.
 test-race-amd64:
+	go mod download
 	docker run --rm --platform linux/amd64 -e GOGC=off -e GOTOOLCHAIN=local -e GOFLAGS=-mod=mod \
-		-e GOCACHE=/tmp/gocache -v "$(abspath $(CURDIR)/..)":/src:ro -v "$$(go env GOMODCACHE)":/go/pkg/mod:ro -w /src/mcp-server \
+		-e GOCACHE=/tmp/gocache -v "$(PARENT)":/src:ro -v "$$(go env GOMODCACHE)":/go/pkg/mod:ro -w /src/mcp-server \
 		$(RACE_IMAGE) go test -race -count=1 -timeout 60m ./...
 
 docs:

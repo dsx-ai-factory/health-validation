@@ -13,6 +13,8 @@ package evals
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -147,23 +149,23 @@ func readEvals(t *testing.T) []qaPair {
 type solver struct {
 	solve    func(t *testing.T, s *session) string
 	scenario string
-	// asks is a phrase from the question the solver answers, so an edited question
-	// fails until its solver is checked again.
-	asks string
+	// question is the first 16 hex digits of the SHA-256 of the question the solver
+	// answers, so any edit to a question fails until its solver is checked again.
+	question string
 }
 
 // The solvers, in the order of the qa_pairs in docs/evals/evals.xml.
 var solvers = []solver{
-	{scenario: catalogOnly, solve: notContinuous, asks: "never run in that window"},
-	{scenario: catalogOnly, solve: nvlinkNotOnH100, asks: "NVLink checks in the catalog will not run on them"},
-	{scenario: catalogOnly, solve: gb300PowerHeadroom, asks: "by how many watts does the default maximum average power draw"},
-	{scenario: catalogOnly, solve: onlyStepOfXid78, asks: "gpu_xid_78 recommends one remediation step"},
-	{scenario: "unknown-architecture", solve: adviceForAPass, asks: "Can the scheduler treat it as a healthy GPU node?"},
-	{scenario: "discovery-failure", solve: adviceWithoutDiscovery, asks: "No GPU, NVLink or Xid check ran on this node."},
-	{scenario: "xid79", solve: xidOccurrences, asks: "how many events of that Xid code on one GPU"},
-	{scenario: "overridden-threshold", solve: catalogPowerMax, asks: "does the catalog itself set"},
-	{scenario: "busy-source", solve: stuckSource, asks: "has a call that has not returned"},
-	{scenario: "healthy-gb200", solve: xidSkippedOnGB200, asks: "Some Xid checks were skipped"},
+	{scenario: catalogOnly, solve: notContinuous, question: "a36747d05f21102b"},
+	{scenario: catalogOnly, solve: nvlinkNotOnH100, question: "875e470d3be1aa9d"},
+	{scenario: catalogOnly, solve: gb300PowerHeadroom, question: "52bcd6e3bbecdd77"},
+	{scenario: catalogOnly, solve: onlyStepOfXid78, question: "bf83d96da9b114ca"},
+	{scenario: "unknown-architecture", solve: adviceForAPass, question: "6cd7b30c3531c6cf"},
+	{scenario: "discovery-failure", solve: adviceWithoutDiscovery, question: "4f32b32667786ab0"},
+	{scenario: "xid79", solve: xidOccurrences, question: "5481d754b874a1bf"},
+	{scenario: "overridden-threshold", solve: catalogPowerMax, question: "009b8a93d8a13d63"},
+	{scenario: "busy-source", solve: stuckSource, question: "2fc09bee829d70dc"},
+	{scenario: "healthy-gb200", solve: xidSkippedOnGB200, question: "86d3dff2ac6f328f"},
 }
 
 func TestEvaluationAnswers(t *testing.T) {
@@ -175,7 +177,9 @@ func TestEvaluationAnswers(t *testing.T) {
 			t.Parallel()
 
 			require.Equal(t, solvers[i].scenario, pair.Scenario, "question: %s", pair.Question)
-			require.Contains(t, pair.Question, solvers[i].asks, "the solver answers a different question")
+			sum := sha256.Sum256([]byte(pair.Question))
+			require.Equal(t, solvers[i].question, hex.EncodeToString(sum[:])[:16],
+				"the question changed, so check its solver, then update the hash")
 
 			s := open(t, pair.Scenario)
 			got := solvers[i].solve(t, s)
