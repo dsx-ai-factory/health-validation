@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Features
+
+- Add `mcp-server/`, a read-only MCP server over `serve` in its own Go module.
+  It browses the check catalog and, when `HV_MCP_ALLOW_EVALUATE=true`, asks a
+  loopback `serve` for one verdict. Nothing the root module builds or ships
+  changes. ([#372](https://github.com/dsx-ai-factory/health-validation/pull/372))
+
 ## [v0.4.0] - 2026-11-25
 
 Covers everything since `catalog/v0.3.2` and `toolkit/v0.3.2`. Build, CI,

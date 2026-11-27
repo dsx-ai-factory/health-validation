@@ -1,0 +1,998 @@
+{
+  "tools": [
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Describe a check"
+      },
+      "description": "Return one check's full definition from the catalog compiled into this server: what it detects, the signals it reads, each rule's severity, CEL expression and message template, each threshold's type, default, per-architecture values, bounds and whether operators may override it (FIXED, DEFAULT, ADJUSTABLE), its dependencies and recommended action. Capped at 16 KiB. Reads no node.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "check_id": {
+            "description": "the check to describe; hv_list_checks lists them",
+            "enum": [
+              "cpu_count",
+              "gpu_average_power_draw",
+              "gpu_compute_apps",
+              "gpu_count",
+              "gpu_performance_state",
+              "gpu_power_limit",
+              "gpu_sensor_throttle",
+              "gpu_xid_100",
+              "gpu_xid_101",
+              "gpu_xid_102",
+              "gpu_xid_103",
+              "gpu_xid_104",
+              "gpu_xid_105",
+              "gpu_xid_109",
+              "gpu_xid_11",
+              "gpu_xid_110",
+              "gpu_xid_119",
+              "gpu_xid_120",
+              "gpu_xid_126",
+              "gpu_xid_127",
+              "gpu_xid_128",
+              "gpu_xid_129",
+              "gpu_xid_13",
+              "gpu_xid_130",
+              "gpu_xid_131",
+              "gpu_xid_132",
+              "gpu_xid_133",
+              "gpu_xid_134",
+              "gpu_xid_135",
+              "gpu_xid_136",
+              "gpu_xid_139",
+              "gpu_xid_140",
+              "gpu_xid_142",
+              "gpu_xid_143",
+              "gpu_xid_144",
+              "gpu_xid_145",
+              "gpu_xid_146",
+              "gpu_xid_147",
+              "gpu_xid_148",
+              "gpu_xid_149",
+              "gpu_xid_149_1",
+              "gpu_xid_149_10",
+              "gpu_xid_149_11",
+              "gpu_xid_149_12",
+              "gpu_xid_149_15",
+              "gpu_xid_149_16",
+              "gpu_xid_149_2",
+              "gpu_xid_149_20",
+              "gpu_xid_149_21",
+              "gpu_xid_149_22",
+              "gpu_xid_149_23",
+              "gpu_xid_149_24",
+              "gpu_xid_149_25",
+              "gpu_xid_149_26",
+              "gpu_xid_149_28",
+              "gpu_xid_149_2a",
+              "gpu_xid_149_2b",
+              "gpu_xid_149_4",
+              "gpu_xid_149_a",
+              "gpu_xid_149_f",
+              "gpu_xid_150",
+              "gpu_xid_151",
+              "gpu_xid_154",
+              "gpu_xid_155",
+              "gpu_xid_156",
+              "gpu_xid_158",
+              "gpu_xid_159",
+              "gpu_xid_25",
+              "gpu_xid_31",
+              "gpu_xid_32",
+              "gpu_xid_39",
+              "gpu_xid_40",
+              "gpu_xid_41",
+              "gpu_xid_45",
+              "gpu_xid_46",
+              "gpu_xid_48",
+              "gpu_xid_54",
+              "gpu_xid_60",
+              "gpu_xid_62",
+              "gpu_xid_64",
+              "gpu_xid_68",
+              "gpu_xid_69",
+              "gpu_xid_70",
+              "gpu_xid_71",
+              "gpu_xid_72",
+              "gpu_xid_75",
+              "gpu_xid_76",
+              "gpu_xid_77",
+              "gpu_xid_78",
+              "gpu_xid_79",
+              "gpu_xid_8",
+              "gpu_xid_80",
+              "gpu_xid_82",
+              "gpu_xid_83",
+              "gpu_xid_84",
+              "gpu_xid_85",
+              "gpu_xid_86",
+              "gpu_xid_88",
+              "gpu_xid_89",
+              "gpu_xid_94",
+              "gpu_xid_95",
+              "gpu_xid_96",
+              "gpu_xid_97",
+              "gpu_xid_98",
+              "gpu_xid_99",
+              "gpu_xid_informational",
+              "gpu_xid_unknown",
+              "ib_port_state",
+              "numa_node_count",
+              "nvlink_active",
+              "nvlink_bandwidth_count_speed",
+              "nvlink_capabilities",
+              "nvlink_fabric",
+              "nvlink_fabric_health",
+              "nvlink_p2p",
+              "rdma_linkflap_fatal"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "check_id"
+        ],
+        "type": "object"
+      },
+      "name": "hv_describe_check",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "architectures": {
+            "description": "empty means every architecture",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "cadence": {
+            "type": "string"
+          },
+          "catalog_version": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "execution_contexts": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "maturity": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "operational_state": {
+            "description": "the check's default recommendation when a rule names none",
+            "type": "string"
+          },
+          "remediation_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "required_signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "rules": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "expression": {
+                  "description": "the CEL expression the rule evaluates",
+                  "type": "string"
+                },
+                "message": {
+                  "description": "the message template; ${name} is filled from signals and thresholds",
+                  "type": "string"
+                },
+                "operational_state": {
+                  "type": "string"
+                },
+                "remediation_actions": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "severity": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "severity",
+                "expression",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "thresholds": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "default": true,
+                "description": {
+                  "type": "string"
+                },
+                "governance": {
+                  "description": "FIXED cannot be overridden, DEFAULT can, ADJUSTABLE can within min and max",
+                  "type": "string"
+                },
+                "max": true,
+                "min": true,
+                "name": {
+                  "type": "string"
+                },
+                "per_architecture": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "required_override": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type",
+                "governance"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "truncated": {
+            "description": "true when rules or thresholds were cut to fit 16 KiB",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "category",
+          "cadence",
+          "maturity",
+          "operational_state",
+          "catalog_version",
+          "remediation_actions",
+          "architectures",
+          "execution_contexts",
+          "required_signals",
+          "dependencies",
+          "rules",
+          "thresholds",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "title": "Describe a check"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Explain a remediation step"
+      },
+      "description": "Explain what one remediation step in a verdict means, such as reset_gpu or hold, and list up to 30 checks in the compiled-in catalog that recommend it, optionally only with a given node state. Neither health-validation nor this server performs any step. Reads no node.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "description": "the remediation step to explain, as a verdict names it",
+            "enum": [
+              "check_collection",
+              "hold",
+              "reset_gpu",
+              "restart_app",
+              "restart_os",
+              "retry_collection",
+              "service_required",
+              "stop_p2p_traffic",
+              "update_swfw"
+            ],
+            "type": "string"
+          },
+          "operational_state": {
+            "default": "ANY",
+            "description": "only checks recommending the step with this node state, default ANY",
+            "enum": [
+              "ANY",
+              "ready",
+              "monitor",
+              "drain"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "hv_explain_remediation",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "assigned_by": {
+            "description": "set when the engine, not a check definition, gives this step",
+            "type": "string"
+          },
+          "catalog_version": {
+            "type": "string"
+          },
+          "meaning": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "operational_state_filter": {
+            "type": "string"
+          },
+          "recommended_by": {
+            "description": "check IDs in the compiled-in catalog that recommend this step",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "total": {
+            "description": "how many checks recommend it, before the cap",
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action",
+          "meaning",
+          "operational_state_filter",
+          "catalog_version",
+          "note",
+          "recommended_by",
+          "total",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "title": "Explain a remediation step"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Get a node verdict"
+      },
+      "description": "Ask the local health-validation serve process to evaluate this node now and return a decision: scheduling_advice (READY, READY_LOW_COVERAGE, MONITOR, DRAIN, RETRY_COLLECTION or NO_VERDICT), overall severity, node state and ordered remediation steps, plus coverage, which says how many GPU, NVLink and Xid checks actually ran. detail=failing adds the failing checks' entities and fenced messages; detail=full adds skipped and passed checks, capped at 64 KiB. It starts real collection on the node, so it is rate limited and a second call while one runs is refused. It changes nothing on the node. Use hv_service_status first if serve may be down.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cadence": {
+            "default": "ALL",
+            "description": "run only the checks for this scheduling window, default ALL (every registered check)",
+            "enum": [
+              "ALL",
+              "CONTINUOUS",
+              "PROLOG",
+              "MAINTENANCE"
+            ],
+            "type": "string"
+          },
+          "detail": {
+            "default": "summary",
+            "description": "summary (default), failing (adds entities and messages) or full (adds skipped and passed checks)",
+            "enum": [
+              "summary",
+              "failing",
+              "full"
+            ],
+            "type": "string"
+          },
+          "xid_lookback_minutes": {
+            "default": 0,
+            "description": "read Xid events from this many minutes ago; 0 (default) keeps serve's own window",
+            "maximum": 10080,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "hv_get_verdict",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog_version": {
+            "description": "the catalog serve evaluated with",
+            "type": "string"
+          },
+          "coverage": {
+            "additionalProperties": false,
+            "properties": {
+              "checks_run": {
+                "type": "integer"
+              },
+              "checks_skipped": {
+                "type": "integer"
+              },
+              "gpu_checks_run": {
+                "type": "integer"
+              },
+              "low_coverage": {
+                "type": "boolean"
+              },
+              "low_coverage_reason": {
+                "type": "string"
+              },
+              "nvlink_checks_run": {
+                "type": "integer"
+              },
+              "skipped_by_reason": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "xid_checks_run": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "skipped_by_reason",
+              "checks_run",
+              "checks_skipped",
+              "gpu_checks_run",
+              "nvlink_checks_run",
+              "xid_checks_run",
+              "low_coverage"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "decision": {
+            "additionalProperties": false,
+            "properties": {
+              "explanation": {
+                "type": "string"
+              },
+              "operational_state": {
+                "type": "string"
+              },
+              "overall_severity": {
+                "type": "string"
+              },
+              "remediation_actions": {
+                "description": "ordered steps; hv_explain_remediation explains each",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "scheduling_advice": {
+                "description": "READY, READY_LOW_COVERAGE, MONITOR, DRAIN, RETRY_COLLECTION or NO_VERDICT",
+                "type": "string"
+              }
+            },
+            "required": [
+              "scheduling_advice",
+              "explanation",
+              "remediation_actions"
+            ],
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "fence_marker": {
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "check_id": {
+                  "type": "string"
+                },
+                "entities": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "folded_checks": {
+                  "description": "how many other gpu_xid_* checks could not read the journal either; they are folded into this finding",
+                  "type": "integer"
+                },
+                "messages": {
+                  "description": "fenced node text, or a sentence the server built",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "name": {
+                  "description": "from the compiled-in catalog",
+                  "type": "string"
+                },
+                "observed_values": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "operational_state": {
+                  "type": "string"
+                },
+                "redacted": {
+                  "description": "what the server withheld and why",
+                  "type": "string"
+                },
+                "remediation_actions": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "severity": {
+                  "type": "string"
+                },
+                "truncated": {
+                  "type": "boolean"
+                },
+                "unrecognized_entities": {
+                  "description": "entity names withheld because they did not look like a GPU UUID, PCI address, port or index",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "check_id",
+                "category",
+                "severity"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "passed": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "cadence": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              },
+              "xid_lookback_minutes": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "cadence",
+              "detail",
+              "xid_lookback_minutes"
+            ],
+            "type": "object"
+          },
+          "schema_version": {
+            "type": "string"
+          },
+          "server_catalog_version": {
+            "description": "the catalog compiled into this server",
+            "type": "string"
+          },
+          "severity_by_domain": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "skipped": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "check_id": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "check_id",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "truncated": {
+            "description": "true when lists were cut to fit the caps",
+            "type": "boolean"
+          },
+          "version_skew": {
+            "description": "true when serve's catalog differs from this server's",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "server_catalog_version",
+          "request",
+          "findings",
+          "decision",
+          "version_skew",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "title": "Get a node verdict"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "List checks"
+      },
+      "description": "List the checks in the health-validation catalog compiled into this server, 25 per page, sorted by ID, with each check's domain, cadence, architectures, contexts and maturity. Filter by category, architecture, cadence and maturity. Use hv_describe_check for one check's rules and thresholds. Reads no node; a node's own config may disable some checks.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "architecture": {
+            "default": "ANY",
+            "description": "only checks that run on this GPU architecture, default ANY",
+            "enum": [
+              "ANY",
+              "A100",
+              "B200",
+              "B300",
+              "GB200",
+              "GB300",
+              "H100",
+              "H200",
+              "VR"
+            ],
+            "type": "string"
+          },
+          "cadence": {
+            "default": "ANY",
+            "description": "only checks that run in this scheduling window, default ANY",
+            "enum": [
+              "ANY",
+              "CONTINUOUS",
+              "PROLOG",
+              "MAINTENANCE"
+            ],
+            "type": "string"
+          },
+          "category": {
+            "default": "ANY",
+            "description": "only checks in this domain, default ANY",
+            "enum": [
+              "ANY",
+              "cpu",
+              "gpu",
+              "infiniband",
+              "node",
+              "nvlink",
+              "xid"
+            ],
+            "type": "string"
+          },
+          "maturity": {
+            "default": "ANY",
+            "description": "only stable or only experimental checks, default ANY",
+            "enum": [
+              "ANY",
+              "stable",
+              "experimental"
+            ],
+            "type": "string"
+          },
+          "page": {
+            "default": 1,
+            "description": "which page of 25 checks, default 1",
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "hv_list_checks",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog_version": {
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "architectures": {
+                  "description": "empty means every architecture",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "cadence": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "execution_contexts": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "maturity": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "category",
+                "cadence",
+                "maturity",
+                "architectures",
+                "execution_contexts"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "checks matching the filter, across all pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "catalog_version",
+          "note",
+          "checks",
+          "total",
+          "page",
+          "pages"
+        ],
+        "type": "object"
+      },
+      "title": "List checks"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Service status"
+      },
+      "description": "Check whether the local health-validation serve process answers, through its /healthz endpoint, and list source calls stuck inside it. Also says whether hv_get_verdict is enabled, when it may next run, and which catalog and schema versions this server was built with. Liveness is not node health; use hv_get_verdict for that. Read only; starts no collection.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "name": "hv_service_status",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog_version": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "evaluate_available_in_seconds": {
+            "description": "0 when hv_get_verdict may run now",
+            "type": "integer"
+          },
+          "evaluate_enabled": {
+            "type": "boolean"
+          },
+          "evaluate_interval_seconds": {
+            "type": "integer"
+          },
+          "evaluate_running": {
+            "type": "boolean"
+          },
+          "fence_marker": {
+            "type": "string"
+          },
+          "liveness": {
+            "description": "ok, unhealthy (a source call is stuck), not_available (serve has no /healthz) or unreachable",
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "owner_check": {
+            "description": "true when the socket owner is checked before each call",
+            "type": "boolean"
+          },
+          "reachable": {
+            "type": "boolean"
+          },
+          "schema_version": {
+            "type": "string"
+          },
+          "serve_address": {
+            "type": "string"
+          },
+          "stuck_calls": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "since": {
+                  "type": "string"
+                },
+                "source": {
+                  "description": "fenced text from serve",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "since"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "stuck_calls_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "serve_address",
+          "liveness",
+          "note",
+          "catalog_version",
+          "schema_version",
+          "stuck_calls",
+          "evaluate_interval_seconds",
+          "evaluate_available_in_seconds",
+          "reachable",
+          "evaluate_enabled",
+          "evaluate_running",
+          "owner_check",
+          "stuck_calls_truncated"
+        ],
+        "type": "object"
+      },
+      "title": "Service status"
+    }
+  ]
+}

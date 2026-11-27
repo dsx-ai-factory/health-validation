@@ -1,0 +1,89 @@
+{
+  "calls": [
+    {
+      "result": {
+        "catalog_version": "dev",
+        "evaluate_available_in_seconds": 0,
+        "evaluate_enabled": true,
+        "evaluate_interval_seconds": 10,
+        "evaluate_running": false,
+        "liveness": "ok",
+        "note": "Liveness says whether the serve process answers and whether a source call is stuck. It is not node health: hv_get_verdict evaluates the node.",
+        "owner_check": false,
+        "reachable": true,
+        "schema_version": "0.7",
+        "serve_address": "127.0.0.1:41469",
+        "stuck_calls": [],
+        "stuck_calls_truncated": false
+      },
+      "arguments": {},
+      "tool": "hv_service_status",
+      "is_error": false
+    },
+    {
+      "result": {
+        "catalog_version": "dev",
+        "coverage": {
+          "checks_run": 1,
+          "checks_skipped": 0,
+          "gpu_checks_run": 0,
+          "low_coverage": true,
+          "low_coverage_reason": "no GPU or NVLink check ran: 1 checks ran (0 of them Xid checks, which only read the journal), 0 were skipped",
+          "nvlink_checks_run": 0,
+          "skipped_by_reason": {},
+          "xid_checks_run": 0
+        },
+        "decision": {
+          "explanation": "Take the node out of scheduling. The remediation steps are recommendations; nothing here performs them.",
+          "operational_state": "drain",
+          "overall_severity": "CRITICAL",
+          "remediation_actions": [
+            "reset_gpu",
+            "restart_os",
+            "service_required"
+          ],
+          "scheduling_advice": "DRAIN"
+        },
+        "fence_marker": "untrusted-hv-text-2c4d0226312b018b",
+        "findings": [
+          {
+            "category": "node",
+            "check_id": "architecture_discovery",
+            "messages": [
+              "\u003cuntrusted-hv-text-2c4d0226312b018b\u003ecould not determine GPU architecture: synthetic: no GPU inventory\u003c/untrusted-hv-text-2c4d0226312b018b\u003e"
+            ],
+            "operational_state": "drain",
+            "remediation_actions": [
+              "reset_gpu",
+              "restart_os",
+              "service_required"
+            ],
+            "severity": "CRITICAL"
+          }
+        ],
+        "request": {
+          "cadence": "ALL",
+          "detail": "full",
+          "xid_lookback_minutes": 0
+        },
+        "schema_version": "0.7",
+        "server_catalog_version": "dev",
+        "severity_by_domain": {
+          "node": "CRITICAL"
+        },
+        "timestamp": "2026-11-27T12:40:10Z",
+        "truncated": false,
+        "version_skew": false
+      },
+      "arguments": {
+        "detail": "full"
+      },
+      "tool": "hv_get_verdict",
+      "is_error": false
+    }
+  ],
+  "recorded": "2026-11-27T12:40:10Z",
+  "scenario": "discovery-failure",
+  "scenario_claim": "CRITICAL architecture_discovery: the GPUs could not be enumerated",
+  "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
+}

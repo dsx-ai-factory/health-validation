@@ -1,0 +1,334 @@
+{
+  "calls": [
+    {
+      "result": {
+        "catalog_version": "dev",
+        "evaluate_available_in_seconds": 0,
+        "evaluate_enabled": true,
+        "evaluate_interval_seconds": 10,
+        "evaluate_running": false,
+        "liveness": "ok",
+        "note": "Liveness says whether the serve process answers and whether a source call is stuck. It is not node health: hv_get_verdict evaluates the node.",
+        "owner_check": false,
+        "reachable": true,
+        "schema_version": "0.7",
+        "serve_address": "127.0.0.1:40557",
+        "stuck_calls": [],
+        "stuck_calls_truncated": false
+      },
+      "arguments": {},
+      "tool": "hv_service_status",
+      "is_error": false
+    },
+    {
+      "result": {
+        "catalog_version": "dev",
+        "coverage": {
+          "checks_run": 144,
+          "checks_skipped": 5,
+          "gpu_checks_run": 20,
+          "low_coverage": false,
+          "nvlink_checks_run": 24,
+          "skipped_by_reason": {
+            "CHECK_DISABLED": 1,
+            "SENSOR_MISSING": 1,
+            "SIGNAL_UNAVAILABLE_ARCHITECTURE": 3
+          },
+          "xid_checks_run": 97
+        },
+        "decision": {
+          "explanation": "Take the node out of scheduling. The remediation steps are recommendations; nothing here performs them.",
+          "operational_state": "drain",
+          "overall_severity": "CRITICAL",
+          "remediation_actions": [
+            "reset_gpu",
+            "restart_os",
+            "service_required"
+          ],
+          "scheduling_advice": "DRAIN"
+        },
+        "fence_marker": "untrusted-hv-text-76f542dac0e8b3d4",
+        "findings": [
+          {
+            "category": "gpu",
+            "check_id": "gpu_average_power_draw",
+            "entities": [
+              "GPU-00000000-0000-4000-8000-000000000000"
+            ],
+            "messages": [
+              "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU GPU-00000000-0000-4000-8000-000000000000: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
+            ],
+            "name": "GPU Average Power Draw",
+            "observed_values": {
+              "average_power_draw_w": 600,
+              "gpu_id": "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU-00000000-0000-4000-8000-000000000000\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
+            },
+            "operational_state": "drain",
+            "remediation_actions": [
+              "reset_gpu",
+              "restart_os",
+              "service_required"
+            ],
+            "severity": "CRITICAL"
+          },
+          {
+            "category": "gpu",
+            "check_id": "gpu_average_power_draw",
+            "entities": [
+              "GPU-11111111-1111-4111-8111-111111111111"
+            ],
+            "messages": [
+              "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU GPU-11111111-1111-4111-8111-111111111111: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
+            ],
+            "name": "GPU Average Power Draw",
+            "observed_values": {
+              "average_power_draw_w": 600,
+              "gpu_id": "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU-11111111-1111-4111-8111-111111111111\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
+            },
+            "operational_state": "drain",
+            "remediation_actions": [
+              "reset_gpu",
+              "restart_os",
+              "service_required"
+            ],
+            "severity": "CRITICAL"
+          },
+          {
+            "category": "gpu",
+            "check_id": "gpu_average_power_draw",
+            "entities": [
+              "GPU-22222222-2222-4222-8222-222222222222"
+            ],
+            "messages": [
+              "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU GPU-22222222-2222-4222-8222-222222222222: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
+            ],
+            "name": "GPU Average Power Draw",
+            "observed_values": {
+              "average_power_draw_w": 600,
+              "gpu_id": "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU-22222222-2222-4222-8222-222222222222\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
+            },
+            "operational_state": "drain",
+            "remediation_actions": [
+              "reset_gpu",
+              "restart_os",
+              "service_required"
+            ],
+            "severity": "CRITICAL"
+          },
+          {
+            "category": "gpu",
+            "check_id": "gpu_average_power_draw",
+            "entities": [
+              "GPU-33333333-3333-4333-8333-333333333333"
+            ],
+            "messages": [
+              "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU GPU-33333333-3333-4333-8333-333333333333: average power draw 600 W is above maximum 500 W.\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
+            ],
+            "name": "GPU Average Power Draw",
+            "observed_values": {
+              "average_power_draw_w": 600,
+              "gpu_id": "\u003cuntrusted-hv-text-76f542dac0e8b3d4\u003eGPU-33333333-3333-4333-8333-333333333333\u003c/untrusted-hv-text-76f542dac0e8b3d4\u003e"
+            },
+            "operational_state": "drain",
+            "remediation_actions": [
+              "reset_gpu",
+              "restart_os",
+              "service_required"
+            ],
+            "severity": "CRITICAL"
+          }
+        ],
+        "passed": [
+          "cpu_count",
+          "gpu_compute_apps",
+          "gpu_compute_apps",
+          "gpu_compute_apps",
+          "gpu_compute_apps",
+          "gpu_count",
+          "gpu_performance_state",
+          "gpu_performance_state",
+          "gpu_performance_state",
+          "gpu_performance_state",
+          "gpu_power_limit",
+          "gpu_power_limit",
+          "gpu_power_limit",
+          "gpu_power_limit",
+          "gpu_sensor_throttle",
+          "gpu_sensor_throttle",
+          "gpu_sensor_throttle",
+          "gpu_sensor_throttle",
+          "gpu_xid_100",
+          "gpu_xid_101",
+          "gpu_xid_102",
+          "gpu_xid_103",
+          "gpu_xid_104",
+          "gpu_xid_105",
+          "gpu_xid_109",
+          "gpu_xid_11",
+          "gpu_xid_110",
+          "gpu_xid_119",
+          "gpu_xid_120",
+          "gpu_xid_126",
+          "gpu_xid_127",
+          "gpu_xid_128",
+          "gpu_xid_129",
+          "gpu_xid_13",
+          "gpu_xid_130",
+          "gpu_xid_131",
+          "gpu_xid_132",
+          "gpu_xid_133",
+          "gpu_xid_134",
+          "gpu_xid_135",
+          "gpu_xid_139",
+          "gpu_xid_140",
+          "gpu_xid_142",
+          "gpu_xid_143",
+          "gpu_xid_144",
+          "gpu_xid_145",
+          "gpu_xid_146",
+          "gpu_xid_147",
+          "gpu_xid_148",
+          "gpu_xid_149",
+          "gpu_xid_149_1",
+          "gpu_xid_149_10",
+          "gpu_xid_149_11",
+          "gpu_xid_149_12",
+          "gpu_xid_149_15",
+          "gpu_xid_149_16",
+          "gpu_xid_149_2",
+          "gpu_xid_149_20",
+          "gpu_xid_149_21",
+          "gpu_xid_149_22",
+          "gpu_xid_149_23",
+          "gpu_xid_149_24",
+          "gpu_xid_149_25",
+          "gpu_xid_149_26",
+          "gpu_xid_149_28",
+          "gpu_xid_149_2a",
+          "gpu_xid_149_2b",
+          "gpu_xid_149_4",
+          "gpu_xid_149_a",
+          "gpu_xid_149_f",
+          "gpu_xid_150",
+          "gpu_xid_151",
+          "gpu_xid_154",
+          "gpu_xid_155",
+          "gpu_xid_156",
+          "gpu_xid_158",
+          "gpu_xid_159",
+          "gpu_xid_25",
+          "gpu_xid_31",
+          "gpu_xid_32",
+          "gpu_xid_39",
+          "gpu_xid_40",
+          "gpu_xid_41",
+          "gpu_xid_45",
+          "gpu_xid_46",
+          "gpu_xid_48",
+          "gpu_xid_60",
+          "gpu_xid_62",
+          "gpu_xid_64",
+          "gpu_xid_68",
+          "gpu_xid_69",
+          "gpu_xid_70",
+          "gpu_xid_71",
+          "gpu_xid_72",
+          "gpu_xid_75",
+          "gpu_xid_76",
+          "gpu_xid_77",
+          "gpu_xid_78",
+          "gpu_xid_79",
+          "gpu_xid_8",
+          "gpu_xid_82",
+          "gpu_xid_83",
+          "gpu_xid_84",
+          "gpu_xid_85",
+          "gpu_xid_86",
+          "gpu_xid_88",
+          "gpu_xid_89",
+          "gpu_xid_94",
+          "gpu_xid_95",
+          "gpu_xid_96",
+          "gpu_xid_97",
+          "gpu_xid_98",
+          "gpu_xid_99",
+          "gpu_xid_informational",
+          "gpu_xid_unknown",
+          "numa_node_count",
+          "nvlink_active",
+          "nvlink_active",
+          "nvlink_active",
+          "nvlink_active",
+          "nvlink_bandwidth_count_speed",
+          "nvlink_bandwidth_count_speed",
+          "nvlink_bandwidth_count_speed",
+          "nvlink_bandwidth_count_speed",
+          "nvlink_capabilities",
+          "nvlink_capabilities",
+          "nvlink_capabilities",
+          "nvlink_capabilities",
+          "nvlink_fabric",
+          "nvlink_fabric",
+          "nvlink_fabric",
+          "nvlink_fabric",
+          "nvlink_fabric_health",
+          "nvlink_fabric_health",
+          "nvlink_fabric_health",
+          "nvlink_fabric_health",
+          "nvlink_p2p",
+          "nvlink_p2p",
+          "nvlink_p2p",
+          "nvlink_p2p"
+        ],
+        "request": {
+          "cadence": "ALL",
+          "detail": "full",
+          "xid_lookback_minutes": 0
+        },
+        "schema_version": "0.7",
+        "server_catalog_version": "dev",
+        "severity_by_domain": {
+          "cpu": "PASS",
+          "gpu": "CRITICAL",
+          "node": "PASS",
+          "nvlink": "PASS",
+          "xid": "PASS"
+        },
+        "skipped": [
+          {
+            "check_id": "gpu_xid_136",
+            "reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE"
+          },
+          {
+            "check_id": "gpu_xid_54",
+            "reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE"
+          },
+          {
+            "check_id": "gpu_xid_80",
+            "reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE"
+          },
+          {
+            "check_id": "ib_port_state",
+            "reason": "CHECK_DISABLED"
+          },
+          {
+            "check_id": "rdma_linkflap_fatal",
+            "reason": "SENSOR_MISSING"
+          }
+        ],
+        "timestamp": "2026-11-27T12:40:10Z",
+        "truncated": false,
+        "version_skew": false
+      },
+      "arguments": {
+        "detail": "full"
+      },
+      "tool": "hv_get_verdict",
+      "is_error": false
+    }
+  ],
+  "recorded": "2026-11-27T12:40:10Z",
+  "scenario": "overridden-threshold",
+  "scenario_claim": "CRITICAL gpu_average_power_draw: the site caps max_power_w at 500 W and a GPU draws 600 W, which the catalog default of 1500 W passes",
+  "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
+}
